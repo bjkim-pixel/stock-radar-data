@@ -21,7 +21,7 @@ from psycopg2.extras import execute_values
 # ── 설정 ──────────────────────────────────────────────────────────────────────
 KIS_KEY    = os.environ.get("KIS_APP_KEY", "")
 KIS_SECRET = os.environ.get("KIS_APP_SECRET", "")
-KIS_BASE   = "https://api.koreainvestment.com:9443"   # 실전투자
+KIS_BASE   = "https://openapi.koreainvestment.com:9443"   # 실전투자
 DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
 INTERVAL   = 0.07   # 초당 ~14회 (실전 한도 20/sec)
