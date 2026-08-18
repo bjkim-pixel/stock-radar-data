@@ -1,0 +1,57 @@
+name: KIS Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: '시작일 (YYYYMMDD, 비우면 2026-01-02)'
+        required: false
+        default: '20260102'
+      end_date:
+        description: '종료일 (YYYYMMDD, 비우면 어제)'
+        required: false
+        default: ''
+      compare_only:
+        description: '재수집 없이 KRX vs KIS 비교만 실행'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install psycopg2-binary requests
+
+      - name: Run backfill
+        env:
+          KIS_APP_KEY:     ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          START="${{ github.event.inputs.start_date }}"
+          END="${{ github.event.inputs.end_date }}"
+          COMPARE="${{ github.event.inputs.compare_only }}"
+
+          if [ "$COMPARE" = "true" ]; then
+            python 04_backfill.py --compare-only
+          elif [ -z "$END" ]; then
+            python 04_backfill.py "$START"
+          else
+            python 04_backfill.py "$START" "$END"
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::백필 실패! GitHub Actions 로그를 확인하세요."
