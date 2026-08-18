@@ -22,12 +22,30 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # ── 설정 ──────────────────────────────────────────────────────────────────────
 KIS_KEY    = os.environ.get("KIS_APP_KEY", "")
 KIS_SECRET = os.environ.get("KIS_APP_SECRET", "")
-KIS_BASE   = "https://openapi.koreainvestment.com:9443"   # 실전투자
+KIS_BASE   = "https://openapi.koreainvestment.com:9443"
 DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
-INTERVAL   = 0.1    # 워커당 API 호출 간 sleep (초)
-WORKERS    = 5      # 동시 처리 워커 수 (5×2÷0.8s ≈ 12.5건/초 < 한도 20건/초)
-BATCH      = 500
+WORKERS  = 10   # 동시 처리 워커 수
+MAX_RPS  = 18   # 전역 최대 API 호출 속도 (KIS 한도 20/초의 90%)
+BATCH    = 500
+
+# ── 전역 속도 제한기 (토큰 버킷) ──────────────────────────────────────────────
+class RateLimiter:
+    """모든 워커가 공유하는 속도 제한기 — 전체 호출이 MAX_RPS를 넘지 않도록 제어"""
+    def __init__(self, max_rps):
+        self.min_interval = 1.0 / max_rps
+        self.lock = threading.Lock()
+        self.last_call = 0.0
+
+    def acquire(self):
+        with self.lock:
+            now = time.time()
+            wait = self.min_interval - (now - self.last_call)
+            if wait > 0:
+                time.sleep(wait)
+            self.last_call = time.time()
+
+_rate = RateLimiter(MAX_RPS)
 
 # ── 입력 파싱 ─────────────────────────────────────────────────────────────────
 DEBUG_MODE  = False
@@ -49,7 +67,7 @@ if not KIS_KEY or not KIS_SECRET:
 if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 환경변수를 설정하세요.")
 
-print(f"▶ 수집 날짜: {TARGET_DATE_ISO}  (워커: {WORKERS}개)")
+print(f"▶ 수집 날짜: {TARGET_DATE_ISO}  (워커: {WORKERS}개, 최대 {MAX_RPS}건/초)")
 
 # ── 유틸 ──────────────────────────────────────────────────────────────────────
 def safe_int(v, default=0):
@@ -90,8 +108,8 @@ def get_token():
     return d["access_token"]
 
 # ── KIS: 주식 현재가 조회 ─────────────────────────────────────────────────────
-# FHKST01010100 — 장 종료 후 호출하면 당일 종가 데이터 반환
 def fetch_price(token, code):
+    _rate.acquire()   # 전역 속도 제한
     r = requests.get(
         f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-price",
         headers=kis_headers(token, "FHKST01010100"),
@@ -106,8 +124,8 @@ def fetch_price(token, code):
     return d.get("output")
 
 # ── KIS: 일별 투자자별 순매수 ─────────────────────────────────────────────────
-# FHPTJ04160001 — 외국인·기관 7개 카테고리 순매수 금액
 def fetch_investor(token, code, date_str):
+    _rate.acquire()   # 전역 속도 제한
     r = requests.get(
         f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
         headers=kis_headers(token, "FHPTJ04160001"),
@@ -146,7 +164,6 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
   listed_shares=EXCLUDED.listed_shares, change_pct=EXCLUDED.change_pct,
   is_partial=EXCLUDED.is_partial, updated_at=now()
 """
-
 FLOW_SQL = """
 INSERT INTO daily_flow
   (trade_date, code, foreign_net, inst_net,
@@ -182,43 +199,35 @@ def log_result(job, status, row_count, duration_ms, message=""):
 
 # ── 종목 1개 수집 (워커 함수) ──────────────────────────────────────────────────
 def collect_stock(token, code):
-    """
-    반환: (price_row | None, flow_row | None, status)
-    status: 'ok' | 'skip' | 'err:...'
-    """
+    """반환: (price_row | None, flow_row | None, status)"""
     try:
-        pi = fetch_price(token, code)
-        time.sleep(INTERVAL)
-        inv = fetch_investor(token, code, TARGET_DATE)
-        time.sleep(INTERVAL)
+        pi  = fetch_price(token, code)    # _rate.acquire() 내장
+        inv = fetch_investor(token, code, TARGET_DATE)  # _rate.acquire() 내장
 
         if pi is None and inv is None:
             return None, None, "skip"
 
         # ── daily_price ────────────────────────────────────────────────
-        # hts_avls: 억원 단위 → ×1억 = 원
         mktcap_man = safe_int(pi.get("hts_avls", 0)) if pi else 0
-        market_cap = mktcap_man * 100_000_000
+        market_cap = mktcap_man * 100_000_000   # 억원 → 원
 
         price_row = (
-            TARGET_DATE_ISO,
-            code,
+            TARGET_DATE_ISO, code,
             safe_int(pi.get("stck_oprc"))    if pi else 0,
             safe_int(pi.get("stck_hgpr"))    if pi else 0,
             safe_int(pi.get("stck_lwpr"))    if pi else 0,
-            safe_int(pi.get("stck_prpr"))    if pi else 0,   # 현재가 = 종가
+            safe_int(pi.get("stck_prpr"))    if pi else 0,
             safe_int(pi.get("acml_vol"))     if pi else 0,
             safe_int(pi.get("acml_tr_pbmn")) if pi else 0,
             market_cap,
             safe_int(pi.get("lstn_stcn"))    if pi else 0,
             safe_float(pi.get("prdy_ctrt"))  if pi else 0.0,
-            pi is None,  # is_partial
+            pi is None,
         ) if pi else None
 
         # ── daily_flow ─────────────────────────────────────────────────
         flow_row = (
-            TARGET_DATE_ISO,
-            code,
+            TARGET_DATE_ISO, code,
             safe_int(inv.get("frgn_ntby_tr_pbmn")),
             safe_int(inv.get("orgn_ntby_tr_pbmn")),
             safe_int(inv.get("fnnc_invt_ntby_tr_pbmn")),
@@ -243,8 +252,6 @@ def run_debug():
     pi = fetch_price(token, DEBUG_CODE)
     print(json.dumps(pi, ensure_ascii=False, indent=2) if pi else "  (데이터 없음)")
 
-    time.sleep(INTERVAL)
-
     print(f"\n[2] investor-trade-by-stock-daily (FHPTJ04160001) 응답 ({TARGET_DATE}):")
     inv = fetch_investor(token, DEBUG_CODE, TARGET_DATE)
     print(json.dumps(inv, ensure_ascii=False, indent=2) if inv else "  (데이터 없음)")
@@ -268,13 +275,14 @@ def main():
     print("② 종목 목록 조회...")
     stocks = load_stocks()
     n_total = len(stocks)
-    print(f"   {n_total:,}개 종목 → {WORKERS}개 워커로 병렬 수집")
+    est_min = (n_total * 2 / MAX_RPS) / 60
+    print(f"   {n_total:,}개 종목 → 예상 소요시간 약 {est_min:.0f}분")
 
     price_rows, flow_rows = [], []
     ok = skip = err = 0
     done = 0
 
-    print(f"③ KIS API 수집 중...")
+    print(f"③ KIS API 수집 중... (워커 {WORKERS}개 / 최대 {MAX_RPS}건/초)")
 
     with ThreadPoolExecutor(max_workers=WORKERS) as executor:
         futures = {executor.submit(collect_stock, token, code): code for code in stocks}
@@ -298,7 +306,6 @@ def main():
                 if price_row: price_rows.append(price_row)
                 if flow_row:  flow_rows.append(flow_row)
 
-                # 배치 적재
                 if len(price_rows) >= BATCH:
                     upsert_batch(price_rows, flow_rows)
                     price_rows, flow_rows = [], []
@@ -309,27 +316,24 @@ def main():
                 if err <= 10:
                     print(f"   ⚠ [{code}] {status}")
 
-    # 마지막 배치
     if price_rows or flow_rows:
         upsert_batch(price_rows, flow_rows)
 
     duration_ms = int((time.time() - t_start) * 1000)
 
-    # 공휴일 판정
     holiday = (skip / n_total >= 0.9) if n_total else False
     if holiday:
-        status = "SKIP_HOLIDAY"
+        status_str = "SKIP_HOLIDAY"
         print(f"\n📅 장 없는 날로 판단 (데이터 없음 {skip:,}/{n_total:,})")
     else:
-        status = "SUCCESS" if err == 0 else ("FAIL" if ok == 0 else "PARTIAL")
+        status_str = "SUCCESS" if err == 0 else ("FAIL" if ok == 0 else "PARTIAL")
         print(f"\n✅ 완료: 성공 {ok:,} / 스킵 {skip:,} / 오류 {err:,}  ({duration_ms//1000}초)")
 
-    log_result("price", status, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
-    log_result("flow",  status, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
+    log_result("price", status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
+    log_result("flow",  status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
 
     if err > 0 and not holiday:
         sys.exit(1)
-
 
 # ── 진입점 ────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
