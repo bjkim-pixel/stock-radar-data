@@ -119,7 +119,7 @@ def fetch_investor_hist(token, code, s, e):
 # ── DB ────────────────────────────────────────────────────────────────────────
 def load_stocks():
     with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
-        cur.execute("SELECT code, listed_shares FROM stocks WHERE type='STOCK' ORDER BY code")
+        cur.execute("SELECT code, listed_shares FROM stocks WHERE security_type='STOCK' ORDER BY code")
         return {r[0]: r[1] or 0 for r in cur.fetchall()}
 
 PRICE_SQL = """
