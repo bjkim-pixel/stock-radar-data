@@ -16,6 +16,11 @@ on:
         required: false
         default: false
         type: boolean
+      debug:
+        description: '삼성전자 응답 원문만 출력 (약 10초, 필드명 확인용)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   backfill:
@@ -43,8 +48,11 @@ jobs:
           START="${{ github.event.inputs.start_date }}"
           END="${{ github.event.inputs.end_date }}"
           COMPARE="${{ github.event.inputs.compare_only }}"
+          DEBUG="${{ github.event.inputs.debug }}"
 
-          if [ "$COMPARE" = "true" ]; then
+          if [ "$DEBUG" = "true" ]; then
+            python 04_backfill.py --debug
+          elif [ "$COMPARE" = "true" ]; then
             python 04_backfill.py --compare-only
           elif [ -z "$END" ]; then
             python 04_backfill.py "$START"
