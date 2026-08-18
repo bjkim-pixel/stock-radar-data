@@ -14,9 +14,10 @@ GitHub Actions에서 매 거래일 16:05 KST(07:05 UTC)에 자동 실행됩니�
   python 03_daily_collect.py 20260815         # 특정 날짜 재수집
   python 03_daily_collect.py --debug 005930   # 삼성전자 API 응답 확인 (필드명 검증)
 """
-import os, sys, time, datetime, json
+import os, sys, time, datetime, json, threading
 import requests, psycopg2
 from psycopg2.extras import execute_values
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ── 설정 ──────────────────────────────────────────────────────────────────────
 KIS_KEY    = os.environ.get("KIS_APP_KEY", "")
@@ -24,7 +25,8 @@ KIS_SECRET = os.environ.get("KIS_APP_SECRET", "")
 KIS_BASE   = "https://openapi.koreainvestment.com:9443"   # 실전투자
 DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
-INTERVAL   = 0.07   # 초당 ~14회 (실전 한도 20/sec)
+INTERVAL   = 0.1    # 워커당 API 호출 간 sleep (초)
+WORKERS    = 5      # 동시 처리 워커 수 (5×2÷0.8s ≈ 12.5건/초 < 한도 20건/초)
 BATCH      = 500
 
 # ── 입력 파싱 ─────────────────────────────────────────────────────────────────
@@ -47,7 +49,7 @@ if not KIS_KEY or not KIS_SECRET:
 if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 환경변수를 설정하세요.")
 
-print(f"▶ 수집 날짜: {TARGET_DATE_ISO}")
+print(f"▶ 수집 날짜: {TARGET_DATE_ISO}  (워커: {WORKERS}개)")
 
 # ── 유틸 ──────────────────────────────────────────────────────────────────────
 def safe_int(v, default=0):
@@ -89,7 +91,6 @@ def get_token():
 
 # ── KIS: 주식 현재가 조회 ─────────────────────────────────────────────────────
 # FHKST01010100 — 장 종료 후 호출하면 당일 종가 데이터 반환
-# 포함: OHLCV, 시가총액(hts_avls), 상장주수(lstn_stcn), 전일대비율(prdy_ctrt)
 def fetch_price(token, code):
     r = requests.get(
         f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-price",
@@ -102,7 +103,7 @@ def fetch_price(token, code):
     d = r.json()
     if d.get("rt_cd") != "0":
         return None
-    return d.get("output")   # dict
+    return d.get("output")
 
 # ── KIS: 일별 투자자별 순매수 ─────────────────────────────────────────────────
 # FHPTJ04160001 — 외국인·기관 7개 카테고리 순매수 금액
@@ -179,9 +180,61 @@ def log_result(job, status, row_count, duration_ms, message=""):
     except Exception as ex:
         print(f"  ⚠ ingest_log 기록 실패: {ex}")
 
+# ── 종목 1개 수집 (워커 함수) ──────────────────────────────────────────────────
+def collect_stock(token, code):
+    """
+    반환: (price_row | None, flow_row | None, status)
+    status: 'ok' | 'skip' | 'err:...'
+    """
+    try:
+        pi = fetch_price(token, code)
+        time.sleep(INTERVAL)
+        inv = fetch_investor(token, code, TARGET_DATE)
+        time.sleep(INTERVAL)
+
+        if pi is None and inv is None:
+            return None, None, "skip"
+
+        # ── daily_price ────────────────────────────────────────────────
+        # hts_avls: 억원 단위 → ×1억 = 원
+        mktcap_man = safe_int(pi.get("hts_avls", 0)) if pi else 0
+        market_cap = mktcap_man * 100_000_000
+
+        price_row = (
+            TARGET_DATE_ISO,
+            code,
+            safe_int(pi.get("stck_oprc"))    if pi else 0,
+            safe_int(pi.get("stck_hgpr"))    if pi else 0,
+            safe_int(pi.get("stck_lwpr"))    if pi else 0,
+            safe_int(pi.get("stck_prpr"))    if pi else 0,   # 현재가 = 종가
+            safe_int(pi.get("acml_vol"))     if pi else 0,
+            safe_int(pi.get("acml_tr_pbmn")) if pi else 0,
+            market_cap,
+            safe_int(pi.get("lstn_stcn"))    if pi else 0,
+            safe_float(pi.get("prdy_ctrt"))  if pi else 0.0,
+            pi is None,  # is_partial
+        ) if pi else None
+
+        # ── daily_flow ─────────────────────────────────────────────────
+        flow_row = (
+            TARGET_DATE_ISO,
+            code,
+            safe_int(inv.get("frgn_ntby_tr_pbmn")),
+            safe_int(inv.get("orgn_ntby_tr_pbmn")),
+            safe_int(inv.get("fnnc_invt_ntby_tr_pbmn")),
+            safe_int(inv.get("invt_trst_ntby_tr_pbmn")),
+            safe_int(inv.get("pe_fund_ntby_tr_pbmn")),
+            safe_int(inv.get("pgnn_ntby_tr_pbmn")),
+            safe_int(inv.get("etc_corp_ntby_tr_pbmn")),
+            False,
+        ) if inv else None
+
+        return price_row, flow_row, "ok"
+
+    except Exception as ex:
+        return None, None, f"err:{ex}"
+
 # ── 디버그 모드 ────────────────────────────────────────────────────────────────
-# python 03_daily_collect.py --debug 005930
-# → 삼성전자 API 응답을 그대로 출력해서 실제 필드명 확인
 def run_debug():
     print(f"\n=== DEBUG 모드: {DEBUG_CODE} ({TARGET_DATE}) ===\n")
     token = get_token()
@@ -215,70 +268,46 @@ def main():
     print("② 종목 목록 조회...")
     stocks = load_stocks()
     n_total = len(stocks)
-    print(f"   {n_total:,}개 종목")
+    print(f"   {n_total:,}개 종목 → {WORKERS}개 워커로 병렬 수집")
 
     price_rows, flow_rows = [], []
     ok = skip = err = 0
+    done = 0
 
     print(f"③ KIS API 수집 중...")
-    for i, code in enumerate(stocks, 1):
-        try:
-            pi  = fetch_price(token, code)
-            time.sleep(INTERVAL)
-            inv = fetch_investor(token, code, TARGET_DATE)
-            time.sleep(INTERVAL)
 
-            if pi is None and inv is None:
-                skip += 1
+    with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+        futures = {executor.submit(collect_stock, token, code): code for code in stocks}
+
+        for future in as_completed(futures):
+            code = futures[future]
+            done += 1
+
+            try:
+                price_row, flow_row, status = future.result()
+            except Exception as ex:
+                err += 1
+                if err <= 10:
+                    print(f"   ⚠ [{code}] future 예외: {ex}")
                 continue
 
-            # ── daily_price ─────────────────────────────────────────────
-            # hts_avls: KIS는 '억원' 단위로 반환 → ×1억 = 원
-            # 실제 단위는 --debug로 삼성전자(005930) 확인 필요
-            mktcap_man = safe_int(pi.get("hts_avls", 0)) if pi else 0
-            market_cap = mktcap_man * 100_000_000   # 억원 → 원
+            if status == "skip":
+                skip += 1
+            elif status == "ok":
+                ok += 1
+                if price_row: price_rows.append(price_row)
+                if flow_row:  flow_rows.append(flow_row)
 
-            price_rows.append((
-                TARGET_DATE_ISO,
-                code,
-                safe_int(pi.get("stck_oprc"))   if pi else 0,
-                safe_int(pi.get("stck_hgpr"))   if pi else 0,
-                safe_int(pi.get("stck_lwpr"))   if pi else 0,
-                safe_int(pi.get("stck_prpr"))   if pi else 0,    # 현재가 = 종가
-                safe_int(pi.get("acml_vol"))    if pi else 0,
-                safe_int(pi.get("acml_tr_pbmn")) if pi else 0,
-                market_cap,
-                safe_int(pi.get("lstn_stcn"))   if pi else 0,
-                safe_float(pi.get("prdy_ctrt")) if pi else 0.0,  # 전일대비율(%)
-                pi is None,   # is_partial
-            ))
-
-            # ── daily_flow ──────────────────────────────────────────────
-            if inv:
-                flow_rows.append((
-                    TARGET_DATE_ISO,
-                    code,
-                    safe_int(inv.get("frgn_ntby_tr_pbmn")),        # 외국인
-                    safe_int(inv.get("orgn_ntby_tr_pbmn")),        # 기관합계
-                    safe_int(inv.get("fnnc_invt_ntby_tr_pbmn")),  # 금융투자
-                    safe_int(inv.get("invt_trst_ntby_tr_pbmn")),  # 투신
-                    safe_int(inv.get("pe_fund_ntby_tr_pbmn")),    # 사모
-                    safe_int(inv.get("pgnn_ntby_tr_pbmn")),       # 연기금
-                    safe_int(inv.get("etc_corp_ntby_tr_pbmn")),   # 기타법인
-                    False,
-                ))
-
-            ok += 1
-
-            if len(price_rows) >= BATCH:
-                upsert_batch(price_rows, flow_rows)
-                price_rows, flow_rows = [], []
-                print(f"   [{i:4d}/{n_total}] 누적 {ok:,}건 적재...")
-
-        except Exception as ex:
-            err += 1
-            if err <= 10:
-                print(f"   ⚠ [{code}] {ex}")
+                # 배치 적재
+                if len(price_rows) >= BATCH:
+                    upsert_batch(price_rows, flow_rows)
+                    price_rows, flow_rows = [], []
+                    elapsed = int(time.time() - t_start)
+                    print(f"   [{done:4d}/{n_total}] 적재중... ok={ok:,}  ({elapsed}초 경과)")
+            else:
+                err += 1
+                if err <= 10:
+                    print(f"   ⚠ [{code}] {status}")
 
     # 마지막 배치
     if price_rows or flow_rows:
@@ -286,7 +315,7 @@ def main():
 
     duration_ms = int((time.time() - t_start) * 1000)
 
-    # 공휴일 판정: 스킵 비율이 90% 이상이면 장이 없던 날
+    # 공휴일 판정
     holiday = (skip / n_total >= 0.9) if n_total else False
     if holiday:
         status = "SKIP_HOLIDAY"
@@ -299,7 +328,7 @@ def main():
     log_result("flow",  status, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
 
     if err > 0 and not holiday:
-        sys.exit(1)   # GitHub Actions에 실패 신호
+        sys.exit(1)
 
 
 # ── 진입점 ────────────────────────────────────────────────────────────────────
