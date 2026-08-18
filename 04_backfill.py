@@ -4,13 +4,20 @@ STOCK RADAR · KIS API 백필 (날짜 범위 재수집 + KRX 비교)
 =========================================================
 사용법
   python 04_backfill.py                        # 2026-01-02 ~ 어제
-  python 04_backfill.py 20260102 20260814      # 날짜 범위 지정
+  python 04_backfill.py 20260102 20260813      # 날짜 범위 지정
   python 04_backfill.py --compare-only         # 재수집 없이 KRX vs KIS 비교만
+  python 04_backfill.py --debug                # 삼성전자 응답 원문 출력 (필드명 확인)
 
 환경변수
   KIS_APP_KEY / KIS_APP_SECRET / SUPABASE_DB_URL
+
+※ 필드명을 하드코딩하지 않습니다.
+  KIS 응답의 키 이름은 엔드포인트마다 다르고 문서와도 어긋나는 경우가 있어,
+  날짜 필드는 "값이 8자리 20XXXXXX인 키"를 스캔해서 찾고,
+  나머지 항목은 후보 이름을 순서대로 시도합니다(pick 함수).
+  실행 첫 종목의 실제 키 목록을 로그에 찍어 두므로, 로그만 봐도 검증됩니다.
 """
-import os, sys, time, datetime, json, threading
+import os, sys, time, datetime, json, threading, re
 import requests, psycopg2
 from psycopg2.extras import execute_values
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -20,13 +27,15 @@ KIS_SECRET = os.environ.get("KIS_APP_SECRET", "")
 KIS_BASE   = "https://openapi.koreainvestment.com:9443"
 DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
-WORKERS    = 10     # 동시 처리 워커 수
-MAX_RPS    = 18     # 전역 최대 API 호출 속도 (KIS 한도 20/초의 90%)
+WORKERS    = 10
+MAX_RPS    = 18
 BATCH      = 500
-# KIS API는 한 번에 최대 ~100일치 반환 → 90일 단위로 청크
 CHUNK_DAYS = 90
+# 청크 경계에서 등락률을 계산하려면 앞쪽으로 며칠 겹쳐서 받아야 합니다.
+OVERLAP_DAYS = 10
 
-# ── 전역 속도 제한기 (토큰 버킷, 모든 워커가 공유) ─────────────────────────────
+
+# ── 전역 속도 제한기 ──────────────────────────────────────────────────────────
 class RateLimiter:
     def __init__(self, max_rps):
         self.min_interval = 1.0 / max_rps
@@ -41,10 +50,16 @@ class RateLimiter:
                 time.sleep(wait)
             self.last_call = time.time()
 
+
 _rate = RateLimiter(MAX_RPS)
 
-# ── 날짜 파싱 ─────────────────────────────────────────────────────────────────
+# 첫 종목 응답의 키를 한 번만 출력하기 위한 플래그
+_dumped = {"price": False, "flow": False}
+_dump_lock = threading.Lock()
+
+# ── 입력 파싱 ─────────────────────────────────────────────────────────────────
 COMPARE_ONLY = "--compare-only" in sys.argv
+DEBUG_MODE   = "--debug" in sys.argv
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 
 if len(args) >= 2:
@@ -55,8 +70,10 @@ else:
     START_DATE = "20260102"
     END_DATE   = (datetime.date.today() - datetime.timedelta(1)).strftime("%Y%m%d")
 
+
 def iso(d): return f"{d[:4]}-{d[4:6]}-{d[6:]}"
 def ymd(d): return d.strftime("%Y%m%d")
+
 
 print(f"▶ 백필 범위: {iso(START_DATE)} ~ {iso(END_DATE)}  (워커: {WORKERS}개, 최대 {MAX_RPS}건/초)")
 
@@ -66,77 +83,133 @@ if not COMPARE_ONLY:
 if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 설정 필요")
 
-# ── 날짜 범위 → 90일 청크 목록 ───────────────────────────────────────────────
+
 def date_chunks(start_str, end_str, chunk=CHUNK_DAYS):
     s = datetime.date(int(start_str[:4]), int(start_str[4:6]), int(start_str[6:]))
     e = datetime.date(int(end_str[:4]),   int(end_str[4:6]),   int(end_str[6:]))
-    chunks = []
-    cur = s
+    chunks, cur = [], s
     while cur <= e:
         nxt = min(cur + datetime.timedelta(chunk - 1), e)
-        chunks.append((ymd(cur), ymd(nxt)))
+        # API 호출은 앞으로 OVERLAP_DAYS 만큼 더 받아서 등락률 계산에 씁니다
+        api_start = max(s - datetime.timedelta(OVERLAP_DAYS), cur - datetime.timedelta(OVERLAP_DAYS))
+        chunks.append((ymd(api_start), ymd(nxt), ymd(cur)))
         cur = nxt + datetime.timedelta(1)
     return chunks
 
-CHUNKS = date_chunks(START_DATE, END_DATE)
-print(f"   → {len(CHUNKS)}개 청크 ({CHUNK_DAYS}일 단위)")
 
-# ── 유틸 ──────────────────────────────────────────────────────────────────────
+CHUNKS = date_chunks(START_DATE, END_DATE)
+print(f"   → {len(CHUNKS)}개 청크 ({CHUNK_DAYS}일 단위, 경계 {OVERLAP_DAYS}일 중첩)")
+
+
+# ── 값 파싱 유틸 ──────────────────────────────────────────────────────────────
 def safe_int(v, d=0):
     try:
-        s = str(v).replace(",","").strip()
-        return int(s) if s not in ("","-","0") else d
-    except: return d
+        s = str(v).replace(",", "").strip()
+        if s in ("", "-", "None"):
+            return d
+        return int(float(s))
+    except Exception:
+        return d
+
 
 def safe_float(v, d=0.0):
     try:
-        s = str(v).replace(",","").strip()
-        return float(s) if s not in ("","-") else d
-    except: return d
+        s = str(v).replace(",", "").strip()
+        if s in ("", "-", "None"):
+            return d
+        return float(s)
+    except Exception:
+        return d
+
+
+def pick(row, *names):
+    """후보 키를 순서대로 찾아 첫 번째로 존재하는 값을 반환"""
+    for n in names:
+        if n in row and str(row[n]).strip() not in ("", "-"):
+            return row[n]
+    return None
+
+
+_DATE_RE = re.compile(r"^20\d{6}$")
+
+
+def find_date(row):
+    """값이 8자리 날짜(20XXXXXX)인 키를 찾아 그 값을 반환 — 키 이름에 의존하지 않음"""
+    for k, v in row.items():
+        if _DATE_RE.match(str(v).strip()):
+            return str(v).strip()
+    return None
+
+
+def dump_keys(kind, rows):
+    """첫 응답의 키/샘플을 한 번만 로그에 남깁니다 (필드명 자가검증용)"""
+    with _dump_lock:
+        if _dumped[kind] or not rows:
+            return
+        _dumped[kind] = True
+        print(f"\n   ── [{kind}] 응답 필드 확인 (첫 종목 1행) ──")
+        print("   " + json.dumps(rows[0], ensure_ascii=False)[:1200])
+        print(f"   → 감지된 날짜 필드값: {find_date(rows[0])}\n")
+
 
 # ── KIS ───────────────────────────────────────────────────────────────────────
 def kis_hdr(token, tr_id):
-    return {"Content-Type":"application/json; charset=utf-8",
-            "authorization":f"Bearer {token}",
-            "appkey":KIS_KEY,"appsecret":KIS_SECRET,
-            "tr_id":tr_id,"custtype":"P"}
+    return {"Content-Type": "application/json; charset=utf-8",
+            "authorization": f"Bearer {token}",
+            "appkey": KIS_KEY, "appsecret": KIS_SECRET,
+            "tr_id": tr_id, "custtype": "P"}
+
 
 def get_token():
     r = requests.post(f"{KIS_BASE}/oauth2/tokenP",
-        json={"grant_type":"client_credentials","appkey":KIS_KEY,"appsecret":KIS_SECRET},
-        timeout=15)
+                      json={"grant_type": "client_credentials",
+                            "appkey": KIS_KEY, "appsecret": KIS_SECRET},
+                      timeout=15)
     r.raise_for_status()
-    print(f"  토큰 발급 완료")
+    print("  토큰 발급 완료")
     return r.json()["access_token"]
 
-# FHKST03010100: 일별 시세 (OHLCV) — 날짜 범위
+
 def fetch_price_hist(token, code, s, e):
+    """FHKST03010100 · 일별 시세(OHLCV) — 날짜 범위"""
     _rate.acquire()
     r = requests.get(
         f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
         headers=kis_hdr(token, "FHKST03010100"),
-        params={"FID_COND_MRKT_DIV_CODE":"J","FID_INPUT_ISCD":code,
-                "FID_INPUT_DATE_1":s,"FID_INPUT_DATE_2":e,
-                "FID_PERIOD_DIV_CODE":"D","FID_ORG_ADJ_PRC":"0"},
+        params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code,
+                "FID_INPUT_DATE_1": s, "FID_INPUT_DATE_2": e,
+                "FID_PERIOD_DIV_CODE": "D", "FID_ORG_ADJ_PRC": "0"},
         timeout=15)
-    if r.status_code != 200: return []
+    if r.status_code != 200:
+        return []
     d = r.json()
-    if d.get("rt_cd") != "0": return []
-    return d.get("output2") or []
+    if d.get("rt_cd") != "0":
+        return []
+    rows = d.get("output2") or []
+    rows = [x for x in rows if x]           # KIS는 빈 dict를 섞어 보냅니다
+    dump_keys("price", rows)
+    return rows
 
-# FHPTJ04160001: 일별 투자자 순매수 — 날짜 범위
+
 def fetch_investor_hist(token, code, s, e):
+    """FHPTJ04160001 · 일별 투자자 순매수 — 날짜 범위"""
     _rate.acquire()
     r = requests.get(
         f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
         headers=kis_hdr(token, "FHPTJ04160001"),
-        params={"MKSC_SHRN_ISCD":code,"STRT_BSNS_DT":s,"END_BSNS_DT":e,
-                "HLDN_QTY_SMTN_ICDC_YN":"N"},
+        params={"MKSC_SHRN_ISCD": code, "STRT_BSNS_DT": s, "END_BSNS_DT": e,
+                "HLDN_QTY_SMTN_ICDC_YN": "N"},
         timeout=15)
-    if r.status_code != 200: return []
+    if r.status_code != 200:
+        return []
     d = r.json()
-    if d.get("rt_cd") != "0": return []
-    return d.get("output2") or []
+    if d.get("rt_cd") != "0":
+        return []
+    rows = d.get("output2") or []
+    rows = [x for x in rows if x]
+    dump_keys("flow", rows)
+    return rows
+
 
 # ── DB ────────────────────────────────────────────────────────────────────────
 def load_stocks():
@@ -144,80 +217,112 @@ def load_stocks():
         cur.execute("SELECT code, listed_shares FROM stocks WHERE security_type='STOCK' ORDER BY code")
         return {r[0]: r[1] or 0 for r in cur.fetchall()}
 
+
 PRICE_SQL = """
 INSERT INTO daily_price
   (trade_date,code,open,high,low,close,volume,trade_amount,
-   market_cap,listed_shares,change_pct,is_partial)
+   market_cap,listed_shares,change_pct,source,is_partial)
 VALUES %s
 ON CONFLICT (trade_date,code) DO UPDATE SET
   open=EXCLUDED.open,high=EXCLUDED.high,low=EXCLUDED.low,
   close=EXCLUDED.close,volume=EXCLUDED.volume,
   trade_amount=EXCLUDED.trade_amount,market_cap=EXCLUDED.market_cap,
   listed_shares=EXCLUDED.listed_shares,change_pct=EXCLUDED.change_pct,
-  is_partial=EXCLUDED.is_partial
+  source=EXCLUDED.source,is_partial=EXCLUDED.is_partial
 """
 FLOW_SQL = """
 INSERT INTO daily_flow
   (trade_date,code,foreign_net,inst_net,
-   fin_inv_net,inv_trust_net,pe_net,pension_net,corp_other_net,is_partial)
+   fin_inv_net,inv_trust_net,pe_net,pension_net,
+   corp_other_net,individual_net,source,is_partial)
 VALUES %s
 ON CONFLICT (trade_date,code) DO UPDATE SET
   foreign_net=EXCLUDED.foreign_net,inst_net=EXCLUDED.inst_net,
   fin_inv_net=EXCLUDED.fin_inv_net,inv_trust_net=EXCLUDED.inv_trust_net,
   pe_net=EXCLUDED.pe_net,pension_net=EXCLUDED.pension_net,
-  corp_other_net=EXCLUDED.corp_other_net,is_partial=EXCLUDED.is_partial
+  corp_other_net=EXCLUDED.corp_other_net,individual_net=EXCLUDED.individual_net,
+  source=EXCLUDED.source,is_partial=EXCLUDED.is_partial
 """
+
 
 def upsert(price_rows, flow_rows):
     with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
-        if price_rows: execute_values(cur, PRICE_SQL, price_rows, page_size=BATCH)
-        if flow_rows:  execute_values(cur, FLOW_SQL,  flow_rows,  page_size=BATCH)
+        if price_rows:
+            execute_values(cur, PRICE_SQL, price_rows, page_size=BATCH)
+        if flow_rows:
+            execute_values(cur, FLOW_SQL, flow_rows, page_size=BATCH)
         c.commit()
 
-# ── 종목 1개 × 1청크 수집 (워커 함수) ─────────────────────────────────────────
-def collect_stock_chunk(token, code, listed_sh, cs, ce):
-    """반환: (price_rows: list, flow_rows: list, status: 'ok'|'skip'|'err:...')"""
+
+# ── 종목 1개 × 1청크 수집 ─────────────────────────────────────────────────────
+def collect_stock_chunk(token, code, listed_sh, api_s, api_e, keep_from):
+    """반환: (price_rows, flow_rows, status)"""
     try:
-        ph = fetch_price_hist(token, code, cs, ce)
-        ih = fetch_investor_hist(token, code, cs, ce)
+        ph = fetch_price_hist(token, code, api_s, api_e)
+        ih = fetch_investor_hist(token, code, api_s, api_e)
 
         if not ph and not ih:
             return [], [], "skip"
 
-        price_rows = []
+        # ── 시세 ─────────────────────────────────────────────────────────────
+        parsed = []
         for r in ph:
-            dt = r.get("stck_bsns_date", "")
-            if len(dt) != 8: continue
-            close_p = safe_int(r.get("stck_clpr"))
-            mktcap  = close_p * listed_sh if close_p and listed_sh else 0
-            price_rows.append((
-                iso(dt), code,
-                safe_int(r.get("stck_oprc")),
-                safe_int(r.get("stck_hgpr")),
-                safe_int(r.get("stck_lwpr")),
-                close_p,
-                safe_int(r.get("acml_vol")),
-                safe_int(r.get("acml_tr_pbmn")),
-                mktcap,
-                listed_sh,
-                safe_float(r.get("prdy_ctrt")),
-                False,
-            ))
+            dt = find_date(r)
+            if not dt:
+                continue
+            parsed.append((dt, r))
+        parsed.sort(key=lambda x: x[0])     # 날짜 오름차순 → 등락률 계산 가능
 
+        price_rows = []
+        prev_close = None
+        for dt, r in parsed:
+            close_p = safe_int(pick(r, "stck_clpr", "stck_prpr", "clpr"))
+            if close_p <= 0:
+                prev_close = None
+                continue
+
+            # 등락률: 응답에 있으면 그대로, 없으면 직전 종가로 계산
+            ctrt = pick(r, "prdy_ctrt", "flng_cls_code_ctrt")
+            if ctrt is not None:
+                change_pct = safe_float(ctrt)
+            elif prev_close:
+                change_pct = (close_p - prev_close) / prev_close * 100
+            else:
+                change_pct = 0.0
+
+            if dt >= keep_from:            # 중첩 구간은 계산에만 쓰고 저장하지 않음
+                mktcap = close_p * listed_sh if listed_sh else 0
+                price_rows.append((
+                    iso(dt), code,
+                    safe_int(pick(r, "stck_oprc", "oprc")),
+                    safe_int(pick(r, "stck_hgpr", "hgpr")),
+                    safe_int(pick(r, "stck_lwpr", "lwpr")),
+                    close_p,
+                    safe_int(pick(r, "acml_vol", "cntg_vol")),
+                    safe_int(pick(r, "acml_tr_pbmn", "acml_tr_pbm")),
+                    mktcap, listed_sh,
+                    round(change_pct, 4),
+                    "KIS", False,
+                ))
+            prev_close = close_p
+
+        # ── 수급 ─────────────────────────────────────────────────────────────
         flow_rows = []
         for r in ih:
-            dt = r.get("stck_bsns_date", "")
-            if len(dt) != 8: continue
+            dt = find_date(r)
+            if not dt or dt < keep_from:
+                continue
             flow_rows.append((
                 iso(dt), code,
-                safe_int(r.get("frgn_ntby_tr_pbmn")),
-                safe_int(r.get("orgn_ntby_tr_pbmn")),
-                safe_int(r.get("fnnc_invt_ntby_tr_pbmn")),
-                safe_int(r.get("invt_trst_ntby_tr_pbmn")),
-                safe_int(r.get("pe_fund_ntby_tr_pbmn")),
-                safe_int(r.get("pgnn_ntby_tr_pbmn")),
-                safe_int(r.get("etc_corp_ntby_tr_pbmn")),
-                False,
+                safe_int(pick(r, "frgn_ntby_tr_pbmn", "frgn_ntby_amt")),
+                safe_int(pick(r, "orgn_ntby_tr_pbmn", "orgn_ntby_amt")),
+                safe_int(pick(r, "fnnc_invt_ntby_tr_pbmn", "scrt_ntby_tr_pbmn", "scrt_ntby_amt")),
+                safe_int(pick(r, "invt_trst_ntby_tr_pbmn", "ivtr_ntby_tr_pbmn", "ivtr_ntby_amt")),
+                safe_int(pick(r, "pe_fund_ntby_tr_pbmn", "pe_fund_ntby_amt", "prvt_fund_ntby_tr_pbmn")),
+                safe_int(pick(r, "pgnn_ntby_tr_pbmn", "fund_ntby_tr_pbmn", "pnsn_ntby_tr_pbmn")),
+                safe_int(pick(r, "etc_corp_ntby_tr_pbmn", "etc_orgt_ntby_tr_pbmn")),
+                safe_int(pick(r, "prsn_ntby_tr_pbmn", "prsn_ntby_amt")),
+                "KIS", False,
             ))
 
         return price_rows, flow_rows, "ok"
@@ -225,69 +330,94 @@ def collect_stock_chunk(token, code, listed_sh, cs, ce):
     except Exception as ex:
         return [], [], f"err:{ex}"
 
+
+# ── 디버그 모드 ────────────────────────────────────────────────────────────────
+def run_debug():
+    print("\n=== DEBUG: 삼성전자(005930) 히스토리 엔드포인트 응답 원문 ===\n")
+    token = get_token()
+    s = (datetime.date.today() - datetime.timedelta(20)).strftime("%Y%m%d")
+    e = (datetime.date.today() - datetime.timedelta(1)).strftime("%Y%m%d")
+    print(f"조회 구간: {s} ~ {e}\n")
+
+    print("[1] inquire-daily-itemchartprice (FHKST03010100) output2 — 최대 3행")
+    ph = fetch_price_hist(token, "005930", s, e)
+    print(f"  행 수: {len(ph)}")
+    for r in ph[:3]:
+        print("  " + json.dumps(r, ensure_ascii=False))
+
+    print("\n[2] investor-trade-by-stock-daily (FHPTJ04160001) output2 — 최대 3행")
+    ih = fetch_investor_hist(token, "005930", s, e)
+    print(f"  행 수: {len(ih)}")
+    for r in ih[:3]:
+        print("  " + json.dumps(r, ensure_ascii=False))
+
+    print("\n[3] 파싱 시뮬레이션")
+    pr, fr, st = collect_stock_chunk(token, "005930", 5_919_637_922, s, e, s)
+    print(f"  status={st}  price_rows={len(pr)}  flow_rows={len(fr)}")
+    if pr:
+        print(f"  price 샘플: {pr[-1]}")
+    if fr:
+        print(f"  flow  샘플: {fr[0]}")
+    if not pr and not fr:
+        print("  ⚠️ 파싱 결과 0행 — 위 [1][2] 원문의 키 이름을 확인해야 합니다.")
+
+
 # ── KRX vs KIS 비교 ────────────────────────────────────────────────────────────
 def compare_krx_kis():
-    print("\n" + "="*60)
-    print("KRX vs KIS 비교 (업서트 전후 값 차이)")
-    print("="*60)
+    print("\n" + "=" * 60)
+    print("적재 현황 (source별)")
+    print("=" * 60)
     with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
         cur.execute("""
-            SELECT
-              count(*) as rows,
-              count(*) filter (where close > 0) as has_close,
-              count(*) filter (where trade_amount > 0) as has_amount,
-              count(*) filter (where market_cap > 0) as has_mktcap,
-              round(avg(abs(change_pct))::numeric,4) as avg_change_pct
-            FROM daily_price
-            WHERE trade_date BETWEEN %s AND %s
+            SELECT coalesce(source,'(null)'), count(*),
+                   count(*) FILTER (WHERE close > 0),
+                   count(*) FILTER (WHERE trade_amount > 0),
+                   round(avg(abs(change_pct))::numeric, 3)
+            FROM daily_price WHERE trade_date BETWEEN %s AND %s
+            GROUP BY 1 ORDER BY 2 DESC
         """, (iso(START_DATE), iso(END_DATE)))
-        row = cur.fetchone()
         print(f"\n[daily_price] {iso(START_DATE)} ~ {iso(END_DATE)}")
-        print(f"  총 행수       : {row[0]:,}")
-        print(f"  종가 있음      : {row[1]:,}")
-        print(f"  거래대금 있음  : {row[2]:,}")
-        print(f"  시가총액 있음  : {row[3]:,}")
-        print(f"  평균 등락률    : {row[4]}%")
+        print(f"  {'source':<10} {'행수':>10} {'종가':>10} {'거래대금':>10} {'평균등락%':>9}")
+        for s_, n, cl, am, ch in cur.fetchall():
+            print(f"  {s_:<10} {n:>10,} {cl:>10,} {am:>10,} {str(ch):>9}")
 
         cur.execute("""
-            SELECT
-              count(*) as rows,
-              count(*) filter (where foreign_net != 0) as has_foreign,
-              count(*) filter (where inst_net != 0) as has_inst,
-              count(*) filter (where fin_inv_net != 0) as has_fininv,
-              count(*) filter (where pension_net != 0) as has_pension
-            FROM daily_flow
-            WHERE trade_date BETWEEN %s AND %s
+            SELECT coalesce(source,'(null)'), count(*),
+                   count(*) FILTER (WHERE foreign_net <> 0),
+                   count(*) FILTER (WHERE inst_net <> 0),
+                   count(*) FILTER (WHERE inv_trust_net <> 0),
+                   count(*) FILTER (WHERE pe_net <> 0),
+                   count(*) FILTER (WHERE individual_net <> 0)
+            FROM daily_flow WHERE trade_date BETWEEN %s AND %s
+            GROUP BY 1 ORDER BY 2 DESC
         """, (iso(START_DATE), iso(END_DATE)))
-        row = cur.fetchone()
         print(f"\n[daily_flow] {iso(START_DATE)} ~ {iso(END_DATE)}")
-        print(f"  총 행수       : {row[0]:,}")
-        print(f"  외국인 있음    : {row[1]:,}")
-        print(f"  기관합계 있음  : {row[2]:,}")
-        print(f"  금융투자 있음  : {row[3]:,}")
-        print(f"  연기금 있음    : {row[4]:,}")
+        print(f"  {'source':<10} {'행수':>10} {'외국인':>9} {'기관':>9} {'투신':>9} {'사모':>9} {'개인':>9}")
+        for s_, n, f_, i_, it, pe, pr in cur.fetchall():
+            print(f"  {s_:<10} {n:>10,} {f_:>9,} {i_:>9,} {it:>9,} {pe:>9,} {pr:>9,}")
 
         cur.execute("""
-            SELECT p.trade_date, p.close, p.change_pct, p.trade_amount,
-                   f.foreign_net, f.inst_net, f.pension_net
+            SELECT p.trade_date, p.source, p.close, p.change_pct, p.trade_amount,
+                   f.foreign_net, f.inst_net, f.inv_trust_net, f.pe_net
             FROM daily_price p
             LEFT JOIN daily_flow f ON f.trade_date=p.trade_date AND f.code=p.code
-            WHERE p.code='005930'
-              AND p.trade_date BETWEEN %s AND %s
+            WHERE p.code='005930' AND p.trade_date BETWEEN %s AND %s
             ORDER BY p.trade_date DESC LIMIT 5
         """, (iso(START_DATE), iso(END_DATE)))
-        rows = cur.fetchall()
-        print(f"\n[삼성전자 005930] 최근 5일")
-        print(f"{'날짜':<12} {'종가':>8} {'등락%':>7} {'거래대금(억)':>12} {'외국인(억)':>10} {'기관(억)':>9} {'연기금(억)':>9}")
-        for r in rows:
-            print(f"{str(r[0]):<12} {r[1]:>8,} {r[2]:>7.2f} "
-                  f"{(r[3]or 0)//100_000_000:>12,} "
-                  f"{(r[4]or 0)//100_000_000:>10,} "
-                  f"{(r[5]or 0)//100_000_000:>9,} "
-                  f"{(r[6]or 0)//100_000_000:>9,}")
+        print(f"\n[삼성전자 005930] 최근 5일  (단위: 억원)")
+        print(f"  {'날짜':<12}{'src':<5}{'종가':>9}{'등락%':>7}{'거래대금':>10}{'외국인':>9}{'기관':>9}{'투신':>8}{'사모':>8}")
+        for r in cur.fetchall():
+            print(f"  {str(r[0]):<12}{str(r[1] or '-'):<5}{r[2]:>9,}{float(r[3] or 0):>7.2f}"
+                  f"{(r[4] or 0)//100_000_000:>10,}{(r[5] or 0)//100_000_000:>9,}"
+                  f"{(r[6] or 0)//100_000_000:>9,}{(r[7] or 0)//100_000_000:>8,}"
+                  f"{(r[8] or 0)//100_000_000:>8,}")
+
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
 def main():
+    if DEBUG_MODE:
+        run_debug()
+        return
     if COMPARE_ONLY:
         compare_krx_kis()
         return
@@ -297,35 +427,35 @@ def main():
 
     print("② 종목 목록 조회...")
     stocks = load_stocks()
-    codes  = list(stocks.keys())
-    n      = len(codes)
-    est_min = (n * 2 / MAX_RPS * len(CHUNKS)) / 60
-    print(f"   {n:,}개 종목 × {len(CHUNKS)}개 청크 → 예상 소요시간 약 {est_min:.0f}분")
+    codes = list(stocks.keys())
+    n = len(codes)
+    est = (n * 2 / MAX_RPS * len(CHUNKS)) / 60
+    print(f"   {n:,}개 종목 × {len(CHUNKS)}개 청크 → 예상 소요시간 약 {est:.0f}분")
 
     total_price = total_flow = 0
 
-    for ci, (cs, ce) in enumerate(CHUNKS, 1):
+    for ci, (api_s, api_e, keep_from) in enumerate(CHUNKS, 1):
         t_chunk = time.time()
-        print(f"\n③ 청크 [{ci}/{len(CHUNKS)}] {iso(cs)} ~ {iso(ce)}  (워커 {WORKERS}개)")
+        print(f"\n③ 청크 [{ci}/{len(CHUNKS)}] 저장 {iso(keep_from)}~{iso(api_e)} "
+              f"(조회 {iso(api_s)}~)")
         price_rows, flow_rows = [], []
         ok = skip = err = 0
         done = 0
 
-        with ThreadPoolExecutor(max_workers=WORKERS) as executor:
-            futures = {
-                executor.submit(collect_stock_chunk, token, code, stocks.get(code, 0), cs, ce): code
-                for code in codes
-            }
+        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+            futures = {ex.submit(collect_stock_chunk, token, code,
+                                 stocks.get(code, 0), api_s, api_e, keep_from): code
+                       for code in codes}
 
-            for future in as_completed(futures):
-                code = futures[future]
+            for fut in as_completed(futures):
+                code = futures[fut]
                 done += 1
-
                 try:
-                    p_rows, f_rows, status = future.result()
-                except Exception as ex:
+                    p_rows, f_rows, status = fut.result()
+                except Exception as e:
                     err += 1
-                    if err <= 5: print(f"   ⚠ [{code}] future 예외: {ex}")
+                    if err <= 5:
+                        print(f"   ⚠ [{code}] future 예외: {e}")
                     continue
 
                 if status == "skip":
@@ -334,28 +464,29 @@ def main():
                     ok += 1
                     price_rows.extend(p_rows)
                     flow_rows.extend(f_rows)
-
                     if len(price_rows) >= BATCH * 10:
                         upsert(price_rows, flow_rows)
                         total_price += len(price_rows)
-                        total_flow  += len(flow_rows)
+                        total_flow += len(flow_rows)
                         price_rows, flow_rows = [], []
-                        elapsed = int(time.time() - t_chunk)
-                        print(f"   [{done:4d}/{n}] 적재중... price={total_price:,} flow={total_flow:,}  ({elapsed}초 경과)")
+                        print(f"   [{done:4d}/{n}] 적재중... price={total_price:,} "
+                              f"flow={total_flow:,}  ({int(time.time()-t_chunk)}초)")
                 else:
                     err += 1
-                    if err <= 5: print(f"   ⚠ [{code}] {status}")
+                    if err <= 5:
+                        print(f"   ⚠ [{code}] {status}")
 
         if price_rows or flow_rows:
             upsert(price_rows, flow_rows)
             total_price += len(price_rows)
-            total_flow  += len(flow_rows)
+            total_flow += len(flow_rows)
 
-        chunk_sec = int(time.time() - t_chunk)
-        print(f"   청크 완료: ok={ok:,} skip={skip:,} err={err:,}  ({chunk_sec}초)")
+        print(f"   청크 완료: ok={ok:,} skip={skip:,} err={err:,} "
+              f"· 누적 price={total_price:,} flow={total_flow:,} ({int(time.time()-t_chunk)}초)")
 
     print(f"\n✅ 백필 완료: price {total_price:,}행 / flow {total_flow:,}행")
-    print("\n아래 비교 결과를 확인하세요:")
+    if total_price == 0 and total_flow == 0:
+        print("⚠️ 0행입니다. 위 '[price] 응답 필드 확인' 로그의 키 이름을 확인하세요.")
     compare_krx_kis()
 
 
