@@ -141,6 +141,19 @@ def find_date(row):
     return None
 
 
+_warned = {}
+
+
+def warn_once(kind, msg):
+    """같은 종류의 경고는 3번까지만 출력 (2,935종목 × 반복이라 로그가 터집니다)"""
+    with _dump_lock:
+        n = _warned.get((kind, msg), 0)
+        if n >= 3:
+            return
+        _warned[(kind, msg)] = n + 1
+        print(f"   ⚠ [{kind}] {msg}")
+
+
 def dump_keys(kind, rows):
     """첫 응답의 키/샘플을 한 번만 로그에 남깁니다 (필드명 자가검증용)"""
     with _dump_lock:
@@ -181,9 +194,11 @@ def fetch_price_hist(token, code, s, e):
                 "FID_PERIOD_DIV_CODE": "D", "FID_ORG_ADJ_PRC": "0"},
         timeout=15)
     if r.status_code != 200:
+        warn_once("price", f"HTTP {r.status_code}")
         return []
     d = r.json()
     if d.get("rt_cd") != "0":
+        warn_once("price", f"rt_cd={d.get('rt_cd')} msg={str(d.get('msg1','')).strip()}")
         return []
     rows = d.get("output2") or []
     rows = [x for x in rows if x]           # KIS는 빈 dict를 섞어 보냅니다
@@ -201,12 +216,17 @@ def fetch_investor_hist(token, code, s, e):
                 "HLDN_QTY_SMTN_ICDC_YN": "N"},
         timeout=15)
     if r.status_code != 200:
+        warn_once("flow", f"HTTP {r.status_code}")
         return []
     d = r.json()
     if d.get("rt_cd") != "0":
+        # 조용히 넘기지 않고 KIS 메시지를 한 번은 로그에 남깁니다.
+        warn_once("flow", f"rt_cd={d.get('rt_cd')} msg={str(d.get('msg1','')).strip()}")
         return []
     rows = d.get("output2") or []
     rows = [x for x in rows if x]
+    if not rows:
+        warn_once("flow", f"rt_cd=0 이지만 output2가 비어 있음 ({s}~{e})")
     dump_keys("flow", rows)
     return rows
 
@@ -332,34 +352,109 @@ def collect_stock_chunk(token, code, listed_sh, api_s, api_e, keep_from):
 
 
 # ── 디버그 모드 ────────────────────────────────────────────────────────────────
+def probe(token, label, path, tr_id, params):
+    """엔드포인트를 호출하고 rt_cd/msg1/행수/첫 행을 그대로 출력합니다.
+    실패해도 조용히 넘어가지 않고 KIS가 준 메시지를 그대로 보여줍니다."""
+    print(f"\n── {label}")
+    print(f"   tr_id={tr_id}  params={params}")
+    try:
+        _rate.acquire()
+        r = requests.get(f"{KIS_BASE}{path}", headers=kis_hdr(token, tr_id),
+                         params=params, timeout=15)
+    except Exception as ex:
+        print(f"   ❌ 요청 실패: {ex}")
+        return []
+
+    print(f"   HTTP {r.status_code}")
+    if r.status_code != 200:
+        print(f"   본문: {r.text[:300]}")
+        return []
+
+    d = r.json()
+    print(f"   rt_cd={d.get('rt_cd')}  msg_cd={d.get('msg_cd')}  msg1={str(d.get('msg1','')).strip()}")
+
+    got = []
+    for key in ("output", "output1", "output2"):
+        v = d.get(key)
+        if isinstance(v, list):
+            v = [x for x in v if x]
+            print(f"   {key}: 리스트 {len(v)}행")
+            if v:
+                print(f"     첫행: {json.dumps(v[0], ensure_ascii=False)[:600]}")
+                print(f"     날짜감지: {find_date(v[0])}")
+                got = got or v
+        elif isinstance(v, dict) and v:
+            print(f"   {key}: dict — {json.dumps(v, ensure_ascii=False)[:600]}")
+            got = got or [v]
+    if not got:
+        print("   (데이터 없음)")
+    return got
+
+
 def run_debug():
-    print("\n=== DEBUG: 삼성전자(005930) 히스토리 엔드포인트 응답 원문 ===\n")
+    print("\n" + "=" * 70)
+    print("DEBUG: 삼성전자(005930) 엔드포인트 진단")
+    print("=" * 70)
     token = get_token()
-    s = (datetime.date.today() - datetime.timedelta(20)).strftime("%Y%m%d")
-    e = (datetime.date.today() - datetime.timedelta(1)).strftime("%Y%m%d")
-    print(f"조회 구간: {s} ~ {e}\n")
 
-    print("[1] inquire-daily-itemchartprice (FHKST03010100) output2 — 최대 3행")
-    ph = fetch_price_hist(token, "005930", s, e)
-    print(f"  행 수: {len(ph)}")
-    for r in ph[:3]:
-        print("  " + json.dumps(r, ensure_ascii=False))
+    # 휴장일을 피하려고 '확실한 영업일'을 기준으로 잡습니다.
+    # 2026-08-17은 광복절 대체공휴일(증시 휴장)이라 종료일로 쓰면 안 됩니다.
+    BIZ_END = "20260814"     # 금요일, 거래일 확인됨
+    R5      = "20260810"     # 5거래일 전
+    R90     = "20260515"     # 약 90일 전
+    CODE    = "005930"
 
-    print("\n[2] investor-trade-by-stock-daily (FHPTJ04160001) output2 — 최대 3행")
-    ih = fetch_investor_hist(token, "005930", s, e)
-    print(f"  행 수: {len(ih)}")
-    for r in ih[:3]:
-        print("  " + json.dumps(r, ensure_ascii=False))
+    print(f"\n※ 기준일: {BIZ_END} (영업일). 이전 실행은 종료일이 20260817(휴장)이었습니다.")
 
-    print("\n[3] 파싱 시뮬레이션")
-    pr, fr, st = collect_stock_chunk(token, "005930", 5_919_637_922, s, e, s)
-    print(f"  status={st}  price_rows={len(pr)}  flow_rows={len(fr)}")
+    # ── 시세 (정상 동작 확인용) ──────────────────────────────────────────────
+    probe(token, "[A] 시세 · inquire-daily-itemchartprice (90일 범위)",
+          "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
+          "FHKST03010100",
+          {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": CODE,
+           "FID_INPUT_DATE_1": R90, "FID_INPUT_DATE_2": BIZ_END,
+           "FID_PERIOD_DIV_CODE": "D", "FID_ORG_ADJ_PRC": "0"})
+
+    # ── 수급: 같은 엔드포인트를 조건만 바꿔가며 ──────────────────────────────
+    INV_PATH = "/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily"
+
+    probe(token, "[B] 수급 · 단일일자 (03번 스크립트가 쓰는 방식)",
+          INV_PATH, "FHPTJ04160001",
+          {"MKSC_SHRN_ISCD": CODE, "STRT_BSNS_DT": BIZ_END,
+           "END_BSNS_DT": BIZ_END, "HLDN_QTY_SMTN_ICDC_YN": "N"})
+
+    probe(token, "[C] 수급 · 5일 범위",
+          INV_PATH, "FHPTJ04160001",
+          {"MKSC_SHRN_ISCD": CODE, "STRT_BSNS_DT": R5,
+           "END_BSNS_DT": BIZ_END, "HLDN_QTY_SMTN_ICDC_YN": "N"})
+
+    probe(token, "[D] 수급 · 90일 범위 (백필이 쓰는 방식)",
+          INV_PATH, "FHPTJ04160001",
+          {"MKSC_SHRN_ISCD": CODE, "STRT_BSNS_DT": R90,
+           "END_BSNS_DT": BIZ_END, "HLDN_QTY_SMTN_ICDC_YN": "N"})
+
+    # ── 대안 엔드포인트들 ────────────────────────────────────────────────────
+    probe(token, "[E] 대안 · inquire-investor (최근 N일 자동 반환, 날짜 파라미터 없음)",
+          "/uapi/domestic-stock/v1/quotations/inquire-investor",
+          "FHKST01010900",
+          {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": CODE})
+
+    probe(token, "[F] 대안 · inquire-daily-trade-volume (일별 매수매도 거래량)",
+          "/uapi/domestic-stock/v1/quotations/inquire-daily-trade-volume",
+          "FHKST03010800",
+          {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": CODE,
+           "FID_INPUT_DATE_1": R90, "FID_INPUT_DATE_2": BIZ_END,
+           "FID_PERIOD_DIV_CODE": "D"})
+
+    # ── 현재 파서로 시뮬레이션 ───────────────────────────────────────────────
+    print("\n" + "=" * 70)
+    print("[G] 현재 파서 시뮬레이션 (90일 범위, 영업일 종료)")
+    pr, fr, st = collect_stock_chunk(token, CODE, 5_919_637_922, R90, BIZ_END, R90)
+    print(f"   status={st}  price_rows={len(pr)}  flow_rows={len(fr)}")
     if pr:
-        print(f"  price 샘플: {pr[-1]}")
+        print(f"   price 샘플: {pr[-1]}")
     if fr:
-        print(f"  flow  샘플: {fr[0]}")
-    if not pr and not fr:
-        print("  ⚠️ 파싱 결과 0행 — 위 [1][2] 원문의 키 이름을 확인해야 합니다.")
+        print(f"   flow  샘플: {fr[0]}")
+    print("\n→ [B]~[F] 중 어떤 것이 수급 데이터를 돌려주는지 확인해 주세요.")
 
 
 # ── KRX vs KIS 비교 ────────────────────────────────────────────────────────────
