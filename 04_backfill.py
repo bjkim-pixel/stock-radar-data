@@ -391,6 +391,85 @@ def probe(token, label, path, tr_id, params):
     return got
 
 
+_MISSING_RE = re.compile(r"NOT FOUND\s*\[([A-Z0-9_]+)\]")
+
+
+def guess_value(field, code, s, e):
+    """KIS가 '이 필드가 없다'고 알려준 파라미터에 넣을 값을 규칙으로 결정"""
+    f = field.upper()
+    if "MRKT_DIV_CODE" in f:            # FID_COND_MRKT_DIV_CODE, ..._1, ..._2
+        return "J"
+    if "ISCD" in f:                     # FID_INPUT_ISCD, FID_INPUT_ISCD_1
+        return code
+    if f.endswith("DATE_1") or "STRT" in f or "BEGIN" in f:
+        return s
+    if f.endswith("DATE_2") or f.startswith("FID_INPUT_DATE") or "END" in f:
+        return e
+    if "PERIOD_DIV" in f:
+        return "D"
+    if "ORG_ADJ" in f:
+        return "0"
+    if f.endswith("_YN"):
+        return "N"
+    return "0"
+
+
+def probe_auto(token, label, path, tr_id, base, code, s, e, max_rounds=8):
+    """
+    KIS 에러 메시지(ERROR INPUT FIELD NOT FOUND [X])를 읽어
+    빠진 파라미터를 자동으로 채워 넣으며 재시도합니다.
+    필드명을 추측하지 않고 API가 알려주는 대로 맞춰갑니다.
+    """
+    print(f"\n{'='*70}\n{label}\n  path={path}  tr_id={tr_id}")
+    params = dict(base)
+
+    for rnd in range(1, max_rounds + 1):
+        try:
+            _rate.acquire()
+            r = requests.get(f"{KIS_BASE}{path}", headers=kis_hdr(token, tr_id),
+                             params=params, timeout=15)
+        except Exception as ex:
+            print(f"  [{rnd}] 요청 실패: {ex}")
+            return None, params
+
+        if r.status_code != 200:
+            print(f"  [{rnd}] HTTP {r.status_code} · {r.text[:200]}")
+            return None, params
+
+        d = r.json()
+        rt, msg = d.get("rt_cd"), str(d.get("msg1", "")).strip()
+        print(f"  [{rnd}] rt_cd={rt}  msg={msg}")
+        print(f"       params={params}")
+
+        if rt == "0":
+            rows = None
+            for key in ("output", "output1", "output2"):
+                v = d.get(key)
+                if isinstance(v, list):
+                    v = [x for x in v if x]
+                    if v:
+                        print(f"       ✅ {key}: {len(v)}행")
+                        print(f"          첫행: {json.dumps(v[0], ensure_ascii=False)[:700]}")
+                        print(f"          날짜감지: {find_date(v[0])}")
+                        rows = rows or v
+            if rows is None:
+                print("       rt_cd=0 이지만 리스트 데이터 없음")
+            return rows, params
+
+        m = _MISSING_RE.search(msg)
+        if not m:
+            print("       (자동 보정 불가 — 위 메시지 확인 필요)")
+            return None, params
+
+        field = m.group(1)
+        val = guess_value(field, code, s, e)
+        print(f"       → 누락 필드 [{field}] 감지, '{val}' 로 채워 재시도")
+        params[field] = val
+
+    print("  (최대 재시도 횟수 도달)")
+    return None, params
+
+
 def run_debug():
     print("\n" + "=" * 70)
     print("DEBUG: 삼성전자(005930) 엔드포인트 진단")
@@ -414,36 +493,29 @@ def run_debug():
            "FID_INPUT_DATE_1": R90, "FID_INPUT_DATE_2": BIZ_END,
            "FID_PERIOD_DIV_CODE": "D", "FID_ORG_ADJ_PRC": "0"})
 
-    # ── 수급: 같은 엔드포인트를 조건만 바꿔가며 ──────────────────────────────
+    # ── 수급: 파라미터를 자동 보정하며 탐색 ──────────────────────────────────
+    # 이전 진단에서 rt_cd=2 "NOT FOUND [FID_COND_MRKT_DIV_CODE]" 가 나왔습니다.
+    # 이 엔드포인트는 MKSC_SHRN_ISCD 계열이 아니라 FID_* 계열을 요구합니다.
+    # 아래는 빈 파라미터로 시작해서 KIS가 요구하는 필드를 하나씩 채워 갑니다.
     INV_PATH = "/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily"
 
-    probe(token, "[B] 수급 · 단일일자 (03번 스크립트가 쓰는 방식)",
-          INV_PATH, "FHPTJ04160001",
-          {"MKSC_SHRN_ISCD": CODE, "STRT_BSNS_DT": BIZ_END,
-           "END_BSNS_DT": BIZ_END, "HLDN_QTY_SMTN_ICDC_YN": "N"})
+    probe_auto(token, "[B] 수급 · investor-trade-by-stock-daily (90일, 자동 보정)",
+               INV_PATH, "FHPTJ04160001", {}, CODE, R90, BIZ_END)
 
-    probe(token, "[C] 수급 · 5일 범위",
-          INV_PATH, "FHPTJ04160001",
-          {"MKSC_SHRN_ISCD": CODE, "STRT_BSNS_DT": R5,
-           "END_BSNS_DT": BIZ_END, "HLDN_QTY_SMTN_ICDC_YN": "N"})
+    probe_auto(token, "[C] 수급 · investor-trade-by-stock-daily (단일일자, 자동 보정)",
+               INV_PATH, "FHPTJ04160001", {}, CODE, BIZ_END, BIZ_END)
 
-    probe(token, "[D] 수급 · 90일 범위 (백필이 쓰는 방식)",
-          INV_PATH, "FHPTJ04160001",
-          {"MKSC_SHRN_ISCD": CODE, "STRT_BSNS_DT": R90,
-           "END_BSNS_DT": BIZ_END, "HLDN_QTY_SMTN_ICDC_YN": "N"})
+    probe_auto(token, "[D] 대안 · inquire-daily-trade-volume (자동 보정)",
+               "/uapi/domestic-stock/v1/quotations/inquire-daily-trade-volume",
+               "FHKST03010800", {}, CODE, R90, BIZ_END)
 
-    # ── 대안 엔드포인트들 ────────────────────────────────────────────────────
-    probe(token, "[E] 대안 · inquire-investor (최근 N일 자동 반환, 날짜 파라미터 없음)",
-          "/uapi/domestic-stock/v1/quotations/inquire-investor",
-          "FHKST01010900",
-          {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": CODE})
+    probe_auto(token, "[E] 대안 · inquire-investor (최근 30일, 3주체만)",
+               "/uapi/domestic-stock/v1/quotations/inquire-investor",
+               "FHKST01010900", {}, CODE, R90, BIZ_END)
 
-    probe(token, "[F] 대안 · inquire-daily-trade-volume (일별 매수매도 거래량)",
-          "/uapi/domestic-stock/v1/quotations/inquire-daily-trade-volume",
-          "FHKST03010800",
-          {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": CODE,
-           "FID_INPUT_DATE_1": R90, "FID_INPUT_DATE_2": BIZ_END,
-           "FID_PERIOD_DIV_CODE": "D"})
+    probe_auto(token, "[F] 대안 · 외국인기관 추정가집계 (당일)",
+               "/uapi/domestic-stock/v1/quotations/investor-trend-estimate",
+               "HHPTJ04160200", {}, CODE, R90, BIZ_END)
 
     # ── 현재 파서로 시뮬레이션 ───────────────────────────────────────────────
     print("\n" + "=" * 70)
