@@ -206,14 +206,22 @@ def fetch_price_hist(token, code, s, e):
     return rows
 
 
-def fetch_investor_hist(token, code, s, e):
-    """FHPTJ04160001 · 일별 투자자 순매수 — 날짜 범위"""
+def fetch_investor_hist(token, code, anchor, _unused=None):
+    """
+    FHPTJ04160001 · 일별 투자자 순매수
+    2026-08-19 진단으로 확정된 파라미터:
+      FID_INPUT_DATE_1 = 기준일 (이 날짜부터 과거로 30거래일 반환)
+      FID_INPUT_DATE_2 는 존재하지 않습니다.
+    """
     _rate.acquire()
     r = requests.get(
         f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
         headers=kis_hdr(token, "FHPTJ04160001"),
-        params={"MKSC_SHRN_ISCD": code, "STRT_BSNS_DT": s, "END_BSNS_DT": e,
-                "HLDN_QTY_SMTN_ICDC_YN": "N"},
+        params={"FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": code,
+                "FID_INPUT_DATE_1": anchor,
+                "FID_ORG_ADJ_PRC": "0",
+                "FID_ETC_CLS_CODE": "0"},
         timeout=15)
     if r.status_code != 200:
         warn_once("flow", f"HTTP {r.status_code}")
@@ -226,7 +234,7 @@ def fetch_investor_hist(token, code, s, e):
     rows = d.get("output2") or []
     rows = [x for x in rows if x]
     if not rows:
-        warn_once("flow", f"rt_cd=0 이지만 output2가 비어 있음 ({s}~{e})")
+        warn_once("flow", f"rt_cd=0 이지만 output2가 비어 있음 (기준일 {anchor})")
     dump_keys("flow", rows)
     return rows
 
@@ -279,7 +287,8 @@ def collect_stock_chunk(token, code, listed_sh, api_s, api_e, keep_from):
     """반환: (price_rows, flow_rows, status)"""
     try:
         ph = fetch_price_hist(token, code, api_s, api_e)
-        ih = fetch_investor_hist(token, code, api_s, api_e)
+        # 수급은 '기준일에서 과거 30거래일'을 돌려주므로 청크 종료일을 기준일로 씁니다.
+        ih = fetch_investor_hist(token, code, api_e)
 
         if not ph and not ih:
             return [], [], "skip"
@@ -517,16 +526,43 @@ def run_debug():
                "/uapi/domestic-stock/v1/quotations/investor-trend-estimate",
                "HHPTJ04160200", {}, CODE, R90, BIZ_END)
 
-    # ── 현재 파서로 시뮬레이션 ───────────────────────────────────────────────
+    # ── 수급 응답 전체 필드 (잘림 없이) ──────────────────────────────────────
     print("\n" + "=" * 70)
-    print("[G] 현재 파서 시뮬레이션 (90일 범위, 영업일 종료)")
-    pr, fr, st = collect_stock_chunk(token, CODE, 5_919_637_922, R90, BIZ_END, R90)
-    print(f"   status={st}  price_rows={len(pr)}  flow_rows={len(fr)}")
-    if pr:
-        print(f"   price 샘플: {pr[-1]}")
-    if fr:
-        print(f"   flow  샘플: {fr[0]}")
-    print("\n→ [B]~[F] 중 어떤 것이 수급 데이터를 돌려주는지 확인해 주세요.")
+    print("[G] 수급 응답 전체 필드 — 잘림 없음")
+    print("=" * 70)
+    rows = fetch_investor_hist(token, CODE, BIZ_END)
+    print(f"  반환 행수: {len(rows)}")
+    if rows:
+        r0 = rows[0]
+        print(f"  기준일 {find_date(r0)} · 총 {len(r0)}개 필드\n")
+        qty  = {k: v for k, v in r0.items() if k.endswith(("_qty", "_vol"))}
+        pbmn = {k: v for k, v in r0.items() if "pbmn" in k}
+        etc  = {k: v for k, v in r0.items() if k not in qty and k not in pbmn}
+        print("  ── 금액 계열 (_pbmn) ──  ※ 단위 확인 필요")
+        for k, v in sorted(pbmn.items()):
+            print(f"     {k:<28} = {v}")
+        print("\n  ── 수량 계열 (_qty/_vol) ──")
+        for k, v in sorted(qty.items()):
+            print(f"     {k:<28} = {v}")
+        print("\n  ── 기타 ──")
+        for k, v in sorted(etc.items()):
+            print(f"     {k:<28} = {v}")
+
+        # 단위 검증: 2026-08-14 삼성전자 실제값과 대조
+        print("\n  ── 단위 검증 (2026-08-14 삼성전자 KRX 실측 대비) ──")
+        print("     KRX 외국인 순매수 = 1,338,609,920,750 원")
+        print("     KRX 기관합계     =  -497,830,074,500 원")
+        for k, v in sorted(pbmn.items()):
+            n = safe_int(v)
+            if n:
+                print(f"     {k:<28} {n:>16,}  ×100만 → {n*1_000_000:>20,}")
+
+        print("\n  ── 두 번째 행 (날짜가 하루 전인지 = 과거로 내려가는지 확인) ──")
+        if len(rows) > 1:
+            print(f"     {find_date(rows[1])}")
+        print(f"     마지막 행 날짜: {find_date(rows[-1])}")
+    else:
+        print("  ⚠️ 0행")
 
 
 # ── KRX vs KIS 비교 ────────────────────────────────────────────────────────────
