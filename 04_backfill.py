@@ -16,7 +16,7 @@ from psycopg2.extras import execute_values
 
 KIS_KEY    = os.environ.get("KIS_APP_KEY", "")
 KIS_SECRET = os.environ.get("KIS_APP_SECRET", "")
-KIS_BASE   = "https://api.koreainvestment.com:9443"
+KIS_BASE   = "https://openapi.koreainvestment.com:9443"
 DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 INTERVAL   = 0.07
 BATCH      = 300
@@ -132,7 +132,7 @@ ON CONFLICT (trade_date,code) DO UPDATE SET
   close=EXCLUDED.close,volume=EXCLUDED.volume,
   trade_amount=EXCLUDED.trade_amount,market_cap=EXCLUDED.market_cap,
   listed_shares=EXCLUDED.listed_shares,change_pct=EXCLUDED.change_pct,
-  is_partial=EXCLUDED.is_partial,updated_at=now()
+  is_partial=EXCLUDED.is_partial
 """
 FLOW_SQL = """
 INSERT INTO daily_flow
@@ -143,7 +143,7 @@ ON CONFLICT (trade_date,code) DO UPDATE SET
   foreign_net=EXCLUDED.foreign_net,inst_net=EXCLUDED.inst_net,
   fin_inv_net=EXCLUDED.fin_inv_net,inv_trust_net=EXCLUDED.inv_trust_net,
   pe_net=EXCLUDED.pe_net,pension_net=EXCLUDED.pension_net,
-  corp_other_net=EXCLUDED.corp_other_net,is_partial=EXCLUDED.is_partial,updated_at=now()
+  corp_other_net=EXCLUDED.corp_other_net,is_partial=EXCLUDED.is_partial
 """
 
 def upsert(price_rows, flow_rows):
