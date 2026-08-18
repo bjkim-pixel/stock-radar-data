@@ -129,7 +129,7 @@ def fetch_investor(token, code, date_str):
 # ── DB: 종목 목록 조회 ────────────────────────────────────────────────────────
 def load_stocks():
     with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
-        cur.execute("SELECT code FROM stocks WHERE type = 'STOCK' ORDER BY code")
+        cur.execute("SELECT code FROM stocks WHERE security_type = 'STOCK' ORDER BY code")
         return [r[0] for r in cur.fetchall()]
 
 # ── DB: UPSERT ────────────────────────────────────────────────────────────────
