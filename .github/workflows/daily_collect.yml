@@ -1,0 +1,47 @@
+name: Daily KIS Collection
+
+on:
+  schedule:
+    # 매 거래일 16:05 KST = 07:05 UTC (월~금)
+    - cron: "5 7 * * 1-5"
+  workflow_dispatch:
+    # 수동 실행 (GitHub 웹에서 "Run workflow" 버튼)
+    inputs:
+      target_date:
+        description: '수집 날짜 (YYYYMMDD, 비우면 오늘)'
+        required: false
+        default: ''
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install psycopg2-binary requests
+
+      - name: Run collection
+        env:
+          KIS_APP_KEY:     ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          DATE="${{ github.event.inputs.target_date }}"
+          if [ -z "$DATE" ]; then
+            python 03_daily_collect.py
+          else
+            python 03_daily_collect.py "$DATE"
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::일별 수집 실패! GitHub Actions 로그를 확인하세요."
