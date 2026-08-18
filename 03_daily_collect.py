@@ -84,6 +84,18 @@ def safe_float(v, default=0.0):
     except:
         return default
 
+
+def pick(row, *names):
+    """후보 키를 순서대로 찾아 첫 번째로 존재하는 값을 반환.
+    KIS 응답의 키 이름이 엔드포인트/문서마다 달라서 하나만 하드코딩하면
+    조용히 0이 저장됩니다. 후보를 나열해 두면 어느 쪽이 와도 잡힙니다."""
+    if not row:
+        return None
+    for n in names:
+        if n in row and str(row[n]).strip() not in ("", "-"):
+            return row[n]
+    return None
+
 # ── KIS 공통 ──────────────────────────────────────────────────────────────────
 def kis_headers(token, tr_id):
     return {
@@ -155,26 +167,27 @@ def load_stocks():
 PRICE_SQL = """
 INSERT INTO daily_price
   (trade_date, code, open, high, low, close, volume,
-   trade_amount, market_cap, listed_shares, change_pct, is_partial)
+   trade_amount, market_cap, listed_shares, change_pct, source, is_partial)
 VALUES %s
 ON CONFLICT (trade_date, code) DO UPDATE SET
   open=EXCLUDED.open, high=EXCLUDED.high, low=EXCLUDED.low,
   close=EXCLUDED.close, volume=EXCLUDED.volume,
   trade_amount=EXCLUDED.trade_amount, market_cap=EXCLUDED.market_cap,
   listed_shares=EXCLUDED.listed_shares, change_pct=EXCLUDED.change_pct,
-  is_partial=EXCLUDED.is_partial
+  source=EXCLUDED.source, is_partial=EXCLUDED.is_partial
 """
 FLOW_SQL = """
 INSERT INTO daily_flow
   (trade_date, code, foreign_net, inst_net,
-   fin_inv_net, inv_trust_net, pe_net, pension_net, corp_other_net, is_partial)
+   fin_inv_net, inv_trust_net, pe_net, pension_net,
+   corp_other_net, individual_net, source, is_partial)
 VALUES %s
 ON CONFLICT (trade_date, code) DO UPDATE SET
   foreign_net=EXCLUDED.foreign_net, inst_net=EXCLUDED.inst_net,
   fin_inv_net=EXCLUDED.fin_inv_net, inv_trust_net=EXCLUDED.inv_trust_net,
   pe_net=EXCLUDED.pe_net, pension_net=EXCLUDED.pension_net,
-  corp_other_net=EXCLUDED.corp_other_net,
-  is_partial=EXCLUDED.is_partial
+  corp_other_net=EXCLUDED.corp_other_net, individual_net=EXCLUDED.individual_net,
+  source=EXCLUDED.source, is_partial=EXCLUDED.is_partial
 """
 
 def upsert_batch(price_rows, flow_rows):
@@ -208,33 +221,38 @@ def collect_stock(token, code):
             return None, None, "skip"
 
         # ── daily_price ────────────────────────────────────────────────
-        mktcap_man = safe_int(pi.get("hts_avls", 0)) if pi else 0
+        mktcap_man = safe_int(pick(pi, "hts_avls"))
         market_cap = mktcap_man * 100_000_000   # 억원 → 원
 
         price_row = (
             TARGET_DATE_ISO, code,
-            safe_int(pi.get("stck_oprc"))    if pi else 0,
-            safe_int(pi.get("stck_hgpr"))    if pi else 0,
-            safe_int(pi.get("stck_lwpr"))    if pi else 0,
-            safe_int(pi.get("stck_prpr"))    if pi else 0,
-            safe_int(pi.get("acml_vol"))     if pi else 0,
-            safe_int(pi.get("acml_tr_pbmn")) if pi else 0,
+            safe_int(pick(pi, "stck_oprc")),
+            safe_int(pick(pi, "stck_hgpr")),
+            safe_int(pick(pi, "stck_lwpr")),
+            safe_int(pick(pi, "stck_prpr", "stck_clpr")),
+            safe_int(pick(pi, "acml_vol")),
+            safe_int(pick(pi, "acml_tr_pbmn")),
             market_cap,
-            safe_int(pi.get("lstn_stcn"))    if pi else 0,
-            safe_float(pi.get("prdy_ctrt"))  if pi else 0.0,
-            pi is None,
+            safe_int(pick(pi, "lstn_stcn")),
+            safe_float(pick(pi, "prdy_ctrt")),
+            "KIS",
+            False,
         ) if pi else None
 
         # ── daily_flow ─────────────────────────────────────────────────
+        # 키 이름은 후보를 나열합니다. 하나만 하드코딩하면 틀렸을 때
+        # 에러 없이 0이 저장돼 알아채기 어렵습니다.
         flow_row = (
             TARGET_DATE_ISO, code,
-            safe_int(inv.get("frgn_ntby_tr_pbmn")),
-            safe_int(inv.get("orgn_ntby_tr_pbmn")),
-            safe_int(inv.get("fnnc_invt_ntby_tr_pbmn")),
-            safe_int(inv.get("invt_trst_ntby_tr_pbmn")),
-            safe_int(inv.get("pe_fund_ntby_tr_pbmn")),
-            safe_int(inv.get("pgnn_ntby_tr_pbmn")),
-            safe_int(inv.get("etc_corp_ntby_tr_pbmn")),
+            safe_int(pick(inv, "frgn_ntby_tr_pbmn", "frgn_ntby_amt")),
+            safe_int(pick(inv, "orgn_ntby_tr_pbmn", "orgn_ntby_amt")),
+            safe_int(pick(inv, "fnnc_invt_ntby_tr_pbmn", "scrt_ntby_tr_pbmn", "scrt_ntby_amt")),
+            safe_int(pick(inv, "invt_trst_ntby_tr_pbmn", "ivtr_ntby_tr_pbmn", "ivtr_ntby_amt")),
+            safe_int(pick(inv, "pe_fund_ntby_tr_pbmn", "prvt_fund_ntby_tr_pbmn", "pe_fund_ntby_amt")),
+            safe_int(pick(inv, "pgnn_ntby_tr_pbmn", "fund_ntby_tr_pbmn", "pnsn_ntby_tr_pbmn")),
+            safe_int(pick(inv, "etc_corp_ntby_tr_pbmn", "etc_orgt_ntby_tr_pbmn")),
+            safe_int(pick(inv, "prsn_ntby_tr_pbmn", "prsn_ntby_amt")),
+            "KIS",
             False,
         ) if inv else None
 
