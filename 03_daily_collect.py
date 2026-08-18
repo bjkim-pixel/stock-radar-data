@@ -162,7 +162,7 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
   close=EXCLUDED.close, volume=EXCLUDED.volume,
   trade_amount=EXCLUDED.trade_amount, market_cap=EXCLUDED.market_cap,
   listed_shares=EXCLUDED.listed_shares, change_pct=EXCLUDED.change_pct,
-  is_partial=EXCLUDED.is_partial, updated_at=now()
+  is_partial=EXCLUDED.is_partial
 """
 FLOW_SQL = """
 INSERT INTO daily_flow
@@ -174,7 +174,7 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
   fin_inv_net=EXCLUDED.fin_inv_net, inv_trust_net=EXCLUDED.inv_trust_net,
   pe_net=EXCLUDED.pe_net, pension_net=EXCLUDED.pension_net,
   corp_other_net=EXCLUDED.corp_other_net,
-  is_partial=EXCLUDED.is_partial, updated_at=now()
+  is_partial=EXCLUDED.is_partial
 """
 
 def upsert_batch(price_rows, flow_rows):
