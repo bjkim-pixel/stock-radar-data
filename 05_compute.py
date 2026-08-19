@@ -122,6 +122,13 @@ def run_file(path, job_name):
     total_rows = 0
 
     with psycopg2.connect(DB_URL) as conn:
+        with conn.cursor() as cur:
+            # daily_metrics는 250일/90일 윈도우 함수를 전 종목에 돌리는 무거운 쿼리라,
+            # 조회 범위가 넓어지면 Supabase 풀러 기본 statement_timeout(약 100~120초)에
+            # 걸릴 수 있습니다. 이 세션에서만 넉넉하게 늘려둡니다.
+            cur.execute("SET statement_timeout = '10min'")
+        conn.commit()
+
         for i, (title, sql) in enumerate(steps, 1):
             t0 = time.time()
             with conn.cursor() as cur:

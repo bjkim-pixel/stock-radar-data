@@ -35,6 +35,7 @@ def q(cur, title, sql):
 
 def main():
     with psycopg2.connect(DB_URL) as conn, conn.cursor() as cur:
+        cur.execute("SET statement_timeout = '10min'")
 
         q(cur, "daily_price 날짜 커버리지",
           "SELECT min(trade_date), max(trade_date), count(distinct trade_date) "
