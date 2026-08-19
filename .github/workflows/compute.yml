@@ -1,0 +1,49 @@
+name: Compute Metrics & Signals
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: '시작일 (YYYYMMDD, 비우면 DB 전체 기간)'
+        required: false
+        default: ''
+      end_date:
+        description: '종료일 (YYYYMMDD, 비우면 start_date와 동일)'
+        required: false
+        default: ''
+
+jobs:
+  compute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install psycopg2-binary
+
+      - name: Compute
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          START="${{ github.event.inputs.start_date }}"
+          END="${{ github.event.inputs.end_date }}"
+
+          if [ -z "$START" ]; then
+            python 05_compute.py
+          elif [ -z "$END" ]; then
+            python 05_compute.py "$START"
+          else
+            python 05_compute.py "$START" "$END"
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::지표·신호 계산 실패! GitHub Actions 로그를 확인하세요."
