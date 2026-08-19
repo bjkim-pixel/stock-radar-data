@@ -1,21 +1,42 @@
 # -*- coding: utf-8 -*-
 """
-STOCK RADAR · KIS API 백필 (날짜 범위 재수집 + KRX 비교)
-=========================================================
+STOCK RADAR · KIS API 백필 (시세 + 수급)
+==========================================
 사용법
   python 04_backfill.py                        # 2026-01-02 ~ 어제
-  python 04_backfill.py 20260102 20260813      # 날짜 범위 지정
-  python 04_backfill.py --compare-only         # 재수집 없이 KRX vs KIS 비교만
-  python 04_backfill.py --debug                # 삼성전자 응답 원문 출력 (필드명 확인)
+  python 04_backfill.py 20260102 20260818      # 날짜 범위 지정
+  python 04_backfill.py --compare-only         # 재수집 없이 적재 현황만
+  python 04_backfill.py --debug                # 삼성전자 응답 원문 + 파싱 검증
 
 환경변수
   KIS_APP_KEY / KIS_APP_SECRET / SUPABASE_DB_URL
 
-※ 필드명을 하드코딩하지 않습니다.
-  KIS 응답의 키 이름은 엔드포인트마다 다르고 문서와도 어긋나는 경우가 있어,
-  날짜 필드는 "값이 8자리 20XXXXXX인 키"를 스캔해서 찾고,
-  나머지 항목은 후보 이름을 순서대로 시도합니다(pick 함수).
-  실행 첫 종목의 실제 키 목록을 로그에 찍어 두므로, 로그만 봐도 검증됩니다.
+────────────────────────────────────────────────────────────────────────────
+2026-08-19 진단으로 확정된 사실 (추측 아님, 실제 응답으로 검증)
+
+1. 엔드포인트 investor-trade-by-stock-daily (FHPTJ04160001) 는
+   시세(OHLCV)와 수급을 한 번에 돌려줍니다. 시세 전용 호출이 필요 없습니다.
+
+2. 필수 파라미터 — MKSC_SHRN_ISCD 계열이 아니라 FID_* 계열입니다.
+     FID_COND_MRKT_DIV_CODE=J  FID_INPUT_ISCD=<종목>
+     FID_INPUT_DATE_1=<기준일>  FID_ORG_ADJ_PRC=0  FID_ETC_CLS_CODE=0
+   FID_INPUT_DATE_2 는 존재하지 않습니다.
+
+3. 기준일 하나를 주면 그 날짜부터 '과거로 30거래일'을 반환합니다.
+   (검증: 기준일 20260814 → 첫행 20260814, 마지막행 20260703)
+
+4. 금액 필드(_tr_pbmn, _pbmn)의 단위는 '백만원' 입니다.
+   단, acml_tr_pbmn(누적거래대금)만은 '원' 단위이므로 곱하면 안 됩니다.
+
+5. 외국인은 등록/미등록이 분리돼 있습니다.
+     frgn_reg_ntby_pbmn  = 1,338,610 → KRX '외국인'과 일치 ✅  (이걸 사용)
+     frgn_ntby_tr_pbmn   = 1,336,152 = 등록 + 미등록 합계
+   기존 KRX 데이터와 시계열을 잇기 위해 등록 기준을 씁니다.
+
+6. 기관 분해 검증 통과:
+     금융투자 + 투신 + 사모 + 은행 + 보험 + 종금 + 기금 = 기관합계
+     -379,039 + 29,971 - 138,232 + 5,258 - 22,192 - 203 + 6,607 = -497,830 ✅
+────────────────────────────────────────────────────────────────────────────
 """
 import os, sys, time, datetime, json, threading, re
 import requests, psycopg2
@@ -27,12 +48,14 @@ KIS_SECRET = os.environ.get("KIS_APP_SECRET", "")
 KIS_BASE   = "https://openapi.koreainvestment.com:9443"
 DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
-WORKERS    = 10
-MAX_RPS    = 18
-BATCH      = 500
-CHUNK_DAYS = 90
-# 청크 경계에서 등락률을 계산하려면 앞쪽으로 며칠 겹쳐서 받아야 합니다.
-OVERLAP_DAYS = 10
+WORKERS   = 10
+MAX_RPS   = 18
+BATCH     = 500
+
+# 한 번 호출에 30거래일 반환. 30거래일은 최소 42일(휴일 없을 때 6주)이므로
+# 40일 간격으로 기준일을 잡으면 빈 구간 없이 이어집니다.
+ANCHOR_STEP_DAYS = 40
+FLOW_UNIT = 1_000_000        # 백만원 → 원
 
 
 # ── 전역 속도 제한기 ──────────────────────────────────────────────────────────
@@ -52,10 +75,19 @@ class RateLimiter:
 
 
 _rate = RateLimiter(MAX_RPS)
+_lock = threading.Lock()
+_dumped = {"flow": False}
+_warned = {}
 
-# 첫 종목 응답의 키를 한 번만 출력하기 위한 플래그
-_dumped = {"price": False, "flow": False}
-_dump_lock = threading.Lock()
+
+def warn_once(kind, msg, limit=3):
+    with _lock:
+        n = _warned.get((kind, msg), 0)
+        if n >= limit:
+            return
+        _warned[(kind, msg)] = n + 1
+        print(f"   ⚠ [{kind}] {msg}")
+
 
 # ── 입력 파싱 ─────────────────────────────────────────────────────────────────
 COMPARE_ONLY = "--compare-only" in sys.argv
@@ -71,37 +103,35 @@ else:
     END_DATE   = (datetime.date.today() - datetime.timedelta(1)).strftime("%Y%m%d")
 
 
-def iso(d): return f"{d[:4]}-{d[4:6]}-{d[6:]}"
-def ymd(d): return d.strftime("%Y%m%d")
+def iso(d):  return f"{d[:4]}-{d[4:6]}-{d[6:]}"
+def ymd(d):  return d.strftime("%Y%m%d")
+def dt(s):   return datetime.date(int(s[:4]), int(s[4:6]), int(s[6:]))
 
 
-print(f"▶ 백필 범위: {iso(START_DATE)} ~ {iso(END_DATE)}  (워커: {WORKERS}개, 최대 {MAX_RPS}건/초)")
+def anchors(start_str, end_str, step=ANCHOR_STEP_DAYS):
+    """END에서 START까지 step일 간격으로 기준일 목록 생성"""
+    s, e = dt(start_str), dt(end_str)
+    out, cur = [], e
+    while True:
+        out.append(ymd(cur))
+        if cur <= s:
+            break
+        cur -= datetime.timedelta(step)
+    return out
 
-if not COMPARE_ONLY:
-    if not KIS_KEY or not KIS_SECRET:
-        sys.exit("❌ KIS_APP_KEY / KIS_APP_SECRET 설정 필요")
+
+ANCHORS = anchors(START_DATE, END_DATE)
+
+print(f"▶ 백필 범위: {iso(START_DATE)} ~ {iso(END_DATE)}  (워커 {WORKERS} · 최대 {MAX_RPS}건/초)")
+print(f"   기준일 {len(ANCHORS)}개 × 종목당 1회 호출 (1회에 30거래일 반환)")
+
+if not COMPARE_ONLY and (not KIS_KEY or not KIS_SECRET):
+    sys.exit("❌ KIS_APP_KEY / KIS_APP_SECRET 설정 필요")
 if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 설정 필요")
 
 
-def date_chunks(start_str, end_str, chunk=CHUNK_DAYS):
-    s = datetime.date(int(start_str[:4]), int(start_str[4:6]), int(start_str[6:]))
-    e = datetime.date(int(end_str[:4]),   int(end_str[4:6]),   int(end_str[6:]))
-    chunks, cur = [], s
-    while cur <= e:
-        nxt = min(cur + datetime.timedelta(chunk - 1), e)
-        # API 호출은 앞으로 OVERLAP_DAYS 만큼 더 받아서 등락률 계산에 씁니다
-        api_start = max(s - datetime.timedelta(OVERLAP_DAYS), cur - datetime.timedelta(OVERLAP_DAYS))
-        chunks.append((ymd(api_start), ymd(nxt), ymd(cur)))
-        cur = nxt + datetime.timedelta(1)
-    return chunks
-
-
-CHUNKS = date_chunks(START_DATE, END_DATE)
-print(f"   → {len(CHUNKS)}개 청크 ({CHUNK_DAYS}일 단위, 경계 {OVERLAP_DAYS}일 중첩)")
-
-
-# ── 값 파싱 유틸 ──────────────────────────────────────────────────────────────
+# ── 값 파싱 ───────────────────────────────────────────────────────────────────
 def safe_int(v, d=0):
     try:
         s = str(v).replace(",", "").strip()
@@ -122,47 +152,18 @@ def safe_float(v, d=0.0):
         return d
 
 
-def pick(row, *names):
-    """후보 키를 순서대로 찾아 첫 번째로 존재하는 값을 반환"""
-    for n in names:
-        if n in row and str(row[n]).strip() not in ("", "-"):
-            return row[n]
-    return None
-
-
 _DATE_RE = re.compile(r"^20\d{6}$")
 
 
 def find_date(row):
-    """값이 8자리 날짜(20XXXXXX)인 키를 찾아 그 값을 반환 — 키 이름에 의존하지 않음"""
-    for k, v in row.items():
-        if _DATE_RE.match(str(v).strip()):
-            return str(v).strip()
+    """값이 8자리 날짜인 키를 찾습니다 (키 이름에 의존하지 않는 안전장치)"""
+    v = row.get("stck_bsop_date")
+    if v and _DATE_RE.match(str(v).strip()):
+        return str(v).strip()
+    for k, x in row.items():
+        if _DATE_RE.match(str(x).strip()):
+            return str(x).strip()
     return None
-
-
-_warned = {}
-
-
-def warn_once(kind, msg):
-    """같은 종류의 경고는 3번까지만 출력 (2,935종목 × 반복이라 로그가 터집니다)"""
-    with _dump_lock:
-        n = _warned.get((kind, msg), 0)
-        if n >= 3:
-            return
-        _warned[(kind, msg)] = n + 1
-        print(f"   ⚠ [{kind}] {msg}")
-
-
-def dump_keys(kind, rows):
-    """첫 응답의 키/샘플을 한 번만 로그에 남깁니다 (필드명 자가검증용)"""
-    with _dump_lock:
-        if _dumped[kind] or not rows:
-            return
-        _dumped[kind] = True
-        print(f"\n   ── [{kind}] 응답 필드 확인 (첫 종목 1행) ──")
-        print("   " + json.dumps(rows[0], ensure_ascii=False)[:1200])
-        print(f"   → 감지된 날짜 필드값: {find_date(rows[0])}\n")
 
 
 # ── KIS ───────────────────────────────────────────────────────────────────────
@@ -183,66 +184,136 @@ def get_token():
     return r.json()["access_token"]
 
 
-def fetch_price_hist(token, code, s, e):
-    """FHKST03010100 · 일별 시세(OHLCV) — 날짜 범위"""
+def fetch_daily(token, code, anchor):
+    """기준일부터 과거 30거래일의 시세 + 수급을 한 번에 가져옵니다."""
     _rate.acquire()
-    r = requests.get(
-        f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
-        headers=kis_hdr(token, "FHKST03010100"),
-        params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code,
-                "FID_INPUT_DATE_1": s, "FID_INPUT_DATE_2": e,
-                "FID_PERIOD_DIV_CODE": "D", "FID_ORG_ADJ_PRC": "0"},
-        timeout=15)
+    try:
+        r = requests.get(
+            f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
+            headers=kis_hdr(token, "FHPTJ04160001"),
+            params={"FID_COND_MRKT_DIV_CODE": "J",
+                    "FID_INPUT_ISCD": code,
+                    "FID_INPUT_DATE_1": anchor,
+                    "FID_ORG_ADJ_PRC": "0",
+                    "FID_ETC_CLS_CODE": "0"},
+            timeout=15)
+    except Exception as ex:
+        warn_once("net", str(ex)[:120])
+        return []
+
     if r.status_code != 200:
-        warn_once("price", f"HTTP {r.status_code}")
+        warn_once("http", f"HTTP {r.status_code}")
         return []
     d = r.json()
     if d.get("rt_cd") != "0":
-        warn_once("price", f"rt_cd={d.get('rt_cd')} msg={str(d.get('msg1','')).strip()}")
+        warn_once("api", f"rt_cd={d.get('rt_cd')} msg={str(d.get('msg1','')).strip()}")
         return []
-    rows = d.get("output2") or []
-    rows = [x for x in rows if x]           # KIS는 빈 dict를 섞어 보냅니다
-    dump_keys("price", rows)
+
+    rows = [x for x in (d.get("output2") or []) if x]
+
+    with _lock:
+        if rows and not _dumped["flow"]:
+            _dumped["flow"] = True
+            print(f"\n   ── 첫 응답 필드 확인 ({code}, 기준일 {anchor}) ──")
+            print("   " + json.dumps(rows[0], ensure_ascii=False)[:500])
+            print(f"   → 날짜 {find_date(rows[0])} · {len(rows)}행\n")
     return rows
 
 
-def fetch_investor_hist(token, code, anchor, _unused=None):
-    """
-    FHPTJ04160001 · 일별 투자자 순매수
-    2026-08-19 진단으로 확정된 파라미터:
-      FID_INPUT_DATE_1 = 기준일 (이 날짜부터 과거로 30거래일 반환)
-      FID_INPUT_DATE_2 는 존재하지 않습니다.
-    """
-    _rate.acquire()
-    r = requests.get(
-        f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
-        headers=kis_hdr(token, "FHPTJ04160001"),
-        params={"FID_COND_MRKT_DIV_CODE": "J",
-                "FID_INPUT_ISCD": code,
-                "FID_INPUT_DATE_1": anchor,
-                "FID_ORG_ADJ_PRC": "0",
-                "FID_ETC_CLS_CODE": "0"},
-        timeout=15)
-    if r.status_code != 200:
-        warn_once("flow", f"HTTP {r.status_code}")
-        return []
-    d = r.json()
-    if d.get("rt_cd") != "0":
-        # 조용히 넘기지 않고 KIS 메시지를 한 번은 로그에 남깁니다.
-        warn_once("flow", f"rt_cd={d.get('rt_cd')} msg={str(d.get('msg1','')).strip()}")
-        return []
-    rows = d.get("output2") or []
-    rows = [x for x in rows if x]
-    if not rows:
-        warn_once("flow", f"rt_cd=0 이지만 output2가 비어 있음 (기준일 {anchor})")
-    dump_keys("flow", rows)
-    return rows
+# ── 행 파싱 ───────────────────────────────────────────────────────────────────
+def parse_price(r, date_str, code, listed_sh, prev_close):
+    close_p = safe_int(r.get("stck_clpr"))
+    if close_p <= 0:
+        return None, prev_close
+
+    # 등락률: 직전 종가로 계산(소수점 정밀), 없으면 응답값(소수 2자리) 사용
+    if prev_close:
+        chg = (close_p - prev_close) / prev_close * 100
+    else:
+        chg = safe_float(r.get("prdy_ctrt"))
+
+    row = (
+        iso(date_str), code,
+        safe_int(r.get("stck_oprc")),
+        safe_int(r.get("stck_hgpr")),
+        safe_int(r.get("stck_lwpr")),
+        close_p,
+        safe_int(r.get("acml_vol")),
+        safe_int(r.get("acml_tr_pbmn")),          # 이 필드만 '원' 단위
+        close_p * listed_sh if listed_sh else 0,
+        listed_sh,
+        round(chg, 4),
+        "KIS", False,
+    )
+    return row, close_p
+
+
+def parse_flow(r, date_str, code):
+    """금액은 모두 백만원 단위 → ×1,000,000"""
+    def amt(key):
+        return safe_int(r.get(key)) * FLOW_UNIT
+
+    inst = amt("orgn_ntby_tr_pbmn")
+
+    # 기관 분해 합계가 기관합계와 맞는지 (데이터 이상 조기 감지)
+    parts = sum(amt(k) for k in (
+        "scrt_ntby_tr_pbmn", "ivtr_ntby_tr_pbmn", "pe_fund_ntby_tr_pbmn",
+        "bank_ntby_tr_pbmn", "insu_ntby_tr_pbmn", "mrbn_ntby_tr_pbmn",
+        "fund_ntby_tr_pbmn"))
+    if inst and abs(parts - inst) > FLOW_UNIT:
+        warn_once("sum", f"기관합계 불일치 {code} {date_str}: 합={parts:,} vs {inst:,}", 2)
+
+    return (
+        iso(date_str), code,
+        amt("frgn_reg_ntby_pbmn"),        # 외국인(등록) — KRX '외국인'과 동일
+        inst,                             # 기관합계
+        amt("scrt_ntby_tr_pbmn"),         # 금융투자
+        amt("ivtr_ntby_tr_pbmn"),         # 투신
+        amt("pe_fund_ntby_tr_pbmn"),      # 사모
+        amt("fund_ntby_tr_pbmn"),         # 연기금·기금
+        amt("etc_corp_ntby_tr_pbmn"),     # 기타법인
+        amt("prsn_ntby_tr_pbmn"),         # 개인
+        safe_int(r.get("frgn_reg_ntby_qty")),   # 외국인 순매수 수량
+        safe_int(r.get("orgn_ntby_qty")),       # 기관 순매수 수량
+        "KIS", False,
+    )
+
+
+def collect_stock(token, code, listed_sh):
+    """한 종목의 전 기간을 수집. 반환 (price_rows, flow_rows, status)"""
+    try:
+        raw = {}
+        for a in ANCHORS:
+            for r in fetch_daily(token, code, a):
+                d = find_date(r)
+                if d:
+                    raw[d] = r          # 겹치는 날짜는 자연스럽게 덮어씀
+
+        if not raw:
+            return [], [], "skip"
+
+        price_rows, flow_rows = [], []
+        prev_close = None
+        for d in sorted(raw):           # 날짜 오름차순 → 등락률 계산 가능
+            r = raw[d]
+            prow, prev_close = parse_price(r, d, code, listed_sh, prev_close)
+            if d < START_DATE or d > END_DATE:
+                continue                # 범위 밖은 계산에만 쓰고 저장 안 함
+            if prow:
+                price_rows.append(prow)
+                flow_rows.append(parse_flow(r, d, code))
+
+        return price_rows, flow_rows, "ok"
+
+    except Exception as ex:
+        return [], [], f"err:{ex}"
 
 
 # ── DB ────────────────────────────────────────────────────────────────────────
 def load_stocks():
     with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
-        cur.execute("SELECT code, listed_shares FROM stocks WHERE security_type='STOCK' ORDER BY code")
+        cur.execute("SELECT code, listed_shares FROM stocks "
+                    "WHERE security_type='STOCK' ORDER BY code")
         return {r[0]: r[1] or 0 for r in cur.fetchall()}
 
 
@@ -260,15 +331,16 @@ ON CONFLICT (trade_date,code) DO UPDATE SET
 """
 FLOW_SQL = """
 INSERT INTO daily_flow
-  (trade_date,code,foreign_net,inst_net,
-   fin_inv_net,inv_trust_net,pe_net,pension_net,
-   corp_other_net,individual_net,source,is_partial)
+  (trade_date,code,foreign_net,inst_net,fin_inv_net,inv_trust_net,
+   pe_net,pension_net,corp_other_net,individual_net,
+   foreign_net_vol,inst_net_vol,source,is_partial)
 VALUES %s
 ON CONFLICT (trade_date,code) DO UPDATE SET
   foreign_net=EXCLUDED.foreign_net,inst_net=EXCLUDED.inst_net,
   fin_inv_net=EXCLUDED.fin_inv_net,inv_trust_net=EXCLUDED.inv_trust_net,
   pe_net=EXCLUDED.pe_net,pension_net=EXCLUDED.pension_net,
   corp_other_net=EXCLUDED.corp_other_net,individual_net=EXCLUDED.individual_net,
+  foreign_net_vol=EXCLUDED.foreign_net_vol,inst_net_vol=EXCLUDED.inst_net_vol,
   source=EXCLUDED.source,is_partial=EXCLUDED.is_partial
 """
 
@@ -282,338 +354,97 @@ def upsert(price_rows, flow_rows):
         c.commit()
 
 
-# ── 종목 1개 × 1청크 수집 ─────────────────────────────────────────────────────
-def collect_stock_chunk(token, code, listed_sh, api_s, api_e, keep_from):
-    """반환: (price_rows, flow_rows, status)"""
-    try:
-        ph = fetch_price_hist(token, code, api_s, api_e)
-        # 수급은 '기준일에서 과거 30거래일'을 돌려주므로 청크 종료일을 기준일로 씁니다.
-        ih = fetch_investor_hist(token, code, api_e)
-
-        if not ph and not ih:
-            return [], [], "skip"
-
-        # ── 시세 ─────────────────────────────────────────────────────────────
-        parsed = []
-        for r in ph:
-            dt = find_date(r)
-            if not dt:
-                continue
-            parsed.append((dt, r))
-        parsed.sort(key=lambda x: x[0])     # 날짜 오름차순 → 등락률 계산 가능
-
-        price_rows = []
-        prev_close = None
-        for dt, r in parsed:
-            close_p = safe_int(pick(r, "stck_clpr", "stck_prpr", "clpr"))
-            if close_p <= 0:
-                prev_close = None
-                continue
-
-            # 등락률: 응답에 있으면 그대로, 없으면 직전 종가로 계산
-            ctrt = pick(r, "prdy_ctrt", "flng_cls_code_ctrt")
-            if ctrt is not None:
-                change_pct = safe_float(ctrt)
-            elif prev_close:
-                change_pct = (close_p - prev_close) / prev_close * 100
-            else:
-                change_pct = 0.0
-
-            if dt >= keep_from:            # 중첩 구간은 계산에만 쓰고 저장하지 않음
-                mktcap = close_p * listed_sh if listed_sh else 0
-                price_rows.append((
-                    iso(dt), code,
-                    safe_int(pick(r, "stck_oprc", "oprc")),
-                    safe_int(pick(r, "stck_hgpr", "hgpr")),
-                    safe_int(pick(r, "stck_lwpr", "lwpr")),
-                    close_p,
-                    safe_int(pick(r, "acml_vol", "cntg_vol")),
-                    safe_int(pick(r, "acml_tr_pbmn", "acml_tr_pbm")),
-                    mktcap, listed_sh,
-                    round(change_pct, 4),
-                    "KIS", False,
-                ))
-            prev_close = close_p
-
-        # ── 수급 ─────────────────────────────────────────────────────────────
-        flow_rows = []
-        for r in ih:
-            dt = find_date(r)
-            if not dt or dt < keep_from:
-                continue
-            flow_rows.append((
-                iso(dt), code,
-                safe_int(pick(r, "frgn_ntby_tr_pbmn", "frgn_ntby_amt")),
-                safe_int(pick(r, "orgn_ntby_tr_pbmn", "orgn_ntby_amt")),
-                safe_int(pick(r, "fnnc_invt_ntby_tr_pbmn", "scrt_ntby_tr_pbmn", "scrt_ntby_amt")),
-                safe_int(pick(r, "invt_trst_ntby_tr_pbmn", "ivtr_ntby_tr_pbmn", "ivtr_ntby_amt")),
-                safe_int(pick(r, "pe_fund_ntby_tr_pbmn", "pe_fund_ntby_amt", "prvt_fund_ntby_tr_pbmn")),
-                safe_int(pick(r, "pgnn_ntby_tr_pbmn", "fund_ntby_tr_pbmn", "pnsn_ntby_tr_pbmn")),
-                safe_int(pick(r, "etc_corp_ntby_tr_pbmn", "etc_orgt_ntby_tr_pbmn")),
-                safe_int(pick(r, "prsn_ntby_tr_pbmn", "prsn_ntby_amt")),
-                "KIS", False,
-            ))
-
-        return price_rows, flow_rows, "ok"
-
-    except Exception as ex:
-        return [], [], f"err:{ex}"
-
-
-# ── 디버그 모드 ────────────────────────────────────────────────────────────────
-def probe(token, label, path, tr_id, params):
-    """엔드포인트를 호출하고 rt_cd/msg1/행수/첫 행을 그대로 출력합니다.
-    실패해도 조용히 넘어가지 않고 KIS가 준 메시지를 그대로 보여줍니다."""
-    print(f"\n── {label}")
-    print(f"   tr_id={tr_id}  params={params}")
-    try:
-        _rate.acquire()
-        r = requests.get(f"{KIS_BASE}{path}", headers=kis_hdr(token, tr_id),
-                         params=params, timeout=15)
-    except Exception as ex:
-        print(f"   ❌ 요청 실패: {ex}")
-        return []
-
-    print(f"   HTTP {r.status_code}")
-    if r.status_code != 200:
-        print(f"   본문: {r.text[:300]}")
-        return []
-
-    d = r.json()
-    print(f"   rt_cd={d.get('rt_cd')}  msg_cd={d.get('msg_cd')}  msg1={str(d.get('msg1','')).strip()}")
-
-    got = []
-    for key in ("output", "output1", "output2"):
-        v = d.get(key)
-        if isinstance(v, list):
-            v = [x for x in v if x]
-            print(f"   {key}: 리스트 {len(v)}행")
-            if v:
-                print(f"     첫행: {json.dumps(v[0], ensure_ascii=False)[:600]}")
-                print(f"     날짜감지: {find_date(v[0])}")
-                got = got or v
-        elif isinstance(v, dict) and v:
-            print(f"   {key}: dict — {json.dumps(v, ensure_ascii=False)[:600]}")
-            got = got or [v]
-    if not got:
-        print("   (데이터 없음)")
-    return got
-
-
-_MISSING_RE = re.compile(r"NOT FOUND\s*\[([A-Z0-9_]+)\]")
-
-
-def guess_value(field, code, s, e):
-    """KIS가 '이 필드가 없다'고 알려준 파라미터에 넣을 값을 규칙으로 결정"""
-    f = field.upper()
-    if "MRKT_DIV_CODE" in f:            # FID_COND_MRKT_DIV_CODE, ..._1, ..._2
-        return "J"
-    if "ISCD" in f:                     # FID_INPUT_ISCD, FID_INPUT_ISCD_1
-        return code
-    if f.endswith("DATE_1") or "STRT" in f or "BEGIN" in f:
-        return s
-    if f.endswith("DATE_2") or f.startswith("FID_INPUT_DATE") or "END" in f:
-        return e
-    if "PERIOD_DIV" in f:
-        return "D"
-    if "ORG_ADJ" in f:
-        return "0"
-    if f.endswith("_YN"):
-        return "N"
-    return "0"
-
-
-def probe_auto(token, label, path, tr_id, base, code, s, e, max_rounds=8):
-    """
-    KIS 에러 메시지(ERROR INPUT FIELD NOT FOUND [X])를 읽어
-    빠진 파라미터를 자동으로 채워 넣으며 재시도합니다.
-    필드명을 추측하지 않고 API가 알려주는 대로 맞춰갑니다.
-    """
-    print(f"\n{'='*70}\n{label}\n  path={path}  tr_id={tr_id}")
-    params = dict(base)
-
-    for rnd in range(1, max_rounds + 1):
-        try:
-            _rate.acquire()
-            r = requests.get(f"{KIS_BASE}{path}", headers=kis_hdr(token, tr_id),
-                             params=params, timeout=15)
-        except Exception as ex:
-            print(f"  [{rnd}] 요청 실패: {ex}")
-            return None, params
-
-        if r.status_code != 200:
-            print(f"  [{rnd}] HTTP {r.status_code} · {r.text[:200]}")
-            return None, params
-
-        d = r.json()
-        rt, msg = d.get("rt_cd"), str(d.get("msg1", "")).strip()
-        print(f"  [{rnd}] rt_cd={rt}  msg={msg}")
-        print(f"       params={params}")
-
-        if rt == "0":
-            rows = None
-            for key in ("output", "output1", "output2"):
-                v = d.get(key)
-                if isinstance(v, list):
-                    v = [x for x in v if x]
-                    if v:
-                        print(f"       ✅ {key}: {len(v)}행")
-                        print(f"          첫행: {json.dumps(v[0], ensure_ascii=False)[:700]}")
-                        print(f"          날짜감지: {find_date(v[0])}")
-                        rows = rows or v
-            if rows is None:
-                print("       rt_cd=0 이지만 리스트 데이터 없음")
-            return rows, params
-
-        m = _MISSING_RE.search(msg)
-        if not m:
-            print("       (자동 보정 불가 — 위 메시지 확인 필요)")
-            return None, params
-
-        field = m.group(1)
-        val = guess_value(field, code, s, e)
-        print(f"       → 누락 필드 [{field}] 감지, '{val}' 로 채워 재시도")
-        params[field] = val
-
-    print("  (최대 재시도 횟수 도달)")
-    return None, params
-
-
+# ── 디버그 ────────────────────────────────────────────────────────────────────
 def run_debug():
     print("\n" + "=" * 70)
-    print("DEBUG: 삼성전자(005930) 엔드포인트 진단")
+    print("DEBUG: 삼성전자(005930) 파싱 검증")
     print("=" * 70)
     token = get_token()
+    rows = fetch_daily(token, "005930", "20260814")
+    print(f"반환 행수: {len(rows)}")
+    if not rows:
+        print("⚠️ 0행")
+        return
 
-    # 휴장일을 피하려고 '확실한 영업일'을 기준으로 잡습니다.
-    # 2026-08-17은 광복절 대체공휴일(증시 휴장)이라 종료일로 쓰면 안 됩니다.
-    BIZ_END = "20260814"     # 금요일, 거래일 확인됨
-    R5      = "20260810"     # 5거래일 전
-    R90     = "20260515"     # 약 90일 전
-    CODE    = "005930"
+    print(f"\n날짜 범위: {find_date(rows[-1])} ~ {find_date(rows[0])}")
 
-    print(f"\n※ 기준일: {BIZ_END} (영업일). 이전 실행은 종료일이 20260817(휴장)이었습니다.")
+    prev = None
+    parsed_p, parsed_f = [], []
+    for d in sorted({find_date(r): r for r in rows if find_date(r)}):
+        r = {find_date(x): x for x in rows if find_date(x)}[d]
+        p, prev = parse_price(r, d, "005930", 5_919_637_922, prev)
+        if p:
+            parsed_p.append(p)
+            parsed_f.append(parse_flow(r, d, "005930"))
 
-    # ── 시세 (정상 동작 확인용) ──────────────────────────────────────────────
-    probe(token, "[A] 시세 · inquire-daily-itemchartprice (90일 범위)",
-          "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
-          "FHKST03010100",
-          {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": CODE,
-           "FID_INPUT_DATE_1": R90, "FID_INPUT_DATE_2": BIZ_END,
-           "FID_PERIOD_DIV_CODE": "D", "FID_ORG_ADJ_PRC": "0"})
+    print(f"\n파싱 결과: price {len(parsed_p)}행 / flow {len(parsed_f)}행")
+    print("\n[시세] 최근 3일")
+    print(f"  {'날짜':<12}{'시가':>9}{'고가':>9}{'저가':>9}{'종가':>9}{'등락%':>8}{'거래대금(억)':>13}")
+    for p in parsed_p[-3:]:
+        print(f"  {p[0]:<12}{p[2]:>9,}{p[3]:>9,}{p[4]:>9,}{p[5]:>9,}{p[10]:>8.2f}{p[7]//100_000_000:>13,}")
 
-    # ── 수급: 파라미터를 자동 보정하며 탐색 ──────────────────────────────────
-    # 이전 진단에서 rt_cd=2 "NOT FOUND [FID_COND_MRKT_DIV_CODE]" 가 나왔습니다.
-    # 이 엔드포인트는 MKSC_SHRN_ISCD 계열이 아니라 FID_* 계열을 요구합니다.
-    # 아래는 빈 파라미터로 시작해서 KIS가 요구하는 필드를 하나씩 채워 갑니다.
-    INV_PATH = "/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily"
+    print("\n[수급] 최근 3일 (억원)")
+    print(f"  {'날짜':<12}{'외국인':>10}{'기관':>10}{'금융투자':>10}{'투신':>9}{'사모':>9}{'연기금':>9}{'개인':>10}")
+    for f in parsed_f[-3:]:
+        print(f"  {f[0]:<12}{f[2]//100_000_000:>10,}{f[3]//100_000_000:>10,}"
+              f"{f[4]//100_000_000:>10,}{f[5]//100_000_000:>9,}{f[6]//100_000_000:>9,}"
+              f"{f[7]//100_000_000:>9,}{f[9]//100_000_000:>10,}")
 
-    probe_auto(token, "[B] 수급 · investor-trade-by-stock-daily (90일, 자동 보정)",
-               INV_PATH, "FHPTJ04160001", {}, CODE, R90, BIZ_END)
-
-    probe_auto(token, "[C] 수급 · investor-trade-by-stock-daily (단일일자, 자동 보정)",
-               INV_PATH, "FHPTJ04160001", {}, CODE, BIZ_END, BIZ_END)
-
-    probe_auto(token, "[D] 대안 · inquire-daily-trade-volume (자동 보정)",
-               "/uapi/domestic-stock/v1/quotations/inquire-daily-trade-volume",
-               "FHKST03010800", {}, CODE, R90, BIZ_END)
-
-    probe_auto(token, "[E] 대안 · inquire-investor (최근 30일, 3주체만)",
-               "/uapi/domestic-stock/v1/quotations/inquire-investor",
-               "FHKST01010900", {}, CODE, R90, BIZ_END)
-
-    probe_auto(token, "[F] 대안 · 외국인기관 추정가집계 (당일)",
-               "/uapi/domestic-stock/v1/quotations/investor-trend-estimate",
-               "HHPTJ04160200", {}, CODE, R90, BIZ_END)
-
-    # ── 수급 응답 전체 필드 (잘림 없이) ──────────────────────────────────────
-    print("\n" + "=" * 70)
-    print("[G] 수급 응답 전체 필드 — 잘림 없음")
-    print("=" * 70)
-    rows = fetch_investor_hist(token, CODE, BIZ_END)
-    print(f"  반환 행수: {len(rows)}")
-    if rows:
-        r0 = rows[0]
-        print(f"  기준일 {find_date(r0)} · 총 {len(r0)}개 필드\n")
-        qty  = {k: v for k, v in r0.items() if k.endswith(("_qty", "_vol"))}
-        pbmn = {k: v for k, v in r0.items() if "pbmn" in k}
-        etc  = {k: v for k, v in r0.items() if k not in qty and k not in pbmn}
-        print("  ── 금액 계열 (_pbmn) ──  ※ 단위 확인 필요")
-        for k, v in sorted(pbmn.items()):
-            print(f"     {k:<28} = {v}")
-        print("\n  ── 수량 계열 (_qty/_vol) ──")
-        for k, v in sorted(qty.items()):
-            print(f"     {k:<28} = {v}")
-        print("\n  ── 기타 ──")
-        for k, v in sorted(etc.items()):
-            print(f"     {k:<28} = {v}")
-
-        # 단위 검증: 2026-08-14 삼성전자 실제값과 대조
-        print("\n  ── 단위 검증 (2026-08-14 삼성전자 KRX 실측 대비) ──")
-        print("     KRX 외국인 순매수 = 1,338,609,920,750 원")
-        print("     KRX 기관합계     =  -497,830,074,500 원")
-        for k, v in sorted(pbmn.items()):
-            n = safe_int(v)
-            if n:
-                print(f"     {k:<28} {n:>16,}  ×100만 → {n*1_000_000:>20,}")
-
-        print("\n  ── 두 번째 행 (날짜가 하루 전인지 = 과거로 내려가는지 확인) ──")
-        if len(rows) > 1:
-            print(f"     {find_date(rows[1])}")
-        print(f"     마지막 행 날짜: {find_date(rows[-1])}")
-    else:
-        print("  ⚠️ 0행")
+    print("\n[검증] 2026-08-14 KRX 실측 대비")
+    tgt = [f for f in parsed_f if f[0] == "2026-08-14"]
+    if tgt:
+        f = tgt[0]
+        for name, got, want in (("외국인", f[2], 1_338_609_920_750),
+                                ("기관합계", f[3], -497_830_074_500),
+                                ("금융투자", f[4], -379_038_602_250),
+                                ("연기금", f[7], 6_607_376_750)):
+            diff = abs(got - want) / max(abs(want), 1) * 100
+            mark = "✅" if diff < 0.01 else "⚠️"
+            print(f"  {mark} {name:<8} 수집 {got:>18,}  실측 {want:>18,}  오차 {diff:.4f}%")
+    print("\n(오차는 KIS가 백만원 단위로 반올림해 제공하기 때문이며 0.01% 미만이면 정상입니다)")
 
 
-# ── KRX vs KIS 비교 ────────────────────────────────────────────────────────────
+# ── 현황 ──────────────────────────────────────────────────────────────────────
 def compare_krx_kis():
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 64)
     print("적재 현황 (source별)")
-    print("=" * 60)
+    print("=" * 64)
     with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
         cur.execute("""
             SELECT coalesce(source,'(null)'), count(*),
-                   count(*) FILTER (WHERE close > 0),
-                   count(*) FILTER (WHERE trade_amount > 0),
-                   round(avg(abs(change_pct))::numeric, 3)
-            FROM daily_price WHERE trade_date BETWEEN %s AND %s
-            GROUP BY 1 ORDER BY 2 DESC
+                   count(*) FILTER (WHERE close>0), count(*) FILTER (WHERE trade_amount>0)
+            FROM daily_price WHERE trade_date BETWEEN %s AND %s GROUP BY 1 ORDER BY 2 DESC
         """, (iso(START_DATE), iso(END_DATE)))
-        print(f"\n[daily_price] {iso(START_DATE)} ~ {iso(END_DATE)}")
-        print(f"  {'source':<10} {'행수':>10} {'종가':>10} {'거래대금':>10} {'평균등락%':>9}")
-        for s_, n, cl, am, ch in cur.fetchall():
-            print(f"  {s_:<10} {n:>10,} {cl:>10,} {am:>10,} {str(ch):>9}")
+        print(f"\n[daily_price]  {'source':<8}{'행수':>10}{'종가':>10}{'거래대금':>10}")
+        for s_, n, cl, am in cur.fetchall():
+            print(f"               {s_:<8}{n:>10,}{cl:>10,}{am:>10,}")
 
         cur.execute("""
             SELECT coalesce(source,'(null)'), count(*),
-                   count(*) FILTER (WHERE foreign_net <> 0),
-                   count(*) FILTER (WHERE inst_net <> 0),
-                   count(*) FILTER (WHERE inv_trust_net <> 0),
-                   count(*) FILTER (WHERE pe_net <> 0),
-                   count(*) FILTER (WHERE individual_net <> 0)
-            FROM daily_flow WHERE trade_date BETWEEN %s AND %s
-            GROUP BY 1 ORDER BY 2 DESC
+                   count(*) FILTER (WHERE foreign_net<>0), count(*) FILTER (WHERE inst_net<>0),
+                   count(*) FILTER (WHERE inv_trust_net<>0), count(*) FILTER (WHERE pe_net<>0),
+                   count(*) FILTER (WHERE individual_net<>0)
+            FROM daily_flow WHERE trade_date BETWEEN %s AND %s GROUP BY 1 ORDER BY 2 DESC
         """, (iso(START_DATE), iso(END_DATE)))
-        print(f"\n[daily_flow] {iso(START_DATE)} ~ {iso(END_DATE)}")
-        print(f"  {'source':<10} {'행수':>10} {'외국인':>9} {'기관':>9} {'투신':>9} {'사모':>9} {'개인':>9}")
+        print(f"\n[daily_flow]   {'source':<8}{'행수':>10}{'외국인':>9}{'기관':>9}{'투신':>9}{'사모':>9}{'개인':>9}")
         for s_, n, f_, i_, it, pe, pr in cur.fetchall():
-            print(f"  {s_:<10} {n:>10,} {f_:>9,} {i_:>9,} {it:>9,} {pe:>9,} {pr:>9,}")
+            print(f"               {s_:<8}{n:>10,}{f_:>9,}{i_:>9,}{it:>9,}{pe:>9,}{pr:>9,}")
 
         cur.execute("""
-            SELECT p.trade_date, p.source, p.close, p.change_pct, p.trade_amount,
-                   f.foreign_net, f.inst_net, f.inv_trust_net, f.pe_net
+            SELECT p.trade_date, p.source, p.close, p.change_pct,
+                   f.foreign_net, f.inst_net, f.inv_trust_net, f.pe_net, f.individual_net
             FROM daily_price p
             LEFT JOIN daily_flow f ON f.trade_date=p.trade_date AND f.code=p.code
             WHERE p.code='005930' AND p.trade_date BETWEEN %s AND %s
             ORDER BY p.trade_date DESC LIMIT 5
         """, (iso(START_DATE), iso(END_DATE)))
-        print(f"\n[삼성전자 005930] 최근 5일  (단위: 억원)")
-        print(f"  {'날짜':<12}{'src':<5}{'종가':>9}{'등락%':>7}{'거래대금':>10}{'외국인':>9}{'기관':>9}{'투신':>8}{'사모':>8}")
+        print(f"\n[삼성전자] 최근 5일 (억원)")
+        print(f"  {'날짜':<12}{'src':<5}{'종가':>9}{'등락%':>7}{'외국인':>9}{'기관':>9}{'투신':>8}{'사모':>8}{'개인':>9}")
         for r in cur.fetchall():
             print(f"  {str(r[0]):<12}{str(r[1] or '-'):<5}{r[2]:>9,}{float(r[3] or 0):>7.2f}"
-                  f"{(r[4] or 0)//100_000_000:>10,}{(r[5] or 0)//100_000_000:>9,}"
-                  f"{(r[6] or 0)//100_000_000:>9,}{(r[7] or 0)//100_000_000:>8,}"
-                  f"{(r[8] or 0)//100_000_000:>8,}")
+                  f"{(r[4] or 0)//100_000_000:>9,}{(r[5] or 0)//100_000_000:>9,}"
+                  f"{(r[6] or 0)//100_000_000:>8,}{(r[7] or 0)//100_000_000:>8,}"
+                  f"{(r[8] or 0)//100_000_000:>9,}")
 
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
@@ -625,6 +456,7 @@ def main():
         compare_krx_kis()
         return
 
+    t0 = time.time()
     print("\n① KIS 토큰 발급...")
     token = get_token()
 
@@ -632,64 +464,51 @@ def main():
     stocks = load_stocks()
     codes = list(stocks.keys())
     n = len(codes)
-    est = (n * 2 / MAX_RPS * len(CHUNKS)) / 60
-    print(f"   {n:,}개 종목 × {len(CHUNKS)}개 청크 → 예상 소요시간 약 {est:.0f}분")
+    calls = n * len(ANCHORS)
+    print(f"   {n:,}개 종목 × {len(ANCHORS)}회 = {calls:,}회 호출 "
+          f"→ 예상 {calls/MAX_RPS/60:.0f}분")
 
-    total_price = total_flow = 0
+    print(f"\n③ 수집 중... (워커 {WORKERS} · 최대 {MAX_RPS}건/초)")
+    price_buf, flow_buf = [], []
+    ok = skip = err = done = 0
+    tot_p = tot_f = 0
 
-    for ci, (api_s, api_e, keep_from) in enumerate(CHUNKS, 1):
-        t_chunk = time.time()
-        print(f"\n③ 청크 [{ci}/{len(CHUNKS)}] 저장 {iso(keep_from)}~{iso(api_e)} "
-              f"(조회 {iso(api_s)}~)")
-        price_rows, flow_rows = [], []
-        ok = skip = err = 0
-        done = 0
+    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        futs = {ex.submit(collect_stock, token, c, stocks.get(c, 0)): c for c in codes}
+        for fut in as_completed(futs):
+            code = futs[fut]
+            done += 1
+            try:
+                p_rows, f_rows, status = fut.result()
+            except Exception as e:
+                err += 1
+                warn_once("future", f"{code}: {e}")
+                continue
 
-        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-            futures = {ex.submit(collect_stock_chunk, token, code,
-                                 stocks.get(code, 0), api_s, api_e, keep_from): code
-                       for code in codes}
+            if status == "skip":
+                skip += 1
+            elif status == "ok":
+                ok += 1
+                price_buf.extend(p_rows)
+                flow_buf.extend(f_rows)
+                if len(price_buf) >= BATCH * 10:
+                    upsert(price_buf, flow_buf)
+                    tot_p += len(price_buf); tot_f += len(flow_buf)
+                    price_buf, flow_buf = [], []
+                    print(f"   [{done:4d}/{n}] price={tot_p:,} flow={tot_f:,} "
+                          f"({int(time.time()-t0)}초)")
+            else:
+                err += 1
+                warn_once("stock", f"{code} {status}")
 
-            for fut in as_completed(futures):
-                code = futures[fut]
-                done += 1
-                try:
-                    p_rows, f_rows, status = fut.result()
-                except Exception as e:
-                    err += 1
-                    if err <= 5:
-                        print(f"   ⚠ [{code}] future 예외: {e}")
-                    continue
+    if price_buf or flow_buf:
+        upsert(price_buf, flow_buf)
+        tot_p += len(price_buf); tot_f += len(flow_buf)
 
-                if status == "skip":
-                    skip += 1
-                elif status == "ok":
-                    ok += 1
-                    price_rows.extend(p_rows)
-                    flow_rows.extend(f_rows)
-                    if len(price_rows) >= BATCH * 10:
-                        upsert(price_rows, flow_rows)
-                        total_price += len(price_rows)
-                        total_flow += len(flow_rows)
-                        price_rows, flow_rows = [], []
-                        print(f"   [{done:4d}/{n}] 적재중... price={total_price:,} "
-                              f"flow={total_flow:,}  ({int(time.time()-t_chunk)}초)")
-                else:
-                    err += 1
-                    if err <= 5:
-                        print(f"   ⚠ [{code}] {status}")
-
-        if price_rows or flow_rows:
-            upsert(price_rows, flow_rows)
-            total_price += len(price_rows)
-            total_flow += len(flow_rows)
-
-        print(f"   청크 완료: ok={ok:,} skip={skip:,} err={err:,} "
-              f"· 누적 price={total_price:,} flow={total_flow:,} ({int(time.time()-t_chunk)}초)")
-
-    print(f"\n✅ 백필 완료: price {total_price:,}행 / flow {total_flow:,}행")
-    if total_price == 0 and total_flow == 0:
-        print("⚠️ 0행입니다. 위 '[price] 응답 필드 확인' 로그의 키 이름을 확인하세요.")
+    print(f"\n✅ 백필 완료: price {tot_p:,}행 / flow {tot_f:,}행")
+    print(f"   ok={ok:,} skip={skip:,} err={err:,}  ({int(time.time()-t0)}초)")
+    if tot_p == 0:
+        print("⚠️ 0행입니다. 위 '첫 응답 필드 확인' 로그를 보세요.")
     compare_krx_kis()
 
 
