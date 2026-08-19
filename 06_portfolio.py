@@ -69,6 +69,15 @@ def iso(d):
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 
+# --sim-from=YYYYMMDD : 시뮬레이션 시작일을 늦춥니다(그 전엔 포지션 없음).
+#   백테스트 스펙과 같은 구간(2026-04-01~08-14)으로 맞춰 비교할 때 씁니다.
+# --dry-run : 계산·요약만 하고 DB에 쓰지 않습니다.
+SIM_FROM = None
+for _a in sys.argv[1:]:
+    if _a.startswith("--sim-from="):
+        SIM_FROM = datetime.date.fromisoformat(iso(_a.split("=", 1)[1]))
+DRY_RUN = "--dry-run" in sys.argv
+
 
 # ── 데이터 로드 ───────────────────────────────────────────────────────────────
 def load_all(cur):
@@ -309,6 +318,10 @@ def main():
         all_days = sorted(closes.keys())
         first_cand = min(candidates.keys())
         sim_days = [d for d in all_days if d >= first_cand]
+        if SIM_FROM:
+            sim_days = [d for d in sim_days if d >= SIM_FROM]
+            if not sim_days:
+                sys.exit(f"❌ --sim-from={SIM_FROM} 이후 거래일이 없습니다.")
 
         if len(args) >= 2:
             rec_from = datetime.date.fromisoformat(iso(args[0]))
@@ -326,10 +339,23 @@ def main():
         print(f"   기존 VIRTUAL 포지션 {cur.rowcount:,}건 삭제 후 재생성")
 
         open_pos, closed_all, stopped = {}, [], set()
+        cum_realized = peak_equity = max_invested = mdd_amount = 0
         for day in sim_days:
-            closed_all += process_day(
+            newly = process_day(
                 day, open_pos, closes.get(day, {}), candidates.get(day, []),
                 stopped, sig, suffix="", allow_buy=True)
+            closed_all += newly
+            cum_realized += sum(p.realized_pnl or 0 for p in newly)
+
+            # 자금곡선: 실현손익 누적 + 미실현 평가손익 → 필요자금·MDD 산출
+            dc = closes.get(day, {})
+            invested_open = sum(p.invested for p in open_pos.values())
+            unrealized = sum(p.quantity * dc[p.code] - p.invested
+                             for p in open_pos.values() if p.code in dc)
+            equity = cum_realized + unrealized
+            peak_equity = max(peak_equity, equity)
+            mdd_amount = min(mdd_amount, equity - peak_equity)
+            max_invested = max(max_invested, invested_open)
 
         v_rows = [p.as_row() for p in closed_all] + [p.as_row() for p in open_pos.values()]
 
@@ -354,6 +380,8 @@ def main():
                     sig, suffix="_REAL", allow_buy=False)
 
         # ── 저장 ───────────────────────────────────────────────────────────
+        # (--dry-run이면 아래 작업을 다 하되 마지막에 rollback 합니다. 커밋 직전까지
+        #  똑같이 굴려야 실제 실행과 같은 결과를 보장할 수 있기 때문입니다.)
         if v_rows:
             execute_values(cur, """
                 INSERT INTO positions
@@ -418,28 +446,54 @@ def main():
                   reason = EXCLUDED.reason, reason_text = EXCLUDED.reason_text
             """, r_keep, page_size=500)
 
-        conn.commit()
+        if DRY_RUN:
+            conn.rollback()
+            print("   ⚠ --dry-run: 계산만 하고 DB에는 아무것도 쓰지 않았습니다.")
+        else:
+            conn.commit()
 
     # ── 요약 ─────────────────────────────────────────────────────────────
     wins = [p for p in closed_all if (p.realized_pnl or 0) > 0]
     total_pnl = sum(p.realized_pnl or 0 for p in closed_all)
-    hold_days = [(p.exit_date - p.entry_date).days for p in closed_all if p.exit_date]
+    day_idx = {d: i for i, d in enumerate(sim_days)}
+    hold_td = [day_idx[p.exit_date] - day_idx[p.entry_date] for p in closed_all
+               if p.exit_date in day_idx and p.entry_date in day_idx]
+    cand_days = [d for d in sim_days if candidates.get(d)]
+    n_cand = sum(len(candidates.get(d, [])) for d in sim_days)
 
-    print(f"\n{'='*64}\nVIRTUAL 포트폴리오 결과\n{'='*64}")
+    print(f"\n{'='*64}\nVIRTUAL 포트폴리오 결과  ({sim_days[0]} ~ {sim_days[-1]}, "
+          f"{len(sim_days)}거래일)\n{'='*64}")
     print(f"  총 포지션      : {len(closed_all) + len(open_pos):,}건 "
           f"(청산 {len(closed_all):,} / 보유중 {len(open_pos):,})")
+    print(f"  매수 종목수    : {len(set(p.code for p in closed_all) | set(open_pos)):,}종목")
     if closed_all:
         print(f"  승률           : {len(wins)/len(closed_all)*100:.1f}% "
               f"({len(wins)}/{len(closed_all)})")
         print(f"  실현손익 합계  : {total_pnl:,}원")
+        print(f"  필요자금       : {max_invested:,}원 (최대 동시투입)")
+        if max_invested:
+            print(f"  자금대비 수익률: {total_pnl/max_invested*100:+.1f}%")
+            print(f"  MDD            : {mdd_amount:,.0f}원 / "
+                  f"{mdd_amount/max_invested*100:.1f}%")
         print(f"  매도건 평균수익: {sum(float(p.return_pct or 0) for p in closed_all)/len(closed_all):+.2f}%")
-        if hold_days:
-            print(f"  평균 보유일수  : {sum(hold_days)/len(hold_days):.1f}일 (달력일)")
+        if hold_td:
+            print(f"  평균 보유일수  : {sum(hold_td)/len(hold_td):.1f}거래일")
         avg_win = sum(p.realized_pnl for p in wins) / len(wins) if wins else 0
         losses = [p for p in closed_all if (p.realized_pnl or 0) <= 0]
         avg_loss = abs(sum(p.realized_pnl for p in losses) / len(losses)) if losses else 0
         if avg_loss:
-            print(f"  손익비         : {avg_win/avg_loss:.1f}배")
+            print(f"  손익비         : {avg_win/avg_loss:.1f}배 "
+                  f"(평균이익 {avg_win:,.0f}원 / 평균손실 {avg_loss:,.0f}원)")
+        n_crash = sum(1 for p in closed_all if p.exit_reason == "CRASH_STOP_10")
+        print(f"  청산 사유      : 트레일링 -7% {len(closed_all)-n_crash:,}건 / "
+              f"급락 -10% {n_crash:,}건 ({n_crash/len(closed_all)*100:.0f}%)")
+
+    print(f"  후보 발생      : {len(cand_days)}/{len(sim_days)}일 · "
+          f"일평균 {n_cand/len(sim_days):.2f}종목")
+    tr = {}
+    for p in closed_all + list(open_pos.values()):
+        tr[p.tranches] = tr.get(p.tranches, 0) + 1
+    print(f"  트랜치 분포    : " + " · ".join(f"{k}개 {v}건" for k, v in sorted(tr.items())))
     if open_pos:
         print(f"\n  [보유 중 {len(open_pos)}건]")
         for p in sorted(open_pos.values(), key=lambda x: x.entry_date):
