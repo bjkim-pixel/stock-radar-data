@@ -54,7 +54,8 @@ def main():
 
         print(f"── 상위 10개 (참고) ──")
         for r in rows[:10]:
-            print(f"  {r[4]:>5}위  {r[0]}  {r[1]:<12}  {r[2]:<7}  시총 {r[3]/1e8:,.0f}억")
+            mkt = r[2] or "-"
+            print(f"  {r[4]:>5}위  {r[0]}  {r[1]:<12}  {mkt:<7}  시총 {r[3]/1e8:,.0f}억")
 
         print(f"\n── 컷오프별 결과 ──")
         for c in CUTOFFS:
@@ -66,14 +67,15 @@ def main():
             print(f"  상위 {c:>4}개  →  {total_stocks:,}개 → {c:,}개로 감소 "
                   f"(전체 대비 {c/total_stocks*100:.1f}%)")
             print(f"           {c}등 경계 종목: {boundary[0]} {boundary[1]} "
-                  f"({boundary[2]})  시총 {boundary[3]/1e8:,.0f}억원")
+                  f"({boundary[2] or '-'})  시총 {boundary[3]/1e8:,.0f}억원")
             if next_out:
                 print(f"           바로 밖({c+1}등, 탈락 1호): {next_out[0]} {next_out[1]} "
-                      f"({next_out[2]})  시총 {next_out[3]/1e8:,.0f}억원")
+                      f"({next_out[2] or '-'})  시총 {next_out[3]/1e8:,.0f}억원")
 
         print(f"\n── 하위 20개 (참고용 — 시총이 얼마나 작은 종목까지 지금 추적 중인지) ──")
         for r in rows[-20:]:
-            print(f"  {r[4]:>5}위  {r[0]}  {r[1]:<12}  {r[2]:<7}  시총 {r[3]/1e8:,.0f}억")
+            mkt = r[2] or "-"
+            print(f"  {r[4]:>5}위  {r[0]}  {r[1]:<12}  {mkt:<7}  시총 {r[3]/1e8:,.0f}억")
 
     print("\n✅ 조회 완료")
 
