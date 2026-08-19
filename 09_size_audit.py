@@ -74,6 +74,42 @@ def main():
         print(f"  전체 {r[0]:,}행 중 값 있는 행: bank_net={r[1]:,} insurance_net={r[2]:,} "
               f"corp_other_net={r[3]:,} foreign_net_vol={r[4]:,} inst_net_vol={r[5]:,}")
 
+        print("\n── daily_price 연도 × source 별 행수/추정 heap 용량 ──")
+        cur.execute("""
+            SELECT extract(year from trade_date)::int AS yr, source, count(*),
+                   round(avg(pg_column_size(t.*)))::bigint AS avg_bytes,
+                   pg_size_pretty(count(*) * round(avg(pg_column_size(t.*)))::bigint) AS est_heap
+            FROM daily_price t
+            GROUP BY 1, 2 ORDER BY 1, 2
+        """)
+        for row in cur.fetchall():
+            print(f"  {row[0]} · {row[1]:<8} rows={row[2]:>8,}  avg={row[3]:>5}B/행  추정heap={row[4]:>10}")
+
+        print("\n── daily_flow 연도 × source 별 행수/추정 heap 용량 ──")
+        cur.execute("""
+            SELECT extract(year from trade_date)::int AS yr, source, count(*),
+                   round(avg(pg_column_size(t.*)))::bigint AS avg_bytes,
+                   pg_size_pretty(count(*) * round(avg(pg_column_size(t.*)))::bigint) AS est_heap
+            FROM daily_flow t
+            GROUP BY 1, 2 ORDER BY 1, 2
+        """)
+        for row in cur.fetchall():
+            print(f"  {row[0]} · {row[1]:<8} rows={row[2]:>8,}  avg={row[3]:>5}B/행  추정heap={row[4]:>10}")
+
+        print("\n── EXCEL 소스 데이터가 KIS 수집 범위와 겹치는지 (날짜 범위 비교) ──")
+        cur.execute("""
+            SELECT source, min(trade_date), max(trade_date), count(*)
+            FROM daily_price GROUP BY source ORDER BY source
+        """)
+        for row in cur.fetchall():
+            print(f"  daily_price  source={row[0]:<8} {row[1]} ~ {row[2]}  ({row[3]:,}행)")
+        cur.execute("""
+            SELECT source, min(trade_date), max(trade_date), count(*)
+            FROM daily_flow GROUP BY source ORDER BY source
+        """)
+        for row in cur.fetchall():
+            print(f"  daily_flow   source={row[0]:<8} {row[1]} ~ {row[2]}  ({row[3]:,}행)")
+
         print("\n── kiwoom_holder_stats 크기/행수 ──")
         cur.execute("""
             SELECT count(*), pg_size_pretty(pg_total_relation_size('kiwoom_holder_stats'))
