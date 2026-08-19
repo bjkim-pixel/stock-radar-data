@@ -40,9 +40,6 @@ import time
 
 import openpyxl
 import psycopg2
-
-from dotenv import load_dotenv
-load_dotenv()
 from psycopg2.extras import execute_values
 
 DB_URL      = os.getenv("SUPABASE_DB_URL", "")
@@ -305,7 +302,7 @@ def migrate_price():
         """, rows, "적재")
         log(cur, "price", "SUCCESS", len(rows), "from 전종목시세.xlsx")
         c.commit()
-    print("  ✅ 완료 (amt_cap_ratio·weight_per_share는 DB가 자동 계산)")
+    print("  ✅ 완료 (weight_per_share는 DB가 자동 계산)")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -350,9 +347,10 @@ def migrate_flow():
         print(f"  {sheet:<9} {n:>7,}행 (헤더 {hdr}행)")
     wb.close()
 
+    # corp_other_net·foreign_net_vol·inst_net_vol은 2026-08 용량 정리 때 daily_flow에서
+    # 컬럼 삭제 (신호 엔진 미사용). 파싱 로직(merged 딕셔너리)은 그대로 두고 여기서만 제외.
     cols = ["foreign_net", "inst_net", "fin_inv_net", "inv_trust_net",
-            "pension_net", "pe_net", "corp_other_net",
-            "foreign_net_vol", "inst_net_vol"]
+            "pension_net", "pe_net"]
     rows = [
         (d, code, *[e.get(c) for c in cols], "EXCEL", (d, code) in partial)
         for (d, code), e in merged.items()
@@ -453,16 +451,17 @@ def check():
         a, b, n = cur.fetchone()
         print(f"  수급 기간  {a} ~ {b}  ({n}거래일)")
 
-        print("\n  파생지표 검산 (엑셀 대금비중·무게/주식수와 대조):")
+        print("\n  파생지표 검산 (엑셀 무게/주식수와 대조):")
+        # amt_cap_ratio는 2026-08 용량 정리 때 컬럼 삭제 — weight_per_share만 검산.
         cur.execute("""
-            select code, round(amt_cap_ratio,10), round(weight_per_share,10)
+            select code, round(weight_per_share,10)
             from daily_price
             where trade_date='2025-09-01' and code in ('282330','138930')
             order by code
         """)
-        for code, a, w in cur.fetchall():
-            print(f"    {code}  대금비중 {a}  무게/주식수 {w}")
-        print("    (엑셀: 138930 → 0.0023095508 / 0.0028872133,  282330 → 0.0028422186 / -0.0055692018)")
+        for code, w in cur.fetchall():
+            print(f"    {code}  무게/주식수 {w}")
+        print("    (엑셀: 138930 → 0.0028872133,  282330 → -0.0055692018)")
 
         print("\n  최근 5거래일 적재 현황:")
         cur.execute("select * from v_data_coverage limit 5")

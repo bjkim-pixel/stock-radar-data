@@ -86,10 +86,6 @@ create table if not exists daily_price (
 
   -- ── 파생지표 (당일 데이터만으로 계산되므로 DB가 직접 계산)
   --    엑셀에서 실데이터로 역산해 검증한 수식 (소수점 15자리 일치)
-  amt_cap_ratio   numeric(18,10)                       -- 대금 비중 = 거래대금 / 시가총액
-    generated always as (
-      case when market_cap > 0 then trade_amount::numeric / market_cap end
-    ) stored,
   weight_per_share numeric(18,10)                      -- 무게/주식수 = 등락률 × 거래량 / 상장주식수
     generated always as (
       case when listed_shares > 0 then change_pct * volume::numeric / listed_shares end
@@ -98,13 +94,13 @@ create table if not exists daily_price (
   primary key (trade_date, code)
 );
 
-comment on column daily_price.amt_cap_ratio    is '대금 비중 = 거래대금 ÷ 시가총액. 거래대금 회전율';
 comment on column daily_price.weight_per_share is '무게/주식수 = 등락률 × 거래량 ÷ 상장주식수. 거래량 회전율 × 등락률. 사용자 핵심 후보 선정 지표';
 comment on column daily_price.is_partial       is 'true면 필터된 범위에서 수집돼 공백이 있을 수 있음. 신호 계산에서 제외';
 
 create index if not exists idx_price_code_date on daily_price (code, trade_date desc);
-create index if not exists idx_price_date      on daily_price (trade_date desc);
 create index if not exists idx_price_weight    on daily_price (trade_date desc, weight_per_share desc);
+-- idx_price_date(trade_date desc)는 2026-08 용량 정리 때 제거. PK가 이미
+-- (trade_date, code)로 시작해 날짜 단독 조회는 PK로 충분합니다.
 
 
 -- ============================================================================
@@ -121,14 +117,7 @@ create table if not exists daily_flow (
   inv_trust_net     bigint,     -- 투신          KIS ivtr_ntby_tr_pbmn
   pension_net       bigint,     -- 연기금 등/기금 KIS fund_ntby_tr_pbmn
   pe_net            bigint,     -- 사모          KIS pe_fund_ntby_tr_pbmn
-  bank_net          bigint,     -- 은행          KIS bank_ntby_tr_pbmn
-  insurance_net     bigint,     -- 보험          KIS insu_ntby_tr_pbmn
-  corp_other_net    bigint,     -- 기타법인      KIS etc_corp_ntby_tr_pbmn
   individual_net    bigint,     -- 개인          KIS prsn_ntby_tr_pbmn
-
-  -- 순매수 수량 (주) — 주요 주체만
-  foreign_net_vol   bigint,
-  inst_net_vol      bigint,
 
   source            text default 'KIS',                -- KIS | KRX | EXCEL
   is_partial        boolean default false,
@@ -146,8 +135,9 @@ comment on column daily_flow.pension_net is 'KRX "연기금 등" ↔ KIS "기금
 comment on column daily_flow.is_partial is '엑셀 마이그레이션분 중 외국인·기관합계는 시총 5000억↑·거래량 1억↑ 필터로 수집돼 공백 있음';
 
 create index if not exists idx_flow_code_date on daily_flow (code, trade_date desc);
-create index if not exists idx_flow_date      on daily_flow (trade_date desc);
 create index if not exists idx_flow_smart     on daily_flow (trade_date desc, smart_net desc);
+-- idx_flow_date(trade_date desc)는 2026-08 용량 정리 때 제거. PK가 이미
+-- (trade_date, code)로 시작해 날짜 단독 조회는 PK로 충분합니다.
 
 
 -- ============================================================================
@@ -274,8 +264,9 @@ create table if not exists daily_metrics (
 comment on column daily_metrics.data_span_days is '250 미만이면 high_label을 "기간 내 신고가(N일)"로 표기. 250 도달 시 "52주 신고가"로 자동 전환';
 comment on column daily_metrics.flow_lead      is 'DIVERGE(외국인·기관 방향 엇갈림) + 고점권이면 매도 1단계 WATCH_EXIT (d)조건 — 가격이 꺾이기 전 수급 이탈 감지';
 
-create index if not exists idx_metrics_date on daily_metrics (trade_date desc);
 create index if not exists idx_metrics_code on daily_metrics (code, trade_date desc);
+-- idx_metrics_date(trade_date desc)는 2026-08 용량 정리 때 제거. PK가 이미
+-- (trade_date, code)로 시작해 날짜 단독 조회는 PK로 충분합니다.
 
 
 -- ============================================================================
@@ -426,10 +417,10 @@ select
   s.sector_krx, s.sector_kis, s.security_type,
   p.close, p.change_pct, p.volume, p.trade_amount,
   p.market_cap, p.listed_shares,
-  p.amt_cap_ratio, p.weight_per_share,
+  p.weight_per_share,
   f.foreign_net, f.inst_net, f.smart_net,
   f.fin_inv_net, f.inv_trust_net, f.pension_net, f.pe_net,
-  f.corp_other_net, f.individual_net,
+  f.individual_net,
   m.ma5, m.ma20, m.ma60, m.ma_aligned,
   m.amt_ratio20, m.vol_ratio20,
   m.is_new_high, m.near_high, m.high_label, m.pct_from_high, m.data_span_days,

@@ -58,6 +58,16 @@ elif len(args) == 1:
 else:
     START, END = db_date_range()
 
+# Supabase 무료 플랜 500MB 용량 한도(2026-08 확인) 때문에 daily_metrics/signals는
+# 2026년치만 보관하기로 함. daily_price/daily_flow(원본)는 400일 lookback을 위해
+# 계속 더 과거까지 쌓이지만, 파생 결과는 여기서 하한선을 걸어 절대 그 이전 날짜에
+# 쓰지 않습니다 — 언제든 05_compute.py로 재계산 가능하니 데이터 유실은 아닙니다.
+METRICS_RETENTION_START = datetime.date(2026, 1, 1)
+if START < METRICS_RETENTION_START:
+    print(f"   ⚠ start_date {START}가 보관 하한({METRICS_RETENTION_START})보다 이전이라 "
+          f"{METRICS_RETENTION_START}로 올립니다 (lookback 계산엔 원래 start_date 영향 없음).")
+    START = max(START, METRICS_RETENTION_START)
+
 PARAMS = {
     "start_date": START.isoformat(),
     "end_date":   END.isoformat(),

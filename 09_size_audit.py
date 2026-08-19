@@ -61,18 +61,24 @@ def main():
 
         print("\n── daily_flow 미사용 컬럼(bank_net/insurance_net/corp_other_net/"
               "foreign_net_vol/inst_net_vol) NULL 아닌 값 비율 ──")
-        cur.execute("""
-            SELECT count(*),
-                   count(*) FILTER (WHERE bank_net IS NOT NULL AND bank_net <> 0),
-                   count(*) FILTER (WHERE insurance_net IS NOT NULL AND insurance_net <> 0),
-                   count(*) FILTER (WHERE corp_other_net IS NOT NULL AND corp_other_net <> 0),
-                   count(*) FILTER (WHERE foreign_net_vol IS NOT NULL AND foreign_net_vol <> 0),
-                   count(*) FILTER (WHERE inst_net_vol IS NOT NULL AND inst_net_vol <> 0)
-            FROM daily_flow
-        """)
-        r = cur.fetchone()
-        print(f"  전체 {r[0]:,}행 중 값 있는 행: bank_net={r[1]:,} insurance_net={r[2]:,} "
-              f"corp_other_net={r[3]:,} foreign_net_vol={r[4]:,} inst_net_vol={r[5]:,}")
+        # 2026-08 용량 정리(10_reduce_size.py) 이후엔 이 컬럼들이 삭제되어 있을 수
+        # 있으므로, 없으면 조용히 건너뜁니다.
+        try:
+            cur.execute("""
+                SELECT count(*),
+                       count(*) FILTER (WHERE bank_net IS NOT NULL AND bank_net <> 0),
+                       count(*) FILTER (WHERE insurance_net IS NOT NULL AND insurance_net <> 0),
+                       count(*) FILTER (WHERE corp_other_net IS NOT NULL AND corp_other_net <> 0),
+                       count(*) FILTER (WHERE foreign_net_vol IS NOT NULL AND foreign_net_vol <> 0),
+                       count(*) FILTER (WHERE inst_net_vol IS NOT NULL AND inst_net_vol <> 0)
+                FROM daily_flow
+            """)
+            r = cur.fetchone()
+            print(f"  전체 {r[0]:,}행 중 값 있는 행: bank_net={r[1]:,} insurance_net={r[2]:,} "
+                  f"corp_other_net={r[3]:,} foreign_net_vol={r[4]:,} inst_net_vol={r[5]:,}")
+        except psycopg2.errors.UndefinedColumn:
+            conn.rollback()
+            print("  (컬럼이 이미 삭제됨 — 용량 정리가 완료된 상태)")
 
         print("\n── daily_price 연도 × source 별 행수/추정 heap 용량 ──")
         cur.execute("""

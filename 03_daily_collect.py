@@ -195,15 +195,13 @@ FLOW_SQL = """
 INSERT INTO daily_flow
   (trade_date, code, foreign_net, inst_net,
    fin_inv_net, inv_trust_net, pe_net, pension_net,
-   corp_other_net, individual_net,
-   foreign_net_vol, inst_net_vol, source, is_partial)
+   individual_net, source, is_partial)
 VALUES %s
 ON CONFLICT (trade_date, code) DO UPDATE SET
   foreign_net=EXCLUDED.foreign_net, inst_net=EXCLUDED.inst_net,
   fin_inv_net=EXCLUDED.fin_inv_net, inv_trust_net=EXCLUDED.inv_trust_net,
   pe_net=EXCLUDED.pe_net, pension_net=EXCLUDED.pension_net,
-  corp_other_net=EXCLUDED.corp_other_net, individual_net=EXCLUDED.individual_net,
-  foreign_net_vol=EXCLUDED.foreign_net_vol, inst_net_vol=EXCLUDED.inst_net_vol,
+  individual_net=EXCLUDED.individual_net,
   source=EXCLUDED.source, is_partial=EXCLUDED.is_partial
 """
 
@@ -271,10 +269,9 @@ def collect_stock(token, code):
             amt("ivtr_ntby_tr_pbmn"),       # 투신
             amt("pe_fund_ntby_tr_pbmn"),    # 사모
             amt("fund_ntby_tr_pbmn"),       # 연기금·기금
-            amt("etc_corp_ntby_tr_pbmn"),   # 기타법인
             amt("prsn_ntby_tr_pbmn"),       # 개인
-            safe_int(pick(inv, "frgn_reg_ntby_qty")),   # 외국인 순매수 수량
-            safe_int(pick(inv, "orgn_ntby_qty")),       # 기관 순매수 수량
+            # corp_other_net·foreign_net_vol·inst_net_vol은 2026-08 용량 정리 때
+            # 컬럼 삭제 (신호 엔진 미사용, 실제 값은 있었지만 공간 절감 우선).
             "KIS",
             False,
         ) if inv else None
