@@ -111,36 +111,81 @@ ON CONFLICT (trade_date, market) DO UPDATE SET
   regime           = EXCLUDED.regime;
 
 
--- @@STEP: sector_daily (업종별 집계)
+-- @@STEP: sector_daily (업종별 집계 + 업종 RS20 순위)
+-- ----------------------------------------------------------------------------
+-- v4 매수조건 1번: "업종 RS 상위 5위 이내".
+--   업종RS20 = 업종 소속 종목 등락률 평균의 20거래일 누적수익률(rolling, 최소 15일)
+--   소속 종목 3개 미만 업종은 랭킹에서 제외
+-- 20일 창을 채우려면 start_date 이전 데이터가 필요하므로 lookback부터 집계하고
+-- 저장만 start_date~end_date로 제한합니다.
 -- ----------------------------------------------------------------------------
 INSERT INTO sector_daily (
   trade_date, sector, market, avg_change_pct,
-  total_amount, foreign_net, inst_net, smart_net, stock_count
+  total_amount, foreign_net, inst_net, smart_net, stock_count,
+  rs20, rs_rank
 )
-SELECT p.trade_date,
-       s.sector_krx,
+WITH base AS (
+  SELECT p.trade_date,
+         s.sector_krx                                       AS sector,
+         avg(p.change_pct)                                  AS avg_change_pct,
+         sum(p.trade_amount)                                AS total_amount,
+         sum(f.foreign_net)                                 AS foreign_net,
+         sum(f.inst_net)                                    AS inst_net,
+         sum(coalesce(f.foreign_net, 0) + coalesce(f.inst_net, 0)) AS smart_net,
+         count(*)                                           AS stock_count
+  FROM daily_price p
+  JOIN stocks s      ON s.code = p.code
+  LEFT JOIN daily_flow f ON f.trade_date = p.trade_date AND f.code = p.code
+  WHERE s.security_type = 'STOCK'
+    AND s.sector_krx IS NOT NULL
+    AND p.trade_date BETWEEN %(lookback)s AND %(end_date)s
+    AND p.close > 0
+  GROUP BY p.trade_date, s.sector_krx
+),
+rs AS (
+  SELECT base.*,
+         -- 20일 누적수익률 = Π(1 + r) - 1 = exp(Σ ln(1 + r)) - 1
+         exp(sum(ln(greatest(1 + avg_change_pct / 100.0, 0.01))) OVER w20) - 1 AS rs20_raw,
+         count(*) OVER w20 AS c20
+  FROM base
+  WINDOW w20 AS (PARTITION BY sector ORDER BY trade_date
+                 ROWS BETWEEN 19 PRECEDING AND CURRENT ROW)
+),
+elig AS (
+  -- 최소 15일 + 소속 3종목 이상인 업종만 랭킹 대상
+  SELECT rs.*,
+         CASE WHEN c20 >= 15 AND stock_count >= 3 THEN rs20_raw END AS rs20_eligible
+  FROM rs
+),
+ranked AS (
+  SELECT elig.*,
+         CASE WHEN rs20_eligible IS NOT NULL
+              THEN rank() OVER (PARTITION BY trade_date
+                                ORDER BY rs20_eligible DESC NULLS LAST) END AS rs_rank
+  FROM elig
+)
+SELECT trade_date,
+       sector,
        'ALL',
-       round(avg(p.change_pct)::numeric, 4),
-       sum(p.trade_amount),
-       sum(f.foreign_net),
-       sum(f.inst_net),
-       sum(coalesce(f.foreign_net, 0) + coalesce(f.inst_net, 0)),
-       count(*)
-FROM daily_price p
-JOIN stocks s      ON s.code = p.code
-LEFT JOIN daily_flow f ON f.trade_date = p.trade_date AND f.code = p.code
-WHERE s.security_type = 'STOCK'
-  AND s.sector_krx IS NOT NULL
-  AND p.trade_date BETWEEN %(start_date)s AND %(end_date)s
-  AND p.close > 0
-GROUP BY p.trade_date, s.sector_krx
+       round(avg_change_pct::numeric, 4),
+       total_amount,
+       foreign_net,
+       inst_net,
+       smart_net,
+       stock_count,
+       round(rs20_eligible::numeric, 6),
+       rs_rank
+FROM ranked
+WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
 ON CONFLICT (trade_date, sector, market) DO UPDATE SET
   avg_change_pct = EXCLUDED.avg_change_pct,
   total_amount   = EXCLUDED.total_amount,
   foreign_net    = EXCLUDED.foreign_net,
   inst_net       = EXCLUDED.inst_net,
   smart_net      = EXCLUDED.smart_net,
-  stock_count    = EXCLUDED.stock_count;
+  stock_count    = EXCLUDED.stock_count,
+  rs20           = EXCLUDED.rs20,
+  rs_rank        = EXCLUDED.rs_rank;
 
 
 -- @@STEP: daily_metrics (종목별 파생지표 — 핵심)
@@ -157,11 +202,14 @@ INSERT INTO daily_metrics (
   foreign_slope, inst_slope, flow_lead,
   consec_both_buy, consec_both_sell,
   inst_lead_field, inst_lead_value,
+  vol_avg20_prev, vol_ratio20_prev, high_all_prev, is_new_high_all,
+  nonpersonal_net, weight_rank, cap_rank, pick_score,
   computed_at
 )
 WITH src AS (
   SELECT p.trade_date, p.code, p.close, p.volume, p.trade_amount,
-         p.market_cap, p.change_pct,
+         p.market_cap, p.change_pct, p.weight_per_share,
+         coalesce(f.individual_net, 0) AS individual_net,
          coalesce(f.foreign_net,   0) AS foreign_net,
          coalesce(f.inst_net,      0) AS inst_net,
          coalesce(f.smart_net,     0) AS smart_net,
@@ -203,6 +251,11 @@ w AS (
          avg(trade_amount) OVER w20 AS amt_avg20,
          avg(volume)       OVER w20 AS vol_avg20,
          sum(trade_amount) OVER w90 AS quarter_amt,
+         -- v4: "전일까지" 20일 평균 거래량 (당일 제외) + 상장 이후 전일까지 최고 종가
+         avg(volume) OVER w20p  AS vol_avg20_prev,
+         count(*)    OVER w20p  AS c20p,
+         max(close)  OVER wprev AS high_all_prev,
+         count(*)    OVER wprev AS cprev,
          -- 신고가: 배열 비교로 [최고종가, 그 날짜]를 한 번에 구합니다.
          --   배열은 사전식으로 비교되므로 max()가 곧 "최고 종가를 기록한 행"입니다.
          max(ARRAY[close, (trade_date - DATE '1970-01-01')::bigint]) OVER w250 AS hi,
@@ -235,13 +288,26 @@ w AS (
     w60  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  59 PRECEDING AND CURRENT ROW),
     w90  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  89 PRECEDING AND CURRENT ROW),
     w250 AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN 249 PRECEDING AND CURRENT ROW),
-    wall AS (PARTITION BY code ORDER BY trade_date ROWS UNBOUNDED PRECEDING)
+    wall AS (PARTITION BY code ORDER BY trade_date ROWS UNBOUNDED PRECEDING),
+    -- v4용: 당일을 제외한 창들
+    w20p AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING),
+    wprev AS (PARTITION BY code ORDER BY trade_date
+              ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
 ),
 fin AS (
   SELECT w.*,
          -- 직전 5일 누적 (가속/감속 판정용): 5행 전의 5일 누적값
          lag(s5, 5) OVER (PARTITION BY code ORDER BY trade_date) AS s5_prev
   FROM w
+),
+rk AS (
+  -- v4 후보 우선순위용 당일 횡단면 순위 (유니버스 전체 기준)
+  SELECT fin.*,
+         rank() OVER (PARTITION BY trade_date
+                      ORDER BY weight_per_share DESC NULLS LAST) AS weight_rank,
+         rank() OVER (PARTITION BY trade_date
+                      ORDER BY market_cap DESC NULLS LAST)       AS cap_rank
+  FROM fin
 )
 SELECT
   trade_date,
@@ -295,8 +361,22 @@ SELECT
     WHEN abs(pn5) THEN pn5
     WHEN abs(pe5) THEN pe5
   END                                                                     AS inst_lead_value,
+
+  -- ── v4 지표 ────────────────────────────────────────────────────────────
+  CASE WHEN c20p >= 20 THEN round(vol_avg20_prev)::bigint END             AS vol_avg20_prev,
+  CASE WHEN c20p >= 20 AND vol_avg20_prev > 0
+       THEN round(volume / vol_avg20_prev * 100, 2) END                   AS vol_ratio20_prev,
+  high_all_prev,
+  -- 상장 이후 전일까지 누적 최고 종가 돌파. 이력 20일 미만이면 판정 보류(NULL).
+  CASE WHEN cprev >= 20 THEN close > high_all_prev END                    AS is_new_high_all,
+  -- 비개인 순매수 = -(개인). 투자자 주체 순매수 총합이 0이므로
+  -- 외국인+기관+기타법인과 같은 값입니다(기타법인 컬럼은 용량 정리 때 삭제됨).
+  -individual_net                                                         AS nonpersonal_net,
+  weight_rank,
+  cap_rank,
+  round(weight_rank * 0.6 + cap_rank * 0.4, 2)                            AS pick_score,
   now()
-FROM fin
+FROM rk
 WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
 ON CONFLICT (trade_date, code) DO UPDATE SET
   ma5                 = EXCLUDED.ma5,
@@ -334,6 +414,14 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
   consec_both_sell    = EXCLUDED.consec_both_sell,
   inst_lead_field     = EXCLUDED.inst_lead_field,
   inst_lead_value     = EXCLUDED.inst_lead_value,
+  vol_avg20_prev      = EXCLUDED.vol_avg20_prev,
+  vol_ratio20_prev    = EXCLUDED.vol_ratio20_prev,
+  high_all_prev       = EXCLUDED.high_all_prev,
+  is_new_high_all     = EXCLUDED.is_new_high_all,
+  nonpersonal_net     = EXCLUDED.nonpersonal_net,
+  weight_rank         = EXCLUDED.weight_rank,
+  cap_rank            = EXCLUDED.cap_rank,
+  pick_score          = EXCLUDED.pick_score,
   computed_at         = now();
 
 

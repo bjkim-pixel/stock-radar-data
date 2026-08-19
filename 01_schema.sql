@@ -197,6 +197,13 @@ create table if not exists sector_daily (
   primary key (trade_date, sector, market)
 );
 
+-- v4 신호엔진(업종 RS) 추가 컬럼. 기존 테이블에도 적용되도록 ALTER로 둡니다.
+alter table sector_daily add column if not exists rs20    numeric(14,6);
+alter table sector_daily add column if not exists rs_rank integer;
+
+comment on column sector_daily.rs20    is '업종RS20 = 업종 평균 등락률의 20거래일 누적수익률(rolling, 최소 15일). 소속 종목 3개 미만 업종은 NULL';
+comment on column sector_daily.rs_rank is '당일 전체 업종 중 rs20 내림차순 순위. v4 매수조건: 5위 이내';
+
 
 -- ============================================================================
 -- 5. 계산 결과 — 파생 지표 (매일 배치가 계산해 저장, 웹은 읽기만)
@@ -268,6 +275,26 @@ create index if not exists idx_metrics_code on daily_metrics (code, trade_date d
 -- idx_metrics_date(trade_date desc)는 2026-08 용량 정리 때 제거. PK가 이미
 -- (trade_date, code)로 시작해 날짜 단독 조회는 PK로 충분합니다.
 
+-- ── v4 신호엔진 추가 지표 ────────────────────────────────────────────────────
+-- 기존 컬럼과 계산 기준이 달라 별도 컬럼으로 둡니다.
+--   vol_ratio20  : 당일 포함 20일 평균 대비 (기존)
+--   vol_ratio20_prev : "전일까지" 20일 평균 대비 (v4 스펙 — 당일 제외)
+--   is_new_high  : 250일 롤링 최고 (기존)
+--   is_new_high_all  : 상장 이후 전일까지 누적 최고 (v4 스펙 — 확장 윈도우)
+alter table daily_metrics add column if not exists vol_avg20_prev   bigint;
+alter table daily_metrics add column if not exists vol_ratio20_prev numeric(12,2);
+alter table daily_metrics add column if not exists high_all_prev    bigint;
+alter table daily_metrics add column if not exists is_new_high_all  boolean;
+alter table daily_metrics add column if not exists nonpersonal_net  bigint;
+alter table daily_metrics add column if not exists weight_rank      integer;
+alter table daily_metrics add column if not exists cap_rank         integer;
+alter table daily_metrics add column if not exists pick_score       numeric(10,2);
+
+comment on column daily_metrics.vol_ratio20_prev is 'v4: 당일거래량 ÷ 전일까지 20일 평균거래량 × 100. 매수조건 200 이상';
+comment on column daily_metrics.is_new_high_all  is 'v4: 당일 종가 > 상장 이후 전일까지 누적 최고 종가. data_span_days 20 미만 종목은 NULL';
+comment on column daily_metrics.nonpersonal_net  is 'v4: 비개인 순매수 = -(개인 순매수). 투자자 주체 순매수 총합이 0이므로 외국인+기관+기타법인과 동일';
+comment on column daily_metrics.pick_score       is 'v4 후보 우선순위 = 무게/주식수 순위×0.6 + 시가총액 순위×0.4. 낮을수록 우선';
+
 
 -- ============================================================================
 -- 5. 계산 결과 — 신호
@@ -293,6 +320,58 @@ comment on column signals.notified is '텔레그램 발송 후 true. 재실행�
 create index if not exists idx_signals_date_grade on signals (trade_date desc, grade);
 create index if not exists idx_signals_code       on signals (code, trade_date desc);
 create index if not exists idx_signals_pending    on signals (notified) where notified = false;
+
+
+-- ============================================================================
+-- 5-3. 포지션 (v4 트레일링 손절 판정용)
+-- ============================================================================
+-- v4 매도 규칙("보유 중 최고종가 대비 -7%")은 전 종목 스크리닝으로는 판정할 수
+-- 없습니다 — 언제 얼마에 샀는지와 그 이후의 최고종가를 알아야 하기 때문입니다.
+-- 그래서 포지션을 상태로 저장합니다.
+--
+-- portfolio 구분
+--   VIRTUAL : 06_portfolio.py가 백테스트 규칙 그대로 자동 운용하는 가상 포트폴리오.
+--             매 실행 시 전체 재생성되므로 직접 수정하지 마세요.
+--   REAL    : 사용자가 직접 넣는 실제 보유분. 엔진은 peak_price 갱신과 매도·추가매수
+--             신호 생성만 하고, 진입/청산은 사용자가 기록합니다.
+create table if not exists positions (
+  id              bigserial primary key,
+  portfolio       text not null default 'VIRTUAL',     -- VIRTUAL | REAL
+  code            text not null references stocks(code) on delete cascade,
+  status          text not null default 'OPEN',        -- OPEN | CLOSED
+
+  entry_date      date   not null,
+  entry_price     bigint not null,                     -- 최초 매수가 (불타기 트리거 기준)
+  avg_price       numeric(14,2) not null,              -- 트랜치 가중평균 단가
+  quantity        bigint not null,
+  invested        bigint not null,                     -- 누적 투입금액 (원)
+  tranches        integer not null default 1,          -- 트랜치 수 (최초 1 + 불타기 최대 3)
+
+  peak_price      bigint not null,                     -- 보유 중 최고 종가
+  peak_date       date,
+  pyramid_blocked boolean default false,               -- 과거 손절 이력 종목 → 불타기 중단
+
+  exit_date       date,
+  exit_price      bigint,
+  exit_reason     text,                                -- TRAIL_STOP_7 | CRASH_STOP_10
+  realized_pnl    bigint,                              -- 거래비용 반영 실현손익 (원)
+  return_pct      numeric(10,4),
+
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now()
+);
+
+comment on table  positions                 is 'v4 트레일링 손절 판정을 위한 포지션 상태. VIRTUAL은 엔진이 자동 운용(매 실행 시 재생성), REAL은 사용자 기록';
+comment on column positions.entry_price     is '최초 매수가. 불타기 트리거(+14%/+28%/+42%)는 평균단가가 아니라 이 값 기준';
+comment on column positions.peak_price      is '매수 이후 갱신되는 보유 중 최고 종가. 당일종가/peak-1 <= -7%면 전량 매도';
+comment on column positions.pyramid_blocked is 'v4 스펙: 과거에 -7% 손절이 발동된 적 있는 종목은 재진입 후 불타기 안 함';
+
+create index if not exists idx_positions_open on positions (portfolio, status, code);
+create index if not exists idx_positions_code on positions (code, entry_date desc);
+
+drop trigger if exists trg_positions_updated on positions;
+create trigger trg_positions_updated before update on positions
+  for each row execute function set_updated_at();
 
 
 -- ============================================================================
@@ -374,6 +453,7 @@ alter table market_daily        enable row level security;
 alter table sector_daily        enable row level security;
 alter table daily_metrics       enable row level security;
 alter table signals             enable row level security;
+alter table positions           enable row level security;
 alter table ingest_log          enable row level security;
 alter table watchlist           enable row level security;
 alter table trades              enable row level security;
@@ -383,7 +463,7 @@ declare t text;
 begin
   foreach t in array array[
     'stocks','daily_price','daily_flow','kiwoom_holder_stats',
-    'market_daily','sector_daily','daily_metrics','signals'
+    'market_daily','sector_daily','daily_metrics','signals','positions'
   ] loop
     execute format('drop policy if exists "public read" on %I', t);
     execute format('create policy "public read" on %I for select using (true)', t);
