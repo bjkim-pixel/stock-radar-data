@@ -28,6 +28,7 @@ DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 WORKERS  = 10   # 동시 처리 워커 수
 MAX_RPS  = 18   # 전역 최대 API 호출 속도 (KIS 한도 20/초의 90%)
 BATCH    = 500
+FLOW_UNIT = 1_000_000   # KIS 수급 금액은 '백만원' 단위 → 원으로 변환
 
 # ── 전역 속도 제한기 (토큰 버킷) ──────────────────────────────────────────────
 class RateLimiter:
@@ -73,7 +74,9 @@ print(f"▶ 수집 날짜: {TARGET_DATE_ISO}  (워커: {WORKERS}개, 최대 {MAX
 def safe_int(v, default=0):
     try:
         s = str(v).replace(",", "").strip()
-        return int(s) if s not in ("", "-", "0") else default
+        if s in ("", "-", "None"):
+            return default
+        return int(float(s))
     except:
         return default
 
@@ -142,10 +145,14 @@ def fetch_investor(token, code, date_str):
         f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
         headers=kis_headers(token, "FHPTJ04160001"),
         params={
-            "MKSC_SHRN_ISCD": code,
-            "STRT_BSNS_DT": date_str,
-            "END_BSNS_DT": date_str,
-            "HLDN_QTY_SMTN_ICDC_YN": "N",
+            # 2026-08-19 진단으로 확정된 파라미터.
+            # MKSC_SHRN_ISCD / STRT_BSNS_DT 계열은 이 엔드포인트가 받지 않습니다
+            # (rt_cd=2 "NOT FOUND [FID_COND_MRKT_DIV_CODE]" 로 조용히 실패했었음).
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": code,
+            "FID_INPUT_DATE_1": date_str,   # 기준일 → 과거 30거래일 반환
+            "FID_ORG_ADJ_PRC": "0",
+            "FID_ETC_CLS_CODE": "0",
         },
         timeout=10
     )
@@ -154,8 +161,16 @@ def fetch_investor(token, code, date_str):
     d = r.json()
     if d.get("rt_cd") != "0":
         return None
-    rows = d.get("output2") or []
-    return rows[0] if rows else None
+    rows = [x for x in (d.get("output2") or []) if x]
+    if not rows:
+        return None
+    # 첫 행이 기준일. 혹시 어긋나면 날짜가 일치하는 행을 찾습니다.
+    if str(rows[0].get("stck_bsop_date", "")).strip() == date_str:
+        return rows[0]
+    for r0 in rows:
+        if str(r0.get("stck_bsop_date", "")).strip() == date_str:
+            return r0
+    return None
 
 # ── DB: 종목 목록 조회 ────────────────────────────────────────────────────────
 def load_stocks():
@@ -180,13 +195,15 @@ FLOW_SQL = """
 INSERT INTO daily_flow
   (trade_date, code, foreign_net, inst_net,
    fin_inv_net, inv_trust_net, pe_net, pension_net,
-   corp_other_net, individual_net, source, is_partial)
+   corp_other_net, individual_net,
+   foreign_net_vol, inst_net_vol, source, is_partial)
 VALUES %s
 ON CONFLICT (trade_date, code) DO UPDATE SET
   foreign_net=EXCLUDED.foreign_net, inst_net=EXCLUDED.inst_net,
   fin_inv_net=EXCLUDED.fin_inv_net, inv_trust_net=EXCLUDED.inv_trust_net,
   pe_net=EXCLUDED.pe_net, pension_net=EXCLUDED.pension_net,
   corp_other_net=EXCLUDED.corp_other_net, individual_net=EXCLUDED.individual_net,
+  foreign_net_vol=EXCLUDED.foreign_net_vol, inst_net_vol=EXCLUDED.inst_net_vol,
   source=EXCLUDED.source, is_partial=EXCLUDED.is_partial
 """
 
@@ -240,18 +257,24 @@ def collect_stock(token, code):
         ) if pi else None
 
         # ── daily_flow ─────────────────────────────────────────────────
-        # 키 이름은 후보를 나열합니다. 하나만 하드코딩하면 틀렸을 때
-        # 에러 없이 0이 저장돼 알아채기 어렵습니다.
+        # 2026-08-19 실제 응답으로 확정된 필드명. 금액은 모두 '백만원' 단위라
+        # ×1,000,000 해야 원이 됩니다 (KRX 실측과 오차 0.01% 미만 확인).
+        # 외국인은 등록/미등록이 나뉘며, KRX '외국인'과 같은 건 등록(frgn_reg)입니다.
+        def amt(key):
+            return safe_int(pick(inv, key)) * FLOW_UNIT
+
         flow_row = (
             TARGET_DATE_ISO, code,
-            safe_int(pick(inv, "frgn_ntby_tr_pbmn", "frgn_ntby_amt")),
-            safe_int(pick(inv, "orgn_ntby_tr_pbmn", "orgn_ntby_amt")),
-            safe_int(pick(inv, "fnnc_invt_ntby_tr_pbmn", "scrt_ntby_tr_pbmn", "scrt_ntby_amt")),
-            safe_int(pick(inv, "invt_trst_ntby_tr_pbmn", "ivtr_ntby_tr_pbmn", "ivtr_ntby_amt")),
-            safe_int(pick(inv, "pe_fund_ntby_tr_pbmn", "prvt_fund_ntby_tr_pbmn", "pe_fund_ntby_amt")),
-            safe_int(pick(inv, "pgnn_ntby_tr_pbmn", "fund_ntby_tr_pbmn", "pnsn_ntby_tr_pbmn")),
-            safe_int(pick(inv, "etc_corp_ntby_tr_pbmn", "etc_orgt_ntby_tr_pbmn")),
-            safe_int(pick(inv, "prsn_ntby_tr_pbmn", "prsn_ntby_amt")),
+            amt("frgn_reg_ntby_pbmn"),      # 외국인(등록)
+            amt("orgn_ntby_tr_pbmn"),       # 기관합계
+            amt("scrt_ntby_tr_pbmn"),       # 금융투자
+            amt("ivtr_ntby_tr_pbmn"),       # 투신
+            amt("pe_fund_ntby_tr_pbmn"),    # 사모
+            amt("fund_ntby_tr_pbmn"),       # 연기금·기금
+            amt("etc_corp_ntby_tr_pbmn"),   # 기타법인
+            amt("prsn_ntby_tr_pbmn"),       # 개인
+            safe_int(pick(inv, "frgn_reg_ntby_qty")),   # 외국인 순매수 수량
+            safe_int(pick(inv, "orgn_ntby_qty")),       # 기관 순매수 수량
             "KIS",
             False,
         ) if inv else None
