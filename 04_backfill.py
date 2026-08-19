@@ -184,29 +184,42 @@ def get_token():
     return r.json()["access_token"]
 
 
-def fetch_daily(token, code, anchor):
-    """기준일부터 과거 30거래일의 시세 + 수급을 한 번에 가져옵니다."""
-    _rate.acquire()
-    try:
-        r = requests.get(
-            f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
-            headers=kis_hdr(token, "FHPTJ04160001"),
-            params={"FID_COND_MRKT_DIV_CODE": "J",
-                    "FID_INPUT_ISCD": code,
-                    "FID_INPUT_DATE_1": anchor,
-                    "FID_ORG_ADJ_PRC": "0",
-                    "FID_ETC_CLS_CODE": "0"},
-            timeout=15)
-    except Exception as ex:
-        warn_once("net", str(ex)[:120])
-        return []
+def fetch_daily(token, code, anchor, retries=2):
+    """기준일부터 과거 30거래일의 시세 + 수급을 한 번에 가져옵니다.
+    KIS는 간헐적으로 HTTP 500을 냅니다 → 짧게 쉬고 재시도합니다."""
+    d = None
+    for attempt in range(retries + 1):
+        _rate.acquire()
+        try:
+            r = requests.get(
+                f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
+                headers=kis_hdr(token, "FHPTJ04160001"),
+                params={"FID_COND_MRKT_DIV_CODE": "J",
+                        "FID_INPUT_ISCD": code,
+                        "FID_INPUT_DATE_1": anchor,
+                        "FID_ORG_ADJ_PRC": "0",
+                        "FID_ETC_CLS_CODE": "0"},
+                timeout=15)
+        except Exception as ex:
+            if attempt < retries:
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            warn_once("net", str(ex)[:120])
+            return []
 
-    if r.status_code != 200:
+        if r.status_code == 200:
+            d = r.json()
+            break
+        if attempt < retries and r.status_code >= 500:
+            time.sleep(0.5 * (attempt + 1))     # 일시적 서버 오류 → 재시도
+            continue
         warn_once("http", f"HTTP {r.status_code}")
         return []
-    d = r.json()
+
+    if d is None:
+        return []
     if d.get("rt_cd") != "0":
-        warn_once("api", f"rt_cd={d.get('rt_cd')} msg={str(d.get('msg1','')).strip()}")
+        warn_once("api", f"rt_cd={d.get('rt_cd')} msg={str(d.get('msg1','')).strip()} (예: {code})")
         return []
 
     rows = [x for x in (d.get("output2") or []) if x]
@@ -256,12 +269,17 @@ def parse_flow(r, date_str, code):
     inst = amt("orgn_ntby_tr_pbmn")
 
     # 기관 분해 합계가 기관합계와 맞는지 (데이터 이상 조기 감지)
+    #
+    # 허용오차: KIS는 각 항목을 '백만원 단위로 반올림'해서 줍니다.
+    # 구성 7개가 각각 최대 ±0.5백만원, 기관합계 자체도 ±0.5백만원 오차를
+    # 가질 수 있으므로 최대 ±4백만원까지는 반올림에 의한 정상 편차입니다.
+    # (이보다 좁게 잡으면 정상 데이터에 경고가 쏟아집니다)
     parts = sum(amt(k) for k in (
         "scrt_ntby_tr_pbmn", "ivtr_ntby_tr_pbmn", "pe_fund_ntby_tr_pbmn",
         "bank_ntby_tr_pbmn", "insu_ntby_tr_pbmn", "mrbn_ntby_tr_pbmn",
         "fund_ntby_tr_pbmn"))
-    if inst and abs(parts - inst) > FLOW_UNIT:
-        warn_once("sum", f"기관합계 불일치 {code} {date_str}: 합={parts:,} vs {inst:,}", 2)
+    if inst and abs(parts - inst) > 4 * FLOW_UNIT:
+        warn_once("sum", f"기관합계 불일치 {code} {date_str}: 합={parts:,} vs {inst:,}", 3)
 
     return (
         iso(date_str), code,
@@ -314,7 +332,21 @@ def load_stocks():
     with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
         cur.execute("SELECT code, listed_shares FROM stocks "
                     "WHERE security_type='STOCK' ORDER BY code")
-        return {r[0]: r[1] or 0 for r in cur.fetchall()}
+        rows = cur.fetchall()
+
+    # KIS는 6자리 종목코드만 받습니다. 길이가 다른 값이 섞여 있으면
+    # rt_cd=2 "INVALID INPUT_FILED_SIZE [FID_INPUT_ISCD]" 로 실패합니다.
+    good, bad = {}, []
+    for code, shares in rows:
+        c_ = (code or "").strip()
+        if len(c_) == 6:
+            good[c_] = shares or 0
+        else:
+            bad.append(code)
+    if bad:
+        print(f"   ⚠ 종목코드 형식 이상 {len(bad)}건 제외: {bad[:5]}"
+              f"{' ...' if len(bad) > 5 else ''}")
+    return good
 
 
 PRICE_SQL = """
