@@ -20,6 +20,7 @@ if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 환경변수를 설정하세요.")
 
 CUTOFFS = [500, 600, 1000]
+CAP_THRESHOLDS_EOK = [30000, 10000, 5000, 3000]  # 3조/1조/5천억/3천억
 AS_OF = "2026-08-18"
 
 
@@ -71,6 +72,18 @@ def main():
             if next_out:
                 print(f"           바로 밖({c+1}등, 탈락 1호): {next_out[0]} {next_out[1]} "
                       f"({next_out[2] or '-'})  시총 {next_out[3]/1e8:,.0f}억원")
+
+        print(f"\n── 시총 기준선별 몇 등부터 걸리는지 ──")
+        for eok in CAP_THRESHOLDS_EOK:
+            won = eok * 1e8
+            above = [r for r in rows if r[3] >= won]
+            n = len(above)
+            if n == 0:
+                print(f"  시총 {eok:,}억 이상: 0개 (전 종목이 이보다 작음)")
+                continue
+            last = above[-1]  # 그 기준선 이상인 것 중 가장 낮은 순위
+            print(f"  시총 {eok:>6,}억 이상  →  {n:,}개 (전체 대비 {n/total_stocks*100:.1f}%)  "
+                  f"경계: {n}등 {last[0]} {last[1]} (시총 {last[3]/1e8:,.0f}억)")
 
         print(f"\n── 하위 20개 (참고용 — 시총이 얼마나 작은 종목까지 지금 추적 중인지) ──")
         for r in rows[-20:]:
