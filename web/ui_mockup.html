@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STOCK RADAR · UI 시안</title>
+<style>
+:root{
+  color-scheme: light;
+  --page:#f9f9f7; --surface:#fcfcfb; --surface-2:#f2f2ef;
+  --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
+  --up:#c62828;          /* 상승·매수 — 한국식 */
+  --down:#1c5cab;        /* 하락·매도 */
+  --s1:#eb6834;          /* 계열1 오렌지 (외국인 / MA20) */
+  --s2:#1baf7a;          /* 계열2 아쿠아 (기관 / MA60) */
+  --warn:#fab219; --crit:#d03b3b; --good:#0ca30c;
+  --r:10px;
+  font-family:system-ui,-apple-system,"Segoe UI","Pretendard",sans-serif;
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --page:#0d0d0d; --surface:#1a1a19; --surface-2:#232322;
+  --ink:#fff; --ink-2:#c3c2b7; --ink-3:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+  --up:#ef5350; --down:#5598e7;
+  --s1:#d95926; --s2:#199e70;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-size:13.5px;line-height:1.55;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1480px;margin:0 auto;padding:0 20px 72px}
+h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.01em}
+.num{font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--ink-2)} .faint{color:var(--ink-3)}
+
+/* ── 헤더 ─────────────────────────────────────────────── */
+header{position:sticky;top:0;z-index:40;background:color-mix(in srgb,var(--page) 88%,transparent);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.hbar{max-width:1480px;margin:0 auto;padding:11px 20px;display:flex;align-items:center;gap:16px}
+.brand{display:flex;align-items:baseline;gap:9px}
+.brand b{font-size:15.5px;letter-spacing:-.02em;white-space:nowrap}
+.brand span{font-size:10.5px;color:var(--ink-3);letter-spacing:.08em}
+.hmeta{margin-left:auto;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:4px 10px;
+  border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--ink-2)}
+.chip b{color:var(--ink);font-weight:600}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.icon-btn{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  width:32px;height:30px;cursor:pointer;color:var(--ink-2);font-size:13px;line-height:1}
+.icon-btn:hover{color:var(--ink)}
+
+/* ── 탭 ───────────────────────────────────────────────── */
+nav{display:flex;gap:2px;max-width:1480px;margin:0 auto;padding:0 20px;overflow-x:auto;
+  border-bottom:1px solid var(--border)}
+nav button{background:none;border:none;padding:11px 15px;font-size:13px;font-weight:550;
+  color:var(--ink-3);cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;
+  margin-bottom:-1px;font-family:inherit}
+nav button:hover{color:var(--ink-2)}
+nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
+nav .badge{display:inline-block;min-width:17px;padding:0 5px;margin-left:6px;font-size:10.5px;
+  border-radius:9px;background:var(--up);color:#fff;font-weight:700;vertical-align:1px}
+
+/* ── 카드 ─────────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:15px 17px;margin-bottom:13px}
+.card>h2{font-size:11px;font-weight:650;color:var(--ink-3);text-transform:uppercase;
+  letter-spacing:.07em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card>h2 .r{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400;font-size:11px}
+.sect-title{font-size:16px;margin:26px 0 12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.sect-title>span:first-child{white-space:nowrap}
+.sect-title small{font-size:11.5px;color:var(--ink-3);font-weight:400}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}
+
+/* ── 스탯 타일 ────────────────────────────────────────── */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:11px}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:13px 15px}
+.tile .lb{font-size:10.5px;color:var(--ink-3);margin-bottom:5px}
+.tile .vl{font-size:22px;font-weight:680;letter-spacing:-.02em;line-height:1.15}
+.tile .sub{font-size:10.5px;color:var(--ink-3);margin-top:3px}
+
+/* ── 액션(신호) ───────────────────────────────────────── */
+.sig{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--grid)}
+.sig:last-child{border-bottom:none;padding-bottom:0}
+.sig:first-child{padding-top:0}
+.tag{flex:none;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
+  padding:3px 9px;border-radius:6px;color:#fff;letter-spacing:.02em}
+.tag.buy{background:var(--up)} .tag.sell{background:var(--down)}
+.tag.add{background:var(--surface-2);color:var(--up);border:1px solid var(--up)}
+.tag.watch{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border)}
+.sig .body{flex:1;min-width:0}
+.sig .nm{font-weight:640;font-size:14px}
+.sig .nm .cd{font-size:11px;color:var(--ink-3);font-weight:400;margin-left:6px}
+.sig .why{font-size:11.5px;color:var(--ink-2);margin-top:3px}
+.sig .amt{text-align:right;font-size:12px;white-space:nowrap}
+.empty{text-align:center;padding:26px 14px;color:var(--ink-3);font-size:12.5px}
+.empty .big{font-size:15px;color:var(--ink-2);font-weight:600;margin-bottom:5px}
+
+/* ── 포지션 게이지 ────────────────────────────────────── */
+.pos{padding:14px 0;border-bottom:1px solid var(--grid)}
+.pos:last-child{border-bottom:none;padding-bottom:0}
+.pos:first-child{padding-top:0}
+.pos-hd{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:9px}
+.pos-hd .nm{font-weight:640;font-size:14.5px}
+.pos-hd .cd{font-size:11px;color:var(--ink-3)}
+.pos-hd .ret{margin-left:auto;font-size:15px;font-weight:680}
+/* 게이지는 폭이 넓을수록 읽기 어려워집니다 — 눈이 마커 위치를 한 번에
+   잡을 수 있는 폭으로 고정하고, 남는 가로 공간은 수치가 씁니다. */
+.pos-row{display:flex;align-items:flex-start;gap:22px;flex-wrap:wrap}
+.gauge{width:min(100%,380px);flex:none}
+.trail{position:relative;height:22px}
+.trail .track{position:absolute;inset:6px 0 auto;height:9px;border-radius:5px;background:var(--surface-2);
+  border:1px solid var(--border);overflow:hidden}
+.trail .fill{position:absolute;left:0;top:0;bottom:0;border-radius:4px 0 0 4px;background:var(--down);opacity:.85}
+.trail .stopline{position:absolute;top:2px;bottom:2px;width:2px;background:var(--crit);border-radius:1px}
+.trail .mk{position:absolute;top:1px;width:2px;height:19px;background:var(--ink);border-radius:1px}
+.trail-lb{display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-3);margin-top:1px}
+.gauge-read{font-size:12.5px;padding-top:3px;white-space:nowrap}
+.pos-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);
+  margin-left:auto;justify-content:flex-end;padding-top:3px}
+.pos-meta b{color:var(--ink);font-weight:600}
+.alarm{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:650;
+  color:var(--crit);background:color-mix(in srgb,var(--crit) 12%,transparent);
+  padding:2px 8px;border-radius:5px}
+
+/* ── 컨트롤 ───────────────────────────────────────────── */
+.ctrl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sortbtn{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:6px 11px;
+  font-size:12px;cursor:pointer;color:var(--ink-2);font-family:inherit;display:inline-flex;gap:6px;align-items:center}
+.sortbtn:hover{border-color:var(--ink-3)}
+.sortbtn[aria-pressed=true]{background:var(--ink);color:var(--page);border-color:var(--ink);font-weight:600}
+.fchip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:5px 11px;border-radius:20px;
+  border:1px solid var(--border);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.fchip[aria-pressed=true]{background:color-mix(in srgb,var(--up) 10%,var(--surface));
+  border-color:var(--up);color:var(--up);font-weight:600}
+select,input[type=date],input[type=number]{background:var(--surface);border:1px solid var(--border);
+  color:var(--ink);border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit}
+
+/* ── 테이블 ───────────────────────────────────────────── */
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{position:sticky;top:0;z-index:2;background:var(--surface-2);color:var(--ink-3);font-size:10.5px;
+  font-weight:650;padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border);
+  letter-spacing:.02em}
+th.l,td.l{text-align:left}
+th.grp{border-left:1px solid var(--border)} td.grp{border-left:1px solid var(--grid)}
+td{padding:8px 10px;text-align:right;font-size:12px;white-space:nowrap;border-bottom:1px solid var(--grid)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--surface-2)}
+td .nm{font-weight:600}
+td .cd{color:var(--ink-3);font-size:10.5px}
+.rank{color:var(--ink-3);font-size:10.5px}
+
+/* ── 차트 ─────────────────────────────────────────────── */
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;gap:15px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:9px}
+.legend i{display:inline-block;width:11px;height:3px;border-radius:2px;margin-right:6px;vertical-align:2px}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--border);
+  border-radius:7px;padding:7px 10px;font-size:11.5px;box-shadow:0 4px 14px rgba(0,0,0,.13);
+  opacity:0;transition:opacity .1s;z-index:10;white-space:nowrap}
+.tip b{font-weight:650}
+.tip .row{display:flex;gap:12px;justify-content:space-between}
+
+/* ── 종목상세 ─────────────────────────────────────────── */
+.dt-hd{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:4px}
+.dt-hd .px{font-size:29px;font-weight:700;letter-spacing:-.025em;line-height:1}
+.mg{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:1px;
+  background:var(--grid);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.mg div{background:var(--surface);padding:10px 12px}
+.mg .k{font-size:10.5px;color:var(--ink-3);margin-bottom:3px}
+.mg .v{font-size:14.5px;font-weight:640}
+.tl{position:relative;padding-left:19px}
+.tl::before{content:"";position:absolute;left:4px;top:5px;bottom:5px;width:1px;background:var(--grid)}
+.tl .ev{position:relative;padding:8px 0}
+.tl .ev::before{content:"";position:absolute;left:-19px;top:13px;width:9px;height:9px;border-radius:50%;
+  background:var(--surface);border:2px solid var(--ink-3)}
+.tl .ev.b::before{border-color:var(--up)} .tl .ev.s::before{border-color:var(--down)}
+.tl .d{font-size:10.5px;color:var(--ink-3)}
+
+.note{font-size:11.5px;color:var(--ink-3);margin-top:9px;line-height:1.6}
+.mockbar{background:color-mix(in srgb,var(--warn) 16%,var(--page));border-bottom:1px solid var(--border);
+  font-size:11.5px;padding:7px 20px;text-align:center;color:var(--ink-2)}
+.hide{display:none!important}
+
+@media(max-width:920px){
+  .grid2,.grid3{grid-template-columns:1fr}
+  .wrap{padding:0 13px 60px}
+  .hbar{padding:10px 13px}
+  nav{padding:0 13px}
+  .hmeta .chip.opt{display:none}
+  th.opt,td.opt{display:none}
+  .pos-hd .ret{font-size:14px}
+}
+</style>
+</head>
+<body>
+
+<div class="mockbar">
+  UI 시안 — 화면 구성·정보 위계 확인용입니다. 숫자는 실제 계산 결과(4/1~8/19 구간)를 넣었고, 차트는 형태 확인용 예시입니다.
+</div>
+
+<header>
+  <div class="hbar">
+    <div class="brand"><b>STOCK RADAR</b><span>v4</span></div>
+    <div class="hmeta">
+      <span class="chip"><span class="dot" style="background:var(--warn)"></span>시장 <b>중립</b></span>
+      <span class="chip opt">유니버스 <b>300</b>종목</span>
+      <span class="chip">기준 <b>2026-08-19</b></span>
+      <button class="icon-btn" id="themeBtn" title="테마 전환">◐</button>
+    </div>
+  </div>
+  <nav id="tabs">
+    <button aria-selected="true" data-v="today">오늘<span class="badge">3</span></button>
+    <button data-v="screener">스크리너</button>
+    <button data-v="detail">종목 상세</button>
+    <button data-v="perf">성과</button>
+  </nav>
+</header>
+
+<div class="wrap">
+
+<!-- ══════════════ ① 오늘 ══════════════ -->
+<section id="v-today">
+
+  <div class="sect-title"><span>오늘의 액션</span> <small>v4 전략이 오늘 지시하는 것만 표시합니다</small></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>매도 · 즉시 확인<span class="r faint">보유 중 손절선 도달</span></h2>
+      <div class="sig">
+        <span class="tag sell">전량매도</span>
+        <div class="body">
+          <div class="nm">금호타이어<span class="cd">073240</span></div>
+          <div class="why">보유 중 고점 8,140원 대비 <b class="down">-7.2%</b> · 트레일링 손절선(-7%) 도달</div>
+        </div>
+        <div class="amt"><span class="down">-720,194원</span><br><span class="faint">1,229주</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>매수 · 신규 진입<span class="r faint">일 최대 5종목</span></h2>
+      <div class="sig">
+        <span class="tag buy">신규매수</span>
+        <div class="body">
+          <div class="nm">현대해상<span class="cd">001450</span></div>
+          <div class="why">신고가 돌파 · 보험(RS 2위) · 거래량 262% · 비개인 +545억</div>
+        </div>
+        <div class="amt">49,700원<br><span class="faint">201주 · 1,000만</span></div>
+      </div>
+      <div class="sig">
+        <span class="tag add">추가매수</span>
+        <div class="body">
+          <div class="nm">NHN<span class="cd">181710</span></div>
+          <div class="why">최초 매수가 대비 <b class="up">+14.3%</b> 도달 · 불타기 2회차</div>
+        </div>
+        <div class="amt">76,900원<br><span class="faint">130주 · 1,000만</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sect-title"><span>보유 포지션</span> <small>매도 판단은 고점 대비 낙폭 하나로 결정됩니다</small></div>
+  <div class="card" id="posList"></div>
+
+  <div class="sect-title"><span>오늘 후보</span> <small>6개 조건을 모두 통과했지만 한도·기보유로 매수되지 않은 종목</small></div>
+  <div class="card">
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th class="l">우선순위</th><th class="l">종목</th><th class="l opt">업종</th>
+          <th>종가</th><th>등락률</th><th>무게/주식수</th><th class="opt">거래량비</th>
+          <th class="opt">시총</th><th class="opt">비개인</th><th>사유</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="l rank">1</td><td class="l"><span class="nm">한국콜마</span> <span class="cd">161890</span></td>
+            <td class="l opt dim">화학</td><td>135,200</td><td class="up">+4.12%</td><td class="up">+0.0331%</td>
+            <td class="opt">318%</td><td class="opt">3.1조</td><td class="opt up">+212억</td><td class="faint">보유 중</td></tr>
+          <tr><td class="l rank">2</td><td class="l"><span class="nm">코스메카코리아</span> <span class="cd">241710</span></td>
+            <td class="l opt dim">화학</td><td>88,400</td><td class="up">+6.83%</td><td class="up">+0.0298%</td>
+            <td class="opt">300%</td><td class="opt">2.4조</td><td class="opt up">+181억</td><td class="faint">보유 중</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">신호가 희소한 전략입니다 — 검증구간 95거래일 중 후보가 나온 날은 44일, 일평균 1.05종목이었습니다. “오늘은 매수 없음”이 기본 상태입니다.</div>
+  </div>
+</section>
+
+
+<!-- ══════════════ ② 스크리너 ══════════════ -->
+<section id="v-screener" class="hide">
+  <div class="sect-title"><span>스크리너</span> <small>전략과 무관하게 직접 훑어보는 화면</small></div>
+
+  <div class="card">
+    <h2>정렬 기준</h2>
+    <div class="ctrl" style="margin-bottom:11px">
+      <button class="sortbtn" aria-pressed="true" data-s="w">무게/주식수 <span>▼</span></button>
+      <button class="sortbtn" data-s="c">등락률 <span>▼</span></button>
+      <button class="sortbtn" data-s="m">시가총액 <span>▼</span></button>
+      <span class="faint" style="font-size:11px">└ 매일 쓰시는 3축을 최상단에 고정</span>
+    </div>
+    <div class="ctrl" style="margin-bottom:11px">
+      <input type="date" value="2026-08-19">
+      <select><option>업종 전체</option><option>화학</option><option>전기전자</option></select>
+      <select><option>시총 전체</option><option>2조 이상</option><option>1~2조</option></select>
+      <input type="number" placeholder="거래대금 ≥ 억원" style="width:140px">
+    </div>
+    <div class="ctrl">
+      <button class="fchip" aria-pressed="true">거래량 200%↑</button>
+      <button class="fchip">신고가</button>
+      <button class="fchip">외국인 순매수</button>
+      <button class="fchip">기관 순매수</button>
+      <button class="fchip">연속 양매수 3일↑</button>
+      <button class="fchip">v4 후보만</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>결과<span class="r faint">300종목 중 <b>18</b>종목 · 무게/주식수 내림차순</span></h2>
+    <div class="tw">
+      <table>
+        <thead>
+          <tr>
+            <th class="l">#</th><th class="l">종목</th><th class="l opt">업종</th>
+            <th>종가</th><th>등락률</th><th>무게/주식수</th>
+            <th class="grp">시가총액</th><th class="opt">거래대금</th><th class="opt">대금비중</th><th class="opt">거래량비</th>
+            <th class="grp opt">외국인</th><th class="opt">기관</th><th class="opt">기타법인</th>
+            <th class="grp">신호</th>
+          </tr>
+        </thead>
+        <tbody id="scrBody"></tbody>
+      </table>
+    </div>
+    <div class="note">
+      <b>대금비중</b>(거래대금÷시총)과 <b>기타법인</b> 순매수는 용량 정리 때 컬럼을 지웠지만,
+      조회 시점에 계산해서 그대로 보여줄 수 있습니다 — 기타법인 = −(개인+외국인+기관).
+      화면 폭이 좁으면 수급·거래 그룹은 자동으로 접힙니다.
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════ ③ 종목 상세 ══════════════ -->
+<section id="v-detail" class="hide">
+  <div class="sect-title"><span>종목 상세</span></div>
+
+  <div class="card">
+    <div class="dt-hd">
+      <div>
+        <div style="font-size:19px;font-weight:680">현대해상 <span class="faint" style="font-size:12px;font-weight:400">001450 · KOSPI · 보험</span></div>
+        <div class="faint" style="font-size:11.5px">v4 보유 중 · 2026-08-18 진입</div>
+      </div>
+      <div class="px num up">50,000</div>
+      <div class="up num" style="font-size:14px;font-weight:640">+300 (+0.60%)</div>
+      <span class="tag buy" style="margin-left:auto">보유 · 트랜치 1</span>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>가격 · 이동평균<span class="r faint">최근 60거래일</span></h2>
+      <div class="legend">
+        <span><i style="background:var(--ink)"></i>종가</span>
+        <span><i style="background:var(--s1)"></i>MA20</span>
+        <span><i style="background:var(--s2)"></i>MA60</span>
+      </div>
+      <div class="chart" id="cPrice"></div>
+    </div>
+
+    <div class="card">
+      <h2>투자자별 순매수<span class="r faint">최근 20거래일 · 억원</span></h2>
+      <div class="legend">
+        <span><i style="background:var(--s1)"></i>외국인</span>
+        <span><i style="background:var(--s2)"></i>기관</span>
+      </div>
+      <div class="chart" id="cFlow"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>지표</h2>
+    <div class="mg">
+      <div><div class="k">무게/주식수</div><div class="v up">+0.0182%</div></div>
+      <div><div class="k">대금비중</div><div class="v">0.94%</div></div>
+      <div><div class="k">거래량비(20일)</div><div class="v">262%</div></div>
+      <div><div class="k">시가총액</div><div class="v">4.4조</div></div>
+      <div><div class="k">신고가 대비</div><div class="v">-0.6%</div></div>
+      <div><div class="k">업종 RS</div><div class="v">2위</div></div>
+      <div><div class="k">연속 양매수</div><div class="v">4일</div></div>
+      <div><div class="k">5일 비개인</div><div class="v up">+545억</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>신호 · 포지션 이력</h2>
+    <div class="tl">
+      <div class="ev b"><div class="d">2026-08-18</div><b>V4_BUY</b> · 신규매수 49,700원 201주 — 신고가 돌파 · 보험 RS 2위 · 거래량 262%</div>
+      <div class="ev"><div class="d">2026-08-14</div><span class="dim">V4_CANDIDATE</span> · 후보 진입(우선순위 3위) — 당일 한도 초과로 미매수</div>
+      <div class="ev s"><div class="d">2026-06-11</div><b>V4_SELL</b> · 전량매도 44,701원 — 고점 대비 -8.2% <span class="down">(-7.6%)</span></div>
+      <div class="ev b"><div class="d">2026-06-01</div><b>V4_BUY</b> · 신규매수 48,249원 207주</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════ ④ 성과 ══════════════ -->
+<section id="v-perf" class="hide">
+  <div class="sect-title"><span>성과</span> <small>가상 포트폴리오 · 2026-04-01 ~ 08-19 (95거래일)</small></div>
+
+  <div class="tiles" style="margin-bottom:13px">
+    <div class="tile"><div class="lb">실현손익</div><div class="vl up num">+2.09억</div><div class="sub">209,049,358원</div></div>
+    <div class="tile"><div class="lb">자금대비 수익률</div><div class="vl up num">+47.8%</div><div class="sub">필요자금 4.37억</div></div>
+    <div class="tile"><div class="lb">MDD</div><div class="vl down num">-7.4%</div><div class="sub">-32,417,526원</div></div>
+    <div class="tile"><div class="lb">승률</div><div class="vl num">45.0%</div><div class="sub">27승 33패</div></div>
+    <div class="tile"><div class="lb">손익비</div><div class="vl num">11.1배</div><div class="sub">평균이익÷평균손실</div></div>
+    <div class="tile"><div class="lb">평균 보유</div><div class="vl num">8.4일</div><div class="sub">거래일 기준</div></div>
+  </div>
+
+  <div class="card">
+    <h2>누적 손익<span class="r faint">실현 + 평가</span></h2>
+    <div class="chart" id="cEquity"></div>
+    <div class="note">최고점 7/17 대비 7/24까지 -3,241만원(-7.4%)이 최대 낙폭이었습니다. 백테스트 스펙의 -7.4%와 일치합니다.</div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>월별 실현손익</h2>
+      <div class="chart" id="cMonthly"></div>
+    </div>
+    <div class="card">
+      <h2>청산 사유<span class="r faint">60건</span></h2>
+      <div class="chart" id="cExit"></div>
+      <div class="note">급락(-10%) 청산이 30%로, 스펙이 “안전장치”로 표현한 것보다 자주 걸립니다 — 거래량이 터진 신고가를 종가에 사는 전략의 구조적 특성으로 보입니다.</div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+/* ═══ 데이터 (실제 계산 결과 + 시안용 예시) ═══════════════ */
+const POS = [
+  {nm:"금호타이어", cd:"073240", ed:"2026-08-13", avg:8140,  px:7554,  peak:8140,   tr:1, qty:1229},
+  {nm:"한국콜마",   cd:"161890", ed:"2026-08-13", avg:135200,px:127764,peak:135200, tr:1, qty:73},
+  {nm:"현대해상",   cd:"001450", ed:"2026-08-18", avg:49700, px:50000, peak:50300,  tr:1, qty:201},
+  {nm:"NHN",        cd:"181710", ed:"2026-08-12", avg:67321, px:74524, peak:76000,  tr:2, qty:297},
+];
+const SCR = [
+  ["한국콜마","161890","화학",135200,4.12,0.0331,3.1,1420,0.46,318,212,88,-31,"후보"],
+  ["코스메카코리아","241710","화학",88400,6.83,0.0298,2.4,1180,0.49,300,181,64,-22,"후보"],
+  ["NHN","181710","서비스업",74524,3.21,0.0264,2.2,980,0.45,206,300,120,-40,"보유"],
+  ["금호타이어","073240","운수장비",7554,-6.60,-0.0241,2.7,1310,0.48,142,-88,-51,12,"매도"],
+  ["현대해상","001450","보험",50000,0.60,0.0182,4.4,1030,0.23,262,545,203,-77,"보유"],
+  ["삼성전기","009150","전기전자",143800,2.44,0.0155,10.8,2140,0.20,148,412,88,-30,""],
+  ["코스맥스","192820","화학",266000,5.12,0.0148,2.6,1640,0.63,642,266,91,-38,""],
+  ["LG에너지솔루션","373220","전기전자",351000,1.18,0.0092,82.1,3120,0.04,112,880,-210,-95,""],
+];
+const EQ = [["4/03",0],["4/10",12.4],["4/17",28.6],["4/24",22.1],["5/01",41.5],["5/08",33.2],
+  ["5/15",25.8],["5/22",30.4],["5/29",27.9],["6/05",48.3],["6/12",72.6],["6/19",95.1],
+  ["6/26",118.4],["7/03",140.2],["7/10",156.8],["7/17",162.5],["7/24",130.1],["7/31",152.3],
+  ["8/07",178.6],["8/14",197.2],["8/19",209.0]];
+const MON = [["4월",41.5],["5월",-13.6],["6월",90.5],["7월",33.9],["8월",56.7]];
+
+/* ═══ 유틸 ═══════════════════════════════════════════════ */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const N=(v,d=0)=>v.toLocaleString("ko-KR",{minimumFractionDigits:d,maximumFractionDigits:d});
+const sgn=v=>(v>0?"up":v<0?"down":"dim");
+const pm =(v,d=2)=>(v>0?"+":"")+N(v,d);
+const SVG="http://www.w3.org/2000/svg";
+const el=(t,a={})=>{const e=document.createElementNS(SVG,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+
+/* ═══ 탭 ═════════════════════════════════════════════════ */
+$$("#tabs button").forEach(b=>b.onclick=()=>{
+  $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  ["today","screener","detail","perf"].forEach(v=>$("#v-"+v).classList.toggle("hide",v!==b.dataset.v));
+  window.scrollTo(0,0); draw();
+});
+$("#themeBtn").onclick=()=>{
+  document.documentElement.dataset.theme =
+    document.documentElement.dataset.theme==="dark"?"light":"dark";
+  draw();
+};
+$$(".sortbtn").forEach(b=>b.onclick=()=>$$(".sortbtn").forEach(x=>x.setAttribute("aria-pressed",x===b)));
+$$(".fchip").forEach(b=>b.onclick=()=>b.setAttribute("aria-pressed",b.getAttribute("aria-pressed")!=="true"));
+
+/* ═══ ① 포지션 트레일링 게이지 ═══════════════════════════ */
+/* 매도 판단의 전부인 "고점 대비 낙폭"을 -7% 손절선과 함께 한 줄로 보여줍니다.  */
+function renderPos(){
+  const STOP=-7;
+  $("#posList").innerHTML = POS.map(p=>{
+    const dd  = (p.px/p.peak-1)*100;          // 고점 대비 낙폭
+    const ret = (p.px/p.avg-1)*100;           // 평단 대비 손익
+    const room= dd-STOP;                      // 손절까지 여유 (%p)
+    const pct = Math.min(100, Math.max(0, dd/STOP*100));
+    const danger = room<=1;
+    return `<div class="pos">
+      <div class="pos-hd">
+        <span class="nm">${p.nm}</span><span class="cd">${p.cd}</span>
+        ${p.tr>1?`<span class="tag add" style="font-size:10px;padding:1px 6px">트랜치 ${p.tr}</span>`:""}
+        ${danger?`<span class="alarm">▲ 손절 임박</span>`:""}
+        <span class="ret ${sgn(ret)}">${pm(ret)}%</span>
+      </div>
+      <div class="pos-row">
+        <div class="gauge">
+          <div class="trail">
+            <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+            <div class="stopline" style="left:calc(100% - 1px)"></div>
+            <div class="mk" style="left:calc(${pct}% - 1px)"></div>
+          </div>
+          <div class="trail-lb"><span>고점 ${N(p.peak)}원</span><span>손절 -7%</span></div>
+        </div>
+        <div class="gauge-read ${danger?"":"dim"}" style="${danger?"color:var(--crit);font-weight:650":""}">
+          낙폭 ${pm(dd,1)}% · 손절까지 <b>${N(Math.max(0,room),1)}%p</b>
+        </div>
+        <div class="pos-meta">
+          <span>진입 <b>${p.ed}</b></span><span>평단 <b>${N(p.avg)}</b>원</span>
+          <span>현재가 <b>${N(p.px)}</b>원</span><span>수량 <b>${N(p.qty)}</b>주</span>
+          <span>평가손익 <b class="${sgn(ret)}">${pm(Math.round(p.qty*(p.px-p.avg)),0)}</b>원</span>
+        </div>
+      </div></div>`;
+  }).join("");
+}
+
+/* ═══ ② 스크리너 테이블 ═════════════════════════════════ */
+function renderScr(){
+  $("#scrBody").innerHTML = SCR.map((r,i)=>{
+    const [nm,cd,sec,px,chg,w,cap,amt,share,vol,fg,ins,corp,sig]=r;
+    const tag = sig==="매도"?`<span class="tag sell" style="font-size:10px;padding:1px 6px">매도</span>`
+      : sig==="보유"?`<span class="tag watch" style="font-size:10px;padding:1px 6px">보유</span>`
+      : sig==="후보"?`<span class="tag add" style="font-size:10px;padding:1px 6px">후보</span>`:`<span class="faint">–</span>`;
+    return `<tr>
+      <td class="l rank">${i+1}</td>
+      <td class="l"><span class="nm">${nm}</span> <span class="cd">${cd}</span></td>
+      <td class="l opt dim">${sec}</td>
+      <td>${N(px)}</td>
+      <td class="${sgn(chg)}">${pm(chg)}%</td>
+      <td class="${sgn(w)}">${pm(w,4)}%</td>
+      <td class="grp">${N(cap,1)}조</td>
+      <td class="opt">${N(amt)}억</td>
+      <td class="opt">${N(share,2)}%</td>
+      <td class="opt">${N(vol)}%</td>
+      <td class="grp opt ${sgn(fg)}">${pm(fg,0)}</td>
+      <td class="opt ${sgn(ins)}">${pm(ins,0)}</td>
+      <td class="opt ${sgn(corp)}">${pm(corp,0)}</td>
+      <td class="grp">${tag}</td></tr>`;
+  }).join("");
+}
+
+/* ═══ 차트 공통 ═════════════════════════════════════════ */
+function tipFor(host){
+  let t=host.querySelector(".tip");
+  if(!t){t=document.createElement("div");t.className="tip";host.appendChild(t);}
+  return t;
+}
+function css(v){return getComputedStyle(document.body).getPropertyValue(v).trim();}
+/* 축 눈금을 1/2/5×10^n 단위의 읽기 쉬운 수로 떨어뜨립니다 */
+function niceTicks(min,max,n){
+  const span=(max-min)||1, raw=span/n, mag=Math.pow(10,Math.floor(Math.log10(raw)));
+  const norm=raw/mag, step=(norm<=1?1:norm<=2?2:norm<=5?5:10)*mag;
+  const out=[]; for(let v=Math.ceil(min/step)*step; v<=max+1e-9; v+=step) out.push(+v.toFixed(10));
+  return out;
+}
+
+/* 선형 차트 — 2px 라인, 크로스헤어 + 툴팁, 끝점 직접 라벨 */
+function lineChart(host, series, labels, opt={}){
+  host.innerHTML="";
+  const W=opt.w||560, H=opt.h||210, P={t:14,r:opt.pr||52,b:22,l:opt.pl||46};
+  const all=series.flatMap(s=>s.v);
+  let min=Math.min(...all), max=Math.max(...all);
+  const pad=(max-min)*0.12||1; min-=pad; max+=pad;
+  if(opt.zero) min=Math.min(min,0);
+  const X=i=>P.l+i*(W-P.l-P.r)/(labels.length-1);
+  const Y=v=>P.t+(max-v)/(max-min)*(H-P.t-P.b);
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});
+
+  // 그리드 + y축 라벨 — 눈금은 "예쁜 수"로 떨어뜨립니다
+  niceTicks(min,max,4).forEach(v=>{
+    if(v<min||v>max) return;
+    const y=Y(v);
+    svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:y,y2:y,stroke:css("--grid"),"stroke-width":1}));
+    const tx=el("text",{x:P.l-7,y:y+3.5,"text-anchor":"end","font-size":10,fill:css("--ink-3")});
+    tx.textContent=opt.fy?opt.fy(v):N(v,0); svg.appendChild(tx);
+  });
+  // x축 라벨 (양끝 + 중간)
+  [0,Math.floor(labels.length/2),labels.length-1].forEach(i=>{
+    const tx=el("text",{x:X(i),y:H-6,"text-anchor":i===0?"start":i===labels.length-1?"end":"middle",
+      "font-size":10,fill:css("--ink-3")});
+    tx.textContent=labels[i]; svg.appendChild(tx);
+  });
+  // 라인
+  series.forEach(s=>{
+    const d=s.v.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    svg.appendChild(el("path",{d,fill:"none",stroke:css(s.c),"stroke-width":s.w||2,
+      "stroke-linecap":"round","stroke-linejoin":"round"}));
+  });
+  // 끝점 직접 라벨 (라이트모드 저대비 계열의 relief) — 겹치면 세로로 밀어냅니다
+  const li=labels.length-1;
+  const ends=series.map(s=>({n:s.n,c:s.c,y:Y(s.v[li]),ry:Y(s.v[li])}))
+                   .sort((a,b)=>a.y-b.y);
+  for(let i=1;i<ends.length;i++)
+    if(ends[i].ry-ends[i-1].ry<12) ends[i].ry=ends[i-1].ry+12;
+  ends.forEach(e=>{
+    svg.appendChild(el("circle",{cx:X(li),cy:e.y,r:3.5,fill:css(e.c),
+      stroke:css("--surface"),"stroke-width":2}));
+    if(Math.abs(e.ry-e.y)>1)   // 밀어낸 라벨은 가는 지시선으로 연결
+      svg.appendChild(el("line",{x1:X(li)+4,y1:e.y,x2:X(li)+7,y2:e.ry-3.5,
+        stroke:css("--axis"),"stroke-width":1}));
+    const lb=el("text",{x:X(li)+9,y:e.ry+3.5,"font-size":10.5,fill:css("--ink-2"),"font-weight":600});
+    lb.textContent=e.n; svg.appendChild(lb);
+  });
+  // 크로스헤어 + 히트영역
+  const cross=el("line",{stroke:css("--axis"),"stroke-width":1,opacity:0});
+  svg.appendChild(cross);
+  const dots=series.map(s=>{const c=el("circle",{r:4.5,fill:css(s.c),stroke:css("--surface"),
+    "stroke-width":2,opacity:0});svg.appendChild(c);return c;});
+  const tip=tipFor(host);
+  const hit=el("rect",{x:P.l,y:0,width:W-P.l-P.r,height:H,fill:"transparent"});
+  svg.appendChild(hit);
+  hit.addEventListener("pointermove",e=>{
+    const r=svg.getBoundingClientRect(), px=(e.clientX-r.left)/r.width*W;
+    let i=Math.round((px-P.l)/((W-P.l-P.r)/(labels.length-1)));
+    i=Math.max(0,Math.min(labels.length-1,i));
+    cross.setAttribute("x1",X(i));cross.setAttribute("x2",X(i));
+    cross.setAttribute("y1",P.t);cross.setAttribute("y2",H-P.b);cross.setAttribute("opacity",1);
+    series.forEach((s,k)=>{dots[k].setAttribute("cx",X(i));dots[k].setAttribute("cy",Y(s.v[i]));
+      dots[k].setAttribute("opacity",1);});
+    tip.innerHTML=`<b>${labels[i]}</b>`+series.map(s=>
+      `<div class="row"><span style="color:${css(s.c)}">${s.n}</span><b>${opt.ft?opt.ft(s.v[i]):N(s.v[i],0)}</b></div>`).join("");
+    tip.style.opacity=1;
+    const hx=X(i)/W*r.width;
+    tip.style.left=Math.min(r.width-140,Math.max(0,hx+12))+"px";
+    tip.style.top="8px";
+  });
+  hit.addEventListener("pointerleave",()=>{
+    cross.setAttribute("opacity",0);dots.forEach(d=>d.setAttribute("opacity",0));tip.style.opacity=0;});
+  host.appendChild(svg);
+}
+
+/* 막대 차트 — 4px 라운드 데이터엔드, 막대 사이 2px 표면 간격 */
+function barChart(host, items, opt={}){
+  host.innerHTML="";
+  const W=opt.w||560, H=opt.h||190, P={t:14,r:12,b:24,l:opt.pl||48};
+  const vals=items.flatMap(d=>d.g?d.g.map(x=>x.v):[d.v]);
+  let max=Math.max(...vals,0), min=Math.min(...vals,0);
+  const pad=(max-min)*0.12||1; max+=pad; if(min<0)min-=pad;
+  const Y=v=>P.t+(max-v)/(max-min)*(H-P.t-P.b);
+  const slot=(W-P.l-P.r)/items.length;
+  const nSer=(items[0].g||[0]).length;
+  // 얇은 마크 — 슬롯이 넓어도 막대는 계열당 최대 44px로 제한하고 가운데 정렬
+  const bw=Math.min(slot-8, 44*nSer+2*(nSer-1));
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});
+  niceTicks(min,max,4).concat(min<0?[0]:[]).forEach(v=>{
+    if(v<min||v>max) return;
+    const y=Y(v);
+    svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:y,y2:y,
+      stroke:v===0?css("--axis"):css("--grid"),"stroke-width":1}));
+    const tx=el("text",{x:P.l-7,y:y+3.5,"text-anchor":"end","font-size":10,fill:css("--ink-3")});
+    tx.textContent=opt.fy?opt.fy(v):N(v,0);svg.appendChild(tx);
+  });
+  const y0=Y(0), tip=tipFor(host);
+  items.forEach((d,i)=>{
+    const grp=d.g||[{v:d.v,c:d.c}];
+    const gw=bw/grp.length, x0=P.l+i*slot+(slot-bw)/2;
+    grp.forEach((s,k)=>{
+      const x=x0+k*gw, y=Math.min(y0,Y(s.v)), h=Math.max(1.5,Math.abs(Y(s.v)-y0));
+      const up=s.v>=0;
+      const r=el("path",{fill:css(s.c),d:roundRect(x,y,Math.max(1,gw-2),h,4,up)});
+      r.style.cursor="pointer";
+      r.addEventListener("pointerenter",e=>{
+        tip.innerHTML=`<b>${d.n}</b>`+grp.map(z=>
+          `<div class="row"><span style="color:${css(z.c)}">${z.n||""}</span><b>${opt.ft?opt.ft(z.v):N(z.v,1)}</b></div>`).join("");
+        tip.style.opacity=1;
+        const rc=svg.getBoundingClientRect();
+        tip.style.left=Math.min(rc.width-140,(x+gw/2)/W*rc.width-50)+"px";
+        tip.style.top=Math.max(0,y/H*rc.height-46)+"px";
+      });
+      r.addEventListener("pointerleave",()=>tip.style.opacity=0);
+      svg.appendChild(r);
+    });
+    const tx=el("text",{x:P.l+i*slot+slot/2,y:H-7,"text-anchor":"middle","font-size":10,fill:css("--ink-3")});
+    tx.textContent=d.n;svg.appendChild(tx);
+  });
+  host.appendChild(svg);
+}
+/* 데이터엔드(값 쪽)만 4px 라운드, 베이스라인 쪽은 각지게 */
+function roundRect(x,y,w,h,r,up){
+  r=Math.min(r,w/2,h);
+  return up
+    ? `M${x},${y+h} L${x},${y+r} Q${x},${y} ${x+r},${y} L${x+w-r},${y} Q${x+w},${y} ${x+w},${y+r} L${x+w},${y+h} Z`
+    : `M${x},${y} L${x},${y+h-r} Q${x},${y+h} ${x+r},${y+h} L${x+w-r},${y+h} Q${x+w},${y+h} ${x+w},${y+h-r} L${x+w},${y} Z`;
+}
+
+/* ═══ 차트 그리기 ═══════════════════════════════════════ */
+function draw(){
+  // 가격 + MA (결정론적 예시 시계열)
+  const n=60, px=[], ma20=[], ma60=[], lb=[];
+  let p=41800;
+  for(let i=0;i<n;i++){
+    p += Math.sin(i/4.1)*300 + Math.sin(i/13)*420 + (i>40?95:135);
+    px.push(Math.round(p));
+    lb.push(`7/${(i%28)+1}`);
+  }
+  for(let i=0;i<n;i++){
+    ma20.push(Math.round(px.slice(Math.max(0,i-19),i+1).reduce((a,b)=>a+b,0)/Math.min(20,i+1)));
+    ma60.push(Math.round(px.slice(0,i+1).reduce((a,b)=>a+b,0)/(i+1)));
+  }
+  lb[0]="6/02"; lb[n-1]="8/19";
+  if(!$("#cPrice").closest("section").classList.contains("hide")){
+    lineChart($("#cPrice"),[
+      {n:"종가",v:px,c:"--ink",w:2},
+      {n:"MA20",v:ma20,c:"--s1"},
+      {n:"MA60",v:ma60,c:"--s2"}],lb,{fy:v=>N(v/1000,0)+"k",ft:v=>N(v)+"원"});
+
+    const days=[],fg=[],ins=[];
+    for(let i=0;i<20;i++){days.push(`${8}/${i+1}`);
+      fg.push(Math.round((Math.sin(i/2.6)*70+38)*10)/10);
+      ins.push(Math.round((Math.cos(i/3.4)*52+12)*10)/10);}
+    barChart($("#cFlow"),days.map((d,i)=>({n:i%4===0?d:"",g:[
+      {n:"외국인",v:fg[i],c:"--s1"},{n:"기관",v:ins[i],c:"--s2"}]})),
+      {h:190,fy:v=>N(v,0),ft:v=>pm(v,1)+"억"});
+  }
+
+  if(!$("#cEquity").closest("section").classList.contains("hide")){
+    lineChart($("#cEquity"),[{n:"누적손익",v:EQ.map(d=>d[1]),c:"--up",w:2}],
+      EQ.map(d=>d[0]),{h:230,w:1100,pr:78,zero:true,
+        fy:v=>N(v,0)+"백만",ft:v=>pm(v,1)+"백만원"});
+    barChart($("#cMonthly"),MON.map(d=>({n:d[0],v:d[1],c:d[1]>=0?"--up":"--down"})),
+      {h:190,fy:v=>N(v,0),ft:v=>pm(v,1)+"백만원"});
+    barChart($("#cExit"),[
+      {n:"트레일링 -7%",v:42,c:"--s1"},{n:"급락 -10%",v:18,c:"--s1"}],
+      {h:190,pl:34,fy:v=>N(v,0),ft:v=>N(v,0)+"건"});
+  }
+}
+
+renderPos(); renderScr(); draw();
+addEventListener("resize",()=>{clearTimeout(window._t);window._t=setTimeout(draw,180);});
+</script>
+</body>
+</html>
