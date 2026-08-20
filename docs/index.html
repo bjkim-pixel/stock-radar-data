@@ -358,7 +358,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <tbody id="flowTrendBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
-  <div class="card"><h3>종목별 수급 랭킹 <span class="r">종목 후보 화면의 조건 설정을 그대로 적용</span></h3>
+  <div class="card"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
     <div class="qf-group"><div class="qf-lb">수급주체</div><div class="qf seg" id="flowSubjSel">
       <button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button>
       <button class="fchip" data-v="foreign">외국인</button>
@@ -377,6 +377,47 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip" data-v="1d" aria-pressed="true">오늘</button>
     </div></div>
     <div class="note" id="flowSelNote"></div>
+
+    <h3 style="margin-top:18px">조건 설정 <span class="r">항목·기준은 종목 후보와 동일 · 값은 이 화면 전용</span></h3>
+    <div class="panel-grid">
+      <div class="field"><label>등락률 (%)</label>
+        <div class="range"><input type="number" id="gChgMin" placeholder="이상"><span>~</span>
+          <input type="number" id="gChgMax" placeholder="이하"></div></div>
+      <div class="field"><label>시가총액 (조원)</label>
+        <div class="range"><input type="number" id="gCapMin" placeholder="이상" step="0.1"><span>~</span>
+          <input type="number" id="gCapMax" placeholder="이하" step="0.1"></div></div>
+      <div class="field"><label>거래대금 ≥ (억원)</label><input type="number" id="gAmtMin"></div>
+      <div class="field"><label>거래량비 ≥ (%)</label><input type="number" id="gVolMin"></div>
+      <div class="field"><label>업종</label><select id="gSector"><option value="">전체</option></select></div>
+    </div>
+    <div class="qf-group"><div class="qf-lb">추세 · 가격</div><div class="qf">
+      <button class="fchip" data-f="newhigh">신고가 돌파</button>
+      <button class="fchip" data-f="nearhigh">전고점 근처(-3% 이내)</button>
+      <button class="fchip" data-f="closepos">종가 고가권(상위 30%)</button>
+      <button class="fchip" data-f="ma5">5일선 위</button>
+      <button class="fchip" data-f="aligned">정배열</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">수급</div><div class="qf">
+      <button class="fchip" data-f="fgbuy">외국인 순매수</button>
+      <button class="fchip" data-f="insbuy">기관 순매수</button>
+      <button class="fchip" data-f="bothbuy">외인·기관 동반매수</button>
+      <button class="fchip" data-f="consec3">연속 양매수 3일↑</button>
+      <button class="fchip" data-f="indsell">개인 순매도</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">단계 · 전략</div><div class="qf">
+      <button class="fchip" data-f="st_birth">추세 탄생</button>
+      <button class="fchip" data-f="st_grow">추세 성장</button>
+      <button class="fchip" data-f="st_nothot">과열 제외</button>
+      <button class="fchip" data-f="leadsec">주도 섹터만</button>
+      <button class="fchip strat" data-f="strat_cb">종가베팅</button>
+      <button class="fchip strat" data-f="strat_v4">v4 추세추종</button>
+      <button class="fchip strat" data-f="strat_v4_lite">v4 추세추종(완화)</button>
+    </div></div>
+    <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
+      <button class="btn" id="runFlowFilter">필터 적용</button>
+      <button class="btn ghost" id="resetFlowFilter">초기화</button>
+      <span class="faint" style="font-size:11px">전략칩 조건 설명은 종목 후보 화면의 같은 버튼을 참고하세요</span>
+    </div>
   </div>
 
   <div class="card"><h3>순매수 거래대금 <span class="r">기간 누적 · 억원 · 헤더 클릭 = 내림차순</span></h3>
@@ -961,8 +1002,9 @@ async function loadSectors(){
   const lead=S.sectors.filter(s=>s.rs_rank&&s.rs_rank<=5).length;
   $("#secOut").innerHTML=`RS 상위 <b>${lead}개</b> / 전체 ${S.sectors.length}업종`;
   $("#fn2").innerHTML=`${lead}<small>/${S.sectors.length} 업종</small>`;
-  const sel=$("#fSector");
-  sel.innerHTML='<option value="">전체</option>'+S.sectors.map(s=>`<option>${s.sector}</option>`).join("");
+  const secOptions='<option value="">전체</option>'+S.sectors.map(s=>`<option>${s.sector}</option>`).join("");
+  $("#fSector").innerHTML=secOptions;
+  $("#gSector").innerHTML=secOptions;
   if(S.sectors.length)await selectSector(S.sectors[0].sector);
 }
 async function selectSector(sec){
@@ -1109,7 +1151,7 @@ async function loadFlowLists(){
   const all=await loadFlowRawData();
   const subj=S.flowSubj, period=S.flowPeriod;
   $("#flowSelNote").innerHTML=`<b>${FLOW_SUBJ[subj]}</b> · <b>${FLOW_PERIOD[period]}</b> 누적 순매수 거래대금 기준`;
-  const cand=all.filter(screenerFilterPass).map(r=>{
+  const cand=all.filter(flowFilterPass).map(r=>{
     const v=flowVal(r,subj,period);
     const ratio=+r.market_cap>0?v/(+r.market_cap)*100:null;
     return {...r,v,ratio};
@@ -1144,64 +1186,75 @@ $("#flowSubjSel").addEventListener("seg-change",e=>{S.flowSubj=e.detail;loadFlow
 $("#flowPeriodSel").addEventListener("seg-change",e=>{S.flowPeriod=e.detail;loadFlowLists().catch(()=>{});});
 
 /* ══ 조건 스크리너 ══ */
-const on=f=>$(`.fchip[data-f="${f}"]`)?.getAttribute("aria-pressed")==="true";
-// 종목 후보 화면의 조건 설정을 그대로 다른 화면(수급 동향 등)에서도 재사용할 수 있게
-// 필터링 로직을 별도 함수로 분리했습니다 — DOM의 #fChgMin 등 입력값을 그대로 읽습니다.
-function screenerFilterPass(r){
-  const num=id=>{const v=$(id).value;return v===""?null:+v;};
-  const f={chgMin:num("#fChgMin"),chgMax:num("#fChgMax"),capMin:num("#fCapMin"),
-    capMax:num("#fCapMax"),amtMin:num("#fAmtMin"),volMin:num("#fVolMin"),sec:$("#fSector").value};
-  const cap=+r.market_cap/JO, amt=+r.trade_amount/EOK, chg=+r.change_pct;
-  const vol=r.vol_ratio20_prev==null?null:+r.vol_ratio20_prev;
-  if(f.chgMin!=null&&chg<f.chgMin)return false;
-  if(f.chgMax!=null&&chg>f.chgMax)return false;
-  if(f.capMin!=null&&cap<f.capMin)return false;
-  if(f.capMax!=null&&cap>f.capMax)return false;
-  if(f.amtMin!=null&&amt<f.amtMin)return false;
-  if(f.volMin!=null&&(vol==null||vol<f.volMin))return false;
-  if(f.sec&&r.sector!==f.sec)return false;
-  if(on("newhigh")&&!(r.is_new_high_all||r.is_new_high))return false;
-  if(on("nearhigh")&&!(r.near_high||+r.pct_from_high>=-3))return false;
-  if(on("closepos")&&!(+r.close_pos_pct>=70))return false;
-  if(on("ma5")&&!(r.ma5&&+r.close>+r.ma5))return false;
-  if(on("aligned")&&!r.ma_aligned)return false;
-  if(on("fgbuy")&&!(+r.foreign_net>0))return false;
-  if(on("insbuy")&&!(+r.inst_net>0))return false;
-  if(on("bothbuy")&&!(+r.foreign_net>0&&+r.inst_net>0))return false;
-  if(on("consec3")&&!(+r.consec_both_buy>=3))return false;
-  if(on("indsell")&&!(+r.individual_net<0))return false;
-  if(on("leadsec")&&!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-  const st=stage(r);
-  if(on("st_birth")&&st!=="birth")return false;
-  if(on("st_grow")&&st!=="grow")return false;
-  if(on("st_nothot")&&st==="hot")return false;
-  // ── 전략 필터 ─────────────────────────────────────────────────
-  if(on("strat_v4")){
-    if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-    if(!r.is_new_high_all)return false;
-    if(!(+r.vol_ratio20_prev>=200))return false;
-    if(!(+r.market_cap>=2*JO))return false;
-    if(!(+r.nonpersonal_net>0))return false;
-    if(!(+r.change_pct<15))return false;
-  }
-  if(on("strat_v4_lite")){
-    if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-    if(!r.is_new_high_all)return false;
-    if(!(+r.vol_ratio20_prev>=115))return false;
-    if(!(+r.market_cap>=2*JO))return false;
-    if(!(+r.nonpersonal_net>0))return false;
-    if(!(+r.change_pct<15))return false;
-  }
-  if(on("strat_cb")){
-    if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-    if(!(r.is_new_high_all||r.is_new_high||+r.pct_from_high>=-1))return false;
-    if(!(+r.foreign_net>0&&+r.inst_net>0))return false;
-    if(!(+r.consec_both_buy>=3))return false;
-    if(!(+r.close_pos_pct>=70))return false;
-    if(stage(r)==="hot")return false;
-  }
-  return true;
+// 종목 후보 화면과 수급 동향 화면은 조건 "항목·기준"(로직)은 똑같이 쓰지만
+// 값은 서로 독립입니다 — 두 화면이 서로 다른 DOM(다른 id, 다른 chip 그룹)을
+// 갖고 있고, on()/makeFilterFn()이 root로 스코프돼 있어 한쪽 값을 바꾸거나
+// 초기화해도 다른 화면에는 영향이 없습니다.
+const on=(f,root=document)=>$(`.fchip[data-f="${f}"]`,root)?.getAttribute("aria-pressed")==="true";
+function makeFilterFn(root,ids){
+  return function(r){
+    const num=id=>{const v=$(id,root).value;return v===""?null:+v;};
+    const f={chgMin:num(ids.chgMin),chgMax:num(ids.chgMax),capMin:num(ids.capMin),
+      capMax:num(ids.capMax),amtMin:num(ids.amtMin),volMin:num(ids.volMin),
+      sec:$(ids.sector,root).value};
+    const cap=+r.market_cap/JO, amt=+r.trade_amount/EOK, chg=+r.change_pct;
+    const vol=r.vol_ratio20_prev==null?null:+r.vol_ratio20_prev;
+    if(f.chgMin!=null&&chg<f.chgMin)return false;
+    if(f.chgMax!=null&&chg>f.chgMax)return false;
+    if(f.capMin!=null&&cap<f.capMin)return false;
+    if(f.capMax!=null&&cap>f.capMax)return false;
+    if(f.amtMin!=null&&amt<f.amtMin)return false;
+    if(f.volMin!=null&&(vol==null||vol<f.volMin))return false;
+    if(f.sec&&r.sector!==f.sec)return false;
+    if(on("newhigh",root)&&!(r.is_new_high_all||r.is_new_high))return false;
+    if(on("nearhigh",root)&&!(r.near_high||+r.pct_from_high>=-3))return false;
+    if(on("closepos",root)&&!(+r.close_pos_pct>=70))return false;
+    if(on("ma5",root)&&!(r.ma5&&+r.close>+r.ma5))return false;
+    if(on("aligned",root)&&!r.ma_aligned)return false;
+    if(on("fgbuy",root)&&!(+r.foreign_net>0))return false;
+    if(on("insbuy",root)&&!(+r.inst_net>0))return false;
+    if(on("bothbuy",root)&&!(+r.foreign_net>0&&+r.inst_net>0))return false;
+    if(on("consec3",root)&&!(+r.consec_both_buy>=3))return false;
+    if(on("indsell",root)&&!(+r.individual_net<0))return false;
+    if(on("leadsec",root)&&!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
+    const st=stage(r);
+    if(on("st_birth",root)&&st!=="birth")return false;
+    if(on("st_grow",root)&&st!=="grow")return false;
+    if(on("st_nothot",root)&&st==="hot")return false;
+    // ── 전략 필터 ─────────────────────────────────────────────────
+    if(on("strat_v4",root)){
+      if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
+      if(!r.is_new_high_all)return false;
+      if(!(+r.vol_ratio20_prev>=200))return false;
+      if(!(+r.market_cap>=2*JO))return false;
+      if(!(+r.nonpersonal_net>0))return false;
+      if(!(+r.change_pct<15))return false;
+    }
+    if(on("strat_v4_lite",root)){
+      if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
+      if(!r.is_new_high_all)return false;
+      if(!(+r.vol_ratio20_prev>=115))return false;
+      if(!(+r.market_cap>=2*JO))return false;
+      if(!(+r.nonpersonal_net>0))return false;
+      if(!(+r.change_pct<15))return false;
+    }
+    if(on("strat_cb",root)){
+      if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
+      if(!(r.is_new_high_all||r.is_new_high||+r.pct_from_high>=-1))return false;
+      if(!(+r.foreign_net>0&&+r.inst_net>0))return false;
+      if(!(+r.consec_both_buy>=3))return false;
+      if(!(+r.close_pos_pct>=70))return false;
+      if(stage(r)==="hot")return false;
+    }
+    return true;
+  };
 }
+const SCR_IDS={chgMin:"#fChgMin",chgMax:"#fChgMax",capMin:"#fCapMin",capMax:"#fCapMax",
+  amtMin:"#fAmtMin",volMin:"#fVolMin",sector:"#fSector"};
+const FLOW_FILTER_IDS={chgMin:"#gChgMin",chgMax:"#gChgMax",capMin:"#gCapMin",capMax:"#gCapMax",
+  amtMin:"#gAmtMin",volMin:"#gVolMin",sector:"#gSector"};
+const screenerFilterPass=makeFilterFn($("#v-scr"),SCR_IDS);
+const flowFilterPass=makeFilterFn($("#v-flow"),FLOW_FILTER_IDS);
 async function runScreener(){
   $("#scrBody").innerHTML='<tr><td colspan="17" class="load">조회 중…</td></tr>';
   const date=$("#fDate").value||S.date;
@@ -1237,7 +1290,14 @@ const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"2","#fCapMax":"2000
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
   $("#fLimit").value="10";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
-  $("#fSector").value="";$$(".fchip").forEach(b=>b.setAttribute("aria-pressed","false"));};
+  $("#fSector").value="";
+  $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
+$("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
+$("#resetFlowFilter").onclick=()=>{
+  ["#gChgMin","#gChgMax","#gCapMin","#gCapMax","#gAmtMin","#gVolMin"].forEach(i=>$(i).value="");
+  $("#gSector").value="";
+  $$(".fchip",$("#v-flow")).forEach(b=>b.setAttribute("aria-pressed","false"));
+  loadFlowLists().catch(()=>{});};
 
 /* ══ 종목 상세 ══ */
 async function loadDetail(code){
