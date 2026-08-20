@@ -51,16 +51,17 @@ c AS (
          m.nonpersonal_net, m.data_span_days,
          m.weight_rank, m.cap_rank, m.pick_score,
          p.close, p.change_pct, p.market_cap, p.weight_per_share,
-         s.name, s.market, s.sector_krx,
+         s.name, s.market, vs.sector,
          sd.rs_rank, sd.rs20,
          -- 당일 순위 산정 대상 종목 수 (score 정규화용)
          max(m.weight_rank) OVER (PARTITION BY m.trade_date) AS day_n
   FROM daily_metrics m
   JOIN daily_price p ON p.trade_date = m.trade_date AND p.code = m.code
   JOIN stocks s      ON s.code = m.code
+  JOIN v_stock_sector vs ON vs.code = m.code
   LEFT JOIN sector_daily sd
          ON sd.trade_date = m.trade_date
-        AND sd.sector     = s.sector_krx
+        AND sd.sector     = vs.sector
         AND sd.market     = 'ALL'
   WHERE m.trade_date BETWEEN %(start_date)s AND %(end_date)s
     AND s.security_type = 'STOCK'
@@ -75,7 +76,7 @@ SELECT
     100.0 * (1 - (c.pick_score - 1) / nullif(c.day_n - 1, 0))
   )), 2),
   jsonb_build_object(
-    'sector',            c.sector_krx,
+    'sector',            c.sector,
     'sector_rs_rank',    c.rs_rank,
     'sector_rs20',       round(c.rs20, 6),
     'new_high_all',      true,
@@ -91,7 +92,7 @@ SELECT
     'pick_score',        c.pick_score,
     'close',             c.close
   ),
-  c.name || ' 신고가 돌파 · ' || c.sector_krx || '(RS ' || c.rs_rank || '위)'
+  c.name || ' 신고가 돌파 · ' || c.sector || '(RS ' || c.rs_rank || '위)'
          || ' · 거래량 ' || round(c.vol_ratio20_prev) || '%'
          || ' · 시총 ' || round(c.market_cap / 100000000.0) || '억'
          || ' · 비개인 ' || round(c.nonpersonal_net / 100000000.0) || '억'

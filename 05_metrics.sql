@@ -125,8 +125,12 @@ INSERT INTO sector_daily (
   rs20, rs_rank
 )
 WITH base AS (
+  -- sector는 v_stock_sector(= sector_override가 있으면 그 값, 없으면 sector_krx)
+  -- 기준입니다. sector_krx 원본은 백테스트 재현성을 위해 그대로 두되, 업종 RS
+  -- 랭킹은 화면에 노출되는 보정된 업종으로 그룹핑되어야 STEP2/STEP3/스크리너의
+  -- sector 표시값과 일치합니다(28_sector_override.sql 참고).
   SELECT p.trade_date,
-         s.sector_krx                                       AS sector,
+         vs.sector                                          AS sector,
          avg(p.change_pct)                                  AS avg_change_pct,
          sum(p.trade_amount)                                AS total_amount,
          sum(f.foreign_net)                                 AS foreign_net,
@@ -135,12 +139,13 @@ WITH base AS (
          count(*)                                           AS stock_count
   FROM daily_price p
   JOIN stocks s      ON s.code = p.code
+  JOIN v_stock_sector vs ON vs.code = p.code
   LEFT JOIN daily_flow f ON f.trade_date = p.trade_date AND f.code = p.code
   WHERE s.security_type = 'STOCK'
-    AND s.sector_krx IS NOT NULL
+    AND vs.sector IS NOT NULL
     AND p.trade_date BETWEEN %(lookback)s AND %(end_date)s
     AND p.close > 0
-  GROUP BY p.trade_date, s.sector_krx
+  GROUP BY p.trade_date, vs.sector
 ),
 rs AS (
   SELECT base.*,
