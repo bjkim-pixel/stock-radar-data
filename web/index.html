@@ -242,7 +242,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <div class="chart" id="cKospi"></div></div>
     <div class="card"><h3>KOSDAQ<span class="r">최근 3개월</span></h3>
       <div class="chart" id="cKosdaq"></div></div>
-    <div class="card d-b"><h3>시장 거래대금 <span class="tag-d c">KIS 전체대금 연동 예정</span>
+    <div class="card"><h3>시장 거래대금
       <span class="r">최근 3개월 · 조원</span></h3>
       <div class="chart" id="cAmt"></div>
       <div class="note" id="amtNote"></div></div>
@@ -693,14 +693,23 @@ async function loadMarket(){
     {n:"기관",v:rebase("inst_cum"),c:"--s2"},
     {n:"개인",v:rebase("individual_cum"),c:"--s3"}],lb,
     {h:230,w:1100,pr:70,zero:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억"});
-  barChart($("#cAmt"),S.market.map((r,i)=>({n:i%14===0?lb[i]:"",full:lb[i],
-    v:+r.total_amount/JO,c:"--s1"})),{h:170,pl:44,maxBar:9,
-    fy:v=>N(v,0)+"조",ft:v=>N(v,1)+"조원"});
-  const last=S.market.at(-1),ma=+last.amt_ma20;
-  $("#amtNote").innerHTML=`오늘 <b>${N(+last.total_amount/JO,1)}조</b> · 20일평균 대비
-    <b class="${last.total_amount>=ma?"up":"down"}">${N(+last.total_amount/ma*100,0)}%</b>
-    <br><span class="faint">유니버스 ${last.stock_count}종목 합계 — KIS 전체대금 연동 시 교체됩니다.</span>`;
+  const last=S.market.at(-1);
   return last;
+}
+async function loadMarketAmount(){
+  try{
+    const rows=await q("v_market_amount_real","select=*&order=trade_date.asc");
+    if(!rows.length){$("#cAmt").innerHTML='<div class="load">데이터 없음 — 지수 백필 후 표시됩니다</div>';return;}
+    const recent=rows.slice(-62);                 // 최근 3개월(약 62거래일)
+    const lb=recent.map(r=>r.trade_date.slice(5).replace("-","/"));
+    barChart($("#cAmt"),recent.map((r,i)=>({n:i%14===0?lb[i]:"",full:lb[i],
+      v:+r.total_amount/JO,c:"--s1"})),{h:170,pl:44,maxBar:9,
+      fy:v=>N(v,0)+"조",ft:v=>N(v,1)+"조원"});
+    const last=recent.at(-1),ma=+last.amt_ma20;
+    $("#amtNote").innerHTML=`${last.trade_date} 기준 <b>${N(+last.total_amount/JO,1)}조</b> · 20일평균 대비
+      <b class="${last.total_amount>=ma?"up":"down"}">${N(+last.total_amount/ma*100,0)}%</b>
+      <br><span class="faint">KOSPI+KOSDAQ 시장 전체 거래대금(KIS)</span>`;
+  }catch(e){$("#cAmt").innerHTML='<div class="load">불러오기 실패</div>';}
 }
 async function loadIndex(){
   // market_daily의 합성지수(시총가중)를 우선 사용하고, 없으면 표시하지 않습니다.
@@ -1047,6 +1056,7 @@ function redraw(){
   drawCreditSample();
   loadProgramTrade().catch(()=>{});
   loadUSMarket().catch(()=>{});
+  loadMarketAmount().catch(()=>{});
   if(S.market.length)loadMarket().catch(()=>{});
   if(S.sector)selectSector(S.sector).catch(()=>{});
   if(S.chart.code)loadDetail(S.chart.code).catch(()=>{});
@@ -1082,7 +1092,7 @@ async function boot(){
     $("#fn3").innerHTML=`${S.stocks.length}<small>/${stk.length}</small>`;
     await loadFlowStep();
     drawCreditSample();
-    await Promise.all([loadProgramTrade(), loadUSMarket()]);
+    await Promise.all([loadProgramTrade(), loadUSMarket(), loadMarketAmount()]);
     status("live",`<b>실데이터 연결됨</b> — ${S.date} 기준 · ${stk.length}종목 · 신용거래 융자잔고만 샘플입니다.`);
   }catch(e){
     status("err",`연결 실패: ${e.message}<br><span style="font-size:11px">anon 키가 맞는지, 19_web_views.sql을 적용했는지 확인해주세요.</span>`);

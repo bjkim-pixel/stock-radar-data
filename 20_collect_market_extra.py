@@ -290,7 +290,10 @@ def quarantine_outliers(raw_rows, threshold=0.25):
 
 
 def build_index_rows(market, raw_rows):
-    """일별 종가 리스트에서 등락률과 20일 이동평균을 계산해 market_daily upsert 행을 만듭니다."""
+    """일별 종가 리스트에서 등락률·20일 이동평균·거래대금을 계산해 market_daily upsert 행을 만듭니다.
+    acml_tr_pbmn(누적거래대금)은 03_daily_collect.py/04_backfill.py에서 이미 확인된 관례대로
+    '원' 단위이므로 곱하지 않고 그대로 씁니다 — 같은 output2 행에 지수 종가와 함께 들어있어
+    별도 API 호출 없이 KOSPI/KOSDAQ 시장 전체 거래대금을 얻을 수 있습니다."""
     closes = [safe_float(x.get("bstp_nmix_prpr")) for x in raw_rows]
     out = []
     for i, x in enumerate(raw_rows):
@@ -303,7 +306,8 @@ def build_index_rows(market, raw_rows):
         change_pct = (change / prev * 100) if prev else None
         window = [c for c in closes[max(0, i - 19):i + 1] if c is not None]
         ma20 = (sum(window) / len(window)) if len(window) == 20 else None
-        out.append((date_iso, market, close, change, change_pct, ma20))
+        amount = safe_int(x.get("acml_tr_pbmn"), default=None)
+        out.append((date_iso, market, close, change, change_pct, ma20, amount))
     return out
 
 
@@ -324,22 +328,23 @@ ON CONFLICT (trade_date, symbol) DO UPDATE SET
   change_pct=EXCLUDED.change_pct,
   source=EXCLUDED.source
 """
-# index_close~ma20만 갱신합니다 — total_amount/foreign_net/regime 등 다른 컬럼은 건드리지 않습니다
-# (그 컬럼들은 이 스크립트의 수집 대상이 아니라 다른 소스에서 채워집니다).
+# index_close~index_amount만 갱신합니다 — daily_price 합계(total_amount)/외국인수급/regime 등
+# 다른 컬럼은 건드리지 않습니다 (그 컬럼들은 이 스크립트의 수집 대상이 아니라 다른 소스에서 채워집니다).
 INDEX_SQL = """
-INSERT INTO market_daily (trade_date, market, index_close, index_change, index_change_pct, index_ma20)
+INSERT INTO market_daily (trade_date, market, index_close, index_change, index_change_pct, index_ma20, index_amount)
 VALUES %s
 ON CONFLICT (trade_date, market) DO UPDATE SET
   index_close=EXCLUDED.index_close,
   index_change=EXCLUDED.index_change,
   index_change_pct=EXCLUDED.index_change_pct,
-  index_ma20=EXCLUDED.index_ma20
+  index_ma20=EXCLUDED.index_ma20,
+  index_amount=EXCLUDED.index_amount
 """
 # quarantine_outliers()가 걸러낸(과거 잘못 적재된) 날짜의 지수 컬럼만 비웁니다.
 # 다른 컬럼(거래대금/외국인수급/regime 등, 04_backfill.py 등 다른 스크립트가 채움)은 건드리지 않습니다.
 CLEAR_INDEX_SQL = """
 UPDATE market_daily
-SET index_close=NULL, index_change=NULL, index_change_pct=NULL, index_ma20=NULL
+SET index_close=NULL, index_change=NULL, index_change_pct=NULL, index_ma20=NULL, index_amount=NULL
 WHERE trade_date = %s AND market = %s
 """
 
