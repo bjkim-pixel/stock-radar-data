@@ -1311,10 +1311,17 @@ async function loadDetail(code){
   const last=rows.at(-1);
   $("#dHead").innerHTML=`
     <div><div style="font-size:18px;font-weight:680">${sum.name||code}
-      <span class="faint" style="font-size:11.5px;font-weight:400">${code} · ${sum.market||""} · ${sum.sector||""}</span></div>
-      <div class="faint" style="font-size:11px">업종 RS ${sum.sector_rs_rank||"–"}위 · ${rows.length}거래일 이력</div></div>
+      <span class="faint" style="font-size:11.5px;font-weight:400">${code} · ${sum.market||""}</span></div>
+      <div class="faint" style="font-size:11px">${rows.length}거래일 이력</div></div>
     <div class="num ${sgn(+last.change_pct)}" style="font-size:28px;font-weight:730;letter-spacing:-.025em;line-height:1">${N(+last.close)}</div>
-    <div class="num ${sgn(+last.change_pct)}" style="font-size:14px;font-weight:640">${pm(+last.change_pct)}%</div>`;
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <div class="num ${sgn(+last.change_pct)}" style="font-size:14px;font-weight:640">${pm(+last.change_pct)}%</div>
+      <div class="faint num" style="font-size:12px">${sum.market_cap!=null?N(+sum.market_cap/JO,1)+"조":"–"}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <div class="faint" style="font-size:12px">${sum.sector||"–"}</div>
+      <div class="faint" style="font-size:12px">RS ${sum.sector_rs_rank?sum.sector_rs_rank+"위":"–"}</div>
+    </div>`;
   const lb=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
   $("#dRange").textContent=`${rows[0].trade_date} ~ ${last.trade_date} (${rows.length}거래일)`;
   // 기간 선택 입력의 기본값(가격/거래량/수급 차트에 공통 적용) = 2025-09-01~오늘
