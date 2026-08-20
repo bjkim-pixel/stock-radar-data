@@ -51,14 +51,18 @@ _rate = RateLimiter(MAX_RPS)
 # ── 입력 파싱 ─────────────────────────────────────────────────────────────────
 DEBUG_MODE  = False
 DEBUG_CODE  = None
+PARTIAL     = False   # --partial: 장중 스냅샷(당일 미확정 시세) — is_partial=True로 적재
 TARGET_DATE = datetime.date.today().strftime("%Y%m%d")
 
-if len(sys.argv) >= 2:
-    if sys.argv[1] == "--debug":
+_args = [a for a in sys.argv[1:] if a != "--partial"]
+if "--partial" in sys.argv[1:]:
+    PARTIAL = True
+if len(_args) >= 1:
+    if _args[0] == "--debug":
         DEBUG_MODE = True
-        DEBUG_CODE = sys.argv[2] if len(sys.argv) > 2 else "005930"
-    elif sys.argv[1].isdigit() and len(sys.argv[1]) == 8:
-        TARGET_DATE = sys.argv[1]
+        DEBUG_CODE = _args[1] if len(_args) > 1 else "005930"
+    elif _args[0].isdigit() and len(_args[0]) == 8:
+        TARGET_DATE = _args[0]
 
 TARGET_DATE_ISO = f"{TARGET_DATE[:4]}-{TARGET_DATE[4:6]}-{TARGET_DATE[6:]}"
 
@@ -258,7 +262,7 @@ def collect_stock(token, code):
             safe_int(pick(pi, "lstn_stcn")),
             safe_float(pick(pi, "prdy_ctrt")),
             "KIS",
-            False,
+            PARTIAL,
         ) if pi else None
 
         # ── daily_flow ─────────────────────────────────────────────────
@@ -280,7 +284,7 @@ def collect_stock(token, code):
             # corp_other_net·foreign_net_vol·inst_net_vol은 2026-08 용량 정리 때
             # 컬럼 삭제 (신호 엔진 미사용, 실제 값은 있었지만 공간 절감 우선).
             "KIS",
-            False,
+            PARTIAL,
         ) if inv else None
 
         return price_row, flow_row, "ok"

@@ -214,7 +214,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
 <header>
   <div class="hbar">
-    <div class="brand"><b>STOCK RADAR</b></div>
+    <div class="brand" id="brandHome" style="cursor:pointer" title="새로고침"><b>STOCK RADAR</b></div>
     <div class="hmeta">
       <span class="chip" id="chipRegime"><span class="dot" style="background:var(--ink-3)"></span>시장 <b>–</b></span>
       <span class="chip opt">유니버스 <b id="chipUniv">–</b></span>
@@ -353,13 +353,12 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 <!-- ═══════════ 수급 동향 ═══════════ -->
 <section id="v-flow" class="hide">
   <div class="card" style="margin-top:16px"><h3>오늘의 수급주체별 순매수 거래대금
-    <span class="r">시장 전체 · 억원</span></h3>
-    <div class="tw"><table><thead><tr>
-      <th class="l">수급주체</th><th>3개월</th><th>1개월</th><th>2주</th><th>1주</th><th>오늘</th>
-    </tr></thead><tbody id="flowTrendBody"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <span class="r">시장 전체 · 억원 · 헤더 클릭 = 그 주체 기준 내림차순</span></h3>
+    <div class="tw"><table><thead><tr id="flowTrendHead"></tr></thead>
+      <tbody id="flowTrendBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
-  <div class="card"><h3>종목별 수급 랭킹</h3>
+  <div class="card"><h3>종목별 수급 랭킹 <span class="r">종목 후보 화면의 조건 설정을 그대로 적용</span></h3>
     <div class="qf-group"><div class="qf-lb">수급주체</div><div class="qf seg" id="flowSubjSel">
       <button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button>
       <button class="fchip" data-v="foreign">외국인</button>
@@ -371,6 +370,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     </div></div>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="flowPeriodSel">
       <button class="fchip" data-v="3m">3개월</button>
+      <button class="fchip" data-v="2m">2개월</button>
       <button class="fchip" data-v="1m">1개월</button>
       <button class="fchip" data-v="2w">2주</button>
       <button class="fchip" data-v="1w">1주</button>
@@ -379,28 +379,42 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="note" id="flowSelNote"></div>
   </div>
 
-  <div class="card"><h3>순매수 거래대금 <span class="r">기간 누적 · 억원</span></h3>
+  <div class="card"><h3>순매수 거래대금 <span class="r">기간 누적 · 억원 · 헤더 클릭 = 내림차순</span></h3>
     <div class="grid2">
       <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 매수</div>
         <div class="tw"><table><thead><tr>
-          <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th>순매수</th>
+          <th class="l">#</th><th class="l">종목</th>
+          <th class="sortable" data-key="close">종가</th>
+          <th class="sortable" data-key="change_pct">등락률</th>
+          <th class="sortable active" data-key="v">순매수 ▾</th>
         </tr></thead><tbody id="flowBuyBody"></tbody></table></div></div>
       <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 매도</div>
         <div class="tw"><table><thead><tr>
-          <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th>순매수</th>
+          <th class="l">#</th><th class="l">종목</th>
+          <th class="sortable" data-key="close">종가</th>
+          <th class="sortable" data-key="change_pct">등락률</th>
+          <th class="sortable active" data-key="v">순매수</th>
         </tr></thead><tbody id="flowSellBody"></tbody></table></div></div>
     </div>
   </div>
 
-  <div class="card"><h3>시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시가총액 · %</span></h3>
+  <div class="card"><h3>시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시가총액 · % · 헤더 클릭 = 내림차순</span></h3>
     <div class="grid2">
       <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 비중 상승</div>
         <div class="tw"><table><thead><tr>
-          <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th>비중</th>
+          <th class="l">#</th><th class="l">종목</th>
+          <th class="sortable" data-key="close">종가</th>
+          <th class="sortable" data-key="change_pct">등락률</th>
+          <th class="sortable" data-key="v">순매수</th>
+          <th class="sortable active" data-key="ratio">비중 ▾</th>
         </tr></thead><tbody id="flowRatioUpBody"></tbody></table></div></div>
       <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 비중 하락</div>
         <div class="tw"><table><thead><tr>
-          <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th>비중</th>
+          <th class="l">#</th><th class="l">종목</th>
+          <th class="sortable" data-key="close">종가</th>
+          <th class="sortable" data-key="change_pct">등락률</th>
+          <th class="sortable" data-key="v">순매수</th>
+          <th class="sortable active" data-key="ratio">비중</th>
         </tr></thead><tbody id="flowRatioDownBody"></tbody></table></div></div>
     </div>
   </div>
@@ -411,7 +425,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   <div class="card" style="margin-top:16px">
     <h3>조건 설정</h3>
     <div class="panel-grid">
-      <div class="field"><label>기준일</label><input type="date" id="fDate" readonly title="스크리너는 최신 거래일 기준으로만 조회됩니다"></div>
+      <div class="field"><label>기준일</label><input type="date" id="fDate" title="조회할 거래일을 선택하세요"></div>
       <div class="field"><label>노출 종목수</label>
         <select id="fLimit"><option selected>10</option><option>20</option><option>50</option><option>100</option><option>300</option></select></div>
       <div class="field"><label>등락률 (%)</label>
@@ -474,13 +488,23 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
             <li>시가총액 2조원 이상 · 비개인 순매수 &gt; 0</li>
             <li>당일 등락률 15% 미만</li></ol>
           <span class="ex">진입 당일 종가 · +14%마다 불타기 최대 3회<br>
-            ✅ 검증 완료 — 자금대비 +47.8% / MDD -7.4%</span></span></button>
+            ✅ 검증 완료 — 자금대비 +47.8% / MDD -7.4%<br>
+            ⚠ 조건 6개를 모두 동시에 만족해야 해서 통과 종목이 없는 날이 대부분입니다</span></span></button>
+      <button class="fchip strat" data-f="strat_v4_lite">v4 추세추종(완화)
+        <span class="pop"><b>v4 신고가 추세추종 · 거래량 조건 완화</b>
+          <ol><li>업종 RS20 순위 5위 이내</li>
+            <li>종가 &gt; 상장 이후 전일까지 누적 최고 종가</li>
+            <li>거래량 ≥ 전일까지 20일 평균의 <b>115%</b>(기존 200%에서 완화)</li>
+            <li>시가총액 2조원 이상 · 비개인 순매수 &gt; 0</li>
+            <li>당일 등락률 15% 미만</li></ol>
+          <span class="ex">거래량 조건만 200%→115%로 낮춘 버전입니다.<br>
+            ⚠ 완화 버전은 아직 별도 백테스트 검증 전입니다</span></span></button>
     </div></div>
 
     <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
       <button class="btn" id="runScr">조회</button>
       <button class="btn ghost" id="resetScr">초기화</button>
-      <span class="faint" style="font-size:11px" id="scrHint">기준일은 최신 거래일 고정 · 그 외 조건은 자유롭게 바꿔서 조회할 수 있습니다</span>
+      <span class="faint" style="font-size:11px" id="scrHint">기준일을 바꿔서 과거 거래일 기준으로도 조회할 수 있습니다 · 업종 RS는 최신 거래일 기준 값을 그대로 사용합니다</span>
     </div>
   </div>
 
@@ -504,6 +528,12 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <select id="dSel" style="width:auto;min-width:220px"></select>
       <div id="dHead" style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap"></div>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <span class="faint" style="font-size:11px">가격·거래량·수급 차트 기간</span>
+      <input type="date" id="dStart" style="width:auto"><span class="faint">~</span>
+      <input type="date" id="dEnd" style="width:auto">
+      <button class="btn ghost" id="dRangeApply" style="padding:5px 12px;font-size:11.5px">적용</button>
+    </div>
   </div>
 
   <div class="card"><h3>가격 · 이동평균<span class="r" id="dRange">전 기간</span></h3>
@@ -514,6 +544,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <span><i style="background:var(--mac3)"></i>MA120</span></div>
     <div class="chart" id="dPrice"></div>
     <div class="note">● 표시는 <span id="dPriceRange">2025-09-01~오늘</span> 구간 <b>최고가 · 최저가 · 오늘 종가</b>입니다.</div>
+  </div>
+
+  <div class="card"><h3>거래량<span class="r" id="dVolRange">2025-09-01~오늘</span></h3>
+    <div class="chart" id="dVolume"></div>
   </div>
 
   <div class="card"><h3>투자자별 누적 순매수<span class="r" id="dFlowRange">2025-09-01~오늘 · 억원</span></h3>
@@ -728,6 +762,40 @@ function rr(x,y,w,h,r,up){r=Math.min(r,w/2,h);
   return up?`M${x},${y+h} L${x},${y+r} Q${x},${y} ${x+r},${y} L${x+w-r},${y} Q${x+w},${y} ${x+w},${y+r} L${x+w},${y+h} Z`
            :`M${x},${y} L${x},${y+h-r} Q${x},${y+h} ${x+r},${y+h} L${x+w-r},${y+h} Q${x+w},${y+h} ${x+w},${y+h-r} L${x+w},${y} Z`;}
 
+/* 거래량 등 "일자 수가 많은" 막대 차트 전용 — barChart()는 막대마다 x축 라벨을
+   그려서 항목이 많으면 겹쳐 보이므로, lineChart와 같은 방식(0/중간/끝 라벨만)으로
+   그리는 경량 막대 렌더러를 별도로 둡니다. */
+function volumeBars(host,vals,labels,opt={}){
+  host.innerHTML="";
+  if(!labels.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
+  const W=opt.w||1180,H=opt.h||130,P={t:10,r:opt.pr??66,b:22,l:opt.pl??48};
+  const valid=vals.filter(v=>v!=null&&!isNaN(v));
+  if(!valid.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
+  const max=Math.max(...valid)*1.08||1;
+  const X=i=>P.l+i*(W-P.l-P.r)/Math.max(1,labels.length-1);
+  const Y=v=>P.t+(max-v)/max*(H-P.t-P.b);
+  const bw=Math.max(1,(W-P.l-P.r)/labels.length-1);
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});
+  niceTicks(0,max,3).forEach(v=>{if(v>max)return;const y=Y(v);
+    svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:y,y2:y,stroke:css("--grid"),"stroke-width":1}));
+    const t=el("text",{x:P.l-7,y:y+3.5,"text-anchor":"end","font-size":10,fill:css("--ink-3")});
+    t.textContent=opt.fy?opt.fy(v):N(v,0);svg.appendChild(t);});
+  [0,Math.floor(labels.length/2),labels.length-1].forEach(i=>{
+    const t=el("text",{x:X(i),y:H-6,"text-anchor":i===0?"start":i===labels.length-1?"end":"middle",
+      "font-size":10,fill:css("--ink-3")});t.textContent=labels[i];svg.appendChild(t);});
+  const y0=Y(0),tip=tipFor(host);
+  vals.forEach((v,i)=>{
+    if(v==null||isNaN(v))return;
+    const x=X(i)-bw/2,y=Y(v),h=Math.max(1,y0-y);
+    const r=el("rect",{x,y,width:bw,height:h,fill:css(opt.c||"--ma3"),opacity:.8,rx:1});
+    r.addEventListener("pointerenter",()=>{
+      tip.innerHTML=`<b>${labels[i]}</b><div class="row"><b>${opt.ft?opt.ft(v):N(v,0)}</b></div>`;
+      tip.style.opacity=1;const rc=svg.getBoundingClientRect();
+      tip.style.left=Math.min(rc.width-160,Math.max(0,X(i)/W*rc.width-40))+"px";tip.style.top="4px";});
+    r.addEventListener("pointerleave",()=>tip.style.opacity=0);
+    svg.appendChild(r);});
+  host.appendChild(svg);
+}
 function sparkBars(v){
   const m=Math.max(...v.map(x=>Math.abs(x)))||1,W=104,H=26,bw=W/v.length,y0=H/2;
   return `<svg class="spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`+
@@ -779,6 +847,7 @@ function setStickyOffset(){
 }
 window.addEventListener("resize",setStickyOffset);
 window.addEventListener("load",setStickyOffset);
+$("#brandHome").onclick=()=>location.reload();
 $("#themeBtn").onclick=()=>{document.documentElement.dataset.theme=
   document.documentElement.dataset.theme==="dark"?"light":"dark";redraw();};
 $$("#funnel .fstep").forEach(f=>f.onclick=()=>{
@@ -916,7 +985,7 @@ async function selectSector(sec){
   }
   // 구성 종목
   S.stocks=await q("v_sector_stocks",
-    `select=*&sector=eq.${encodeURIComponent(sec)}&order=trade_amount.desc`);
+    `select=*&sector=eq.${encodeURIComponent(sec)}&trade_date=eq.${S.date}&order=trade_amount.desc`);
   $("#stkBody").innerHTML=S.stocks.length?S.stocks.map((r,i)=>`
     <tr><td class="l rank">${i+1}</td>
       <td class="l"><a class="lk nm" data-code="${r.code}">${r.name}</a></td>
@@ -939,7 +1008,7 @@ async function loadFlowStep(){
   const cand=await q("v_screener",
     "select=code,name,smart_cum5,smart_cum20,consec_both_buy,vol_ratio20_prev,is_new_high_all,"+
     "near_high,pct_from_high,is_new_high,close,change_pct,sector,pick_score,signal_type"+
-    "&order=smart_cum5.desc&limit=8");
+    `&trade_date=eq.${S.date}&order=smart_cum5.desc&limit=8`);
   const rows=await Promise.all(cand.map(async c=>{
     const f=await q("daily_flow",
       `select=trade_date,individual_net&code=eq.${c.code}&order=trade_date.desc&limit=5`);
@@ -983,106 +1052,151 @@ async function loadFlowStep(){
 /* ══ 수급 동향 ══ */
 const FLOW_SUBJ={combo:"외국인+기관합계",foreign:"외국인",inst:"기관합계",fin_inv:"금융투자",
   inv_trust:"투신",pension:"연기금",pe:"사모"};
-const FLOW_PERIOD={"3m":"3개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
+const FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe"]; // 가로 헤더 고정 순서
+const FLOW_PERIOD={"3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
+const FLOW_PERIOD_ROWS=["3m","2m","1m","2w","1w","1d"]; // 세로 기본 순서
 S.flowSubj=S.flowSubj||"combo"; S.flowPeriod=S.flowPeriod||"1d";
+S.flowSortNet=S.flowSortNet||"v"; S.flowSortRatio=S.flowSortRatio||"ratio";
 function flowVal(row,subj,period){
   if(subj==="combo")return (+row["foreign_"+period]||0)+(+row["inst_"+period]||0);
   return +row[subj+"_"+period]||0;
 }
 async function loadFlowTrends(){
-  const r=(await q("v_market_flow_periods","select=*"))[0];
-  if(!r){$("#flowTrendBody").innerHTML='<tr><td colspan="6" class="load">데이터 없음</td></tr>';return;}
-  const rows=Object.entries(FLOW_SUBJ).filter(([k])=>k!=="combo").map(([k,label])=>{
-    const cells=["3m","1m","2w","1w","1d"].map(p=>{
+  if(!S.flowTrendRow)S.flowTrendRow=(await q("v_market_flow_periods","select=*"))[0];
+  const r=S.flowTrendRow;
+  if(!r){$("#flowTrendBody").innerHTML='<tr><td colspan="7" class="load">데이터 없음</td></tr>';return;}
+  $("#flowTrendHead").innerHTML=`<th class="l">기간</th>`+FLOW_SUBJ_COLS.map(k=>
+    `<th class="sortable${S.flowTrendSort===k?" active":""}" data-key="${k}">${FLOW_SUBJ[k]}${S.flowTrendSort===k?" ▾":""}</th>`).join("");
+  let periods=[...FLOW_PERIOD_ROWS];
+  if(S.flowTrendSort)periods.sort((a,b)=>flowVal(r,S.flowTrendSort,b)-flowVal(r,S.flowTrendSort,a));
+  $("#flowTrendBody").innerHTML=periods.map(p=>{
+    const cells=FLOW_SUBJ_COLS.map(k=>{
       const v=flowVal(r,k,p)/EOK;
       return `<td class="${sgn(v)}">${pm(v,0)}</td>`;
     }).join("");
-    return `<tr><td class="l">${label}</td>${cells}</tr>`;
+    return `<tr><td class="l">${FLOW_PERIOD[p]}</td>${cells}</tr>`;
   }).join("");
-  $("#flowTrendBody").innerHTML=rows;
+  $$("#flowTrendHead th.sortable").forEach(th=>th.onclick=()=>{S.flowTrendSort=th.dataset.key;loadFlowTrends();});
 }
-function flowRankRow(r,i,valEok,fmt){
+function flowRankRow(r,i){
   return `<tr><td class="l rank">${i+1}</td>
     <td class="l"><a class="lk nm" data-code="${r.code}">${r.name}</a></td>
     <td>${N(+r.close)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
-    <td class="${sgn(valEok)}">${fmt}</td></tr>`;
+    <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}억</td>
+    ${r.ratio!=null?`<td class="${sgn(r.ratio)}">${pm(r.ratio,2)}%</td>`:""}</tr>`;
+}
+async function loadFlowRawData(){
+  if(!S.flowRaw){
+    const [scr,per]=await Promise.all([
+      q("v_screener",`select=*&trade_date=eq.${S.date}`),
+      q("v_stock_flow_periods","select=*")]);
+    const byCode={};per.forEach(p=>byCode[p.code]=p);
+    S.flowRaw=scr.map(r=>({...r,...(byCode[r.code]||{})}));
+  }
+  return S.flowRaw;
 }
 async function loadFlowLists(){
-  if(!S.flowRanked)S.flowRanked=await q("v_stock_flow_ranked","select=*");
+  const all=await loadFlowRawData();
   const subj=S.flowSubj, period=S.flowPeriod;
   $("#flowSelNote").innerHTML=`<b>${FLOW_SUBJ[subj]}</b> · <b>${FLOW_PERIOD[period]}</b> 누적 순매수 거래대금 기준`;
-  const withVal=S.flowRanked.map(r=>({r,v:flowVal(r,subj,period)}));
-  const bySize=[...withVal].sort((a,b)=>b.v-a.v);
-  const buy=bySize.slice(0,10), sell=bySize.slice(-10).reverse();
-  $("#flowBuyBody").innerHTML=buy.length?buy.map((o,i)=>flowRankRow(o.r,i,o.v/EOK,pm(o.v/EOK,0)+"억")).join("")
-    :'<tr><td colspan="5" class="load">데이터 없음</td></tr>';
-  $("#flowSellBody").innerHTML=sell.length?sell.map((o,i)=>flowRankRow(o.r,i,o.v/EOK,pm(o.v/EOK,0)+"억")).join("")
-    :'<tr><td colspan="5" class="load">데이터 없음</td></tr>';
-  const withRatio=S.flowRanked.filter(r=>+r.market_cap>0)
-    .map(r=>({r,v:flowVal(r,subj,period),ratio:flowVal(r,subj,period)/(+r.market_cap)*100}));
-  const byRatio=[...withRatio].sort((a,b)=>b.ratio-a.ratio);
-  const up=byRatio.slice(0,10), down=byRatio.slice(-10).reverse();
-  $("#flowRatioUpBody").innerHTML=up.length?up.map((o,i)=>flowRankRow(o.r,i,o.ratio,pm(o.ratio,2)+"%")).join("")
-    :'<tr><td colspan="5" class="load">데이터 없음</td></tr>';
-  $("#flowRatioDownBody").innerHTML=down.length?down.map((o,i)=>flowRankRow(o.r,i,o.ratio,pm(o.ratio,2)+"%")).join("")
-    :'<tr><td colspan="5" class="load">데이터 없음</td></tr>';
+  const cand=all.filter(screenerFilterPass).map(r=>{
+    const v=flowVal(r,subj,period);
+    const ratio=+r.market_cap>0?v/(+r.market_cap)*100:null;
+    return {...r,v,ratio};
+  });
+  const netSorted=[...cand].sort((a,b)=>(+b[S.flowSortNet]||-Infinity)-(+a[S.flowSortNet]||-Infinity));
+  const buy=netSorted.slice(0,10), sell=netSorted.slice(-10).reverse();
+  $("#flowBuyBody").innerHTML=buy.length?buy.map((r,i)=>flowRankRow({...r,ratio:null},i)).join("")
+    :'<tr><td colspan="5" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+  $("#flowSellBody").innerHTML=sell.length?sell.map((r,i)=>flowRankRow({...r,ratio:null},i)).join("")
+    :'<tr><td colspan="5" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+  const withRatio=cand.filter(r=>r.ratio!=null);
+  const ratioSorted=[...withRatio].sort((a,b)=>(+b[S.flowSortRatio]||-Infinity)-(+a[S.flowSortRatio]||-Infinity));
+  const up=ratioSorted.slice(0,10), down=ratioSorted.slice(-10).reverse();
+  $("#flowRatioUpBody").innerHTML=up.length?up.map((r,i)=>flowRankRow(r,i)).join("")
+    :'<tr><td colspan="6" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+  $("#flowRatioDownBody").innerHTML=down.length?down.map((r,i)=>flowRankRow(r,i)).join("")
+    :'<tr><td colspan="6" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#v-flow a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+  // 헤더 클릭 = 그 컬럼 기준 내림차순 (STEP2 업종표와 동일한 패턴)
+  const netHeads=$$('.card:has(#flowBuyBody) th.sortable,.card:has(#flowSellBody) th.sortable');
+  netHeads.forEach(th=>{
+    th.classList.toggle("active",th.dataset.key===S.flowSortNet);
+    th.onclick=()=>{S.flowSortNet=th.dataset.key;loadFlowLists().catch(()=>{});};
+  });
+  const ratioHeads=$$('.card:has(#flowRatioUpBody) th.sortable,.card:has(#flowRatioDownBody) th.sortable');
+  ratioHeads.forEach(th=>{
+    th.classList.toggle("active",th.dataset.key===S.flowSortRatio);
+    th.onclick=()=>{S.flowSortRatio=th.dataset.key;loadFlowLists().catch(()=>{});};
+  });
 }
 $("#flowSubjSel").addEventListener("seg-change",e=>{S.flowSubj=e.detail;loadFlowLists().catch(()=>{});});
 $("#flowPeriodSel").addEventListener("seg-change",e=>{S.flowPeriod=e.detail;loadFlowLists().catch(()=>{});});
 
 /* ══ 조건 스크리너 ══ */
 const on=f=>$(`.fchip[data-f="${f}"]`)?.getAttribute("aria-pressed")==="true";
-async function runScreener(){
-  $("#scrBody").innerHTML='<tr><td colspan="17" class="load">조회 중…</td></tr>';
-  let rows=await q("v_screener","select=*");
+// 종목 후보 화면의 조건 설정을 그대로 다른 화면(수급 동향 등)에서도 재사용할 수 있게
+// 필터링 로직을 별도 함수로 분리했습니다 — DOM의 #fChgMin 등 입력값을 그대로 읽습니다.
+function screenerFilterPass(r){
   const num=id=>{const v=$(id).value;return v===""?null:+v;};
   const f={chgMin:num("#fChgMin"),chgMax:num("#fChgMax"),capMin:num("#fCapMin"),
     capMax:num("#fCapMax"),amtMin:num("#fAmtMin"),volMin:num("#fVolMin"),sec:$("#fSector").value};
-  rows=rows.filter(r=>{
-    const cap=+r.market_cap/JO, amt=+r.trade_amount/EOK, chg=+r.change_pct;
-    const vol=r.vol_ratio20_prev==null?null:+r.vol_ratio20_prev;
-    if(f.chgMin!=null&&chg<f.chgMin)return false;
-    if(f.chgMax!=null&&chg>f.chgMax)return false;
-    if(f.capMin!=null&&cap<f.capMin)return false;
-    if(f.capMax!=null&&cap>f.capMax)return false;
-    if(f.amtMin!=null&&amt<f.amtMin)return false;
-    if(f.volMin!=null&&(vol==null||vol<f.volMin))return false;
-    if(f.sec&&r.sector!==f.sec)return false;
-    if(on("newhigh")&&!(r.is_new_high_all||r.is_new_high))return false;
-    if(on("nearhigh")&&!(r.near_high||+r.pct_from_high>=-3))return false;
-    if(on("closepos")&&!(+r.close_pos_pct>=70))return false;
-    if(on("ma5")&&!(r.ma5&&+r.close>+r.ma5))return false;
-    if(on("aligned")&&!r.ma_aligned)return false;
-    if(on("fgbuy")&&!(+r.foreign_net>0))return false;
-    if(on("insbuy")&&!(+r.inst_net>0))return false;
-    if(on("bothbuy")&&!(+r.foreign_net>0&&+r.inst_net>0))return false;
-    if(on("consec3")&&!(+r.consec_both_buy>=3))return false;
-    if(on("indsell")&&!(+r.individual_net<0))return false;
-    if(on("leadsec")&&!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-    const st=stage(r);
-    if(on("st_birth")&&st!=="birth")return false;
-    if(on("st_grow")&&st!=="grow")return false;
-    if(on("st_nothot")&&st==="hot")return false;
-    // ── 전략 필터 ─────────────────────────────────────────────────
-    if(on("strat_v4")){
-      if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-      if(!r.is_new_high_all)return false;
-      if(!(+r.vol_ratio20_prev>=200))return false;
-      if(!(+r.market_cap>=2*JO))return false;
-      if(!(+r.nonpersonal_net>0))return false;
-      if(!(+r.change_pct<15))return false;
-    }
-    if(on("strat_cb")){
-      if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-      if(!(r.is_new_high_all||r.is_new_high||+r.pct_from_high>=-1))return false;
-      if(!(+r.foreign_net>0&&+r.inst_net>0))return false;
-      if(!(+r.consec_both_buy>=3))return false;
-      if(!(+r.close_pos_pct>=70))return false;
-      if(stage(r)==="hot")return false;
-    }
-    return true;
-  });
+  const cap=+r.market_cap/JO, amt=+r.trade_amount/EOK, chg=+r.change_pct;
+  const vol=r.vol_ratio20_prev==null?null:+r.vol_ratio20_prev;
+  if(f.chgMin!=null&&chg<f.chgMin)return false;
+  if(f.chgMax!=null&&chg>f.chgMax)return false;
+  if(f.capMin!=null&&cap<f.capMin)return false;
+  if(f.capMax!=null&&cap>f.capMax)return false;
+  if(f.amtMin!=null&&amt<f.amtMin)return false;
+  if(f.volMin!=null&&(vol==null||vol<f.volMin))return false;
+  if(f.sec&&r.sector!==f.sec)return false;
+  if(on("newhigh")&&!(r.is_new_high_all||r.is_new_high))return false;
+  if(on("nearhigh")&&!(r.near_high||+r.pct_from_high>=-3))return false;
+  if(on("closepos")&&!(+r.close_pos_pct>=70))return false;
+  if(on("ma5")&&!(r.ma5&&+r.close>+r.ma5))return false;
+  if(on("aligned")&&!r.ma_aligned)return false;
+  if(on("fgbuy")&&!(+r.foreign_net>0))return false;
+  if(on("insbuy")&&!(+r.inst_net>0))return false;
+  if(on("bothbuy")&&!(+r.foreign_net>0&&+r.inst_net>0))return false;
+  if(on("consec3")&&!(+r.consec_both_buy>=3))return false;
+  if(on("indsell")&&!(+r.individual_net<0))return false;
+  if(on("leadsec")&&!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
+  const st=stage(r);
+  if(on("st_birth")&&st!=="birth")return false;
+  if(on("st_grow")&&st!=="grow")return false;
+  if(on("st_nothot")&&st==="hot")return false;
+  // ── 전략 필터 ─────────────────────────────────────────────────
+  if(on("strat_v4")){
+    if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
+    if(!r.is_new_high_all)return false;
+    if(!(+r.vol_ratio20_prev>=200))return false;
+    if(!(+r.market_cap>=2*JO))return false;
+    if(!(+r.nonpersonal_net>0))return false;
+    if(!(+r.change_pct<15))return false;
+  }
+  if(on("strat_v4_lite")){
+    if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
+    if(!r.is_new_high_all)return false;
+    if(!(+r.vol_ratio20_prev>=115))return false;
+    if(!(+r.market_cap>=2*JO))return false;
+    if(!(+r.nonpersonal_net>0))return false;
+    if(!(+r.change_pct<15))return false;
+  }
+  if(on("strat_cb")){
+    if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
+    if(!(r.is_new_high_all||r.is_new_high||+r.pct_from_high>=-1))return false;
+    if(!(+r.foreign_net>0&&+r.inst_net>0))return false;
+    if(!(+r.consec_both_buy>=3))return false;
+    if(!(+r.close_pos_pct>=70))return false;
+    if(stage(r)==="hot")return false;
+  }
+  return true;
+}
+async function runScreener(){
+  $("#scrBody").innerHTML='<tr><td colspan="17" class="load">조회 중…</td></tr>';
+  const date=$("#fDate").value||S.date;
+  let rows=await q("v_screener",`select=*&trade_date=eq.${date}`);
+  rows=rows.filter(screenerFilterPass);
   const key=$("#fSort").value, dir=$("#fDir").value==="desc"?-1:1;
   rows.sort((a,b)=>((+a[key]||-Infinity)-(+b[key]||-Infinity))*dir);
   rows=rows.slice(0,+$("#fLimit").value);
@@ -1133,27 +1247,12 @@ async function loadDetail(code){
     <div class="num ${sgn(+last.change_pct)}" style="font-size:14px;font-weight:640">${pm(+last.change_pct)}%</div>`;
   const lb=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
   $("#dRange").textContent=`${rows[0].trade_date} ~ ${last.trade_date} (${rows.length}거래일)`;
-  // 가격·이동평균 / 투자자별 누적 순매수는 2025-09-01~오늘 구간만 표시
-  const rp=rows.filter(r=>r.trade_date>=START_D);
-  const rpRows=rp.length?rp:rows;
-  const rlb=rpRows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
-  const rangeTxt=`${rpRows[0].trade_date}~오늘`;
-  $("#dPriceRange").textContent=rangeTxt;
-  $("#dFlowRange").textContent=`${rangeTxt} · 억원`;
-  lineChart($("#dPrice"),[
-    {n:"종가",v:rpRows.map(r=>+r.close),c:"--ink",w:2},
-    {n:"MA5",v:rpRows.map(r=>r.ma5?+r.ma5:null),c:"--mac1",w:1.5},
-    {n:"MA20",v:rpRows.map(r=>r.ma20?+r.ma20:null),c:"--mac2",w:1.5},
-    {n:"MA120",v:rpRows.map(r=>r.ma120?+r.ma120:null),c:"--mac3",w:1.5}],
-    rlb,{h:300,w:1180,pr:66,labelEnds:false,marks:true,
-      fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원"});
-  const rb=rpRows[0];
-  const rcum=k=>rpRows.map(r=>(+r[k]-+rb[k])/EOK);
-  lineChart($("#dFlow"),[
-    {n:"외국인",v:rcum("foreign_cum"),c:"--s1"},
-    {n:"기관",v:rcum("inst_cum"),c:"--s2"},
-    {n:"개인",v:rcum("individual_cum"),c:"--s3"}],rlb,
-    {h:230,w:1180,pr:66,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+  // 기간 선택 입력의 기본값(가격/거래량/수급 차트에 공통 적용) = 2025-09-01~오늘
+  $("#dStart").min=rows[0].trade_date; $("#dStart").max=last.trade_date;
+  $("#dEnd").min=rows[0].trade_date;   $("#dEnd").max=last.trade_date;
+  if(!S.dRangeTouched){$("#dStart").value=START_D<rows[0].trade_date?rows[0].trade_date:START_D;
+    $("#dEnd").value=last.trade_date;}
+  renderRangeCharts();
   // 수급 주체별 누적(전 기간)
   const b=rows[0];
   const cum=k=>rows.map(r=>(+r[k]-+b[k])/EOK);
@@ -1188,7 +1287,38 @@ async function loadDetail(code){
   ].map(([k,v,c])=>`<div class="tile"><div class="lb">${k}</div>
     <div class="vl num ${c}">${v}</div></div>`).join("");
 }
-$("#dSel").onchange=e=>loadDetail(e.target.value);
+// 가격·거래량·투자자별 누적 순매수 — #dStart~#dEnd로 고른 기간만 다시 그립니다
+// (전체 데이터는 이미 S.chart.rows에 있으니 네트워크 재조회 없이 즉시 갱신됩니다).
+function renderRangeCharts(){
+  const rows=S.chart.rows;
+  if(!rows||!rows.length)return;
+  const start=$("#dStart").value||START_D, end=$("#dEnd").value||rows.at(-1).trade_date;
+  let rp=rows.filter(r=>r.trade_date>=start&&r.trade_date<=end);
+  if(!rp.length)rp=rows;
+  const rlb=rp.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
+  const rangeTxt=`${rp[0].trade_date}~${rp.at(-1).trade_date}`;
+  $("#dPriceRange").textContent=rangeTxt;
+  $("#dVolRange").textContent=rangeTxt;
+  $("#dFlowRange").textContent=`${rangeTxt} · 억원`;
+  lineChart($("#dPrice"),[
+    {n:"종가",v:rp.map(r=>+r.close),c:"--ink",w:2},
+    {n:"MA5",v:rp.map(r=>r.ma5?+r.ma5:null),c:"--mac1",w:1.5},
+    {n:"MA20",v:rp.map(r=>r.ma20?+r.ma20:null),c:"--mac2",w:1.5},
+    {n:"MA120",v:rp.map(r=>r.ma120?+r.ma120:null),c:"--mac3",w:1.5}],
+    rlb,{h:300,w:1180,pr:66,labelEnds:false,marks:true,
+      fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원"});
+  volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
+    {h:130,w:1180,pr:66,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+  const rb=rp[0];
+  const rcum=k=>rp.map(r=>(+r[k]-+rb[k])/EOK);
+  lineChart($("#dFlow"),[
+    {n:"외국인",v:rcum("foreign_cum"),c:"--s1"},
+    {n:"기관",v:rcum("inst_cum"),c:"--s2"},
+    {n:"개인",v:rcum("individual_cum"),c:"--s3"}],rlb,
+    {h:230,w:1180,pr:66,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+}
+$("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
+$("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
 
 /* ══ 전략 성과 ══ */
 async function loadPerf(){

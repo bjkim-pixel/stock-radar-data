@@ -261,7 +261,27 @@ def fetch_index_history(token, iscd, start_date, end_date):
     return [all_rows[k] for k in sorted(all_rows.keys()) if start_date <= k <= end_date]
 
 
-def quarantine_outliers(raw_rows, threshold=0.25):
+def fetch_last_good_anchor(market, before_date_iso):
+    """quarantine_outliers의 초기 anchor 시드. raw_rows[0]를 무조건 anchor로 삼으면
+    그 첫 행 자체가 KIS 쪽 오염 데이터일 때(과거엔 없던 케이스지만 배제할 수 없음)
+    이후 정상 값들이 전부 '이상치'로 오판되어 잘못 지워지는 사고로 이어질 수 있어
+    (실제로 정상이던 최근 며칠이 이번 실행에서 갑자기 NULL로 초기화되는 형태로
+    나타납니다), DB에 이미 저장된 직전 정상 종가로 anchor를 검증합니다."""
+    try:
+        with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
+            cur.execute("""
+                SELECT index_close FROM market_daily
+                WHERE market=%s AND trade_date < %s AND index_close IS NOT NULL
+                ORDER BY trade_date DESC LIMIT 1
+            """, (market, before_date_iso))
+            row = cur.fetchone()
+            return float(row[0]) if row else None
+    except Exception as ex:
+        print(f"   ⚠ {market} anchor 시드 조회 실패({ex}) — 시드 없이 진행")
+        return None
+
+
+def quarantine_outliers(raw_rows, threshold=0.25, seed_anchor=None):
     """직전 '정상' 종가 대비 threshold(기본 25%) 넘게 튀는 행을 제거합니다.
     2026-05-29~06-09 구간에서 코스피가 8185→3280, 코스닥이 1104→2673으로 튄
     사고를 보면 KIS 응답 안에 며칠씩 이어지는 이상 구간이 통째로 섞여 나올 수
@@ -269,9 +289,13 @@ def quarantine_outliers(raw_rows, threshold=0.25):
     체크만으로는 못 거릅니다) — 그래서 '마지막으로 정상 판정된 종가'를
     anchor로 유지하며 비교합니다: 이상치는 anchor를 갱신하지 않으므로 며칠이
     이어지든 전부 걸러지고, 진짜로 정상 흐름이 재개되는 순간(anchor 대비
-    threshold 이내로 복귀)부터 다시 채택됩니다."""
+    threshold 이내로 복귀)부터 다시 채택됩니다.
+
+    seed_anchor(직전 정상 저장값)가 주어지면 raw_rows[0]도 그 값으로 먼저
+    검증합니다 — 첫 행 자체가 오염돼 있으면 그걸 무조건 anchor로 받아들이던
+    예전 로직은 그 뒤 정상 행들을 전부 이상치로 오판해 지워버릴 수 있었습니다."""
     cleaned = []
-    anchor = None
+    anchor = seed_anchor
     dropped = []
     for x in raw_rows:
         close = safe_float(x.get("bstp_nmix_prpr"))
@@ -396,7 +420,8 @@ def run_backfill_index(start_date):
         if not raw:
             print(f"  ⚠ {market} 데이터 없음")
             continue
-        raw, dropped_dates = quarantine_outliers(raw)
+        seed = fetch_last_good_anchor(market, f"{raw[0]['stck_bsop_date'][:4]}-{raw[0]['stck_bsop_date'][4:6]}-{raw[0]['stck_bsop_date'][6:]}")
+        raw, dropped_dates = quarantine_outliers(raw, seed_anchor=seed)
         clear_quarantined(market, dropped_dates)
         rows = build_index_rows(market, raw)
         all_index_rows.extend(rows)
@@ -494,7 +519,8 @@ def main():
             if not raw:
                 errors.append(f"index:{market} 데이터 없음")
                 continue
-            raw, dropped_dates = quarantine_outliers(raw)
+            seed = fetch_last_good_anchor(market, f"{raw[0]['stck_bsop_date'][:4]}-{raw[0]['stck_bsop_date'][4:6]}-{raw[0]['stck_bsop_date'][6:]}")
+            raw, dropped_dates = quarantine_outliers(raw, seed_anchor=seed)
             clear_quarantined(market, dropped_dates)
             rows = build_index_rows(market, raw)
             index_rows.extend(rows)
