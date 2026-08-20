@@ -234,10 +234,39 @@ def fetch_index_history(token, iscd, start_date, end_date):
         rows, _ = fetch_index_range(token, iscd, d1, d2)
         for row in rows:
             all_rows[row["stck_bsop_date"]] = row  # 날짜 키로 중복 제거
-        print(f"     {d1}~{d2}: {len(rows)}행 (누적 {len(all_rows)}행)")
+        span = f"{rows[0]['stck_bsop_date']}~{rows[-1]['stck_bsop_date']}" if rows else "(없음)"
+        print(f"     요청 {d1}~{d2} → 실제 반환 {span}: {len(rows)}행 (누적 {len(all_rows)}행)")
         time.sleep(0.3)  # KIS 초당 호출 한도 여유
         cursor = chunk_end + datetime.timedelta(days=1)
     return [all_rows[k] for k in sorted(all_rows.keys())]
+
+
+def quarantine_outliers(raw_rows, threshold=0.25):
+    """직전 '정상' 종가 대비 threshold(기본 25%) 넘게 튀는 행을 제거합니다.
+    2026-05-29~06-09 구간에서 코스피가 8185→3280, 코스닥이 1104→2673으로 튄
+    사고를 보면 KIS 응답 안에 며칠씩 이어지는 이상 구간이 통째로 섞여 나올 수
+    있음을 알 수 있습니다(그 구간끼리는 등락률이 그럴듯해 하루 단위 점프
+    체크만으로는 못 거릅니다) — 그래서 '마지막으로 정상 판정된 종가'를
+    anchor로 유지하며 비교합니다: 이상치는 anchor를 갱신하지 않으므로 며칠이
+    이어지든 전부 걸러지고, 진짜로 정상 흐름이 재개되는 순간(anchor 대비
+    threshold 이내로 복귀)부터 다시 채택됩니다."""
+    cleaned = []
+    anchor = None
+    dropped = []
+    for x in raw_rows:
+        close = safe_float(x.get("bstp_nmix_prpr"))
+        if close is None:
+            continue
+        date_iso = f"{x['stck_bsop_date'][:4]}-{x['stck_bsop_date'][4:6]}-{x['stck_bsop_date'][6:]}"
+        if anchor is not None and anchor > 0 and abs(close - anchor) / anchor > threshold:
+            dropped.append((date_iso, close, anchor))
+            continue
+        cleaned.append(x)
+        anchor = close
+    if dropped:
+        print(f"   ⚠ 이상치로 제외된 {len(dropped)}행 (직전 정상 종가 대비 {threshold*100:.0f}%+ 이탈): "
+              + ", ".join(f"{d}(close={c:,.2f}, 직전정상={a:,.2f})" for d, c, a in dropped))
+    return cleaned, [d for d, _, _ in dropped]
 
 
 def build_index_rows(market, raw_rows):
@@ -286,6 +315,23 @@ ON CONFLICT (trade_date, market) DO UPDATE SET
   index_change_pct=EXCLUDED.index_change_pct,
   index_ma20=EXCLUDED.index_ma20
 """
+# quarantine_outliers()가 걸러낸(과거 잘못 적재된) 날짜의 지수 컬럼만 비웁니다.
+# 다른 컬럼(거래대금/외국인수급/regime 등, 04_backfill.py 등 다른 스크립트가 채움)은 건드리지 않습니다.
+CLEAR_INDEX_SQL = """
+UPDATE market_daily
+SET index_close=NULL, index_change=NULL, index_change_pct=NULL, index_ma20=NULL
+WHERE trade_date = %s AND market = %s
+"""
+
+
+def clear_quarantined(market, dropped_dates):
+    if not dropped_dates:
+        return
+    with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
+        for d in dropped_dates:
+            cur.execute(CLEAR_INDEX_SQL, (d, market))
+        c.commit()
+    print(f"   🧹 {market}: 과거 적재분 중 이상치 {len(dropped_dates)}건 지수 컬럼 초기화 ({', '.join(dropped_dates)})")
 
 
 def upsert(sql, rows):
@@ -320,6 +366,8 @@ def run_backfill_index(start_date):
         if not raw:
             print(f"  ⚠ {market} 데이터 없음")
             continue
+        raw, dropped_dates = quarantine_outliers(raw)
+        clear_quarantined(market, dropped_dates)
         rows = build_index_rows(market, raw)
         all_index_rows.extend(rows)
         print(f"  {market}: {len(rows)}행 확보 ({rows[0][0]} ~ {rows[-1][0]})" if rows else f"  {market}: 0행")
@@ -411,6 +459,8 @@ def main():
             if not raw:
                 errors.append(f"index:{market} 데이터 없음")
                 continue
+            raw, dropped_dates = quarantine_outliers(raw)
+            clear_quarantined(market, dropped_dates)
             rows = build_index_rows(market, raw)
             index_rows.extend(rows)
             last = rows[-1] if rows else None
