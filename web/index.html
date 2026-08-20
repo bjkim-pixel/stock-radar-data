@@ -105,6 +105,10 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 
 .tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
 .tw.tall{max-height:460px;overflow-y:auto}
+/* 조건 스크리너 결과: 안쪽 세로 스크롤 없이 페이지 스크롤에 맡기고,
+   헤더만 화면(전역 헤더 아래)에 붙어있게 합니다. */
+.tw.scr-res{overflow-y:visible}
+.tw.scr-res th{position:sticky;top:83px;z-index:20}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 th{position:sticky;top:0;z-index:2;background:var(--surface-2);color:var(--ink-3);font-size:10.5px;
   font-weight:650;padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border)}
@@ -332,15 +336,15 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   <div class="card" style="margin-top:16px">
     <h3>조건 설정</h3>
     <div class="panel-grid">
-      <div class="field"><label>기준일</label><input type="date" id="fDate"></div>
+      <div class="field"><label>기준일</label><input type="date" id="fDate" readonly title="스크리너는 최신 거래일 기준으로만 조회됩니다"></div>
       <div class="field"><label>노출 종목수</label>
-        <select id="fLimit"><option>50</option><option selected>100</option><option>300</option></select></div>
+        <select id="fLimit"><option selected>50</option><option>100</option><option>300</option></select></div>
       <div class="field"><label>등락률 (%)</label>
-        <div class="range"><input type="number" id="fChgMin" placeholder="이상"><span>~</span>
+        <div class="range"><input type="number" id="fChgMin" placeholder="이상" value="1"><span>~</span>
           <input type="number" id="fChgMax" placeholder="이하"></div></div>
       <div class="field"><label>시가총액 (조원)</label>
-        <div class="range"><input type="number" id="fCapMin" placeholder="이상" step="0.1"><span>~</span>
-          <input type="number" id="fCapMax" placeholder="이하" step="0.1"></div></div>
+        <div class="range"><input type="number" id="fCapMin" placeholder="이상" step="0.1" value="2"><span>~</span>
+          <input type="number" id="fCapMax" placeholder="이하" step="0.1" value="2000"></div></div>
       <div class="field"><label>거래대금 ≥ (억원)</label><input type="number" id="fAmtMin"></div>
       <div class="field"><label>거래량비 ≥ (%)</label><input type="number" id="fVolMin"></div>
       <div class="field"><label>업종</label><select id="fSector"><option value="">전체</option></select></div>
@@ -401,18 +405,19 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
       <button class="btn" id="runScr">조회</button>
       <button class="btn ghost" id="resetScr">초기화</button>
-      <span class="faint" style="font-size:11px" id="scrHint"></span>
+      <span class="faint" style="font-size:11px" id="scrHint">기준일은 최신 거래일 고정 · 그 외 조건은 자유롭게 바꿔서 조회할 수 있습니다</span>
     </div>
   </div>
 
-  <div class="card"><h3>결과<span class="r" id="scrCount"></span></h3>
-    <div class="tw tall"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th class="l opt">업종</th>
+  <div class="card scr-res-card"><h3>결과<span class="r" id="scrCount"></span></h3>
+    <div class="tw scr-res"><table><thead><tr>
+      <th class="l">#</th><th class="l">종목</th>
       <th>종가</th><th>등락률</th><th>무게/주식수</th>
-      <th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th><th class="opt">거래량비</th>
-      <th class="grp opt">외국인</th><th class="opt">기관</th><th class="opt">개인</th><th class="opt">기타법인</th>
-      <th class="grp">단계</th>
-    </tr></thead><tbody id="scrBody"><tr><td colspan="15" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
+      <th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th>
+      <th class="grp opt">52주최고가</th><th class="opt">최고가일</th><th class="opt">거래량비</th>
+      <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">금융투자</th>
+      <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th>
+    </tr></thead><tbody id="scrBody"><tr><td colspan="17" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
 
@@ -842,7 +847,7 @@ async function loadFlowStep(){
 /* ══ 조건 스크리너 ══ */
 const on=f=>$(`.fchip[data-f="${f}"]`)?.getAttribute("aria-pressed")==="true";
 async function runScreener(){
-  $("#scrBody").innerHTML='<tr><td colspan="15" class="load">조회 중…</td></tr>';
+  $("#scrBody").innerHTML='<tr><td colspan="17" class="load">조회 중…</td></tr>';
   let rows=await q("v_screener","select=*");
   const num=id=>{const v=$(id).value;return v===""?null:+v;};
   const f={chgMin:num("#fChgMin"),chgMax:num("#fChgMax"),capMin:num("#fCapMin"),
@@ -897,26 +902,30 @@ async function runScreener(){
   $("#scrCount").innerHTML=`조건 통과 <b>${rows.length}</b>종목`;
   $("#scrBody").innerHTML=rows.length?rows.map((r,i)=>`
     <tr><td class="l rank">${i+1}</td>
-      <td class="l"><a class="lk nm" data-code="${r.code}">${r.name}</a>
-        <span class="cd">${r.code}</span></td>
-      <td class="l opt dim">${r.sector||"–"}</td>
-      <td>${N(+r.close)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
-      <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,4)+"%"}</td>
+      <td class="l"><a class="lk nm" data-code="${r.code}">
+        ${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>
+      <td>${N(+r.close,1)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
+      <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
       <td class="grp">${N(+r.market_cap/JO,1)}조</td>
-      <td class="opt">${N(+r.trade_amount/EOK)}억</td>
-      <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,2)+"%"}</td>
-      <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
-      <td class="grp opt ${sgn(+r.foreign_net)}">${pm(+r.foreign_net/EOK,0)}</td>
-      <td class="opt ${sgn(+r.inst_net)}">${pm(+r.inst_net/EOK,0)}</td>
-      <td class="opt ${sgn(+r.individual_net)}">${pm(+r.individual_net/EOK,0)}</td>
-      <td class="opt ${sgn(+r.corp_other_net)}">${pm(+r.corp_other_net/EOK,0)}</td>
-      <td class="grp">${stg(stage(r))}</td></tr>`).join("")
-    :'<tr><td colspan="15" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+      <td class="opt">${N(+r.trade_amount/EOK,1)}억</td>
+      <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,1)+"%"}</td>
+      <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,1)}</td>
+      <td class="opt dim">${r.high_period_date||"–"}</td>
+      <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,1)+"%"}</td>
+      <td class="grp opt ${sgn(+r.foreign_net)}">${pm(+r.foreign_net/EOK,1)}</td>
+      <td class="opt ${sgn(+r.inst_net)}">${pm(+r.inst_net/EOK,1)}</td>
+      <td class="opt ${sgn(+r.fin_inv_net)}">${pm(+r.fin_inv_net/EOK,1)}</td>
+      <td class="opt ${sgn(+r.inv_trust_net)}">${pm(+r.inv_trust_net/EOK,1)}</td>
+      <td class="opt ${sgn(+r.pension_net)}">${pm(+r.pension_net/EOK,1)}</td>
+      <td class="opt ${sgn(+r.pe_net)}">${pm(+r.pe_net/EOK,1)}</td></tr>`).join("")
+    :'<tr><td colspan="17" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
 }
 $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e.message));
+const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"2","#fCapMax":"2000","#fAmtMin":"","#fVolMin":""};
 $("#resetScr").onclick=()=>{
-  ["#fChgMin","#fChgMax","#fCapMin","#fCapMax","#fAmtMin","#fVolMin"].forEach(i=>$(i).value="");
+  Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
+  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
   $("#fSector").value="";$$(".fchip").forEach(b=>b.setAttribute("aria-pressed","false"));};
 
 /* ══ 종목 상세 ══ */
