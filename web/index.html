@@ -111,7 +111,11 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
    페이지를 스크롤해도 표 상단에 계속 보이도록 sticky이고, 그 고정 위치는
    전역 헤더 실제 높이를 JS(setStickyOffset)가 --stick-top으로 계산해 넣습니다
    — 기기/화면폭에 따라 헤더 높이가 달라져도 항상 정확합니다. */
-.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
+/* overflow-x:auto here would silently force overflow-y:auto too, turning .tw into
+   its own scroll container — that breaks position:sticky th's viewport-relative
+   stickiness (headers stop clamping and just scroll away mid-table). Tables must
+   fit via responsive sizing instead, never via an internal scrollbar. */
+.tw{overflow:visible;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 th{position:sticky;top:var(--stick-top,0px);z-index:2;background:var(--surface-2);color:var(--ink-3);font-size:10.5px;
   font-weight:650;padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border)}
@@ -199,6 +203,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   .funnel{top:0;position:relative}
   .chip.opt{display:none}
   .fchip .pop{left:auto;right:0;width:270px}
+  th{font-size:9px;padding:6px 5px} td{font-size:10.5px;padding:6px 5px}
+  .grid5{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -217,8 +223,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     </div>
   </div>
   <nav id="tabs">
-    <button aria-selected="true" data-v="proc">오늘의 프로세스</button>
-    <button data-v="scr">조건 스크리너</button>
+    <button aria-selected="true" data-v="proc">시장 매크로</button>
+    <button data-v="flow">수급 동향</button>
+    <button data-v="scr">종목 후보</button>
     <button data-v="detail">종목 상세</button>
     <button data-v="perf">전략 성과</button>
   </nav>
@@ -343,6 +350,62 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 </section>
 
 
+<!-- ═══════════ 수급 동향 ═══════════ -->
+<section id="v-flow" class="hide">
+  <div class="card" style="margin-top:16px"><h3>오늘의 수급주체별 순매수 거래대금
+    <span class="r">시장 전체 · 억원</span></h3>
+    <div class="tw"><table><thead><tr>
+      <th class="l">수급주체</th><th>3개월</th><th>1개월</th><th>2주</th><th>1주</th><th>오늘</th>
+    </tr></thead><tbody id="flowTrendBody"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
+  </div>
+
+  <div class="card"><h3>종목별 수급 랭킹</h3>
+    <div class="qf-group"><div class="qf-lb">수급주체</div><div class="qf seg" id="flowSubjSel">
+      <button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button>
+      <button class="fchip" data-v="foreign">외국인</button>
+      <button class="fchip" data-v="inst">기관합계</button>
+      <button class="fchip" data-v="fin_inv">금융투자</button>
+      <button class="fchip" data-v="inv_trust">투신</button>
+      <button class="fchip" data-v="pension">연기금</button>
+      <button class="fchip" data-v="pe">사모</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="flowPeriodSel">
+      <button class="fchip" data-v="3m">3개월</button>
+      <button class="fchip" data-v="1m">1개월</button>
+      <button class="fchip" data-v="2w">2주</button>
+      <button class="fchip" data-v="1w">1주</button>
+      <button class="fchip" data-v="1d" aria-pressed="true">오늘</button>
+    </div></div>
+    <div class="note" id="flowSelNote"></div>
+  </div>
+
+  <div class="card"><h3>순매수 거래대금 <span class="r">기간 누적 · 억원</span></h3>
+    <div class="grid2">
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 매수</div>
+        <div class="tw"><table><thead><tr>
+          <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th>순매수</th>
+        </tr></thead><tbody id="flowBuyBody"></tbody></table></div></div>
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 매도</div>
+        <div class="tw"><table><thead><tr>
+          <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th>순매수</th>
+        </tr></thead><tbody id="flowSellBody"></tbody></table></div></div>
+    </div>
+  </div>
+
+  <div class="card"><h3>시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시가총액 · %</span></h3>
+    <div class="grid2">
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 비중 상승</div>
+        <div class="tw"><table><thead><tr>
+          <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th>비중</th>
+        </tr></thead><tbody id="flowRatioUpBody"></tbody></table></div></div>
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 비중 하락</div>
+        <div class="tw"><table><thead><tr>
+          <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th>비중</th>
+        </tr></thead><tbody id="flowRatioDownBody"></tbody></table></div></div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════ 조건 스크리너 ═══════════ -->
 <section id="v-scr" class="hide">
   <div class="card" style="margin-top:16px">
@@ -350,7 +413,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="panel-grid">
       <div class="field"><label>기준일</label><input type="date" id="fDate" readonly title="스크리너는 최신 거래일 기준으로만 조회됩니다"></div>
       <div class="field"><label>노출 종목수</label>
-        <select id="fLimit"><option selected>50</option><option>100</option><option>300</option></select></div>
+        <select id="fLimit"><option selected>10</option><option>20</option><option>50</option><option>100</option><option>300</option></select></div>
       <div class="field"><label>등락률 (%)</label>
         <div class="range"><input type="number" id="fChgMin" placeholder="이상" value="1"><span>~</span>
           <input type="number" id="fChgMax" placeholder="이하"></div></div>
@@ -573,19 +636,24 @@ function lineChart(host,series,labels,opt={}){
       const t=el("text",{x:X(li)+9,y:e.ry+3.5,"font-size":10.5,fill:css("--ink-2"),"font-weight":600});
       t.textContent=e.n;svg.appendChild(t);});
   }
-  /* 최고점·최저점·오늘 표시. opt.marks==='each'면 모든 시리즈 각각에,
-     opt.marks===true면 첫 번째 시리즈에만 표시합니다. */
+  /* 최고점·최저점·오늘 표시. opt.marks==='each'면 모든 시리즈 각각에 최고/최저/오늘,
+     opt.marks==='today-each'면 모든 시리즈 각각에 오늘만, opt.marks===true면
+     첫 번째 시리즈에만 최고/최저/오늘을 표시합니다. */
   if(opt.marks){
-    const targets=opt.marks==="each"?series:[series[0]];
+    const todayOnly=opt.marks==="today-each";
+    const targets=(opt.marks==="each"||todayOnly)?series:[series[0]];
     targets.forEach((s0,si)=>{
       const vals=s0.v;
       const valid=vals.map((v,i)=>({v,i})).filter(o=>o.v!=null&&!isNaN(o.v));
       if(!valid.length)return;
-      const hi=valid.reduce((a,b)=>b.v>a.v?b:a).i;
-      const lo=valid.reduce((a,b)=>b.v<a.v?b:a).i;
-      const own=opt.marks==="each"?css(s0.c):null;
-      const rows=[[hi,"최고",own||css("--up")],[lo,"최저",own||css("--down")]];
-      if(si===0||opt.marks==="each")rows.push([vals.length-1,own?"오늘":"오늘",own||css("--ink")]);
+      const own=(opt.marks==="each"||todayOnly)?css(s0.c):null;
+      const rows=[];
+      if(!todayOnly){
+        const hi=valid.reduce((a,b)=>b.v>a.v?b:a).i;
+        const lo=valid.reduce((a,b)=>b.v<a.v?b:a).i;
+        rows.push([hi,"최고",own||css("--up")],[lo,"최저",own||css("--down")]);
+      }
+      if(si===0||opt.marks==="each"||todayOnly)rows.push([vals.length-1,"오늘",own||css("--ink")]);
       rows.forEach(([i,lb,c])=>{
         if(i<0||vals[i]==null)return;
         svg.appendChild(el("circle",{cx:X(i),cy:Y(vals[i]),r:4.5,fill:c,
@@ -594,7 +662,7 @@ function lineChart(host,series,labels,opt={}){
         const t=el("text",{x:X(i)+(ta==="end"?-8:8),y:Y(vals[i])-10,"text-anchor":ta,
           "font-size":10.5,"font-weight":700,fill:c,
           stroke:css("--surface"),"stroke-width":3.5,"paint-order":"stroke"});
-        t.textContent=`${opt.marks==="each"?s0.n+" ":""}${lb} ${opt.fm?opt.fm(vals[i]):N(vals[i])}`;svg.appendChild(t);});
+        t.textContent=`${(opt.marks==="each"||todayOnly)?s0.n+" ":""}${lb} ${opt.fm?opt.fm(vals[i]):N(vals[i])}`;svg.appendChild(t);});
     });
   }
   const cross=el("line",{stroke:css("--axis"),"stroke-width":1,opacity:0});svg.appendChild(cross);
@@ -693,10 +761,12 @@ function go(v){
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
   if(cur&&cur!==v)S.prevView=cur;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
-  ["proc","scr","detail","perf"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","flow","scr","detail","perf"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   scrollTo(0,0);
   if(v==="detail"&&!S.chart.code)loadDetail(S.codes[0]?.code);
   if(v==="perf")loadPerf();
+  if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
+    Promise.all([loadFlowTrends(),loadFlowLists()]).catch(()=>{});}
   redraw();
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
@@ -714,9 +784,14 @@ $("#themeBtn").onclick=()=>{document.documentElement.dataset.theme=
 $$("#funnel .fstep").forEach(f=>f.onclick=()=>{
   $$("#funnel .fstep").forEach(x=>x.classList.toggle("on",x===f));
   $("#"+f.dataset.g).scrollIntoView({behavior:"smooth",block:"start"});});
-$$(".fchip").forEach(b=>b.onclick=e=>{
+$$(".qf:not(.seg) .fchip").forEach(b=>b.onclick=e=>{
   if(e.target.closest(".pop"))return;
   b.setAttribute("aria-pressed",b.getAttribute("aria-pressed")!=="true");});
+// .qf.seg = 단일 선택(라디오) 형태의 chip 그룹 (수급 동향 주체/기간 선택 등)
+$$(".qf.seg").forEach(g=>$$(".fchip",g).forEach(b=>b.onclick=()=>{
+  $$(".fchip",g).forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+  g.dispatchEvent(new CustomEvent("seg-change",{detail:b.dataset.v}));
+}));
 
 /* ══ STEP1 시장 ══ */
 async function loadMarket(){
@@ -730,7 +805,7 @@ async function loadMarket(){
     {n:"외국인",v:rebase("foreign_cum"),c:"--s1"},
     {n:"기관",v:rebase("inst_cum"),c:"--s2"},
     {n:"개인",v:rebase("individual_cum"),c:"--s3"}],lb,
-    {h:230,w:1100,pr:70,zero:true,marks:"each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+    {h:230,w:1100,pr:70,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
   const last=S.market.at(-1);
   return last;
 }
@@ -826,7 +901,7 @@ async function selectSector(sec){
       {n:"외국인",v:fl.map(p=>+p.foreign_cum/EOK),c:"--s1"},
       {n:"기관",v:fl.map(p=>+p.inst_cum/EOK),c:"--s2"},
       {n:"개인",v:fl.map(p=>+p.individual_cum/EOK),c:"--s3"}],lb,
-      {h:230,pr:66,zero:true,marks:"each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+      {h:230,pr:66,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
     const last=fl.at(-1),since=fl.length>=5?fl.at(-5):fl[0];
     const arr=[["외국인",+last.foreign_cum-+since.foreign_cum],
                ["기관",+last.inst_cum-+since.inst_cum],
@@ -904,6 +979,57 @@ async function loadFlowStep(){
   $("#finalOut").innerHTML=`<b>${sig.length}건</b>`;
   $("#fn5").innerHTML=`${sig.length}<small>건</small>`;
 }
+
+/* ══ 수급 동향 ══ */
+const FLOW_SUBJ={combo:"외국인+기관합계",foreign:"외국인",inst:"기관합계",fin_inv:"금융투자",
+  inv_trust:"투신",pension:"연기금",pe:"사모"};
+const FLOW_PERIOD={"3m":"3개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
+S.flowSubj=S.flowSubj||"combo"; S.flowPeriod=S.flowPeriod||"1d";
+function flowVal(row,subj,period){
+  if(subj==="combo")return (+row["foreign_"+period]||0)+(+row["inst_"+period]||0);
+  return +row[subj+"_"+period]||0;
+}
+async function loadFlowTrends(){
+  const r=(await q("v_market_flow_periods","select=*"))[0];
+  if(!r){$("#flowTrendBody").innerHTML='<tr><td colspan="6" class="load">데이터 없음</td></tr>';return;}
+  const rows=Object.entries(FLOW_SUBJ).filter(([k])=>k!=="combo").map(([k,label])=>{
+    const cells=["3m","1m","2w","1w","1d"].map(p=>{
+      const v=flowVal(r,k,p)/EOK;
+      return `<td class="${sgn(v)}">${pm(v,0)}</td>`;
+    }).join("");
+    return `<tr><td class="l">${label}</td>${cells}</tr>`;
+  }).join("");
+  $("#flowTrendBody").innerHTML=rows;
+}
+function flowRankRow(r,i,valEok,fmt){
+  return `<tr><td class="l rank">${i+1}</td>
+    <td class="l"><a class="lk nm" data-code="${r.code}">${r.name}</a></td>
+    <td>${N(+r.close)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
+    <td class="${sgn(valEok)}">${fmt}</td></tr>`;
+}
+async function loadFlowLists(){
+  if(!S.flowRanked)S.flowRanked=await q("v_stock_flow_ranked","select=*");
+  const subj=S.flowSubj, period=S.flowPeriod;
+  $("#flowSelNote").innerHTML=`<b>${FLOW_SUBJ[subj]}</b> · <b>${FLOW_PERIOD[period]}</b> 누적 순매수 거래대금 기준`;
+  const withVal=S.flowRanked.map(r=>({r,v:flowVal(r,subj,period)}));
+  const bySize=[...withVal].sort((a,b)=>b.v-a.v);
+  const buy=bySize.slice(0,10), sell=bySize.slice(-10).reverse();
+  $("#flowBuyBody").innerHTML=buy.length?buy.map((o,i)=>flowRankRow(o.r,i,o.v/EOK,pm(o.v/EOK,0)+"억")).join("")
+    :'<tr><td colspan="5" class="load">데이터 없음</td></tr>';
+  $("#flowSellBody").innerHTML=sell.length?sell.map((o,i)=>flowRankRow(o.r,i,o.v/EOK,pm(o.v/EOK,0)+"억")).join("")
+    :'<tr><td colspan="5" class="load">데이터 없음</td></tr>';
+  const withRatio=S.flowRanked.filter(r=>+r.market_cap>0)
+    .map(r=>({r,v:flowVal(r,subj,period),ratio:flowVal(r,subj,period)/(+r.market_cap)*100}));
+  const byRatio=[...withRatio].sort((a,b)=>b.ratio-a.ratio);
+  const up=byRatio.slice(0,10), down=byRatio.slice(-10).reverse();
+  $("#flowRatioUpBody").innerHTML=up.length?up.map((o,i)=>flowRankRow(o.r,i,o.ratio,pm(o.ratio,2)+"%")).join("")
+    :'<tr><td colspan="5" class="load">데이터 없음</td></tr>';
+  $("#flowRatioDownBody").innerHTML=down.length?down.map((o,i)=>flowRankRow(o.r,i,o.ratio,pm(o.ratio,2)+"%")).join("")
+    :'<tr><td colspan="5" class="load">데이터 없음</td></tr>';
+  $$("#v-flow a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+}
+$("#flowSubjSel").addEventListener("seg-change",e=>{S.flowSubj=e.detail;loadFlowLists().catch(()=>{});});
+$("#flowPeriodSel").addEventListener("seg-change",e=>{S.flowPeriod=e.detail;loadFlowLists().catch(()=>{});});
 
 /* ══ 조건 스크리너 ══ */
 const on=f=>$(`.fchip[data-f="${f}"]`)?.getAttribute("aria-pressed")==="true";
@@ -986,7 +1112,7 @@ $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e
 const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"2","#fCapMax":"2000","#fAmtMin":"","#fVolMin":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
-  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
+  $("#fLimit").value="10";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
   $("#fSector").value="";$$(".fchip").forEach(b=>b.setAttribute("aria-pressed","false"));};
 
 /* ══ 종목 상세 ══ */
@@ -1027,7 +1153,7 @@ async function loadDetail(code){
     {n:"외국인",v:rcum("foreign_cum"),c:"--s1"},
     {n:"기관",v:rcum("inst_cum"),c:"--s2"},
     {n:"개인",v:rcum("individual_cum"),c:"--s3"}],rlb,
-    {h:230,w:1180,pr:66,zero:true,marks:"each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+    {h:230,w:1180,pr:66,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
   // 수급 주체별 누적(전 기간)
   const b=rows[0];
   const cum=k=>rows.map(r=>(+r[k]-+b[k])/EOK);
