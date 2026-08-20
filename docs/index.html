@@ -105,10 +105,9 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 
 .tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
 .tw.tall{max-height:460px;overflow-y:auto}
-/* 조건 스크리너 결과: 안쪽 세로 스크롤 없이 페이지 스크롤에 맡기고,
-   헤더만 화면(전역 헤더 아래)에 붙어있게 합니다. */
-.tw.scr-res{overflow-y:visible}
-.tw.scr-res th{position:sticky;top:83px;z-index:20}
+/* 조건 스크리너 결과: 남은 화면 높이에 맞춰 박스 자체를 늘리고(JS가 계산),
+   그 박스 안에서만 스크롤 + 헤더 고정 — 페이지 전체 스크롤과 겹치지 않습니다. */
+.tw.scr-res{overflow-y:auto}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 th{position:sticky;top:0;z-index:2;background:var(--surface-2);color:var(--ink-3);font-size:10.5px;
   font-weight:650;padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border)}
@@ -413,10 +412,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="tw scr-res"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th>
       <th>종가</th><th>등락률</th><th>무게/주식수</th>
-      <th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th>
-      <th class="grp opt">52주최고가</th><th class="opt">최고가일</th><th class="opt">거래량비</th>
-      <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">금융투자</th>
-      <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th>
+      <th class="grp">시총</th><th>거래대금</th><th>대금비중</th>
+      <th class="grp">52주최고가</th><th>최고가일</th><th>거래량비</th>
+      <th class="grp">외국인</th><th>기관합계</th><th>금융투자</th>
+      <th>투신</th><th>연기금</th><th>사모</th>
     </tr></thead><tbody id="scrBody"><tr><td colspan="17" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
@@ -674,8 +673,20 @@ function go(v){
   scrollTo(0,0);
   if(v==="detail"&&!S.chart.code)loadDetail(S.codes[0]?.code);
   if(v==="perf")loadPerf();
+  if(v==="scr")setTimeout(fitScrResHeight,0);
   redraw();
 }
+// 조건 스크리너 결과 박스를 "여기서부터 화면 끝까지" 높이로 맞춥니다 —
+// 페이지 전체가 스크롤되는 게 아니라 이 박스 안에서만 스크롤되고, 헤더는
+// 그 안에서 sticky top:0으로 고정됩니다(다른 태그 위치를 추정할 필요가 없어
+// 화면 크기/기기와 무관하게 항상 정확합니다).
+function fitScrResHeight(){
+  const box=$(".tw.scr-res");
+  if(!box||box.closest(".hide"))return;
+  const top=box.getBoundingClientRect().top;
+  box.style.maxHeight=Math.max(240,window.innerHeight-top-16)+"px";
+}
+window.addEventListener("resize",()=>{if(!$("#v-scr").classList.contains("hide"))fitScrResHeight();});
 $("#themeBtn").onclick=()=>{document.documentElement.dataset.theme=
   document.documentElement.dataset.theme==="dark"?"light":"dark";redraw();};
 $$("#funnel .fstep").forEach(f=>f.onclick=()=>{
@@ -907,19 +918,20 @@ async function runScreener(){
       <td>${N(+r.close,1)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
       <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
       <td class="grp">${N(+r.market_cap/JO,1)}조</td>
-      <td class="opt">${N(+r.trade_amount/EOK,1)}억</td>
-      <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,1)+"%"}</td>
-      <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,1)}</td>
-      <td class="opt dim">${r.high_period_date||"–"}</td>
-      <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,1)+"%"}</td>
-      <td class="grp opt ${sgn(+r.foreign_net)}">${pm(+r.foreign_net/EOK,1)}</td>
-      <td class="opt ${sgn(+r.inst_net)}">${pm(+r.inst_net/EOK,1)}</td>
-      <td class="opt ${sgn(+r.fin_inv_net)}">${pm(+r.fin_inv_net/EOK,1)}</td>
-      <td class="opt ${sgn(+r.inv_trust_net)}">${pm(+r.inv_trust_net/EOK,1)}</td>
-      <td class="opt ${sgn(+r.pension_net)}">${pm(+r.pension_net/EOK,1)}</td>
-      <td class="opt ${sgn(+r.pe_net)}">${pm(+r.pe_net/EOK,1)}</td></tr>`).join("")
+      <td>${N(+r.trade_amount/EOK,1)}억</td>
+      <td>${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,1)+"%"}</td>
+      <td class="grp">${r.high_period==null?"–":N(+r.high_period,1)}</td>
+      <td class="dim">${r.high_period_date||"–"}</td>
+      <td>${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,1)+"%"}</td>
+      <td class="grp ${sgn(+r.foreign_net)}">${pm(+r.foreign_net/EOK,1)}</td>
+      <td class="${sgn(+r.inst_net)}">${pm(+r.inst_net/EOK,1)}</td>
+      <td class="${sgn(+r.fin_inv_net)}">${pm(+r.fin_inv_net/EOK,1)}</td>
+      <td class="${sgn(+r.inv_trust_net)}">${pm(+r.inv_trust_net/EOK,1)}</td>
+      <td class="${sgn(+r.pension_net)}">${pm(+r.pension_net/EOK,1)}</td>
+      <td class="${sgn(+r.pe_net)}">${pm(+r.pe_net/EOK,1)}</td></tr>`).join("")
     :'<tr><td colspan="17" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+  fitScrResHeight();
 }
 $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e.message));
 const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"2","#fCapMax":"2000","#fAmtMin":"","#fVolMin":""};
