@@ -190,14 +190,15 @@ def fetch_index_series(token, iscd):
         timeout=15
     )
     if r.status_code != 200:
-        return []
+        return [], None
     d = r.json()
     if d.get("rt_cd") != "0":
-        return []
+        return [], None
     rows = [x for x in (d.get("output2") or []) if x and x.get("stck_bsop_date")]
     # KIS는 최신일이 먼저 오는 내림차순으로 반환합니다 → 오래된 순으로 뒤집습니다.
     rows.sort(key=lambda x: x["stck_bsop_date"])
-    return rows
+    output1 = d.get("output1")  # 최신일 스냅샷 — KIS가 직접 계산한 전일대비율 포함 (교차검증용)
+    return rows, output1
 
 
 def build_index_rows(market, raw_rows):
@@ -288,12 +289,15 @@ def run_debug():
     y = fetch_yahoo_index(YAHOO_SYMBOLS["NASDAQ"])
     print(json.dumps(y, ensure_ascii=False, indent=2) if y else "  (데이터 없음)")
 
-    print("\n[3] inquire-daily-indexchartprice (코스피 0001) 응답 — 최근 5행만 표시:")
-    idx = fetch_index_series(token, INDEX_CODES["KOSPI"])
-    print(json.dumps(idx[-5:], ensure_ascii=False, indent=2) if idx else "  (데이터 없음)")
+    print("\n[3] inquire-daily-indexchartprice (코스피 0001) 응답 — 최근 10행 + output1:")
+    idx, out1 = fetch_index_series(token, INDEX_CODES["KOSPI"])
+    print(json.dumps(idx[-10:], ensure_ascii=False, indent=2) if idx else "  (데이터 없음)")
+    print("output1 (KIS 자체 전일대비 스냅샷):")
+    print(json.dumps(out1, ensure_ascii=False, indent=2) if out1 else "  (없음)")
     print("""
-→ 확인 포인트: stck_bsop_date(영업일자), bstp_nmix_prpr(지수 종가)가 실제 KOSPI 수치와
-  맞는지(2500~3500대) 확인하세요. 1001(코스닥)도 같은 방식으로 검증하세요.
+→ 확인 포인트: stck_bsop_date(영업일자)가 하루씩 빠짐없이 이어지는지,
+  bstp_nmix_prpr(지수 종가)가 앞뒤 행과 비교해 이상 점프가 있는지,
+  output1의 bstp_nmix_prdy_ctrt(전일대비율)가 우리 계산한 change_pct와 일치하는지 확인하세요.
 """)
 
 
@@ -342,7 +346,7 @@ def main():
     print("④ KOSPI·KOSDAQ 종합지수 수집 (최근 ~110일 → 등락률·MA20 계산)...")
     for market, iscd in INDEX_CODES.items():
         try:
-            raw = fetch_index_series(token, iscd)
+            raw, out1 = fetch_index_series(token, iscd)
             if not raw:
                 errors.append(f"index:{market} 데이터 없음")
                 continue
@@ -353,6 +357,14 @@ def main():
                 print(f"   {market}: {last[0]} 종가 {last[2]:,.2f}"
                       + (f" ({last[4]:+.2f}%)" if last[4] is not None else "")
                       + f" · {len(rows)}행")
+                # KIS 자체 전일대비율(output1)과 우리 계산값을 대조해 이상치를 바로 드러냅니다.
+                kis_ctrt = safe_float((out1 or {}).get("bstp_nmix_prdy_ctrt"))
+                if kis_ctrt is not None and last[4] is not None and abs(kis_ctrt - last[4]) > 0.5:
+                    print(f"   ⚠ {market} 등락률 불일치 — 우리계산 {last[4]:+.2f}% vs KIS자체 {kis_ctrt:+.2f}%")
+                if last[4] is not None and abs(last[4]) > 4:
+                    prev_rows = rows[-3:-1]
+                    print(f"   ⚠ {market} 단일일 등락률 {last[4]:+.2f}%로 비정상 — 직전 행: "
+                          + json.dumps([{"date": r[0], "close": r[2]} for r in prev_rows], ensure_ascii=False))
         except Exception as ex:
             errors.append(f"index:{market} 오류 {ex}")
 
