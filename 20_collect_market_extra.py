@@ -75,6 +75,12 @@ def safe_float(v, default=None):
 
 # ── KIS 공통 ──────────────────────────────────────────────────────────────────
 def get_token():
+    # KIS는 앱키당 토큰 발급을 1분에 1회로 제한합니다. 같은 워크플로에서
+    # 03_daily_collect.py가 방금 발급받은 토큰을 재사용해 재발급 403을 피합니다.
+    reuse = os.environ.get("KIS_ACCESS_TOKEN", "")
+    if reuse:
+        print("  기존 토큰 재사용 (KIS_ACCESS_TOKEN 환경변수)")
+        return reuse
     r = requests.post(
         f"{KIS_BASE}/oauth2/tokenP",
         json={"grant_type": "client_credentials",
