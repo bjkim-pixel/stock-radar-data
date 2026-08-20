@@ -22,11 +22,14 @@ GitHub Actions에서 03_daily_collect.py 이후 매 거래일 자동 실행됩�
   SUPABASE_DB_URL   Supabase Session pooler URI
 
 사용법
-  python 20_collect_market_extra.py                  # 오늘 수집
-  python 20_collect_market_extra.py 20260815          # 특정 날짜 재수집
-  python 20_collect_market_extra.py --debug           # API 원본 응답 확인 (필드명 검증)
+  python 20_collect_market_extra.py                     # 오늘 수집
+  python 20_collect_market_extra.py 20260815             # 특정 날짜 재수집
+  python 20_collect_market_extra.py --debug              # API 원본 응답 확인 (필드명 검증)
+  python 20_collect_market_extra.py --backfill-index 20250901
+                                                          # KOSPI/KOSDAQ 지수만 지정일~오늘 백필
+                                                          # (프로그램매매·미국증시는 건드리지 않음)
 """
-import os, sys, json, datetime
+import os, sys, json, time, datetime
 import requests, psycopg2
 
 # ── 설정 ──────────────────────────────────────────────────────────────────────
@@ -49,9 +52,18 @@ INDEX_CODES = {
 }
 
 DEBUG_MODE  = "--debug" in sys.argv
+
+BACKFILL_INDEX_FROM = None
+if "--backfill-index" in sys.argv:
+    _i = sys.argv.index("--backfill-index")
+    if _i + 1 < len(sys.argv):
+        BACKFILL_INDEX_FROM = sys.argv[_i + 1]
+    else:
+        sys.exit("❌ --backfill-index 뒤에 시작일(YYYYMMDD)을 지정하세요.")
+
 TARGET_DATE = datetime.date.today().strftime("%Y%m%d")
 for a in sys.argv[1:]:
-    if a.isdigit() and len(a) == 8:
+    if a.isdigit() and len(a) == 8 and a != BACKFILL_INDEX_FROM:
         TARGET_DATE = a
 TARGET_DATE_ISO = f"{TARGET_DATE[:4]}-{TARGET_DATE[4:6]}-{TARGET_DATE[6:]}"
 
@@ -172,11 +184,10 @@ def fetch_yahoo_index(symbol_enc):
 
 
 # ── KIS: 국내주식업종기간별시세(일) — KOSPI/KOSDAQ 종합지수 ─────────────────────
-def fetch_index_series(token, iscd):
-    """iscd: '0001'(코스피 종합) | '1001'(코스닥 종합).
-    최근 ~110일 범위를 한 번에 조회해 output2(일별 리스트)를 오래된 순으로 반환합니다.
-    MA20 계산에 필요한 여유분(20일)을 포함해 '최근 3개월' 차트(약 62거래일)를 채우기 충분한 범위입니다."""
-    date1 = (datetime.datetime.strptime(TARGET_DATE, "%Y%m%d") - datetime.timedelta(days=110)).strftime("%Y%m%d")
+def fetch_index_range(token, iscd, date1, date2):
+    """iscd: '0001'(코스피 종합) | '1001'(코스닥 종합). date1/date2: 'YYYYMMDD'.
+    한 번의 호출이 실제로 돌려주는 건수는 관측상 약 50건 안팎이라(문서에 명시된 한도 없음),
+    넓은 범위를 한 번에 요청해도 잘릴 수 있습니다 — 긴 기간은 fetch_index_history로 나눠서 호출하세요."""
     r = requests.get(
         f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice",
         headers=kis_headers(token, "FHKUP03500100"),
@@ -184,7 +195,7 @@ def fetch_index_series(token, iscd):
             "FID_COND_MRKT_DIV_CODE": "U",
             "FID_INPUT_ISCD": iscd,
             "FID_INPUT_DATE_1": date1,
-            "FID_INPUT_DATE_2": TARGET_DATE,
+            "FID_INPUT_DATE_2": date2,
             "FID_PERIOD_DIV_CODE": "D",
         },
         timeout=15
@@ -199,6 +210,34 @@ def fetch_index_series(token, iscd):
     rows.sort(key=lambda x: x["stck_bsop_date"])
     output1 = d.get("output1")  # 최신일 스냅샷 — KIS가 직접 계산한 전일대비율 포함 (교차검증용)
     return rows, output1
+
+
+def fetch_index_series(token, iscd):
+    """일상 수집용: 최근 ~110일 범위 한 번 호출. MA20 계산 여유분(20일) 포함해
+    '최근 3개월' 차트(약 62거래일)를 채우기 충분합니다."""
+    date1 = (datetime.datetime.strptime(TARGET_DATE, "%Y%m%d") - datetime.timedelta(days=110)).strftime("%Y%m%d")
+    return fetch_index_range(token, iscd, date1, TARGET_DATE)
+
+
+def fetch_index_history(token, iscd, start_date, end_date):
+    """start_date~end_date 전체를 100일씩 겹치지 않게 잘라 순차 호출해 이어붙입니다.
+    04_backfill.py의 '기준일 스텝핑' 방식과 동일한 접근입니다 — 한 번에 다 못 받는 걸
+    이미 알고 있으니(관측상 ~50건/호출) 구간을 나눠서 확실하게 커버합니다."""
+    start_dt = datetime.datetime.strptime(start_date, "%Y%m%d")
+    end_dt = datetime.datetime.strptime(end_date, "%Y%m%d")
+    all_rows = {}
+    cursor = start_dt
+    STEP = 90  # 여유 있게 90일 단위로 (관측상 호출당 ~50거래일 반환 → 겹침 없이 이어붙임)
+    while cursor <= end_dt:
+        chunk_end = min(cursor + datetime.timedelta(days=STEP - 1), end_dt)
+        d1, d2 = cursor.strftime("%Y%m%d"), chunk_end.strftime("%Y%m%d")
+        rows, _ = fetch_index_range(token, iscd, d1, d2)
+        for row in rows:
+            all_rows[row["stck_bsop_date"]] = row  # 날짜 키로 중복 제거
+        print(f"     {d1}~{d2}: {len(rows)}행 (누적 {len(all_rows)}행)")
+        time.sleep(0.3)  # KIS 초당 호출 한도 여유
+        cursor = chunk_end + datetime.timedelta(days=1)
+    return [all_rows[k] for k in sorted(all_rows.keys())]
 
 
 def build_index_rows(market, raw_rows):
@@ -268,6 +307,28 @@ def log_result(job, status, row_count, message=""):
             c.commit()
     except Exception as ex:
         print(f"  ⚠ ingest_log 기록 실패: {ex}")
+
+
+# ── 지수 백필 모드 ─────────────────────────────────────────────────────────────
+def run_backfill_index(start_date):
+    print(f"\n=== 지수 백필: {start_date} ~ {TARGET_DATE} ===\n")
+    token = get_token()
+    all_index_rows = []
+    for market, iscd in INDEX_CODES.items():
+        print(f"  {market} ({iscd}) 조회 중...")
+        raw = fetch_index_history(token, iscd, start_date, TARGET_DATE)
+        if not raw:
+            print(f"  ⚠ {market} 데이터 없음")
+            continue
+        rows = build_index_rows(market, raw)
+        all_index_rows.extend(rows)
+        print(f"  {market}: {len(rows)}행 확보 ({rows[0][0]} ~ {rows[-1][0]})" if rows else f"  {market}: 0행")
+
+    print(f"\n  DB 적재 중... ({len(all_index_rows)}행)")
+    upsert(INDEX_SQL, all_index_rows)
+    log_result("index_backfill", "SUCCESS" if all_index_rows else "FAIL",
+               len(all_index_rows), f"from={start_date} to={TARGET_DATE}")
+    print(f"\n✅ 지수 백필 완료: {len(all_index_rows)}행 적재")
 
 
 # ── 디버그 모드 ────────────────────────────────────────────────────────────────
@@ -389,7 +450,9 @@ def main():
 
 
 if __name__ == "__main__":
-    if DEBUG_MODE:
+    if BACKFILL_INDEX_FROM:
+        run_backfill_index(BACKFILL_INDEX_FROM)
+    elif DEBUG_MODE:
         run_debug()
     else:
         main()
