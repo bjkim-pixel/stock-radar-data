@@ -1,0 +1,72 @@
+name: Sector Classification Refresh (KIS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '실행 모드'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - full
+      debug_code:
+        description: 'debug 모드일 때 조회할 종목코드 (기본: 한국콜마 003920)'
+        required: false
+        default: '003920'
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests psycopg2-binary
+
+      - name: Get shared KIS token (full 모드만 필요)
+        id: kistoken
+        if: ${{ inputs.mode == 'full' }}
+        env:
+          KIS_APP_KEY:    ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: |
+          RESP=$(curl -s -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
+            -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
+          TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+          if [ -z "$TOKEN" ]; then
+            echo "::error::KIS 토큰 발급 실패: $RESP"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Run (debug — 필드명 확인용, DB 변경 없음)
+        if: ${{ inputs.mode == 'debug' }}
+        env:
+          KIS_APP_KEY:    ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: python 21_sector_kis_refresh.py --debug "${{ inputs.debug_code }}"
+
+      - name: Run (full — 전 종목 sector_kis/sector_kis_lcls 갱신)
+        if: ${{ inputs.mode == 'full' }}
+        env:
+          KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+          KIS_ACCESS_TOKEN: ${{ steps.kistoken.outputs.token }}
+        run: python 21_sector_kis_refresh.py
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::업종 분류 갱신 실패! GitHub Actions 로그를 확인하세요."
