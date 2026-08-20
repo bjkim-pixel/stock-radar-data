@@ -12,9 +12,9 @@ on:
           - debug
           - full
       debug_code:
-        description: 'debug 모드일 때 조회할 종목코드 (기본: 한국콜마 003920)'
+        description: 'debug 모드일 때 조회할 종목코드 (기본: 한국콜마 161890 — 003920은 남양유업이었음, 1차 실행에서 확인된 실수 정정)'
         required: false
-        default: '003920'
+        default: '161890'
 
 jobs:
   refresh:

@@ -17,10 +17,21 @@ STOCK RADAR · 종목 업종 세분화(sector_kis) 갱신
 05_compute.py의 업종 RS 계산은 지금과 동일하게 sector_krx 그룹을 그대로 씁니다.
 
 ⚠ 필드명 미검증 상태입니다. 반드시 아래 순서로 사용하세요.
-  1) python 21_sector_kis_refresh.py --debug 003920   (한국콜마로 실제 응답 확인)
+  1) python 21_sector_kis_refresh.py --debug 161890   (한국콜마로 실제 응답 확인.
+     이전 기본값 003920은 실제로는 남양유업이었습니다 — 첫 --debug 실행에서
+     확인된 실수라 여기서 161890으로 정정합니다)
      → 위 응답에서 '업종'에 해당하는 필드와 값이 기대한 형태(예: '화장품')인지 확인
      → 다르면 CANDIDATE_MCLS / CANDIDATE_LCLS 리스트에 실제 필드명을 추가하세요
   2) python 21_sector_kis_refresh.py            (전체 종목 갱신, 주 1회 실행 권장)
+
+  2026-08-20 003920(남양유업) --debug 1차 실행 결과로 이미 한 가지는 확인됐습니다:
+  idx_bztp_lcls_cd_name은 '시가총액규모중' 같은 값을 주는 시가총액 규모 구분
+  필드였지 업종 대분류가 아니었습니다 — CANDIDATE_LCLS에서 제외했습니다.
+  반면 idx_bztp_mcls_cd_name/idx_bztp_scls_cd_name은 '음식료품'처럼 그럴듯한
+  업종명을 줬고, std_idst_clsf_cd_name(표준산업분류명)은 '동물성 및 식물성
+  유지 제조업'처럼 훨씬 더 잘게 쪼갠 값을 줬습니다 — 다만 남양유업은 화장품
+  케이스가 아니라서 idx_bztp_mcls_cd_name이 화장품/화학을 실제로 구분해
+  주는지는 아직 확인 전입니다. 161890으로 다시 확인해주세요.
 
 필요 환경변수: KIS_APP_KEY, KIS_APP_SECRET, SUPABASE_DB_URL
 (GitHub Actions에서 실행할 땐 03_daily_collect.py와 같은 시크릿을 그대로 씁니다)
@@ -38,9 +49,15 @@ WORKERS  = 8
 MAX_RPS  = 15
 BATCH    = 500
 
-# 실제 응답 확인 전이라 후보를 여러 개 둡니다 — pick()이 존재하는 첫 값을 씁니다.
-CANDIDATE_MCLS = ["bstp_kor_isnm", "vs_tind_nm", "idx_bztp_mcls_cd_name", "std_idst_clsf_cd_name"]
-CANDIDATE_LCLS = ["idx_bztp_lcls_cd_name", "bstp_lcls_cd_name", "std_idst_clsf_cd_name_1"]
+# 2026-08-20 003920(남양유업) --debug 실측으로 갱신한 후보 목록.
+# idx_bztp_mcls_cd_name/idx_bztp_scls_cd_name은 실제 존재하고 그럴듯한 값('음식료품')을
+# 줬지만 화장품 케이스(161890 등)로는 아직 확인 전입니다. idx_bztp_lcls_cd_name은
+# 업종이 아니라 시가총액 규모('시가총액규모중') 구분이라 후보에서 뺐습니다.
+# std_idst_clsf_cd_name(표준산업분류명, '동물성 및 식물성 유지 제조업')은 종목마다
+# 거의 유니크할 만큼 잘게 쪼개져 있어 '업종 그룹'용으로는 너무 세분화될 수 있습니다 —
+# 세부업종 표시용 백업 후보로만 마지막에 둡니다.
+CANDIDATE_MCLS = ["idx_bztp_mcls_cd_name", "idx_bztp_scls_cd_name", "std_idst_clsf_cd_name"]
+CANDIDATE_LCLS = ["idx_bztp_scls_cd_name", "std_idst_clsf_cd_name"]
 
 DEBUG_MODE = False
 DEBUG_CODE = None
