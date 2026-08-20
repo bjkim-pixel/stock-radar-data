@@ -1,6 +1,12 @@
 name: Compute Metrics & Signals
 
 on:
+  schedule:
+    # daily_collect.yml(16:05/20:05 KST) 수집이 끝난 뒤 지표·신호를 갱신합니다.
+    # 스케줄 실행에서는 05_compute.py에 오늘 날짜 하루만 넘겨 매번 전체 기간을
+    # 재계산하지 않게 합니다(하루치만 계산하는 용도로 스크립트가 이미 지원).
+    - cron: "15 7 * * 1-5"   # 16:15 KST = 07:15 UTC
+    - cron: "15 11 * * 1-5"  # 20:15 KST = 11:15 UTC
   workflow_dispatch:
     inputs:
       start_date:
@@ -33,15 +39,19 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          START="${{ github.event.inputs.start_date }}"
-          END="${{ github.event.inputs.end_date }}"
-
-          if [ -z "$START" ]; then
-            python 05_compute.py
-          elif [ -z "$END" ]; then
-            python 05_compute.py "$START"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            # 스케줄 실행 = daily_collect 직후 그날 하루치만 재계산
+            python 05_compute.py "$(date +%Y%m%d)"
           else
-            python 05_compute.py "$START" "$END"
+            START="${{ github.event.inputs.start_date }}"
+            END="${{ github.event.inputs.end_date }}"
+            if [ -z "$START" ]; then
+              python 05_compute.py
+            elif [ -z "$END" ]; then
+              python 05_compute.py "$START"
+            else
+              python 05_compute.py "$START" "$END"
+            fi
           fi
 
       - name: Notify on failure
