@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-STOCK RADAR · 프로그램매매 · 미국증시 일별 수집
+STOCK RADAR · 프로그램매매 · 미국증시 · KOSPI/KOSDAQ 지수 일별 수집
 =======================================================
 GitHub Actions에서 03_daily_collect.py 이후 매 거래일 자동 실행됩니다.
 
@@ -10,6 +10,9 @@ GitHub Actions에서 03_daily_collect.py 이후 매 거래일 자동 실행됩�
   2) 미국 증시 4대 지수 — Yahoo Finance 비공식 차트 API
      나스닥종합(^IXIC) · S&P500(^GSPC) · 다우(^DJI) · 필라델피아반도체(^SOX)
      us_market_daily 테이블에 적재
+  3) KOSPI·KOSDAQ 종합지수 — KIS inquire-daily-indexchartprice (tr_id FHKUP03500100)
+     최근 ~110일 일봉을 한 번에 받아 등락률·MA20을 계산해 market_daily에 적재
+     (index_close/index_change/index_change_pct/index_ma20 컬럼만 갱신 — 다른 컬럼은 건드리지 않음)
 
   신용거래 융자잔고는 포함하지 않습니다 (KIS에 시장 전체 집계 API 없음 — 종목별 조회만 가능).
 
@@ -37,6 +40,12 @@ YAHOO_SYMBOLS = {
     "SP500":  "%5EGSPC",   # S&P500
     "DOW":    "%5EDJI",    # 다우존스
     "SOX":    "%5ESOX",    # 필라델피아반도체
+}
+
+# KRX 업종상세코드 (KIS "U" 시장분류 기준). 0001=코스피 종합, 1001=코스닥 종합.
+INDEX_CODES = {
+    "KOSPI":  "0001",
+    "KOSDAQ": "1001",
 }
 
 DEBUG_MODE  = "--debug" in sys.argv
@@ -162,6 +171,53 @@ def fetch_yahoo_index(symbol_enc):
     return {"close": last_close, "change_pct": change_pct, "trade_date": trade_date}
 
 
+# ── KIS: 국내주식업종기간별시세(일) — KOSPI/KOSDAQ 종합지수 ─────────────────────
+def fetch_index_series(token, iscd):
+    """iscd: '0001'(코스피 종합) | '1001'(코스닥 종합).
+    최근 ~110일 범위를 한 번에 조회해 output2(일별 리스트)를 오래된 순으로 반환합니다.
+    MA20 계산에 필요한 여유분(20일)을 포함해 '최근 3개월' 차트(약 62거래일)를 채우기 충분한 범위입니다."""
+    date1 = (datetime.datetime.strptime(TARGET_DATE, "%Y%m%d") - datetime.timedelta(days=110)).strftime("%Y%m%d")
+    r = requests.get(
+        f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice",
+        headers=kis_headers(token, "FHKUP03500100"),
+        params={
+            "FID_COND_MRKT_DIV_CODE": "U",
+            "FID_INPUT_ISCD": iscd,
+            "FID_INPUT_DATE_1": date1,
+            "FID_INPUT_DATE_2": TARGET_DATE,
+            "FID_PERIOD_DIV_CODE": "D",
+        },
+        timeout=15
+    )
+    if r.status_code != 200:
+        return []
+    d = r.json()
+    if d.get("rt_cd") != "0":
+        return []
+    rows = [x for x in (d.get("output2") or []) if x and x.get("stck_bsop_date")]
+    # KIS는 최신일이 먼저 오는 내림차순으로 반환합니다 → 오래된 순으로 뒤집습니다.
+    rows.sort(key=lambda x: x["stck_bsop_date"])
+    return rows
+
+
+def build_index_rows(market, raw_rows):
+    """일별 종가 리스트에서 등락률과 20일 이동평균을 계산해 market_daily upsert 행을 만듭니다."""
+    closes = [safe_float(x.get("bstp_nmix_prpr")) for x in raw_rows]
+    out = []
+    for i, x in enumerate(raw_rows):
+        close = closes[i]
+        if close is None:
+            continue
+        date_iso = f"{x['stck_bsop_date'][:4]}-{x['stck_bsop_date'][4:6]}-{x['stck_bsop_date'][6:]}"
+        prev = closes[i - 1] if i > 0 else None
+        change = (close - prev) if prev is not None else None
+        change_pct = (change / prev * 100) if prev else None
+        window = [c for c in closes[max(0, i - 19):i + 1] if c is not None]
+        ma20 = (sum(window) / len(window)) if len(window) == 20 else None
+        out.append((date_iso, market, close, change, change_pct, ma20))
+    return out
+
+
 # ── DB ────────────────────────────────────────────────────────────────────────
 PROGRAM_SQL = """
 INSERT INTO program_trade_daily (trade_date, market, arb_net_amount, nonarb_net_amount, source)
@@ -178,6 +234,17 @@ ON CONFLICT (trade_date, symbol) DO UPDATE SET
   close=EXCLUDED.close,
   change_pct=EXCLUDED.change_pct,
   source=EXCLUDED.source
+"""
+# index_close~ma20만 갱신합니다 — total_amount/foreign_net/regime 등 다른 컬럼은 건드리지 않습니다
+# (그 컬럼들은 이 스크립트의 수집 대상이 아니라 다른 소스에서 채워집니다).
+INDEX_SQL = """
+INSERT INTO market_daily (trade_date, market, index_close, index_change, index_change_pct, index_ma20)
+VALUES %s
+ON CONFLICT (trade_date, market) DO UPDATE SET
+  index_close=EXCLUDED.index_close,
+  index_change=EXCLUDED.index_change,
+  index_change_pct=EXCLUDED.index_change_pct,
+  index_ma20=EXCLUDED.index_ma20
 """
 
 
@@ -221,11 +288,20 @@ def run_debug():
     y = fetch_yahoo_index(YAHOO_SYMBOLS["NASDAQ"])
     print(json.dumps(y, ensure_ascii=False, indent=2) if y else "  (데이터 없음)")
 
+    print("\n[3] inquire-daily-indexchartprice (코스피 0001) 응답 — 최근 5행만 표시:")
+    idx = fetch_index_series(token, INDEX_CODES["KOSPI"])
+    print(json.dumps(idx[-5:], ensure_ascii=False, indent=2) if idx else "  (데이터 없음)")
+    print("""
+→ 확인 포인트: stck_bsop_date(영업일자), bstp_nmix_prpr(지수 종가)가 실제 KOSPI 수치와
+  맞는지(2500~3500대) 확인하세요. 1001(코스닥)도 같은 방식으로 검증하세요.
+""")
+
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
 def main():
     program_rows = []
     us_rows = []
+    index_rows = []
     errors = []
 
     print("① KIS 토큰 발급...")
@@ -263,20 +339,40 @@ def main():
         except Exception as ex:
             errors.append(f"us:{name} 오류 {ex}")
 
-    print("④ DB 적재...")
+    print("④ KOSPI·KOSDAQ 종합지수 수집 (최근 ~110일 → 등락률·MA20 계산)...")
+    for market, iscd in INDEX_CODES.items():
+        try:
+            raw = fetch_index_series(token, iscd)
+            if not raw:
+                errors.append(f"index:{market} 데이터 없음")
+                continue
+            rows = build_index_rows(market, raw)
+            index_rows.extend(rows)
+            last = rows[-1] if rows else None
+            if last:
+                print(f"   {market}: {last[0]} 종가 {last[2]:,.2f}"
+                      + (f" ({last[4]:+.2f}%)" if last[4] is not None else "")
+                      + f" · {len(rows)}행")
+        except Exception as ex:
+            errors.append(f"index:{market} 오류 {ex}")
+
+    print("⑤ DB 적재...")
     upsert(PROGRAM_SQL, program_rows)
     upsert(US_SQL, us_rows)
+    upsert(INDEX_SQL, index_rows)
 
-    status = "SUCCESS" if not errors else ("FAIL" if not program_rows and not us_rows else "PARTIAL")
-    msg = f"program={len(program_rows)} us={len(us_rows)}" + (f" errors={errors}" if errors else "")
-    log_result("market_extra", status, len(program_rows) + len(us_rows), msg)
+    n_total = len(program_rows) + len(us_rows) + len(index_rows)
+    status = "SUCCESS" if not errors else ("FAIL" if n_total == 0 else "PARTIAL")
+    msg = (f"program={len(program_rows)} us={len(us_rows)} index={len(index_rows)}"
+           + (f" errors={errors}" if errors else ""))
+    log_result("market_extra", status, n_total, msg)
 
-    print(f"\n✅ 완료: 프로그램매매 {len(program_rows)}건 · 미국증시 {len(us_rows)}건")
+    print(f"\n✅ 완료: 프로그램매매 {len(program_rows)}건 · 미국증시 {len(us_rows)}건 · 지수 {len(index_rows)}건")
     if errors:
         print("⚠ 오류:")
         for e in errors:
             print(f"   - {e}")
-        if not program_rows and not us_rows:
+        if n_total == 0:
             sys.exit(1)
 
 
