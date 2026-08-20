@@ -1,0 +1,74 @@
+name: Intraday KIS Collection (partial)
+
+# 장중(09:00~20:00 KST, 정규장+NXT)에 1시간 간격으로 그날 데이터를 미리 갱신합니다.
+# 16:05/20:05 KST의 기존 일별 수집(daily_collect.yml)이 "확정 마감 데이터"를 채우는
+# 반면, 이 워크플로는 아직 미확정인 장중 스냅샷을 is_partial=true로 적재합니다 —
+# daily_collect.yml이 그날 최종적으로 실행되면 is_partial=false인 확정 값으로
+# 덮어써집니다(둘 다 (trade_date, code) UPSERT라 순서 걱정 없음).
+#
+# ⚠ 알아둘 점
+#   - investor-trade-by-stock-daily(수급) 엔드포인트는 KIS 쪽에서 장중에는 전일자
+#     확정 값만 내려줄 수 있습니다 — 장중 수급 숫자가 안 바뀌는 것처럼 보이면
+#     이 API 특성 때문일 가능성이 큽니다(가격은 실시간에 가깝게 갱신됨).
+#   - 종목 2,500여 개 × 시세/수급 2개 API를 1시간마다 반복 호출하므로 하루 호출량이
+#     기존(장마감 2회) 대비 약 6배로 늘어납니다. KIS 호출 한도/쿼터가 빠듯해지면
+#     이 워크플로의 cron 개수를 줄이거나 비활성화하세요.
+on:
+  schedule:
+    # 매 거래일 09:00~20:00 KST, 매시 정각 = 00:00~11:00 UTC (월~금)
+    - cron: "0 0-11 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  collect-partial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install psycopg2-binary requests
+
+      - name: Get shared KIS token
+        id: kistoken
+        env:
+          KIS_APP_KEY:    ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: |
+          RESP=$(curl -s -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
+            -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
+          TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+          if [ -z "$TOKEN" ]; then
+            echo "::error::KIS 토큰 발급 실패: $RESP"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Run partial price/flow snapshot
+        env:
+          KIS_APP_KEY:     ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          KIS_ACCESS_TOKEN: ${{ steps.kistoken.outputs.token }}
+        run: python 03_daily_collect.py --partial
+
+      - name: Run market index / program-trade snapshot
+        env:
+          KIS_APP_KEY:     ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          KIS_ACCESS_TOKEN: ${{ steps.kistoken.outputs.token }}
+        run: python 20_collect_market_extra.py
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::장중 부분 수집 실패! GitHub Actions 로그를 확인하세요."
