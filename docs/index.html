@@ -218,7 +218,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="hmeta">
       <span class="chip" id="chipRegime"><span class="dot" style="background:var(--ink-3)"></span>시장 <b>–</b></span>
       <span class="chip opt">유니버스 <b id="chipUniv">–</b></span>
-      <span class="chip">기준 <b id="chipDate">–</b></span>
+      <span class="chip">기준 <b id="chipDate">–</b> <span id="chipAsOf" class="faint" style="font-weight:400"></span></span>
       <button class="icon-btn" id="themeBtn">◐</button>
     </div>
   </div>
@@ -625,6 +625,16 @@ async function q(view,params=""){
   return r.json();
 }
 function status(cls,html){const b=$("#statusBar");b.className="bar-top "+cls;b.innerHTML=html;}
+async function loadDataStatus(){
+  const r=(await q("v_data_status","select=*"))[0];
+  if(!r||!r.as_of){$("#chipAsOf").textContent="";return;}
+  const t=new Date(r.as_of).toLocaleTimeString("ko-KR",
+    {hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"});
+  const tag=r.is_partial
+    ? `<span style="color:var(--warn)">${t} · 잠정</span>`
+    : `<span style="color:var(--good)">${t} · 확정</span>`;
+  $("#chipAsOf").innerHTML=tag;
+}
 
 /* ── 상태 ────────────────────────────────────────────────────────────── */
 const S={date:null,sectors:[],sector:null,stocks:[],market:[],flowCache:{},chart:{},codes:[]};
@@ -1414,6 +1424,8 @@ async function boot(){
     S.date=last.trade_date;
     $("#chipDate").textContent=S.date;
     $("#fDate").value=S.date;
+    loadDataStatus().catch(()=>{});
+    setInterval(()=>loadDataStatus().catch(()=>{}),5*60*1000); // 5분마다 "기준 시각" 갱신
     const md=await q("market_daily",`select=regime&trade_date=eq.${S.date}&limit=1`);
     const rg=md[0]?.regime||"–";
     const col=rg==="RISK_ON"?"var(--up)":rg==="RISK_OFF"?"var(--down)":"var(--warn)";
