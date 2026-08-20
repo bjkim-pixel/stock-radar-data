@@ -220,25 +220,45 @@ def fetch_index_series(token, iscd):
 
 
 def fetch_index_history(token, iscd, start_date, end_date):
-    """start_date~end_date 전체를 100일씩 겹치지 않게 잘라 순차 호출해 이어붙입니다.
-    04_backfill.py의 '기준일 스텝핑' 방식과 동일한 접근입니다 — 한 번에 다 못 받는 걸
-    이미 알고 있으니(관측상 ~50건/호출) 구간을 나눠서 확실하게 커버합니다."""
+    """start_date~end_date 전체를 뒤(end_date)에서부터 역방향으로 당겨오며 이어붙입니다.
+
+    처음엔 04_backfill.py처럼 date1을 앞에서부터 90일씩 순방향으로 걷는 방식으로 짰지만,
+    실제 로그로 확인해보니 이 엔드포인트는 요청한 FID_INPUT_DATE_1(시작일)을 사실상 무시하고
+    FID_INPUT_DATE_2(종료일) 기준으로 가장 최근 ~50거래일만 돌려줍니다. 그 상태로 순방향
+    고정폭(90일)을 이어붙이면 매 청크마다 약 10~13거래일씩 비는 구멍이 생기고, 그 구멍에
+    해당하는 날짜는 옛날에 일일수집이 다른 날 기준으로 잘못 적재해둔 값이 그대로 남아
+    2026-05-29~06-09 같은 사고로 이어졌습니다.
+
+    그래서 역방향으로 바꿨습니다: 매번 (start_date, 현재 end 커서)로 요청하면 실제로는
+    end 커서 기준 최근 50거래일이 오므로, 그중 가장 이른 날짜의 '전날'을 다음 end 커서로
+    삼아 계속 뒤로 걸어갑니다 — 반환분이 항상 직전 반환분의 시작 바로 앞까지 맞닿으므로
+    구조적으로 구멍이 생길 수 없습니다."""
     start_dt = datetime.datetime.strptime(start_date, "%Y%m%d")
-    end_dt = datetime.datetime.strptime(end_date, "%Y%m%d")
     all_rows = {}
-    cursor = start_dt
-    STEP = 90  # 여유 있게 90일 단위로 (관측상 호출당 ~50거래일 반환 → 겹침 없이 이어붙임)
-    while cursor <= end_dt:
-        chunk_end = min(cursor + datetime.timedelta(days=STEP - 1), end_dt)
-        d1, d2 = cursor.strftime("%Y%m%d"), chunk_end.strftime("%Y%m%d")
-        rows, _ = fetch_index_range(token, iscd, d1, d2)
+    cursor_end = end_date
+    seen_ends = set()
+    while True:
+        if cursor_end in seen_ends:
+            print(f"     ⚠ 동일 종료일({cursor_end}) 재요청 감지 — 무한루프 방지로 중단")
+            break
+        seen_ends.add(cursor_end)
+        rows, _ = fetch_index_range(token, iscd, start_date, cursor_end)
+        if not rows:
+            print(f"     요청 date1={start_date}~date2={cursor_end} → 반환 없음, 중단")
+            break
         for row in rows:
             all_rows[row["stck_bsop_date"]] = row  # 날짜 키로 중복 제거
-        span = f"{rows[0]['stck_bsop_date']}~{rows[-1]['stck_bsop_date']}" if rows else "(없음)"
-        print(f"     요청 {d1}~{d2} → 실제 반환 {span}: {len(rows)}행 (누적 {len(all_rows)}행)")
+        earliest, latest = rows[0]["stck_bsop_date"], rows[-1]["stck_bsop_date"]
+        print(f"     요청 date2={cursor_end} → 실제 반환 {earliest}~{latest}: {len(rows)}행 (누적 {len(all_rows)}행)")
         time.sleep(0.3)  # KIS 초당 호출 한도 여유
-        cursor = chunk_end + datetime.timedelta(days=1)
-    return [all_rows[k] for k in sorted(all_rows.keys())]
+        if earliest <= start_date:
+            break  # 요청한 시작일까지 이미 커버됨
+        earliest_dt = datetime.datetime.strptime(earliest, "%Y%m%d")
+        next_end_dt = earliest_dt - datetime.timedelta(days=1)
+        if next_end_dt < start_dt:
+            break
+        cursor_end = next_end_dt.strftime("%Y%m%d")
+    return [all_rows[k] for k in sorted(all_rows.keys()) if start_date <= k <= end_date]
 
 
 def quarantine_outliers(raw_rows, threshold=0.25):
