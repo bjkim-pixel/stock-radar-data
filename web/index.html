@@ -264,11 +264,11 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   <div class="grid3">
     <div class="card d-c"><h3>신용거래 융자잔고 <span class="tag-d c">신규 수집</span><span class="r">샘플</span></h3>
       <div class="chart" id="cCredit"></div></div>
-    <div class="card d-c"><h3>프로그램 매매 <span class="tag-d c">신규 수집</span><span class="r">샘플 · 억원</span></h3>
+    <div class="card"><h3>프로그램 매매<span class="r">최근 12거래일 · 억원</span></h3>
       <div class="legend"><span><i style="background:var(--s1)"></i>차익</span>
         <span><i style="background:var(--s2)"></i>비차익</span></div>
       <div class="chart" id="cProg"></div></div>
-    <div class="card d-c"><h3>미국 증시 <span class="tag-d c">신규 수집</span><span class="r">샘플 · 전일 대비</span></h3>
+    <div class="card"><h3>미국 증시<span class="r" id="usDateNote">전일 대비</span></h3>
       <div class="chart" id="cUS"></div></div>
   </div>
 
@@ -1009,25 +1009,46 @@ async function loadPerf(){
   }catch(e){$("#perfBody").innerHTML=`<tr><td colspan="10" class="load">조회 실패: ${e.message}</td></tr>`;}
 }
 
-/* ══ 신규 수집 대상 (샘플) ══ */
-function drawSamples(){
+/* ══ 신용거래 융자잔고 (아직 샘플 — 시장 전체 집계 소스 미확정) ══ */
+function drawCreditSample(){
   const ser=(n,base,amp,drift,seed)=>{const o=[];let p=base;
     for(let i=0;i<n;i++){p+=Math.sin((i+seed)/4.3)*amp+Math.sin((i+seed)/11)*amp*1.3+drift;o.push(p);}return o;};
   const lb=Array.from({length:20},(_,i)=>i===0?"7/22":i===19?"오늘":"");
   lineChart($("#cCredit"),[{n:"융자잔고",v:ser(20,196,1.4,0.42,5).map(v=>+(v/10).toFixed(1)),c:"--s1"}],
     lb,{h:150,pr:62,pl:44,fy:v=>N(v,0)+"조",ft:v=>N(v,1)+"조원"});
-  const d12=Array.from({length:12},(_,i)=>`${i+8}일`),pa=[],pn=[];
-  for(let i=0;i<12;i++){pa.push(Math.round(Math.sin(i/2.2)*380+120));pn.push(Math.round(Math.cos(i/2.9)*260-40));}
-  barChart($("#cProg"),d12.map((d,i)=>({n:i%3===0?d:"",full:d,g:[
-    {n:"차익",v:pa[i],c:"--s1"},{n:"비차익",v:pn[i],c:"--s2"}]})),
-    {h:150,pl:46,maxBar:12,fy:v=>N(v,0),ft:v=>pm(v,0)+"억"});
-  barChart($("#cUS"),[{n:"나스닥",v:0.82,c:"--up"},{n:"S&P500",v:0.41,c:"--up"},
-    {n:"필라반도체",v:-1.24,c:"--down"},{n:"다우",v:0.18,c:"--up"}],
-    {h:150,pl:38,fy:v=>N(v,1)+"%",ft:v=>pm(v,2)+"%"});
+}
+
+/* ══ 프로그램매매 · 미국증시 (실데이터) ══ */
+async function loadProgramTrade(){
+  try{
+    const rows=await q("v_program_trade_recent","select=*&order=trade_date.asc");
+    if(!rows.length){$("#cProg").innerHTML='<div class="load">데이터 없음 — 아직 수집 전입니다</div>';return;}
+    barChart($("#cProg"),rows.map(r=>{
+      const d=r.trade_date.slice(5).replace("-","/");
+      return {n:d,full:d,g:[
+        {n:"차익",v:+r.arb_net_amount/EOK,c:"--s1"},
+        {n:"비차익",v:+r.nonarb_net_amount/EOK,c:"--s2"}]};
+    }),{h:150,pl:46,maxBar:12,fy:v=>N(v,0),ft:v=>pm(v,0)+"억"});
+  }catch(e){$("#cProg").innerHTML='<div class="load">불러오기 실패</div>';}
+}
+async function loadUSMarket(){
+  try{
+    const rows=await q("v_us_market_latest","select=*");
+    if(!rows.length){$("#cUS").innerHTML='<div class="load">데이터 없음 — 아직 수집 전입니다</div>';return;}
+    const label={NASDAQ:"나스닥",SP500:"S&P500",SOX:"필라반도체",DOW:"다우"};
+    const order=["NASDAQ","SP500","SOX","DOW"];
+    const byS={};rows.forEach(r=>byS[r.symbol]=r);
+    barChart($("#cUS"),order.filter(s=>byS[s]).map(s=>({
+      n:label[s],v:+byS[s].change_pct,c:byS[s].change_pct>=0?"--up":"--down"})),
+      {h:150,pl:38,fy:v=>N(v,1)+"%",ft:v=>pm(v,2)+"%"});
+    if(rows[0]?.trade_date)$("#usDateNote").textContent=`${rows[0].trade_date} 기준 · 전일 대비`;
+  }catch(e){$("#cUS").innerHTML='<div class="load">불러오기 실패</div>';}
 }
 
 function redraw(){
-  drawSamples();
+  drawCreditSample();
+  loadProgramTrade().catch(()=>{});
+  loadUSMarket().catch(()=>{});
   if(S.market.length)loadMarket().catch(()=>{});
   if(S.sector)selectSector(S.sector).catch(()=>{});
   if(S.chart.code)loadDetail(S.chart.code).catch(()=>{});
@@ -1062,8 +1083,9 @@ async function boot(){
     await loadSectors();
     $("#fn3").innerHTML=`${S.stocks.length}<small>/${stk.length}</small>`;
     await loadFlowStep();
-    drawSamples();
-    status("live",`<b>실데이터 연결됨</b> — ${S.date} 기준 · ${stk.length}종목 · 빗금 카드만 샘플입니다.`);
+    drawCreditSample();
+    await Promise.all([loadProgramTrade(), loadUSMarket()]);
+    status("live",`<b>실데이터 연결됨</b> — ${S.date} 기준 · ${stk.length}종목 · 신용거래 융자잔고만 샘플입니다.`);
   }catch(e){
     status("err",`연결 실패: ${e.message}<br><span style="font-size:11px">anon 키가 맞는지, 19_web_views.sql을 적용했는지 확인해주세요.</span>`);
     console.error(e);

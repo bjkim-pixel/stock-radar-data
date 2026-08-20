@@ -42,6 +42,19 @@ jobs:
             python 03_daily_collect.py "$DATE"
           fi
 
+      - name: Run program-trade / US market collection
+        env:
+          KIS_APP_KEY:     ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          DATE="${{ github.event.inputs.target_date }}"
+          if [ -z "$DATE" ]; then
+            python 20_collect_market_extra.py
+          else
+            python 20_collect_market_extra.py "$DATE"
+          fi
+
       - name: Notify on failure
         if: failure()
         run: echo "::error::일별 수집 실패! GitHub Actions 로그를 확인하세요."
