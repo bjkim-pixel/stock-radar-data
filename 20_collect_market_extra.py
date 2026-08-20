@@ -291,9 +291,13 @@ def quarantine_outliers(raw_rows, threshold=0.25):
 
 def build_index_rows(market, raw_rows):
     """일별 종가 리스트에서 등락률·20일 이동평균·거래대금을 계산해 market_daily upsert 행을 만듭니다.
-    acml_tr_pbmn(누적거래대금)은 03_daily_collect.py/04_backfill.py에서 이미 확인된 관례대로
-    '원' 단위이므로 곱하지 않고 그대로 씁니다 — 같은 output2 행에 지수 종가와 함께 들어있어
-    별도 API 호출 없이 KOSPI/KOSDAQ 시장 전체 거래대금을 얻을 수 있습니다."""
+
+    acml_tr_pbmn(누적거래대금)은 03_daily_collect.py/04_backfill.py가 쓰는 '종목별' 일봉
+    API에서는 이미 '원' 단위라 그대로 썼는데, 실제로 붙여보니 이 '지수(시장 전체)' 버전은
+    같은 필드명이라도 '백만원' 단위로 내려주고 있었습니다(운영 확인 결과 — 붙였더니
+    사이트에서 거래대금이 전부 0.0조로 보여 자릿수가 100만분의 1로 축소돼 있었습니다).
+    그래서 여기서는 FLOW_UNIT(백만원→원)을 곱합니다 — 03/04 스크립트의 종목별 처리와는
+    다른 값이니 혼동하지 마세요."""
     closes = [safe_float(x.get("bstp_nmix_prpr")) for x in raw_rows]
     out = []
     for i, x in enumerate(raw_rows):
@@ -306,7 +310,8 @@ def build_index_rows(market, raw_rows):
         change_pct = (change / prev * 100) if prev else None
         window = [c for c in closes[max(0, i - 19):i + 1] if c is not None]
         ma20 = (sum(window) / len(window)) if len(window) == 20 else None
-        amount = safe_int(x.get("acml_tr_pbmn"), default=None)
+        amount_raw = safe_int(x.get("acml_tr_pbmn"), default=None)
+        amount = amount_raw * 1_000_000 if amount_raw is not None else None
         out.append((date_iso, market, close, change, change_pct, ma20, amount))
     return out
 
@@ -395,7 +400,12 @@ def run_backfill_index(start_date):
         clear_quarantined(market, dropped_dates)
         rows = build_index_rows(market, raw)
         all_index_rows.extend(rows)
-        print(f"  {market}: {len(rows)}행 확보 ({rows[0][0]} ~ {rows[-1][0]})" if rows else f"  {market}: 0행")
+        if rows:
+            last_amt = rows[-1][6]
+            amt_note = f", 거래대금(최근일) {last_amt/1e12:,.2f}조" if last_amt else ", 거래대금(최근일) 없음"
+            print(f"  {market}: {len(rows)}행 확보 ({rows[0][0]} ~ {rows[-1][0]}){amt_note}")
+        else:
+            print(f"  {market}: 0행")
 
     print(f"\n  DB 적재 중... ({len(all_index_rows)}행)")
     upsert(INDEX_SQL, all_index_rows)
