@@ -171,22 +171,22 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
 .btn.ghost{background:none;color:var(--ink-2);border:1px solid var(--border)}
 
-/* 수급 동향 · 주체별 수급 현황 아코디언 */
-.flow-acc-row{border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden}
-.flow-acc-hd{display:flex;align-items:center;gap:14px;padding:10px 13px;cursor:pointer;flex-wrap:wrap}
-.flow-acc-hd:hover{background:var(--surface-2)}
-.flow-acc-name{font-size:12.5px;font-weight:650;flex:none;width:88px}
-.flow-acc-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:180px}
-.flow-acc-lb{font-size:10px;color:var(--ink-3);flex:none;align-self:center;width:44px}
-.flow-acc-arrow{flex:none;color:var(--ink-3);font-size:11px;transition:transform .12s;margin-left:auto}
-.flow-acc-row.open .flow-acc-arrow{transform:rotate(180deg)}
-.flow-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;
-  border-radius:14px;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
-.flow-chip.up{color:var(--up)} .flow-chip.down{color:var(--down)}
-.flow-chip b{font-weight:700}
-.flow-acc-body{border-top:1px solid var(--border);padding:13px;display:none}
-.flow-acc-row.open .flow-acc-body{display:block}
-.flow-acc-empty{font-size:11.5px;color:var(--ink-3);padding:2px 0}
+/* 수급 동향 · 주체별 시총대비 수급 비중 그리드 */
+/* 데스크탑: 주체를 가로로 나란히(컬럼) 붙이고, 각 컬럼 안에서는 매수순위 표
+   위에 매도순위 표를 세로로 쌓습니다. 모바일(960px 이하)에서는 주체가 세로로
+   쌓이는 대신, 그 안의 매수/매도 두 표는 폭을 아끼려고 한 줄(가로)로 붙입니다. */
+.flow-subj-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px}
+.flow-subj-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:11px 12px}
+.flow-subj-panel h4{font-size:12.5px;font-weight:700;margin:0 0 10px;display:flex;align-items:baseline;gap:6px}
+.flow-subj-panel h4 .d{font-size:10.5px;color:var(--ink-3);font-weight:400;margin-left:auto}
+.flow-subj-tables{display:flex;flex-direction:column;gap:10px}
+.flow-subj-sub{font-size:10.5px;color:var(--ink-3);margin:0 0 4px;font-weight:650}
+.flow-subj-panel table{font-size:11px}
+.flow-subj-panel td,.flow-subj-panel th{padding:5px 7px}
+@media(max-width:960px){
+  .flow-subj-grid{grid-template-columns:1fr}
+  .flow-subj-tables{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+}
 
 .chart{position:relative}
 .chart svg{display:block;width:100%;height:auto;overflow:visible}
@@ -434,8 +434,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     </div>
   </div>
 
-  <div class="card"><h3>주체별 수급 현황 <span class="r">기간 누적 · 억원 · 주체를 눌러 Top10 펼치기</span></h3>
-    <div id="flowSubjAcc"></div>
+  <div class="card"><h3>주체별 시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시가총액 · 기간 누적 · Top 20</span></h3>
+    <div id="flowSubjGrid" class="flow-subj-grid"></div>
   </div>
 </section>
 
@@ -1085,10 +1085,8 @@ const FLOW_SUBJ={combo:"외국인+기관합계",foreign:"외국인",inst:"기관
 const FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe"]; // 가로 헤더 고정 순서
 const FLOW_PERIOD={"3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
 const FLOW_PERIOD_ROWS=["3m","2m","1m","2w","1w","1d"]; // 세로 기본 순서
-const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension","pe"]; // 아코디언 세로 순서
+const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension","pe"]; // 그리드 컬럼 순서
 S.flowPeriod=S.flowPeriod||"1d";
-S.flowSortNet=S.flowSortNet||"v"; S.flowSortRatio=S.flowSortRatio||"ratio";
-S.flowAccOpen=S.flowAccOpen||new Set(["combo"]); // 기본으로 외국인+기관합계만 펼쳐서 보여줌
 function flowVal(row,subj,period){
   if(subj==="combo")return (+row["foreign_"+period]||0)+(+row["inst_"+period]||0);
   return +row[subj+"_"+period]||0;
@@ -1110,12 +1108,12 @@ async function loadFlowTrends(){
   }).join("");
   $$("#flowTrendHead th.sortable").forEach(th=>th.onclick=()=>{S.flowTrendSort=th.dataset.key;loadFlowTrends();});
 }
+// RANK · 종목명 · 순매수/시총(%) · 금액(억) — 4열 압축 포맷 (참고 이미지 그대로)
 function flowRankRow(r,i){
   return `<tr><td class="l rank">${i+1}</td>
     <td class="l"><a class="lk nm" data-code="${r.code}">${r.name}</a></td>
-    <td>${N(+r.close)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
-    <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}억</td>
-    ${r.ratio!=null?`<td class="${sgn(r.ratio)}">${pm(r.ratio,2)}%</td>`:""}</tr>`;
+    <td class="${sgn(r.ratio)}">${pm(r.ratio,2)}%</td>
+    <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td></tr>`;
 }
 async function loadFlowRawData(){
   if(!S.flowRaw){
@@ -1127,80 +1125,35 @@ async function loadFlowRawData(){
   }
   return S.flowRaw;
 }
-function flowChip(r,valueKey,fmt){
-  return `<a class="lk flow-chip ${sgn(r[valueKey])}" data-code="${r.code}">${r.name} <b>${fmt(r[valueKey])}</b></a>`;
+const FLOW_RANK_N=20; // Top N (참고 이미지와 동일)
+function flowSubjTableHTML(rows,label){
+  return `<div class="flow-subj-sub">${label}</div>
+    <div class="tw"><table><thead><tr>
+      <th class="l">#</th><th class="l">종목</th><th>비중</th><th>금액(억)</th>
+    </tr></thead><tbody>${rows.length?rows.map((r,i)=>flowRankRow(r,i)).join("")
+      :'<tr><td colspan="4" class="load">해당 없음</td></tr>'}</tbody></table></div>`;
 }
-// 아코디언 헤더 — 주체당 매수/비중상승 Top3만 압축해서 보여줍니다. 접힌 채로도
-// 7개 주체를 한눈에 훑어볼 수 있게 하는 게 목적이라 여기선 항상 v/ratio 기준
-// 고정 정렬만 씁니다(펼친 표의 헤더 클릭 정렬과는 별개).
-function flowAccHeaderHTML(subj,cand){
-  const buyTop=[...cand].sort((a,b)=>b.v-a.v).slice(0,3);
-  const upTop=cand.filter(r=>r.ratio!=null).sort((a,b)=>b.ratio-a.ratio).slice(0,3);
-  const buyChips=buyTop.length?buyTop.map(r=>flowChip(r,"v",v=>pm(v/EOK,0)+"억")).join("")
-    :'<span class="flow-acc-empty">해당 없음</span>';
-  const upChips=upTop.length?upTop.map(r=>flowChip(r,"ratio",v=>pm(v,2)+"%")).join("")
-    :'<span class="flow-acc-empty">해당 없음</span>';
-  return `<div class="flow-acc-hd" data-subj="${subj}">
-      <span class="flow-acc-name">${FLOW_SUBJ[subj]}</span>
-      <span class="flow-acc-lb">매수</span><span class="flow-acc-chips">${buyChips}</span>
-      <span class="flow-acc-lb">비중↑</span><span class="flow-acc-chips">${upChips}</span>
-      <span class="flow-acc-arrow">▾</span>
-    </div>`;
-}
-function flowNetHead(){
-  return ["close","change_pct","v"].map(k=>{
-    const lb={close:"종가",change_pct:"등락률",v:"순매수"}[k];
-    return `<th class="sortable${S.flowSortNet===k?" active":""}" data-key="${k}" data-grp="net">${lb}</th>`;
-  }).join("");
-}
-function flowRatioHead(){
-  return ["close","change_pct","v","ratio"].map(k=>{
-    const lb={close:"종가",change_pct:"등락률",v:"순매수",ratio:"비중"}[k];
-    return `<th class="sortable${S.flowSortRatio===k?" active":""}" data-key="${k}" data-grp="ratio">${lb}</th>`;
-  }).join("");
-}
-function flowSubjPanelHTML(cand){
-  const netSorted=[...cand].sort((a,b)=>(+b[S.flowSortNet]||-Infinity)-(+a[S.flowSortNet]||-Infinity));
-  const buy=netSorted.slice(0,10), sell=netSorted.slice(-10).reverse();
+function flowSubjPanelHTML(subj,cand){
   const withRatio=cand.filter(r=>r.ratio!=null);
-  const ratioSorted=[...withRatio].sort((a,b)=>(+b[S.flowSortRatio]||-Infinity)-(+a[S.flowSortRatio]||-Infinity));
-  const up=ratioSorted.slice(0,10), down=ratioSorted.slice(-10).reverse();
-  const netTbl=rows=>`<div class="tw"><table><thead><tr><th class="l">#</th><th class="l">종목</th>${flowNetHead()}</tr></thead>
-    <tbody>${rows.length?rows.map((r,i)=>flowRankRow({...r,ratio:null},i)).join(""):'<tr><td colspan="5" class="load">조건에 맞는 종목이 없습니다</td></tr>'}</tbody></table></div>`;
-  const ratioTbl=rows=>`<div class="tw"><table><thead><tr><th class="l">#</th><th class="l">종목</th>${flowRatioHead()}</tr></thead>
-    <tbody>${rows.length?rows.map((r,i)=>flowRankRow(r,i)).join(""):'<tr><td colspan="6" class="load">조건에 맞는 종목이 없습니다</td></tr>'}</tbody></table></div>`;
-  return `<div class="grid2">
-      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 매수</div>${netTbl(buy)}</div>
-      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 매도</div>${netTbl(sell)}</div>
-    </div>
-    <div class="grid2" style="margin-top:13px">
-      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 비중 상승 <span style="font-weight:400">(순매수÷시총)</span></div>${ratioTbl(up)}</div>
-      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 비중 하락</div>${ratioTbl(down)}</div>
+  const sorted=[...withRatio].sort((a,b)=>b.ratio-a.ratio);
+  const buy=sorted.slice(0,FLOW_RANK_N);
+  const sell=sorted.slice(-FLOW_RANK_N).reverse();
+  return `<div class="flow-subj-panel" data-subj="${subj}">
+      <h4>${FLOW_SUBJ[subj]}<span class="d">${S.date||""}</span></h4>
+      <div class="flow-subj-tables">
+        ${flowSubjTableHTML(buy,"시총대비 매수순위")}
+        ${flowSubjTableHTML(sell,"시총대비 매도순위")}
+      </div>
     </div>`;
 }
-function renderFlowAccordion(bySubj){
-  $("#flowSubjAcc").innerHTML=FLOW_SUBJ_ORDER.map(subj=>{
-    const cand=bySubj[subj], open=S.flowAccOpen.has(subj);
-    return `<div class="flow-acc-row${open?" open":""}" data-subj="${subj}">
-        ${flowAccHeaderHTML(subj,cand)}
-        <div class="flow-acc-body">${open?flowSubjPanelHTML(cand):""}</div>
-      </div>`;
-  }).join("");
-  $$("#flowSubjAcc .flow-acc-hd").forEach(hd=>hd.onclick=()=>{
-    const subj=hd.dataset.subj;
-    if(S.flowAccOpen.has(subj))S.flowAccOpen.delete(subj);else S.flowAccOpen.add(subj);
-    loadFlowLists().catch(()=>{});
-  });
-  $$("#flowSubjAcc a.lk").forEach(a=>a.onclick=e=>{e.stopPropagation();go("detail");loadDetail(a.dataset.code);});
-  $$("#flowSubjAcc th.sortable[data-grp=net]").forEach(th=>th.onclick=e=>{
-    e.stopPropagation();S.flowSortNet=th.dataset.key;loadFlowLists().catch(()=>{});});
-  $$("#flowSubjAcc th.sortable[data-grp=ratio]").forEach(th=>th.onclick=e=>{
-    e.stopPropagation();S.flowSortRatio=th.dataset.key;loadFlowLists().catch(()=>{});});
+function renderFlowSubjGrid(bySubj){
+  $("#flowSubjGrid").innerHTML=FLOW_SUBJ_ORDER.map(subj=>flowSubjPanelHTML(subj,bySubj[subj])).join("");
+  $$("#flowSubjGrid a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
 }
 async function loadFlowLists(){
   const all=await loadFlowRawData();
   const period=S.flowPeriod;
-  $("#flowSelNote").innerHTML=`<b>${FLOW_PERIOD[period]}</b> 누적 순매수 거래대금 기준 · 주체를 눌러 Top10을 펼쳐보세요`;
+  $("#flowSelNote").innerHTML=`<b>${FLOW_PERIOD[period]}</b> 누적 순매수 거래대금 ÷ 시가총액 기준`;
   const filtered=all.filter(flowFilterPass);
   const bySubj={};
   FLOW_SUBJ_ORDER.forEach(subj=>{
@@ -1210,7 +1163,7 @@ async function loadFlowLists(){
       return {...r,v,ratio};
     });
   });
-  renderFlowAccordion(bySubj);
+  renderFlowSubjGrid(bySubj);
 }
 $("#flowPeriodSel").addEventListener("seg-change",e=>{S.flowPeriod=e.detail;loadFlowLists().catch(()=>{});});
 $("#flowCondToggle").onclick=()=>{
