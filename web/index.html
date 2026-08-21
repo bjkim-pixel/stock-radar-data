@@ -377,6 +377,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
   <div class="card"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="flowPeriodSel">
+      <button class="fchip" data-v="1y">1년</button>
       <button class="fchip" data-v="3m">3개월</button>
       <button class="fchip" data-v="2m">2개월</button>
       <button class="fchip" data-v="1m">1개월</button>
@@ -431,6 +432,29 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         <button class="btn ghost" id="resetFlowFilter">초기화</button>
         <span class="faint" style="font-size:11px">전략칩 조건 설명은 종목 후보 화면의 같은 버튼을 참고하세요</span>
       </div>
+    </div>
+  </div>
+
+  <div class="card"><h3>공통 수급 요약 <span class="r">독립 5개 주체(외국인/금융투자/투신/연기금/사모) 기준 · 2곳 이상 겹칠 때만 표시</span></h3>
+    <div class="grid2">
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">여러 주체가 같이 사들이는 종목</div>
+        <div class="tw"><table><thead><tr>
+          <th class="l">#</th><th class="l">종목</th><th>매수 주체</th><th>합산(억)</th>
+        </tr></thead><tbody id="flowCommonStockBuy"></tbody></table></div></div>
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">여러 주체가 같이 파는 종목</div>
+        <div class="tw"><table><thead><tr>
+          <th class="l">#</th><th class="l">종목</th><th>매도 주체</th><th>합산(억)</th>
+        </tr></thead><tbody id="flowCommonStockSell"></tbody></table></div></div>
+    </div>
+    <div class="grid2" style="margin-top:13px">
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">여러 주체가 같이 사들이는 업종</div>
+        <div class="tw"><table><thead><tr>
+          <th class="l">#</th><th class="l">업종</th><th>매수 주체</th><th>합산(억)</th>
+        </tr></thead><tbody id="flowCommonSectorBuy"></tbody></table></div></div>
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">여러 주체가 같이 파는 업종</div>
+        <div class="tw"><table><thead><tr>
+          <th class="l">#</th><th class="l">업종</th><th>매도 주체</th><th>합산(억)</th>
+        </tr></thead><tbody id="flowCommonSectorSell"></tbody></table></div></div>
     </div>
   </div>
 
@@ -1083,9 +1107,14 @@ async function loadFlowStep(){
 const FLOW_SUBJ={combo:"외국인+기관합계",foreign:"외국인",inst:"기관합계",fin_inv:"금융투자",
   inv_trust:"투신",pension:"연기금",pe:"사모"};
 const FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe"]; // 가로 헤더 고정 순서
-const FLOW_PERIOD={"3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
-const FLOW_PERIOD_ROWS=["3m","2m","1m","2w","1w","1d"]; // 세로 기본 순서
+const FLOW_PERIOD={"1y":"1년","3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
+const FLOW_PERIOD_ROWS=["1y","3m","2m","1m","2w","1w","1d"]; // 세로 기본 순서
 const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension","pe"]; // 그리드 컬럼 순서
+// 공통 수급 요약에 쓸 "겹치지 않는" 주체 5개. combo(외국인+기관합계)와 inst(기관합계)는
+// 다른 넷의 합산/부분합이라 같이 넣으면 겹침 개수가 과대평가됩니다(예: 금융투자·투신·
+// 연기금이 다 사면 기관합계도 거의 항상 같이 +라 4곳이 동시에 산 것처럼 보이지만
+// 실은 3곳의 파생값). 서로 독립적인 5개(외국인/금융투자/투신/연기금/사모)만 씁니다.
+const FLOW_COMMON_SUBJ=["foreign","fin_inv","inv_trust","pension","pe"];
 S.flowPeriod=S.flowPeriod||"1d";
 function flowVal(row,subj,period){
   if(subj==="combo")return (+row["foreign_"+period]||0)+(+row["inst_"+period]||0);
@@ -1150,6 +1179,54 @@ function renderFlowSubjGrid(bySubj){
   $("#flowSubjGrid").innerHTML=FLOW_SUBJ_ORDER.map(subj=>flowSubjPanelHTML(subj,bySubj[subj])).join("");
   $$("#flowSubjGrid a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
 }
+// 공통 수급 요약 — "여러 주체가 같이 사거나 파는 종목/업종"을 찾습니다.
+// 독립 5개 주체(FLOW_COMMON_SUBJ) 각각에서 그 종목/업종이 순매수(v>0)인지
+// 순매도(v<0)인지 세어서, 2곳 이상 방향이 일치하는 것만 "공통"으로 취급합니다.
+function flowCommonSummary(bySubj){
+  const stockAgg={}, sectorAgg={};
+  // 종목은 주체당 최대 1행이라 카운터로 충분하지만, 업종은 같은 주체가 그 업종
+  // 안의 여러 종목을 살 수 있어 카운터로 세면 중복 집계됩니다 — Set으로 주체
+  // 자체를 모아 "이 업종을 산 서로 다른 주체 수"를 정확히 셉니다.
+  FLOW_COMMON_SUBJ.forEach(subj=>{
+    (bySubj[subj]||[]).forEach(r=>{
+      if(!r.code||!r.v)return;
+      const s=stockAgg[r.code]||(stockAgg[r.code]={code:r.code,name:r.name,buyN:0,sellN:0,net:0});
+      if(r.v>0)s.buyN++; else s.sellN++;
+      s.net+=r.v;
+      if(r.sector){
+        const g=sectorAgg[r.sector]||(sectorAgg[r.sector]={sector:r.sector,buySet:new Set(),sellSet:new Set(),net:0});
+        (r.v>0?g.buySet:g.sellSet).add(subj);
+        g.net+=r.v;
+      }
+    });
+  });
+  const MIN_N=2, TOP=8, TOP_SECTOR=6;
+  const stocks=Object.values(stockAgg);
+  const sectors=Object.values(sectorAgg).map(g=>({sector:g.sector,net:g.net,buyN:g.buySet.size,sellN:g.sellSet.size}));
+  return {
+    stockBuy: stocks.filter(s=>s.buyN>=MIN_N).sort((a,b)=>b.buyN-a.buyN||b.net-a.net).slice(0,TOP),
+    stockSell: stocks.filter(s=>s.sellN>=MIN_N).sort((a,b)=>b.sellN-a.sellN||a.net-b.net).slice(0,TOP),
+    sectorBuy: sectors.filter(s=>s.buyN>=MIN_N).sort((a,b)=>b.buyN-a.buyN||b.net-a.net).slice(0,TOP_SECTOR),
+    sectorSell: sectors.filter(s=>s.sellN>=MIN_N).sort((a,b)=>b.sellN-a.sellN||a.net-b.net).slice(0,TOP_SECTOR),
+  };
+}
+function flowCommonRow(i,label,link,code,n,net){
+  return `<tr><td class="l rank">${i+1}</td><td class="l">${link?`<a class="lk nm" data-code="${code}">${label}</a>`:label}</td>
+    <td>${n}/${FLOW_COMMON_SUBJ.length}</td><td class="${sgn(net)}">${pm(net/EOK,0)}</td></tr>`;
+}
+function renderFlowCommon(sum){
+  const fill=(id,rows,link,countKey)=>{
+    $(id).innerHTML=rows.length?rows.map((r,i)=>
+      flowCommonRow(i,link?r.name:r.sector,link,r.code,r[countKey],r.net)).join("")
+      :'<tr><td colspan="4" class="load">겹치는 종목/업종이 없습니다</td></tr>';
+  };
+  fill("#flowCommonStockBuy",sum.stockBuy,true,"buyN");
+  fill("#flowCommonStockSell",sum.stockSell,true,"sellN");
+  fill("#flowCommonSectorBuy",sum.sectorBuy,false,"buyN");
+  fill("#flowCommonSectorSell",sum.sectorSell,false,"sellN");
+  $$("#flowCommonStockBuy a.lk,#flowCommonStockSell a.lk")
+    .forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+}
 async function loadFlowLists(){
   const all=await loadFlowRawData();
   const period=S.flowPeriod;
@@ -1163,6 +1240,7 @@ async function loadFlowLists(){
       return {...r,v,ratio};
     });
   });
+  renderFlowCommon(flowCommonSummary(bySubj));
   renderFlowSubjGrid(bySubj);
 }
 $("#flowPeriodSel").addEventListener("seg-change",e=>{S.flowPeriod=e.detail;loadFlowLists().catch(()=>{});});
