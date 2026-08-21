@@ -1142,12 +1142,14 @@ async function loadFlowTrends(){
   }).join("");
   $$("#flowTrendHead th.sortable").forEach(th=>th.onclick=()=>{S.flowTrendSort=th.dataset.key;loadFlowTrends();});
 }
-// RANK · 종목명 · 순매수/시총(%) · 금액(억) — 4열 압축 포맷 (참고 이미지 그대로)
+// RANK · 종목명 · 순매수/시총(%) · 금액(억) · 당일순위 — 5열 압축 포맷 (참고 이미지 + 당일순위 추가)
 function flowRankRow(r,i){
+  const rk=r.rank1d?`${r.rank1d}/${r.rank1dTotal}`:"–";
   return `<tr><td class="l rank">${i+1}</td>
     <td class="l"><a class="lk nm" data-code="${r.code}">${r.name}</a></td>
     <td class="${sgn(r.ratio)}">${pm(r.ratio,2)}%</td>
-    <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td></tr>`;
+    <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td>
+    <td class="dim">${rk}</td></tr>`;
 }
 async function loadFlowRawData(){
   if(!S.flowRaw){
@@ -1159,13 +1161,30 @@ async function loadFlowRawData(){
   }
   return S.flowRaw;
 }
+// 주체별 "당일" 순매수 대금 순위 — DB 전체 종목(screener 전 범위, 조건필터 적용 전) 기준.
+// 조회기간 선택(1y/3m/.../1d)과 무관하게 항상 "오늘 하루" 순위만 봅니다.
+// 값이 클수록(많이 산 순) 1위, 가장 많이 판 종목이 마지막 순위입니다.
+function computeFlowRank1d(all){
+  const ranks={};
+  FLOW_SUBJ_ORDER.forEach(subj=>{
+    const withVal=all
+      .map(r=>({code:r.code,v:flowVal(r,subj,"1d")}))
+      .filter(r=>r.v!=null&&!isNaN(r.v))
+      .sort((a,b)=>b.v-a.v);
+    const m=new Map();
+    withVal.forEach((r,i)=>m.set(r.code,i+1));
+    ranks[subj]={map:m,total:withVal.length};
+  });
+  return ranks;
+}
 const FLOW_RANK_N=20; // Top N (참고 이미지와 동일)
 function flowSubjTableHTML(rows,label){
   return `<div class="flow-subj-sub">${label}</div>
     <div class="tw"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>비중</th><th>금액(억)</th>
+      <th title="당일 순매수 대금이 DB 전체 종목 중 몇 위인지(1위=가장 많이 산 종목)">당일순위</th>
     </tr></thead><tbody>${rows.length?rows.map((r,i)=>flowRankRow(r,i)).join("")
-      :'<tr><td colspan="4" class="load">해당 없음</td></tr>'}</tbody></table></div>`;
+      :'<tr><td colspan="5" class="load">해당 없음</td></tr>'}</tbody></table></div>`;
 }
 function flowSubjPanelHTML(subj,cand){
   const withRatio=cand.filter(r=>r.ratio!=null);
@@ -1234,15 +1253,17 @@ function renderFlowCommon(sum){
 }
 async function loadFlowLists(){
   const all=await loadFlowRawData();
+  if(!S.flowRank1d)S.flowRank1d=computeFlowRank1d(all);
   const period=S.flowPeriod;
   $("#flowSelNote").innerHTML=`<b>${FLOW_PERIOD[period]}</b> 누적 순매수 거래대금 ÷ 시가총액 기준`;
   const filtered=all.filter(flowFilterPass);
   const bySubj={};
   FLOW_SUBJ_ORDER.forEach(subj=>{
+    const rk=S.flowRank1d[subj];
     bySubj[subj]=filtered.map(r=>{
       const v=flowVal(r,subj,period);
       const ratio=+r.market_cap>0?v/(+r.market_cap)*100:null;
-      return {...r,v,ratio};
+      return {...r,v,ratio,rank1d:rk.map.get(r.code)||null,rank1dTotal:rk.total};
     });
   });
   renderFlowCommon(flowCommonSummary(bySubj));
