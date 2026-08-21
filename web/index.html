@@ -1158,7 +1158,7 @@ async function loadFlowRawData(){
     const [scr,per,rk]=await Promise.all([
       q("v_screener",`select=*&trade_date=eq.${S.date}`),
       q("v_stock_flow_periods","select=*"),
-      q("v_flow_rank_today","select=*")]);
+      q("v_flow_rank_today",`select=*&trade_date=eq.${S.date}`)]);
     const byCode={};per.forEach(p=>byCode[p.code]=p);
     const rkByCode={};rk.forEach(p=>rkByCode[p.code]=p);
     S.flowRaw=scr.map(r=>({...r,...(byCode[r.code]||{}),...(rkByCode[r.code]||{})}));
@@ -1334,10 +1334,20 @@ const FLOW_FILTER_IDS={chgMin:"#gChgMin",chgMax:"#gChgMax",capMin:"#gCapMin",cap
   amtMin:"#gAmtMin",volMin:"#gVolMin",sector:"#gSector"};
 const screenerFilterPass=makeFilterFn($("#v-scr"),SCR_IDS);
 const flowFilterPass=makeFilterFn($("#v-flow"),FLOW_FILTER_IDS);
+// 금액(억) 오른쪽에 "(역대순위/보유일수)"를 괄호로 붙입니다. 순위 데이터가
+// 없으면(v_flow_rank_today에 그 날짜·종목 행이 없으면) 괄호 없이 금액만.
+function flowAmtRankCell(net,rank,total){
+  const amt=`${pm(+net/EOK,0)}억`;
+  return rank?`${amt}<span class="dim" style="font-size:10px"> (${rank}/${total})</span>`:amt;
+}
 async function runScreener(){
   $("#scrBody").innerHTML='<tr><td colspan="19" class="load">조회 중…</td></tr>';
   const date=$("#fDate").value||S.date;
-  let rows=await q("v_screener",`select=*&trade_date=eq.${date}`);
+  let [rows,rk]=await Promise.all([
+    q("v_screener",`select=*&trade_date=eq.${date}`),
+    q("v_flow_rank_today",`select=*&trade_date=eq.${date}`)]);
+  const rkByCode={};rk.forEach(p=>rkByCode[p.code]=p);
+  rows=rows.map(r=>({...r,...(rkByCode[r.code]||{})}));
   rows=rows.filter(screenerFilterPass);
   const key=$("#fSort").value, dir=$("#fDir").value==="desc"?-1:1;
   rows.sort((a,b)=>((+a[key]||-Infinity)-(+b[key]||-Infinity))*dir);
@@ -1355,14 +1365,14 @@ async function runScreener(){
       <td class="grp">${r.high_period==null?"–":N(+r.high_period,0)}</td>
       <td class="dim">${shortDate(r.high_period_date)}</td>
       <td>${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
-      <td class="grp ${sgn(+r.foreign_net)}">${pm(+r.foreign_net/EOK,0)}억</td>
-      <td class="${sgn(+r.inst_net)}">${pm(+r.inst_net/EOK,0)}억</td>
-      <td class="${sgn(+r.fin_inv_net)}">${pm(+r.fin_inv_net/EOK,0)}억</td>
-      <td class="${sgn(+r.inv_trust_net)}">${pm(+r.inv_trust_net/EOK,0)}억</td>
-      <td class="${sgn(+r.pension_net)}">${pm(+r.pension_net/EOK,0)}억</td>
-      <td class="${sgn(+r.pe_net)}">${pm(+r.pe_net/EOK,0)}억</td>
-      <td class="${sgn(+r.individual_net)}">${pm(+r.individual_net/EOK,0)}억</td>
-      <td class="${sgn(+r.corp_other_net)}">${pm(+r.corp_other_net/EOK,0)}억</td></tr>`).join("")
+      <td class="grp ${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
+      <td class="${sgn(+r.inst_net)}">${flowAmtRankCell(r.inst_net,r.inst_rank,r.inst_total)}</td>
+      <td class="${sgn(+r.fin_inv_net)}">${flowAmtRankCell(r.fin_inv_net,r.fin_inv_rank,r.fin_inv_total)}</td>
+      <td class="${sgn(+r.inv_trust_net)}">${flowAmtRankCell(r.inv_trust_net,r.inv_trust_rank,r.inv_trust_total)}</td>
+      <td class="${sgn(+r.pension_net)}">${flowAmtRankCell(r.pension_net,r.pension_rank,r.pension_total)}</td>
+      <td class="${sgn(+r.pe_net)}">${flowAmtRankCell(r.pe_net,r.pe_rank,r.pe_total)}</td>
+      <td class="${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
+      <td class="${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td></tr>`).join("")
     :'<tr><td colspan="19" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
 }
