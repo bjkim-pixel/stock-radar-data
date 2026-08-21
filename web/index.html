@@ -171,6 +171,23 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
 .btn.ghost{background:none;color:var(--ink-2);border:1px solid var(--border)}
 
+/* 수급 동향 · 주체별 수급 현황 아코디언 */
+.flow-acc-row{border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden}
+.flow-acc-hd{display:flex;align-items:center;gap:14px;padding:10px 13px;cursor:pointer;flex-wrap:wrap}
+.flow-acc-hd:hover{background:var(--surface-2)}
+.flow-acc-name{font-size:12.5px;font-weight:650;flex:none;width:88px}
+.flow-acc-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:180px}
+.flow-acc-lb{font-size:10px;color:var(--ink-3);flex:none;align-self:center;width:44px}
+.flow-acc-arrow{flex:none;color:var(--ink-3);font-size:11px;transition:transform .12s;margin-left:auto}
+.flow-acc-row.open .flow-acc-arrow{transform:rotate(180deg)}
+.flow-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;
+  border-radius:14px;background:var(--surface-2);color:var(--ink-2);white-space:nowrap}
+.flow-chip.up{color:var(--up)} .flow-chip.down{color:var(--down)}
+.flow-chip b{font-weight:700}
+.flow-acc-body{border-top:1px solid var(--border);padding:13px;display:none}
+.flow-acc-row.open .flow-acc-body{display:block}
+.flow-acc-empty{font-size:11.5px;color:var(--ink-3);padding:2px 0}
+
 .chart{position:relative}
 .chart svg{display:block;width:100%;height:auto;overflow:visible}
 .legend{display:flex;gap:13px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:8px}
@@ -359,15 +376,6 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 
   <div class="card"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
-    <div class="qf-group"><div class="qf-lb">수급주체</div><div class="qf seg" id="flowSubjSel">
-      <button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button>
-      <button class="fchip" data-v="foreign">외국인</button>
-      <button class="fchip" data-v="inst">기관합계</button>
-      <button class="fchip" data-v="fin_inv">금융투자</button>
-      <button class="fchip" data-v="inv_trust">투신</button>
-      <button class="fchip" data-v="pension">연기금</button>
-      <button class="fchip" data-v="pe">사모</button>
-    </div></div>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="flowPeriodSel">
       <button class="fchip" data-v="3m">3개월</button>
       <button class="fchip" data-v="2m">2개월</button>
@@ -378,86 +386,56 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     </div></div>
     <div class="note" id="flowSelNote"></div>
 
-    <h3 style="margin-top:18px">조건 설정 <span class="r">항목·기준은 종목 후보와 동일 · 값은 이 화면 전용</span></h3>
-    <div class="panel-grid">
-      <div class="field"><label>등락률 (%)</label>
-        <div class="range"><input type="number" id="gChgMin" placeholder="이상"><span>~</span>
-          <input type="number" id="gChgMax" placeholder="이하"></div></div>
-      <div class="field"><label>시가총액 (조원)</label>
-        <div class="range"><input type="number" id="gCapMin" placeholder="이상" step="0.1"><span>~</span>
-          <input type="number" id="gCapMax" placeholder="이하" step="0.1"></div></div>
-      <div class="field"><label>거래대금 ≥ (억원)</label><input type="number" id="gAmtMin"></div>
-      <div class="field"><label>거래량비 ≥ (%)</label><input type="number" id="gVolMin"></div>
-      <div class="field"><label>업종</label><select id="gSector"><option value="">전체</option></select></div>
+    <div style="margin-top:16px">
+      <button class="btn ghost" id="flowCondToggle" aria-expanded="false">상세 조건 설정 ▾</button>
+      <span class="faint" style="font-size:11px;margin-left:8px">등락률·시총·업종 등으로 종목을 더 좁히고 싶을 때만 열어보세요</span>
     </div>
-    <div class="qf-group"><div class="qf-lb">추세 · 가격</div><div class="qf">
-      <button class="fchip" data-f="newhigh">신고가 돌파</button>
-      <button class="fchip" data-f="nearhigh">전고점 근처(-3% 이내)</button>
-      <button class="fchip" data-f="closepos">종가 고가권(상위 30%)</button>
-      <button class="fchip" data-f="ma5">5일선 위</button>
-      <button class="fchip" data-f="aligned">정배열</button>
-    </div></div>
-    <div class="qf-group"><div class="qf-lb">수급</div><div class="qf">
-      <button class="fchip" data-f="fgbuy">외국인 순매수</button>
-      <button class="fchip" data-f="insbuy">기관 순매수</button>
-      <button class="fchip" data-f="bothbuy">외인·기관 동반매수</button>
-      <button class="fchip" data-f="consec3">연속 양매수 3일↑</button>
-      <button class="fchip" data-f="indsell">개인 순매도</button>
-    </div></div>
-    <div class="qf-group"><div class="qf-lb">단계 · 전략</div><div class="qf">
-      <button class="fchip" data-f="st_birth">추세 탄생</button>
-      <button class="fchip" data-f="st_grow">추세 성장</button>
-      <button class="fchip" data-f="st_nothot">과열 제외</button>
-      <button class="fchip" data-f="leadsec">주도 섹터만</button>
-      <button class="fchip strat" data-f="strat_cb">종가베팅</button>
-      <button class="fchip strat" data-f="strat_v4">v4 추세추종</button>
-      <button class="fchip strat" data-f="strat_v4_lite">v4 추세추종(완화)</button>
-    </div></div>
-    <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
-      <button class="btn" id="runFlowFilter">필터 적용</button>
-      <button class="btn ghost" id="resetFlowFilter">초기화</button>
-      <span class="faint" style="font-size:11px">전략칩 조건 설명은 종목 후보 화면의 같은 버튼을 참고하세요</span>
-    </div>
-  </div>
-
-  <div class="card"><h3>순매수 거래대금 <span class="r">기간 누적 · 억원 · 헤더 클릭 = 내림차순</span></h3>
-    <div class="grid2">
-      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 매수</div>
-        <div class="tw"><table><thead><tr>
-          <th class="l">#</th><th class="l">종목</th>
-          <th class="sortable" data-key="close">종가</th>
-          <th class="sortable" data-key="change_pct">등락률</th>
-          <th class="sortable active" data-key="v">순매수 ▾</th>
-        </tr></thead><tbody id="flowBuyBody"></tbody></table></div></div>
-      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 매도</div>
-        <div class="tw"><table><thead><tr>
-          <th class="l">#</th><th class="l">종목</th>
-          <th class="sortable" data-key="close">종가</th>
-          <th class="sortable" data-key="change_pct">등락률</th>
-          <th class="sortable active" data-key="v">순매수</th>
-        </tr></thead><tbody id="flowSellBody"></tbody></table></div></div>
+    <div id="flowCondPanel" class="hide" style="margin-top:14px">
+      <h3 style="margin:0 0 12px">조건 설정 <span class="r">항목·기준은 종목 후보와 동일 · 값은 이 화면 전용</span></h3>
+      <div class="panel-grid">
+        <div class="field"><label>등락률 (%)</label>
+          <div class="range"><input type="number" id="gChgMin" placeholder="이상"><span>~</span>
+            <input type="number" id="gChgMax" placeholder="이하"></div></div>
+        <div class="field"><label>시가총액 (조원)</label>
+          <div class="range"><input type="number" id="gCapMin" placeholder="이상" step="0.1"><span>~</span>
+            <input type="number" id="gCapMax" placeholder="이하" step="0.1"></div></div>
+        <div class="field"><label>거래대금 ≥ (억원)</label><input type="number" id="gAmtMin"></div>
+        <div class="field"><label>거래량비 ≥ (%)</label><input type="number" id="gVolMin"></div>
+        <div class="field"><label>업종</label><select id="gSector"><option value="">전체</option></select></div>
+      </div>
+      <div class="qf-group"><div class="qf-lb">추세 · 가격</div><div class="qf">
+        <button class="fchip" data-f="newhigh">신고가 돌파</button>
+        <button class="fchip" data-f="nearhigh">전고점 근처(-3% 이내)</button>
+        <button class="fchip" data-f="closepos">종가 고가권(상위 30%)</button>
+        <button class="fchip" data-f="ma5">5일선 위</button>
+        <button class="fchip" data-f="aligned">정배열</button>
+      </div></div>
+      <div class="qf-group"><div class="qf-lb">수급</div><div class="qf">
+        <button class="fchip" data-f="fgbuy">외국인 순매수</button>
+        <button class="fchip" data-f="insbuy">기관 순매수</button>
+        <button class="fchip" data-f="bothbuy">외인·기관 동반매수</button>
+        <button class="fchip" data-f="consec3">연속 양매수 3일↑</button>
+        <button class="fchip" data-f="indsell">개인 순매도</button>
+      </div></div>
+      <div class="qf-group"><div class="qf-lb">단계 · 전략</div><div class="qf">
+        <button class="fchip" data-f="st_birth">추세 탄생</button>
+        <button class="fchip" data-f="st_grow">추세 성장</button>
+        <button class="fchip" data-f="st_nothot">과열 제외</button>
+        <button class="fchip" data-f="leadsec">주도 섹터만</button>
+        <button class="fchip strat" data-f="strat_cb">종가베팅</button>
+        <button class="fchip strat" data-f="strat_v4">v4 추세추종</button>
+        <button class="fchip strat" data-f="strat_v4_lite">v4 추세추종(완화)</button>
+      </div></div>
+      <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
+        <button class="btn" id="runFlowFilter">필터 적용</button>
+        <button class="btn ghost" id="resetFlowFilter">초기화</button>
+        <span class="faint" style="font-size:11px">전략칩 조건 설명은 종목 후보 화면의 같은 버튼을 참고하세요</span>
+      </div>
     </div>
   </div>
 
-  <div class="card"><h3>시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시가총액 · % · 헤더 클릭 = 내림차순</span></h3>
-    <div class="grid2">
-      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 비중 상승</div>
-        <div class="tw"><table><thead><tr>
-          <th class="l">#</th><th class="l">종목</th>
-          <th class="sortable" data-key="close">종가</th>
-          <th class="sortable" data-key="change_pct">등락률</th>
-          <th class="sortable" data-key="v">순매수</th>
-          <th class="sortable active" data-key="ratio">비중 ▾</th>
-        </tr></thead><tbody id="flowRatioUpBody"></tbody></table></div></div>
-      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 비중 하락</div>
-        <div class="tw"><table><thead><tr>
-          <th class="l">#</th><th class="l">종목</th>
-          <th class="sortable" data-key="close">종가</th>
-          <th class="sortable" data-key="change_pct">등락률</th>
-          <th class="sortable" data-key="v">순매수</th>
-          <th class="sortable active" data-key="ratio">비중</th>
-        </tr></thead><tbody id="flowRatioDownBody"></tbody></table></div></div>
-    </div>
+  <div class="card"><h3>주체별 수급 현황 <span class="r">기간 누적 · 억원 · 주체를 눌러 Top10 펼치기</span></h3>
+    <div id="flowSubjAcc"></div>
   </div>
 </section>
 
@@ -1107,8 +1085,10 @@ const FLOW_SUBJ={combo:"외국인+기관합계",foreign:"외국인",inst:"기관
 const FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe"]; // 가로 헤더 고정 순서
 const FLOW_PERIOD={"3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
 const FLOW_PERIOD_ROWS=["3m","2m","1m","2w","1w","1d"]; // 세로 기본 순서
-S.flowSubj=S.flowSubj||"combo"; S.flowPeriod=S.flowPeriod||"1d";
+const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension","pe"]; // 아코디언 세로 순서
+S.flowPeriod=S.flowPeriod||"1d";
 S.flowSortNet=S.flowSortNet||"v"; S.flowSortRatio=S.flowSortRatio||"ratio";
+S.flowAccOpen=S.flowAccOpen||new Set(["combo"]); // 기본으로 외국인+기관합계만 펼쳐서 보여줌
 function flowVal(row,subj,period){
   if(subj==="combo")return (+row["foreign_"+period]||0)+(+row["inst_"+period]||0);
   return +row[subj+"_"+period]||0;
@@ -1147,43 +1127,97 @@ async function loadFlowRawData(){
   }
   return S.flowRaw;
 }
-async function loadFlowLists(){
-  const all=await loadFlowRawData();
-  const subj=S.flowSubj, period=S.flowPeriod;
-  $("#flowSelNote").innerHTML=`<b>${FLOW_SUBJ[subj]}</b> · <b>${FLOW_PERIOD[period]}</b> 누적 순매수 거래대금 기준`;
-  const cand=all.filter(flowFilterPass).map(r=>{
-    const v=flowVal(r,subj,period);
-    const ratio=+r.market_cap>0?v/(+r.market_cap)*100:null;
-    return {...r,v,ratio};
-  });
+function flowChip(r,valueKey,fmt){
+  return `<a class="lk flow-chip ${sgn(r[valueKey])}" data-code="${r.code}">${r.name} <b>${fmt(r[valueKey])}</b></a>`;
+}
+// 아코디언 헤더 — 주체당 매수/비중상승 Top3만 압축해서 보여줍니다. 접힌 채로도
+// 7개 주체를 한눈에 훑어볼 수 있게 하는 게 목적이라 여기선 항상 v/ratio 기준
+// 고정 정렬만 씁니다(펼친 표의 헤더 클릭 정렬과는 별개).
+function flowAccHeaderHTML(subj,cand){
+  const buyTop=[...cand].sort((a,b)=>b.v-a.v).slice(0,3);
+  const upTop=cand.filter(r=>r.ratio!=null).sort((a,b)=>b.ratio-a.ratio).slice(0,3);
+  const buyChips=buyTop.length?buyTop.map(r=>flowChip(r,"v",v=>pm(v/EOK,0)+"억")).join("")
+    :'<span class="flow-acc-empty">해당 없음</span>';
+  const upChips=upTop.length?upTop.map(r=>flowChip(r,"ratio",v=>pm(v,2)+"%")).join("")
+    :'<span class="flow-acc-empty">해당 없음</span>';
+  return `<div class="flow-acc-hd" data-subj="${subj}">
+      <span class="flow-acc-name">${FLOW_SUBJ[subj]}</span>
+      <span class="flow-acc-lb">매수</span><span class="flow-acc-chips">${buyChips}</span>
+      <span class="flow-acc-lb">비중↑</span><span class="flow-acc-chips">${upChips}</span>
+      <span class="flow-acc-arrow">▾</span>
+    </div>`;
+}
+function flowNetHead(){
+  return ["close","change_pct","v"].map(k=>{
+    const lb={close:"종가",change_pct:"등락률",v:"순매수"}[k];
+    return `<th class="sortable${S.flowSortNet===k?" active":""}" data-key="${k}" data-grp="net">${lb}</th>`;
+  }).join("");
+}
+function flowRatioHead(){
+  return ["close","change_pct","v","ratio"].map(k=>{
+    const lb={close:"종가",change_pct:"등락률",v:"순매수",ratio:"비중"}[k];
+    return `<th class="sortable${S.flowSortRatio===k?" active":""}" data-key="${k}" data-grp="ratio">${lb}</th>`;
+  }).join("");
+}
+function flowSubjPanelHTML(cand){
   const netSorted=[...cand].sort((a,b)=>(+b[S.flowSortNet]||-Infinity)-(+a[S.flowSortNet]||-Infinity));
   const buy=netSorted.slice(0,10), sell=netSorted.slice(-10).reverse();
-  $("#flowBuyBody").innerHTML=buy.length?buy.map((r,i)=>flowRankRow({...r,ratio:null},i)).join("")
-    :'<tr><td colspan="5" class="load">조건에 맞는 종목이 없습니다</td></tr>';
-  $("#flowSellBody").innerHTML=sell.length?sell.map((r,i)=>flowRankRow({...r,ratio:null},i)).join("")
-    :'<tr><td colspan="5" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   const withRatio=cand.filter(r=>r.ratio!=null);
   const ratioSorted=[...withRatio].sort((a,b)=>(+b[S.flowSortRatio]||-Infinity)-(+a[S.flowSortRatio]||-Infinity));
   const up=ratioSorted.slice(0,10), down=ratioSorted.slice(-10).reverse();
-  $("#flowRatioUpBody").innerHTML=up.length?up.map((r,i)=>flowRankRow(r,i)).join("")
-    :'<tr><td colspan="6" class="load">조건에 맞는 종목이 없습니다</td></tr>';
-  $("#flowRatioDownBody").innerHTML=down.length?down.map((r,i)=>flowRankRow(r,i)).join("")
-    :'<tr><td colspan="6" class="load">조건에 맞는 종목이 없습니다</td></tr>';
-  $$("#v-flow a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
-  // 헤더 클릭 = 그 컬럼 기준 내림차순 (STEP2 업종표와 동일한 패턴)
-  const netHeads=$$('.card:has(#flowBuyBody) th.sortable,.card:has(#flowSellBody) th.sortable');
-  netHeads.forEach(th=>{
-    th.classList.toggle("active",th.dataset.key===S.flowSortNet);
-    th.onclick=()=>{S.flowSortNet=th.dataset.key;loadFlowLists().catch(()=>{});};
-  });
-  const ratioHeads=$$('.card:has(#flowRatioUpBody) th.sortable,.card:has(#flowRatioDownBody) th.sortable');
-  ratioHeads.forEach(th=>{
-    th.classList.toggle("active",th.dataset.key===S.flowSortRatio);
-    th.onclick=()=>{S.flowSortRatio=th.dataset.key;loadFlowLists().catch(()=>{});};
-  });
+  const netTbl=rows=>`<div class="tw"><table><thead><tr><th class="l">#</th><th class="l">종목</th>${flowNetHead()}</tr></thead>
+    <tbody>${rows.length?rows.map((r,i)=>flowRankRow({...r,ratio:null},i)).join(""):'<tr><td colspan="5" class="load">조건에 맞는 종목이 없습니다</td></tr>'}</tbody></table></div>`;
+  const ratioTbl=rows=>`<div class="tw"><table><thead><tr><th class="l">#</th><th class="l">종목</th>${flowRatioHead()}</tr></thead>
+    <tbody>${rows.length?rows.map((r,i)=>flowRankRow(r,i)).join(""):'<tr><td colspan="6" class="load">조건에 맞는 종목이 없습니다</td></tr>'}</tbody></table></div>`;
+  return `<div class="grid2">
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 매수</div>${netTbl(buy)}</div>
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 매도</div>${netTbl(sell)}</div>
+    </div>
+    <div class="grid2" style="margin-top:13px">
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 비중 상승 <span style="font-weight:400">(순매수÷시총)</span></div>${ratioTbl(up)}</div>
+      <div><div class="faint" style="font-size:11px;margin:0 0 4px">Top 10 비중 하락</div>${ratioTbl(down)}</div>
+    </div>`;
 }
-$("#flowSubjSel").addEventListener("seg-change",e=>{S.flowSubj=e.detail;loadFlowLists().catch(()=>{});});
+function renderFlowAccordion(bySubj){
+  $("#flowSubjAcc").innerHTML=FLOW_SUBJ_ORDER.map(subj=>{
+    const cand=bySubj[subj], open=S.flowAccOpen.has(subj);
+    return `<div class="flow-acc-row${open?" open":""}" data-subj="${subj}">
+        ${flowAccHeaderHTML(subj,cand)}
+        <div class="flow-acc-body">${open?flowSubjPanelHTML(cand):""}</div>
+      </div>`;
+  }).join("");
+  $$("#flowSubjAcc .flow-acc-hd").forEach(hd=>hd.onclick=()=>{
+    const subj=hd.dataset.subj;
+    if(S.flowAccOpen.has(subj))S.flowAccOpen.delete(subj);else S.flowAccOpen.add(subj);
+    loadFlowLists().catch(()=>{});
+  });
+  $$("#flowSubjAcc a.lk").forEach(a=>a.onclick=e=>{e.stopPropagation();go("detail");loadDetail(a.dataset.code);});
+  $$("#flowSubjAcc th.sortable[data-grp=net]").forEach(th=>th.onclick=e=>{
+    e.stopPropagation();S.flowSortNet=th.dataset.key;loadFlowLists().catch(()=>{});});
+  $$("#flowSubjAcc th.sortable[data-grp=ratio]").forEach(th=>th.onclick=e=>{
+    e.stopPropagation();S.flowSortRatio=th.dataset.key;loadFlowLists().catch(()=>{});});
+}
+async function loadFlowLists(){
+  const all=await loadFlowRawData();
+  const period=S.flowPeriod;
+  $("#flowSelNote").innerHTML=`<b>${FLOW_PERIOD[period]}</b> 누적 순매수 거래대금 기준 · 주체를 눌러 Top10을 펼쳐보세요`;
+  const filtered=all.filter(flowFilterPass);
+  const bySubj={};
+  FLOW_SUBJ_ORDER.forEach(subj=>{
+    bySubj[subj]=filtered.map(r=>{
+      const v=flowVal(r,subj,period);
+      const ratio=+r.market_cap>0?v/(+r.market_cap)*100:null;
+      return {...r,v,ratio};
+    });
+  });
+  renderFlowAccordion(bySubj);
+}
 $("#flowPeriodSel").addEventListener("seg-change",e=>{S.flowPeriod=e.detail;loadFlowLists().catch(()=>{});});
+$("#flowCondToggle").onclick=()=>{
+  const nowHidden=$("#flowCondPanel").classList.toggle("hide"), isOpen=!nowHidden;
+  $("#flowCondToggle").setAttribute("aria-expanded",isOpen?"true":"false");
+  $("#flowCondToggle").textContent=isOpen?"상세 조건 설정 ▴":"상세 조건 설정 ▾";
+};
 
 /* ══ 조건 스크리너 ══ */
 // 종목 후보 화면과 수급 동향 화면은 조건 "항목·기준"(로직)은 똑같이 쓰지만
@@ -1296,7 +1330,8 @@ $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 �
 $("#resetFlowFilter").onclick=()=>{
   ["#gChgMin","#gChgMax","#gCapMin","#gCapMax","#gAmtMin","#gVolMin"].forEach(i=>$(i).value="");
   $("#gSector").value="";
-  $$(".fchip",$("#v-flow")).forEach(b=>b.setAttribute("aria-pressed","false"));
+  // 조건 패널 안의 칩만 초기화 — 기간(flowPeriodSel)은 별개 selector라 건드리지 않습니다.
+  $$(".fchip",$("#flowCondPanel")).forEach(b=>b.setAttribute("aria-pressed","false"));
   loadFlowLists().catch(()=>{});};
 
 /* ══ 종목 상세 ══ */
