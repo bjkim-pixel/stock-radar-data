@@ -290,8 +290,9 @@ def parse_flow(r, date_str, code):
         amt("pe_fund_ntby_tr_pbmn"),      # 사모
         amt("fund_ntby_tr_pbmn"),         # 연기금·기금
         amt("prsn_ntby_tr_pbmn"),         # 개인
-        # corp_other_net·foreign_net_vol·inst_net_vol은 2026-08 용량 정리 때
-        # 컬럼 삭제 (신호 엔진 미사용, 실제 값은 있었지만 공간 절감 우선).
+        amt("etc_corp_ntby_tr_pbmn"),     # 기타법인 — 같은 응답에 이미 들어있던 필드,
+                                           # 2026-08-21 화면 노출 결정으로 복원
+        # foreign_net_vol·inst_net_vol(거래량 기준)은 여전히 미저장(신호 엔진 미사용).
         "KIS", False,
     )
 
@@ -363,13 +364,13 @@ ON CONFLICT (trade_date,code) DO UPDATE SET
 FLOW_SQL = """
 INSERT INTO daily_flow
   (trade_date,code,foreign_net,inst_net,fin_inv_net,inv_trust_net,
-   pe_net,pension_net,individual_net,source,is_partial)
+   pe_net,pension_net,individual_net,corp_other_net,source,is_partial)
 VALUES %s
 ON CONFLICT (trade_date,code) DO UPDATE SET
   foreign_net=EXCLUDED.foreign_net,inst_net=EXCLUDED.inst_net,
   fin_inv_net=EXCLUDED.fin_inv_net,inv_trust_net=EXCLUDED.inv_trust_net,
   pe_net=EXCLUDED.pe_net,pension_net=EXCLUDED.pension_net,
-  individual_net=EXCLUDED.individual_net,
+  individual_net=EXCLUDED.individual_net,corp_other_net=EXCLUDED.corp_other_net,
   source=EXCLUDED.source,is_partial=EXCLUDED.is_partial
 """
 
@@ -413,11 +414,12 @@ def run_debug():
         print(f"  {p[0]:<12}{p[2]:>9,}{p[3]:>9,}{p[4]:>9,}{p[5]:>9,}{p[10]:>8.2f}{p[7]//100_000_000:>13,}")
 
     print("\n[수급] 최근 3일 (억원)")
-    print(f"  {'날짜':<12}{'외국인':>10}{'기관':>10}{'금융투자':>10}{'투신':>9}{'사모':>9}{'연기금':>9}{'개인':>10}")
+    print(f"  {'날짜':<12}{'외국인':>10}{'기관':>10}{'금융투자':>10}{'투신':>9}{'사모':>9}{'연기금':>9}{'개인':>10}{'기타법인':>10}")
     for f in parsed_f[-3:]:
+        # 인덱스: 0날짜 1코드 2외국인 3기관 4금융투자 5투신 6사모 7연기금 8개인 9기타법인
         print(f"  {f[0]:<12}{f[2]//100_000_000:>10,}{f[3]//100_000_000:>10,}"
               f"{f[4]//100_000_000:>10,}{f[5]//100_000_000:>9,}{f[6]//100_000_000:>9,}"
-              f"{f[7]//100_000_000:>9,}{f[9]//100_000_000:>10,}")
+              f"{f[7]//100_000_000:>9,}{f[8]//100_000_000:>10,}{f[9]//100_000_000:>10,}")
 
     print("\n[검증] 2026-08-14 KRX 실측 대비")
     tgt = [f for f in parsed_f if f[0] == "2026-08-14"]
@@ -452,28 +454,30 @@ def compare_krx_kis():
             SELECT coalesce(source,'(null)'), count(*),
                    count(*) FILTER (WHERE foreign_net<>0), count(*) FILTER (WHERE inst_net<>0),
                    count(*) FILTER (WHERE inv_trust_net<>0), count(*) FILTER (WHERE pe_net<>0),
-                   count(*) FILTER (WHERE individual_net<>0)
+                   count(*) FILTER (WHERE individual_net<>0),
+                   count(*) FILTER (WHERE corp_other_net IS NOT NULL)
             FROM daily_flow WHERE trade_date BETWEEN %s AND %s GROUP BY 1 ORDER BY 2 DESC
         """, (iso(START_DATE), iso(END_DATE)))
-        print(f"\n[daily_flow]   {'source':<8}{'행수':>10}{'외국인':>9}{'기관':>9}{'투신':>9}{'사모':>9}{'개인':>9}")
-        for s_, n, f_, i_, it, pe, pr in cur.fetchall():
-            print(f"               {s_:<8}{n:>10,}{f_:>9,}{i_:>9,}{it:>9,}{pe:>9,}{pr:>9,}")
+        print(f"\n[daily_flow]   {'source':<8}{'행수':>10}{'외국인':>9}{'기관':>9}{'투신':>9}{'사모':>9}{'개인':>9}{'기타법인':>10}")
+        for s_, n, f_, i_, it, pe, pr, co in cur.fetchall():
+            print(f"               {s_:<8}{n:>10,}{f_:>9,}{i_:>9,}{it:>9,}{pe:>9,}{pr:>9,}{co:>10,}")
 
         cur.execute("""
             SELECT p.trade_date, p.source, p.close, p.change_pct,
-                   f.foreign_net, f.inst_net, f.inv_trust_net, f.pe_net, f.individual_net
+                   f.foreign_net, f.inst_net, f.inv_trust_net, f.pe_net, f.individual_net,
+                   f.corp_other_net
             FROM daily_price p
             LEFT JOIN daily_flow f ON f.trade_date=p.trade_date AND f.code=p.code
             WHERE p.code='005930' AND p.trade_date BETWEEN %s AND %s
             ORDER BY p.trade_date DESC LIMIT 5
         """, (iso(START_DATE), iso(END_DATE)))
         print(f"\n[삼성전자] 최근 5일 (억원)")
-        print(f"  {'날짜':<12}{'src':<5}{'종가':>9}{'등락%':>7}{'외국인':>9}{'기관':>9}{'투신':>8}{'사모':>8}{'개인':>9}")
+        print(f"  {'날짜':<12}{'src':<5}{'종가':>9}{'등락%':>7}{'외국인':>9}{'기관':>9}{'투신':>8}{'사모':>8}{'개인':>9}{'기타법인':>10}")
         for r in cur.fetchall():
             print(f"  {str(r[0]):<12}{str(r[1] or '-'):<5}{r[2]:>9,}{float(r[3] or 0):>7.2f}"
                   f"{(r[4] or 0)//100_000_000:>9,}{(r[5] or 0)//100_000_000:>9,}"
                   f"{(r[6] or 0)//100_000_000:>8,}{(r[7] or 0)//100_000_000:>8,}"
-                  f"{(r[8] or 0)//100_000_000:>9,}")
+                  f"{(r[8] or 0)//100_000_000:>9,}{(r[9] or 0)//100_000_000:>10,}")
 
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────

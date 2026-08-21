@@ -207,13 +207,13 @@ FLOW_SQL = """
 INSERT INTO daily_flow
   (trade_date, code, foreign_net, inst_net,
    fin_inv_net, inv_trust_net, pe_net, pension_net,
-   individual_net, source, is_partial)
+   individual_net, corp_other_net, source, is_partial)
 VALUES %s
 ON CONFLICT (trade_date, code) DO UPDATE SET
   foreign_net=EXCLUDED.foreign_net, inst_net=EXCLUDED.inst_net,
   fin_inv_net=EXCLUDED.fin_inv_net, inv_trust_net=EXCLUDED.inv_trust_net,
   pe_net=EXCLUDED.pe_net, pension_net=EXCLUDED.pension_net,
-  individual_net=EXCLUDED.individual_net,
+  individual_net=EXCLUDED.individual_net, corp_other_net=EXCLUDED.corp_other_net,
   source=EXCLUDED.source, is_partial=EXCLUDED.is_partial,
   collected_at=now()
 """
@@ -283,8 +283,10 @@ def collect_stock(token, code):
             amt("pe_fund_ntby_tr_pbmn"),    # 사모
             amt("fund_ntby_tr_pbmn"),       # 연기금·기금
             amt("prsn_ntby_tr_pbmn"),       # 개인
-            # corp_other_net·foreign_net_vol·inst_net_vol은 2026-08 용량 정리 때
-            # 컬럼 삭제 (신호 엔진 미사용, 실제 값은 있었지만 공간 절감 우선).
+            amt("etc_corp_ntby_tr_pbmn"),   # 기타법인 — 2026-08 용량정리 때 컬럼째 삭제했다가
+                                             # 화면에 노출하기로 하면서 2026-08-21 복원
+            # foreign_net_vol·inst_net_vol(거래량 기준 수급)은 여전히 미저장
+            # (신호 엔진 미사용, 공간 절감 우선 — corp_other_net과 달리 화면에도 안 씀).
             "KIS",
             PARTIAL,
         ) if inv else None
