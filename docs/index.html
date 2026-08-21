@@ -11,7 +11,7 @@
   --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#898781;
   --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
   --up:#c62828; --down:#1c5cab;
-  --s1:#eb6834; --s2:#1baf7a; --s3:#4a3aa7;
+  --s1:#eb6834; --s2:#1baf7a; --s3:#4a3aa7; --s4:#c0388b;
   /* 이동평균 순서형 램프 (MA5 → MA120, 밝은→어두운 한 색) */
   --ma1:#86b6ef; --ma2:#5598e7; --ma3:#2a78d6; --ma4:#1c5cab; --ma5:#104281;
   /* 종목상세 가격차트 MA5·MA20·MA120 전용 — 서로 다른 색 계통 */
@@ -26,7 +26,7 @@
   --ink:#fff; --ink-2:#c3c2b7; --ink-3:#898781;
   --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
   --up:#ef5350; --down:#5598e7;
-  --s1:#d95926; --s2:#199e70; --s3:#9085e9;
+  --s1:#d95926; --s2:#199e70; --s3:#9085e9; --s4:#e26bb5;
   --ma1:#9ec5f4; --ma2:#6da7ec; --ma3:#3987e5; --ma4:#256abf; --ma5:#184f95;
   --mac1:#e3a53a; --mac2:#2bd696; --mac3:#a86ae0;
 }
@@ -286,7 +286,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="legend">
       <span><i style="background:var(--s1)"></i>외국인</span>
       <span><i style="background:var(--s2)"></i>기관</span>
-      <span><i style="background:var(--s3)"></i>개인</span></div>
+      <span><i style="background:var(--s3)"></i>개인</span>
+      <span><i style="background:var(--s4)"></i>기타법인</span></div>
     <div class="chart" id="cInv"></div>
     <div class="note">일별 순매수가 아니라 <b>누적</b>입니다. 선이 계속 올라가면 그 주체가 꾸준히 사들이고 있다는 뜻이고,
       기울기가 꺾이는 지점이 수급 방향이 바뀐 시점입니다.</div>
@@ -435,7 +436,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     </div>
   </div>
 
-  <div class="card"><h3>공통 수급 요약 <span class="r">독립 5개 주체(외국인/금융투자/투신/연기금/사모) 기준 · 2곳 이상 겹칠 때만 표시</span></h3>
+  <div class="card"><h3>공통 수급 요약 <span class="r">독립 7개 주체(외국인/금융투자/투신/연기금/사모/개인/기타법인) 기준 · 2곳 이상 겹칠 때만 표시</span></h3>
     <div class="grid2">
       <div><div class="faint" style="font-size:11px;margin:0 0 4px">여러 주체가 같이 사들이는 종목</div>
         <div class="tw"><table><thead><tr>
@@ -558,8 +559,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <th class="grp">시총</th><th>거래대금</th><th>대금비중</th>
       <th class="grp">52주 신고가</th><th>신고가일</th><th>거래량비</th>
       <th class="grp">외국인</th><th>기관합계</th><th>금융투자</th>
-      <th>투신</th><th>연기금</th><th>사모</th>
-    </tr></thead><tbody id="scrBody"><tr><td colspan="17" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
+      <th>투신</th><th>연기금</th><th>사모</th><th>개인</th><th>기타법인</th>
+    </tr></thead><tbody id="scrBody"><tr><td colspan="19" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
 
@@ -597,7 +598,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="legend">
       <span><i style="background:var(--s1)"></i>외국인</span>
       <span><i style="background:var(--s2)"></i>기관</span>
-      <span><i style="background:var(--s3)"></i>개인</span></div>
+      <span><i style="background:var(--s3)"></i>개인</span>
+      <span><i style="background:var(--s4)"></i>기타법인</span></div>
     <div class="chart" id="dFlow"></div>
   </div>
 
@@ -926,7 +928,8 @@ async function loadMarket(){
   lineChart($("#cInv"),[
     {n:"외국인",v:rebase("foreign_cum"),c:"--s1"},
     {n:"기관",v:rebase("inst_cum"),c:"--s2"},
-    {n:"개인",v:rebase("individual_cum"),c:"--s3"}],lb,
+    {n:"개인",v:rebase("individual_cum"),c:"--s3"},
+    {n:"기타법인",v:rebase("corp_other_cum"),c:"--s4"}],lb,
     {h:230,w:1100,pr:70,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
   const last=S.market.at(-1);
   return last;
@@ -1023,12 +1026,14 @@ async function selectSector(sec){
     lineChart($("#cSecFlow"),[
       {n:"외국인",v:fl.map(p=>+p.foreign_cum/EOK),c:"--s1"},
       {n:"기관",v:fl.map(p=>+p.inst_cum/EOK),c:"--s2"},
-      {n:"개인",v:fl.map(p=>+p.individual_cum/EOK),c:"--s3"}],lb,
+      {n:"개인",v:fl.map(p=>+p.individual_cum/EOK),c:"--s3"},
+      {n:"기타법인",v:fl.map(p=>+p.corp_other_cum/EOK),c:"--s4"}],lb,
       {h:230,pr:66,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
     const last=fl.at(-1),since=fl.length>=5?fl.at(-5):fl[0];
     const arr=[["외국인",+last.foreign_cum-+since.foreign_cum],
                ["기관",+last.inst_cum-+since.inst_cum],
-               ["개인",+last.individual_cum-+since.individual_cum]];
+               ["개인",+last.individual_cum-+since.individual_cum],
+               ["기타법인",+last.corp_other_cum-+since.corp_other_cum]];
     const t=arr.filter(a=>a[1]>0).sort((a,b)=>b[1]-a[1])[0];
     $("#secFlowNote").innerHTML=t
       ? `최근 5거래일 기준 <b>${t[0]}</b>이 <b class="up">${pm(t[1]/EOK,0)}억</b>으로 이 업종을 가장 많이 사들였습니다.`
@@ -1105,16 +1110,16 @@ async function loadFlowStep(){
 
 /* ══ 수급 동향 ══ */
 const FLOW_SUBJ={combo:"외국인+기관합계",foreign:"외국인",inst:"기관합계",fin_inv:"금융투자",
-  inv_trust:"투신",pension:"연기금",pe:"사모"};
-const FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe"]; // 가로 헤더 고정 순서
+  inv_trust:"투신",pension:"연기금",pe:"사모",individual:"개인",corp_other:"기타법인"};
+const FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe","individual","corp_other"]; // 가로 헤더 고정 순서
 const FLOW_PERIOD={"1y":"1년","3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
 const FLOW_PERIOD_ROWS=["1y","3m","2m","1m","2w","1w","1d"]; // 세로 기본 순서
-const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension","pe"]; // 그리드 컬럼 순서
-// 공통 수급 요약에 쓸 "겹치지 않는" 주체 5개. combo(외국인+기관합계)와 inst(기관합계)는
-// 다른 넷의 합산/부분합이라 같이 넣으면 겹침 개수가 과대평가됩니다(예: 금융투자·투신·
+const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension","pe","individual","corp_other"]; // 그리드 컬럼 순서
+// 공통 수급 요약에 쓸 "겹치지 않는" 주체 7개. combo(외국인+기관합계)와 inst(기관합계)는
+// 다른 것들의 합산/부분합이라 같이 넣으면 겹침 개수가 과대평가됩니다(예: 금융투자·투신·
 // 연기금이 다 사면 기관합계도 거의 항상 같이 +라 4곳이 동시에 산 것처럼 보이지만
-// 실은 3곳의 파생값). 서로 독립적인 5개(외국인/금융투자/투신/연기금/사모)만 씁니다.
-const FLOW_COMMON_SUBJ=["foreign","fin_inv","inv_trust","pension","pe"];
+// 실은 3곳의 파생값). 서로 독립적인 7개(외국인/금융투자/투신/연기금/사모/개인/기타법인)만 씁니다.
+const FLOW_COMMON_SUBJ=["foreign","fin_inv","inv_trust","pension","pe","individual","corp_other"];
 S.flowPeriod=S.flowPeriod||"1d";
 function flowVal(row,subj,period){
   if(subj==="combo")return (+row["foreign_"+period]||0)+(+row["inst_"+period]||0);
@@ -1321,7 +1326,7 @@ const FLOW_FILTER_IDS={chgMin:"#gChgMin",chgMax:"#gChgMax",capMin:"#gCapMin",cap
 const screenerFilterPass=makeFilterFn($("#v-scr"),SCR_IDS);
 const flowFilterPass=makeFilterFn($("#v-flow"),FLOW_FILTER_IDS);
 async function runScreener(){
-  $("#scrBody").innerHTML='<tr><td colspan="17" class="load">조회 중…</td></tr>';
+  $("#scrBody").innerHTML='<tr><td colspan="19" class="load">조회 중…</td></tr>';
   const date=$("#fDate").value||S.date;
   let rows=await q("v_screener",`select=*&trade_date=eq.${date}`);
   rows=rows.filter(screenerFilterPass);
@@ -1346,8 +1351,10 @@ async function runScreener(){
       <td class="${sgn(+r.fin_inv_net)}">${pm(+r.fin_inv_net/EOK,0)}억</td>
       <td class="${sgn(+r.inv_trust_net)}">${pm(+r.inv_trust_net/EOK,0)}억</td>
       <td class="${sgn(+r.pension_net)}">${pm(+r.pension_net/EOK,0)}억</td>
-      <td class="${sgn(+r.pe_net)}">${pm(+r.pe_net/EOK,0)}억</td></tr>`).join("")
-    :'<tr><td colspan="17" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+      <td class="${sgn(+r.pe_net)}">${pm(+r.pe_net/EOK,0)}억</td>
+      <td class="${sgn(+r.individual_net)}">${pm(+r.individual_net/EOK,0)}억</td>
+      <td class="${sgn(+r.corp_other_net)}">${pm(+r.corp_other_net/EOK,0)}억</td></tr>`).join("")
+    :'<tr><td colspan="19" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
 }
 $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e.message));
@@ -1409,8 +1416,11 @@ async function loadDetail(code){
     ["투신",cum("inv_trust_cum"),null],
     ["연기금",cum("pension_cum"),null],
     ["사모",cum("pe_cum"),null],
+    ["개인",cum("individual_cum"),null],
+    ["기타법인",cum("corp_other_cum"),null],
   ];
-  const kOf={"금융투자":"fin_inv_cum","투신":"inv_trust_cum","연기금":"pension_cum","사모":"pe_cum"};
+  const kOf={"금융투자":"fin_inv_cum","투신":"inv_trust_cum","연기금":"pension_cum","사모":"pe_cum",
+    "개인":"individual_cum","기타법인":"corp_other_cum"};
   minis.forEach(m=>{if(m[2]==null)m[2]=+last[kOf[m[0]]]/EOK;});
   $("#dMinis").innerHTML=minis.map(([n,,lastV],i)=>
     `<div class="mini"><h4>${n}<span class="${sgn(lastV)}">${pm(lastV,0)}억</span></h4>
@@ -1457,7 +1467,8 @@ function renderRangeCharts(){
   lineChart($("#dFlow"),[
     {n:"외국인",v:rcum("foreign_cum"),c:"--s1"},
     {n:"기관",v:rcum("inst_cum"),c:"--s2"},
-    {n:"개인",v:rcum("individual_cum"),c:"--s3"}],rlb,
+    {n:"개인",v:rcum("individual_cum"),c:"--s3"},
+    {n:"기타법인",v:rcum("corp_other_cum"),c:"--s4"}],rlb,
     {h:230,w:1180,pr:66,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
