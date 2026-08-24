@@ -288,6 +288,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="hmeta">
       <span class="chip" id="chipRegime"><span class="dot" style="background:var(--ink-3)"></span>시장 <b>–</b></span>
       <span class="chip opt">유니버스 <b id="chipUniv">–</b></span>
+      <span class="chip opt" id="chipHighPos" title="유니버스 종목 중 52주 신고가 -10% 이내 비율">신고가근처 <b>–</b></span>
       <span class="chip">기준 <b id="chipDate">–</b> <span id="chipAsOf" class="faint" style="font-weight:400"></span></span>
       <button class="icon-btn" id="themeBtn">◐</button>
     </div>
@@ -359,7 +360,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         <b>평균 등락률</b> = 그날 업종 소속 종목들의 당일 등락률 단순평균.
         <b>RS</b> = 업종 평균 등락률의 20거래일 복리 누적수익률을 업종끼리 비교한 순위입니다
         (KOSPI/KOSDAQ 지수 등 외부 벤치마크 대비가 아니라 업종 간 상대 순위이며,
-        최소 15거래일 데이터 · 소속 3종목 이상인 업종만 순위를 매깁니다).
+        최소 15거래일 데이터 · 소속 3종목 이상인 업종만 순위를 매깁니다 · <b>자체 산출</b>).
       </div>
       <div class="faint" style="font-size:11px;margin:10px 0 4px">상위 5</div>
       <div class="tw"><table><thead><tr id="secHeadTop"></tr></thead>
@@ -422,7 +423,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
   <div class="card"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="flowPeriodSel">
-      <button class="fchip" data-v="1y">1년</button>
+      <button class="fchip" data-v="6m">6개월</button>
       <button class="fchip" data-v="3m">3개월</button>
       <button class="fchip" data-v="2m">2개월</button>
       <button class="fchip" data-v="1m">1개월</button>
@@ -451,17 +452,15 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       </div>
       <div class="qf-group"><div class="qf-lb">추세 · 가격</div><div class="qf">
         <button class="fchip" data-f="newhigh">신고가 돌파</button>
-        <button class="fchip" data-f="nearhigh">전고점 근처(-3% 이내)</button>
-        <button class="fchip" data-f="closepos">종가 고가권(상위 30%)</button>
+        <button class="fchip" data-f="nearhigh">전고점 근처(-10% 이내)</button>
+        <button class="fchip" data-f="closepos">최고가 근처(-10%)</button>
         <button class="fchip" data-f="ma5">5일선 위</button>
         <button class="fchip" data-f="aligned">정배열</button>
       </div></div>
       <div class="qf-group"><div class="qf-lb">수급</div><div class="qf">
         <button class="fchip" data-f="fgbuy">외국인 순매수</button>
         <button class="fchip" data-f="insbuy">기관 순매수</button>
-        <button class="fchip" data-f="bothbuy">외인·기관 동반매수</button>
         <button class="fchip" data-f="consec3">연속 양매수 3일↑</button>
-        <button class="fchip" data-f="indsell">개인 순매도</button>
       </div></div>
       <div class="qf-group"><div class="qf-lb">단계 · 전략</div><div class="qf">
         <button class="fchip" data-f="st_birth">추세 탄생</button>
@@ -550,9 +549,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="qf-group"><div class="qf-lb">수급</div><div class="qf">
       <button class="fchip" data-f="fgbuy">외국인 순매수</button>
       <button class="fchip" data-f="insbuy">기관 순매수</button>
-      <button class="fchip" data-f="bothbuy">외인·기관 동반매수</button>
       <button class="fchip" data-f="consec3">연속 양매수 3일↑</button>
-      <button class="fchip" data-f="indsell">개인 순매도</button>
     </div></div>
     <div class="qf-group"><div class="qf-lb">단계 · 전략</div><div class="qf">
       <button class="fchip" data-f="st_birth">추세 탄생</button>
@@ -604,14 +601,16 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th>
       <th class="grp">외국인</th><th>기관합계</th><th class="opt">금융투자</th>
       <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th>
-    </tr></thead><tbody id="scrBody"><tr><td colspan="19" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
+      <th class="grp opt">외+기(1m)</th><th class="opt">외+기(6m)</th>
+    </tr></thead><tbody id="scrBody"><tr><td colspan="21" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
 
 
 <!-- ═══════════ 종목 상세 ═══════════ -->
 <section id="v-detail" class="hide">
-  <div class="card" style="margin-top:16px">
+  <div style="margin:12px 0 4px"><button class="btn ghost" id="dBackTop">← 이전 화면으로</button></div>
+  <div class="card">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <select id="dSel" style="width:auto;min-width:220px"></select>
       <div id="dHead" style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap"></div>
@@ -634,6 +633,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="note">● 표시는 <span id="dPriceRange">2025-09-01~오늘</span> 구간 <b>최고가 · 최저가 · 오늘 종가</b>입니다.</div>
   </div>
 
+  <div class="card"><h3>무게/주식수 <span class="r" style="font-weight:400;font-size:11px">외+기관 순매수 ÷ 주식수 · 양수=자금유입</span></h3>
+    <div class="chart" id="dWeight"></div>
+  </div>
+
   <div class="card"><h3>거래량<span class="r" id="dVolRange">2025-09-01~오늘</span></h3>
     <div class="chart" id="dVolume"></div>
   </div>
@@ -651,7 +654,6 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="grid5" id="dMinis"></div>
   </div>
 
-  <div class="card"><h3>지표</h3><div class="tiles" id="dTiles"></div></div>
   <div style="margin:16px 0 40px"><button class="btn ghost" id="dBack">← 이전 화면으로</button></div>
 </section>
 
@@ -659,17 +661,20 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 <!-- ═══════════ 전략 성과 ═══════════ -->
 <section id="v-perf" class="hide">
   <div class="tiles" style="margin:16px 0 13px" id="perfTiles"></div>
-  <div class="card"><h3>가상 포트폴리오 청산 이력<span class="r" id="perfCount"></span></h3>
-    <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>진입일</th><th>진입가</th><th>평단</th><th class="opt">트랜치</th>
-      <th>청산일</th><th>청산가</th><th class="opt">사유</th><th>실현손익</th><th>수익률</th>
-    </tr></thead><tbody id="perfBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
+  <div class="card"><h3>누적 실현손익 추이</h3>
+    <div class="chart" id="cPerfPnl"></div>
   </div>
-  <div class="card"><h3>보유 중<span class="r" id="openCount"></span></h3>
+  <div class="card"><h3>보유 중 <span class="r" id="openCount"></span></h3>
     <div class="tw"><table><thead><tr>
       <th class="l">종목</th><th>진입일</th><th>평단</th><th>고점</th><th class="opt">트랜치</th>
       <th>투입금액</th><th>고점대비</th>
     </tr></thead><tbody id="openBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
+  </div>
+  <div class="card"><h3>청산 이력 <span class="r" id="perfCount"></span></h3>
+    <div class="tw"><table><thead><tr>
+      <th class="l">종목</th><th>진입일</th><th>진입가</th><th>평단</th><th class="opt">트랜치</th>
+      <th>청산일</th><th>청산가</th><th class="opt">사유</th><th>실현손익</th><th>수익률</th>
+    </tr></thead><tbody id="perfBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 </section>
 
@@ -866,6 +871,13 @@ function lineChart(host,series,labels,opt={}){
     tip.style.left=Math.min(r.width-160,Math.max(0,X(i)/W*r.width+12))+"px";tip.style.top="4px";});
   hit.addEventListener("pointerleave",()=>{cross.setAttribute("opacity",0);
     dots.forEach(d=>d.setAttribute("opacity",0));tip.style.opacity=0;});
+  // opt.refLine: 기준선(전고점 등) — 점선으로 표시
+  if(opt.refLine!=null){const ry=Y(opt.refLine);
+    if(ry>=P.t&&ry<=H-P.b){
+      svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:ry,y2:ry,
+        stroke:css("--up"),strokeDasharray:"4 3","stroke-width":1.2,opacity:.8}));
+      const rt=el("text",{x:P.l-7,y:ry-3,"text-anchor":"end","font-size":9.5,"font-weight":600,fill:css("--up")});
+      rt.textContent=opt.refLabel||(opt.ft?opt.ft(opt.refLine):N(opt.refLine,0));svg.appendChild(rt);}}
   host.appendChild(svg);
 }
 
@@ -918,12 +930,23 @@ function volumeBars(host,vals,labels,opt={}){
   const W=opt.w||1180,H=opt.h||130,P={t:10,r:opt.pr??66,b:22,l:opt.pl??48};
   const valid=vals.filter(v=>v!=null&&!isNaN(v));
   if(!valid.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
-  const max=Math.max(...valid)*1.08||1;
+  const hasBipolar=valid.some(v=>v<0);
+  let max,Y,y0label;
+  if(hasBipolar){
+    const absMax=Math.max(...valid.map(v=>Math.abs(v)))*1.08||1;
+    max=absMax;
+    Y=v=>P.t+(absMax-v)/(2*absMax)*(H-P.t-P.b);
+    y0label=absMax;
+  }else{
+    max=Math.max(...valid)*1.08||1;
+    Y=v=>P.t+(max-v)/max*(H-P.t-P.b);
+    y0label=max;
+  }
   const X=i=>P.l+i*(W-P.l-P.r)/Math.max(1,labels.length-1);
-  const Y=v=>P.t+(max-v)/max*(H-P.t-P.b);
   const bw=Math.max(1,(W-P.l-P.r)/labels.length-1);
   const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});
-  niceTicks(0,max,3).forEach(v=>{if(v>max)return;const y=Y(v);
+  (hasBipolar?[-max,0,max]:niceTicks(0,max,3)).forEach(v=>{
+    const y=Y(v);if(y<P.t||y>H-P.b)return;
     svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:y,y2:y,stroke:css("--grid"),"stroke-width":1}));
     const t=el("text",{x:P.l-7,y:y+3.5,"text-anchor":"end","font-size":10,fill:css("--ink-3")});
     t.textContent=opt.fy?opt.fy(v):N(v,0);svg.appendChild(t);});
@@ -933,8 +956,9 @@ function volumeBars(host,vals,labels,opt={}){
   const y0=Y(0),tip=tipFor(host);
   vals.forEach((v,i)=>{
     if(v==null||isNaN(v))return;
-    const x=X(i)-bw/2,y=Y(v),h=Math.max(1,y0-y);
-    const fc=opt.colors?.[i]||opt.c||"--ma3";
+    const ry=hasBipolar?(v>=0?Y(v):y0):Y(v),rh=hasBipolar?Math.max(1,Math.abs(Y(v)-y0)):Math.max(1,y0-Y(v));
+    const x=X(i)-bw/2,y=ry,h=rh;
+    const fc=opt.colors?.[i]||opt.c||(hasBipolar?(v>=0?"--s1":"--s3"):"--ma3");
     const r=el("rect",{x,y,width:bw,height:h,fill:css(fc),opacity:.85,rx:1});
     r.addEventListener("pointerenter",()=>{
       tip.innerHTML=`<b>${labels[i]}</b><div class="row"><b>${opt.ft?opt.ft(v):N(v,0)}</b></div>`;
@@ -992,6 +1016,7 @@ function go(v){
   redraw();
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
+$("#dBackTop").onclick=()=>go(S.prevView||"proc");
 // 표 헤더가 sticky로 붙는 위치(--stick-top)를 전역 헤더의 실제 렌더 높이로
 // 맞춥니다. 고정폭을 하드코딩하면 모바일에서 헤더 줄바꿈 등으로 어긋나므로,
 // 항상 실측치를 씁니다. 표는 안쪽 스크롤 없이 페이지 스크롤을 그대로 씁니다.
@@ -1149,7 +1174,8 @@ async function selectSector(sec){
   // 구성 종목
   S.stocks=await q("v_sector_stocks",
     `select=*&sector=eq.${encodeURIComponent(sec)}&trade_date=eq.${S.date}&order=trade_amount.desc`);
-  $("#stkBody").innerHTML=S.stocks.length?S.stocks.map((r,i)=>`
+  const stkShow=S.stocks.slice(0,10);
+  $("#stkBody").innerHTML=stkShow.length?stkShow.map((r,i)=>`
     <tr><td class="l rank">${i+1}</td>
       <td class="l"><a class="lk nm" data-code="${r.code}">${r.name}</a></td>
       <td>${N(+r.close)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
@@ -1164,15 +1190,24 @@ async function selectSector(sec){
     :`<tr><td colspan="12" class="load">해당 업종 종목이 없습니다</td></tr>`;
   $$("#stkBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable('stkBody');
-  $("#stkOut").innerHTML=`<b>${S.stocks.length}종목</b>`;
+  $("#stkOut").innerHTML=`<b>${stkShow.length}종목</b>${S.stocks.length>10?` <span class="faint">(전체 ${S.stocks.length}종목 중 상위 10)</span>`:""}`;
+  $("#fn3").innerHTML=`${stkShow.length}<small>/${S.stocks.length}</small>`;
 }
 
 /* ══ STEP4 수급 / STEP5 타점 ══ */
 async function loadFlowStep(){
-  const cand=await q("v_screener",
-    "select=code,name,smart_cum5,smart_cum20,consec_both_buy,vol_ratio20_prev,is_new_high_all,"+
-    "near_high,pct_from_high,is_new_high,close,change_pct,sector,pick_score,signal_type"+
-    `&trade_date=eq.${S.date}&order=smart_cum5.desc&limit=8`);
+  const [cand,allHigh]=await Promise.all([
+    q("v_screener",
+      "select=code,name,smart_cum5,smart_cum20,consec_both_buy,vol_ratio20_prev,is_new_high_all,"+
+      "near_high,pct_from_high,is_new_high,close,change_pct,sector,pick_score,signal_type"+
+      `&trade_date=eq.${S.date}&order=smart_cum5.desc&limit=8`),
+    q("v_screener",`select=code,pct_from_high,is_new_high_all,is_new_high&trade_date=eq.${S.date}`)
+  ]);
+  if(allHigh.length){
+    const near=allHigh.filter(r=>r.is_new_high_all||r.is_new_high||+r.pct_from_high>=-10).length;
+    const pct=Math.round(near/allHigh.length*100);
+    $("#chipHighPos").innerHTML=`신고가근처 <b>${pct}%</b><span class="faint" style="font-size:10px"> (${near}/${allHigh.length})</span>`;
+  }
   const rows=await Promise.all(cand.map(async c=>{
     const f=await q("daily_flow",
       `select=trade_date,individual_net&code=eq.${c.code}&order=trade_date.desc&limit=5`);
@@ -1218,8 +1253,8 @@ async function loadFlowStep(){
 const FLOW_SUBJ={combo:"외국인+기관합계",foreign:"외국인",inst:"기관합계",fin_inv:"금융투자",
   inv_trust:"투신",pension:"연기금",pe:"사모",individual:"개인",corp_other:"기타법인"};
 const FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe","individual","corp_other"]; // 가로 헤더 고정 순서
-const FLOW_PERIOD={"1y":"1년","3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
-const FLOW_PERIOD_ROWS=["1y","3m","2m","1m","2w","1w","1d"]; // 세로 기본 순서
+const FLOW_PERIOD={"6m":"6개월","3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
+const FLOW_PERIOD_ROWS=["6m","3m","2m","1m","2w","1w","1d"]; // 세로 기본 순서
 const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension","pe","individual","corp_other"]; // 그리드 컬럼 순서
 // 공통 수급 요약에 쓸 "겹치지 않는" 주체 7개. combo(외국인+기관합계)와 inst(기관합계)는
 // 다른 것들의 합산/부분합이라 같이 넣으면 겹침 개수가 과대평가됩니다(예: 금융투자·투신·
@@ -1252,9 +1287,10 @@ async function loadFlowTrends(){
 // 역대순위 = 당일 이 종목에 대한 이 주체의 순매수 대금이, 같은 종목·주체의
 // DB 보유 전체 기간(2025-09-01~) 순매수 대금 분포 중 몇 위인지 (v_flow_rank_today)
 function flowRankRow(r,i){
-  const rk=r.rank1d?`${r.rank1d}/${r.rank1dTotal}`:"–";
+  const rk=r.rank1d?`${r.rank1d}위`:"–";
   return `<tr><td class="l rank">${i+1}</td>
     <td class="l"><a class="lk nm" data-code="${r.code}">${r.name}</a></td>
+    <td class="${sgn(+r.change_pct)}">${r.change_pct!=null?pm(+r.change_pct)+"%" :"–"}</td>
     <td class="${sgn(r.ratio)}">${pm(r.ratio,2)}%</td>
     <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td>
     <td class="dim">${rk}</td></tr>`;
@@ -1271,14 +1307,14 @@ async function loadFlowRawData(){
   }
   return S.flowRaw;
 }
-const FLOW_RANK_N=20; // Top N (참고 이미지와 동일)
+const FLOW_RANK_N=10; // Top N
 function flowSubjTableHTML(rows,label){
   return `<div class="flow-subj-sub">${label}</div>
     <div class="tw"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th>비중</th><th>금액(억)</th>
+      <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>비중</th><th>금액(억)</th>
       <th title="당일 이 주체의 순매수 대금이, 이 종목에 대한 그 주체의 DB 보유 전체 기간(2025-09-01~) 순매수 대금 중 몇 위인지(1위=역대 최대)">역대순위</th>
     </tr></thead><tbody>${rows.length?rows.map((r,i)=>flowRankRow(r,i)).join("")
-      :'<tr><td colspan="5" class="load">해당 없음</td></tr>'}</tbody></table></div>`;
+      :'<tr><td colspan="6" class="load">해당 없음</td></tr>'}</tbody></table></div>`;
 }
 function flowSubjPanelHTML(subj,cand){
   const withRatio=cand.filter(r=>r.ratio!=null);
@@ -1318,7 +1354,7 @@ function flowCommonSummary(bySubj){
       }
     });
   });
-  const MIN_N=2, TOP=8, TOP_SECTOR=6;
+  const MIN_N=2, TOP=8, TOP_SECTOR=5;
   const stocks=Object.values(stockAgg);
   const sectors=Object.values(sectorAgg).map(g=>({sector:g.sector,net:g.net,buyN:g.buySet.size,sellN:g.sellSet.size}));
   return {
@@ -1392,8 +1428,8 @@ function makeFilterFn(root,ids){
     if(f.volMin!=null&&(vol==null||vol<f.volMin))return false;
     if(f.sec&&r.sector!==f.sec)return false;
     if(on("newhigh",root)&&!(r.is_new_high_all||r.is_new_high))return false;
-    if(on("nearhigh",root)&&!(r.near_high||+r.pct_from_high>=-3))return false;
-    if(on("closepos",root)&&!(+r.close_pos_pct>=70))return false;
+    if(on("nearhigh",root)&&!(r.near_high||+r.pct_from_high>=-10))return false;
+    if(on("closepos",root)&&!(+r.pct_from_high>=-10))return false;
     if(on("ma5",root)&&!(r.ma5&&+r.close>+r.ma5))return false;
     if(on("aligned",root)&&!r.ma_aligned)return false;
     if(on("fgbuy",root)&&!(+r.foreign_net>0))return false;
@@ -1444,16 +1480,18 @@ const flowFilterPass=makeFilterFn($("#v-flow"),FLOW_FILTER_IDS);
 // 없으면(v_flow_rank_today에 그 날짜·종목 행이 없으면) 괄호 없이 금액만.
 function flowAmtRankCell(net,rank,total){
   const amt=`${pm(+net/EOK,0)}억`;
-  return rank?`${amt}<span class="dim" style="font-size:10px"> (${rank}/${total})</span>`:amt;
+  return rank?`${amt}<span class="dim" style="font-size:10px"> (${rank}위)</span>`:amt;
 }
 async function runScreener(){
-  $("#scrBody").innerHTML='<tr><td colspan="19" class="load">조회 중…</td></tr>';
+  $("#scrBody").innerHTML='<tr><td colspan="21" class="load">조회 중…</td></tr>';
   const date=$("#fDate").value||S.date;
-  let [rows,rk]=await Promise.all([
+  let [rows,rk,per]=await Promise.all([
     q("v_screener",`select=*&trade_date=eq.${date}`),
-    q("v_flow_rank_today",`select=*&trade_date=eq.${date}`)]);
+    q("v_flow_rank_today",`select=*&trade_date=eq.${date}`),
+    q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_6m,inst_6m")]);
   const rkByCode={};rk.forEach(p=>rkByCode[p.code]=p);
-  rows=rows.map(r=>({...r,...(rkByCode[r.code]||{})}));
+  const perByCode={};per.forEach(p=>perByCode[p.code]=p);
+  rows=rows.map(r=>({...r,...(rkByCode[r.code]||{}),...(perByCode[r.code]||{})}));
   rows=rows.filter(screenerFilterPass);
   const key=$("#fSort").value, dir=$("#fDir").value==="desc"?-1:1;
   rows.sort((a,b)=>((+a[key]||-Infinity)-(+b[key]||-Infinity))*dir);
@@ -1478,8 +1516,10 @@ async function runScreener(){
       <td class="opt ${sgn(+r.pension_net)}">${flowAmtRankCell(r.pension_net,r.pension_rank,r.pension_total)}</td>
       <td class="opt ${sgn(+r.pe_net)}">${flowAmtRankCell(r.pe_net,r.pe_rank,r.pe_total)}</td>
       <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
-      <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td></tr>`).join("")
-    :'<tr><td colspan="19" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+      <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
+      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
+      <td class="opt ${sgn((+r.foreign_6m||0)+(+r.inst_6m||0))}">${(r.foreign_6m==null&&r.inst_6m==null)?"–":pm(((+r.foreign_6m||0)+(+r.inst_6m||0))/EOK,0)+"억"}</td></tr>`).join("")
+    :'<tr><td colspan="21" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable('scrBody');
 }
@@ -1554,17 +1594,6 @@ async function loadDetail(code){
   minis.forEach(([n,arr],i)=>lineChart($("#mini_"+i),
     [{n,v:arr,c:"--s1"}],lb,{h:110,w:300,pr:8,pl:38,zero:true,labelEnds:false,
       fy:v=>N(v,0),ft:v=>pm(v,0)+"억"}));
-  $("#dTiles").innerHTML=[
-    ["무게/주식수",sum.weight_per_share==null?"–":pm(+sum.weight_per_share*100,0)+"%",sgn(+sum.weight_per_share)],
-    ["대금비중",sum.amt_cap_pct==null?"–":N(+sum.amt_cap_pct,0)+"%",""],
-    ["거래량비(20일)",sum.vol_ratio20_prev==null?"–":N(+sum.vol_ratio20_prev,0)+"%",""],
-    ["시가총액",N(+sum.market_cap/JO,1)+"조",""],
-    ["신고가 대비",sum.pct_from_high==null?"–":N(+sum.pct_from_high,0)+"%",""],
-    ["연속 양매수",(sum.consec_both_buy||0)+"일",""],
-    ["5일 비개인",sum.nonpersonal_net==null?"–":pm(+sum.nonpersonal_net/EOK,0)+"억",sgn(+sum.nonpersonal_net)],
-    ["종가 위치",sum.close_pos_pct==null?"–":N(+sum.close_pos_pct,0)+"%",""],
-  ].map(([k,v,c])=>`<div class="tile"><div class="lb">${k}</div>
-    <div class="vl num ${c}">${v}</div></div>`).join("");
 }
 // 가격·거래량·투자자별 누적 순매수 — #dStart~#dEnd로 고른 기간만 다시 그립니다
 // (전체 데이터는 이미 S.chart.rows에 있으니 네트워크 재조회 없이 즉시 갱신됩니다).
@@ -1579,13 +1608,18 @@ function renderRangeCharts(){
   $("#dPriceRange").textContent=rangeTxt;
   $("#dVolRange").textContent=rangeTxt;
   $("#dFlowRange").textContent=`${rangeTxt} · 억원`;
+  const maxClose=Math.max(...rp.map(r=>+r.close));
   lineChart($("#dPrice"),[
     {n:"종가",v:rp.map(r=>+r.close),c:"--ink"},
     {n:"MA5",v:rp.map(r=>r.ma5?+r.ma5:null),c:"--mac1"},
     {n:"MA20",v:rp.map(r=>r.ma20?+r.ma20:null),c:"--mac2"},
     {n:"MA120",v:rp.map(r=>r.ma120?+r.ma120:null),c:"--mac3"}],
-    rlb,{h:300,w:1180,pr:66,labelEnds:false,marks:true,
-      fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원"});
+    rlb,{h:450,w:1180,pr:66,labelEnds:false,marks:true,
+      fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원",
+      refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
+  const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
+  volumeBars($("#dWeight"),wps,rlb,
+    {h:100,w:1180,pr:66,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
     {h:130,w:1180,pr:66,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rp[0];
@@ -1620,6 +1654,15 @@ async function loadPerf(){
       ["평균 수익률",cl.length?pm(cl.reduce((a,b)=>a+ +b.return_pct,0)/cl.length,2)+"%":"–","","매도건 평균"],
     ].map(([k,v,c,s])=>`<div class="tile"><div class="lb">${k}</div>
       <div class="vl num ${c}">${v}</div><div class="sub">${s}</div></div>`).join("");
+    // 누적 손익 차트 — 청산일 기준 오름차순으로 재정렬
+    const clAsc=[...cl].sort((a,b)=>a.exit_date>b.exit_date?1:-1);
+    const cumPnl=[];let acc=0;
+    clAsc.forEach(p=>{acc+= +p.realized_pnl;cumPnl.push(acc/EOK);});
+    if(clAsc.length>1){
+      lineChart($("#cPerfPnl"),[{n:"누적손익",v:cumPnl,c:"--s1"}],
+        clAsc.map(p=>p.exit_date.slice(5).replace("-","/")),
+        {h:200,pr:72,zero:true,marks:true,fy:v=>pm(v,0)+"억",ft:v=>pm(v,1)+"억",fm:v=>pm(v,1)+"억"});
+    }else{$("#cPerfPnl").innerHTML='<div class="load">청산 건수 부족</div>';}
     $("#perfCount").innerHTML=`<b>${cl.length}</b>건`;
     $("#perfBody").innerHTML=cl.length?cl.map(p=>`<tr>
       <td class="l"><a class="lk nm" data-code="${p.code}">${nameOf[p.code]||p.code}</a></td>
