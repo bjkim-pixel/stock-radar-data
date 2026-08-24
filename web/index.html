@@ -346,15 +346,6 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       기울기가 꺾이는 지점이 수급 방향이 바뀐 시점입니다.</div>
   </div>
 
-  <div class="grid2">
-    <div class="card"><h3>프로그램 매매<span class="r">최근 12거래일 · 억원</span></h3>
-      <div class="legend"><span><i style="background:var(--s1)"></i>차익</span>
-        <span><i style="background:var(--s2)"></i>비차익</span></div>
-      <div class="chart" id="cProg"></div></div>
-    <div class="card"><h3>미국 증시<span class="r" id="usDateNote">전일 대비</span></h3>
-      <div class="chart" id="cUS"></div></div>
-  </div>
-
   <!-- STEP 2 -->
   <div class="step-hd" id="s2"><span class="n">STEP 2</span><h2>섹터</h2>
     <span class="q">돈이 어디로 몰리고 있나?</span>
@@ -943,13 +934,20 @@ function volumeBars(host,vals,labels,opt={}){
   vals.forEach((v,i)=>{
     if(v==null||isNaN(v))return;
     const x=X(i)-bw/2,y=Y(v),h=Math.max(1,y0-y);
-    const r=el("rect",{x,y,width:bw,height:h,fill:css(opt.c||"--ma3"),opacity:.8,rx:1});
+    const fc=opt.colors?.[i]||opt.c||"--ma3";
+    const r=el("rect",{x,y,width:bw,height:h,fill:css(fc),opacity:.85,rx:1});
     r.addEventListener("pointerenter",()=>{
       tip.innerHTML=`<b>${labels[i]}</b><div class="row"><b>${opt.ft?opt.ft(v):N(v,0)}</b></div>`;
       tip.style.opacity=1;const rc=svg.getBoundingClientRect();
       tip.style.left=Math.min(rc.width-160,Math.max(0,X(i)/W*rc.width-40))+"px";tip.style.top="4px";});
     r.addEventListener("pointerleave",()=>tip.style.opacity=0);
     svg.appendChild(r);});
+  // opt.refLine: 기준선 (MA20 등) — 점선으로 표시
+  if(opt.refLine!=null){const ry=Y(opt.refLine);
+    svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:ry,y2:ry,
+      stroke:css("--ink-3"),strokeDasharray:"4 3","stroke-width":1,opacity:.7}));
+    const rt=el("text",{x:W-P.r+4,y:ry+3.5,"font-size":9,fill:css("--ink-3")});
+    rt.textContent=opt.refLabel||"";svg.appendChild(rt);}
   host.appendChild(svg);
 }
 function sparkBars(v){
@@ -1042,12 +1040,15 @@ async function loadMarketAmount(){
     const rows=await q("v_market_amount_real","select=*&order=trade_date.asc");
     if(!rows.length){$("#cAmt").innerHTML='<div class="load">데이터 없음 — 지수 백필 후 표시됩니다</div>';return;}
     const lb=rows.map(r=>r.trade_date.slice(5).replace("-","/"));
-    lineChart($("#cAmt"),[{n:"거래대금",v:rows.map(r=>+r.total_amount/JO),c:"--s1"}],lb,
-      {h:170,pr:58,pl:46,marks:true,fy:v=>N(v,0)+"조",ft:v=>N(v,1)+"조원",fm:v=>N(v,1)+"조"});
-    const last=rows.at(-1),ma=+last.amt_ma20;
+    const vals=rows.map(r=>+r.total_amount/JO);
+    const colors=rows.map(r=>+r.total_amount>= +r.amt_ma20?"--s1":"--ma4");
+    const last=rows.at(-1),ma=+last.amt_ma20/JO;
+    volumeBars($("#cAmt"),vals,lb,{h:170,pr:46,pl:46,colors,
+      refLine:ma,refLabel:"MA20",
+      fy:v=>N(v,1)+"조",ft:v=>N(v,1)+"조원"});
     $("#amtNote").innerHTML=`${last.trade_date} 기준 <b>${N(+last.total_amount/JO,1)}조</b> · 20일평균 대비
-      <b class="${last.total_amount>=ma?"up":"down"}">${N(+last.total_amount/ma*100,0)}%</b>
-      <br><span class="faint">KOSPI+KOSDAQ 시장 전체 거래대금(KIS)</span>`;
+      <b class="${+last.total_amount>=+last.amt_ma20?"up":"down"}">${N(+last.total_amount/+last.amt_ma20*100,0)}%</b>
+      <br><span class="faint">KOSPI+KOSDAQ 시장 전체 거래대금(KIS) · 주황=MA20 상회 · 파랑=하회</span>`;
   }catch(e){$("#cAmt").innerHTML='<div class="load">불러오기 실패</div>';}
 }
 async function loadIndex(){
@@ -1642,36 +1643,7 @@ async function loadPerf(){
   }catch(e){$("#perfBody").innerHTML=`<tr><td colspan="10" class="load">조회 실패: ${e.message}</td></tr>`;}
 }
 
-/* ══ 프로그램매매 · 미국증시 (실데이터) ══ */
-async function loadProgramTrade(){
-  try{
-    const rows=await q("v_program_trade_recent","select=*&order=trade_date.asc");
-    if(!rows.length){$("#cProg").innerHTML='<div class="load">데이터 없음 — 아직 수집 전입니다</div>';return;}
-    barChart($("#cProg"),rows.map(r=>{
-      const d=r.trade_date.slice(5).replace("-","/");
-      return {n:d,full:d,g:[
-        {n:"차익",v:+r.arb_net_amount/EOK,c:"--s1"},
-        {n:"비차익",v:+r.nonarb_net_amount/EOK,c:"--s2"}]};
-    }),{h:150,pl:46,maxBar:12,fy:v=>N(v,0),ft:v=>pm(v,0)+"억"});
-  }catch(e){$("#cProg").innerHTML='<div class="load">불러오기 실패</div>';}
-}
-async function loadUSMarket(){
-  try{
-    const rows=await q("v_us_market_latest","select=*");
-    if(!rows.length){$("#cUS").innerHTML='<div class="load">데이터 없음 — 아직 수집 전입니다</div>';return;}
-    const label={NASDAQ:"나스닥",SP500:"S&P500",SOX:"필라반도체",DOW:"다우"};
-    const order=["NASDAQ","SP500","SOX","DOW"];
-    const byS={};rows.forEach(r=>byS[r.symbol]=r);
-    barChart($("#cUS"),order.filter(s=>byS[s]).map(s=>({
-      n:label[s],v:+byS[s].change_pct,c:byS[s].change_pct>=0?"--up":"--down"})),
-      {h:150,pl:38,fy:v=>N(v,1)+"%",ft:v=>pm(v,2)+"%"});
-    if(rows[0]?.trade_date)$("#usDateNote").textContent=`${rows[0].trade_date} 기준 · 전일 대비`;
-  }catch(e){$("#cUS").innerHTML='<div class="load">불러오기 실패</div>';}
-}
-
 function redraw(){
-  loadProgramTrade().catch(()=>{});
-  loadUSMarket().catch(()=>{});
   loadMarketAmount().catch(()=>{});
   if(S.market.length)loadMarket().catch(()=>{});
   if(S.sector)selectSector(S.sector).catch(()=>{});
@@ -1709,7 +1681,7 @@ async function boot(){
     await loadSectors();
     $("#fn3").innerHTML=`${S.stocks.length}<small>/${stk.length}</small>`;
     await loadFlowStep();
-    await Promise.all([loadProgramTrade(), loadUSMarket(), loadMarketAmount()]);
+    await loadMarketAmount();
     status("live",`<b>실데이터 연결됨</b> — ${S.date} 기준 · ${stk.length}종목`);
   }catch(e){
     status("err",`연결 실패: ${e.message}<br><span style="font-size:11px">anon 키가 맞는지, 19_web_views.sql을 적용했는지 확인해주세요.</span>`);
