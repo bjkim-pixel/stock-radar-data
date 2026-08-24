@@ -685,6 +685,45 @@ async function loadDataStatus(){
 /* ── 상태 ────────────────────────────────────────────────────────────── */
 const S={date:null,sectors:[],sector:null,stocks:[],market:[],flowCache:{},chart:{},codes:[]};
 
+/* ══ 테이블 정렬 ═══════════════════════════════════════════════════ */
+function sortVal(txt){
+  const s=txt.trim().replace(/\s*\([^)]*\)/g,'').replace(/,/g,'').trim();
+  if(!s||s==='–'||s==='-')return null;
+  const n=parseFloat(s);return isNaN(n)?s.toLowerCase():n;
+}
+function makeSortable(tbodyId){
+  const tbody=document.getElementById(tbodyId);
+  if(!tbody)return;
+  const ths=[...tbody.closest('table').querySelectorAll('thead th')];
+  // 렌더 후 호출 시 정렬 인디케이터 초기화
+  ths.forEach(h=>{h.dataset.sortDir='';h.classList.remove('active');
+    if(h.dataset.sortOrig!==undefined)h.textContent=h.dataset.sortOrig;});
+  // 최초 1회만 이벤트 바인딩
+  ths.forEach((th,ci)=>{
+    if(th.classList.contains('l')||th.dataset.sortOrig!==undefined)return;
+    th.dataset.sortOrig=th.textContent.trim();
+    th.classList.add('sortable');
+    th.onclick=()=>{
+      const asc=th.dataset.sortDir!=='desc';
+      ths.forEach(h=>{h.dataset.sortDir='';h.classList.remove('active');
+        if(h.dataset.sortOrig!==undefined)h.textContent=h.dataset.sortOrig;});
+      th.dataset.sortDir=asc?'desc':'asc';
+      th.classList.add('active');
+      th.textContent=th.dataset.sortOrig+(asc?' ▾':' ▲');
+      const rows=[...tbody.querySelectorAll('tr')];
+      if(rows.length===1&&rows[0].querySelector('td[colspan]'))return;
+      rows.sort((a,b)=>{
+        const av=sortVal(a.querySelectorAll('td')[ci]?.textContent||'');
+        const bv=sortVal(b.querySelectorAll('td')[ci]?.textContent||'');
+        if(av===null&&bv===null)return 0;if(av===null)return 1;if(bv===null)return -1;
+        if(typeof av==='number'&&typeof bv==='number')return asc?bv-av:av-bv;
+        return asc?String(bv).localeCompare(String(av),'ko'):String(av).localeCompare(String(bv),'ko');
+      });
+      rows.forEach(r=>tbody.appendChild(r));
+    };
+  });
+}
+
 /* ══ 차트 엔진 ══════════════════════════════════════════════════════ */
 function tipFor(h){let t=h.querySelector(".tip");
   if(!t){t=document.createElement("div");t.className="tip";h.appendChild(t);}return t;}
@@ -1068,6 +1107,7 @@ async function selectSector(sec){
       <td>${stg(stage(r))}</td></tr>`).join("")
     :`<tr><td colspan="12" class="load">해당 업종 종목이 없습니다</td></tr>`;
   $$("#stkBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+  makeSortable('stkBody');
   $("#stkOut").innerHTML=`<b>${S.stocks.length}종목</b>`;
 }
 
@@ -1094,6 +1134,7 @@ async function loadFlowStep(){
       <td class="${dir==="이탈"?"down":dir==="불규칙"?"dim":"up"}">${dir}</td>
       <td>${stg(stage(r))}</td></tr>`;}).join("");
   $$("#flowBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+  makeSortable('flowBody');
   $("#flowOut").innerHTML=`<b>${rows.length}종목</b>`;
   $("#fn4").innerHTML=`${rows.length}<small>종목</small>`;
 
@@ -1384,6 +1425,7 @@ async function runScreener(){
       <td class="${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td></tr>`).join("")
     :'<tr><td colspan="19" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+  makeSortable('scrBody');
 }
 $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e.message));
 const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"2","#fCapMax":"2000","#fAmtMin":"","#fVolMin":""};
@@ -1540,6 +1582,8 @@ async function loadPerf(){
         <td class="${dd==null?"":sgn(dd)}">${dd==null?"–":pm(dd,1)+"%"}</td></tr>`;}).join("")
       :'<tr><td colspan="7" class="load">보유 중인 포지션 없음</td></tr>';
     $$("#v-perf a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+    makeSortable('perfBody');
+    makeSortable('openBody');
   }catch(e){$("#perfBody").innerHTML=`<tr><td colspan="10" class="load">조회 실패: ${e.message}</td></tr>`;}
 }
 
