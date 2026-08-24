@@ -650,6 +650,7 @@ const sgn=v=>(v>0?"up":v<0?"down":"dim");
 const pm=(v,d=2)=>(v==null||isNaN(v))?"–":(v>0?"+":"")+N(v,d);
 const shortDate=d=>d?d.slice(2).replace(/-/g,"."):"–"; // 2026-04-28 → 26.04.28
 const EOK=1e8, JO=1e12;
+const LINE_W=1.5;
 const START_D="2025-09-01";
 const SVG="http://www.w3.org/2000/svg";
 const el=(t,a={})=>{const e=document.createElementNS(SVG,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
@@ -688,6 +689,13 @@ const S={date:null,sectors:[],sector:null,stocks:[],market:[],flowCache:{},chart
 function tipFor(h){let t=h.querySelector(".tip");
   if(!t){t=document.createElement("div");t.className="tip";h.appendChild(t);}return t;}
 
+function monthLabel(lbl){
+  // "MM/DD" → "M월" / "YY/MM/DD" → current year: "M월", past year: "YY/MM"
+  const cy=new Date().getFullYear().toString().slice(-2);
+  if(/^\d{2}\/\d{2}\/\d{2}$/.test(lbl)){const[yy,mm]=lbl.split('/');return yy===cy?`${+mm}월`:`${yy}/${mm}`;}
+  if(/^\d{2}\/\d{2}$/.test(lbl)){return `${+lbl.split('/')[0]}월`;}
+  return lbl;
+}
 function lineChart(host,series,labels,opt={}){
   host.innerHTML="";
   if(!labels.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
@@ -707,12 +715,12 @@ function lineChart(host,series,labels,opt={}){
     t.textContent=opt.fy?opt.fy(v):N(v,0);svg.appendChild(t);});
   [0,Math.floor(labels.length/2),labels.length-1].forEach(i=>{
     const t=el("text",{x:X(i),y:H-6,"text-anchor":i===0?"start":i===labels.length-1?"end":"middle",
-      "font-size":10,fill:css("--ink-3")});t.textContent=labels[i];svg.appendChild(t);});
+      "font-size":8.5,fill:css("--ink-3")});t.textContent=monthLabel(labels[i]);svg.appendChild(t);});
   series.forEach(s=>{
     let d="",pen=false;
     s.v.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}
       d+=`${pen?"L":"M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`;pen=true;});
-    if(d)svg.appendChild(el("path",{d,fill:"none",stroke:css(s.c),"stroke-width":s.w||2,
+    if(d)svg.appendChild(el("path",{d,fill:"none",stroke:css(s.c),"stroke-width":LINE_W,
       "stroke-linecap":"round","stroke-linejoin":"round",opacity:s.o??1}));});
   if(opt.labelEnds!==false){
     const li=labels.length-1;
@@ -751,7 +759,8 @@ function lineChart(host,series,labels,opt={}){
         const t=el("text",{x:X(i)+(ta==="end"?-8:8),y:Y(vals[i])-10,"text-anchor":ta,
           "font-size":10.5,"font-weight":700,fill:c,
           stroke:css("--surface"),"stroke-width":3.5,"paint-order":"stroke"});
-        t.textContent=`${(opt.marks==="each"||todayOnly)?s0.n+" ":""}${lb} ${opt.fm?opt.fm(vals[i]):N(vals[i])}`;svg.appendChild(t);});
+        const dateSuffix=lb!=="오늘"?` (${labels[i]})`:"";
+        t.textContent=`${(opt.marks==="each"||todayOnly)?s0.n+" ":""}${lb} ${opt.fm?opt.fm(vals[i]):N(vals[i])}${dateSuffix}`;svg.appendChild(t);});
     });
   }
   const cross=el("line",{stroke:css("--axis"),"stroke-width":1,opacity:0});svg.appendChild(cross);
@@ -956,7 +965,7 @@ async function loadIndex(){
       if(!r.length){$(host).innerHTML='<div class="load">데이터 없음</div>';continue;}
       lineChart($(host),[
         {n:mk,v:r.map(x=>+x.index_close),c:"--up"},
-        {n:"MA20",v:r.map(x=>x.index_ma20?+x.index_ma20:null),c:"--ma3",w:1.5,o:.9}],
+        {n:"MA20",v:r.map(x=>x.index_ma20?+x.index_ma20:null),c:"--ma3",o:.9}],
         r.map(x=>x.trade_date.slice(5).replace("-","/")),
         {h:170,pr:58,pl:46,marks:true,fy:v=>N(v,0),ft:v=>N(v,1),fm:v=>N(v,1)});
     }catch(e){$(host).innerHTML='<div class="load">데이터 없음</div>';}
@@ -1473,10 +1482,10 @@ function renderRangeCharts(){
   $("#dVolRange").textContent=rangeTxt;
   $("#dFlowRange").textContent=`${rangeTxt} · 억원`;
   lineChart($("#dPrice"),[
-    {n:"종가",v:rp.map(r=>+r.close),c:"--ink",w:2},
-    {n:"MA5",v:rp.map(r=>r.ma5?+r.ma5:null),c:"--mac1",w:1.5},
-    {n:"MA20",v:rp.map(r=>r.ma20?+r.ma20:null),c:"--mac2",w:1.5},
-    {n:"MA120",v:rp.map(r=>r.ma120?+r.ma120:null),c:"--mac3",w:1.5}],
+    {n:"종가",v:rp.map(r=>+r.close),c:"--ink"},
+    {n:"MA5",v:rp.map(r=>r.ma5?+r.ma5:null),c:"--mac1"},
+    {n:"MA20",v:rp.map(r=>r.ma20?+r.ma20:null),c:"--mac2"},
+    {n:"MA120",v:rp.map(r=>r.ma120?+r.ma120:null),c:"--mac3"}],
     rlb,{h:300,w:1180,pr:66,labelEnds:false,marks:true,
       fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
