@@ -2,7 +2,7 @@
 <html lang="ko" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>STOCK RADAR</title>
 <style>
 :root{
@@ -76,7 +76,7 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 .card>h3{font-size:11px;font-weight:650;color:var(--ink-3);letter-spacing:.06em;margin:0 0 12px;
   display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .card>h3 .r{margin-left:auto;letter-spacing:0;font-weight:400;font-size:11px;color:var(--ink-3)}
-.step-hd{scroll-margin-top:170px;display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;
+.step-hd{scroll-margin-top:var(--scroll-margin,170px);display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;
   margin:30px 0 12px;padding-top:8px;border-top:2px solid var(--ink)}
 .step-hd .n{font-size:11px;font-weight:700;color:var(--page);background:var(--ink);
   padding:2px 8px;border-radius:5px;letter-spacing:.04em}
@@ -222,6 +222,59 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   .fchip .pop{left:auto;right:0;width:270px}
   th{font-size:9px;padding:6px 5px} td{font-size:10.5px;padding:6px 5px}
   .grid5{grid-template-columns:1fr}
+}
+
+/* ── 모바일 폰 (≤480px) — 갤럭시 S26 Ultra 기준 ── */
+@media(max-width:480px){
+  /* safe-area 여백 (노치·펀치홀·내비게이션 바) */
+  .wrap{
+    padding:0 10px max(80px,env(safe-area-inset-bottom));
+    padding-left:max(10px,env(safe-area-inset-left));
+    padding-right:max(10px,env(safe-area-inset-right));
+  }
+  .hbar,nav{
+    padding-left:max(12px,env(safe-area-inset-left));
+    padding-right:max(12px,env(safe-area-inset-right));
+  }
+
+  /* 테이블 가로 스크롤 — 이 너비에서는 viewport-sticky th보다 table-scroll이 우선 */
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  th{font-size:10px;padding:7px 7px;position:sticky;top:0}
+  td{font-size:11.5px;padding:7px 7px}
+
+  /* 섹션 헤더 scroll-margin: JS가 --scroll-margin 설정, 미설정 시 100px */
+  .step-hd{margin:18px 0 10px;scroll-margin-top:var(--scroll-margin,100px)}
+  .step-hd h2{font-size:15px}
+
+  /* 퍼널 스텝 축소 */
+  .fstep{min-width:88px;padding:2px 7px;gap:7px}
+  .fstep .vl{font-size:14px}
+  .fstep .lb{font-size:9px}
+
+  /* 터치 타겟 최소 44px */
+  nav button{padding:13px 11px;font-size:12.5px}
+  .btn{min-height:44px;padding:10px 16px;font-size:13px}
+  .fchip{min-height:40px;padding:7px 12px}
+  .pbtn{min-height:36px;padding:6px 10px}
+  .icon-btn{width:40px;height:40px;font-size:15px}
+
+  /* 카드·타일 */
+  .card{padding:11px 12px}
+  .tiles{grid-template-columns:1fr 1fr}
+  .tile .vl{font-size:18px}
+  .panel-grid{grid-template-columns:1fr}
+
+  /* 칩 팝업 — 화면 너비 초과 방지 */
+  .fchip .pop{width:min(270px,85vw);left:auto;right:0}
+
+  /* 범례·툴팁 */
+  .legend{font-size:10.5px;gap:8px}
+  .tip{font-size:10.5px;padding:6px 8px}
+
+  /* 헤더 브랜드 */
+  .brand b{font-size:14px}
+  .hmeta{gap:5px}
+  .chip{font-size:10.5px;padding:3px 7px}
 }
 </style>
 </head>
@@ -556,10 +609,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="tw"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th>
       <th>종가</th><th>등락률</th><th>무게/주식수</th>
-      <th class="grp">시총</th><th>거래대금</th><th>대금비중</th>
-      <th class="grp">52주 신고가</th><th>신고가일</th><th>거래량비</th>
-      <th class="grp">외국인</th><th>기관합계</th><th>금융투자</th>
-      <th>투신</th><th>연기금</th><th>사모</th><th>개인</th><th>기타법인</th>
+      <th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th>
+      <th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th>
+      <th class="grp">외국인</th><th>기관합계</th><th class="opt">금융투자</th>
+      <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th>
     </tr></thead><tbody id="scrBody"><tr><td colspan="19" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
@@ -945,8 +998,10 @@ $("#dBack").onclick=()=>go(S.prevView||"proc");
 // 맞춥니다. 고정폭을 하드코딩하면 모바일에서 헤더 줄바꿈 등으로 어긋나므로,
 // 항상 실측치를 씁니다. 표는 안쪽 스크롤 없이 페이지 스크롤을 그대로 씁니다.
 function setStickyOffset(){
-  const h=$("header");
-  document.documentElement.style.setProperty("--stick-top",(h?h.offsetHeight:0)+"px");
+  const h=$("header"),hh=h?h.offsetHeight:0;
+  document.documentElement.style.setProperty("--stick-top",hh+"px");
+  // 모바일에서 scroll-margin-top이 실제 헤더 높이에 맞게 조정되도록
+  document.documentElement.style.setProperty("--scroll-margin",(hh+16)+"px");
 }
 window.addEventListener("resize",setStickyOffset);
 window.addEventListener("load",setStickyOffset);
@@ -1410,19 +1465,19 @@ async function runScreener(){
       <td>${N(+r.close,0)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
       <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
       <td class="grp">${N(+r.market_cap/JO,1)}조</td>
-      <td>${N(+r.trade_amount/EOK,0)}억</td>
-      <td>${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,0)+"%"}</td>
-      <td class="grp">${r.high_period==null?"–":N(+r.high_period,0)}</td>
-      <td class="dim">${shortDate(r.high_period_date)}</td>
-      <td>${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
+      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
+      <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,0)+"%"}</td>
+      <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,0)}</td>
+      <td class="opt dim">${shortDate(r.high_period_date)}</td>
+      <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
       <td class="grp ${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
       <td class="${sgn(+r.inst_net)}">${flowAmtRankCell(r.inst_net,r.inst_rank,r.inst_total)}</td>
-      <td class="${sgn(+r.fin_inv_net)}">${flowAmtRankCell(r.fin_inv_net,r.fin_inv_rank,r.fin_inv_total)}</td>
-      <td class="${sgn(+r.inv_trust_net)}">${flowAmtRankCell(r.inv_trust_net,r.inv_trust_rank,r.inv_trust_total)}</td>
-      <td class="${sgn(+r.pension_net)}">${flowAmtRankCell(r.pension_net,r.pension_rank,r.pension_total)}</td>
-      <td class="${sgn(+r.pe_net)}">${flowAmtRankCell(r.pe_net,r.pe_rank,r.pe_total)}</td>
-      <td class="${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
-      <td class="${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td></tr>`).join("")
+      <td class="opt ${sgn(+r.fin_inv_net)}">${flowAmtRankCell(r.fin_inv_net,r.fin_inv_rank,r.fin_inv_total)}</td>
+      <td class="opt ${sgn(+r.inv_trust_net)}">${flowAmtRankCell(r.inv_trust_net,r.inv_trust_rank,r.inv_trust_total)}</td>
+      <td class="opt ${sgn(+r.pension_net)}">${flowAmtRankCell(r.pension_net,r.pension_rank,r.pension_total)}</td>
+      <td class="opt ${sgn(+r.pe_net)}">${flowAmtRankCell(r.pe_net,r.pe_rank,r.pe_total)}</td>
+      <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
+      <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td></tr>`).join("")
     :'<tr><td colspan="19" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable('scrBody');
