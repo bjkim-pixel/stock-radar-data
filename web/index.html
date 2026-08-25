@@ -245,15 +245,13 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   #flowTrendWrap{overflow-x:visible}
   #flowTrendWrap table{font-size:10px;width:100%}
   #flowTrendWrap th,#flowTrendWrap td{padding:3px 3px;font-size:10px}
-  /* 종목후보 표 — 모바일 스크롤 없이 전체 펼침
-     .k(keep) 없는 opt 컬럼과 .mh(mobile-hide) 컬럼 숨김
-     순위(N위) 텍스트도 숨겨 셀 너비 최소화 */
-  #scrWrap{overflow-x:visible}
-  #scrWrap th.opt:not(.k),#scrWrap td.opt:not(.k){display:none}
-  #scrWrap th.mh,#scrWrap td.mh{display:none}
-  #scrWrap .dim{display:none}
-  #scrWrap th,#scrWrap td{padding:3px 3px;font-size:9.5px}
-  #scrWrap table{width:100%}
+  /* 종목후보 표 — 모든 컬럼 표시, 가로 스크롤로 펼쳐 보기
+     첫 2열(# · 종목)은 sticky로 고정 */
+  #scrWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #scrWrap th,#scrWrap td{padding:2px 3px;font-size:8px;white-space:nowrap}
+  #scrWrap .dim{font-size:7px}
+  #scrWrap th:nth-child(1),#scrWrap td:nth-child(1){position:sticky;left:0;background:var(--surface);z-index:2}
+  #scrWrap th:nth-child(2),#scrWrap td:nth-child(2){position:sticky;left:22px;background:var(--surface);z-index:2;box-shadow:2px 0 4px rgba(0,0,0,.12)}
 
   /* 섹션 헤더 scroll-margin: JS가 --scroll-margin 설정, 미설정 시 100px */
   .step-hd{margin:18px 0 10px;scroll-margin-top:var(--scroll-margin,100px)}
@@ -609,13 +607,13 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   <div class="card"><h3>결과<span class="r" id="scrCount"></span></h3>
     <div class="tw" id="scrWrap"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th>
-      <th>종가</th><th>등락률</th><th class="mh">무게/주식수</th>
-      <th class="grp mh">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th>
+      <th>종가</th><th>등락률</th><th>무게/주식수</th>
+      <th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th>
       <th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th>
-      <th class="grp opt k">외+기(1m)</th><th class="opt">외+기(2m)</th>
+      <th class="grp opt">외+기(1m)</th><th class="opt">외+기(2m)</th>
       <th class="grp">외국인</th><th>기관합계</th><th class="opt">금융투자</th>
-      <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt k">개인</th><th class="opt k">기타법인</th>
-      <th class="grp opt k">프로그램</th>
+      <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th>
+      <th class="grp opt">프로그램</th>
     </tr></thead><tbody id="scrBody"><tr><td colspan="22" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
@@ -1533,14 +1531,14 @@ async function runScreener(){
       <td class="l"><a class="lk nm" data-code="${r.code}">
         ${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>
       <td>${N(+r.close,0)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
-      <td class="mh ${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
-      <td class="grp mh">${N(+r.market_cap/JO,1)}조</td>
+      <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
+      <td class="grp">${N(+r.market_cap/JO,1)}조</td>
       <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
       <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,0)+"%"}</td>
       <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,0)}</td>
       <td class="opt dim">${shortDate(r.high_period_date)}</td>
       <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
-      <td class="grp opt k ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
+      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
       <td class="opt ${sgn((+r.foreign_2m||0)+(+r.inst_2m||0))}">${(r.foreign_2m==null&&r.inst_2m==null)?"–":pm(((+r.foreign_2m||0)+(+r.inst_2m||0))/EOK,0)+"억"}</td>
       <td class="grp ${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
       <td class="${sgn(+r.inst_net)}">${flowAmtRankCell(r.inst_net,r.inst_rank,r.inst_total)}</td>
@@ -1548,9 +1546,9 @@ async function runScreener(){
       <td class="opt ${sgn(+r.inv_trust_net)}">${flowAmtRankCell(r.inv_trust_net,r.inv_trust_rank,r.inv_trust_total)}</td>
       <td class="opt ${sgn(+r.pension_net)}">${flowAmtRankCell(r.pension_net,r.pension_rank,r.pension_total)}</td>
       <td class="opt ${sgn(+r.pe_net)}">${flowAmtRankCell(r.pe_net,r.pe_rank,r.pe_total)}</td>
-      <td class="opt k ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
-      <td class="opt k ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
-      <td class="grp opt k ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td></tr>`).join("")
+      <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
+      <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
+      <td class="grp opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td></tr>`).join("")
     :'<tr><td colspan="22" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable('scrBody');
