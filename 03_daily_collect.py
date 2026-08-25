@@ -458,7 +458,9 @@ def main():
     log_result("flow",    status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
     log_result("program", status_str, len(program_rows), duration_ms, f"ok={ok} skip={skip} err={err}")
 
-    if err > 0 and not holiday:
+    # PARTIAL(일부 실패)은 정상 완료로 처리 — 소수의 연결 끊김은 KIS 쪽 일시적 문제.
+    # FAIL(아무것도 수집 못 함)만 GitHub Action 실패로 처리.
+    if status_str == "FAIL" and not holiday:
         sys.exit(1)
 
 # ── 진입점 ────────────────────────────────────────────────────────────────────
