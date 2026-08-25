@@ -152,7 +152,8 @@ def fetch_price(token, code):
 # ── KIS: 프로그램 매매 일별 ───────────────────────────────────────────────────
 def fetch_program(token, code, date_str):
     """FHPST02320000 — 주식 프로그램매매 종목별 일별
-    output2: 최근 30거래일 배열. 첫 행(혹은 날짜 일치 행)이 기준일 데이터."""
+    output1: 당일 데이터 단일 오브젝트 (일부 API 버전에서 여기에 금액 있음)
+    output2: 최근 30거래일 배열. 날짜 일치 행이 기준일 데이터."""
     _rate.acquire()
     r = requests.get(
         f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/program-trade-by-stock",
@@ -170,21 +171,28 @@ def fetch_program(token, code, date_str):
     d = r.json()
     if d.get("rt_cd") != "0":
         return None
-    rows = [x for x in (d.get("output2") or []) if x]
-    if not rows:
-        return None
-    # 첫 1회만 실제 필드명을 로그에 출력 (API 응답 필드 확인용)
+
+    out1 = d.get("output1") or {}                              # 단일 오브젝트
+    rows = [x for x in (d.get("output2") or []) if x]         # 배열
+
+    # 첫 1회: output1 · output2 구조 모두 출력 (필드명 확인용)
     if not getattr(fetch_program, "_logged", False):
         fetch_program._logged = True
-        import sys
-        sample = rows[0]
-        print(f"[program fields] keys={list(sample.keys())}", file=sys.stderr, flush=True)
-        print(f"[program sample] {dict(list(sample.items())[:10])}", file=sys.stderr, flush=True)
-    # 날짜가 맞는 행 우선, 없으면 첫 행
+        print(f"[prog out1 keys]  {list(out1.keys())}", file=sys.stderr, flush=True)
+        print(f"[prog out1 vals]  {dict(out1)}", file=sys.stderr, flush=True)
+        if rows:
+            print(f"[prog out2[0] keys] {list(rows[0].keys())}", file=sys.stderr, flush=True)
+            print(f"[prog out2[0] vals] {dict(rows[0])}", file=sys.stderr, flush=True)
+
+    # output2에서 날짜 일치 행 우선
     for row in rows:
         if str(row.get("stck_bsop_date", "")).strip() == date_str:
             return row
-    return rows[0]
+    # output1이 당일 데이터라면 사용
+    if out1 and str(out1.get("stck_bsop_date", "")).strip() == date_str:
+        return out1
+    # 마지막 수단
+    return rows[0] if rows else (out1 if out1 else None)
 
 # ── KIS: 일별 투자자별 순매수 ─────────────────────────────────────────────────
 def fetch_investor(token, code, date_str):
@@ -344,18 +352,24 @@ def collect_stock(token, code):
         ) if inv else None
 
         # ── daily_program ──────────────────────────────────────────────
-        # FHPST02320000 금액 필드: 백만원 단위 → FLOW_UNIT(×1,000,000)으로 원 변환
-        # KIS API 버전마다 필드명이 달라 pick()으로 후보를 열거해 첫 번째 존재값을 씀.
-        # 순매수 = 0 이고 매수·매도가 모두 있으면 매수-매도로 보정.
+        # KIS FHPST02320000 금액 필드는 버전마다 단위·이름이 다릅니다.
+        #   _pbmn 계열: 백만원 단위 → ×FLOW_UNIT(1,000,000)으로 원 변환
+        #   _tramt 계열: 이미 원 단위 → 그대로 사용
+        # pick()으로 후보를 순서대로 찾고, 두 계열을 모두 시도합니다.
         def pamt(*keys):
+            """백만원 단위 필드 → 원 변환"""
             return safe_int(pick(prg, *keys)) * FLOW_UNIT
 
-        _buy  = pamt("whol_smtn_shnu_pbmn", "shnu_pbmn", "whol_shnu_pbmn",
-                     "pgtr_shnu_pbmn")       # 매수금액
-        _sell = pamt("whol_smtn_seln_pbmn", "seln_pbmn", "whol_seln_pbmn",
-                     "pgtr_seln_pbmn")       # 매도금액
-        _net  = pamt("pgtr_ntby_pbmn", "ntby_pbmn", "whol_ntby_pbmn",
-                     "pgtr_ntby_tramt")      # 순매수금액
+        def ramt(*keys):
+            """원 단위 필드 (tramt) → 변환 없이 그대로"""
+            return safe_int(pick(prg, *keys))
+
+        _buy  = (pamt("whol_smtn_shnu_pbmn", "shnu_pbmn", "whol_shnu_pbmn", "pgtr_shnu_pbmn")
+              or ramt("pgtr_shnu_tramt", "shnu_tramt"))          # 매수금액
+        _sell = (pamt("whol_smtn_seln_pbmn", "seln_pbmn", "whol_seln_pbmn", "pgtr_seln_pbmn")
+              or ramt("pgtr_seln_tramt", "seln_tramt"))          # 매도금액
+        _net  = (pamt("pgtr_ntby_pbmn", "ntby_pbmn", "whol_ntby_pbmn")
+              or ramt("pgtr_ntby_tramt", "ntby_tramt"))          # 순매수금액
         # 순매수가 0인데 매수·매도는 존재하면 계산으로 보정
         if _net == 0 and (_buy != 0 or _sell != 0):
             _net = _buy - _sell
