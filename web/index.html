@@ -241,6 +241,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
   th{font-size:10px;padding:7px 7px;position:sticky;top:0}
   td{font-size:11.5px;padding:7px 7px}
+  /* 수급동향 기간별 표 — 모바일에서 스크롤 없이 전체 펼침 */
+  #flowTrendWrap{overflow-x:visible}
+  #flowTrendWrap table{font-size:10px;width:100%}
+  #flowTrendWrap th,#flowTrendWrap td{padding:3px 3px;font-size:10px}
 
   /* 섹션 헤더 scroll-margin: JS가 --scroll-margin 설정, 미설정 시 100px */
   .step-hd{margin:18px 0 10px;scroll-margin-top:var(--scroll-margin,100px)}
@@ -417,8 +421,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 <section id="v-flow" class="hide">
   <div class="card" style="margin-top:16px"><h3>오늘의 수급주체별 순매수 거래대금
     <span class="r">시장 전체 · 억원 · 헤더 클릭 = 그 주체 기준 내림차순</span></h3>
-    <div class="tw"><table><thead><tr id="flowTrendHead"></tr></thead>
-      <tbody id="flowTrendBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="tw" id="flowTrendWrap"><table><thead><tr id="flowTrendHead"></tr></thead>
+      <tbody id="flowTrendBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
   <div class="card"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
@@ -1266,10 +1270,12 @@ async function loadFlowStep(){
 /* ══ 수급 동향 ══ */
 const FLOW_SUBJ={combo:"외국인+기관합계",foreign:"외국인",inst:"기관합계",fin_inv:"금융투자",
   inv_trust:"투신",pension:"연기금",pe:"사모",individual:"개인",corp_other:"기타법인"};
-const FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe","individual","corp_other"]; // 가로 헤더 고정 순서
+const FLOW_SUBJ_SHORT={combo:"외+기합",foreign:"외국인",inst:"기관",fin_inv:"금투",
+  inv_trust:"투신",pension:"연금",pe:"사모",individual:"개인",corp_other:"기타"};
+const FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe","corp_other","individual"]; // 가로 헤더 고정 순서
 const FLOW_PERIOD={"6m":"6개월","3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
 const FLOW_PERIOD_ROWS=["6m","3m","2m","1m","2w","1w","1d"]; // 세로 기본 순서
-const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension","pe","individual","corp_other"]; // 그리드 컬럼 순서
+const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension","pe","corp_other","individual"]; // 그리드 컬럼 순서
 // 공통 수급 요약에 쓸 "겹치지 않는" 주체 7개. combo(외국인+기관합계)와 inst(기관합계)는
 // 다른 것들의 합산/부분합이라 같이 넣으면 겹침 개수가 과대평가됩니다(예: 금융투자·투신·
 // 연기금이 다 사면 기관합계도 거의 항상 같이 +라 4곳이 동시에 산 것처럼 보이지만
@@ -1283,9 +1289,10 @@ function flowVal(row,subj,period){
 async function loadFlowTrends(){
   if(!S.flowTrendRow)S.flowTrendRow=(await q("v_market_flow_periods","select=*"))[0];
   const r=S.flowTrendRow;
-  if(!r){$("#flowTrendBody").innerHTML='<tr><td colspan="7" class="load">데이터 없음</td></tr>';return;}
+  if(!r){$("#flowTrendBody").innerHTML='<tr><td colspan="9" class="load">데이터 없음</td></tr>';return;}
+  const isMob=window.innerWidth<=960;
   $("#flowTrendHead").innerHTML=`<th class="l">기간</th>`+FLOW_SUBJ_COLS.map(k=>
-    `<th class="sortable${S.flowTrendSort===k?" active":""}" data-key="${k}">${FLOW_SUBJ[k]}${S.flowTrendSort===k?" ▾":""}</th>`).join("");
+    `<th class="sortable${S.flowTrendSort===k?" active":""}" data-key="${k}" title="${FLOW_SUBJ[k]}">${isMob?FLOW_SUBJ_SHORT[k]:FLOW_SUBJ[k]}${S.flowTrendSort===k?" ▾":""}</th>`).join("");
   let periods=[...FLOW_PERIOD_ROWS];
   if(S.flowTrendSort)periods.sort((a,b)=>flowVal(r,S.flowTrendSort,b)-flowVal(r,S.flowTrendSort,a));
   $("#flowTrendBody").innerHTML=periods.map(p=>{
