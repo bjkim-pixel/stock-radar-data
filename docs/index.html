@@ -784,6 +784,16 @@ function monthLabel(lbl){
   if(/^\d{2}\/\d{2}$/.test(lbl)){return `${+lbl.split('/')[0]}월`;}
   return lbl;
 }
+// labels(YY/MM/DD 또는 MM/DD) 배열에서 "월이 바뀌는 첫 인덱스"만 골라 x축 눈금으로 씁니다.
+function monthTicks(labels){
+  const idx=[];let prev=null;
+  labels.forEach((lbl,i)=>{
+    const m6=lbl.match(/^(\d{2})\/(\d{2})\/\d{2}$/), m4=lbl.match(/^(\d{2})\/\d{2}$/);
+    const key=m6?m6[1]+m6[2]:m4?m4[1]:lbl;
+    if(key!==prev){idx.push(i);prev=key;}
+  });
+  return idx;
+}
 function lineChart(host,series,labels,opt={}){
   host.innerHTML="";
   if(!labels.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
@@ -801,7 +811,7 @@ function lineChart(host,series,labels,opt={}){
       stroke:v===0?css("--axis"):css("--grid"),"stroke-width":1}));
     const t=el("text",{x:P.l-7,y:y+3.5,"text-anchor":"end","font-size":10,fill:css("--ink-3")});
     t.textContent=opt.fy?opt.fy(v):N(v,0);svg.appendChild(t);});
-  [0,Math.floor(labels.length/2),labels.length-1].forEach(i=>{
+  (opt.monthTicks?monthTicks(labels):[0,Math.floor(labels.length/2),labels.length-1]).forEach(i=>{
     const t=el("text",{x:X(i),y:H-6,"text-anchor":i===0?"start":i===labels.length-1?"end":"middle",
       "font-size":8.5,fill:css("--ink-3")});t.textContent=monthLabel(labels[i]);svg.appendChild(t);});
   series.forEach(s=>{
@@ -950,9 +960,9 @@ function volumeBars(host,vals,labels,opt={}){
     svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:y,y2:y,stroke:css("--grid"),"stroke-width":1}));
     const t=el("text",{x:P.l-7,y:y+3.5,"text-anchor":"end","font-size":10,fill:css("--ink-3")});
     t.textContent=opt.fy?opt.fy(v):N(v,0);svg.appendChild(t);});
-  [0,Math.floor(labels.length/2),labels.length-1].forEach(i=>{
+  (opt.monthTicks?monthTicks(labels):[0,Math.floor(labels.length/2),labels.length-1]).forEach(i=>{
     const t=el("text",{x:X(i),y:H-6,"text-anchor":i===0?"start":i===labels.length-1?"end":"middle",
-      "font-size":10,fill:css("--ink-3")});t.textContent=labels[i];svg.appendChild(t);});
+      "font-size":10,fill:css("--ink-3")});t.textContent=opt.monthTicks?monthLabel(labels[i]):labels[i];svg.appendChild(t);});
   const y0=Y(0),tip=tipFor(host);
   vals.forEach((v,i)=>{
     if(v==null||isNaN(v))return;
@@ -1614,14 +1624,14 @@ function renderRangeCharts(){
     {n:"MA5",v:rp.map(r=>r.ma5?+r.ma5:null),c:"--mac1"},
     {n:"MA20",v:rp.map(r=>r.ma20?+r.ma20:null),c:"--mac2"},
     {n:"MA120",v:rp.map(r=>r.ma120?+r.ma120:null),c:"--mac3"}],
-    rlb,{h:450,w:1180,pr:66,labelEnds:false,marks:true,
+    rlb,{h:450,w:1180,pr:66,labelEnds:false,marks:true,monthTicks:true,
       fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원",
       refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
   const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
   volumeBars($("#dWeight"),wps,rlb,
-    {h:100,w:1180,pr:66,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+    {h:450,w:1180,pr:66,monthTicks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
-    {h:130,w:1180,pr:66,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+    {h:450,w:1180,pr:66,monthTicks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rp[0];
   const rcum=k=>rp.map(r=>(+r[k]-+rb[k])/EOK);
   lineChart($("#dFlow"),[
@@ -1629,7 +1639,7 @@ function renderRangeCharts(){
     {n:"기관",v:rcum("inst_cum"),c:"--s2"},
     {n:"개인",v:rcum("individual_cum"),c:"--s3"},
     {n:"기타법인",v:rcum("corp_other_cum"),c:"--s4"}],rlb,
-    {h:230,w:1180,pr:66,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+    {h:450,w:1180,pr:66,zero:true,marks:"today-each",monthTicks:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 $("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
