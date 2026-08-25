@@ -173,6 +173,13 @@ def fetch_program(token, code, date_str):
     rows = [x for x in (d.get("output2") or []) if x]
     if not rows:
         return None
+    # 첫 1회만 실제 필드명을 로그에 출력 (API 응답 필드 확인용)
+    if not getattr(fetch_program, "_logged", False):
+        fetch_program._logged = True
+        import sys
+        sample = rows[0]
+        print(f"[program fields] keys={list(sample.keys())}", file=sys.stderr, flush=True)
+        print(f"[program sample] {dict(list(sample.items())[:10])}", file=sys.stderr, flush=True)
     # 날짜가 맞는 행 우선, 없으면 첫 행
     for row in rows:
         if str(row.get("stck_bsop_date", "")).strip() == date_str:
