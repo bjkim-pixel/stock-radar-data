@@ -603,9 +603,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <th>종가</th><th>등락률</th><th>무게/주식수</th>
       <th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th>
       <th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th>
+      <th class="grp opt">외+기(1m)</th><th class="opt">외+기(2m)</th>
       <th class="grp">외국인</th><th>기관합계</th><th class="opt">금융투자</th>
       <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th>
-      <th class="grp opt">외+기(1m)</th><th class="opt">외+기(6m)</th><th class="opt">프로그램</th>
+      <th class="grp opt">프로그램</th>
     </tr></thead><tbody id="scrBody"><tr><td colspan="22" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
@@ -1509,7 +1510,7 @@ async function runScreener(){
   let [rows,rk,per]=await Promise.all([
     q("v_screener",`select=*&trade_date=eq.${date}`),
     q("v_flow_rank_today",`select=*&trade_date=eq.${date}`),
-    q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_6m,inst_6m")]);
+    q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_2m,inst_2m")]);
   const rkByCode={};rk.forEach(p=>rkByCode[p.code]=p);
   const perByCode={};per.forEach(p=>perByCode[p.code]=p);
   rows=rows.map(r=>({...r,...(rkByCode[r.code]||{}),...(perByCode[r.code]||{})}));
@@ -1530,6 +1531,8 @@ async function runScreener(){
       <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,0)}</td>
       <td class="opt dim">${shortDate(r.high_period_date)}</td>
       <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
+      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
+      <td class="opt ${sgn((+r.foreign_2m||0)+(+r.inst_2m||0))}">${(r.foreign_2m==null&&r.inst_2m==null)?"–":pm(((+r.foreign_2m||0)+(+r.inst_2m||0))/EOK,0)+"억"}</td>
       <td class="grp ${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
       <td class="${sgn(+r.inst_net)}">${flowAmtRankCell(r.inst_net,r.inst_rank,r.inst_total)}</td>
       <td class="opt ${sgn(+r.fin_inv_net)}">${flowAmtRankCell(r.fin_inv_net,r.fin_inv_rank,r.fin_inv_total)}</td>
@@ -1538,9 +1541,7 @@ async function runScreener(){
       <td class="opt ${sgn(+r.pe_net)}">${flowAmtRankCell(r.pe_net,r.pe_rank,r.pe_total)}</td>
       <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
       <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
-      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
-      <td class="opt ${sgn((+r.foreign_6m||0)+(+r.inst_6m||0))}">${(r.foreign_6m==null&&r.inst_6m==null)?"–":pm(((+r.foreign_6m||0)+(+r.inst_6m||0))/EOK,0)+"억"}</td>
-      <td class="opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td></tr>`).join("")
+      <td class="grp opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td></tr>`).join("")
     :'<tr><td colspan="22" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable('scrBody');

@@ -337,19 +337,28 @@ def collect_stock(token, code):
         ) if inv else None
 
         # ── daily_program ──────────────────────────────────────────────
-        # FHPST02320000 금액 필드: whol_smtn_shnu_pbmn(매수)/seln_pbmn(매도)
-        # 단위: 백만원 → FLOW_UNIT(×1,000,000) 적용해 원으로 변환
-        def pamt(key):
-            return safe_int(pick(prg, key)) * FLOW_UNIT
+        # FHPST02320000 금액 필드: 백만원 단위 → FLOW_UNIT(×1,000,000)으로 원 변환
+        # KIS API 버전마다 필드명이 달라 pick()으로 후보를 열거해 첫 번째 존재값을 씀.
+        # 순매수 = 0 이고 매수·매도가 모두 있으면 매수-매도로 보정.
+        def pamt(*keys):
+            return safe_int(pick(prg, *keys)) * FLOW_UNIT
+
+        _buy  = pamt("whol_smtn_shnu_pbmn", "shnu_pbmn", "whol_shnu_pbmn",
+                     "pgtr_shnu_pbmn")       # 매수금액
+        _sell = pamt("whol_smtn_seln_pbmn", "seln_pbmn", "whol_seln_pbmn",
+                     "pgtr_seln_pbmn")       # 매도금액
+        _net  = pamt("pgtr_ntby_pbmn", "ntby_pbmn", "whol_ntby_pbmn",
+                     "pgtr_ntby_tramt")      # 순매수금액
+        # 순매수가 0인데 매수·매도는 존재하면 계산으로 보정
+        if _net == 0 and (_buy != 0 or _sell != 0):
+            _net = _buy - _sell
 
         program_row = (
             TARGET_DATE_ISO, code,
-            pamt("whol_smtn_shnu_pbmn"),    # 매수금액
-            pamt("whol_smtn_seln_pbmn"),    # 매도금액
-            pamt("pgtr_ntby_pbmn"),         # 순매수금액
-            safe_int(pick(prg, "whol_smtn_shnu_vol")),   # 매수수량
-            safe_int(pick(prg, "whol_smtn_seln_vol")),   # 매도수량
-            safe_int(pick(prg, "pgtr_ntby_qty")),        # 순매수수량
+            _buy, _sell, _net,
+            safe_int(pick(prg, "whol_smtn_shnu_vol", "shnu_vol", "pgtr_shnu_vol")),
+            safe_int(pick(prg, "whol_smtn_seln_vol", "seln_vol", "pgtr_seln_vol")),
+            safe_int(pick(prg, "pgtr_ntby_qty",      "ntby_qty", "whol_ntby_qty")),
             "KIS",
         ) if prg else None
 
