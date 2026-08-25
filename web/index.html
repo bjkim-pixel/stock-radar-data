@@ -601,8 +601,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th>
       <th class="grp">외국인</th><th>기관합계</th><th class="opt">금융투자</th>
       <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th>
-      <th class="grp opt">외+기(1m)</th><th class="opt">외+기(6m)</th>
-    </tr></thead><tbody id="scrBody"><tr><td colspan="21" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
+      <th class="grp opt">외+기(1m)</th><th class="opt">외+기(6m)</th><th class="opt">프로그램</th>
+    </tr></thead><tbody id="scrBody"><tr><td colspan="22" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
 
@@ -639,6 +639,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
   <div class="card"><h3>거래량<span class="r" id="dVolRange">2025-09-01~오늘</span></h3>
     <div class="chart" id="dVolume"></div>
+  </div>
+
+  <div class="card"><h3>프로그램 순매수<span class="r" id="dPgtrRange">2025-09-01~오늘 · 억원</span></h3>
+    <div class="chart" id="dPgtr"></div>
   </div>
 
   <div class="card"><h3>투자자별 누적 순매수<span class="r" id="dFlowRange">2025-09-01~오늘 · 억원</span></h3>
@@ -1493,7 +1497,7 @@ function flowAmtRankCell(net,rank,total){
   return rank?`${amt}<span class="dim" style="font-size:10px"> (${rank}위)</span>`:amt;
 }
 async function runScreener(){
-  $("#scrBody").innerHTML='<tr><td colspan="21" class="load">조회 중…</td></tr>';
+  $("#scrBody").innerHTML='<tr><td colspan="22" class="load">조회 중…</td></tr>';
   const date=$("#fDate").value||S.date;
   let [rows,rk,per]=await Promise.all([
     q("v_screener",`select=*&trade_date=eq.${date}`),
@@ -1528,8 +1532,9 @@ async function runScreener(){
       <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
       <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
       <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
-      <td class="opt ${sgn((+r.foreign_6m||0)+(+r.inst_6m||0))}">${(r.foreign_6m==null&&r.inst_6m==null)?"–":pm(((+r.foreign_6m||0)+(+r.inst_6m||0))/EOK,0)+"억"}</td></tr>`).join("")
-    :'<tr><td colspan="21" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+      <td class="opt ${sgn((+r.foreign_6m||0)+(+r.inst_6m||0))}">${(r.foreign_6m==null&&r.inst_6m==null)?"–":pm(((+r.foreign_6m||0)+(+r.inst_6m||0))/EOK,0)+"억"}</td>
+      <td class="opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td></tr>`).join("")
+    :'<tr><td colspan="22" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable('scrBody');
 }
@@ -1617,6 +1622,7 @@ function renderRangeCharts(){
   const rangeTxt=`${rp[0].trade_date}~${rp.at(-1).trade_date}`;
   $("#dPriceRange").textContent=rangeTxt;
   $("#dVolRange").textContent=rangeTxt;
+  $("#dPgtrRange").textContent=`${rangeTxt} · 억원`;
   $("#dFlowRange").textContent=`${rangeTxt} · 억원`;
   const maxClose=Math.max(...rp.map(r=>+r.close));
   lineChart($("#dPrice"),[
@@ -1632,6 +1638,8 @@ function renderRangeCharts(){
     {h:450,w:1180,pr:66,monthTicks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
     {h:450,w:1180,pr:66,monthTicks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+  volumeBars($("#dPgtr"),rp.map(r=>r.pgtr_net_amt!=null?(+r.pgtr_net_amt)/EOK:null),rlb,
+    {h:450,w:1180,pr:66,monthTicks:true,c:"--s1",fy:v=>pm(v,0)+"억",ft:v=>pm(v,0)+"억"});
   const rb=rp[0];
   const rcum=k=>rp.map(r=>(+r[k]-+rb[k])/EOK);
   lineChart($("#dFlow"),[

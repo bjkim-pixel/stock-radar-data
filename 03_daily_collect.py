@@ -149,6 +149,36 @@ def fetch_price(token, code):
         return None
     return d.get("output")
 
+# ── KIS: 프로그램 매매 일별 ───────────────────────────────────────────────────
+def fetch_program(token, code, date_str):
+    """FHPST02320000 — 주식 프로그램매매 종목별 일별
+    output2: 최근 30거래일 배열. 첫 행(혹은 날짜 일치 행)이 기준일 데이터."""
+    _rate.acquire()
+    r = requests.get(
+        f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/program-trade-by-stock",
+        headers=kis_headers(token, "FHPST02320000"),
+        params={
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD":         code,
+            "FID_INPUT_DATE_1":       date_str,
+            "FID_INPUT_DATE_2":       date_str,
+        },
+        timeout=10
+    )
+    if r.status_code != 200:
+        return None
+    d = r.json()
+    if d.get("rt_cd") != "0":
+        return None
+    rows = [x for x in (d.get("output2") or []) if x]
+    if not rows:
+        return None
+    # 날짜가 맞는 행 우선, 없으면 첫 행
+    for row in rows:
+        if str(row.get("stck_bsop_date", "")).strip() == date_str:
+            return row
+    return rows[0]
+
 # ── KIS: 일별 투자자별 순매수 ─────────────────────────────────────────────────
 def fetch_investor(token, code, date_str):
     _rate.acquire()   # 전역 속도 제한
@@ -217,13 +247,27 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
   source=EXCLUDED.source, is_partial=EXCLUDED.is_partial,
   collected_at=now()
 """
+PROGRAM_SQL = """
+INSERT INTO daily_program
+  (trade_date, code, pgtr_buy_amt, pgtr_sell_amt, pgtr_net_amt,
+   pgtr_buy_qty, pgtr_sell_qty, pgtr_net_qty, source)
+VALUES %s
+ON CONFLICT (trade_date, code) DO UPDATE SET
+  pgtr_buy_amt=EXCLUDED.pgtr_buy_amt, pgtr_sell_amt=EXCLUDED.pgtr_sell_amt,
+  pgtr_net_amt=EXCLUDED.pgtr_net_amt,
+  pgtr_buy_qty=EXCLUDED.pgtr_buy_qty, pgtr_sell_qty=EXCLUDED.pgtr_sell_qty,
+  pgtr_net_qty=EXCLUDED.pgtr_net_qty,
+  source=EXCLUDED.source, collected_at=now()
+"""
 
-def upsert_batch(price_rows, flow_rows):
+def upsert_batch(price_rows, flow_rows, program_rows=None):
     with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
         if price_rows:
             execute_values(cur, PRICE_SQL, price_rows, page_size=BATCH)
         if flow_rows:
             execute_values(cur, FLOW_SQL, flow_rows, page_size=BATCH)
+        if program_rows:
+            execute_values(cur, PROGRAM_SQL, program_rows, page_size=BATCH)
         c.commit()
 
 def log_result(job, status, row_count, duration_ms, message=""):
@@ -240,13 +284,14 @@ def log_result(job, status, row_count, duration_ms, message=""):
 
 # ── 종목 1개 수집 (워커 함수) ──────────────────────────────────────────────────
 def collect_stock(token, code):
-    """반환: (price_row | None, flow_row | None, status)"""
+    """반환: (price_row | None, flow_row | None, program_row | None, status)"""
     try:
         pi  = fetch_price(token, code)    # _rate.acquire() 내장
         inv = fetch_investor(token, code, TARGET_DATE)  # _rate.acquire() 내장
+        prg = fetch_program(token, code, TARGET_DATE)   # _rate.acquire() 내장
 
-        if pi is None and inv is None:
-            return None, None, "skip"
+        if pi is None and inv is None and prg is None:
+            return None, None, None, "skip"
 
         # ── daily_price ────────────────────────────────────────────────
         mktcap_man = safe_int(pick(pi, "hts_avls"))
@@ -291,10 +336,27 @@ def collect_stock(token, code):
             PARTIAL,
         ) if inv else None
 
-        return price_row, flow_row, "ok"
+        # ── daily_program ──────────────────────────────────────────────
+        # FHPST02320000 금액 필드: whol_smtn_shnu_pbmn(매수)/seln_pbmn(매도)
+        # 단위: 백만원 → FLOW_UNIT(×1,000,000) 적용해 원으로 변환
+        def pamt(key):
+            return safe_int(pick(prg, key)) * FLOW_UNIT
+
+        program_row = (
+            TARGET_DATE_ISO, code,
+            pamt("whol_smtn_shnu_pbmn"),    # 매수금액
+            pamt("whol_smtn_seln_pbmn"),    # 매도금액
+            pamt("pgtr_ntby_pbmn"),         # 순매수금액
+            safe_int(pick(prg, "whol_smtn_shnu_vol")),   # 매수수량
+            safe_int(pick(prg, "whol_smtn_seln_vol")),   # 매도수량
+            safe_int(pick(prg, "pgtr_ntby_qty")),        # 순매수수량
+            "KIS",
+        ) if prg else None
+
+        return price_row, flow_row, program_row, "ok"
 
     except Exception as ex:
-        return None, None, f"err:{ex}"
+        return None, None, None, f"err:{ex}"
 
 # ── 디버그 모드 ────────────────────────────────────────────────────────────────
 def run_debug():
@@ -331,7 +393,7 @@ def main():
     est_min = (n_total * 2 / MAX_RPS) / 60
     print(f"   {n_total:,}개 종목 → 예상 소요시간 약 {est_min:.0f}분")
 
-    price_rows, flow_rows = [], []
+    price_rows, flow_rows, program_rows = [], [], []
     ok = skip = err = 0
     done = 0
 
@@ -345,7 +407,7 @@ def main():
             done += 1
 
             try:
-                price_row, flow_row, status = future.result()
+                price_row, flow_row, program_row, status = future.result()
             except Exception as ex:
                 err += 1
                 if err <= 10:
@@ -356,12 +418,13 @@ def main():
                 skip += 1
             elif status == "ok":
                 ok += 1
-                if price_row: price_rows.append(price_row)
-                if flow_row:  flow_rows.append(flow_row)
+                if price_row:   price_rows.append(price_row)
+                if flow_row:    flow_rows.append(flow_row)
+                if program_row: program_rows.append(program_row)
 
                 if len(price_rows) >= BATCH:
-                    upsert_batch(price_rows, flow_rows)
-                    price_rows, flow_rows = [], []
+                    upsert_batch(price_rows, flow_rows, program_rows)
+                    price_rows, flow_rows, program_rows = [], [], []
                     elapsed = int(time.time() - t_start)
                     print(f"   [{done:4d}/{n_total}] 적재중... ok={ok:,}  ({elapsed}초 경과)")
             else:
@@ -369,8 +432,8 @@ def main():
                 if err <= 10:
                     print(f"   ⚠ [{code}] {status}")
 
-    if price_rows or flow_rows:
-        upsert_batch(price_rows, flow_rows)
+    if price_rows or flow_rows or program_rows:
+        upsert_batch(price_rows, flow_rows, program_rows)
 
     duration_ms = int((time.time() - t_start) * 1000)
 
@@ -382,8 +445,9 @@ def main():
         status_str = "SUCCESS" if err == 0 else ("FAIL" if ok == 0 else "PARTIAL")
         print(f"\n✅ 완료: 성공 {ok:,} / 스킵 {skip:,} / 오류 {err:,}  ({duration_ms//1000}초)")
 
-    log_result("price", status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
-    log_result("flow",  status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
+    log_result("price",   status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
+    log_result("flow",    status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
+    log_result("program", status_str, len(program_rows), duration_ms, f"ok={ok} skip={skip} err={err}")
 
     if err > 0 and not holiday:
         sys.exit(1)
