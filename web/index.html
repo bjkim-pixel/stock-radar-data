@@ -653,7 +653,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="chart" id="dVolume"></div>
   </div>
 
-  <div class="card"><h3>프로그램 순매수<span class="r" id="dPgtrRange">2025-09-01~오늘 · 억원</span></h3>
+  <div class="card"><h3>프로그램 누적 순매수<span class="r" id="dPgtrRange">2025-09-01~오늘 · 억원</span></h3>
+    <div class="legend">
+      <span><i style="background:var(--ma3)"></i>프로그램</span></div>
     <div class="chart" id="dPgtr"></div>
   </div>
 
@@ -1676,9 +1678,14 @@ function renderRangeCharts(){
     {h:450,w:1180,pr:66,monthTicks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
     {h:450,w:1180,pr:66,monthTicks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
-  volumeBars($("#dPgtr"),rp.map(r=>r.pgtr_net_amt!=null?(+r.pgtr_net_amt)/EOK:null),rlb,
-    {h:450,w:1180,pr:66,monthTicks:true,c:"--s1",fy:v=>pm(v,0)+"억",ft:v=>pm(v,0)+"억"});
   const rb=rp[0];
+  // 프로그램도 다른 수급주체와 동일하게 "선택 구간 시작 대비 누적"으로 표시
+  // (rcum과 같은 방식 — v_stock_chart.pgtr_cum은 상장 이후 전체 누적이라
+  //  구간 시작값을 빼서 리베이스합니다).
+  const rpgtr=rp.map(r=>r.pgtr_cum!=null&&rb.pgtr_cum!=null?(+r.pgtr_cum-+rb.pgtr_cum)/EOK:null);
+  lineChart($("#dPgtr"),[{n:"프로그램",v:rpgtr,c:"--ma3"}],rlb,
+    {h:450,w:1180,pr:66,zero:true,marks:true,monthTicks:true,
+      fy:v=>N(v,0),fm:v=>pm(v,0)+"억",ft:v=>pm(v,0)+"억"});
   const rcum=k=>rp.map(r=>(+r[k]-+rb[k])/EOK);
   lineChart($("#dFlow"),[
     {n:"외국인",v:rcum("foreign_cum"),c:"--s1"},

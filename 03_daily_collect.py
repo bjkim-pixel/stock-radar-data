@@ -160,23 +160,42 @@ def fetch_price(token, code):
 #   tr_id: FHPPG04650201
 #   응답:  output(배열, 최근 거래일들) — 금액은 전부 whol_smtn_*_tr_pbmn.
 #          이름과 달리 이미 '원' 단위라 그대로 저장 (아래 ramt() 참고).
-def fetch_program(token, code, date_str):
+def fetch_program(token, code, date_str, retries=2):
     """국내주식 종목별 프로그램매매추이(일별) [국내주식-113].
-    output: 최근 거래일 배열. 날짜 일치 행이 기준일 데이터."""
-    _rate.acquire()
-    r = requests.get(
-        f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/program-trade-by-stock-daily",
-        headers=kis_headers(token, "FHPPG04650201"),
-        params={
-            "FID_COND_MRKT_DIV_CODE": "J",
-            "FID_INPUT_ISCD":         code,
-            "FID_INPUT_DATE_1":       date_str,
-        },
-        timeout=10
-    )
-    if r.status_code != 200:
+    output: 최근 거래일 배열. 날짜 일치 행이 기준일 데이터.
+    2026-08-26: 재시도가 없어 일시적 오류(타임아웃/5xx) 시 그날은 그냥 None을
+    반환하고 넘어갔고, upsert 대상에서 빠지면서 그 종목의 DB 행이 예전 값
+    그대로 남는 사고가 있었음(효성중공업). 04_backfill.py와 동일하게 재시도 추가."""
+    d = None
+    for attempt in range(retries + 1):
+        _rate.acquire()
+        try:
+            r = requests.get(
+                f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/program-trade-by-stock-daily",
+                headers=kis_headers(token, "FHPPG04650201"),
+                params={
+                    "FID_COND_MRKT_DIV_CODE": "J",
+                    "FID_INPUT_ISCD":         code,
+                    "FID_INPUT_DATE_1":       date_str,
+                },
+                timeout=10
+            )
+        except Exception:
+            if attempt < retries:
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            return None
+
+        if r.status_code == 200:
+            d = r.json()
+            break
+        if attempt < retries and r.status_code >= 500:
+            time.sleep(0.5 * (attempt + 1))
+            continue
         return None
-    d = r.json()
+
+    if d is None:
+        return None
     if d.get("rt_cd") != "0":
         return None
 
