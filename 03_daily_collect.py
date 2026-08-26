@@ -151,19 +151,26 @@ def fetch_price(token, code):
     return d.get("output")
 
 # ── KIS: 프로그램 매매 일별 ───────────────────────────────────────────────────
+# 2026-08-26 확정: 예전 코드가 쓰던 FHPST02320000 + /program-trade-by-stock 은
+# 실제로는 "시간외단일가"(ovtm_untp_*) 데이터를 반환하는 잘못된 tr_id/URL
+# 조합이었음 (ingest_log.program_debug 기록으로 확인). 공식 예제
+# (koreainvestment/open-trading-api, examples_llm/domestic_stock/
+#  program_trade_by_stock_daily)를 참고해 올바른 값으로 교체:
+#   URL:   /uapi/domestic-stock/v1/quotations/program-trade-by-stock-daily
+#   tr_id: FHPPG04650201
+#   응답:  output(배열, 최근 거래일들) — 금액은 전부 whol_smtn_*_tr_pbmn
+#          (백만원 단위 → ×FLOW_UNIT)
 def fetch_program(token, code, date_str):
-    """FHPST02320000 — 주식 프로그램매매 종목별 일별
-    output1: 당일 데이터 단일 오브젝트 (일부 API 버전에서 여기에 금액 있음)
-    output2: 최근 30거래일 배열. 날짜 일치 행이 기준일 데이터."""
+    """국내주식 종목별 프로그램매매추이(일별) [국내주식-113].
+    output: 최근 거래일 배열. 날짜 일치 행이 기준일 데이터."""
     _rate.acquire()
     r = requests.get(
-        f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/program-trade-by-stock",
-        headers=kis_headers(token, "FHPST02320000"),
+        f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/program-trade-by-stock-daily",
+        headers=kis_headers(token, "FHPPG04650201"),
         params={
             "FID_COND_MRKT_DIV_CODE": "J",
             "FID_INPUT_ISCD":         code,
             "FID_INPUT_DATE_1":       date_str,
-            "FID_INPUT_DATE_2":       date_str,
         },
         timeout=10
     )
@@ -173,36 +180,27 @@ def fetch_program(token, code, date_str):
     if d.get("rt_cd") != "0":
         return None
 
-    out1 = d.get("output1") or {}                              # 단일 오브젝트
-    rows = [x for x in (d.get("output2") or []) if x]         # 배열
+    rows = [x for x in (d.get("output") or []) if x]
 
-    # 첫 1회: output1 · output2 구조 모두 출력 (필드명 확인용)
-    # GitHub Actions 로그는 프록시로 못 보므로 ingest_log 테이블에도 남긴다
-    # (Supabase SQL Editor에서 확인: select message from ingest_log
-    #  where job='program_debug' order by ran_at desc limit 1;)
+    # 첫 1회만: 필드명 확인용 (ingest_log에도 기록 — GitHub Actions 로그는
+    # 프록시로 못 보므로 Supabase SQL Editor에서: select message from
+    # ingest_log where job='program_debug' order by ran_at desc limit 1;)
     if not getattr(fetch_program, "_logged", False):
         fetch_program._logged = True
-        print(f"[prog out1 keys]  {list(out1.keys())}", file=sys.stderr, flush=True)
-        print(f"[prog out1 vals]  {dict(out1)}", file=sys.stderr, flush=True)
         if rows:
-            print(f"[prog out2[0] keys] {list(rows[0].keys())}", file=sys.stderr, flush=True)
-            print(f"[prog out2[0] vals] {dict(rows[0])}", file=sys.stderr, flush=True)
+            print(f"[prog output[0] keys] {list(rows[0].keys())}", file=sys.stderr, flush=True)
+            print(f"[prog output[0] vals] {dict(rows[0])}", file=sys.stderr, flush=True)
         global _PROGRAM_DEBUG
         _PROGRAM_DEBUG = {
             "code": code,
-            "out1": dict(out1),
-            "out2_0": dict(rows[0]) if rows else None,
+            "output_0": dict(rows[0]) if rows else None,
         }
 
-    # output2에서 날짜 일치 행 우선
+    # 날짜 일치 행 우선, 없으면 최신 행(첫 번째)으로 대체
     for row in rows:
         if str(row.get("stck_bsop_date", "")).strip() == date_str:
             return row
-    # output1이 당일 데이터라면 사용
-    if out1 and str(out1.get("stck_bsop_date", "")).strip() == date_str:
-        return out1
-    # 마지막 수단
-    return rows[0] if rows else (out1 if out1 else None)
+    return rows[0] if rows else None
 
 # ── KIS: 일별 투자자별 순매수 ─────────────────────────────────────────────────
 def fetch_investor(token, code, date_str):
@@ -362,24 +360,15 @@ def collect_stock(token, code):
         ) if inv else None
 
         # ── daily_program ──────────────────────────────────────────────
-        # KIS FHPST02320000 금액 필드는 버전마다 단위·이름이 다릅니다.
-        #   _pbmn 계열: 백만원 단위 → ×FLOW_UNIT(1,000,000)으로 원 변환
-        #   _tramt 계열: 이미 원 단위 → 그대로 사용
-        # pick()으로 후보를 순서대로 찾고, 두 계열을 모두 시도합니다.
+        # program-trade-by-stock-daily(FHPPG04650201) 응답 필드.
+        # 금액은 전부 whol_smtn_*_tr_pbmn — 백만원 단위 → ×FLOW_UNIT으로 원 변환.
         def pamt(*keys):
             """백만원 단위 필드 → 원 변환"""
             return safe_int(pick(prg, *keys)) * FLOW_UNIT
 
-        def ramt(*keys):
-            """원 단위 필드 (tramt) → 변환 없이 그대로"""
-            return safe_int(pick(prg, *keys))
-
-        _buy  = (pamt("whol_smtn_shnu_pbmn", "shnu_pbmn", "whol_shnu_pbmn", "pgtr_shnu_pbmn")
-              or ramt("pgtr_shnu_tramt", "shnu_tramt"))          # 매수금액
-        _sell = (pamt("whol_smtn_seln_pbmn", "seln_pbmn", "whol_seln_pbmn", "pgtr_seln_pbmn")
-              or ramt("pgtr_seln_tramt", "seln_tramt"))          # 매도금액
-        _net  = (pamt("pgtr_ntby_pbmn", "ntby_pbmn", "whol_ntby_pbmn")
-              or ramt("pgtr_ntby_tramt", "ntby_tramt"))          # 순매수금액
+        _buy  = pamt("whol_smtn_shnu_tr_pbmn")   # 매수금액
+        _sell = pamt("whol_smtn_seln_tr_pbmn")   # 매도금액
+        _net  = pamt("whol_smtn_ntby_tr_pbmn")   # 순매수금액
         # 순매수가 0인데 매수·매도는 존재하면 계산으로 보정
         if _net == 0 and (_buy != 0 or _sell != 0):
             _net = _buy - _sell
@@ -387,9 +376,9 @@ def collect_stock(token, code):
         program_row = (
             TARGET_DATE_ISO, code,
             _buy, _sell, _net,
-            safe_int(pick(prg, "whol_smtn_shnu_vol", "shnu_vol", "pgtr_shnu_vol")),
-            safe_int(pick(prg, "whol_smtn_seln_vol", "seln_vol", "pgtr_seln_vol")),
-            safe_int(pick(prg, "pgtr_ntby_qty",      "ntby_qty", "whol_ntby_qty")),
+            safe_int(pick(prg, "whol_smtn_shnu_vol")),
+            safe_int(pick(prg, "whol_smtn_seln_vol")),
+            safe_int(pick(prg, "whol_smtn_ntby_qty")),
             "KIS",
         ) if prg else None
 
