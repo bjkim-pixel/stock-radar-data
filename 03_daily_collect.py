@@ -158,8 +158,8 @@ def fetch_price(token, code):
 #  program_trade_by_stock_daily)를 참고해 올바른 값으로 교체:
 #   URL:   /uapi/domestic-stock/v1/quotations/program-trade-by-stock-daily
 #   tr_id: FHPPG04650201
-#   응답:  output(배열, 최근 거래일들) — 금액은 전부 whol_smtn_*_tr_pbmn
-#          (백만원 단위 → ×FLOW_UNIT)
+#   응답:  output(배열, 최근 거래일들) — 금액은 전부 whol_smtn_*_tr_pbmn.
+#          이름과 달리 이미 '원' 단위라 그대로 저장 (아래 ramt() 참고).
 def fetch_program(token, code, date_str):
     """국내주식 종목별 프로그램매매추이(일별) [국내주식-113].
     output: 최근 거래일 배열. 날짜 일치 행이 기준일 데이터."""
@@ -361,14 +361,17 @@ def collect_stock(token, code):
 
         # ── daily_program ──────────────────────────────────────────────
         # program-trade-by-stock-daily(FHPPG04650201) 응답 필드.
-        # 금액은 전부 whol_smtn_*_tr_pbmn — 백만원 단위 → ×FLOW_UNIT으로 원 변환.
-        def pamt(*keys):
-            """백만원 단위 필드 → 원 변환"""
-            return safe_int(pick(prg, *keys)) * FLOW_UNIT
+        # 2026-08-26 실측으로 확정: whol_smtn_*_tr_pbmn은 이름과 달리 이미
+        # '원' 단위임(investor-trade-by-stock-daily 계열의 _tr_pbmn과 달리
+        # 백만원이 아님). ×FLOW_UNIT을 걸었더니 실제보다 100만 배 부풀려진
+        # 값(예: 대한항공 순매수가 수백조원)이 나와서 발견 — 그대로 사용.
+        def ramt(*keys):
+            """원 단위 필드 → 변환 없이 그대로"""
+            return safe_int(pick(prg, *keys))
 
-        _buy  = pamt("whol_smtn_shnu_tr_pbmn")   # 매수금액
-        _sell = pamt("whol_smtn_seln_tr_pbmn")   # 매도금액
-        _net  = pamt("whol_smtn_ntby_tr_pbmn")   # 순매수금액
+        _buy  = ramt("whol_smtn_shnu_tr_pbmn")   # 매수금액
+        _sell = ramt("whol_smtn_seln_tr_pbmn")   # 매도금액
+        _net  = ramt("whol_smtn_ntby_tr_pbmn")   # 순매수금액
         # 순매수가 0인데 매수·매도는 존재하면 계산으로 보정
         if _net == 0 and (_buy != 0 or _sell != 0):
             _net = _buy - _sell

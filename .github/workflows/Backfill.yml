@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: '시작일 (YYYYMMDD, 비우면 2026-01-02)'
+        description: '시작일 (YYYYMMDD, 비우면 2025-09-01)'
         required: false
-        default: '20260102'
+        default: '20250901'
       end_date:
         description: '종료일 (YYYYMMDD, 비우면 어제)'
         required: false
@@ -25,7 +25,10 @@ on:
 jobs:
   backfill:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # 2026-08-26: 프로그램매매(program-trade-by-stock-daily) 백필 추가로
+    # 종목당 API 호출이 2배(투자자별+프로그램매매)가 돼 40분으로는 부족할 수
+    # 있어 넉넉히 조정.
+    timeout-minutes: 90
 
     steps:
       - name: Checkout

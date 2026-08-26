@@ -76,7 +76,7 @@ class RateLimiter:
 
 _rate = RateLimiter(MAX_RPS)
 _lock = threading.Lock()
-_dumped = {"flow": False}
+_dumped = {"flow": False, "program": False}
 _warned = {}
 
 
@@ -233,6 +233,54 @@ def fetch_daily(token, code, anchor, retries=2):
     return rows
 
 
+# ── KIS: 프로그램매매 종목별 일별 (03_daily_collect.py와 동일 tr_id/필드) ──────
+def fetch_program_daily(token, code, anchor, retries=2):
+    """기준일부터 과거 여러 거래일의 프로그램매매를 가져옵니다.
+    2026-08-26 확정: whol_smtn_*_tr_pbmn은 이름과 달리 이미 '원' 단위."""
+    d = None
+    for attempt in range(retries + 1):
+        _rate.acquire()
+        try:
+            r = requests.get(
+                f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/program-trade-by-stock-daily",
+                headers=kis_hdr(token, "FHPPG04650201"),
+                params={"FID_COND_MRKT_DIV_CODE": "J",
+                        "FID_INPUT_ISCD": code,
+                        "FID_INPUT_DATE_1": anchor},
+                timeout=15)
+        except Exception as ex:
+            if attempt < retries:
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            warn_once("prog_net", str(ex)[:120])
+            return []
+
+        if r.status_code == 200:
+            d = r.json()
+            break
+        if attempt < retries and r.status_code >= 500:
+            time.sleep(0.5 * (attempt + 1))
+            continue
+        warn_once("prog_http", f"HTTP {r.status_code}")
+        return []
+
+    if d is None:
+        return []
+    if d.get("rt_cd") != "0":
+        warn_once("prog_api", f"rt_cd={d.get('rt_cd')} msg={str(d.get('msg1','')).strip()} (예: {code})")
+        return []
+
+    rows = [x for x in (d.get("output") or []) if x]
+
+    with _lock:
+        if rows and not _dumped["program"]:
+            _dumped["program"] = True
+            print(f"\n   ── 프로그램매매 첫 응답 필드 확인 ({code}, 기준일 {anchor}) ──")
+            print("   " + json.dumps(rows[0], ensure_ascii=False)[:500])
+            print(f"   → 날짜 {find_date(rows[0])} · {len(rows)}행\n")
+    return rows
+
+
 # ── 행 파싱 ───────────────────────────────────────────────────────────────────
 def parse_price(r, date_str, code, listed_sh, prev_close):
     close_p = safe_int(r.get("stck_clpr"))
@@ -297,8 +345,25 @@ def parse_flow(r, date_str, code):
     )
 
 
+def parse_program(r, date_str, code):
+    """whol_smtn_*_tr_pbmn은 이미 '원' 단위 (03_daily_collect.py와 동일 확정 사실)."""
+    buy  = safe_int(r.get("whol_smtn_shnu_tr_pbmn"))
+    sell = safe_int(r.get("whol_smtn_seln_tr_pbmn"))
+    net  = safe_int(r.get("whol_smtn_ntby_tr_pbmn"))
+    if net == 0 and (buy != 0 or sell != 0):
+        net = buy - sell
+    return (
+        iso(date_str), code,
+        buy, sell, net,
+        safe_int(r.get("whol_smtn_shnu_vol")),
+        safe_int(r.get("whol_smtn_seln_vol")),
+        safe_int(r.get("whol_smtn_ntby_qty")),
+        "KIS",
+    )
+
+
 def collect_stock(token, code, listed_sh):
-    """한 종목의 전 기간을 수집. 반환 (price_rows, flow_rows, status)"""
+    """한 종목의 전 기간을 수집. 반환 (price_rows, flow_rows, program_rows, status)"""
     try:
         raw = {}
         for a in ANCHORS:
@@ -307,10 +372,17 @@ def collect_stock(token, code, listed_sh):
                 if d:
                     raw[d] = r          # 겹치는 날짜는 자연스럽게 덮어씀
 
-        if not raw:
-            return [], [], "skip"
+        raw_prog = {}
+        for a in ANCHORS:
+            for r in fetch_program_daily(token, code, a):
+                d = find_date(r)
+                if d:
+                    raw_prog[d] = r
 
-        price_rows, flow_rows = [], []
+        if not raw:
+            return [], [], [], "skip"
+
+        price_rows, flow_rows, program_rows = [], [], []
         prev_close = None
         for d in sorted(raw):           # 날짜 오름차순 → 등락률 계산 가능
             r = raw[d]
@@ -320,11 +392,14 @@ def collect_stock(token, code, listed_sh):
             if prow:
                 price_rows.append(prow)
                 flow_rows.append(parse_flow(r, d, code))
+                pr = raw_prog.get(d)
+                if pr:
+                    program_rows.append(parse_program(pr, d, code))
 
-        return price_rows, flow_rows, "ok"
+        return price_rows, flow_rows, program_rows, "ok"
 
     except Exception as ex:
-        return [], [], f"err:{ex}"
+        return [], [], [], f"err:{ex}"
 
 
 # ── DB ────────────────────────────────────────────────────────────────────────
@@ -373,14 +448,28 @@ ON CONFLICT (trade_date,code) DO UPDATE SET
   individual_net=EXCLUDED.individual_net,corp_other_net=EXCLUDED.corp_other_net,
   source=EXCLUDED.source,is_partial=EXCLUDED.is_partial
 """
+PROGRAM_SQL = """
+INSERT INTO daily_program
+  (trade_date, code, pgtr_buy_amt, pgtr_sell_amt, pgtr_net_amt,
+   pgtr_buy_qty, pgtr_sell_qty, pgtr_net_qty, source)
+VALUES %s
+ON CONFLICT (trade_date, code) DO UPDATE SET
+  pgtr_buy_amt=EXCLUDED.pgtr_buy_amt, pgtr_sell_amt=EXCLUDED.pgtr_sell_amt,
+  pgtr_net_amt=EXCLUDED.pgtr_net_amt,
+  pgtr_buy_qty=EXCLUDED.pgtr_buy_qty, pgtr_sell_qty=EXCLUDED.pgtr_sell_qty,
+  pgtr_net_qty=EXCLUDED.pgtr_net_qty,
+  source=EXCLUDED.source, collected_at=now()
+"""
 
 
-def upsert(price_rows, flow_rows):
+def upsert(price_rows, flow_rows, program_rows=None):
     with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
         if price_rows:
             execute_values(cur, PRICE_SQL, price_rows, page_size=BATCH)
         if flow_rows:
             execute_values(cur, FLOW_SQL, flow_rows, page_size=BATCH)
+        if program_rows:
+            execute_values(cur, PROGRAM_SQL, program_rows, page_size=BATCH)
         c.commit()
 
 
@@ -434,6 +523,19 @@ def run_debug():
             print(f"  {mark} {name:<8} 수집 {got:>18,}  실측 {want:>18,}  오차 {diff:.4f}%")
     print("\n(오차는 KIS가 백만원 단위로 반올림해 제공하기 때문이며 0.01% 미만이면 정상입니다)")
 
+    print("\n" + "-" * 70)
+    print("프로그램매매 확인 (005930, 기준일 20260814)")
+    prows = fetch_program_daily(token, "005930", "20260814")
+    print(f"반환 행수: {len(prows)}")
+    if prows:
+        print(f"날짜 범위: {find_date(prows[-1])} ~ {find_date(prows[0])}")
+        for d in sorted({find_date(r): r for r in prows if find_date(r)})[-3:]:
+            r = {find_date(x): x for x in prows if find_date(x)}[d]
+            pg = parse_program(r, d, "005930")
+            # 인덱스: 0날짜 1코드 2매수 3매도 4순매수 5매수량 6매도량 7순매수량
+            print(f"  {pg[0]:<12} 순매수 {pg[4]//100_000_000:>8,}억  "
+                  f"매수 {pg[2]//100_000_000:>8,}억  매도 {pg[3]//100_000_000:>8,}억")
+
 
 # ── 현황 ──────────────────────────────────────────────────────────────────────
 def compare_krx_kis():
@@ -479,6 +581,27 @@ def compare_krx_kis():
                   f"{(r[6] or 0)//100_000_000:>8,}{(r[7] or 0)//100_000_000:>8,}"
                   f"{(r[8] or 0)//100_000_000:>9,}{(r[9] or 0)//100_000_000:>10,}")
 
+        cur.execute("""
+            SELECT coalesce(source,'(null)'), count(*),
+                   count(*) FILTER (WHERE pgtr_net_amt<>0),
+                   min(trade_date), max(trade_date)
+            FROM daily_program WHERE trade_date BETWEEN %s AND %s GROUP BY 1 ORDER BY 2 DESC
+        """, (iso(START_DATE), iso(END_DATE)))
+        print(f"\n[daily_program] {'source':<8}{'행수':>10}{'순매수≠0':>10}   기간")
+        for s_, n, ne, mn, mx in cur.fetchall():
+            print(f"                {s_:<8}{n:>10,}{ne:>10,}   {mn} ~ {mx}")
+
+        cur.execute("""
+            SELECT trade_date, pgtr_buy_amt, pgtr_sell_amt, pgtr_net_amt
+            FROM daily_program WHERE code='005930' AND trade_date BETWEEN %s AND %s
+            ORDER BY trade_date DESC LIMIT 5
+        """, (iso(START_DATE), iso(END_DATE)))
+        print(f"\n[삼성전자 프로그램] 최근 5일 (억원)")
+        print(f"  {'날짜':<12}{'매수':>10}{'매도':>10}{'순매수':>10}")
+        for d_, b_, s_, n_ in cur.fetchall():
+            print(f"  {str(d_):<12}{(b_ or 0)//100_000_000:>10,}{(s_ or 0)//100_000_000:>10,}"
+                  f"{(n_ or 0)//100_000_000:>10,}")
+
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
 def main():
@@ -497,14 +620,14 @@ def main():
     stocks = load_stocks()
     codes = list(stocks.keys())
     n = len(codes)
-    calls = n * len(ANCHORS)
-    print(f"   {n:,}개 종목 × {len(ANCHORS)}회 = {calls:,}회 호출 "
+    calls = n * len(ANCHORS) * 2   # investor-trade + program-trade 두 엔드포인트
+    print(f"   {n:,}개 종목 × {len(ANCHORS)}회 × 2엔드포인트 = {calls:,}회 호출 "
           f"→ 예상 {calls/MAX_RPS/60:.0f}분")
 
     print(f"\n③ 수집 중... (워커 {WORKERS} · 최대 {MAX_RPS}건/초)")
-    price_buf, flow_buf = [], []
+    price_buf, flow_buf, program_buf = [], [], []
     ok = skip = err = done = 0
-    tot_p = tot_f = 0
+    tot_p = tot_f = tot_g = 0
 
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         futs = {ex.submit(collect_stock, token, c, stocks.get(c, 0)): c for c in codes}
@@ -512,7 +635,7 @@ def main():
             code = futs[fut]
             done += 1
             try:
-                p_rows, f_rows, status = fut.result()
+                p_rows, f_rows, g_rows, status = fut.result()
             except Exception as e:
                 err += 1
                 warn_once("future", f"{code}: {e}")
@@ -524,21 +647,22 @@ def main():
                 ok += 1
                 price_buf.extend(p_rows)
                 flow_buf.extend(f_rows)
+                program_buf.extend(g_rows)
                 if len(price_buf) >= BATCH * 10:
-                    upsert(price_buf, flow_buf)
-                    tot_p += len(price_buf); tot_f += len(flow_buf)
-                    price_buf, flow_buf = [], []
-                    print(f"   [{done:4d}/{n}] price={tot_p:,} flow={tot_f:,} "
+                    upsert(price_buf, flow_buf, program_buf)
+                    tot_p += len(price_buf); tot_f += len(flow_buf); tot_g += len(program_buf)
+                    price_buf, flow_buf, program_buf = [], [], []
+                    print(f"   [{done:4d}/{n}] price={tot_p:,} flow={tot_f:,} program={tot_g:,} "
                           f"({int(time.time()-t0)}초)")
             else:
                 err += 1
                 warn_once("stock", f"{code} {status}")
 
-    if price_buf or flow_buf:
-        upsert(price_buf, flow_buf)
-        tot_p += len(price_buf); tot_f += len(flow_buf)
+    if price_buf or flow_buf or program_buf:
+        upsert(price_buf, flow_buf, program_buf)
+        tot_p += len(price_buf); tot_f += len(flow_buf); tot_g += len(program_buf)
 
-    print(f"\n✅ 백필 완료: price {tot_p:,}행 / flow {tot_f:,}행")
+    print(f"\n✅ 백필 완료: price {tot_p:,}행 / flow {tot_f:,}행 / program {tot_g:,}행")
     print(f"   ok={ok:,} skip={skip:,} err={err:,}  ({int(time.time()-t0)}초)")
     if tot_p == 0:
         print("⚠️ 0행입니다. 위 '첫 응답 필드 확인' 로그를 보세요.")
