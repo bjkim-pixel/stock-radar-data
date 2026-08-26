@@ -47,6 +47,7 @@ class RateLimiter:
             self.last_call = time.time()
 
 _rate = RateLimiter(MAX_RPS)
+_PROGRAM_DEBUG = None  # fetch_program() 첫 응답 원문 (ingest_log에 기록해 필드명 확인용)
 
 # ── 입력 파싱 ─────────────────────────────────────────────────────────────────
 DEBUG_MODE  = False
@@ -176,6 +177,9 @@ def fetch_program(token, code, date_str):
     rows = [x for x in (d.get("output2") or []) if x]         # 배열
 
     # 첫 1회: output1 · output2 구조 모두 출력 (필드명 확인용)
+    # GitHub Actions 로그는 프록시로 못 보므로 ingest_log 테이블에도 남긴다
+    # (Supabase SQL Editor에서 확인: select message from ingest_log
+    #  where job='program_debug' order by ran_at desc limit 1;)
     if not getattr(fetch_program, "_logged", False):
         fetch_program._logged = True
         print(f"[prog out1 keys]  {list(out1.keys())}", file=sys.stderr, flush=True)
@@ -183,6 +187,12 @@ def fetch_program(token, code, date_str):
         if rows:
             print(f"[prog out2[0] keys] {list(rows[0].keys())}", file=sys.stderr, flush=True)
             print(f"[prog out2[0] vals] {dict(rows[0])}", file=sys.stderr, flush=True)
+        global _PROGRAM_DEBUG
+        _PROGRAM_DEBUG = {
+            "code": code,
+            "out1": dict(out1),
+            "out2_0": dict(rows[0]) if rows else None,
+        }
 
     # output2에서 날짜 일치 행 우선
     for row in rows:
@@ -477,6 +487,9 @@ def main():
 
     log_result("price",   status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
     log_result("flow",    status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
+    if _PROGRAM_DEBUG is not None:
+        log_result("program_debug", "INFO", 0, 0,
+                    json.dumps(_PROGRAM_DEBUG, ensure_ascii=False))
     log_result("program", status_str, len(program_rows), duration_ms, f"ok={ok} skip={skip} err={err}")
 
     # PARTIAL(일부 실패)은 정상 완료로 처리 — 소수의 연결 끊김은 KIS 쪽 일시적 문제.
