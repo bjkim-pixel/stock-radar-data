@@ -1524,10 +1524,12 @@ const TOP_SUBJ=[
 function topBuyer(row, sfx){
   let best=null, bestAmt=-Infinity;
   TOP_SUBJ.forEach(({k,lb})=>{
-    const v=+(row[`${k}_${sfx}`]||0);
+    const raw=row[`${k}_${sfx}`];
+    if(raw==null) return; // 뷰에 컬럼 없으면 스킵
+    const v=+raw;
     if(v>bestAmt){bestAmt=v;best={lb,v};}
   });
-  if(!best||bestAmt===0)return"–";
+  if(!best)return"–";
   return`<span class="${sgn(bestAmt)}">${best.lb} ${pm(bestAmt/EOK,0)}억</span>`;
 }
 async function runScreener(){
@@ -1536,7 +1538,7 @@ async function runScreener(){
   let [rows,rk,per]=await Promise.all([
     q("v_screener",`select=*&trade_date=eq.${date}`),
     q("v_flow_rank_today",`select=*&trade_date=eq.${date}`),
-    q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_2m,inst_2m,fin_inv_1m,inv_trust_1m,pension_1m,pe_1m,individual_1m,corp_other_1m,fin_inv_2m,inv_trust_2m,pension_2m,pe_2m,individual_2m,corp_other_2m")]);
+    q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_2m,inst_2m,fin_inv_1m,inv_trust_1m,pension_1m,pe_1m,fin_inv_2m,inv_trust_2m,pension_2m,pe_2m,individual_1m,corp_other_1m,individual_2m,corp_other_2m")]);
   const rkByCode={};rk.forEach(p=>rkByCode[p.code]=p);
   const perByCode={};per.forEach(p=>perByCode[p.code]=p);
   rows=rows.map(r=>({...r,...(rkByCode[r.code]||{}),...(perByCode[r.code]||{})}));
