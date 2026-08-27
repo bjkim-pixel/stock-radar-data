@@ -659,6 +659,15 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="note">● 표시는 <span id="dPriceRange">2025-09-01~오늘</span> 구간 <b>최고가 · 최저가 · 오늘 종가</b>입니다.</div>
   </div>
 
+  <div class="card"><h3>개인 매물대<span class="r" id="dProfileRange">2025-09-01~오늘 · 억원</span></h3>
+    <div class="legend">
+      <span><i style="background:var(--up)"></i>순매수 구간</span>
+      <span><i style="background:var(--down)"></i>순매도 구간</span></div>
+    <div class="chart" id="dProfile"></div>
+    <div class="note">위 가격 차트와 같은 기간의 <b>종가를 가격대별로 나눠</b>, 그 가격대에서 종가가 형성된 날들의
+      <b>개인 순매수 거래대금을 합산</b>한 매물대입니다. 굵게 표시된 가격대가 <b>현재가</b> 구간입니다.</div>
+  </div>
+
   <div class="card"><h3>무게/주식수 <span class="r" style="font-weight:400;font-size:11px">외+기관 순매수 ÷ 주식수 · 양수=자금유입</span></h3>
     <div class="chart" id="dWeight"></div>
   </div>
@@ -1021,6 +1030,61 @@ function volumeBars(host,vals,labels,opt={}){
     const rt=el("text",{x:W-P.r+4,y:ry+3.5,"font-size":9,fill:css("--ink-3")});
     rt.textContent=opt.refLabel||"";svg.appendChild(rt);}
   host.appendChild(svg);
+}
+/* 개인 매물대 — 가격대(종가 구간)별 개인 순매수 거래대금을 가로 막대로 표시.
+   buckets: [{label, v, cur}] 배열, 배열 순서가 위→아래 렌더 순서(높은 가격대가 위).
+   v>=0(순매수)=--up, v<0(순매도)=--down, cur=true면 "현재가" 구간으로 굵게 표시. */
+function profileChart(host,buckets,opt={}){
+  host.innerHTML="";
+  if(!buckets.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
+  const W=opt.w||1180,H=opt.h||480,P={t:16,r:opt.pr??24,b:8,l:opt.pl??84};
+  const max=Math.max(...buckets.map(b=>Math.abs(b.v)),1)*1.06;
+  const rowH=(H-P.t-P.b)/buckets.length;
+  const X=v=>P.l+Math.min(1,Math.abs(v)/max)*(W-P.l-P.r);
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});
+  niceTicks(0,max,4).forEach(v=>{
+    const x=X(v);
+    svg.appendChild(el("line",{x1:x,x2:x,y1:P.t,y2:H-P.b,stroke:css("--grid"),"stroke-width":1}));
+    const t=el("text",{x,y:P.t-5,"text-anchor":"middle","font-size":9.5,fill:css("--ink-3")});
+    t.textContent=opt.fx?opt.fx(v):N(v,0);svg.appendChild(t);});
+  const tip=tipFor(host);
+  buckets.forEach((b,i)=>{
+    const y=P.t+i*rowH+1.2,h=Math.max(2,rowH-2.4),w=Math.max(1.5,X(b.v)-P.l);
+    const bar=el("rect",{x:P.l,y,width:w,height:h,rx:2,
+      fill:css(b.v>=0?"--up":"--down"),opacity:b.cur?1:.78});
+    bar.addEventListener("pointerenter",()=>{
+      tip.innerHTML=`<b>${b.label}${b.cur?" · 현재가":""}</b>`+
+        `<div class="row"><span>개인 순매수</span><b class="${sgn(b.v)}">${pm(b.v,1)}억</b></div>`;
+      tip.style.opacity=1;const rc=svg.getBoundingClientRect();
+      tip.style.left=Math.min(rc.width-160,Math.max(0,(P.l+w/2)/W*rc.width-56))+"px";
+      tip.style.top=Math.max(0,(y+h/2)/H*rc.height-40)+"px";});
+    bar.addEventListener("pointerleave",()=>tip.style.opacity=0);
+    svg.appendChild(bar);
+    const t=el("text",{x:P.l-6,y:y+h/2+3.5,"text-anchor":"end","font-size":9.5,
+      fill:b.cur?css("--ink"):css("--ink-3"),"font-weight":b.cur?700:400});
+    t.textContent=b.label;svg.appendChild(t);
+    if(b.cur){
+      const ct=el("text",{x:Math.min(W-P.r,P.l+w)+6,y:y+h/2+3.5,"font-size":9.5,
+        fill:css("--ink"),"font-weight":700});
+      ct.textContent="◀현재가";svg.appendChild(ct);}
+  });
+  host.appendChild(svg);
+}
+// rows(v_stock_chart 행 배열, close·individual_net 포함)에서 종가를 bucketCount개
+// 가격 구간으로 나눠 구간별 개인 순매수(원→억원) 합계를 만듭니다. 반환 배열은
+// 가격 높은 구간이 먼저 오도록 정렬(=profileChart에서 위쪽에 그려짐).
+function buildPriceProfile(rows,bucketCount=24){
+  const closes=rows.map(r=>+r.close).filter(v=>!isNaN(v));
+  if(!closes.length)return[];
+  const lo=Math.min(...closes),hi=Math.max(...closes),span=(hi-lo)||Math.max(1,lo*0.02);
+  const size=span/bucketCount;
+  const idxOf=c=>Math.min(bucketCount-1,Math.max(0,Math.floor((c-lo)/size)));
+  const buckets=Array.from({length:bucketCount},()=>0);
+  rows.forEach(r=>{buckets[idxOf(+r.close)]+=(+r.individual_net||0)/EOK;});
+  const curIdx=idxOf(+rows.at(-1).close);
+  return buckets.map((v,i)=>({
+    label:`${N(lo+i*size,0)}~${N(lo+(i+1)*size,0)}`,v,cur:i===curIdx
+  })).reverse();
 }
 function sparkBars(v){
   const m=Math.max(...v.map(x=>Math.abs(x)))||1,W=104,H=26,bw=W/v.length,y0=H/2;
@@ -1709,6 +1773,7 @@ function renderRangeCharts(){
   const rlb=rp.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
   const rangeTxt=`${rp[0].trade_date}~${rp.at(-1).trade_date}`;
   $("#dPriceRange").textContent=rangeTxt;
+  $("#dProfileRange").textContent=`${rangeTxt} · 억원`;
   $("#dVolRange").textContent=rangeTxt;
   $("#dPgtrRange").textContent=`${rangeTxt} · 억원`;
   $("#dFlowRange").textContent=`${rangeTxt} · 억원`;
@@ -1721,6 +1786,8 @@ function renderRangeCharts(){
     rlb,{h:450,w:1180,pr:66,labelEnds:false,marks:true,monthTicks:true,
       fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원",
       refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
+  profileChart($("#dProfile"),buildPriceProfile(rp,24),
+    {h:480,w:1180,pr:24,pl:84,fx:v=>N(v,0)+"억"});
   const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
   volumeBars($("#dWeight"),wps,rlb,
     {h:450,w:1180,pr:66,monthTicks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
