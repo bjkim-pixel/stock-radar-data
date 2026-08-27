@@ -1716,7 +1716,11 @@ async function loadPerf(){
     const avgW=win.length?win.reduce((a,b)=>a+ +b.realized_pnl,0)/win.length:0;
     const ls=cl.filter(p=>+p.realized_pnl<=0);
     const avgL=ls.length?Math.abs(ls.reduce((a,b)=>a+ +b.realized_pnl,0)/ls.length):0;
+    const totalBuy=cl.reduce((a,b)=>a+ +b.invested,0)+op.reduce((a,b)=>a+ +b.invested,0);
+    const totalSell=cl.reduce((a,b)=>a+ +b.invested+ +b.realized_pnl,0);
     $("#perfTiles").innerHTML=[
+      ["총 매수 대금",N(totalBuy/EOK,1)+"억","",`청산${N(cl.reduce((a,b)=>a+ +b.invested,0)/EOK,1)}+보유${N(op.reduce((a,b)=>a+ +b.invested,0)/EOK,1)}억`],
+      ["총 매도 대금",N(totalSell/EOK,1)+"억","",`수익 포함 회수액`],
       ["실현손익",pm(pnl/EOK,2)+"억",sgn(pnl),N(pnl)+"원"],
       ["청산 건수",N(cl.length)+"건","",`보유중 ${op.length}건`],
       ["승률",cl.length?N(win.length/cl.length*100,1)+"%":"–","",`${win.length}승 ${ls.length}패`],
