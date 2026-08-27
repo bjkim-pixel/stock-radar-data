@@ -464,7 +464,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <div class="qf-group"><div class="qf-lb">추세 · 가격</div><div class="qf">
         <button class="fchip" data-f="newhigh">신고가 돌파</button>
         <button class="fchip" data-f="nearhigh">전고점 근처(-10% 이내)</button>
-        <button class="fchip" data-f="closepos">최고가 근처(-10%)</button>
+        <button class="fchip" data-f="closepos">종가 고가권(상위 30%)</button>
         <button class="fchip" data-f="ma5">5일선 위</button>
         <button class="fchip" data-f="aligned">정배열</button>
       </div></div>
@@ -553,7 +553,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="qf-group"><div class="qf-lb">추세 · 가격</div><div class="qf">
       <button class="fchip" data-f="newhigh">신고가 돌파</button>
       <button class="fchip" data-f="nearhigh">전고점 근처(-10% 이내)</button>
-      <button class="fchip" data-f="closepos">최고가 근처(-10%)</button>
+      <button class="fchip" data-f="closepos">종가 고가권(상위 30%)</button>
       <button class="fchip" data-f="ma5">5일선 위</button>
       <button class="fchip" data-f="aligned">정배열</button>
     </div></div>
@@ -1460,7 +1460,7 @@ function makeFilterFn(root,ids){
     if(f.sec&&r.sector!==f.sec)return false;
     if(on("newhigh",root)&&!(r.is_new_high_all||r.is_new_high))return false;
     if(on("nearhigh",root)&&!(r.near_high||+r.pct_from_high>=-10))return false;
-    if(on("closepos",root)&&!(+r.pct_from_high>=-10))return false;
+    if(on("closepos",root)&&!(+r.close_pos_pct>=70))return false;
     if(on("ma5",root)&&!(r.ma5&&+r.close>+r.ma5))return false;
     if(on("aligned",root)&&!r.ma_aligned)return false;
     if(on("fgbuy",root)&&!(+r.foreign_net>0))return false;
