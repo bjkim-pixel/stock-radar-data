@@ -1048,7 +1048,7 @@ function volumeBars(host,vals,labels,opt={}){
 function profileChart(host,buckets,opt={}){
   host.innerHTML="";
   if(!buckets.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
-  const W=opt.w||1180,H=opt.h||480,P={t:16,r:opt.pr??24,b:8,l:opt.pl??84};
+  const W=opt.w||1180,H=opt.h||480,P={t:16,r:opt.pr??140,b:8,l:opt.pl??84};
   const shown=b=>!opt.hideNeg||b.v>0;
   const max=Math.max(...buckets.filter(shown).map(b=>Math.abs(b.v)),1)*1.06;
   const rowH=(H-P.t-P.b)/buckets.length;
@@ -1077,10 +1077,11 @@ function profileChart(host,buckets,opt={}){
         tip.style.top=Math.max(0,(y+h/2)/H*rc.height-40)+"px";});
       bar.addEventListener("pointerleave",()=>tip.style.opacity=0);
       svg.appendChild(bar);
-      if(b.cur){
-        const ct=el("text",{x:Math.min(W-P.r,P.l+w)+6,y:y+h/2+3.5,"font-size":9.5,
-          fill:css("--ink"),"font-weight":700});
-        ct.textContent="◀현재가";svg.appendChild(ct);}
+      // 막대 끝에 순매수 금액(억원) 라벨 — 현재가 구간이면 "◀현재가"를 이어붙임.
+      const vt=el("text",{x:Math.min(W-P.r,P.l+w)+6,y:y+h/2+3.5,"font-size":9.5,
+        fill:css(b.v>=0?"--up":"--down"),"font-weight":b.cur?700:500});
+      vt.textContent=pm(b.v,1)+"억"+(b.cur?" ◀현재가":"");
+      svg.appendChild(vt);
     }else if(b.cur){
       const ct=el("text",{x:P.l+6,y:y+h/2+3.5,"font-size":9.5,fill:css("--ink-3"),"font-weight":700});
       ct.textContent="현재가(순매도 구간)";svg.appendChild(ct);}
@@ -1099,19 +1100,28 @@ function buildPriceProfile(rows,bucketCount=24,valueFn=r=>+r.individual_net||0){
   const buckets=Array.from({length:bucketCount},()=>0);
   rows.forEach(r=>{buckets[idxOf(+r.close)]+=valueFn(r)/EOK;});
   const curIdx=idxOf(+rows.at(-1).close);
-  return buckets.map((v,i)=>({
-    label:`${N(lo+i*size,0)}~${N(lo+(i+1)*size,0)}`,v,cur:i===curIdx
-  })).reverse();
+  return buckets.map((v,i)=>{
+    const bLo=lo+i*size,bHi=lo+(i+1)*size;
+    return {lo:bLo,hi:bHi,label:`${N(bLo,0)}~${N(bHi,0)}`,v,cur:i===curIdx};
+  }).reverse();
 }
-// 순매수 상위 n개 가격대를 "#·가격대·+금액억" 표로 렌더링합니다(순매도 구간은 제외).
+// 순매수 상위 n개 가격대 + 현재가 구간(상위 n에 없으면 별도 추가)을 표로 렌더링합니다.
+// 표는 가격대 기준 내림차순(높은 가격대가 위)으로 정렬 — 위 매물대 차트와 같은 순서.
+// #열은 순매수 금액 기준 순위(상위 n 밖의 현재가 행은 "–").
 function topBucketsHtml(buckets,n=5,subj="개인"){
-  const top=buckets.filter(b=>b.v>0).sort((a,b)=>b.v-a.v).slice(0,n);
-  if(!top.length)return '<div class="note">순매수 가격대 없음</div>';
+  const byAmt=buckets.filter(b=>b.v>0).sort((a,b)=>b.v-a.v).slice(0,n);
+  const rankOf=new Map(byAmt.map((b,i)=>[b,i+1]));
+  const cur=buckets.find(b=>b.cur);
+  const list=[...byAmt];
+  if(cur&&!list.includes(cur))list.push(cur);
+  if(!list.length)return '<div class="note">순매수 가격대 없음</div>';
+  list.sort((a,b)=>b.lo-a.lo);
   return `<div class="tw" style="margin-top:10px"><table><thead><tr>
       <th class="l">#</th><th class="l">가격대</th><th>${subj} 순매수</th></tr></thead><tbody>`+
-    top.map((b,i)=>`<tr><td class="l rank">${i+1}</td>
+    list.map(b=>`<tr>
+      <td class="l rank">${rankOf.get(b)||"–"}</td>
       <td class="l">${b.label}${b.cur?' <span class="faint">(현재가)</span>':""}</td>
-      <td class="up">${pm(b.v,1)}억</td></tr>`).join("")+
+      <td class="${sgn(b.v)}">${pm(b.v,1)}억</td></tr>`).join("")+
     `</tbody></table></div>`;
 }
 function sparkBars(v){
@@ -1817,11 +1827,11 @@ function renderRangeCharts(){
       refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
   const profIndiv=buildPriceProfile(rp,24,r=>+r.individual_net||0);
   profileChart($("#dProfile"),profIndiv,
-    {h:480,w:1180,pr:24,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"개인 순매수"});
+    {h:480,w:1180,pr:150,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"개인 순매수"});
   $("#dProfileTop").innerHTML=topBucketsHtml(profIndiv,5,"개인");
   const profInst=buildPriceProfile(rp,24,r=>(+r.foreign_net||0)+(+r.inst_net||0));
   profileChart($("#dProfileInst"),profInst,
-    {h:480,w:1180,pr:24,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"외국인+기관 순매수"});
+    {h:480,w:1180,pr:150,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"외국인+기관 순매수"});
   $("#dProfileInstTop").innerHTML=topBucketsHtml(profInst,5,"외국인+기관");
   const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
   volumeBars($("#dWeight"),wps,rlb,
