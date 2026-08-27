@@ -484,6 +484,24 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         <button class="fchip" data-f="st_nothot">과열 제외</button>
         <button class="fchip" data-f="leadsec">주도 섹터만</button>
       </div></div>
+      <div style="width:100%;border-top:1px solid var(--grid);margin:10px 0 6px;padding-top:10px;font-size:10.5px;font-weight:700;color:var(--ink-3);letter-spacing:.06em">전략별 세부 조건</div>
+      <div class="qf-group"><div class="qf-lb">종가베팅</div><div class="qf">
+        <button class="fchip" data-f="cb_newhigh">신고가 돌파</button>
+        <button class="fchip" data-f="cb_nearhigh">전고점 근처(-10%)</button>
+        <button class="fchip" data-f="cb_closepos">종가 고가권(상위 30%)</button>
+        <button class="fchip" data-f="cb_fgbuy">외국인 순매수</button>
+        <button class="fchip" data-f="cb_insbuy">기관 순매수</button>
+        <button class="fchip" data-f="cb_consec3">연속 양매수 3일↑</button>
+        <button class="fchip" data-f="cb_nothot">과열 제외</button>
+        <button class="fchip" data-f="cb_leadsec">주도 섹터만</button>
+      </div></div>
+      <div class="qf-group"><div class="qf-lb">추세추종</div><div class="qf">
+        <button class="fchip" data-f="v4_newhigh">신고가(전체기간)</button>
+        <button class="fchip" data-f="v4_vol200">거래량비 200%↑</button>
+        <button class="fchip" data-f="v4_vol115">거래량비 115%↑</button>
+        <button class="fchip" data-f="v4_nonpers">비개인 순매수</button>
+        <button class="fchip" data-f="v4_leadsec">주도 섹터만</button>
+      </div></div>
       <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
         <button class="btn" id="runFlowFilter">필터 적용</button>
         <button class="btn ghost" id="resetFlowFilter">초기화</button>
@@ -574,6 +592,24 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip" data-f="st_grow">추세 성장</button>
       <button class="fchip" data-f="st_nothot">과열 제외</button>
       <button class="fchip" data-f="leadsec">주도 섹터만</button>
+    </div></div>
+    <div style="width:100%;border-top:1px solid var(--grid);margin:10px 0 6px;padding-top:10px;font-size:10.5px;font-weight:700;color:var(--ink-3);letter-spacing:.06em">전략별 세부 조건</div>
+    <div class="qf-group"><div class="qf-lb">종가베팅</div><div class="qf">
+      <button class="fchip" data-f="cb_newhigh">신고가 돌파</button>
+      <button class="fchip" data-f="cb_nearhigh">전고점 근처(-10%)</button>
+      <button class="fchip" data-f="cb_closepos">종가 고가권(상위 30%)</button>
+      <button class="fchip" data-f="cb_fgbuy">외국인 순매수</button>
+      <button class="fchip" data-f="cb_insbuy">기관 순매수</button>
+      <button class="fchip" data-f="cb_consec3">연속 양매수 3일↑</button>
+      <button class="fchip" data-f="cb_nothot">과열 제외</button>
+      <button class="fchip" data-f="cb_leadsec">주도 섹터만</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">추세추종</div><div class="qf">
+      <button class="fchip" data-f="v4_newhigh">신고가(전체기간)</button>
+      <button class="fchip" data-f="v4_vol200">거래량비 200%↑</button>
+      <button class="fchip" data-f="v4_vol115">거래량비 115%↑</button>
+      <button class="fchip" data-f="v4_nonpers">비개인 순매수</button>
+      <button class="fchip" data-f="v4_leadsec">주도 섹터만</button>
     </div></div>
 
     <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
@@ -1457,6 +1493,21 @@ function makeFilterFn(root,ids){
     if(on("st_birth",root)&&st!=="birth")return false;
     if(on("st_grow",root)&&st!=="grow")return false;
     if(on("st_nothot",root)&&st==="hot")return false;
+    // ── 종가베팅 세부 조건 ──────────────────────────────────────────
+    if(on("cb_newhigh",root)&&!(r.is_new_high_all||r.is_new_high))return false;
+    if(on("cb_nearhigh",root)&&!(r.near_high||+r.pct_from_high>=-10))return false;
+    if(on("cb_closepos",root)&&!(+r.close_pos_pct>=70))return false;
+    if(on("cb_fgbuy",root)&&!(+r.foreign_net>0))return false;
+    if(on("cb_insbuy",root)&&!(+r.inst_net>0))return false;
+    if(on("cb_consec3",root)&&!(+r.consec_both_buy>=3))return false;
+    if(on("cb_nothot",root)&&st==="hot")return false;
+    if(on("cb_leadsec",root)&&!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
+    // ── 추세추종 세부 조건 ──────────────────────────────────────────
+    if(on("v4_newhigh",root)&&!r.is_new_high_all)return false;
+    if(on("v4_vol200",root)&&!(+r.vol_ratio20_prev>=200))return false;
+    if(on("v4_vol115",root)&&!(+r.vol_ratio20_prev>=115))return false;
+    if(on("v4_nonpers",root)&&!(+r.nonpersonal_net>0))return false;
+    if(on("v4_leadsec",root)&&!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
     return true;
   };
 }
