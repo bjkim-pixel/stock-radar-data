@@ -698,9 +698,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
   <div class="card"><h3>보유 중 <span class="r" id="openCount"></span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>진입일</th><th>평단</th><th>고점</th><th class="opt">트랜치</th>
+      <th class="l">종목</th><th>진입일</th><th>평단</th><th>고점</th><th>고점일</th><th class="opt">트랜치</th>
       <th>투입금액</th><th>고점대비</th>
-    </tr></thead><tbody id="openBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
+    </tr></thead><tbody id="openBody"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
   <div class="card"><h3>청산 이력 <span class="r" id="perfCount"></span></h3>
     <div class="tw"><table><thead><tr>
@@ -1749,11 +1749,13 @@ async function loadPerf(){
     $("#openCount").innerHTML=`<b>${op.length}</b>건`;
     $("#openBody").innerHTML=op.length?op.map(p=>{
       const dd=(+p.peak_price? (S.lastClose?.[p.code]/+p.peak_price-1)*100 : null);
+      const pd=p.peak_date?p.peak_date.slice(5).replace("-","/"):"–";
       return `<tr><td class="l"><a class="lk nm" data-code="${p.code}">${nameOf[p.code]||p.code}</a></td>
         <td>${p.entry_date}</td><td>${N(+p.avg_price)}</td><td>${N(+p.peak_price)}</td>
+        <td class="faint">${pd}</td>
         <td class="opt">${p.tranches}</td><td>${N(+p.invested)}</td>
         <td class="${dd==null?"":sgn(dd)}">${dd==null?"–":pm(dd,1)+"%"}</td></tr>`;}).join("")
-      :'<tr><td colspan="7" class="load">보유 중인 포지션 없음</td></tr>';
+      :'<tr><td colspan="8" class="load">보유 중인 포지션 없음</td></tr>';
     $$("#v-perf a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
     makeSortable('perfBody');
     makeSortable('openBody');
