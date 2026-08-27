@@ -1126,8 +1126,11 @@ async function loadIndex(){
   // market_daily의 합성지수(시총가중)를 우선 사용하고, 없으면 표시하지 않습니다.
   for(const [mk,host] of [["KOSPI","#cKospi"],["KOSDAQ","#cKosdaq"]]){
     try{
-      const r=await q("market_daily",
+      const raw=await q("market_daily",
         `select=trade_date,index_close,index_ma20,regime&market=eq.${mk}&order=trade_date.asc`);
+      // index_close가 아직 미수집(null)인 행은 제외 — null을 그대로 숫자로 캐스팅하면
+      // 0으로 꺾여 "최저/오늘 0.0"처럼 잘못된 최저점·오늘값이 잡힙니다.
+      const r=raw.filter(x=>x.index_close!=null);
       if(!r.length){$(host).innerHTML='<div class="load">데이터 없음</div>';continue;}
       lineChart($(host),[
         {n:mk,v:r.map(x=>+x.index_close),c:"--up"},
