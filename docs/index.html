@@ -1077,15 +1077,27 @@ function profileChart(host,buckets,opt={}){
         tip.style.top=Math.max(0,(y+h/2)/H*rc.height-40)+"px";});
       bar.addEventListener("pointerleave",()=>tip.style.opacity=0);
       svg.appendChild(bar);
-      // 막대 끝에 순매수 금액(억원) 라벨 — 현재가 구간이면 "◀현재가"를 이어붙임.
+      // 막대 끝에 순매수 금액 라벨 — 1조원 이상이면 "조원", 미만이면 "억원" (정수 반올림).
+      const fmtAmt=v=>Math.abs(v)>=10000?N(Math.round(v/10000),0)+"조원":N(Math.round(v),0)+"억원";
       const vt=el("text",{x:Math.min(W-P.r,P.l+w)+6,y:y+h/2+3.5,"font-size":9.5,
-        fill:css(b.v>=0?"--up":"--down"),"font-weight":b.cur?700:500});
-      vt.textContent=pm(b.v,1)+"억"+(b.cur?" ◀현재가":"");
+        fill:css("--ink"),"font-weight":b.cur?700:500});
+      vt.textContent=fmtAmt(b.v)+(b.cur?" ◀현재가":"");
       svg.appendChild(vt);
     }else if(b.cur){
       const ct=el("text",{x:P.l+6,y:y+h/2+3.5,"font-size":9.5,fill:css("--ink-3"),"font-weight":700});
       ct.textContent="현재가(순매도 구간)";svg.appendChild(ct);}
   });
+  // 현재가 구간보다 위쪽 순매수 합계를 차트 우상단에 표시.
+  const curB=buckets.find(b=>b.cur);
+  if(curB){
+    const above=buckets.filter(b=>b.lo>curB.hi&&b.v>0).reduce((s,b)=>s+b.v,0);
+    const fmtAbove=Math.abs(above)>=10000
+      ?N(Math.round(above/10000),0)+"조원"
+      :N(Math.round(above),0)+"억원";
+    const sumLbl=`매물대 총합계 ${N(Math.round(above),0)}억원 (${N(Math.round(above/10000),0)}조원)`;
+    const st=el("text",{x:W-P.r,y:P.t+2,"text-anchor":"end","font-size":9.5,fill:css("--ink-3")});
+    st.textContent=sumLbl;svg.appendChild(st);
+  }
   host.appendChild(svg);
 }
 // rows(v_stock_chart 행 배열)에서 종가를 bucketCount개 가격 구간으로 나눠 구간별
@@ -1109,6 +1121,7 @@ function buildPriceProfile(rows,bucketCount=24,valueFn=r=>+r.individual_net||0){
 // 표는 가격대 기준 내림차순(높은 가격대가 위)으로 정렬 — 위 매물대 차트와 같은 순서.
 // #열은 순매수 금액 기준 순위(상위 n 밖의 현재가 행은 "–").
 function topBucketsHtml(buckets,n=5,subj="개인"){
+  const fmtAmt=v=>Math.abs(v)>=10000?N(Math.round(v/10000),0)+"조원":N(Math.round(v),0)+"억원";
   const byAmt=buckets.filter(b=>b.v>0).sort((a,b)=>b.v-a.v).slice(0,n);
   const rankOf=new Map(byAmt.map((b,i)=>[b,i+1]));
   const cur=buckets.find(b=>b.cur);
@@ -1121,7 +1134,7 @@ function topBucketsHtml(buckets,n=5,subj="개인"){
     list.map(b=>`<tr>
       <td class="l rank">${rankOf.get(b)||"–"}</td>
       <td class="l">${b.label}${b.cur?' <span class="faint">(현재가)</span>':""}</td>
-      <td class="${sgn(b.v)}">${pm(b.v,1)}억</td></tr>`).join("")+
+      <td class="${sgn(b.v)}">${fmtAmt(b.v)}</td></tr>`).join("")+
     `</tbody></table></div>`;
 }
 function sparkBars(v){
