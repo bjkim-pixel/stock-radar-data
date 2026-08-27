@@ -1447,7 +1447,7 @@ function makeFilterFn(root,ids){
     if(on("nearhigh",root)&&!(r.near_high||+r.pct_from_high>=-10))return false;
     if(on("closepos",root)&&!(+r.close_pos_pct>=70))return false;
     if(on("ma5",root)&&!(r.ma5&&+r.close>+r.ma5))return false;
-    if(on("aligned",root)&&!r.ma_aligned)return false;
+    if(on("aligned",root)&&!(r.ma5&&r.ma20&&r.ma60&&+r.close>+r.ma5&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60))return false;
     if(on("fgbuy",root)&&!(+r.foreign_net>0))return false;
     if(on("insbuy",root)&&!(+r.inst_net>0))return false;
     if(on("bothbuy",root)&&!(+r.foreign_net>0&&+r.inst_net>0))return false;
