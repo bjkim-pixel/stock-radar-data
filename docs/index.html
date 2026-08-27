@@ -682,6 +682,12 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="chart" id="dFlow"></div>
   </div>
 
+  <div class="card"><h3>이 종목의 수급주체별 순매수 거래대금
+    <span class="r">억원 · 헤더 클릭 = 그 주체 기준 내림차순</span></h3>
+    <div class="tw" id="dFlowPeriodWrap"><table><thead><tr id="dFlowPeriodHead"></tr></thead>
+      <tbody id="dFlowPeriodBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
+  </div>
+
   <div class="card"><h3>수급 주체별 누적<span class="r">전 기간 · 억원 · 각 차트 오른쪽 끝이 오늘</span></h3>
     <div class="grid5" id="dMinis"></div>
   </div>
@@ -1326,6 +1332,34 @@ async function loadFlowTrends(){
   }).join("");
   $$("#flowTrendHead th.sortable").forEach(th=>th.onclick=()=>{S.flowTrendSort=th.dataset.key;loadFlowTrends();});
 }
+// 종목상세 · 이 종목의 수급주체별 순매수 거래대금 (시장 전체 표와 동일 구성, code 한정)
+const STOCK_FLOW_SUBJ={foreign:"외국인",inst:"기관합계",fin_inv:"금융투자",
+  inv_trust:"투신",pension:"연기금",pe:"사모",individual:"개인",program:"프로그램"};
+const STOCK_FLOW_SUBJ_SHORT={foreign:"외국인",inst:"기관",fin_inv:"금투",
+  inv_trust:"투신",pension:"연금",pe:"사모",individual:"개인",program:"프로그램"};
+const STOCK_FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe","individual","program"];
+const STOCK_FLOW_PERIOD={"1y":"1년","3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
+const STOCK_FLOW_PERIOD_ROWS=["1y","3m","2m","1m","2w","1w","1d"];
+async function loadStockFlowPeriods(code){
+  const r=(await q("v_stock_flow_periods",`select=*&code=eq.${code}`))[0];
+  if(!r){$("#dFlowPeriodBody").innerHTML='<tr><td colspan="9" class="load">데이터 없음</td></tr>';return;}
+  S.dFlowPeriodRow=r;
+  const isMob=window.innerWidth<=960;
+  $("#dFlowPeriodHead").innerHTML=`<th class="l">기간</th>`+STOCK_FLOW_SUBJ_COLS.map(k=>
+    `<th class="sortable${S.dFlowPeriodSort===k?" active":""}" data-key="${k}" title="${STOCK_FLOW_SUBJ[k]}">${isMob?STOCK_FLOW_SUBJ_SHORT[k]:STOCK_FLOW_SUBJ[k]}${S.dFlowPeriodSort===k?" ▾":""}</th>`).join("");
+  let periods=[...STOCK_FLOW_PERIOD_ROWS];
+  if(S.dFlowPeriodSort)periods.sort((a,b)=>(+r[S.dFlowPeriodSort+"_"+b]||0)-(+r[S.dFlowPeriodSort+"_"+a]||0));
+  $("#dFlowPeriodBody").innerHTML=periods.map(p=>{
+    const cells=STOCK_FLOW_SUBJ_COLS.map(k=>{
+      const raw=r[k+"_"+p];
+      if(raw==null)return `<td class="dim">–</td>`;
+      const v=+raw/EOK;
+      return `<td class="${sgn(v)}">${pm(v,0)}</td>`;
+    }).join("");
+    return `<tr><td class="l">${STOCK_FLOW_PERIOD[p]}</td>${cells}</tr>`;
+  }).join("");
+  $$("#dFlowPeriodHead th.sortable").forEach(th=>th.onclick=()=>{S.dFlowPeriodSort=th.dataset.key;loadStockFlowPeriods(code);});
+}
 // RANK · 종목명 · 순매수/시총(%) · 금액(억) · 역대순위 — 5열 압축 포맷 (참고 이미지 + 역대순위 추가)
 // 역대순위 = 당일 이 종목에 대한 이 주체의 순매수 대금이, 같은 종목·주체의
 // DB 보유 전체 기간(2025-09-01~) 순매수 대금 분포 중 몇 위인지 (v_flow_rank_today)
@@ -1631,6 +1665,10 @@ async function loadDetail(code){
   if(!S.dRangeTouched){$("#dStart").value=START_D<rows[0].trade_date?rows[0].trade_date:START_D;
     $("#dEnd").value=last.trade_date;}
   renderRangeCharts();
+  S.dFlowPeriodSort=null;
+  loadStockFlowPeriods(code).catch(()=>{
+    $("#dFlowPeriodBody").innerHTML='<tr><td colspan="9" class="load">조회 실패 (42_stock_flow_periods_program.sql 적용 여부 확인)</td></tr>';
+  });
   // 수급 주체별 누적(전 기간)
   const b=rows[0];
   const cum=k=>rows.map(r=>(+r[k]-+b[k])/EOK);
