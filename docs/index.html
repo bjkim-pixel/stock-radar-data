@@ -301,7 +301,6 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <span class="chip opt">유니버스 <b id="chipUniv">–</b></span>
       <span class="chip opt" id="chipHighPos" title="유니버스 종목 중 52주 신고가 -10% 이내 비율">신고가근처 <b>–</b></span>
       <span class="chip">기준 <b id="chipDate">–</b> <span id="chipAsOf" class="faint" style="font-weight:400"></span></span>
-      <button class="icon-btn" id="themeBtn">◐</button>
     </div>
   </div>
   <nav id="tabs">
@@ -1072,8 +1071,6 @@ function setStickyOffset(){
 window.addEventListener("resize",setStickyOffset);
 window.addEventListener("load",setStickyOffset);
 $("#brandHome").onclick=()=>location.reload();
-$("#themeBtn").onclick=()=>{document.documentElement.dataset.theme=
-  document.documentElement.dataset.theme==="dark"?"light":"dark";redraw();};
 $$("#funnel .fstep").forEach(f=>f.onclick=()=>{
   $$("#funnel .fstep").forEach(x=>x.classList.toggle("on",x===f));
   $("#"+f.dataset.g).scrollIntoView({behavior:"smooth",block:"start"});});
