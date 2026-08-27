@@ -3,21 +3,29 @@ name: KIS Backfill
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: '백필 대상 — stocks: 종목별 시세/수급(04_backfill.py) · index: KOSPI/KOSDAQ 종합지수(20_collect_market_extra.py, quarantine_outliers 이상치 재검증 포함)'
+        required: false
+        default: 'stocks'
+        type: choice
+        options:
+          - stocks
+          - index
       start_date:
         description: '시작일 (YYYYMMDD, 비우면 2025-09-01)'
         required: false
         default: '20250901'
       end_date:
-        description: '종료일 (YYYYMMDD, 비우면 어제)'
+        description: '종료일 (YYYYMMDD, 비우면 어제) — target=index일 때는 무시됩니다(항상 오늘까지)'
         required: false
         default: ''
       compare_only:
-        description: '재수집 없이 KRX vs KIS 비교만 실행'
+        description: '재수집 없이 KRX vs KIS 비교만 실행 (target=stocks 전용)'
         required: false
         default: false
         type: boolean
       debug:
-        description: '삼성전자 응답 원문만 출력 (약 10초, 필드명 확인용)'
+        description: '삼성전자 응답 원문만 출력 (약 10초, 필드명 확인용) (target=stocks 전용)'
         required: false
         default: false
         type: boolean
@@ -48,12 +56,18 @@ jobs:
           KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          TARGET="${{ github.event.inputs.target }}"
           START="${{ github.event.inputs.start_date }}"
           END="${{ github.event.inputs.end_date }}"
           COMPARE="${{ github.event.inputs.compare_only }}"
           DEBUG="${{ github.event.inputs.debug }}"
 
-          if [ "$DEBUG" = "true" ]; then
+          if [ "$TARGET" = "index" ]; then
+            # KOSPI/KOSDAQ 종합지수를 start_date~오늘 전체 재조회 후 quarantine_outliers()로
+            # 이상치(단위 깨짐 등으로 튄 값) 재검증 — 과거에 잘못 저장된 구간이 있으면
+            # 이 실행으로 NULL 초기화되고, 이어서 이번에 새로 받은 정상 값으로 다시 채워집니다.
+            python 20_collect_market_extra.py --backfill-index "$START"
+          elif [ "$DEBUG" = "true" ]; then
             python 04_backfill.py --debug
           elif [ "$COMPARE" = "true" ]; then
             python 04_backfill.py --compare-only
