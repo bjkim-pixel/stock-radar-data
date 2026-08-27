@@ -471,16 +471,21 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <div class="qf-group"><div class="qf-lb">수급</div><div class="qf">
         <button class="fchip" data-f="fgbuy">외국인 순매수</button>
         <button class="fchip" data-f="insbuy">기관 순매수</button>
+        <button class="fchip" data-f="bothbuy">외+기관 동시</button>
+        <button class="fchip" data-f="nonpers">비개인 순매수</button>
         <button class="fchip" data-f="consec3">연속 양매수 3일↑</button>
       </div></div>
-      <div class="qf-group"><div class="qf-lb">단계 · 전략</div><div class="qf">
+      <div class="qf-group"><div class="qf-lb">거래량 · 규모</div><div class="qf">
+        <button class="fchip" data-f="vol200">거래량비 200%↑</button>
+        <button class="fchip" data-f="vol115">거래량비 115%↑</button>
+        <button class="fchip" data-f="cap2t">시총 2조↑</button>
+        <button class="fchip" data-f="chg15">급등 제외(15% 미만)</button>
+      </div></div>
+      <div class="qf-group"><div class="qf-lb">단계 · 섹터</div><div class="qf">
         <button class="fchip" data-f="st_birth">추세 탄생</button>
         <button class="fchip" data-f="st_grow">추세 성장</button>
         <button class="fchip" data-f="st_nothot">과열 제외</button>
         <button class="fchip" data-f="leadsec">주도 섹터만</button>
-        <button class="fchip strat" data-f="strat_cb">종가베팅</button>
-        <button class="fchip strat" data-f="strat_v4">v4 추세추종</button>
-        <button class="fchip strat" data-f="strat_v4_lite">v4 추세추종(완화)</button>
       </div></div>
       <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
         <button class="btn" id="runFlowFilter">필터 적용</button>
@@ -560,41 +565,21 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="qf-group"><div class="qf-lb">수급</div><div class="qf">
       <button class="fchip" data-f="fgbuy">외국인 순매수</button>
       <button class="fchip" data-f="insbuy">기관 순매수</button>
+      <button class="fchip" data-f="bothbuy">외+기관 동시</button>
+      <button class="fchip" data-f="nonpers">비개인 순매수</button>
       <button class="fchip" data-f="consec3">연속 양매수 3일↑</button>
     </div></div>
-    <div class="qf-group"><div class="qf-lb">단계 · 전략</div><div class="qf">
+    <div class="qf-group"><div class="qf-lb">거래량 · 규모</div><div class="qf">
+      <button class="fchip" data-f="vol200">거래량비 200%↑</button>
+      <button class="fchip" data-f="vol115">거래량비 115%↑</button>
+      <button class="fchip" data-f="cap2t">시총 2조↑</button>
+      <button class="fchip" data-f="chg15">급등 제외(15% 미만)</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">단계 · 섹터</div><div class="qf">
       <button class="fchip" data-f="st_birth">추세 탄생</button>
       <button class="fchip" data-f="st_grow">추세 성장</button>
       <button class="fchip" data-f="st_nothot">과열 제외</button>
       <button class="fchip" data-f="leadsec">주도 섹터만</button>
-      <button class="fchip strat" data-f="strat_cb">종가베팅
-        <span class="pop"><b>침착해 종가베팅</b>
-          <ol><li>시장 지수 MA20 상회 · 거래대금 20일평균 상회</li>
-            <li>업종 거래대금 상위 5 또는 업종 RS 상위 5</li>
-            <li>종목 거래대금 상위 10% + 신고가 또는 전고점 돌파</li>
-            <li>외인·기관 동반 순매수 + 3일 이상 연속</li>
-            <li>종가가 당일 고가권 상위 30% · 과열 단계 제외</li></ol>
-          <span class="ex">진입 당일 종가 · 청산 고점 대비 -7% 트레일링<br>
-            ⚠ 아직 백테스트 검증 전입니다</span></span></button>
-      <button class="fchip strat" data-f="strat_v4">v4 추세추종
-        <span class="pop"><b>v4 신고가 추세추종</b>
-          <ol><li>업종 RS20 순위 5위 이내</li>
-            <li>종가 &gt; 상장 이후 전일까지 누적 최고 종가</li>
-            <li>거래량 ≥ 전일까지 20일 평균의 200%</li>
-            <li>시가총액 2조원 이상 · 비개인 순매수 &gt; 0</li>
-            <li>당일 등락률 15% 미만</li></ol>
-          <span class="ex">진입 당일 종가 · +14%마다 불타기 최대 3회<br>
-            ✅ 검증 완료 — 자금대비 +47.8% / MDD -7.4%<br>
-            ⚠ 조건 6개를 모두 동시에 만족해야 해서 통과 종목이 없는 날이 대부분입니다</span></span></button>
-      <button class="fchip strat" data-f="strat_v4_lite">v4 추세추종(완화)
-        <span class="pop"><b>v4 신고가 추세추종 · 거래량 조건 완화</b>
-          <ol><li>업종 RS20 순위 5위 이내</li>
-            <li>종가 &gt; 상장 이후 전일까지 누적 최고 종가</li>
-            <li>거래량 ≥ 전일까지 20일 평균의 <b>115%</b>(기존 200%에서 완화)</li>
-            <li>시가총액 2조원 이상 · 비개인 순매수 &gt; 0</li>
-            <li>당일 등락률 15% 미만</li></ol>
-          <span class="ex">거래량 조건만 200%→115%로 낮춘 버전입니다.<br>
-            ⚠ 완화 버전은 아직 별도 백테스트 검증 전입니다</span></span></button>
     </div></div>
 
     <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
@@ -1466,38 +1451,18 @@ function makeFilterFn(root,ids){
     if(on("fgbuy",root)&&!(+r.foreign_net>0))return false;
     if(on("insbuy",root)&&!(+r.inst_net>0))return false;
     if(on("bothbuy",root)&&!(+r.foreign_net>0&&+r.inst_net>0))return false;
+    if(on("nonpers",root)&&!(+r.nonpersonal_net>0))return false;
     if(on("consec3",root)&&!(+r.consec_both_buy>=3))return false;
     if(on("indsell",root)&&!(+r.individual_net<0))return false;
+    if(on("vol200",root)&&!(+r.vol_ratio20_prev>=200))return false;
+    if(on("vol115",root)&&!(+r.vol_ratio20_prev>=115))return false;
+    if(on("cap2t",root)&&!(+r.market_cap>=2*JO))return false;
+    if(on("chg15",root)&&!(+r.change_pct<15))return false;
     if(on("leadsec",root)&&!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
     const st=stage(r);
     if(on("st_birth",root)&&st!=="birth")return false;
     if(on("st_grow",root)&&st!=="grow")return false;
     if(on("st_nothot",root)&&st==="hot")return false;
-    // ── 전략 필터 ─────────────────────────────────────────────────
-    if(on("strat_v4",root)){
-      if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-      if(!r.is_new_high_all)return false;
-      if(!(+r.vol_ratio20_prev>=200))return false;
-      if(!(+r.market_cap>=2*JO))return false;
-      if(!(+r.nonpersonal_net>0))return false;
-      if(!(+r.change_pct<15))return false;
-    }
-    if(on("strat_v4_lite",root)){
-      if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-      if(!r.is_new_high_all)return false;
-      if(!(+r.vol_ratio20_prev>=115))return false;
-      if(!(+r.market_cap>=2*JO))return false;
-      if(!(+r.nonpersonal_net>0))return false;
-      if(!(+r.change_pct<15))return false;
-    }
-    if(on("strat_cb",root)){
-      if(!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-      if(!(r.is_new_high_all||r.is_new_high||+r.pct_from_high>=-1))return false;
-      if(!(+r.foreign_net>0&&+r.inst_net>0))return false;
-      if(!(+r.consec_both_buy>=3))return false;
-      if(!(+r.close_pos_pct>=70))return false;
-      if(stage(r)==="hot")return false;
-    }
     return true;
   };
 }
