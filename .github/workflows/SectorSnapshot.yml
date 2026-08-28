@@ -42,12 +42,19 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python 44_sector_snapshot_export.py reports/sector_snapshot.csv
 
+      - name: Check unclassified stocks (sector_override 미설정 종목 탐지)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          mkdir -p reports
+          python 46_sector_unclassified_check.py reports/sector_unclassified.csv
+
       - name: Commit snapshot
         run: |
           mkdir -p reports
           git config user.name "stock-radar-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add reports/sector_snapshot.csv
+          git add reports/sector_snapshot.csv reports/sector_unclassified.csv
           if git diff --cached --quiet; then
             echo "변경 없음 — 커밋 생략"
           else
