@@ -201,42 +201,52 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   display:flex;justify-content:space-between}
 .mini h4 span{font-weight:640}
 
-/* 짝꿍매매 — 업종 구성종목을 2개씩 스와이프로 보여주는 압축 카드 캐러셀 */
-.pair-carousel-wrap{position:relative;display:flex;align-items:stretch;gap:6px}
-.pair-track{flex:1;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+/* 짝꿍매매 — 업종 구성종목을 2개씩 스와이프로 보여주는 카드 캐러셀.
+   카드는 종목상세와 동일한 내용을 전부 담으므로 세로로 길고, 페이지 전체
+   스크롤로 내려보게 합니다(카드 내부에 별도 스크롤 박스를 두지 않음).
+   좌우 화살표는 카드 폭을 뺏지 않도록 얇게 만들고 sticky로 붙여 긴 카드를
+   스크롤하는 동안에도 계속 눌러 페이지를 넘길 수 있게 합니다. */
+.pair-carousel-wrap{display:flex;align-items:flex-start;gap:0}
+.pair-track{flex:1;min-width:0;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
   -webkit-overflow-scrolling:touch;scrollbar-width:none;border-radius:var(--r)}
 .pair-track::-webkit-scrollbar{display:none}
 .pair-page{flex:0 0 100%;scroll-snap-align:start;display:grid;
-  grid-template-columns:1fr 1fr;gap:10px}
-.pc-arrow{flex:none;align-self:center;width:30px;height:44px;border-radius:8px;
-  border:1px solid var(--border);background:var(--surface);color:var(--ink-2);
-  font-size:17px;cursor:pointer;font-family:inherit}
+  grid-template-columns:1fr 1fr;gap:0}
+.pc-arrow{flex:none;position:sticky;top:calc(var(--stick-top,0px) + 10px);
+  width:22px;height:38px;border-radius:7px;border:1px solid var(--border);
+  background:var(--surface);color:var(--ink-2);font-size:15px;cursor:pointer;font-family:inherit}
 .pc-arrow:hover{background:var(--surface-2);color:var(--ink)}
-.pc-arrow:disabled{opacity:.35;cursor:default;pointer-events:none}
+.pc-arrow:disabled{opacity:.3;cursor:default;pointer-events:none}
 .pair-dots{display:flex;justify-content:center;gap:6px;margin-top:10px}
 .pair-dots .d{width:6px;height:6px;border-radius:50%;background:var(--surface-3);
   border:none;cursor:pointer;padding:0}
 .pair-dots .d[aria-current=true]{background:var(--ink);width:16px;border-radius:4px}
-.pair-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);
-  padding:10px 11px;min-width:0}
-.pair-card .ph{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin-bottom:2px}
-.pair-card .ph .nm{font-size:13px;font-weight:680;cursor:pointer}
+/* 짝꿍매매 하단 카드 — 좌우 여백을 최소화해 카드 2개가 화면을 꽉 채우게 함 */
+.card.pair-outer{padding-left:6px;padding-right:6px}
+.card.pair-outer>h3{padding:0 9px}
+.pair-card{background:var(--surface);padding:11px 9px;min-width:0}
+.pair-card+.pair-card{border-left:1px solid var(--border)}
+.pair-card .ph{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:3px;padding:0 2px}
+.pair-card .ph .nm{font-size:15px;font-weight:700;cursor:pointer}
 .pair-card .ph .nm:hover{color:var(--up)}
-.pair-card .ph .cd{font-size:9.5px;color:var(--ink-3)}
-.pair-card .ph .px{margin-left:auto;font-size:13.5px;font-weight:700;letter-spacing:-.02em}
-.pair-card .pstat{font-size:9.5px;color:var(--ink-3);margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
-.pair-card .psec h5{font-size:9px;color:var(--ink-3);font-weight:650;letter-spacing:.03em;
-  margin:9px 0 3px;text-transform:uppercase}
+.pair-card .ph .px{margin-left:auto;font-size:15px;font-weight:730;letter-spacing:-.02em}
+.pair-card .pstat{font-size:10.5px;color:var(--ink-3);margin-bottom:8px;display:flex;gap:10px;
+  flex-wrap:wrap;padding:0 2px}
+.pair-card .psec{padding:0 2px}
+.pair-card .psec h5{font-size:10px;color:var(--ink-3);font-weight:650;letter-spacing:.03em;
+  margin:16px 0 5px;text-transform:uppercase}
 .pair-card .psec:first-of-type h5{margin-top:0}
-.pair-card .pbucket{font-size:10px;color:var(--ink-2);line-height:1.7}
-.pair-card table{font-size:9.5px}
-.pair-card td,.pair-card th{padding:3px 4px;white-space:nowrap}
+.pair-card .pbucket{font-size:10.5px;color:var(--ink-2);line-height:1.7}
+.pair-card table{font-size:10.5px}
+.pair-card td,.pair-card th{padding:5px 6px;white-space:nowrap}
 .pair-card th{position:static}
+.pair-card .pc-tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media(max-width:480px){
-  .pair-page{gap:6px}
-  .pair-card{padding:7px 7px}
-  .pair-card .ph .nm{font-size:11.5px}
-  .pair-card .ph .px{font-size:11.5px}
+  .card.pair-outer{padding-left:3px;padding-right:3px}
+  .pair-card{padding:9px 5px}
+  .pair-card .ph .nm{font-size:12.5px}
+  .pair-card .ph .px{font-size:12.5px}
+  .pc-arrow{width:18px}
 }
 
 .note{font-size:11.5px;color:var(--ink-3);margin-top:9px;line-height:1.6}
@@ -680,9 +690,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <tbody id="pairSecBody"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
-  <div class="card">
+  <div class="card pair-outer">
     <h3><span id="pairStockTitle">구성 종목</span>
-      <span class="r">당일 등락률 내림차순 4종목 · 2종목씩 스와이프</span></h3>
+      <span class="r">당일 등락률 내림차순 6종목 · 2종목씩 스와이프 · 아래로 스크롤하면 종목상세와 동일한 내용 전체</span></h3>
     <div class="pair-carousel-wrap">
       <button class="pc-arrow pc-prev" id="pairPrev" aria-label="이전">‹</button>
       <div class="pair-track" id="pairTrack"><div class="load">업종을 선택하세요</div></div>
@@ -1953,8 +1963,10 @@ $("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
 
 /* ══ 짝꿍매매 ══════════════════════════════════════════════════════
    시장매크로 STEP2의 "업종별 거래대금 TOP5"를 그대로 상단에 재사용하고,
-   업종을 고르면 그 구성 종목 중 당일 등락률 내림차순 4종목을 종목상세의
-   축소판 카드로 만들어 2종목씩 스와이프(가로 스크롤 스냅)로 보여줍니다. */
+   업종을 고르면 그 구성 종목 중 당일 등락률 내림차순 6종목을 종목상세와
+   동일한 내용(가격·이동평균, 무게/주식수, 거래량, 프로그램 누적, 매물대
+   2종, 투자자별 누적 순매수, 수급주체별 표, 주체별 미니차트 9개)을 그대로
+   담은 카드로 만들어 2종목씩 스와이프(가로 스크롤 스냅)로 보여줍니다. */
 async function loadPairSectors(){
   const rows=await q("v_sector_rank","select=*");
   // 정렬 기준과 무관하게 항상 "거래대금" 기준 상위5 — 시장매크로 STEP2 상단 표와 동일한 대상
@@ -1966,7 +1978,11 @@ async function loadPairSectors(){
       <td class="l rank">${i+1}</td><td class="l"><span class="nm">${s.sector}</span></td>
       ${SEC_COLS.map(c=>`<td class="${c.opt?"opt ":""}${c.cls?c.cls(s):""}">${c.fmt(s)}</td>`).join("")}
     </tr>`).join(""):'<tr><td colspan="8" class="load">데이터 없음</td></tr>';
+  // 헤더 클릭 시 내림차순/오름차순 토글 정렬 (다른 표들과 동일한 makeSortable 재사용).
+  // 행 클릭(data-sec)으로 업종을 고르는 동작과는 별개 — 정렬은 화면에 보이는 5개
+  // 행의 표시 순서만 바꾸고, 어떤 5개 업종이 뽑혔는지는 항상 거래대금 기준 그대로입니다.
   $$("#pairSecBody tr[data-sec]").forEach(tr=>tr.onclick=()=>selectPairSector(tr.dataset.sec));
+  makeSortable("pairSecBody");
   if(S.pairSectors.length){
     const keep=S.pairSector&&S.pairSectors.some(s=>s.sector===S.pairSector);
     await selectPairSector(keep?S.pairSector:S.pairSectors[0].sector);
@@ -1975,93 +1991,160 @@ async function loadPairSectors(){
 async function selectPairSector(sec){
   S.pairSector=sec;
   $$("#pairSecBody tr[data-sec]").forEach(t=>t.toggleAttribute("aria-selected",t.dataset.sec===sec));
-  $("#pairStockTitle").textContent=`${sec} · 당일 등락률 내림차순 4종목`;
+  $("#pairStockTitle").textContent=`${sec} · 당일 등락률 내림차순 6종목`;
   $("#pairTrack").innerHTML='<div class="load">불러오는 중…</div>';
   $("#pairDots").innerHTML="";
   const stocks=await q("v_sector_stocks",
-    `select=*&sector=eq.${encodeURIComponent(sec)}&trade_date=eq.${S.date}&order=change_pct.desc&limit=4`);
+    `select=*&sector=eq.${encodeURIComponent(sec)}&trade_date=eq.${S.date}&order=change_pct.desc&limit=6`);
   if(!stocks.length){$("#pairTrack").innerHTML='<div class="load">데이터 없음</div>';return;}
   await renderPairCards(stocks);
 }
-const PAIR_FLOW_COLS=["foreign","inst","individual","corp_other","program"];
-const PAIR_FLOW_LB={foreign:"외국인",inst:"기관",individual:"개인",corp_other:"기타",program:"프로그램"};
-const PAIR_FLOW_ROWS=["1m","1w","1d"];
-const PAIR_FLOW_ROW_LB={"1m":"1개월","1w":"1주","1d":"오늘"};
-// 카드 뼈대(페이지 2개씩)를 먼저 그려 캐러셀이 즉시 뜨게 하고, 종목별 데이터는
-// 병렬로 받아오는 대로 각 카드를 채웁니다.
+// 카드 뼈대(페이지 3개씩=6종목÷2)를 먼저 그려 캐러셀이 즉시 뜨게 하고, 종목별
+// 상세 데이터(v_stock_chart 전체 이력·v_stock_summary·v_stock_flow_periods)는
+// 병렬로 받아오는 대로 각 카드를 종목상세와 동일한 내용으로 채웁니다.
 async function renderPairCards(stocks){
   const pages=[];
   for(let i=0;i<stocks.length;i+=2)pages.push(stocks.slice(i,i+2));
   $("#pairTrack").innerHTML=pages.map(pg=>
-    `<div class="pair-page">${pg.map(s=>`<div class="pair-card" id="pc_${s.code}"></div>`).join("")}</div>`).join("");
+    `<div class="pair-page">${pg.map(s=>`<div class="pair-card" id="pc_${s.code}"><div class="load">불러오는 중…</div></div>`).join("")}</div>`).join("");
   setupPairCarouselNav(pages.length);
   await Promise.all(stocks.map(async s=>{
-    const [chartDesc,flowRows]=await Promise.all([
-      q("v_stock_chart",`select=*&code=eq.${s.code}&order=trade_date.desc&limit=60`),
-      q("v_stock_flow_periods",`select=*&code=eq.${s.code}`).catch(()=>[])
-    ]);
-    renderPairCard(s,chartDesc.slice().reverse(),flowRows[0]);
-  })).catch(()=>{});
+    try{
+      const [rows,sumArr,flowRows]=await Promise.all([
+        q("v_stock_chart",`select=*&code=eq.${s.code}&order=trade_date.asc`),
+        q("v_stock_summary",`select=*&code=eq.${s.code}`),
+        q("v_stock_flow_periods",`select=*&code=eq.${s.code}`).catch(()=>[])
+      ]);
+      renderPairCard(s.code,sumArr[0]||{},rows,flowRows[0]);
+    }catch(e){
+      const host=$("#pc_"+s.code);
+      if(host)host.innerHTML='<div class="load">불러오기 실패</div>';
+    }
+  }));
 }
-function renderPairCard(s,rows,flowRow){
-  const host=$("#pc_"+s.code);
+// 종목상세(loadDetail/renderRangeCharts)와 동일한 구성 — 가격·이동평균, 무게/주식수,
+// 거래량, 프로그램 누적, 매물대(개인·외국인+기관), 투자자별 누적 순매수, 수급주체별
+// 표(전 기간), 주체별 미니차트 9개까지 전부 담되, 카드가 실제 렌더링되는 폭(원본
+// 종목상세의 절반 가까이)에 맞춰 viewBox를 축소해 글자 크기가 과하게 작아지지
+// 않게 합니다.
+function renderPairCard(code,sum,rows,flowRow){
+  const host=$("#pc_"+code);
   if(!host)return;
+  if(!rows.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
+  const rp=rows.filter(r=>r.trade_date>=START_D);
+  const rpUse=rp.length?rp:rows;
+  const last=rpUse.at(-1);
+  const lb=rpUse.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
   host.innerHTML=`
-    <div class="ph"><span class="nm" data-code="${s.code}">${s.name}</span>
-      <span class="cd">${s.code}</span>
-      <span class="px num ${sgn(+s.change_pct)}">${N(+s.close,0)} <span style="font-size:10.5px">${pm(+s.change_pct,1)}%</span></span></div>
+    <div class="ph"><span class="nm" data-code="${code}">${sum.name||code}</span>
+      <span class="px num ${sgn(+last.change_pct)}">${N(+last.close,0)}
+        <span style="font-size:11px">${pm(+last.change_pct,1)}%</span></span></div>
     <div class="pstat">
-      <span>시총 ${s.market_cap!=null?N(+s.market_cap/JO,1)+"조":"–"}</span>
-      <span>거래대금 ${s.trade_amount!=null?N(+s.trade_amount/EOK,0)+"억":"–"}</span>
-      <span>거래량비 ${s.vol_ratio20_prev!=null?N(+s.vol_ratio20_prev,0)+"%":"–"}</span>
+      <span>시총 ${sum.market_cap!=null?N(+sum.market_cap/JO,1)+"조":"–"}</span>
+      <span>${sum.sector||"–"}</span>
+      <span>RS ${sum.sector_rs_rank?sum.sector_rs_rank+"위":"–"}</span>
     </div>
-    <div class="psec"><h5>가격 · MA20</h5><div class="chart" id="pcPrice_${s.code}"></div></div>
-    <div class="psec"><h5>거래량</h5><div class="chart" id="pcVol_${s.code}"></div></div>
-    <div class="psec"><h5>수급주체별 누적(최근60일)</h5>
-      <div class="legend" style="font-size:9px;gap:7px;margin-bottom:3px">
+    <div class="psec"><h5>가격 · 이동평균</h5><div class="chart" id="pcPrice_${code}"></div></div>
+    <div class="psec"><h5>무게/주식수</h5><div class="chart" id="pcWeight_${code}"></div></div>
+    <div class="psec"><h5>거래량</h5><div class="chart" id="pcVol_${code}"></div></div>
+    <div class="psec"><h5>프로그램 누적 순매수<span class="faint" style="font-size:9px;font-weight:400"> · 억원</span></h5>
+      <div class="chart" id="pcPgtr_${code}"></div></div>
+    <div class="psec"><h5>개인 매물대<span class="faint" style="font-size:9px;font-weight:400"> · 억원</span></h5>
+      <div class="chart" id="pcProfile_${code}"></div><div id="pcProfileTop_${code}"></div></div>
+    <div class="psec"><h5>외국인+기관 매물대<span class="faint" style="font-size:9px;font-weight:400"> · 억원</span></h5>
+      <div class="chart" id="pcProfileInst_${code}"></div><div id="pcProfileInstTop_${code}"></div></div>
+    <div class="psec"><h5>투자자별 누적 순매수<span class="faint" style="font-size:9px;font-weight:400"> · 억원</span></h5>
+      <div class="legend" style="font-size:10px;gap:9px;margin-bottom:5px">
         <span><i style="background:var(--s1)"></i>외국인</span>
         <span><i style="background:var(--s2)"></i>기관</span>
         <span><i style="background:var(--s3)"></i>개인</span>
-        <span><i style="background:var(--s4)"></i>기타</span>
+        <span><i style="background:var(--s4)"></i>기타법인</span>
       </div>
-      <div class="chart" id="pcFlow_${s.code}"></div></div>
-    <div class="psec"><h5>매물대 상위구간</h5><div class="pbucket" id="pcBucket_${s.code}"></div></div>
-    <div class="psec"><h5>수급 요약(억원)</h5><div class="tw" id="pcTable_${s.code}"></div></div>`;
-  host.querySelector(".nm").onclick=()=>{go("detail");loadDetail(s.code);};
-  if(!rows.length){
-    ["pcPrice_","pcVol_","pcFlow_"].forEach(p=>$("#"+p+s.code).innerHTML='<div class="load">데이터 없음</div>');
-    $("#pcBucket_"+s.code).innerHTML="–";
-    $("#pcTable_"+s.code).innerHTML='<div class="load" style="padding:10px">데이터 없음</div>';
-    return;
-  }
-  const lb=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
-  lineChart($("#pcPrice_"+s.code),[
-    {n:"종가",v:rows.map(r=>+r.close),c:"--ink"},
-    {n:"MA20",v:rows.map(r=>r.ma20?+r.ma20:null),c:"--mac2"}],
-    lb,{h:104,w:560,pr:40,pl:6,labelEnds:false,marks:"today-each",
-      fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원"});
-  volumeBars($("#pcVol_"+s.code),rows.map(r=>+r.volume),lb,
-    {h:52,w:560,pr:40,pl:6,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
-  const rb=rows[0];
-  const rcum=k=>rows.map(r=>(+r[k]-+rb[k])/EOK);
-  lineChart($("#pcFlow_"+s.code),[
+      <div class="chart" id="pcFlow4_${code}"></div></div>
+    <div class="psec"><h5>수급주체별 순매수 거래대금<span class="faint" style="font-size:9px;font-weight:400"> · 억원</span></h5>
+      <div class="tw pc-tw" id="pcFlowTable_${code}"></div></div>
+    <div class="psec"><h5>수급 주체별 누적(전 기간)</h5>
+      <div class="grid5" id="pcMinis_${code}"></div></div>`;
+  host.querySelector(".nm").onclick=()=>{go("detail");loadDetail(code);};
+
+  const maxClose=Math.max(...rpUse.map(r=>+r.close));
+  lineChart($("#pcPrice_"+code),[
+    {n:"종가",v:rpUse.map(r=>+r.close),c:"--ink"},
+    {n:"MA5",v:rpUse.map(r=>r.ma5?+r.ma5:null),c:"--mac1"},
+    {n:"MA20",v:rpUse.map(r=>r.ma20?+r.ma20:null),c:"--mac2"},
+    {n:"MA120",v:rpUse.map(r=>r.ma120?+r.ma120:null),c:"--mac3"}],
+    lb,{h:260,w:700,pr:40,pl:8,labelEnds:false,marks:true,monthTicks:true,
+      fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원",
+      refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
+  const wps=rpUse.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
+  volumeBars($("#pcWeight_"+code),wps,lb,
+    {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+  volumeBars($("#pcVol_"+code),rpUse.map(r=>+r.volume),lb,
+    {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+  const rb=rpUse[0];
+  const rpgtr=rpUse.map(r=>r.pgtr_cum!=null&&rb.pgtr_cum!=null?(+r.pgtr_cum-+rb.pgtr_cum)/EOK:null);
+  lineChart($("#pcPgtr_"+code),[{n:"프로그램",v:rpgtr,c:"--ma3"}],lb,
+    {h:160,w:700,pr:40,pl:8,zero:true,marks:"each",monthTicks:true,
+      fy:v=>N(v,0),fm:v=>pm(v,0)+"억",ft:v=>pm(v,0)+"억"});
+  const profIndiv=buildPriceProfile(rpUse,24,r=>+r.individual_net||0);
+  profileChart($("#pcProfile_"+code),profIndiv,
+    {h:300,w:700,pr:88,pl:60,fx:v=>N(v,0)+"억",hideNeg:true,subj:"개인 순매수"});
+  $("#pcProfileTop_"+code).innerHTML=topBucketsHtml(profIndiv,5,"개인");
+  const profInst=buildPriceProfile(rpUse,24,r=>(+r.foreign_net||0)+(+r.inst_net||0));
+  profileChart($("#pcProfileInst_"+code),profInst,
+    {h:300,w:700,pr:88,pl:60,fx:v=>N(v,0)+"억",hideNeg:true,subj:"외국인+기관 순매수"});
+  $("#pcProfileInstTop_"+code).innerHTML=topBucketsHtml(profInst,5,"외국인+기관");
+  const rcum=k=>rpUse.map(r=>(+r[k]-+rb[k])/EOK);
+  lineChart($("#pcFlow4_"+code),[
     {n:"외국인",v:rcum("foreign_cum"),c:"--s1"},
     {n:"기관",v:rcum("inst_cum"),c:"--s2"},
     {n:"개인",v:rcum("individual_cum"),c:"--s3"},
     {n:"기타법인",v:rcum("corp_other_cum"),c:"--s4"}],lb,
-    {h:104,w:560,pr:40,pl:6,zero:true,labelEnds:false,marks:"today-each",
-      fy:v=>N(v,0),fm:v=>pm(v,0)+"억",ft:v=>pm(v,0)+"억"});
-  const profIndiv=buildPriceProfile(rows,16,r=>+r.individual_net||0);
-  const profInst=buildPriceProfile(rows,16,r=>(+r.foreign_net||0)+(+r.inst_net||0));
-  const top1=arr=>{const b=arr.filter(x=>x.v>0).sort((a,c)=>c.v-a.v)[0];
-    return b?`${b.label} <span class="up">+${N(Math.round(b.v),0)}억</span>`:"–";};
-  $("#pcBucket_"+s.code).innerHTML=`개인 ${top1(profIndiv)}<br>외국인+기관 ${top1(profInst)}`;
-  const tbl=$("#pcTable_"+s.code);
-  if(!flowRow){tbl.innerHTML='<div class="load" style="padding:10px">데이터 없음</div>';return;}
-  tbl.innerHTML=`<table><thead><tr><th class="l">기간</th>${PAIR_FLOW_COLS.map(k=>`<th>${PAIR_FLOW_LB[k]}</th>`).join("")}</tr></thead>
-    <tbody>${PAIR_FLOW_ROWS.map(p=>`<tr><td class="l">${PAIR_FLOW_ROW_LB[p]}</td>${PAIR_FLOW_COLS.map(k=>{
-      const raw=flowRow[k+"_"+p];if(raw==null)return '<td class="dim">–</td>';
-      const v=+raw/EOK;return `<td class="${sgn(v)}">${pm(v,0)}</td>`;}).join("")}</tr>`).join("")}</tbody></table>`;
+    {h:240,w:700,pr:40,pl:8,zero:true,labelEnds:false,marks:"each",monthTicks:true,
+      fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+
+  // 수급주체별 순매수 거래대금 표 — 종목상세와 동일한 STOCK_FLOW_SUBJ_COLS·전체 기간
+  const ftbl=$("#pcFlowTable_"+code);
+  if(!flowRow){ftbl.innerHTML='<div class="load">데이터 없음</div>';}
+  else{
+    ftbl.innerHTML=`<table><thead><tr><th class="l">기간</th>${STOCK_FLOW_SUBJ_COLS.map(k=>
+      `<th title="${STOCK_FLOW_SUBJ[k]}">${STOCK_FLOW_SUBJ_SHORT[k]}</th>`).join("")}</tr></thead>
+      <tbody>${STOCK_FLOW_PERIOD_ROWS.map(p=>{
+        const cells=STOCK_FLOW_SUBJ_COLS.map(k=>{
+          const raw=flowRow[k+"_"+p];
+          if(raw==null)return '<td class="dim">–</td>';
+          const v=+raw/EOK;return `<td class="${sgn(v)}">${pm(v,0)}</td>`;
+        }).join("");
+        return `<tr><td class="l">${STOCK_FLOW_PERIOD[p]}</td>${cells}</tr>`;
+      }).join("")}</tbody></table>`;
+  }
+
+  // 수급 주체별 누적(전 기간) — 종목상세 dMinis와 동일한 9개 미니차트(상장 이후 전체)
+  const cum=k=>rows.map(r=>(+r[k]-+rows[0][k])/EOK);
+  const cumFg=cum("foreign_cum"), cumInst=cum("inst_cum");
+  const cumCombo=cumFg.map((v,i)=>v+cumInst[i]);
+  const kOf={"금융투자":"fin_inv_cum","투신":"inv_trust_cum","연기금":"pension_cum","사모":"pe_cum",
+    "개인":"individual_cum","기타법인":"corp_other_cum"};
+  const lastAll=rows.at(-1);
+  const minis=[
+    ["외국인+기관합계",cumCombo,cumCombo.at(-1)],
+    ["외국인",cumFg,cumFg.at(-1)],
+    ["기관합계",cumInst,cumInst.at(-1)],
+    ["금융투자",cum("fin_inv_cum"),null],
+    ["투신",cum("inv_trust_cum"),null],
+    ["연기금",cum("pension_cum"),null],
+    ["사모",cum("pe_cum"),null],
+    ["개인",cum("individual_cum"),null],
+    ["기타법인",cum("corp_other_cum"),null],
+  ];
+  minis.forEach(m=>{if(m[2]==null)m[2]=+lastAll[kOf[m[0]]]/EOK;});
+  const allLb=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
+  $("#pcMinis_"+code).innerHTML=minis.map(([n,,lastV],i)=>
+    `<div class="mini"><h4>${n}<span class="${sgn(lastV)}">${pm(lastV,0)}억</span></h4>
+      <div class="chart" id="pcMini_${code}_${i}"></div></div>`).join("");
+  minis.forEach(([n,arr],i)=>lineChart($("#pcMini_"+code+"_"+i),
+    [{n,v:arr,c:"--s1"}],allLb,{h:100,w:300,pr:8,pl:38,zero:true,labelEnds:false,
+      fy:v=>N(v,0),ft:v=>pm(v,0)+"억"}));
 }
 // 좌우 화살표·점 인디케이터 — 스와이프(스크롤 스냅)와 함께 페이지 위치를 동기화
 function setupPairCarouselNav(pageCount){
