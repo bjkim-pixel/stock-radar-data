@@ -281,7 +281,7 @@ def fetch_last_good_anchor(market, before_date_iso):
         return None
 
 
-def quarantine_outliers(raw_rows, threshold=0.25, seed_anchor=None):
+def quarantine_outliers(raw_rows, threshold=0.25, seed_anchor=None, min_recovery_run=10):
     """직전 '정상' 종가 대비 threshold(기본 25%) 넘게 튀는 행을 제거합니다.
     2026-05-29~06-09 구간에서 코스피가 8185→3280, 코스닥이 1104→2673으로 튄
     사고를 보면 KIS 응답 안에 며칠씩 이어지는 이상 구간이 통째로 섞여 나올 수
@@ -293,15 +293,61 @@ def quarantine_outliers(raw_rows, threshold=0.25, seed_anchor=None):
 
     seed_anchor(직전 정상 저장값)가 주어지면 raw_rows[0]도 그 값으로 먼저
     검증합니다 — 첫 행 자체가 오염돼 있으면 그걸 무조건 anchor로 받아들이던
-    예전 로직은 그 뒤 정상 행들을 전부 이상치로 오판해 지워버릴 수 있었습니다."""
-    cleaned = []
-    anchor = seed_anchor
-    dropped = []
+    예전 로직은 그 뒤 정상 행들을 전부 이상치로 오판해 지워버릴 수 있었습니다.
+
+    ⚠ 2026-08 자기잠금(deadlock) 사고: anchor 갱신 조건이 "anchor 대비 threshold
+    이내로 복귀"뿐이라, DB에 저장된 anchor 자체가 낡았는데(예: 그 사이 실제 지수가
+    threshold 이상 계속 상승/하락) raw_rows가 며칠이 지나도 그 낡은 anchor 근처로
+    "복귀"할 일이 없는 경우 — 즉 시장이 진짜로 그만큼 이동한 정상적인 상황 —
+    에는 매일 수집이 성공해도 index_close가 영원히 갱신되지 않는 사고로 이어집니다
+    (실제로 이 anchor 로직 도입 이후 KOSPI/KOSDAQ 지수가 특정 시점에 멈춰버림).
+    단발성 스파이크(며칠짜리 오염 구간)와 "진짜 시장이 그만큼 움직인 경우"를
+    구분하기 위해, raw_rows 자체의 최신 쪽부터 하루 단위 변동이 threshold 이내로
+    서로 자연스럽게 이어지는 '최근 연속 구간'을 먼저 찾습니다. 그 길이가
+    min_recovery_run(기본 10거래일, 약 2주) 이상이면 — 최근 2주 넘게 KIS가 내부적으로
+    앞뒤가 맞는 값을 계속 주고 있다는 뜻이므로 — 낡은 anchor와 얼마나 다르든 그
+    구간 전체를 그대로 채택하고 그 구간 시작점을 새 anchor로 삼아, 그보다 더 과거
+    구간에만 기존 anchor 비교 로직을 적용합니다. 반대로 최근 며칠만 튀고 다시
+    꺾이는 진짜 스파이크는 recovery 구간 길이가 짧아 이 경로를 타지 않고 기존처럼
+    걸러집니다."""
+    parsed = []
     for x in raw_rows:
         close = safe_float(x.get("bstp_nmix_prpr"))
         if close is None:
             continue
+        parsed.append((x, close))
+    if not parsed:
+        return [], []
+
+    # 뒤(최신)에서부터 훑으며 이웃끼리 threshold 이내로 자연스럽게 이어지는
+    # 연속 구간의 시작 인덱스(run_start)를 구합니다.
+    run_start = len(parsed) - 1
+    for i in range(len(parsed) - 1, 0, -1):
+        prev_close = parsed[i - 1][1]
+        cur_close = parsed[i][1]
+        if prev_close <= 0 or abs(cur_close - prev_close) / prev_close > threshold:
+            break
+        run_start = i - 1
+    recovery_len = len(parsed) - run_start
+    recovering = recovery_len >= min_recovery_run
+
+    cleaned = []
+    dropped = []
+    anchor = seed_anchor
+    if recovering and seed_anchor is not None and seed_anchor > 0:
+        recovery_first_close = parsed[run_start][1]
+        recovery_first_date = parsed[run_start][0]["stck_bsop_date"]
+        if abs(recovery_first_close - seed_anchor) / seed_anchor > threshold:
+            print(f"   ℹ anchor({seed_anchor:,.2f})와 무관하게 {recovery_first_date}부터 "
+                  f"최근 {recovery_len}행이 자체적으로 일관됨 — 실제 시장 이동으로 보고 "
+                  f"anchor를 이 구간 시작값으로 재설정")
+    for i, (x, close) in enumerate(parsed):
         date_iso = f"{x['stck_bsop_date'][:4]}-{x['stck_bsop_date'][4:6]}-{x['stck_bsop_date'][6:]}"
+        if recovering and i >= run_start:
+            # 최근 연속 구간은 anchor 비교 없이 그대로 채택.
+            cleaned.append(x)
+            anchor = close
+            continue
         if anchor is not None and anchor > 0 and abs(close - anchor) / anchor > threshold:
             dropped.append((date_iso, close, anchor))
             continue
