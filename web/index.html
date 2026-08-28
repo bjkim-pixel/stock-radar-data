@@ -1472,15 +1472,15 @@ async function loadFlowTrends(){
 }
 // 종목상세 · 이 종목의 수급주체별 순매수 거래대금 (시장 전체 표와 동일 구성, code 한정)
 const STOCK_FLOW_SUBJ={foreign:"외국인",inst:"기관합계",fin_inv:"금융투자",
-  inv_trust:"투신",pension:"연기금",pe:"사모",individual:"개인",program:"프로그램"};
+  inv_trust:"투신",pension:"연기금",pe:"사모",corp_other:"기타법인",individual:"개인",program:"프로그램"};
 const STOCK_FLOW_SUBJ_SHORT={foreign:"외국인",inst:"기관",fin_inv:"금투",
-  inv_trust:"투신",pension:"연금",pe:"사모",individual:"개인",program:"프로그램"};
-const STOCK_FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe","individual","program"];
+  inv_trust:"투신",pension:"연금",pe:"사모",corp_other:"기타",individual:"개인",program:"프로그램"};
+const STOCK_FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe","corp_other","individual","program"];
 const STOCK_FLOW_PERIOD={"1y":"1년","3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
 const STOCK_FLOW_PERIOD_ROWS=["1y","3m","2m","1m","2w","1w","1d"];
 async function loadStockFlowPeriods(code){
   const r=(await q("v_stock_flow_periods",`select=*&code=eq.${code}`))[0];
-  if(!r){$("#dFlowPeriodBody").innerHTML='<tr><td colspan="9" class="load">데이터 없음</td></tr>';return;}
+  if(!r){$("#dFlowPeriodBody").innerHTML='<tr><td colspan="10" class="load">데이터 없음</td></tr>';return;}
   S.dFlowPeriodRow=r;
   const isMob=window.innerWidth<=960;
   $("#dFlowPeriodHead").innerHTML=`<th class="l">기간</th>`+STOCK_FLOW_SUBJ_COLS.map(k=>
@@ -1805,7 +1805,7 @@ async function loadDetail(code){
   renderRangeCharts();
   S.dFlowPeriodSort=null;
   loadStockFlowPeriods(code).catch(()=>{
-    $("#dFlowPeriodBody").innerHTML='<tr><td colspan="9" class="load">조회 실패 (42_stock_flow_periods_program.sql 적용 여부 확인)</td></tr>';
+    $("#dFlowPeriodBody").innerHTML='<tr><td colspan="10" class="load">조회 실패 (42_stock_flow_periods_program.sql 적용 여부 확인)</td></tr>';
   });
   // 수급 주체별 누적(전 기간)
   const b=rows[0];
