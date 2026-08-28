@@ -1033,6 +1033,26 @@ function volumeBars(host,vals,labels,opt={}){
       tip.style.left=Math.min(rc.width-160,Math.max(0,X(i)/W*rc.width-40))+"px";tip.style.top="4px";});
     r.addEventListener("pointerleave",()=>tip.style.opacity=0);
     svg.appendChild(r);});
+  // opt.marks: 최고·최저·오늘 표시 (lineChart와 동일 스타일)
+  if(opt.marks){
+    const valid2=vals.map((v,i)=>({v,i})).filter(o=>o.v!=null&&!isNaN(o.v));
+    if(valid2.length){
+      const hi=valid2.reduce((a,b)=>b.v>a.v?b:a);
+      const lo=valid2.reduce((a,b)=>b.v<a.v?b:a);
+      const todayI=vals.length-1;
+      [[hi.i,"최고",css("--up")],[lo.i,"최저",css("--down")],[todayI,"오늘",css("--ink")]].forEach(([i,lb,c])=>{
+        if(i<0||vals[i]==null)return;
+        const cx=X(i),cy=Y(vals[i]);
+        svg.appendChild(el("circle",{cx,cy,r:4.5,fill:c,stroke:css("--surface"),"stroke-width":2}));
+        const ta=i>labels.length*0.8?"end":"start";
+        const t=el("text",{x:cx+(ta==="end"?-8:8),y:cy-10,"text-anchor":ta,
+          "font-size":10.5,"font-weight":700,fill:c,
+          stroke:css("--surface"),"stroke-width":3.5,"paint-order":"stroke"});
+        const dateSuffix=lb!=="오늘"?` (${labels[i]})`:"";
+        const fmtV=opt.fm?opt.fm(vals[i]):opt.ft?opt.ft(vals[i]):N(vals[i]);
+        t.textContent=`${lb} ${fmtV}${dateSuffix}`;svg.appendChild(t);});
+    }
+  }
   // opt.refLine: 기준선 (MA20 등) — 점선으로 표시
   if(opt.refLine!=null){const ry=Y(opt.refLine);
     svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:ry,y2:ry,
@@ -1172,7 +1192,7 @@ function go(v){
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
   ["proc","flow","scr","detail","perf"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   scrollTo(0,0);
-  if(v==="detail"&&!S.chart.code)loadDetail(S.codes[0]?.code);
+  if(v==="detail"&&!S.chart.code)loadDetail((S.codes.find(c=>c.code==="000660")||S.codes[0])?.code);
   if(v==="perf")loadPerf();
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
     Promise.all([loadFlowTrends(),loadFlowLists()]).catch(()=>{});}
@@ -1848,9 +1868,9 @@ function renderRangeCharts(){
   $("#dProfileInstTop").innerHTML=topBucketsHtml(profInst,5,"외국인+기관");
   const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
   volumeBars($("#dWeight"),wps,rlb,
-    {h:450,w:1180,pr:66,monthTicks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+    {h:450,w:1180,pr:66,monthTicks:true,marks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
-    {h:450,w:1180,pr:66,monthTicks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+    {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rp[0];
   // 프로그램도 다른 수급주체와 동일하게 "선택 구간 시작 대비 누적"으로 표시
   // (rcum과 같은 방식 — v_stock_chart.pgtr_cum은 상장 이후 전체 누적이라
@@ -1865,7 +1885,7 @@ function renderRangeCharts(){
     {n:"기관",v:rcum("inst_cum"),c:"--s2"},
     {n:"개인",v:rcum("individual_cum"),c:"--s3"},
     {n:"기타법인",v:rcum("corp_other_cum"),c:"--s4"}],rlb,
-    {h:450,w:1180,pr:66,zero:true,marks:"today-each",monthTicks:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+    {h:450,w:1180,pr:66,zero:true,marks:"each",monthTicks:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 $("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
