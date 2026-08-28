@@ -659,6 +659,20 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="note">● 표시는 <span id="dPriceRange">2025-09-01~오늘</span> 구간 <b>최고가 · 최저가 · 오늘 종가</b>입니다.</div>
   </div>
 
+  <div class="card"><h3>무게/주식수 <span class="r" style="font-weight:400;font-size:11px">외+기관 순매수 ÷ 주식수 · 양수=자금유입</span></h3>
+    <div class="chart" id="dWeight"></div>
+  </div>
+
+  <div class="card"><h3>거래량<span class="r" id="dVolRange">2025-09-01~오늘</span></h3>
+    <div class="chart" id="dVolume"></div>
+  </div>
+
+  <div class="card"><h3>프로그램 누적 순매수<span class="r" id="dPgtrRange">2025-09-01~오늘 · 억원</span></h3>
+    <div class="legend">
+      <span><i style="background:var(--ma3)"></i>프로그램</span></div>
+    <div class="chart" id="dPgtr"></div>
+  </div>
+
   <div class="card"><h3>개인 매물대<span class="r" id="dProfileRange">2025-09-01~오늘 · 억원</span></h3>
     <div class="legend">
       <span><i style="background:var(--up)"></i>순매수 구간</span></div>
@@ -676,20 +690,6 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="note">위와 같은 방식으로, <b>외국인+기관합계 순매수 거래대금</b>을 가격대별로 합산한 매물대입니다
       (순매도 가격대는 표시하지 않습니다). 굵게 표시된 가격대가 <b>현재가</b> 구간입니다.</div>
     <div id="dProfileInstTop"></div>
-  </div>
-
-  <div class="card"><h3>무게/주식수 <span class="r" style="font-weight:400;font-size:11px">외+기관 순매수 ÷ 주식수 · 양수=자금유입</span></h3>
-    <div class="chart" id="dWeight"></div>
-  </div>
-
-  <div class="card"><h3>거래량<span class="r" id="dVolRange">2025-09-01~오늘</span></h3>
-    <div class="chart" id="dVolume"></div>
-  </div>
-
-  <div class="card"><h3>프로그램 누적 순매수<span class="r" id="dPgtrRange">2025-09-01~오늘 · 억원</span></h3>
-    <div class="legend">
-      <span><i style="background:var(--ma3)"></i>프로그램</span></div>
-    <div class="chart" id="dPgtr"></div>
   </div>
 
   <div class="card"><h3>투자자별 누적 순매수<span class="r" id="dFlowRange">2025-09-01~오늘 · 억원</span></h3>
