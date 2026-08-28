@@ -1,0 +1,56 @@
+name: Sector Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      refresh_kis:
+        description: 'KIS 주식기본조회로 sector_kis/sector_kis_lcls를 새로 갱신할지 (약 300종목, 1~2분 소요)'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install psycopg2-binary requests
+
+      - name: Refresh sector_kis (KIS 주식기본조회)
+        if: ${{ github.event.inputs.refresh_kis == 'true' }}
+        env:
+          KIS_APP_KEY:     ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 21_sector_kis_refresh.py
+
+      - name: Export sector snapshot CSV
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 44_sector_snapshot_export.py reports/sector_snapshot.csv
+
+      - name: Commit snapshot
+        run: |
+          mkdir -p reports
+          git config user.name "stock-radar-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add reports/sector_snapshot.csv
+          if git diff --cached --quiet; then
+            echo "변경 없음 — 커밋 생략"
+          else
+            git commit -m "업종 분류 스냅샷 갱신 ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+            git push
+          fi
