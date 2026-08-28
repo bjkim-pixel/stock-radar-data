@@ -1898,13 +1898,13 @@ async function loadDetail(code){
   const cumCombo=cumFg.map((v,i)=>v+cumInst[i]);
   const minis=[
     ["외국인+기관합계",cumCombo,cumCombo.at(-1)],
+    ["개인",cum("individual_cum"),null],
     ["외국인",cumFg,cumFg.at(-1)],
     ["기관합계",cumInst,cumInst.at(-1)],
     ["금융투자",cum("fin_inv_cum"),null],
     ["투신",cum("inv_trust_cum"),null],
     ["연기금",cum("pension_cum"),null],
     ["사모",cum("pe_cum"),null],
-    ["개인",cum("individual_cum"),null],
     ["기타법인",cum("corp_other_cum"),null],
   ];
   const kOf={"금융투자":"fin_inv_cum","투신":"inv_trust_cum","연기금":"pension_cum","사모":"pe_cum",
