@@ -2181,13 +2181,13 @@ function renderPairCard(code,sum,rows,flowRow){
   const lastAll=rows.at(-1);
   const minis=[
     ["외국인+기관합계",cumCombo,cumCombo.at(-1)],
+    ["개인",cum("individual_cum"),null],
     ["외국인",cumFg,cumFg.at(-1)],
     ["기관합계",cumInst,cumInst.at(-1)],
     ["금융투자",cum("fin_inv_cum"),null],
     ["투신",cum("inv_trust_cum"),null],
     ["연기금",cum("pension_cum"),null],
     ["사모",cum("pe_cum"),null],
-    ["개인",cum("individual_cum"),null],
     ["기타법인",cum("corp_other_cum"),null],
   ];
   minis.forEach(m=>{if(m[2]==null)m[2]=+lastAll[kOf[m[0]]]/EOK;});
