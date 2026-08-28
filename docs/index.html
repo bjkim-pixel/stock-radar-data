@@ -692,7 +692,21 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
   <div class="card pair-outer">
     <h3><span id="pairStockTitle">구성 종목</span>
-      <span class="r">당일 등락률 내림차순 6종목 · 2종목씩 스와이프 · 아래로 스크롤하면 종목상세와 동일한 내용 전체</span></h3>
+      <span class="r">상위 6종목 내림차순 · 2종목씩 스와이프 · 아래로 스크롤하면 종목상세와 동일한 내용 전체</span></h3>
+    <div style="display:flex;align-items:center;gap:8px;padding:0 9px 10px;flex-wrap:wrap">
+      <span class="faint" style="font-size:11px">정렬 기준</span>
+      <select id="pairStockSort" style="width:auto;font-size:12px;padding:3px 6px">
+        <option value="change_pct" selected>등락률</option>
+        <option value="weight_per_share">무게/주식수</option>
+        <option value="market_cap">시가총액</option>
+        <option value="trade_amount">거래대금</option>
+        <option value="foreign_net">외국인 순매수</option>
+        <option value="inst_net">기관 순매수</option>
+        <option value="consec_both_buy">연속 양매수일</option>
+        <option value="vol_ratio20_prev">거래량비</option>
+      </select>
+      <span class="faint" style="font-size:11px">내림차순</span>
+    </div>
     <div class="pair-carousel-wrap">
       <div class="pair-track" id="pairTrack"><div class="load">업종을 선택하세요</div></div>
     </div>
@@ -857,7 +871,8 @@ async function loadDataStatus(){
 }
 
 /* ── 상태 ────────────────────────────────────────────────────────────── */
-const S={date:null,sectors:[],sector:null,stocks:[],market:[],flowCache:{},chart:{},codes:[]};
+const S={date:null,sectors:[],sector:null,stocks:[],market:[],flowCache:{},chart:{},codes:[],
+  pairStockSort:"change_pct"};
 
 /* ══ 테이블 정렬 ═══════════════════════════════════════════════════ */
 function sortVal(txt){
@@ -2000,21 +2015,33 @@ function renderPairSectors(){
 async function loadPairSectors(){
   S.pairSectorRows=await q("v_sector_rank","select=*");
   renderPairSectors();
+  // 종목 정렬 기준 셀렉트 이벤트 — 최초 1회만 등록
+  const pss=$("#pairStockSort");
+  if(pss&&!pss._bound){
+    pss._bound=true;
+    pss.value=S.pairStockSort;
+    pss.onchange=()=>{S.pairStockSort=pss.value;if(S.pairSector)selectPairSector(S.pairSector);};
+  }
   if(S.pairSectorRows.length){
     const sortedTop=[...S.pairSectorRows].sort((a,b)=>(+b[S.pairSecSort]||-Infinity)-(+a[S.pairSecSort]||-Infinity));
     const keep=S.pairSector&&S.pairSectorRows.some(s=>s.sector===S.pairSector);
     await selectPairSector(keep?S.pairSector:sortedTop[0].sector);
   }
 }
+const PAIR_SORT_LABEL={change_pct:"등락률",weight_per_share:"무게/주식수",market_cap:"시가총액",
+  trade_amount:"거래대금",foreign_net:"외국인 순매수",inst_net:"기관 순매수",
+  consec_both_buy:"연속 양매수일",vol_ratio20_prev:"거래량비"};
 async function selectPairSector(sec){
   S.pairSector=sec;
   $$("#pairSecBodyTop tr[data-sec],#pairSecBodyBot tr[data-sec]").forEach(t=>
     t.toggleAttribute("aria-selected",t.dataset.sec===sec));
-  $("#pairStockTitle").textContent=`${sec} · 당일 등락률 내림차순 6종목`;
+  const sortLbl=PAIR_SORT_LABEL[S.pairStockSort]||S.pairStockSort;
+  $("#pairStockTitle").textContent=`${sec} · ${sortLbl} 내림차순 6종목`;
   $("#pairTrack").innerHTML='<div class="load">불러오는 중…</div>';
   $("#pairDots").innerHTML="";
-  const stocks=await q("v_sector_stocks",
-    `select=*&sector=eq.${encodeURIComponent(sec)}&trade_date=eq.${S.date}&order=change_pct.desc&limit=6`);
+  // v_screener 사용 — 외국인/기관 순매수 기준 정렬 지원
+  const stocks=await q("v_screener",
+    `select=*&sector=eq.${encodeURIComponent(sec)}&trade_date=eq.${S.date}&order=${S.pairStockSort}.desc.nullslast&limit=6`);
   if(!stocks.length){$("#pairTrack").innerHTML='<div class="load">데이터 없음</div>';return;}
   await renderPairCards(stocks);
 }
