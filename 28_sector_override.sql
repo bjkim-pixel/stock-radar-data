@@ -37,6 +37,15 @@ comment on table sector_override is
   'sector_krx가 체감과 다른 종목의 수동 보정. sector_krx 원본은 유지하고, '
   '화면/집계에 노출되는 sector 값만 여기 있으면 이 값으로 덮어씁니다.';
 
+-- 01_schema.sql의 다른 테이블들과 동일하게 anon(브라우저)이 읽을 수 있어야
+-- v_stock_sector(security_invoker=true) 체인 전체가 정상 동작합니다.
+-- 이게 빠지면 브라우저 화면(v_screener 등)에서만 sector_krx로 조용히
+-- fallback되는 문제가 생깁니다(47_sector_override_rls_fix.sql 참고).
+alter table sector_override enable row level security;
+drop policy if exists "public read" on sector_override;
+create policy "public read" on sector_override for select using (true);
+grant select on sector_override to anon, authenticated;
+
 -- ── 종목별 "표시용 업종" 단일 소스 ───────────────────────────────────────────
 -- 05_metrics.sql / 06_signals.sql / 화면 뷰가 전부 이 뷰 하나만 참조하도록
 -- 통일해서, sector_krx를 참조하는 곳이 늘어나도 보정이 누락되지 않게 합니다.
