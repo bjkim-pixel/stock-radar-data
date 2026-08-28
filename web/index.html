@@ -201,6 +201,44 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   display:flex;justify-content:space-between}
 .mini h4 span{font-weight:640}
 
+/* 짝꿍매매 — 업종 구성종목을 2개씩 스와이프로 보여주는 압축 카드 캐러셀 */
+.pair-carousel-wrap{position:relative;display:flex;align-items:stretch;gap:6px}
+.pair-track{flex:1;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;border-radius:var(--r)}
+.pair-track::-webkit-scrollbar{display:none}
+.pair-page{flex:0 0 100%;scroll-snap-align:start;display:grid;
+  grid-template-columns:1fr 1fr;gap:10px}
+.pc-arrow{flex:none;align-self:center;width:30px;height:44px;border-radius:8px;
+  border:1px solid var(--border);background:var(--surface);color:var(--ink-2);
+  font-size:17px;cursor:pointer;font-family:inherit}
+.pc-arrow:hover{background:var(--surface-2);color:var(--ink)}
+.pc-arrow:disabled{opacity:.35;cursor:default;pointer-events:none}
+.pair-dots{display:flex;justify-content:center;gap:6px;margin-top:10px}
+.pair-dots .d{width:6px;height:6px;border-radius:50%;background:var(--surface-3);
+  border:none;cursor:pointer;padding:0}
+.pair-dots .d[aria-current=true]{background:var(--ink);width:16px;border-radius:4px}
+.pair-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);
+  padding:10px 11px;min-width:0}
+.pair-card .ph{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin-bottom:2px}
+.pair-card .ph .nm{font-size:13px;font-weight:680;cursor:pointer}
+.pair-card .ph .nm:hover{color:var(--up)}
+.pair-card .ph .cd{font-size:9.5px;color:var(--ink-3)}
+.pair-card .ph .px{margin-left:auto;font-size:13.5px;font-weight:700;letter-spacing:-.02em}
+.pair-card .pstat{font-size:9.5px;color:var(--ink-3);margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
+.pair-card .psec h5{font-size:9px;color:var(--ink-3);font-weight:650;letter-spacing:.03em;
+  margin:9px 0 3px;text-transform:uppercase}
+.pair-card .psec:first-of-type h5{margin-top:0}
+.pair-card .pbucket{font-size:10px;color:var(--ink-2);line-height:1.7}
+.pair-card table{font-size:9.5px}
+.pair-card td,.pair-card th{padding:3px 4px;white-space:nowrap}
+.pair-card th{position:static}
+@media(max-width:480px){
+  .pair-page{gap:6px}
+  .pair-card{padding:7px 7px}
+  .pair-card .ph .nm{font-size:11.5px}
+  .pair-card .ph .px{font-size:11.5px}
+}
+
 .note{font-size:11.5px;color:var(--ink-3);margin-top:9px;line-height:1.6}
 .bar-top{font-size:11.5px;padding:7px 20px;text-align:center;color:var(--ink-2);
   border-bottom:1px solid var(--border)}
@@ -307,6 +345,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <button aria-selected="true" data-v="proc">시장 매크로</button>
     <button data-v="flow">수급 동향</button>
     <button data-v="scr">종목 후보</button>
+    <button data-v="pair">짝꿍매매</button>
     <button data-v="detail">종목 상세</button>
     <button data-v="perf">전략 성과</button>
   </nav>
@@ -629,6 +668,27 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th>
       <th class="grp opt">프로그램</th>
     </tr></thead><tbody id="scrBody"><tr><td colspan="24" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
+  </div>
+</section>
+
+
+<!-- ═══════════ 짝꿍매매 ═══════════ -->
+<section id="v-pair" class="hide">
+  <div class="card" style="margin-top:16px"><h3>업종별 거래대금 TOP5
+    <span class="r">항상 거래대금 기준 · 행 클릭 = 그 업종 구성종목 보기</span></h3>
+    <div class="tw"><table><thead><tr id="pairSecHead"></tr></thead>
+      <tbody id="pairSecBody"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <h3><span id="pairStockTitle">구성 종목</span>
+      <span class="r">당일 등락률 내림차순 4종목 · 2종목씩 스와이프</span></h3>
+    <div class="pair-carousel-wrap">
+      <button class="pc-arrow pc-prev" id="pairPrev" aria-label="이전">‹</button>
+      <div class="pair-track" id="pairTrack"><div class="load">업종을 선택하세요</div></div>
+      <button class="pc-arrow pc-next" id="pairNext" aria-label="다음">›</button>
+    </div>
+    <div class="pair-dots" id="pairDots"></div>
   </div>
 </section>
 
@@ -1190,12 +1250,13 @@ function go(v){
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
   if(cur&&cur!==v)S.prevView=cur;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
-  ["proc","flow","scr","detail","perf"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","flow","scr","pair","detail","perf"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   scrollTo(0,0);
   if(v==="detail"&&!S.chart.code)loadDetail((S.codes.find(c=>c.code==="000660")||S.codes[0])?.code);
   if(v==="perf")loadPerf();
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
     Promise.all([loadFlowTrends(),loadFlowLists()]).catch(()=>{});}
+  if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
   redraw();
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
@@ -1889,6 +1950,139 @@ function renderRangeCharts(){
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 $("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
+
+/* ══ 짝꿍매매 ══════════════════════════════════════════════════════
+   시장매크로 STEP2의 "업종별 거래대금 TOP5"를 그대로 상단에 재사용하고,
+   업종을 고르면 그 구성 종목 중 당일 등락률 내림차순 4종목을 종목상세의
+   축소판 카드로 만들어 2종목씩 스와이프(가로 스크롤 스냅)로 보여줍니다. */
+async function loadPairSectors(){
+  const rows=await q("v_sector_rank","select=*");
+  // 정렬 기준과 무관하게 항상 "거래대금" 기준 상위5 — 시장매크로 STEP2 상단 표와 동일한 대상
+  S.pairSectors=[...rows].sort((a,b)=>(+b.total_amount||0)-(+a.total_amount||0)).slice(0,5);
+  $("#pairSecHead").innerHTML=`<th class="l">#</th><th class="l">업종</th>`+
+    SEC_COLS.map(c=>`<th class="${c.opt?"opt ":""}">${c.l}</th>`).join("");
+  $("#pairSecBody").innerHTML=S.pairSectors.length?S.pairSectors.map((s,i)=>`
+    <tr class="clk" data-sec="${s.sector}" ${S.pairSector===s.sector?'aria-selected="true"':''}>
+      <td class="l rank">${i+1}</td><td class="l"><span class="nm">${s.sector}</span></td>
+      ${SEC_COLS.map(c=>`<td class="${c.opt?"opt ":""}${c.cls?c.cls(s):""}">${c.fmt(s)}</td>`).join("")}
+    </tr>`).join(""):'<tr><td colspan="8" class="load">데이터 없음</td></tr>';
+  $$("#pairSecBody tr[data-sec]").forEach(tr=>tr.onclick=()=>selectPairSector(tr.dataset.sec));
+  if(S.pairSectors.length){
+    const keep=S.pairSector&&S.pairSectors.some(s=>s.sector===S.pairSector);
+    await selectPairSector(keep?S.pairSector:S.pairSectors[0].sector);
+  }
+}
+async function selectPairSector(sec){
+  S.pairSector=sec;
+  $$("#pairSecBody tr[data-sec]").forEach(t=>t.toggleAttribute("aria-selected",t.dataset.sec===sec));
+  $("#pairStockTitle").textContent=`${sec} · 당일 등락률 내림차순 4종목`;
+  $("#pairTrack").innerHTML='<div class="load">불러오는 중…</div>';
+  $("#pairDots").innerHTML="";
+  const stocks=await q("v_sector_stocks",
+    `select=*&sector=eq.${encodeURIComponent(sec)}&trade_date=eq.${S.date}&order=change_pct.desc&limit=4`);
+  if(!stocks.length){$("#pairTrack").innerHTML='<div class="load">데이터 없음</div>';return;}
+  await renderPairCards(stocks);
+}
+const PAIR_FLOW_COLS=["foreign","inst","individual","corp_other","program"];
+const PAIR_FLOW_LB={foreign:"외국인",inst:"기관",individual:"개인",corp_other:"기타",program:"프로그램"};
+const PAIR_FLOW_ROWS=["1m","1w","1d"];
+const PAIR_FLOW_ROW_LB={"1m":"1개월","1w":"1주","1d":"오늘"};
+// 카드 뼈대(페이지 2개씩)를 먼저 그려 캐러셀이 즉시 뜨게 하고, 종목별 데이터는
+// 병렬로 받아오는 대로 각 카드를 채웁니다.
+async function renderPairCards(stocks){
+  const pages=[];
+  for(let i=0;i<stocks.length;i+=2)pages.push(stocks.slice(i,i+2));
+  $("#pairTrack").innerHTML=pages.map(pg=>
+    `<div class="pair-page">${pg.map(s=>`<div class="pair-card" id="pc_${s.code}"></div>`).join("")}</div>`).join("");
+  setupPairCarouselNav(pages.length);
+  await Promise.all(stocks.map(async s=>{
+    const [chartDesc,flowRows]=await Promise.all([
+      q("v_stock_chart",`select=*&code=eq.${s.code}&order=trade_date.desc&limit=60`),
+      q("v_stock_flow_periods",`select=*&code=eq.${s.code}`).catch(()=>[])
+    ]);
+    renderPairCard(s,chartDesc.slice().reverse(),flowRows[0]);
+  })).catch(()=>{});
+}
+function renderPairCard(s,rows,flowRow){
+  const host=$("#pc_"+s.code);
+  if(!host)return;
+  host.innerHTML=`
+    <div class="ph"><span class="nm" data-code="${s.code}">${s.name}</span>
+      <span class="cd">${s.code}</span>
+      <span class="px num ${sgn(+s.change_pct)}">${N(+s.close,0)} <span style="font-size:10.5px">${pm(+s.change_pct,1)}%</span></span></div>
+    <div class="pstat">
+      <span>시총 ${s.market_cap!=null?N(+s.market_cap/JO,1)+"조":"–"}</span>
+      <span>거래대금 ${s.trade_amount!=null?N(+s.trade_amount/EOK,0)+"억":"–"}</span>
+      <span>거래량비 ${s.vol_ratio20_prev!=null?N(+s.vol_ratio20_prev,0)+"%":"–"}</span>
+    </div>
+    <div class="psec"><h5>가격 · MA20</h5><div class="chart" id="pcPrice_${s.code}"></div></div>
+    <div class="psec"><h5>거래량</h5><div class="chart" id="pcVol_${s.code}"></div></div>
+    <div class="psec"><h5>수급주체별 누적(최근60일)</h5>
+      <div class="legend" style="font-size:9px;gap:7px;margin-bottom:3px">
+        <span><i style="background:var(--s1)"></i>외국인</span>
+        <span><i style="background:var(--s2)"></i>기관</span>
+        <span><i style="background:var(--s3)"></i>개인</span>
+        <span><i style="background:var(--s4)"></i>기타</span>
+      </div>
+      <div class="chart" id="pcFlow_${s.code}"></div></div>
+    <div class="psec"><h5>매물대 상위구간</h5><div class="pbucket" id="pcBucket_${s.code}"></div></div>
+    <div class="psec"><h5>수급 요약(억원)</h5><div class="tw" id="pcTable_${s.code}"></div></div>`;
+  host.querySelector(".nm").onclick=()=>{go("detail");loadDetail(s.code);};
+  if(!rows.length){
+    ["pcPrice_","pcVol_","pcFlow_"].forEach(p=>$("#"+p+s.code).innerHTML='<div class="load">데이터 없음</div>');
+    $("#pcBucket_"+s.code).innerHTML="–";
+    $("#pcTable_"+s.code).innerHTML='<div class="load" style="padding:10px">데이터 없음</div>';
+    return;
+  }
+  const lb=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
+  lineChart($("#pcPrice_"+s.code),[
+    {n:"종가",v:rows.map(r=>+r.close),c:"--ink"},
+    {n:"MA20",v:rows.map(r=>r.ma20?+r.ma20:null),c:"--mac2"}],
+    lb,{h:104,w:560,pr:40,pl:6,labelEnds:false,marks:"today-each",
+      fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원"});
+  volumeBars($("#pcVol_"+s.code),rows.map(r=>+r.volume),lb,
+    {h:52,w:560,pr:40,pl:6,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+  const rb=rows[0];
+  const rcum=k=>rows.map(r=>(+r[k]-+rb[k])/EOK);
+  lineChart($("#pcFlow_"+s.code),[
+    {n:"외국인",v:rcum("foreign_cum"),c:"--s1"},
+    {n:"기관",v:rcum("inst_cum"),c:"--s2"},
+    {n:"개인",v:rcum("individual_cum"),c:"--s3"},
+    {n:"기타법인",v:rcum("corp_other_cum"),c:"--s4"}],lb,
+    {h:104,w:560,pr:40,pl:6,zero:true,labelEnds:false,marks:"today-each",
+      fy:v=>N(v,0),fm:v=>pm(v,0)+"억",ft:v=>pm(v,0)+"억"});
+  const profIndiv=buildPriceProfile(rows,16,r=>+r.individual_net||0);
+  const profInst=buildPriceProfile(rows,16,r=>(+r.foreign_net||0)+(+r.inst_net||0));
+  const top1=arr=>{const b=arr.filter(x=>x.v>0).sort((a,c)=>c.v-a.v)[0];
+    return b?`${b.label} <span class="up">+${N(Math.round(b.v),0)}억</span>`:"–";};
+  $("#pcBucket_"+s.code).innerHTML=`개인 ${top1(profIndiv)}<br>외국인+기관 ${top1(profInst)}`;
+  const tbl=$("#pcTable_"+s.code);
+  if(!flowRow){tbl.innerHTML='<div class="load" style="padding:10px">데이터 없음</div>';return;}
+  tbl.innerHTML=`<table><thead><tr><th class="l">기간</th>${PAIR_FLOW_COLS.map(k=>`<th>${PAIR_FLOW_LB[k]}</th>`).join("")}</tr></thead>
+    <tbody>${PAIR_FLOW_ROWS.map(p=>`<tr><td class="l">${PAIR_FLOW_ROW_LB[p]}</td>${PAIR_FLOW_COLS.map(k=>{
+      const raw=flowRow[k+"_"+p];if(raw==null)return '<td class="dim">–</td>';
+      const v=+raw/EOK;return `<td class="${sgn(v)}">${pm(v,0)}</td>`;}).join("")}</tr>`).join("")}</tbody></table>`;
+}
+// 좌우 화살표·점 인디케이터 — 스와이프(스크롤 스냅)와 함께 페이지 위치를 동기화
+function setupPairCarouselNav(pageCount){
+  const track=$("#pairTrack");
+  $("#pairDots").innerHTML=Array.from({length:pageCount},(_,i)=>
+    `<button class="d" data-i="${i}" ${i===0?'aria-current="true"':''}></button>`).join("");
+  const dots=$$("#pairDots .d");
+  const curPage=()=>Math.round(track.scrollLeft/Math.max(1,track.clientWidth));
+  const goPage=i=>track.scrollTo({left:i*track.clientWidth,behavior:"smooth"});
+  dots.forEach(d=>d.onclick=()=>goPage(+d.dataset.i));
+  const update=()=>{
+    const i=curPage();
+    dots.forEach((d,di)=>d.toggleAttribute("aria-current",di===i));
+    $("#pairPrev").disabled=i<=0;
+    $("#pairNext").disabled=i>=pageCount-1;
+  };
+  track.onscroll=()=>requestAnimationFrame(update);
+  $("#pairPrev").onclick=()=>goPage(Math.max(0,curPage()-1));
+  $("#pairNext").onclick=()=>goPage(Math.min(pageCount-1,curPage()+1));
+  update();
+}
 
 /* ══ 전략 성과 ══ */
 async function loadPerf(){
