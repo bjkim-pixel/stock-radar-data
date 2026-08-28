@@ -202,44 +202,46 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .mini h4 span{font-weight:640}
 
 /* 짝꿍매매 — 업종 구성종목을 2개씩 스와이프로 보여주는 카드 캐러셀.
-   카드는 종목상세와 동일한 내용을 전부 담으므로 세로로 길고, 페이지 전체
-   스크롤로 내려보게 합니다(카드 내부에 별도 스크롤 박스를 두지 않음).
-   좌우 이동 버튼은 없고 스와이프(가로 스크롤 스냅)로만 페이지를 넘기며,
-   그만큼 확보된 폭을 카드 2개에 그대로 씁니다. */
+   종목마다 감싸는 카드 하나를 통째로 쌓지 않고, "항목(가격차트, 거래량…)"
+   단위로 종목A·종목B 셀을 같은 그리드 행에 나란히 배치합니다 — CSS grid는
+   기본적으로 한 행의 모든 셀을 그 행에서 가장 큰 셀 높이에 맞춰 늘리므로,
+   종목명 길이나 데이터 양이 달라도 같은 항목끼리는 항상 같은 높이·같은
+   줄에서 나란히 비교됩니다. 세로로 길어지는 만큼 페이지 전체 스크롤로
+   내려보게 하고(셀 내부에 별도 스크롤 박스 없음), 좌우 이동 버튼 없이
+   스와이프(가로 스크롤 스냅)만으로 페이지를 넘겨 그만큼 확보된 폭을 셀
+   너비에 그대로 씁니다. */
 .pair-track{width:100%;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
   -webkit-overflow-scrolling:touch;scrollbar-width:none;border-radius:var(--r)}
 .pair-track::-webkit-scrollbar{display:none}
 .pair-page{flex:0 0 100%;scroll-snap-align:start;display:grid;
-  grid-template-columns:1fr 1fr;gap:0}
+  grid-template-columns:1fr 1fr;row-gap:16px;column-gap:0;align-items:stretch}
 .pair-dots{display:flex;justify-content:center;gap:6px;margin-top:10px}
 .pair-dots .d{width:6px;height:6px;border-radius:50%;background:var(--surface-3);
   border:none;cursor:pointer;padding:0}
 .pair-dots .d[aria-current=true]{background:var(--ink);width:16px;border-radius:4px}
-/* 짝꿍매매 하단 카드 — 좌우 여백을 최소화해 카드 2개가 화면을 꽉 채우게 함 */
+/* 짝꿍매매 하단 카드 — 좌우 여백을 최소화해 셀 2개가 화면을 꽉 채우게 함 */
 .card.pair-outer{padding-left:6px;padding-right:6px}
 .card.pair-outer>h3{padding:0 9px}
-.pair-card{background:var(--surface);padding:11px 9px;min-width:0}
-.pair-card+.pair-card{border-left:1px solid var(--border)}
-.pair-card .ph{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:3px;padding:0 2px}
-.pair-card .ph .nm{font-size:15px;font-weight:700;cursor:pointer}
-.pair-card .ph .nm:hover{color:var(--up)}
-.pair-card .ph .px{margin-left:auto;font-size:15px;font-weight:730;letter-spacing:-.02em}
-.pair-card .pstat{font-size:10.5px;color:var(--ink-3);margin-bottom:8px;display:flex;gap:10px;
-  flex-wrap:wrap;padding:0 2px}
-.pair-card .psec{padding:0 2px}
-.pair-card .psec h5{font-size:10px;color:var(--ink-3);font-weight:650;letter-spacing:.03em;
-  margin:16px 0 5px;text-transform:uppercase}
-.pair-card .psec:first-of-type h5{margin-top:0}
-.pair-card .pbucket{font-size:10.5px;color:var(--ink-2);line-height:1.7}
-.pair-card table{font-size:10.5px}
-.pair-card td,.pair-card th{padding:5px 6px;white-space:nowrap}
-.pair-card th{position:static}
-.pair-card .pc-tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.pc-cell{padding:0 9px;min-width:0}
+.pc-cell:nth-child(odd){border-right:1px solid var(--border)}
+.pc-cell.pc-empty{border-right:none}
+.pc-cell.pc-head{display:flex;flex-direction:column;gap:3px}
+.pc-name{font-size:15px;font-weight:700;cursor:pointer}
+.pc-name:hover{color:var(--up)}
+.pc-price{font-size:15px;font-weight:730;letter-spacing:-.02em}
+.pc-stat{font-size:10.5px;color:var(--ink-3);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+.pc-cell h5{font-size:10px;color:var(--ink-3);font-weight:650;letter-spacing:.03em;
+  margin:0 0 5px;text-transform:uppercase}
+.pc-cell .pbucket{font-size:10.5px;color:var(--ink-2);line-height:1.7}
+.pc-cell table{font-size:10.5px}
+.pc-cell td,.pc-cell th{padding:5px 6px;white-space:nowrap}
+.pc-cell th{position:static}
+.pc-cell .pc-tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media(max-width:480px){
   .card.pair-outer{padding-left:3px;padding-right:3px}
-  .pair-card{padding:9px 5px}
-  .pair-card .ph .nm{font-size:12.5px}
-  .pair-card .ph .px{font-size:12.5px}
+  .pc-cell{padding:0 5px}
+  .pc-name{font-size:12.5px}
+  .pc-price{font-size:12.5px}
 }
 
 .note{font-size:11.5px;color:var(--ink-3);margin-top:9px;line-height:1.6}
@@ -2016,14 +2018,61 @@ async function selectPairSector(sec){
   if(!stocks.length){$("#pairTrack").innerHTML='<div class="load">데이터 없음</div>';return;}
   await renderPairCards(stocks);
 }
+// 섹션 순서를 정의 — 페이지 스켈레톤과 실제 채우기(renderPairCard)가 이 순서를
+// 공유합니다. 각 섹션은 종목A 셀, 종목B 셀을 "같은 그리드 행"에 나란히 놓아
+// CSS grid의 기본 행 높이(그 행에서 가장 큰 셀 기준)로 자동으로 높이가
+// 맞춰지게 합니다 — 즉 종목명이 짧든 길든, 차트 데이터가 많든 적든 같은
+// 항목끼리는 항상 같은 줄(높이)에서 나란히 비교할 수 있습니다.
+const PAIR_SECTIONS=[
+  ["head",null],
+  ["price","가격 · 이동평균"],
+  ["weight","무게/주식수"],
+  ["vol","거래량"],
+  ["pgtr","프로그램 누적 순매수 · 억원"],
+  ["profile","개인 매물대 · 억원"],
+  ["profileInst","외국인+기관 매물대 · 억원"],
+  ["flow4","투자자별 누적 순매수 · 억원"],
+  ["flowTable","수급주체별 순매수 거래대금 · 억원"],
+  ["minis","수급 주체별 누적(전 기간)"],
+];
+const pcCap=s=>s[0].toUpperCase()+s.slice(1);
+function pairSectionCellHtml(id,title,code){
+  if(id==="head")
+    return `<div class="pc-cell pc-head" id="pcHead_${code}"><div class="load">불러오는 중…</div></div>`;
+  if(id==="profile"||id==="profileInst")
+    return `<div class="pc-cell"><h5>${title}</h5>
+      <div class="chart" id="pc${pcCap(id)}_${code}"><div class="load">불러오는 중…</div></div>
+      <div id="pc${pcCap(id)}Top_${code}"></div></div>`;
+  if(id==="flowTable")
+    return `<div class="pc-cell"><h5>${title}</h5>
+      <div class="tw pc-tw" id="pcFlowTable_${code}"><div class="load">불러오는 중…</div></div></div>`;
+  if(id==="minis")
+    return `<div class="pc-cell"><h5>${title}</h5><div class="grid5" id="pcMinis_${code}"></div></div>`;
+  if(id==="flow4")
+    return `<div class="pc-cell"><h5>${title}</h5>
+      <div class="legend" style="font-size:10px;gap:9px;margin-bottom:5px">
+        <span><i style="background:var(--s1)"></i>외국인</span>
+        <span><i style="background:var(--s2)"></i>기관</span>
+        <span><i style="background:var(--s3)"></i>개인</span>
+        <span><i style="background:var(--s4)"></i>기타법인</span>
+      </div>
+      <div class="chart" id="pcFlow4_${code}"><div class="load">불러오는 중…</div></div></div>`;
+  return `<div class="pc-cell"><h5>${title}</h5>
+    <div class="chart" id="pc${pcCap(id)}_${code}"><div class="load">불러오는 중…</div></div></div>`;
+}
+function pairPageSkeleton(pg){
+  return `<div class="pair-page">`+PAIR_SECTIONS.map(([id,title])=>
+    pg.map(s=>pairSectionCellHtml(id,title,s.code)).join("")+
+    (pg.length<2?`<div class="pc-cell pc-empty"></div>`:"")
+  ).join("")+`</div>`;
+}
 // 카드 뼈대(페이지 3개씩=6종목÷2)를 먼저 그려 캐러셀이 즉시 뜨게 하고, 종목별
 // 상세 데이터(v_stock_chart 전체 이력·v_stock_summary·v_stock_flow_periods)는
-// 병렬로 받아오는 대로 각 카드를 종목상세와 동일한 내용으로 채웁니다.
+// 병렬로 받아오는 대로 각 셀을 종목상세와 동일한 내용으로 채웁니다.
 async function renderPairCards(stocks){
   const pages=[];
   for(let i=0;i<stocks.length;i+=2)pages.push(stocks.slice(i,i+2));
-  $("#pairTrack").innerHTML=pages.map(pg=>
-    `<div class="pair-page">${pg.map(s=>`<div class="pair-card" id="pc_${s.code}"><div class="load">불러오는 중…</div></div>`).join("")}</div>`).join("");
+  $("#pairTrack").innerHTML=pages.map(pg=>pairPageSkeleton(pg)).join("");
   setupPairCarouselNav(pages.length);
   await Promise.all(stocks.map(async s=>{
     try{
@@ -2034,8 +2083,8 @@ async function renderPairCards(stocks){
       ]);
       renderPairCard(s.code,sumArr[0]||{},rows,flowRows[0]);
     }catch(e){
-      const host=$("#pc_"+s.code);
-      if(host)host.innerHTML='<div class="load">불러오기 실패</div>';
+      const headEl=$("#pcHead_"+s.code);
+      if(headEl)headEl.innerHTML='<div class="load">불러오기 실패</div>';
     }
   }));
 }
@@ -2045,44 +2094,31 @@ async function renderPairCards(stocks){
 // 종목상세의 절반 가까이)에 맞춰 viewBox를 축소해 글자 크기가 과하게 작아지지
 // 않게 합니다.
 function renderPairCard(code,sum,rows,flowRow){
-  const host=$("#pc_"+code);
-  if(!host)return;
-  if(!rows.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
+  const headEl=$("#pcHead_"+code);
+  if(!headEl)return;
+  if(!rows.length){
+    headEl.innerHTML='<div class="load">데이터 없음</div>';
+    ["pcPrice_","pcWeight_","pcVol_","pcPgtr_","pcProfile_","pcProfileInst_","pcFlow4_"].forEach(p=>{
+      const el=$("#"+p+code);if(el)el.innerHTML='<div class="load">데이터 없음</div>';});
+    const ft=$("#pcFlowTable_"+code);if(ft)ft.innerHTML='<div class="load">데이터 없음</div>';
+    return;
+  }
   const rp=rows.filter(r=>r.trade_date>=START_D);
   const rpUse=rp.length?rp:rows;
   const last=rpUse.at(-1);
   const lb=rpUse.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
-  host.innerHTML=`
-    <div class="ph"><span class="nm" data-code="${code}">${sum.name||code}</span>
-      <span class="px num ${sgn(+last.change_pct)}">${N(+last.close,0)}
-        <span style="font-size:11px">${pm(+last.change_pct,1)}%</span></span></div>
-    <div class="pstat">
+  // 종목명·종가를 각각 한 줄씩 — 이름 길이와 무관하게 두 종목의 종가 줄이
+  // 항상 같은 높이(줄)에서 시작해 서로 비교하기 쉽게 합니다.
+  headEl.innerHTML=`
+    <span class="pc-name" data-code="${code}">${sum.name||code}</span>
+    <span class="pc-price num ${sgn(+last.change_pct)}">${N(+last.close,0)}
+      <span style="font-size:11px">${pm(+last.change_pct,1)}%</span></span>
+    <div class="pc-stat">
       <span>시총 ${sum.market_cap!=null?N(+sum.market_cap/JO,1)+"조":"–"}</span>
       <span>${sum.sector||"–"}</span>
       <span>RS ${sum.sector_rs_rank?sum.sector_rs_rank+"위":"–"}</span>
-    </div>
-    <div class="psec"><h5>가격 · 이동평균</h5><div class="chart" id="pcPrice_${code}"></div></div>
-    <div class="psec"><h5>무게/주식수</h5><div class="chart" id="pcWeight_${code}"></div></div>
-    <div class="psec"><h5>거래량</h5><div class="chart" id="pcVol_${code}"></div></div>
-    <div class="psec"><h5>프로그램 누적 순매수<span class="faint" style="font-size:9px;font-weight:400"> · 억원</span></h5>
-      <div class="chart" id="pcPgtr_${code}"></div></div>
-    <div class="psec"><h5>개인 매물대<span class="faint" style="font-size:9px;font-weight:400"> · 억원</span></h5>
-      <div class="chart" id="pcProfile_${code}"></div><div id="pcProfileTop_${code}"></div></div>
-    <div class="psec"><h5>외국인+기관 매물대<span class="faint" style="font-size:9px;font-weight:400"> · 억원</span></h5>
-      <div class="chart" id="pcProfileInst_${code}"></div><div id="pcProfileInstTop_${code}"></div></div>
-    <div class="psec"><h5>투자자별 누적 순매수<span class="faint" style="font-size:9px;font-weight:400"> · 억원</span></h5>
-      <div class="legend" style="font-size:10px;gap:9px;margin-bottom:5px">
-        <span><i style="background:var(--s1)"></i>외국인</span>
-        <span><i style="background:var(--s2)"></i>기관</span>
-        <span><i style="background:var(--s3)"></i>개인</span>
-        <span><i style="background:var(--s4)"></i>기타법인</span>
-      </div>
-      <div class="chart" id="pcFlow4_${code}"></div></div>
-    <div class="psec"><h5>수급주체별 순매수 거래대금<span class="faint" style="font-size:9px;font-weight:400"> · 억원</span></h5>
-      <div class="tw pc-tw" id="pcFlowTable_${code}"></div></div>
-    <div class="psec"><h5>수급 주체별 누적(전 기간)</h5>
-      <div class="grid5" id="pcMinis_${code}"></div></div>`;
-  host.querySelector(".nm").onclick=()=>{go("detail");loadDetail(code);};
+    </div>`;
+  headEl.querySelector(".pc-name").onclick=()=>{go("detail");loadDetail(code);};
 
   const maxClose=Math.max(...rpUse.map(r=>+r.close));
   lineChart($("#pcPrice_"+code),[
