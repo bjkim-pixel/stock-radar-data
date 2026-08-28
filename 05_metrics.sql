@@ -16,23 +16,32 @@
 -- ============================================================================
 
 
--- @@STEP: market_daily (시장 지수 + 레짐 판정)
+-- @@STEP: market_daily (거래대금·수급 집계 + 레짐 판정)
 -- ----------------------------------------------------------------------------
--- ⚠️ index_close는 "합성 지수"입니다.
---    아직 KOSPI/KOSDAQ 실제 지수를 수집하지 않으므로, 보유 종목의
---    시가총액 가중 평균 등락률을 누적곱해 지수를 만들어 씁니다(기준 1000).
---    레짐 판정은 "지수 > MA20" 이라는 상대 비교만 쓰기 때문에 프록시로 충분합니다.
---    나중에 KIS 지수 API를 붙이면 이 STEP만 교체하면 됩니다.
+-- ⚠️ 2026-08-28 수정: index_close/index_change/index_change_pct/index_ma20은
+--    더 이상 여기서 계산하지 않습니다.
+--
+--    과거엔 KOSPI/KOSDAQ 실제 지수가 없어서 보유 종목의 시가총액 가중 평균
+--    등락률을 누적곱한 "합성 지수"(기준 1000)를 이 컬럼들에 채웠습니다. 그런데
+--    20_collect_market_extra.py가 KIS inquire-daily-indexchartprice로 실제
+--    KOSPI/KOSDAQ 종합지수를 매일 수집해 이 컬럼들에 UPSERT하기 시작한 뒤에도
+--    이 STEP이 그대로 남아 있어서, daily_collect.yml(16:05) 직후 돌아가는
+--    compute.yml(16:15)이 실제 지수 값을 다시 합성 지수로 덮어써버리는
+--    사고가 있었습니다 — "오늘은 실제 값인데 그 이전 구간은 죄다 합성값이라
+--    차트가 중간에 뚝 끊기고 이상한 값으로 튀는" 증상이 바로 이것입니다.
+--    (전체 기간 재계산 때는 그 시점 lookback 기준으로 1000부터 다시 복리
+--    계산하니, 실행할 때마다 스케일 자체가 달라져서 더 심하게 어긋납니다.)
+--
+--    이제 index_close/index_ma20은 20_collect_market_extra.py가 이미
+--    저장해둔 실제 값을 그대로 읽기만 하고(레짐 판정용), UPSERT SET 절에도
+--    포함하지 않아 이 STEP이 실제 지수 값을 덮어쓸 수 없습니다.
 -- ----------------------------------------------------------------------------
 INSERT INTO market_daily (
-  trade_date, market, index_close, index_change, index_change_pct, index_ma20,
-  total_amount, foreign_net, inst_net, individual_net, regime
+  trade_date, market, total_amount, foreign_net, inst_net, individual_net, regime
 )
 WITH base AS (
   SELECT p.trade_date,
          s.market,
-         p.market_cap,
-         p.change_pct,
          p.trade_amount,
          f.foreign_net,
          f.inst_net,
@@ -52,58 +61,31 @@ agg AS (
          sum(trade_amount)   AS total_amount,
          sum(foreign_net)    AS foreign_net,
          sum(inst_net)       AS inst_net,
-         sum(individual_net) AS individual_net,
-         -- 시총 가중 평균 등락률 (= 지수 일간 수익률 프록시)
-         sum(market_cap::numeric * coalesce(change_pct, 0))
-           / nullif(sum(market_cap::numeric), 0) AS ret_pct
+         sum(individual_net) AS individual_net
   FROM base
   GROUP BY trade_date, market
-),
-idx AS (
-  SELECT a.*,
-         -- 누적곱: 1000 × Π(1 + r)  =  1000 × exp(Σ ln(1 + r))
-         1000 * exp(
-           sum(ln(greatest(1 + coalesce(ret_pct, 0) / 100.0, 0.01)))
-             OVER (PARTITION BY market ORDER BY trade_date ROWS UNBOUNDED PRECEDING)
-         ) AS index_close
-  FROM agg a
-),
-fin AS (
-  SELECT i.*,
-         index_close - lag(index_close)
-           OVER (PARTITION BY market ORDER BY trade_date) AS index_change,
-         avg(index_close) OVER w20 AS index_ma20,
-         count(*)         OVER w20 AS c20
-  FROM idx i
-  WINDOW w20 AS (PARTITION BY market ORDER BY trade_date
-                 ROWS BETWEEN 19 PRECEDING AND CURRENT ROW)
 )
-SELECT trade_date,
-       market,
-       round(index_close::numeric, 2),
-       round(index_change::numeric, 2),
-       round(ret_pct::numeric, 4),
-       CASE WHEN c20 >= 20 THEN round(index_ma20::numeric, 2) END,
-       total_amount,
-       foreign_net,
-       inst_net,
-       individual_net,
-       -- 레짐: 지수가 MA20 위 + 시장 전체 외국인·기관 순매수 → RISK_ON
+SELECT a.trade_date,
+       a.market,
+       a.total_amount,
+       a.foreign_net,
+       a.inst_net,
+       a.individual_net,
+       -- 레짐: (실제) 지수가 MA20 위 + 시장 전체 외국인·기관 순매수 → RISK_ON
+       -- index_close/index_ma20은 20_collect_market_extra.py가 채운 실제 값을
+       -- 그대로 조회만 합니다(md 서브쿼리) — 아직 미수집(NULL)이면 NEUTRAL.
        CASE
-         WHEN c20 < 20 THEN 'NEUTRAL'                        -- MA20 미형성 구간
-         WHEN index_close > index_ma20
-          AND coalesce(foreign_net, 0) + coalesce(inst_net, 0) > 0 THEN 'RISK_ON'
-         WHEN index_close > index_ma20
-           OR coalesce(foreign_net, 0) + coalesce(inst_net, 0) > 0 THEN 'NEUTRAL'
+         WHEN md.index_close IS NULL OR md.index_ma20 IS NULL THEN 'NEUTRAL'
+         WHEN md.index_close > md.index_ma20
+          AND coalesce(a.foreign_net, 0) + coalesce(a.inst_net, 0) > 0 THEN 'RISK_ON'
+         WHEN md.index_close > md.index_ma20
+           OR coalesce(a.foreign_net, 0) + coalesce(a.inst_net, 0) > 0 THEN 'NEUTRAL'
          ELSE 'RISK_OFF'
        END
-FROM fin
-WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
+FROM agg a
+LEFT JOIN market_daily md ON md.trade_date = a.trade_date AND md.market = a.market
+WHERE a.trade_date BETWEEN %(start_date)s AND %(end_date)s
 ON CONFLICT (trade_date, market) DO UPDATE SET
-  index_close      = EXCLUDED.index_close,
-  index_change     = EXCLUDED.index_change,
-  index_change_pct = EXCLUDED.index_change_pct,
-  index_ma20       = EXCLUDED.index_ma20,
   total_amount     = EXCLUDED.total_amount,
   foreign_net      = EXCLUDED.foreign_net,
   inst_net         = EXCLUDED.inst_net,
