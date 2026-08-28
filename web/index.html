@@ -204,19 +204,13 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 /* 짝꿍매매 — 업종 구성종목을 2개씩 스와이프로 보여주는 카드 캐러셀.
    카드는 종목상세와 동일한 내용을 전부 담으므로 세로로 길고, 페이지 전체
    스크롤로 내려보게 합니다(카드 내부에 별도 스크롤 박스를 두지 않음).
-   좌우 화살표는 카드 폭을 뺏지 않도록 얇게 만들고 sticky로 붙여 긴 카드를
-   스크롤하는 동안에도 계속 눌러 페이지를 넘길 수 있게 합니다. */
-.pair-carousel-wrap{display:flex;align-items:flex-start;gap:0}
-.pair-track{flex:1;min-width:0;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+   좌우 이동 버튼은 없고 스와이프(가로 스크롤 스냅)로만 페이지를 넘기며,
+   그만큼 확보된 폭을 카드 2개에 그대로 씁니다. */
+.pair-track{width:100%;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
   -webkit-overflow-scrolling:touch;scrollbar-width:none;border-radius:var(--r)}
 .pair-track::-webkit-scrollbar{display:none}
 .pair-page{flex:0 0 100%;scroll-snap-align:start;display:grid;
   grid-template-columns:1fr 1fr;gap:0}
-.pc-arrow{flex:none;position:sticky;top:calc(var(--stick-top,0px) + 10px);
-  width:22px;height:38px;border-radius:7px;border:1px solid var(--border);
-  background:var(--surface);color:var(--ink-2);font-size:15px;cursor:pointer;font-family:inherit}
-.pc-arrow:hover{background:var(--surface-2);color:var(--ink)}
-.pc-arrow:disabled{opacity:.3;cursor:default;pointer-events:none}
 .pair-dots{display:flex;justify-content:center;gap:6px;margin-top:10px}
 .pair-dots .d{width:6px;height:6px;border-radius:50%;background:var(--surface-3);
   border:none;cursor:pointer;padding:0}
@@ -246,7 +240,6 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   .pair-card{padding:9px 5px}
   .pair-card .ph .nm{font-size:12.5px}
   .pair-card .ph .px{font-size:12.5px}
-  .pc-arrow{width:18px}
 }
 
 .note{font-size:11.5px;color:var(--ink-3);margin-top:9px;line-height:1.6}
@@ -684,19 +677,22 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
 <!-- ═══════════ 짝꿍매매 ═══════════ -->
 <section id="v-pair" class="hide">
-  <div class="card" style="margin-top:16px"><h3>업종별 거래대금 TOP5
-    <span class="r">항상 거래대금 기준 · 행 클릭 = 그 업종 구성종목 보기</span></h3>
-    <div class="tw"><table><thead><tr id="pairSecHead"></tr></thead>
-      <tbody id="pairSecBody"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
+  <div class="card" style="margin-top:16px"><h3>업종별 거래대금
+    <span class="r">시장매크로와 동일 로직 · 헤더 클릭 = 그 기준 상위5·하위5 · 기본 평균 등락률 내림차순</span></h3>
+    <div class="faint" style="font-size:11px;margin:10px 0 4px">상위 5</div>
+    <div class="tw"><table><thead><tr id="pairSecHeadTop"></tr></thead>
+      <tbody id="pairSecBodyTop"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="faint" style="font-size:11px;margin:14px 0 4px">하위 5</div>
+    <div class="tw"><table><thead><tr id="pairSecHeadBot"></tr></thead>
+      <tbody id="pairSecBodyBot"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="note">행을 누르면 아래 구성 종목이 그 업종으로 바뀝니다.</div>
   </div>
 
   <div class="card pair-outer">
     <h3><span id="pairStockTitle">구성 종목</span>
       <span class="r">당일 등락률 내림차순 6종목 · 2종목씩 스와이프 · 아래로 스크롤하면 종목상세와 동일한 내용 전체</span></h3>
     <div class="pair-carousel-wrap">
-      <button class="pc-arrow pc-prev" id="pairPrev" aria-label="이전">‹</button>
       <div class="pair-track" id="pairTrack"><div class="load">업종을 선택하세요</div></div>
-      <button class="pc-arrow pc-next" id="pairNext" aria-label="다음">›</button>
     </div>
     <div class="pair-dots" id="pairDots"></div>
   </div>
@@ -1962,35 +1958,56 @@ $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 $("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
 
 /* ══ 짝꿍매매 ══════════════════════════════════════════════════════
-   시장매크로 STEP2의 "업종별 거래대금 TOP5"를 그대로 상단에 재사용하고,
-   업종을 고르면 그 구성 종목 중 당일 등락률 내림차순 6종목을 종목상세와
-   동일한 내용(가격·이동평균, 무게/주식수, 거래량, 프로그램 누적, 매물대
-   2종, 투자자별 누적 순매수, 수급주체별 표, 주체별 미니차트 9개)을 그대로
-   담은 카드로 만들어 2종목씩 스와이프(가로 스크롤 스냅)로 보여줍니다. */
-async function loadPairSectors(){
-  const rows=await q("v_sector_rank","select=*");
-  // 정렬 기준과 무관하게 항상 "거래대금" 기준 상위5 — 시장매크로 STEP2 상단 표와 동일한 대상
-  S.pairSectors=[...rows].sort((a,b)=>(+b.total_amount||0)-(+a.total_amount||0)).slice(0,5);
-  $("#pairSecHead").innerHTML=`<th class="l">#</th><th class="l">업종</th>`+
-    SEC_COLS.map(c=>`<th class="${c.opt?"opt ":""}">${c.l}</th>`).join("");
-  $("#pairSecBody").innerHTML=S.pairSectors.length?S.pairSectors.map((s,i)=>`
+   시장매크로 STEP2의 "업종별 거래대금" 표와 완전히 동일한 로직(SEC_COLS,
+   헤더 클릭=그 기준 상위5·하위5, 기본 정렬=평균 등락률 내림차순)을 그대로
+   재사용합니다. 업종을 고르면 그 구성 종목 중 당일 등락률 내림차순
+   6종목을 종목상세와 동일한 내용(가격·이동평균, 무게/주식수, 거래량,
+   프로그램 누적, 매물대 2종, 투자자별 누적 순매수, 수급주체별 표, 주체별
+   미니차트 9개)을 그대로 담은 카드로 만들어 2종목씩(순위가 인접한 종목끼리
+   묶어 서로 비교하기 쉽도록) 스와이프(가로 스크롤 스냅)로 보여줍니다. */
+S.pairSecSort=S.pairSecSort||"avg_change_pct";
+function pairSecHeadRow(){
+  return `<th class="l">#</th><th class="l">업종</th>`+SEC_COLS.map(c=>
+    `<th class="${c.opt?"opt ":""}sortable${c.k===S.pairSecSort?" active":""}" data-key="${c.k}">${c.l}${c.k===S.pairSecSort?" ▾":""}</th>`).join("");
+}
+function pairSecBodyRows(list){
+  return list.length?list.map((s,i)=>`
     <tr class="clk" data-sec="${s.sector}" ${S.pairSector===s.sector?'aria-selected="true"':''}>
       <td class="l rank">${i+1}</td><td class="l"><span class="nm">${s.sector}</span></td>
       ${SEC_COLS.map(c=>`<td class="${c.opt?"opt ":""}${c.cls?c.cls(s):""}">${c.fmt(s)}</td>`).join("")}
-    </tr>`).join(""):'<tr><td colspan="8" class="load">데이터 없음</td></tr>';
-  // 헤더 클릭 시 내림차순/오름차순 토글 정렬 (다른 표들과 동일한 makeSortable 재사용).
-  // 행 클릭(data-sec)으로 업종을 고르는 동작과는 별개 — 정렬은 화면에 보이는 5개
-  // 행의 표시 순서만 바꾸고, 어떤 5개 업종이 뽑혔는지는 항상 거래대금 기준 그대로입니다.
-  $$("#pairSecBody tr[data-sec]").forEach(tr=>tr.onclick=()=>selectPairSector(tr.dataset.sec));
-  makeSortable("pairSecBody");
-  if(S.pairSectors.length){
-    const keep=S.pairSector&&S.pairSectors.some(s=>s.sector===S.pairSector);
-    await selectPairSector(keep?S.pairSector:S.pairSectors[0].sector);
+    </tr>`).join(""):`<tr><td colspan="8" class="load">데이터 없음</td></tr>`;
+}
+// 시장매크로 renderSectors()와 동일한 상위5/하위5 산출 로직 — 헤더에서 고른
+// 기준(S.pairSecSort)으로 내림차순 정렬 후 앞 5개(상위)·뒤 5개를 뒤집은 것(하위).
+function renderPairSectors(){
+  const sorted=[...S.pairSectorRows].sort((a,b)=>{
+    const av=a[S.pairSecSort],bv=b[S.pairSecSort];
+    if(av==null&&bv==null)return 0; if(av==null)return 1; if(bv==null)return -1;
+    return +bv-+av;
+  });
+  const top=sorted.slice(0,5), bot=sorted.length>5?sorted.slice(-5).reverse():[];
+  $("#pairSecHeadTop").innerHTML=pairSecHeadRow();
+  $("#pairSecHeadBot").innerHTML=pairSecHeadRow();
+  $("#pairSecBodyTop").innerHTML=pairSecBodyRows(top);
+  $("#pairSecBodyBot").innerHTML=pairSecBodyRows(bot);
+  $$("#pairSecHeadTop th.sortable,#pairSecHeadBot th.sortable").forEach(th=>
+    th.onclick=()=>{S.pairSecSort=th.dataset.key;renderPairSectors();});
+  $$("#pairSecBodyTop tr[data-sec],#pairSecBodyBot tr[data-sec]").forEach(tr=>
+    tr.onclick=()=>selectPairSector(tr.dataset.sec));
+}
+async function loadPairSectors(){
+  S.pairSectorRows=await q("v_sector_rank","select=*");
+  renderPairSectors();
+  if(S.pairSectorRows.length){
+    const sortedTop=[...S.pairSectorRows].sort((a,b)=>(+b[S.pairSecSort]||-Infinity)-(+a[S.pairSecSort]||-Infinity));
+    const keep=S.pairSector&&S.pairSectorRows.some(s=>s.sector===S.pairSector);
+    await selectPairSector(keep?S.pairSector:sortedTop[0].sector);
   }
 }
 async function selectPairSector(sec){
   S.pairSector=sec;
-  $$("#pairSecBody tr[data-sec]").forEach(t=>t.toggleAttribute("aria-selected",t.dataset.sec===sec));
+  $$("#pairSecBodyTop tr[data-sec],#pairSecBodyBot tr[data-sec]").forEach(t=>
+    t.toggleAttribute("aria-selected",t.dataset.sec===sec));
   $("#pairStockTitle").textContent=`${sec} · 당일 등락률 내림차순 6종목`;
   $("#pairTrack").innerHTML='<div class="load">불러오는 중…</div>';
   $("#pairDots").innerHTML="";
@@ -2146,7 +2163,8 @@ function renderPairCard(code,sum,rows,flowRow){
     [{n,v:arr,c:"--s1"}],allLb,{h:100,w:300,pr:8,pl:38,zero:true,labelEnds:false,
       fy:v=>N(v,0),ft:v=>pm(v,0)+"억"}));
 }
-// 좌우 화살표·점 인디케이터 — 스와이프(스크롤 스냅)와 함께 페이지 위치를 동기화
+// 점 인디케이터 — 좌우 이동 버튼 없이 스와이프(스크롤 스냅)만으로 페이지를 넘기고,
+// 점을 눌러도 바로 그 페이지로 이동합니다(스크롤 위치와 항상 동기화).
 function setupPairCarouselNav(pageCount){
   const track=$("#pairTrack");
   $("#pairDots").innerHTML=Array.from({length:pageCount},(_,i)=>
@@ -2158,12 +2176,8 @@ function setupPairCarouselNav(pageCount){
   const update=()=>{
     const i=curPage();
     dots.forEach((d,di)=>d.toggleAttribute("aria-current",di===i));
-    $("#pairPrev").disabled=i<=0;
-    $("#pairNext").disabled=i>=pageCount-1;
   };
   track.onscroll=()=>requestAnimationFrame(update);
-  $("#pairPrev").onclick=()=>goPage(Math.max(0,curPage()-1));
-  $("#pairNext").onclick=()=>goPage(Math.min(pageCount-1,curPage()+1));
   update();
 }
 
