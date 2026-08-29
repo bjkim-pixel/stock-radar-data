@@ -195,6 +195,21 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--border);
   border-radius:7px;padding:7px 10px;font-size:11.5px;box-shadow:0 4px 14px rgba(0,0,0,.14);
   opacity:0;transition:opacity .1s;z-index:20;white-space:nowrap}
+/* ── 조건 팝업 모달 ── */
+.cond-overlay{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.38);display:flex;
+  align-items:center;justify-content:center;padding:20px}
+.cond-overlay.hidden{display:none}
+.cond-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:18px 20px 16px;max-width:420px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.22);position:relative}
+.cond-box h4{margin:0 0 4px;font-size:13.5px;font-weight:700}
+.cond-box .cond-sub{font-size:11px;color:var(--ink-3);margin:0 0 12px}
+.cond-row{display:flex;gap:8px;margin-bottom:7px;align-items:flex-start;font-size:12.5px}
+.cond-row .cond-tag{flex-shrink:0;font-size:10px;font-weight:700;padding:2px 6px;
+  border-radius:10px;background:var(--surface-2);color:var(--ink-2);margin-top:1px;white-space:nowrap}
+.cond-common{font-size:11px;color:var(--ink-3);padding:8px 10px;background:var(--surface-2);
+  border-radius:8px;margin-bottom:10px}
+.cond-close{position:absolute;top:12px;right:14px;background:none;border:none;font-size:18px;
+  color:var(--ink-3);cursor:pointer;line-height:1;padding:0}
 .tip .row{display:flex;gap:14px;justify-content:space-between}
 .spark{display:inline-block;vertical-align:middle}
 .mini h4{font-size:11px;margin:0 0 4px;color:var(--ink-2);font-weight:600;
@@ -844,6 +859,17 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 </section>
 
+</div>
+
+<!-- ── 스크리닝 조건 팝업 ── -->
+<div class="cond-overlay hidden" id="condOverlay">
+  <div class="cond-box" id="condBox">
+    <button class="cond-close" id="condClose">×</button>
+    <h4 id="condTitle"></h4>
+    <div class="cond-sub" id="condSub"></div>
+    <div class="cond-common">공통조건 · 시가총액 2조원↑ &nbsp;·&nbsp; 무게/주식수 당일 상위 50위</div>
+    <div id="condBody"></div>
+  </div>
 </div>
 
 <script>
@@ -2363,6 +2389,52 @@ function drawPnlChart(){
   }else{$("#cPerfPnl").innerHTML='<div class="load">청산 건수 부족</div>';}
 }
 
+// ── 스크리닝 조건 팝업 ──────────────────────────────────────────────────────
+const COND_DEF={
+  TREND:{
+    label:"추세추종",
+    buy:"매수: 3단계 통과 종목 전량 매수 (각 1천만원) · 피라미딩 제한 없음(+20%마다) · 트레일링 -7% 스탑",
+    stages:[
+      {tag:"1단계",items:["거래량비(전일까지 20일 평균 대비) ≥ 115%","종가위치 상위 30% (고저범위 내 상위 30%)"]},
+      {tag:"2단계",items:["주도섹터 (업종 RS 5위 이내)","거래량비 ≥ 115%","전고점 근처 (near_high 또는 전고대비 -10% 이내)"]},
+      {tag:"3단계 ★",items:["주도섹터 (업종 RS 5위 이내)","거래량비 ≥ 115%","신고가 돌파 (상장 이후 전일까지 최고 종가 돌파)","데이터 이력 20일 이상"]},
+    ]
+  },
+  CLOSEBET:{
+    label:"종가베팅",
+    buy:"매수: 3단계 통과 종목 전량 매수 (각 1천만원) · 피라미딩 없음 · 익일 시가에 무조건 청산",
+    stages:[
+      {tag:"1단계",items:["종가위치 상위 30% (고저범위 내 상위 30%)","외국인 순매수 (+)","기관 순매수 (+)"]},
+      {tag:"2단계",items:["주도섹터 (업종 RS 5위 이내)","전고점 근처 (near_high 또는 전고대비 -10% 이내)","외국인 순매수 (+)","기관 순매수 (+)"]},
+      {tag:"3단계 ★",items:["주도섹터 (업종 RS 5위 이내)","신고가 돌파 (상장 이후 전일까지 최고 종가)","데이터 이력 20일 이상","외국인 순매수 (+)","기관 순매수 (+)","프로그램 순매수 (+)"]},
+    ]
+  }
+};
+function showCondPopup(strat,stage){
+  const def=COND_DEF[strat];
+  if(!def)return;
+  const sd=def.stages[stage-1];
+  $("#condTitle").textContent=`${def.label} · ${sd.tag}`;
+  $("#condSub").textContent=def.buy;
+  $("#condBody").innerHTML=sd.items.map(it=>
+    `<div class="cond-row"><span class="cond-tag">조건</span><span>${it}</span></div>`
+  ).join("")+
+  (stage===3?`<div style="font-size:11px;color:var(--up);margin-top:8px;font-weight:600">★ 3단계 통과 종목만 실제 가상매수 대상</div>`:"");
+  $("#condOverlay").classList.remove("hidden");
+}
+(function initCondPopup(){
+  const close=()=>$("#condOverlay").classList.add("hidden");
+  document.addEventListener("DOMContentLoaded",()=>{},false);
+  // 이벤트는 요소가 생긴 직후 연결
+  setTimeout(()=>{
+    const ov=$("#condOverlay");
+    if(!ov)return;
+    $("#condClose").onclick=close;
+    ov.onclick=e=>{if(e.target===ov)close();};
+    document.addEventListener("keydown",e=>{if(e.key==="Escape")close();});
+  },0);
+})();
+
 // ── 오늘의 후보 종목 · 단계별 스크리닝 (signals 테이블에서 직접 조회) ────────
 const CAND_STAGE_TYPES={
   TREND:["V4_CAND_TREND_1","V4_CAND_TREND_2","V4_CAND_TREND_3"],
@@ -2384,8 +2456,16 @@ async function loadStrategyCandidates(){
     });
     el.innerHTML=[1,2,3].map(stage=>{
       const items=byStage[stage];
+      const isBuy=stage===3;
       return `<div style="margin-bottom:10px">
-        <div class="faint" style="font-size:10.5px;margin:0 0 4px">${stage}단계 ${stage===3?"(가상매수 대상)":""} · ${items.length}종목</div>
+        <div style="display:flex;align-items:center;gap:6px;margin:0 0 4px">
+          <span class="faint" style="font-size:10.5px">${stage}단계${isBuy?" (가상매수 대상)":""} · ${items.length}종목</span>
+          <button data-strat="${strat}" data-stage="${stage}"
+            style="font-size:10px;padding:1px 7px;border-radius:10px;border:1px solid var(--border);
+                   background:var(--surface-2);color:var(--ink-2);cursor:pointer;line-height:1.6">
+            조건 보기
+          </button>
+        </div>
         ${items.length?`<div style="display:flex;flex-wrap:wrap;gap:5px">${items.map(r=>
           `<span class="chip" title="${(r.reason_text||"").replace(/"/g,'&quot;')}"
              style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:14px;cursor:pointer"
@@ -2394,6 +2474,7 @@ async function loadStrategyCandidates(){
       </div>`;
     }).join("");
     $$("span.chip",el).forEach(c=>c.onclick=()=>{go("detail");loadDetail(c.dataset.code);});
+    $$("button[data-strat]",el).forEach(btn=>btn.onclick=()=>showCondPopup(btn.dataset.strat,+btn.dataset.stage));
   }
 }
 
