@@ -15,13 +15,19 @@
 --   · 일거래대금 500억원 이상
 --   · 무게/주식수 당일 상위 50위 이내 (daily_metrics.weight_rank)
 --
--- ── 추세추종 (2026-08-29 재조정 — 완전 삭제 대신 문턱을 낮춘 절충안) ────────
+-- ── 추세추종 (2026-08-29 제로베이스 재설계 — 백테스트 A~G 실험 결과 반영) ───
+-- 업종(섹터) RS 대신 개별종목 상대강도(rs20_vs_mkt = 종목 20일수익률 - 유니버스
+-- 평균 20일수익률)를 사용합니다. 업종 RS는 GS·현대해상처럼 업종은 잠잠해도
+-- 개별 종목이 강한 경우를 놓쳤는데, 개별RS로 바꾸자 이 종목들을 포착하면서
+-- 성과가 뚜렷하게 개선됨을 백테스트로 확인했습니다(rs20_vs_mkt는 05_metrics.sql
+-- 이 매일 전 종목 일괄 계산 → daily_metrics.rs20_vs_mkt).
 --   1단계: 종가 고가권(당일 고저 범위 내 상위 30% 이내, close_pos_pct ≥ 70)
---          AND 등락률 15% 미만 (거짓 돌파 방지 — 당일 이미 과열된 종목 추격매수 제외)
---   2단계: 1단계 조건 전부 AND 거래량비(전일까지 20일 평균 대비) 105% 이상
---          AND 주도섹터(업종 RS 10위 이내) AND 전고점 근처(near_high 또는 pct_from_high ≥ -10%)
---   3단계: 2단계 조건에서 강화 — 주도섹터를 RS 5위 이내로, 전고점 근처 대신
---          신고가 돌파(상장 이후 전일까지 누적 최고 종가 돌파, 이력 20일 이상)
+--          AND 등락률 12% 미만 (거짓 돌파 방지 — 당일 이미 과열된 종목 추격매수 제외)
+--   2단계: 1단계 조건 전부 AND 전고점 근처(near_high 또는 pct_from_high ≥ -10%)
+--          AND MA 정배열(5일 > 10일 > 20일 > 60일 이동평균)
+--   3단계: 2단계 조건 전부 AND 거래량비(전일까지 20일 평균 대비) 180% 미만
+--          (거래량 폭발 종목 배제 — "소멸형" 시그니처 차단)
+--          AND 개별종목 상대강도(rs20_vs_mkt) > 0 (시장 대비 초과수익 종목만)
 --          — 가상매수 대상
 --
 -- ── 종가베팅 (단계별 독립) ──────────────────────────────────────────────────
@@ -59,6 +65,7 @@ WITH base AS (
   SELECT m.trade_date, m.code,
          m.vol_ratio20_prev, m.is_new_high_all, m.near_high, m.pct_from_high,
          m.data_span_days, m.weight_rank, m.cap_rank, m.pick_score,
+         m.ma5, m.ma10, m.ma20, m.ma60, m.rs20_vs_mkt,
          p.close, p.high, p.low, p.change_pct, p.market_cap, p.trade_amount,
          CASE WHEN p.high > p.low
               THEN round((p.close - p.low)::numeric / (p.high - p.low) * 100, 1)
@@ -91,50 +98,50 @@ INSERT INTO signals (trade_date, code, signal_type, grade, score, reason, reason
 
 -- ── 추세추종 1단계 ──────────────────────────────────────────────────────────
 SELECT trade_date, code, 'V4_CAND_TREND_1', 'WATCH', score,
-  jsonb_build_object('strategy','TREND','stage',1,'sector',sector,
+  jsonb_build_object('strategy','TREND','stage',1,
     'close_pos_pct',close_pos_pct,
     'change_pct',change_pct,
     'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
   name || ' 추세추종 1단계 · 종가위치 상위 ' || round(100 - close_pos_pct) || '%'
        || ' · 등락률 ' || round(change_pct, 1) || '%'
 FROM scored
-WHERE close_pos_pct >= 70 AND change_pct < 15
+WHERE close_pos_pct >= 70 AND change_pct < 12
 
 UNION ALL
 -- ── 추세추종 2단계 ──────────────────────────────────────────────────────────
 SELECT trade_date, code, 'V4_CAND_TREND_2', 'WATCH', score,
-  jsonb_build_object('strategy','TREND','stage',2,'sector',sector,'sector_rs_rank',rs_rank,
-    'vol_ratio20_prev',vol_ratio20_prev,'close_pos_pct',close_pos_pct,'change_pct',change_pct,
-    'pct_from_high',pct_from_high,
+  jsonb_build_object('strategy','TREND','stage',2,
+    'close_pos_pct',close_pos_pct,'change_pct',change_pct,
+    'pct_from_high',pct_from_high,'near_high',near_high,
     'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
-  name || ' 추세추종 2단계 · ' || sector || '(RS ' || rs_rank || '위)'
-       || ' · 거래량비 ' || round(vol_ratio20_prev) || '%'
+  name || ' 추세추종 2단계 · 정배열(5>10>20>60일)'
+       || ' · 전고점 ' || round(pct_from_high, 1) || '%'
        || ' · 종가위치 상위 ' || round(100 - close_pos_pct) || '%'
        || ' · 등락률 ' || round(change_pct, 1) || '%'
-       || ' · 전고점 ' || round(pct_from_high, 1) || '%'
 FROM scored
-WHERE close_pos_pct >= 70 AND change_pct < 15
-  AND vol_ratio20_prev >= 105
-  AND rs_rank IS NOT NULL AND rs_rank <= 10
+WHERE close_pos_pct >= 70 AND change_pct < 12
   AND (near_high OR pct_from_high >= -10)
+  AND ma5 > ma10 AND ma10 > ma20 AND ma20 > ma60
 
 UNION ALL
 -- ── 추세추종 3단계 (가상매수 대상) ──────────────────────────────────────────
 SELECT trade_date, code, 'V4_CAND_TREND_3', 'WATCH', score,
-  jsonb_build_object('strategy','TREND','stage',3,'sector',sector,'sector_rs_rank',rs_rank,
+  jsonb_build_object('strategy','TREND','stage',3,
+    'rs20_vs_mkt',rs20_vs_mkt,
     'vol_ratio20_prev',vol_ratio20_prev,'close_pos_pct',close_pos_pct,'change_pct',change_pct,
+    'pct_from_high',pct_from_high,
     'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
-  name || ' 추세추종 3단계(매수) · ' || sector || '(RS ' || rs_rank || '위)'
+  name || ' 추세추종 3단계(매수) · 개별RS ' || round(rs20_vs_mkt, 1) || '%p'
        || ' · 거래량비 ' || round(vol_ratio20_prev) || '%'
+       || ' · 정배열'
        || ' · 종가위치 상위 ' || round(100 - close_pos_pct) || '%'
        || ' · 등락률 ' || round(change_pct, 1) || '%'
-       || ' · 신고가돌파'
 FROM scored
 WHERE close_pos_pct >= 70 AND change_pct < 12
-  AND vol_ratio20_prev >= 105
-  AND rs_rank IS NOT NULL AND rs_rank <= 5
-  AND is_new_high_all
-  AND data_span_days >= 20
+  AND (near_high OR pct_from_high >= -10)
+  AND ma5 > ma10 AND ma10 > ma20 AND ma20 > ma60
+  AND vol_ratio20_prev < 180
+  AND rs20_vs_mkt IS NOT NULL AND rs20_vs_mkt > 0
 
 UNION ALL
 -- ── 종가베팅 1단계 ──────────────────────────────────────────────────────────

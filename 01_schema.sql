@@ -295,6 +295,14 @@ comment on column daily_metrics.is_new_high_all  is 'v4: 당일 종가 > 상장 
 comment on column daily_metrics.nonpersonal_net  is 'v4: 비개인 순매수 = -(개인 순매수). 투자자 주체 순매수 총합이 0이므로 외국인+기관+기타법인과 동일';
 comment on column daily_metrics.pick_score       is 'v4 후보 우선순위 = 무게/주식수 순위×0.6 + 시가총액 순위×0.4. 낮을수록 우선';
 
+-- ── 2026-08-29 추세추종 제로베이스 재설계: 개별종목 상대강도(RS) 추가 ─────────
+-- 업종(섹터) RS는 GS·현대해상처럼 업종은 잠잠해도 개별 종목이 강한 경우를
+-- 놓치는 문제가 있어(백테스트 A~G 실험으로 확인), 종목 자체의 시장 대비
+-- 상대강도를 추가합니다. 계산은 05_metrics.sql에서 매일 전 종목 일괄 수행.
+alter table daily_metrics add column if not exists rs20_vs_mkt numeric(10,2);
+
+comment on column daily_metrics.rs20_vs_mkt is 'v4: 개별종목 상대강도 = 종목 20일 수익률(%) - 그날 유니버스 평균 20일 수익률(%). 종목 20거래일 이력 없으면 NULL. 양수=시장 대비 초과수익';
+
 
 -- ============================================================================
 -- 5. 계산 결과 — 신호

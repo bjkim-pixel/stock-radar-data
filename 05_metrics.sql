@@ -191,6 +191,7 @@ INSERT INTO daily_metrics (
   inst_lead_field, inst_lead_value,
   vol_avg20_prev, vol_ratio20_prev, high_all_prev, is_new_high_all,
   nonpersonal_net, weight_rank, cap_rank, pick_score,
+  rs20_vs_mkt,
   computed_at
 )
 WITH src AS (
@@ -229,6 +230,8 @@ grp AS (
 ),
 w AS (
   SELECT grp.*,
+         -- v4: 개별종목 상대강도(RS)용 — 20거래일 전 종가 (LAG는 프레임 무관)
+         lag(close, 20) OVER (PARTITION BY code ORDER BY trade_date) AS close_20d_ago,
          -- 이동평균 (유효성 검사용 건수 동반)
          avg(close) OVER w5  AS a5,  count(*) OVER w5  AS c5,
          avg(close) OVER w10 AS a10, count(*) OVER w10 AS c10,
@@ -284,7 +287,10 @@ w AS (
 fin AS (
   SELECT w.*,
          -- 직전 5일 누적 (가속/감속 판정용): 5행 전의 5일 누적값
-         lag(s5, 5) OVER (PARTITION BY code ORDER BY trade_date) AS s5_prev
+         lag(s5, 5) OVER (PARTITION BY code ORDER BY trade_date) AS s5_prev,
+         -- v4: 종목 20일 수익률. 20거래일 이력 없으면(신규상장 등) NULL.
+         CASE WHEN close_20d_ago > 0
+              THEN (close::numeric / close_20d_ago - 1) * 100 END AS ret20
   FROM w
 ),
 rk AS (
@@ -293,7 +299,9 @@ rk AS (
          rank() OVER (PARTITION BY trade_date
                       ORDER BY weight_per_share DESC NULLS LAST) AS weight_rank,
          rank() OVER (PARTITION BY trade_date
-                      ORDER BY market_cap DESC NULLS LAST)       AS cap_rank
+                      ORDER BY market_cap DESC NULLS LAST)       AS cap_rank,
+         -- v4: 그날 유니버스(daily_metrics 전종목) 평균 20일 수익률 — 개별RS의 기준선
+         avg(ret20) OVER (PARTITION BY trade_date)                AS mkt_ret20
   FROM fin
 )
 SELECT
@@ -362,6 +370,8 @@ SELECT
   weight_rank,
   cap_rank,
   round(weight_rank * 0.6 + cap_rank * 0.4, 2)                            AS pick_score,
+  -- v4: 개별종목 상대강도 = 종목 20일수익률 - 그날 유니버스 평균 20일수익률
+  CASE WHEN ret20 IS NOT NULL THEN round((ret20 - mkt_ret20)::numeric, 2) END AS rs20_vs_mkt,
   now()
 FROM rk
 WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
@@ -409,6 +419,7 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
   weight_rank         = EXCLUDED.weight_rank,
   cap_rank            = EXCLUDED.cap_rank,
   pick_score          = EXCLUDED.pick_score,
+  rs20_vs_mkt         = EXCLUDED.rs20_vs_mkt,
   computed_at         = now();
 
 

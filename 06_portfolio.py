@@ -341,8 +341,7 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
                         "portfolio":       "VIRTUAL",
                         "strategy":        "TREND",
                         "pick_score":      cand["pick_score"],
-                        "sector":          r.get("sector"),
-                        "sector_rs_rank":  r.get("sector_rs_rank"),
+                        "rs20_vs_mkt":     r.get("rs20_vs_mkt"),
                         "vol_ratio20_prev": r.get("vol_ratio20_prev"),
                         "market_cap":      r.get("market_cap"),
                         "entry_price":     close,
@@ -350,9 +349,9 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
                         "invested":        invested,
                         "pyramid_blocked": pos.pyramid_blocked,
                     },
-                    f"[추세추종] {cand['name']} 3단계 신규매수(신고가돌파) · {close:,}원 {qty:,}주 "
-                    f"({invested:,}원) · {r.get('sector')} RS "
-                    f"{r.get('sector_rs_rank')}위 · 우선순위 {cand['pick_score']:.1f}")
+                    f"[추세추종] {cand['name']} 3단계 신규매수(개별RS+정배열) · {close:,}원 {qty:,}주 "
+                    f"({invested:,}원) · 개별RS "
+                    f"{r.get('rs20_vs_mkt')}%p · 우선순위 {cand['pick_score']:.1f}")
 
     return closed
 
