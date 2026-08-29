@@ -860,9 +860,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
   <div class="card"><h3>보유 중 <span class="r" id="openCount"></span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>종가</th><th class="l">전략</th><th>진입일</th><th>평단</th><th>수익률</th><th>고점</th>
+      <th class="l">종목</th><th>종가</th><th class="l">전략</th><th>진입일</th><th class="l">매수사유</th><th>평단</th><th>수익률</th><th>고점</th>
       <th class="opt">고점일</th><th class="opt">트랜치</th><th>투입금액</th><th>미실현손익</th><th>고점대비</th>
-    </tr></thead><tbody id="openBody"><tr><td colspan="12" class="load">불러오는 중…</td></tr></tbody></table></div>
+    </tr></thead><tbody id="openBody"><tr><td colspan="13" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
   <div class="card"><h3>청산 이력 <span class="r" id="perfCount"></span></h3>
     <div class="tw"><table><thead><tr>
@@ -2334,6 +2334,22 @@ async function loadPerf(){
     }
     const uPnl=p=>{const c=S.lastClose[p.code];return c?Math.round(+p.quantity*c-+p.invested):null;};
 
+    // 보유 중 종목의 매수 사유 (진입일 신규매수 신호의 reason_text에서 간략 추출)
+    const BUY_SIGTYPE={TREND:"V4_BUY_TREND",CLOSEBET:"V4_BUY_CLOSEBET"};
+    S.openReason={};
+    if(op.length){
+      const opDates=[...new Set(op.map(p=>p.entry_date))];
+      const rRows=await q("signals",
+        `select=code,trade_date,signal_type,reason_text&trade_date=in.(${opDates.join(",")})`+
+        `&code=in.(${opCodes.join(",")})&signal_type=in.(V4_BUY_TREND,V4_BUY_CLOSEBET)`);
+      rRows.forEach(r=>{S.openReason[`${r.code}_${r.trade_date}_${r.signal_type}`]=r.reason_text||"";});
+    }
+    const buyReasonShort=p=>{
+      const full=S.openReason[`${p.code}_${p.entry_date}_${BUY_SIGTYPE[p.strategy]}`]||"";
+      const m=full.match(/신규매수\(([^)]+)\)/);
+      return {short:m?m[1]:"–", full};
+    };
+
     // ── 전략별 요약 표 (2개 — 손익 / 성과지표) ─────────────────────────
     const bystrat=strat=>({
       cl: cl.filter(p=>p.strategy===strat), op: op.filter(p=>p.strategy===strat)
@@ -2401,17 +2417,20 @@ async function loadPerf(){
       const ret=(close? (close-+p.avg_price)/close*100 : null);
       const up=(close? uPnl(p) : null);
       const pd=p.peak_date?p.peak_date.slice(5).replace("-","/"):"–";
+      const br=buyReasonShort(p);
       return `<tr><td class="l"><a class="lk nm" data-code="${p.code}">${nameOf[p.code]||p.code}</a></td>
         <td class="num">${close?N(close):"–"}</td>
         <td class="l">${stratBadge(p.strategy)}</td>
-        <td>${p.entry_date}</td><td>${N(+p.avg_price)}</td>
+        <td>${p.entry_date}</td>
+        <td class="l faint" title="${br.full.replace(/"/g,'&quot;')}">${br.short}</td>
+        <td>${N(+p.avg_price)}</td>
         <td class="${ret==null?"":sgn(ret)}">${ret==null?"–":pm(ret,2)+"%"}</td>
         <td>${N(+p.peak_price)}</td>
         <td class="opt faint">${pd}</td>
         <td class="opt">${p.tranches}</td><td>${N(+p.invested)}</td>
         <td class="${up==null?"":sgn(up)}">${up==null?"–":pm(up,0)}</td>
         <td class="${dd==null?"":sgn(dd)}">${dd==null?"–":pm(dd,1)+"%"}</td></tr>`;}).join("")
-      :'<tr><td colspan="12" class="load">보유 중인 포지션 없음</td></tr>';
+      :'<tr><td colspan="13" class="load">보유 중인 포지션 없음</td></tr>';
     $$("#v-perf a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
     makeSortable('perfBody');
     makeSortable('openBody');
