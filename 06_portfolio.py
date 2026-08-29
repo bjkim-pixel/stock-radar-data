@@ -83,6 +83,11 @@ def iso(d):
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 
+# VIRTUAL 포트폴리오 시뮬레이션 하한선. 2026-08-10 이전 백테스트 이력은 의미가
+# 없다고 판단해 이 날짜부터만 가상매매를 재구성합니다(과거 이력은 자동 삭제).
+# 날짜를 더 당기고 싶으면 이 상수만 바꾸면 됩니다.
+SIM_START = datetime.date(2026, 8, 10)
+
 SIM_FROM = None
 for _a in sys.argv[1:]:
     if _a.startswith("--sim-from="):
@@ -411,11 +416,12 @@ def main():
         all_days = sorted(closes.keys())
         first_cand_days = [min(candidates[s].keys()) for s in ("TREND", "CLOSEBET") if candidates[s]]
         first_cand = min(first_cand_days)
-        sim_days = [d for d in all_days if d >= first_cand]
+        effective_start = max(first_cand, SIM_START)
         if SIM_FROM:
-            sim_days = [d for d in sim_days if d >= SIM_FROM]
-            if not sim_days:
-                sys.exit(f"❌ --sim-from={SIM_FROM} 이후 거래일이 없습니다.")
+            effective_start = max(effective_start, SIM_FROM)
+        sim_days = [d for d in all_days if d >= effective_start]
+        if not sim_days:
+            sys.exit(f"❌ {effective_start} 이후 거래일이 없습니다.")
 
         if len(args) >= 2:
             rec_from = datetime.date.fromisoformat(iso(args[0]))
@@ -431,6 +437,15 @@ def main():
         # ── VIRTUAL: 전 기간 재생성, 전략별 독립 운용 ─────────────────────
         cur.execute("DELETE FROM positions WHERE portfolio = 'VIRTUAL'")
         print(f"   기존 VIRTUAL 포지션 {cur.rowcount:,}건 삭제 후 재생성")
+
+        # SIM_START 이전 백테스트 이력(신호)은 더 이상 유효하지 않으므로 제거합니다.
+        # (positions는 위에서 이미 전량 삭제 후 SIM_START부터 재생성되므로 별도 처리 불필요)
+        cur.execute("""
+            DELETE FROM signals
+            WHERE signal_type = ANY(%s) AND trade_date < %s
+        """, (VIRTUAL_SIGNAL_TYPES, SIM_START))
+        if cur.rowcount:
+            print(f"   {SIM_START} 이전 VIRTUAL 신호 {cur.rowcount:,}건 삭제 (구 백테스트 이력)")
 
         open_trend, open_closebet = {}, {}
         closed_trend, closed_closebet = [], []
