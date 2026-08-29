@@ -15,15 +15,20 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅)
                     V4_SELL_TREND / V4_CRASH_SELL_TREND    (고점 대비 -7% 트레일링 손절)
                     V4_SELL_CLOSEBET                       (매수 익일 시가 전량 매도)
 
+매수 금액 — 시가총액 구간별 차등 (불타기 포함, ENTRY_AMOUNT_TIERS)
+  · 시가총액 5조원 미만          : 1천만원
+  · 시가총액 5조원 이상 10조원 미만 : 2천만원
+  · 시가총액 10조원 이상          : 3천만원
+
 전략별 규칙
   추세추종 (TREND)
-    · 매수: 3단계 통과 종목 전부(한도 없음), 1회 1천만원
-    · 불타기: 최초 매수가 대비 +20%마다 1천만원씩 추가매수 (횟수 제한 없음)
+    · 매수: 3단계 통과 종목 전부(한도 없음), 시총 구간별 금액(위 참조)
+    · 불타기: 최초 매수가 대비 +20%마다 같은 시총 구간 금액만큼 추가매수 (횟수 제한 없음)
     · 매도: 매수 다음날부터 보유 중 최고종가(peak) 대비 -7% 트레일링 손절
             (peak는 매수일 종가로 시작 → 사실상 첫 판정일도 매수가 기준 -7%)
 
   종가베팅 (CLOSEBET)
-    · 매수: 3단계 통과 종목 전부(한도 없음), 1회 1천만원
+    · 매수: 3단계 통과 종목 전부(한도 없음), 시총 구간별 금액(위 참조)
     · 불타기: 없음
     · 매도: 매수 익일 정규장 시가에 무조건 전량 매도 (보유기간 1거래일 고정)
 
@@ -55,7 +60,24 @@ if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 환경변수를 설정하세요.")
 
 # ── 파라미터 ──────────────────────────────────────────────────────────────────
-ENTRY_AMOUNT     = 10_000_000    # 종목당 1회 매수/불타기 금액 (원)
+ENTRY_AMOUNT     = 10_000_000    # 시총 5조원 미만 매수 금액 (원) · 폴백 기본값
+# 시가총액 구간별 1회 매수/불타기 금액 — (하한 시가총액, 금액) 내림차순 탐색
+ENTRY_AMOUNT_TIERS = [
+    (10_000_000_000_000, 30_000_000),   # 10조원 이상 → 3천만원
+    (5_000_000_000_000,  20_000_000),   # 5조원 이상 10조원 미만 → 2천만원
+    (0,                   10_000_000),  # 5조원 미만 → 1천만원
+]
+
+
+def entry_amount_for(market_cap):
+    """시가총액 구간에 따른 1회 매수/불타기 금액."""
+    mc = float(market_cap) if market_cap else 0
+    for floor, amount in ENTRY_AMOUNT_TIERS:
+        if mc >= floor:
+            return amount
+    return ENTRY_AMOUNT
+
+
 STOP_PCT         = -0.07         # 추세추종: 보유 중 최고종가 대비 트레일링 손절
 CRASH_PCT        = -0.10         # 추세추종: 급락 안전장치 (라벨만 다름, 결과 동일)
 PYRAMID_STEP     = 0.20          # 추세추종 불타기 트리거 간격 (최초 매수가 대비, 반복 무제한)
@@ -83,10 +105,10 @@ def iso(d):
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 
-# VIRTUAL 포트폴리오 시뮬레이션 하한선. 2026-08-10 이전 백테스트 이력은 의미가
+# VIRTUAL 포트폴리오 시뮬레이션 하한선. 이 날짜 이전 백테스트 이력은 의미가
 # 없다고 판단해 이 날짜부터만 가상매매를 재구성합니다(과거 이력은 자동 삭제).
 # 날짜를 더 당기고 싶으면 이 상수만 바꾸면 됩니다.
-SIM_START = datetime.date(2026, 8, 10)
+SIM_START = datetime.date(2026, 6, 1)
 
 SIM_FROM = None
 for _a in sys.argv[1:]:
@@ -154,11 +176,12 @@ class Position:
     __slots__ = ("portfolio", "strategy", "code", "name", "entry_date", "entry_price",
                  "avg_price", "quantity", "invested", "tranches", "peak_price",
                  "peak_date", "pyramid_blocked", "status", "exit_date",
-                 "exit_price", "exit_reason", "realized_pnl", "return_pct")
+                 "exit_price", "exit_reason", "realized_pnl", "return_pct",
+                 "market_cap")
 
     def __init__(self, portfolio, strategy, code, name, entry_date, entry_price,
                  quantity, invested, pyramid_blocked=False, tranches=1,
-                 avg_price=None, peak_price=None, peak_date=None):
+                 avg_price=None, peak_price=None, peak_date=None, market_cap=None):
         self.portfolio = portfolio
         self.strategy = strategy
         self.code = code
@@ -175,6 +198,7 @@ class Position:
         self.status = "OPEN"
         self.exit_date = self.exit_price = self.exit_reason = None
         self.realized_pnl = self.return_pct = None
+        self.market_cap = market_cap    # 불타기 시 같은 시총 구간 매수금액 적용용 (DB에는 저장 안 함)
 
     def close_out(self, date, price, reason):
         proceeds = self.quantity * price
@@ -252,8 +276,9 @@ def process_day_trend(day, open_pos, day_closes, day_candidates, stopped_codes,
             continue
         gain = close / pos.entry_price - 1
         target = int(gain // PYRAMID_STEP)     # 무제한 — 상한 없음
+        amount = entry_amount_for(pos.market_cap)
         while pos.tranches - 1 < target:
-            qty = ENTRY_AMOUNT // close
+            qty = amount // close
             if qty <= 0:
                 break
             add_cost = qty * close
@@ -289,13 +314,16 @@ def process_day_trend(day, open_pos, day_closes, day_candidates, stopped_codes,
             close = day_closes.get(cand["code"]) or cand["close"]
             if not close:
                 continue
-            qty = ENTRY_AMOUNT // close
+            mcap = cand["reason"].get("market_cap")
+            amount = entry_amount_for(mcap)
+            qty = amount // close
             if qty <= 0:
-                continue                   # 주당 1,000만원 초과 — 매수 불가
+                continue                   # 주당 매수금액 초과 — 매수 불가
             invested = qty * close
             pos = Position("VIRTUAL", "TREND", cand["code"], cand["name"], day, close,
                            qty, invested,
-                           pyramid_blocked=cand["code"] in stopped_codes)
+                           pyramid_blocked=cand["code"] in stopped_codes,
+                           market_cap=mcap)
             open_pos[cand["code"]] = pos
             r = cand["reason"]
             sig.add(day, cand["code"], "V4_BUY_TREND", "BUY",
@@ -361,12 +389,14 @@ def process_day_closebet(day, open_pos, day_closes, day_opens, day_candidates, s
             close = day_closes.get(cand["code"]) or cand["close"]
             if not close:
                 continue
-            qty = ENTRY_AMOUNT // close
+            mcap = cand["reason"].get("market_cap")
+            amount = entry_amount_for(mcap)
+            qty = amount // close
             if qty <= 0:
                 continue
             invested = qty * close
             pos = Position("VIRTUAL", "CLOSEBET", cand["code"], cand["name"], day, close,
-                           qty, invested)
+                           qty, invested, market_cap=mcap)
             open_pos[cand["code"]] = pos
             r = cand["reason"]
             sig.add(day, cand["code"], "V4_BUY_CLOSEBET", "BUY",
