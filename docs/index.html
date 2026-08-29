@@ -821,6 +821,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="tw" style="margin-top:8px"><table><thead><tr>
       <th class="l">전략</th><th>승률</th><th>손익비</th><th>평균 수익률</th>
     </tr></thead><tbody id="perfSummaryB"><tr><td colspan="4" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="tw" style="margin-top:8px"><table><thead><tr>
+      <th class="l">전략</th><th>보유중</th><th>투입금액</th><th>평가금액</th><th>미실현손익</th><th>평가 수익률</th>
+    </tr></thead><tbody id="perfSummaryC"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
   <div class="card"><h3>오늘의 후보 종목 · 단계별 스크리닝 <span class="r" id="candDateNote">기준일 확인 중…</span></h3>
@@ -847,9 +850,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
   <div class="card"><h3>보유 중 <span class="r" id="openCount"></span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th class="l">전략</th><th>진입일</th><th>평단</th><th>고점</th><th class="opt">고점일</th><th class="opt">트랜치</th>
-      <th>투입금액</th><th>고점대비</th>
-    </tr></thead><tbody id="openBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
+      <th class="l">종목</th><th>종가</th><th class="l">전략</th><th>진입일</th><th>평단</th><th>수익률</th><th>고점</th>
+      <th class="opt">고점일</th><th class="opt">트랜치</th><th>투입금액</th><th>미실현손익</th><th>고점대비</th>
+    </tr></thead><tbody id="openBody"><tr><td colspan="12" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
   <div class="card"><h3>청산 이력 <span class="r" id="perfCount"></span></h3>
     <div class="tw"><table><thead><tr>
@@ -2310,6 +2313,16 @@ async function loadPerf(){
     const nameOf={};S.codes.forEach(c=>nameOf[c.code]=c.name);
     S.perfClosed=cl; S.perfOpen=op; S.perfNameOf=nameOf;
 
+    // 보유 중 종목의 당일 종가 (미실현손익·수익률 계산용)
+    const opCodes=[...new Set(op.map(p=>p.code))];
+    S.lastClose={};
+    if(opCodes.length){
+      const cRows=await q("v_screener",
+        `select=code,close&trade_date=eq.${S.date}&code=in.(${opCodes.join(",")})`);
+      cRows.forEach(r=>S.lastClose[r.code]=+r.close);
+    }
+    const uPnl=p=>{const c=S.lastClose[p.code];return c?Math.round(+p.quantity*c-+p.invested):null;};
+
     // ── 전략별 요약 표 (2개 — 손익 / 성과지표) ─────────────────────────
     const bystrat=strat=>({
       cl: cl.filter(p=>p.strategy===strat), op: op.filter(p=>p.strategy===strat)
@@ -2335,6 +2348,22 @@ async function loadPerf(){
     $("#perfSummaryA").innerHTML=rowsA.join("");
     $("#perfSummaryB").innerHTML=rowsB.join("");
 
+    // ── 전략별 미실현손익 요약 ──────────────────────────────────────────
+    const rowsC=[];
+    for(const strat of ["TREND","CLOSEBET"]){
+      const o=op.filter(p=>p.strategy===strat);
+      const priced=o.filter(p=>S.lastClose[p.code]);
+      const invested=o.reduce((a,b)=>a+ +b.invested,0);
+      const value=priced.reduce((a,b)=>a+ +b.quantity*S.lastClose[b.code],0)
+                 + o.filter(p=>!S.lastClose[p.code]).reduce((a,b)=>a+ +b.invested,0);
+      const unrl=priced.reduce((a,b)=>a+uPnl(b),0);
+      rowsC.push(`<tr><td class="l">${stratBadge(strat)}</td>
+        <td>${o.length}건</td><td>${N(invested/EOK,2)}억</td><td>${N(value/EOK,2)}억</td>
+        <td class="${priced.length?sgn(unrl):""}">${priced.length?pm(unrl,0):"–"}</td>
+        <td class="${priced.length&&invested?sgn(unrl):""}">${priced.length&&invested?pm(unrl/invested*100,2)+"%":"–"}</td></tr>`);
+    }
+    $("#perfSummaryC").innerHTML=rowsC.join("");
+
     // ── 누적 손익 차트 (전략 필터) ────────────────────────────────────
     S.pnlStrat=S.pnlStrat||"ALL";
     drawPnlChart();
@@ -2356,15 +2385,22 @@ async function loadPerf(){
       :'<tr><td colspan="11" class="load">청산 이력 없음</td></tr>';
     $("#openCount").innerHTML=`<b>${op.length}</b>건`;
     $("#openBody").innerHTML=op.length?op.map(p=>{
-      const dd=(+p.peak_price? (S.lastClose?.[p.code]/+p.peak_price-1)*100 : null);
+      const close=S.lastClose[p.code];
+      const dd=(+p.peak_price&&close? (close/+p.peak_price-1)*100 : null);
+      const ret=(close? (close-+p.avg_price)/close*100 : null);
+      const up=(close? uPnl(p) : null);
       const pd=p.peak_date?p.peak_date.slice(5).replace("-","/"):"–";
       return `<tr><td class="l"><a class="lk nm" data-code="${p.code}">${nameOf[p.code]||p.code}</a></td>
+        <td class="num">${close?N(close):"–"}</td>
         <td class="l">${stratBadge(p.strategy)}</td>
-        <td>${p.entry_date}</td><td>${N(+p.avg_price)}</td><td>${N(+p.peak_price)}</td>
+        <td>${p.entry_date}</td><td>${N(+p.avg_price)}</td>
+        <td class="${ret==null?"":sgn(ret)}">${ret==null?"–":pm(ret,2)+"%"}</td>
+        <td>${N(+p.peak_price)}</td>
         <td class="opt faint">${pd}</td>
         <td class="opt">${p.tranches}</td><td>${N(+p.invested)}</td>
+        <td class="${up==null?"":sgn(up)}">${up==null?"–":pm(up,0)}</td>
         <td class="${dd==null?"":sgn(dd)}">${dd==null?"–":pm(dd,1)+"%"}</td></tr>`;}).join("")
-      :'<tr><td colspan="9" class="load">보유 중인 포지션 없음</td></tr>';
+      :'<tr><td colspan="12" class="load">보유 중인 포지션 없음</td></tr>';
     $$("#v-perf a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
     makeSortable('perfBody');
     makeSortable('openBody');
