@@ -5,8 +5,12 @@ on:
     # daily_collect.yml(16:05/20:05 KST) 수집이 끝난 뒤 지표·신호를 갱신합니다.
     # 스케줄 실행에서는 05_compute.py에 오늘 날짜 하루만 넘겨 매번 전체 기간을
     # 재계산하지 않게 합니다(하루치만 계산하는 용도로 스크립트가 이미 지원).
-    - cron: "15 7 * * 1-5"   # 16:15 KST = 07:15 UTC
-    - cron: "15 11 * * 1-5"  # 20:15 KST = 11:15 UTC
+    #
+    # 1차 16:30 KST — 지표·신호 계산 + 실제 가상매수/매도 실행(포지션 확정)
+    # 2차 18:30 KST — 지표·신호만 재계산해 3단계 후보를 다시 보여줌(--no-portfolio,
+    #                 가상매수는 실행하지 않음). 1차 대비 후보 종목 변화 비교용.
+    - cron: "30 7 * * 1-5"   # 16:30 KST = 07:30 UTC (매수·매도 실행)
+    - cron: "30 9 * * 1-5"   # 18:30 KST = 09:30 UTC (후보만 재조회, 매수 없음)
   workflow_dispatch:
     inputs:
       start_date:
@@ -41,7 +45,13 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
             # 스케줄 실행 = daily_collect 직후 그날 하루치만 재계산
-            python 05_compute.py "$(date +%Y%m%d)"
+            # 18:30 KST(09:30 UTC) 스케줄은 후보 재조회만 하고 가상매수는 실행하지 않음
+            if [ "${{ github.event.schedule }}" = "30 9 * * 1-5" ]; then
+              echo "▶ 18:30 KST 2차 실행 — 후보만 재계산 (가상매수 없음)"
+              python 05_compute.py "$(date +%Y%m%d)" --no-portfolio
+            else
+              python 05_compute.py "$(date +%Y%m%d)"
+            fi
           else
             START="${{ github.event.inputs.start_date }}"
             END="${{ github.event.inputs.end_date }}"

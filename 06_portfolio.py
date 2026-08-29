@@ -1,28 +1,39 @@
 # -*- coding: utf-8 -*-
 """
-STOCK RADAR · v4 포지션 엔진 (매수 확정 · 불타기 · 트레일링 손절)
+STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅)
 ==========================================================================
-06_signals.sql이 만든 V4_CANDIDATE를 받아, 포지션 상태가 있어야만 판정할 수
-있는 부분을 처리합니다.
+06_signals.sql이 만든 V4_CAND_{TREND|CLOSEBET}_3(3단계 통과 종목)를 받아,
+포지션 상태가 있어야만 판정할 수 있는 매수·불타기·매도를 처리합니다.
 
-  06_signals.sql  → V4_CANDIDATE   (조건 통과 종목 전부, 상태 불필요)
-  06_portfolio.py → V4_BUY         (일 5종목 한도·기보유 제외를 적용한 실제 매수)
-                    V4_PYRAMID     (+14%/+28%/+42% 추가매수)
-                    V4_SELL        (보유 중 최고종가 대비 -7% 트레일링 손절)
-                    V4_CRASH_SELL  (-7%를 건너뛰고 바로 -10% 이하 급락)
+두 전략은 완전히 독립적으로 운용됩니다 — 추세추종이 산 종목은 추세추종
+규칙으로만 팔고, 종가베팅이 산 종목은 종가베팅 규칙으로만 팝니다. 같은
+종목을 두 전략이 동시에 보유할 수도 있습니다(서로 다른 포지션으로 취급).
 
-하루 처리 순서 (백테스트와 동일)
-  1) 매도 판정 — 보유 포지션의 peak_price 갱신 후 낙폭 확인 (매수 당일 제외)
-  2) 불타기   — 살아남은 포지션 중 최초 매수가 대비 +14% 배수 도달분
-  3) 신규 매수 — 당일 후보 중 기보유 제외, pick_score 오름차순 최대 5종목
+  06_signals.sql  → V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3  (3단계 통과 종목)
+  06_portfolio.py → V4_BUY_TREND    / V4_BUY_CLOSEBET      (실제 가상매수)
+                    V4_PYRAMID_TREND                       (+20%마다 불타기, 무제한)
+                    V4_SELL_TREND / V4_CRASH_SELL_TREND    (고점 대비 -7% 트레일링 손절)
+                    V4_SELL_CLOSEBET                       (매수 익일 시가 전량 매도)
+
+전략별 규칙
+  추세추종 (TREND)
+    · 매수: 3단계 통과 종목 전부(한도 없음), 1회 1천만원
+    · 불타기: 최초 매수가 대비 +20%마다 1천만원씩 추가매수 (횟수 제한 없음)
+    · 매도: 매수 다음날부터 보유 중 최고종가(peak) 대비 -7% 트레일링 손절
+            (peak는 매수일 종가로 시작 → 사실상 첫 판정일도 매수가 기준 -7%)
+
+  종가베팅 (CLOSEBET)
+    · 매수: 3단계 통과 종목 전부(한도 없음), 1회 1천만원
+    · 불타기: 없음
+    · 매도: 매수 익일 정규장 시가에 무조건 전량 매도 (보유기간 1거래일 고정)
 
 포트폴리오 두 종류
-  VIRTUAL : 백테스트 규칙 그대로 엔진이 자동 운용. 매 실행 시 전 기간을 처음부터
-            재생성하므로(결정론적) 직접 수정하지 마세요.
-  REAL    : 사용자가 positions에 직접 넣은 실제 보유분. 엔진은 peak_price 갱신과
-            신호 생성만 합니다. ⚠ 손절 조건이 걸리면 REAL 포지션도 CLOSED로
-            바꿉니다 — 실제로 팔지 않으셨다면 포지션을 다시 넣어주세요.
-            (매일 반복 알림을 피하려는 선택입니다. 다르게 원하시면 알려주세요.)
+  VIRTUAL : 엔진이 자동 운용. 매 실행 시 전 기간을 처음부터 재생성하므로
+            (결정론적) 직접 수정하지 마세요. strategy 컬럼으로 TREND/CLOSEBET 구분.
+  REAL    : 사용자가 positions에 직접 넣은 실제 보유분(전략 구분 없음, 기존
+            추세추종형 트레일링 손절 규칙 그대로 적용). 엔진은 peak_price
+            갱신과 신호 생성만 합니다. ⚠ 손절 조건이 걸리면 REAL 포지션도
+            CLOSED로 바꿉니다 — 실제로 팔지 않으셨다면 포지션을 다시 넣어주세요.
 
 사용법
   python 06_portfolio.py                    # DB에 있는 전체 기간
@@ -43,17 +54,20 @@ DB_URL = os.environ.get("SUPABASE_DB_URL", "")
 if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 환경변수를 설정하세요.")
 
-# ── v4 스펙 파라미터 ──────────────────────────────────────────────────────────
-ENTRY_AMOUNT    = 10_000_000     # 종목당 최초 매수금액 (원)
-MAX_BUY_PER_DAY = 5              # 일 매수 한도 (종목)
-STOP_PCT        = -0.07          # 1차: 보유 중 최고종가 대비 트레일링 손절
-CRASH_PCT       = -0.10          # 2차: 급락 안전장치 (라벨만 다름, 결과 동일)
-PYRAMID_STEP    = 0.14           # 불타기 트리거 간격 (2R, R=7%)
-PYRAMID_MAX     = 3              # 불타기 최대 횟수 (+14%/+28%/+42%)
-COST_ONE_WAY    = 0.0012         # 편도 거래비용 (왕복 0.24%)
+# ── 파라미터 ──────────────────────────────────────────────────────────────────
+ENTRY_AMOUNT     = 10_000_000    # 종목당 1회 매수/불타기 금액 (원)
+STOP_PCT         = -0.07         # 추세추종: 보유 중 최고종가 대비 트레일링 손절
+CRASH_PCT        = -0.10         # 추세추종: 급락 안전장치 (라벨만 다름, 결과 동일)
+PYRAMID_STEP     = 0.20          # 추세추종 불타기 트리거 간격 (최초 매수가 대비, 반복 무제한)
+COST_ONE_WAY     = 0.0012        # 편도 거래비용 (왕복 0.24%)
+
+CAND_SIGNAL = {"TREND": "V4_CAND_TREND_3", "CLOSEBET": "V4_CAND_CLOSEBET_3"}
 
 # VIRTUAL 신호는 매 실행 시 전 기간을 재생성하므로 "지우고 다시 넣기"가 안전합니다.
-VIRTUAL_SIGNAL_TYPES = ["V4_BUY", "V4_PYRAMID", "V4_SELL", "V4_CRASH_SELL"]
+VIRTUAL_SIGNAL_TYPES = [
+    "V4_BUY_TREND", "V4_PYRAMID_TREND", "V4_SELL_TREND", "V4_CRASH_SELL_TREND",
+    "V4_BUY_CLOSEBET", "V4_SELL_CLOSEBET",
+]
 
 # REAL 신호는 다릅니다. 한 번 청산된 REAL 포지션은 다음 실행 때 OPEN이 아니라서
 # 다시 계산되지 않는데, VIRTUAL과 똑같이 "이번에 안 나왔으니 stale"로 지워버리면
@@ -69,9 +83,6 @@ def iso(d):
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 
-# --sim-from=YYYYMMDD : 시뮬레이션 시작일을 늦춥니다(그 전엔 포지션 없음).
-#   백테스트 스펙과 같은 구간(2026-04-01~08-14)으로 맞춰 비교할 때 씁니다.
-# --dry-run : 계산·요약만 하고 DB에 쓰지 않습니다.
 SIM_FROM = None
 for _a in sys.argv[1:]:
     if _a.startswith("--sim-from="):
@@ -81,38 +92,41 @@ DRY_RUN = "--dry-run" in sys.argv
 
 # ── 데이터 로드 ───────────────────────────────────────────────────────────────
 def load_all(cur):
-    """후보·종가·종목명을 한 번에 읽어 메모리에 올립니다(유니버스 300종목 규모라 가볍습니다)."""
-    cur.execute("""
-        SELECT sg.trade_date, sg.code, sg.reason, s.name
-        FROM signals sg
-        JOIN stocks s ON s.code = sg.code
-        WHERE sg.signal_type = 'V4_CANDIDATE'
-        ORDER BY sg.trade_date, (sg.reason->>'pick_score')::numeric
-    """)
-    candidates = {}
-    for d, code, reason, name in cur.fetchall():
-        candidates.setdefault(d, []).append({
-            "code": code,
-            "name": name,
-            "pick_score": float(reason.get("pick_score") or 1e9),
-            "close": int(reason.get("close") or 0),
-            "reason": reason,
-        })
+    """전략별 3단계 후보·종가·시가·종목명을 한 번에 읽어 메모리에 올립니다."""
+    candidates = {"TREND": {}, "CLOSEBET": {}}
+    for strat, sigtype in CAND_SIGNAL.items():
+        cur.execute("""
+            SELECT sg.trade_date, sg.code, sg.reason, s.name
+            FROM signals sg
+            JOIN stocks s ON s.code = sg.code
+            WHERE sg.signal_type = %s
+            ORDER BY sg.trade_date, (sg.reason->>'pick_score')::numeric
+        """, (sigtype,))
+        for d, code, reason, name in cur.fetchall():
+            candidates[strat].setdefault(d, []).append({
+                "code": code,
+                "name": name,
+                "pick_score": float(reason.get("pick_score") or 1e9),
+                "close": int(reason.get("close") or 0),
+                "reason": reason,
+            })
 
     cur.execute("""
-        SELECT p.trade_date, p.code, p.close
+        SELECT p.trade_date, p.code, p.close, p.open
         FROM daily_price p
         JOIN stocks s ON s.code = p.code
         WHERE s.security_type = 'STOCK' AND p.close > 0
     """)
-    closes = {}
-    for d, code, close in cur.fetchall():
+    closes, opens = {}, {}
+    for d, code, close, open_ in cur.fetchall():
         closes.setdefault(d, {})[code] = int(close)
+        if open_:
+            opens.setdefault(d, {})[code] = int(open_)
 
     cur.execute("SELECT code, name FROM stocks")
     names = dict(cur.fetchall())
 
-    return candidates, closes, names
+    return candidates, closes, opens, names
 
 
 # ── 신호 누적기 ───────────────────────────────────────────────────────────────
@@ -132,15 +146,16 @@ class SignalBuffer:
 
 # ── 포지션 ────────────────────────────────────────────────────────────────────
 class Position:
-    __slots__ = ("portfolio", "code", "name", "entry_date", "entry_price",
+    __slots__ = ("portfolio", "strategy", "code", "name", "entry_date", "entry_price",
                  "avg_price", "quantity", "invested", "tranches", "peak_price",
                  "peak_date", "pyramid_blocked", "status", "exit_date",
                  "exit_price", "exit_reason", "realized_pnl", "return_pct")
 
-    def __init__(self, portfolio, code, name, entry_date, entry_price,
+    def __init__(self, portfolio, strategy, code, name, entry_date, entry_price,
                  quantity, invested, pyramid_blocked=False, tranches=1,
                  avg_price=None, peak_price=None, peak_date=None):
         self.portfolio = portfolio
+        self.strategy = strategy
         self.code = code
         self.name = name
         self.entry_date = entry_date
@@ -167,17 +182,16 @@ class Position:
         self.return_pct = round(self.realized_pnl / self.invested * 100, 4) if self.invested else None
 
     def as_row(self):
-        return (self.portfolio, self.code, self.status, self.entry_date,
+        return (self.portfolio, self.strategy, self.code, self.status, self.entry_date,
                 self.entry_price, round(self.avg_price, 2), self.quantity,
                 self.invested, self.tranches, self.peak_price, self.peak_date,
                 self.pyramid_blocked, self.exit_date, self.exit_price,
                 self.exit_reason, self.realized_pnl, self.return_pct)
 
 
-# ── 하루 처리 ─────────────────────────────────────────────────────────────────
-def process_day(day, open_pos, day_closes, day_candidates, stopped_codes,
-                sig, suffix, allow_buy):
-    """open_pos: {code: Position}. 청산된 포지션 리스트를 반환합니다."""
+# ── 추세추종: 하루 처리 (트레일링 손절 + 무제한 불타기 + 신규매수) ────────────
+def process_day_trend(day, open_pos, day_closes, day_candidates, stopped_codes,
+                      sig, suffix, allow_buy):
     closed = []
 
     # 1) 매도 판정 — peak 갱신 후 낙폭 확인 (매수 당일은 제외)
@@ -199,11 +213,12 @@ def process_day(day, open_pos, day_closes, day_candidates, stopped_codes,
             del open_pos[code]
             stopped_codes.add(code)        # 이후 재진입 시 불타기 중단
             sig.add(day, code,
-                    ("V4_CRASH_SELL" if crash else "V4_SELL") + suffix,
+                    ("V4_CRASH_SELL_TREND" if crash else "V4_SELL_TREND") + suffix,
                     "SELL",
                     min(100.0, abs(dd) * 1000),
                     {
                         "portfolio":    pos.portfolio,
+                        "strategy":     "TREND",
                         "entry_date":   pos.entry_date.isoformat(),
                         "entry_price":  pos.entry_price,
                         "avg_price":    round(pos.avg_price, 2),
@@ -218,12 +233,12 @@ def process_day(day, open_pos, day_closes, day_candidates, stopped_codes,
                         "return_pct":   float(pos.return_pct or 0),
                         "exit_reason":  reason_code,
                     },
-                    f"{pos.name} 전량매도 · 고점 {pos.peak_price:,}원 대비 "
+                    f"[추세추종] {pos.name} 전량매도 · 고점 {pos.peak_price:,}원 대비 "
                     f"{dd*100:.1f}% · 실현 {pos.return_pct:.1f}% "
                     f"({pos.realized_pnl:,}원)"
                     + ("  ※급락 안전장치" if crash else ""))
 
-    # 2) 불타기 — 최초 매수가 대비 +14% 배수 도달분
+    # 2) 불타기 — 최초 매수가 대비 +20%마다, 횟수 제한 없음
     for code, pos in open_pos.items():
         if pos.entry_date >= day or pos.pyramid_blocked:
             continue
@@ -231,7 +246,7 @@ def process_day(day, open_pos, day_closes, day_candidates, stopped_codes,
         if close is None:
             continue
         gain = close / pos.entry_price - 1
-        target = min(PYRAMID_MAX, int(gain // PYRAMID_STEP))
+        target = int(gain // PYRAMID_STEP)     # 무제한 — 상한 없음
         while pos.tranches - 1 < target:
             qty = ENTRY_AMOUNT // close
             if qty <= 0:
@@ -241,10 +256,11 @@ def process_day(day, open_pos, day_closes, day_candidates, stopped_codes,
             pos.quantity += qty
             pos.invested += add_cost
             pos.tranches += 1
-            sig.add(day, code, "V4_PYRAMID" + suffix, "BUY",
+            sig.add(day, code, "V4_PYRAMID_TREND" + suffix, "BUY",
                     min(100.0, 50 + gain * 100),
                     {
                         "portfolio":     pos.portfolio,
+                        "strategy":      "TREND",
                         "tranche":       pos.tranches,
                         "trigger_gain":  round((pos.tranches - 1) * PYRAMID_STEP * 100, 1),
                         "actual_gain":   round(gain * 100, 2),
@@ -256,15 +272,15 @@ def process_day(day, open_pos, day_closes, day_candidates, stopped_codes,
                         "total_qty":     pos.quantity,
                         "total_invested": pos.invested,
                     },
-                    f"{pos.name} 불타기 {pos.tranches-1}회차 · 최초가 대비 "
+                    f"[추세추종] {pos.name} 불타기 {pos.tranches-1}회차 · 최초가 대비 "
                     f"+{gain*100:.1f}% · {close:,}원 {qty:,}주 추가 "
                     f"(평단 {pos.avg_price:,.0f}원)")
 
-    # 3) 신규 매수 — 후보 중 기보유 제외, pick_score 오름차순 최대 5종목
+    # 3) 신규 매수 — 3단계 통과 후보 전부(기보유 제외), 한도 없음
     if allow_buy:
         picks = [c for c in day_candidates if c["code"] not in open_pos]
         picks.sort(key=lambda c: c["pick_score"])
-        for cand in picks[:MAX_BUY_PER_DAY]:
+        for cand in picks:
             close = day_closes.get(cand["code"]) or cand["close"]
             if not close:
                 continue
@@ -272,32 +288,109 @@ def process_day(day, open_pos, day_closes, day_candidates, stopped_codes,
             if qty <= 0:
                 continue                   # 주당 1,000만원 초과 — 매수 불가
             invested = qty * close
-            pos = Position("VIRTUAL", cand["code"], cand["name"], day, close,
+            pos = Position("VIRTUAL", "TREND", cand["code"], cand["name"], day, close,
                            qty, invested,
                            pyramid_blocked=cand["code"] in stopped_codes)
             open_pos[cand["code"]] = pos
             r = cand["reason"]
-            sig.add(day, cand["code"], "V4_BUY", "BUY",
+            sig.add(day, cand["code"], "V4_BUY_TREND", "BUY",
                     min(100.0, max(0.0, 100.0 - cand["pick_score"] / 3.0)),
                     {
                         "portfolio":       "VIRTUAL",
+                        "strategy":        "TREND",
                         "pick_score":      cand["pick_score"],
                         "sector":          r.get("sector"),
                         "sector_rs_rank":  r.get("sector_rs_rank"),
                         "vol_ratio20_prev": r.get("vol_ratio20_prev"),
                         "market_cap":      r.get("market_cap"),
-                        "nonpersonal_net": r.get("nonpersonal_net"),
-                        "change_pct":      r.get("change_pct"),
                         "entry_price":     close,
                         "quantity":        qty,
                         "invested":        invested,
                         "pyramid_blocked": pos.pyramid_blocked,
                     },
-                    f"{cand['name']} 신규매수 · {close:,}원 {qty:,}주 "
+                    f"[추세추종] {cand['name']} 3단계 신규매수(신고가돌파) · {close:,}원 {qty:,}주 "
                     f"({invested:,}원) · {r.get('sector')} RS "
                     f"{r.get('sector_rs_rank')}위 · 우선순위 {cand['pick_score']:.1f}")
 
     return closed
+
+
+# ── 종가베팅: 하루 처리 (매수 익일 시가 전량 매도 · 불타기 없음) ─────────────
+def process_day_closebet(day, open_pos, day_closes, day_opens, day_candidates, sig, allow_buy):
+    closed = []
+
+    # 1) 매도 판정 — 매수 다음 거래일 시가에 무조건 전량 매도
+    for code, pos in list(open_pos.items()):
+        if pos.entry_date >= day:
+            continue
+        openp = day_opens.get(code)
+        if openp is None:
+            openp = day_closes.get(code)   # 시가 데이터가 없으면 종가로 대체
+        if openp is None:
+            continue                       # 거래정지 등 — 판정 보류(다음날 재시도)
+        pos.close_out(day, openp, "NEXT_OPEN_EXIT")
+        closed.append(pos)
+        del open_pos[code]
+        sig.add(day, code, "V4_SELL_CLOSEBET", "SELL",
+                min(100.0, max(0.0, 50 + float(pos.return_pct or 0))),
+                {
+                    "portfolio":    pos.portfolio,
+                    "strategy":     "CLOSEBET",
+                    "entry_date":   pos.entry_date.isoformat(),
+                    "entry_price":  pos.entry_price,
+                    "exit_price":   openp,
+                    "quantity":     pos.quantity,
+                    "invested":     pos.invested,
+                    "realized_pnl": pos.realized_pnl,
+                    "return_pct":   float(pos.return_pct or 0),
+                    "exit_reason":  "NEXT_OPEN_EXIT",
+                },
+                f"[종가베팅] {pos.name} 익일시가 전량매도 · {openp:,}원 · "
+                f"실현 {pos.return_pct:.1f}% ({pos.realized_pnl:,}원)")
+
+    # 2) 신규 매수 — 3단계 통과 후보 전부(기보유 제외), 한도 없음, 불타기 없음
+    if allow_buy:
+        picks = [c for c in day_candidates if c["code"] not in open_pos]
+        picks.sort(key=lambda c: c["pick_score"])
+        for cand in picks:
+            close = day_closes.get(cand["code"]) or cand["close"]
+            if not close:
+                continue
+            qty = ENTRY_AMOUNT // close
+            if qty <= 0:
+                continue
+            invested = qty * close
+            pos = Position("VIRTUAL", "CLOSEBET", cand["code"], cand["name"], day, close,
+                           qty, invested)
+            open_pos[cand["code"]] = pos
+            r = cand["reason"]
+            sig.add(day, cand["code"], "V4_BUY_CLOSEBET", "BUY",
+                    min(100.0, max(0.0, 100.0 - cand["pick_score"] / 3.0)),
+                    {
+                        "portfolio":       "VIRTUAL",
+                        "strategy":        "CLOSEBET",
+                        "pick_score":      cand["pick_score"],
+                        "sector":          r.get("sector"),
+                        "sector_rs_rank":  r.get("sector_rs_rank"),
+                        "foreign_net":     r.get("foreign_net"),
+                        "inst_net":        r.get("inst_net"),
+                        "pgtr_net_amt":    r.get("pgtr_net_amt"),
+                        "market_cap":      r.get("market_cap"),
+                        "entry_price":     close,
+                        "quantity":        qty,
+                        "invested":        invested,
+                    },
+                    f"[종가베팅] {cand['name']} 3단계 신규매수(신고가+수급) · {close:,}원 {qty:,}주 "
+                    f"({invested:,}원) · {r.get('sector')} RS "
+                    f"{r.get('sector_rs_rank')}위 · 익일 시가 전량매도 예정")
+
+    return closed
+
+
+# ── REAL(사용자 실보유) — 추세추종형 트레일링 손절 규칙만 유지 ───────────────
+def process_day_real(day, open_pos, day_closes, sig):
+    """REAL 포지션은 전략 구분 없이 기존 v4 트레일링 손절 규칙만 적용합니다."""
+    return process_day_trend(day, open_pos, day_closes, [], set(), sig, "_REAL", allow_buy=False)
 
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
@@ -308,15 +401,16 @@ def main():
 
     with conn.cursor() as cur:
         cur.execute("SET statement_timeout = '10min'")
-        candidates, closes, names = load_all(cur)
+        candidates, closes, opens, names = load_all(cur)
 
-        if not candidates:
-            print("⚠ V4_CANDIDATE가 없습니다. 06_signals.sql을 먼저 실행하세요.")
+        if not candidates["TREND"] and not candidates["CLOSEBET"]:
+            print("⚠ V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3 후보가 없습니다. 06_signals.sql을 먼저 실행하세요.")
             conn.rollback()
             return
 
         all_days = sorted(closes.keys())
-        first_cand = min(candidates.keys())
+        first_cand_days = [min(candidates[s].keys()) for s in ("TREND", "CLOSEBET") if candidates[s]]
+        first_cand = min(first_cand_days)
         sim_days = [d for d in all_days if d >= first_cand]
         if SIM_FROM:
             sim_days = [d for d in sim_days if d >= SIM_FROM]
@@ -334,30 +428,45 @@ def main():
 
         sig = SignalBuffer()
 
-        # ── VIRTUAL: 전 기간 재생성 ────────────────────────────────────────
+        # ── VIRTUAL: 전 기간 재생성, 전략별 독립 운용 ─────────────────────
         cur.execute("DELETE FROM positions WHERE portfolio = 'VIRTUAL'")
         print(f"   기존 VIRTUAL 포지션 {cur.rowcount:,}건 삭제 후 재생성")
 
-        open_pos, closed_all, stopped = {}, [], set()
-        cum_realized = peak_equity = max_invested = mdd_amount = 0
+        open_trend, open_closebet = {}, {}
+        closed_trend, closed_closebet = [], []
+        stopped_trend = set()
+        cum_realized = {"TREND": 0, "CLOSEBET": 0}
+        peak_equity = {"TREND": 0, "CLOSEBET": 0}
+        mdd_amount = {"TREND": 0, "CLOSEBET": 0}
+        max_invested = {"TREND": 0, "CLOSEBET": 0}
+
         for day in sim_days:
-            newly = process_day(
-                day, open_pos, closes.get(day, {}), candidates.get(day, []),
-                stopped, sig, suffix="", allow_buy=True)
-            closed_all += newly
-            cum_realized += sum(p.realized_pnl or 0 for p in newly)
-
-            # 자금곡선: 실현손익 누적 + 미실현 평가손익 → 필요자금·MDD 산출
             dc = closes.get(day, {})
-            invested_open = sum(p.invested for p in open_pos.values())
-            unrealized = sum(p.quantity * dc[p.code] - p.invested
-                             for p in open_pos.values() if p.code in dc)
-            equity = cum_realized + unrealized
-            peak_equity = max(peak_equity, equity)
-            mdd_amount = min(mdd_amount, equity - peak_equity)
-            max_invested = max(max_invested, invested_open)
+            do = opens.get(day, {})
 
-        v_rows = [p.as_row() for p in closed_all] + [p.as_row() for p in open_pos.values()]
+            newly_t = process_day_trend(
+                day, open_trend, dc, candidates["TREND"].get(day, []),
+                stopped_trend, sig, suffix="", allow_buy=True)
+            closed_trend += newly_t
+
+            newly_c = process_day_closebet(
+                day, open_closebet, dc, do, candidates["CLOSEBET"].get(day, []),
+                sig, allow_buy=True)
+            closed_closebet += newly_c
+
+            for label, newly, open_pos in (("TREND", newly_t, open_trend),
+                                            ("CLOSEBET", newly_c, open_closebet)):
+                cum_realized[label] += sum(p.realized_pnl or 0 for p in newly)
+                invested_open = sum(p.invested for p in open_pos.values())
+                unrealized = sum(p.quantity * dc[p.code] - p.invested
+                                 for p in open_pos.values() if p.code in dc)
+                equity = cum_realized[label] + unrealized
+                peak_equity[label] = max(peak_equity[label], equity)
+                mdd_amount[label] = min(mdd_amount[label], equity - peak_equity[label])
+                max_invested[label] = max(max_invested[label], invested_open)
+
+        v_rows = ([p.as_row() for p in closed_trend] + [p.as_row() for p in open_trend.values()] +
+                  [p.as_row() for p in closed_closebet] + [p.as_row() for p in open_closebet.values()])
 
         # ── REAL: 사용자 보유분 — peak 갱신·신호만, 신규매수 없음 ──────────
         cur.execute("""
@@ -368,24 +477,19 @@ def main():
         real_rows = cur.fetchall()
         real_open, real_closed = {}, []
         for code, ed, ep, qty, inv, tr, pb in real_rows:
-            real_open[code] = Position("REAL", code, names.get(code, code), ed,
+            real_open[code] = Position("REAL", None, code, names.get(code, code), ed,
                                        int(ep), int(qty), int(inv),
                                        pyramid_blocked=pb, tranches=tr)
         if real_open:
             print(f"   REAL 포지션 {len(real_open)}건 — peak 재계산 및 판정")
-            r_stopped = set()
             for day in [d for d in all_days if d >= min(p.entry_date for p in real_open.values())]:
-                real_closed += process_day(
-                    day, real_open, closes.get(day, {}), [], r_stopped,
-                    sig, suffix="_REAL", allow_buy=False)
+                real_closed += process_day_real(day, real_open, closes.get(day, {}), sig)
 
         # ── 저장 ───────────────────────────────────────────────────────────
-        # (--dry-run이면 아래 작업을 다 하되 마지막에 rollback 합니다. 커밋 직전까지
-        #  똑같이 굴려야 실제 실행과 같은 결과를 보장할 수 있기 때문입니다.)
         if v_rows:
             execute_values(cur, """
                 INSERT INTO positions
-                  (portfolio, code, status, entry_date, entry_price, avg_price,
+                  (portfolio, strategy, code, status, entry_date, entry_price, avg_price,
                    quantity, invested, tranches, peak_price, peak_date,
                    pyramid_blocked, exit_date, exit_price, exit_reason,
                    realized_pnl, return_pct)
@@ -410,8 +514,6 @@ def main():
         r_keep = [r for r in keep if r[2] in REAL_SIGNAL_TYPES]
 
         # VIRTUAL은 전 기간 재생성이라 "이번에 안 나온 과거 신호"를 지워야 합니다.
-        # 통째로 지우고 다시 넣되, 텔레그램 중복 발송을 막는 notified 플래그는
-        # 기존 값을 읽어와 복원합니다.
         cur.execute("""
             SELECT trade_date, code, signal_type, notified
             FROM signals
@@ -435,7 +537,7 @@ def main():
             """, rows, page_size=500)
         stale = deleted - len(v_keep)
 
-        # REAL은 삭제 없이 UPSERT만 (위 주석 참고)
+        # REAL은 삭제 없이 UPSERT만
         if r_keep:
             execute_values(cur, """
                 INSERT INTO signals
@@ -453,64 +555,38 @@ def main():
             conn.commit()
 
     # ── 요약 ─────────────────────────────────────────────────────────────
-    wins = [p for p in closed_all if (p.realized_pnl or 0) > 0]
-    total_pnl = sum(p.realized_pnl or 0 for p in closed_all)
     day_idx = {d: i for i, d in enumerate(sim_days)}
-    hold_td = [day_idx[p.exit_date] - day_idx[p.entry_date] for p in closed_all
-               if p.exit_date in day_idx and p.entry_date in day_idx]
-    cand_days = [d for d in sim_days if candidates.get(d)]
-    n_cand = sum(len(candidates.get(d, [])) for d in sim_days)
 
-    print(f"\n{'='*64}\nVIRTUAL 포트폴리오 결과  ({sim_days[0]} ~ {sim_days[-1]}, "
-          f"{len(sim_days)}거래일)\n{'='*64}")
-    print(f"  총 포지션      : {len(closed_all) + len(open_pos):,}건 "
-          f"(청산 {len(closed_all):,} / 보유중 {len(open_pos):,})")
-    print(f"  매수 종목수    : {len(set(p.code for p in closed_all) | set(open_pos)):,}종목")
-    if closed_all:
-        print(f"  승률           : {len(wins)/len(closed_all)*100:.1f}% "
-              f"({len(wins)}/{len(closed_all)})")
-        print(f"  실현손익 합계  : {total_pnl:,}원")
-        print(f"  필요자금       : {max_invested:,}원 (최대 동시투입)")
-        if max_invested:
-            print(f"  자금대비 수익률: {total_pnl/max_invested*100:+.1f}%")
-            print(f"  MDD            : {mdd_amount:,.0f}원 / "
-                  f"{mdd_amount/max_invested*100:.1f}%")
-        print(f"  매도건 평균수익: {sum(float(p.return_pct or 0) for p in closed_all)/len(closed_all):+.2f}%")
-        if hold_td:
-            print(f"  평균 보유일수  : {sum(hold_td)/len(hold_td):.1f}거래일")
-        avg_win = sum(p.realized_pnl for p in wins) / len(wins) if wins else 0
-        losses = [p for p in closed_all if (p.realized_pnl or 0) <= 0]
-        avg_loss = abs(sum(p.realized_pnl for p in losses) / len(losses)) if losses else 0
-        if avg_loss:
-            print(f"  손익비         : {avg_win/avg_loss:.1f}배 "
-                  f"(평균이익 {avg_win:,.0f}원 / 평균손실 {avg_loss:,.0f}원)")
-        n_crash = sum(1 for p in closed_all if p.exit_reason == "CRASH_STOP_10")
-        print(f"  청산 사유      : 트레일링 -7% {len(closed_all)-n_crash:,}건 / "
-              f"급락 -10% {n_crash:,}건 ({n_crash/len(closed_all)*100:.0f}%)")
+    def summarize(label, closed_all, open_pos, cand_dict):
+        wins = [p for p in closed_all if (p.realized_pnl or 0) > 0]
+        total_pnl = sum(p.realized_pnl or 0 for p in closed_all)
+        n_cand = sum(len(v) for v in cand_dict.values())
+        cand_days = [d for d in sim_days if cand_dict.get(d)]
+        print(f"\n{'='*64}\n[{label}] VIRTUAL 포트폴리오 결과  "
+              f"({sim_days[0]} ~ {sim_days[-1]}, {len(sim_days)}거래일)\n{'='*64}")
+        print(f"  총 포지션      : {len(closed_all) + len(open_pos):,}건 "
+              f"(청산 {len(closed_all):,} / 보유중 {len(open_pos):,})")
+        if closed_all:
+            print(f"  승률           : {len(wins)/len(closed_all)*100:.1f}% "
+                  f"({len(wins)}/{len(closed_all)})")
+            print(f"  실현손익 합계  : {total_pnl:,}원")
+            print(f"  필요자금(최대) : {max_invested[label]:,}원")
+            if max_invested[label]:
+                print(f"  자금대비 수익률: {total_pnl/max_invested[label]*100:+.1f}%")
+                print(f"  MDD            : {mdd_amount[label]/max_invested[label]*100:.1f}%")
+        print(f"  후보 발생      : {len(cand_days)}/{len(sim_days)}일 · "
+              f"일평균 {n_cand/len(sim_days):.2f}종목(3단계)")
 
-    print(f"  후보 발생      : {len(cand_days)}/{len(sim_days)}일 · "
-          f"일평균 {n_cand/len(sim_days):.2f}종목")
-    tr = {}
-    for p in closed_all + list(open_pos.values()):
-        tr[p.tranches] = tr.get(p.tranches, 0) + 1
-    print(f"  트랜치 분포    : " + " · ".join(f"{k}개 {v}건" for k, v in sorted(tr.items())))
-    if open_pos:
-        print(f"\n  [보유 중 {len(open_pos)}건]")
-        for p in sorted(open_pos.values(), key=lambda x: x.entry_date):
-            last = closes.get(sim_days[-1], {}).get(p.code)
-            cur_ret = (last / p.avg_price - 1) * 100 if last else 0
-            print(f"    {p.code} {p.name[:12]:<12} {p.entry_date} 진입 "
-                  f"평단 {p.avg_price:>9,.0f} 트랜치 {p.tranches} 평가 {cur_ret:+.1f}%")
+    summarize("TREND", closed_trend, open_trend, candidates["TREND"])
+    summarize("CLOSEBET", closed_closebet, open_closebet, candidates["CLOSEBET"])
 
     by_type = {}
     for r in sig.rows:
         if rec_from <= r[0] <= rec_to:
             by_type[r[2]] = by_type.get(r[2], 0) + 1
-    print(f"\n  [생성 신호] (기록 구간 내)")
+    print(f"\n[생성 신호] (기록 구간 내)")
     for k in sorted(by_type):
-        print(f"    {k:<20}: {by_type[k]:,}건")
-    if stale > 0:
-        print(f"    (재생성 결과 더는 나오지 않아 사라진 과거 신호 {stale:,}건)")
+        print(f"  {k:<20}: {by_type[k]:,}건")
 
     conn.close()
     print(f"\n✅ 완료 ({time.time()-t0:.0f}초)")

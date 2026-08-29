@@ -799,21 +799,48 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
 <!-- ═══════════ 전략 성과 ═══════════ -->
 <section id="v-perf" class="hide">
-  <div class="tiles" style="margin:16px 0 13px" id="perfTiles"></div>
+  <div class="card" style="margin-top:16px"><h3>전략별 요약 <span class="r">추세추종 · 종가베팅 — 완전 독립 운용</span></h3>
+    <div class="tw"><table><thead><tr>
+      <th class="l">전략</th><th>총매수</th><th>총매도</th><th>실현손익</th><th>청산건수</th><th>보유중</th>
+    </tr></thead><tbody id="perfSummaryA"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="tw" style="margin-top:8px"><table><thead><tr>
+      <th class="l">전략</th><th>승률</th><th>손익비</th><th>평균 수익률</th>
+    </tr></thead><tbody id="perfSummaryB"><tr><td colspan="4" class="load">불러오는 중…</td></tr></tbody></table></div>
+  </div>
+
+  <div class="card"><h3>오늘의 후보 종목 · 단계별 스크리닝 <span class="r" id="candDateNote">기준일 확인 중…</span></h3>
+    <div class="faint" style="font-size:11px;margin:0 0 8px">공통조건: 시가총액 2조원↑ · 무게/주식수 당일 상위 50위 · 각 단계는 독립 조건(누적 아님) · 3단계 통과 종목만 실제 가상매수</div>
+    <div class="grid2" id="candGrid">
+      <div>
+        <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">추세추종</div>
+        <div id="candTrend"></div>
+      </div>
+      <div>
+        <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">종가베팅</div>
+        <div id="candClosebet"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="card"><h3>누적 실현손익 추이</h3>
+    <div class="qf" style="margin-bottom:8px" id="pnlStratSel">
+      <button class="fchip strat" data-strat="ALL" aria-pressed="true">전체</button>
+      <button class="fchip strat" data-strat="TREND">추세추종</button>
+      <button class="fchip strat" data-strat="CLOSEBET">종가베팅</button>
+    </div>
     <div class="chart" id="cPerfPnl"></div>
   </div>
   <div class="card"><h3>보유 중 <span class="r" id="openCount"></span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>진입일</th><th>평단</th><th>고점</th><th>고점일</th><th class="opt">트랜치</th>
+      <th class="l">종목</th><th class="l">전략</th><th>진입일</th><th>평단</th><th>고점</th><th class="opt">고점일</th><th class="opt">트랜치</th>
       <th>투입금액</th><th>고점대비</th>
-    </tr></thead><tbody id="openBody"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
+    </tr></thead><tbody id="openBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
   <div class="card"><h3>청산 이력 <span class="r" id="perfCount"></span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>진입일</th><th>진입가</th><th>평단</th><th class="opt">트랜치</th>
+      <th class="l">종목</th><th class="l">전략</th><th>진입일</th><th class="opt">진입가</th><th class="opt">평단</th><th class="opt">트랜치</th>
       <th>청산일</th><th>청산가</th><th class="opt">사유</th><th>실현손익</th><th>수익률</th>
-    </tr></thead><tbody id="perfBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
+    </tr></thead><tbody id="perfBody"><tr><td colspan="11" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 </section>
 
@@ -1497,10 +1524,11 @@ async function loadFlowStep(){
   $("#flowOut").innerHTML=`<b>${rows.length}종목</b>`;
   $("#fn4").innerHTML=`${rows.length}<small>종목</small>`;
 
-  // STEP5 — 오늘 실제 생성된 신호
+  // STEP5 — 오늘 실제 생성된 신호 (매수/매도/불타기 확정분만 — 단계별 후보(WATCH)는 제외)
   const sig=await q("signals",
     `select=code,signal_type,grade,score,reason_text,trade_date&trade_date=eq.${S.date}`+
-    `&signal_type=like.V4*&order=score.desc`);
+    `&or=(signal_type.like.V4_BUY*,signal_type.like.V4_SELL*,signal_type.like.V4_CRASH*,signal_type.like.V4_PYRAMID*)`+
+    `&order=score.desc`);
   const nameOf={};S.codes.forEach(c=>nameOf[c.code]=c.name);
   $("#finalWrap").innerHTML = sig.length
     ? `<div class="grid2">`+sig.map(s=>`
@@ -2245,61 +2273,128 @@ function setupPairCarouselNav(pageCount){
 }
 
 /* ══ 전략 성과 ══ */
+const STRAT_LABEL={TREND:"추세추종",CLOSEBET:"종가베팅",null:"–"};
+const STRAT_BADGE_CLS={TREND:"up",CLOSEBET:"down"};
+const stratBadge=s=>`<span class="${STRAT_BADGE_CLS[s]||"dim"}" style="font-size:10.5px;font-weight:700">${STRAT_LABEL[s]||"–"}</span>`;
+
 async function loadPerf(){
   try{
     const cl=await q("positions","select=*&portfolio=eq.VIRTUAL&status=eq.CLOSED&order=exit_date.desc");
     const op=await q("positions","select=*&portfolio=eq.VIRTUAL&status=eq.OPEN&order=entry_date.asc");
     const nameOf={};S.codes.forEach(c=>nameOf[c.code]=c.name);
-    const pnl=cl.reduce((a,b)=>a+ +b.realized_pnl,0);
-    const win=cl.filter(p=>+p.realized_pnl>0);
-    const inv=Math.max(1,cl.reduce((a,b)=>a+ +b.invested,0));
-    const avgW=win.length?win.reduce((a,b)=>a+ +b.realized_pnl,0)/win.length:0;
-    const ls=cl.filter(p=>+p.realized_pnl<=0);
-    const avgL=ls.length?Math.abs(ls.reduce((a,b)=>a+ +b.realized_pnl,0)/ls.length):0;
-    const totalBuy=cl.reduce((a,b)=>a+ +b.invested,0)+op.reduce((a,b)=>a+ +b.invested,0);
-    const totalSell=cl.reduce((a,b)=>a+ +b.invested+ +b.realized_pnl,0);
-    $("#perfTiles").innerHTML=[
-      ["총 매수 대금",N(totalBuy/EOK,1)+"억","",`청산${N(cl.reduce((a,b)=>a+ +b.invested,0)/EOK,1)}+보유${N(op.reduce((a,b)=>a+ +b.invested,0)/EOK,1)}억`],
-      ["총 매도 대금",N(totalSell/EOK,1)+"억","",`수익 포함 회수액`],
-      ["실현손익",pm(pnl/EOK,2)+"억",sgn(pnl),N(pnl)+"원"],
-      ["청산 건수",N(cl.length)+"건","",`보유중 ${op.length}건`],
-      ["승률",cl.length?N(win.length/cl.length*100,1)+"%":"–","",`${win.length}승 ${ls.length}패`],
-      ["손익비",avgL?N(avgW/avgL,1)+"배":"–","","금액 기준"],
-      ["평균 수익률",cl.length?pm(cl.reduce((a,b)=>a+ +b.return_pct,0)/cl.length,2)+"%":"–","","매도건 평균"],
-    ].map(([k,v,c,s])=>`<div class="tile"><div class="lb">${k}</div>
-      <div class="vl num ${c}">${v}</div><div class="sub">${s}</div></div>`).join("");
-    // 누적 손익 차트 — 청산일 기준 오름차순으로 재정렬
-    const clAsc=[...cl].sort((a,b)=>a.exit_date>b.exit_date?1:-1);
-    const cumPnl=[];let acc=0;
-    clAsc.forEach(p=>{acc+= +p.realized_pnl;cumPnl.push(acc/EOK);});
-    if(clAsc.length>1){
-      lineChart($("#cPerfPnl"),[{n:"누적손익",v:cumPnl,c:"--s1"}],
-        clAsc.map(p=>p.exit_date.slice(5).replace("-","/")),
-        {h:200,pr:72,zero:true,marks:true,fy:v=>pm(v,0)+"억",ft:v=>pm(v,1)+"억",fm:v=>pm(v,1)+"억"});
-    }else{$("#cPerfPnl").innerHTML='<div class="load">청산 건수 부족</div>';}
+    S.perfClosed=cl; S.perfOpen=op; S.perfNameOf=nameOf;
+
+    // ── 전략별 요약 표 (2개 — 손익 / 성과지표) ─────────────────────────
+    const bystrat=strat=>({
+      cl: cl.filter(p=>p.strategy===strat), op: op.filter(p=>p.strategy===strat)
+    });
+    const rowsA=[], rowsB=[];
+    for(const strat of ["TREND","CLOSEBET"]){
+      const {cl:c,op:o}=bystrat(strat);
+      const pnl=c.reduce((a,b)=>a+ +b.realized_pnl,0);
+      const win=c.filter(p=>+p.realized_pnl>0);
+      const ls=c.filter(p=>+p.realized_pnl<=0);
+      const avgW=win.length?win.reduce((a,b)=>a+ +b.realized_pnl,0)/win.length:0;
+      const avgL=ls.length?Math.abs(ls.reduce((a,b)=>a+ +b.realized_pnl,0)/ls.length):0;
+      const totalBuy=c.reduce((a,b)=>a+ +b.invested,0)+o.reduce((a,b)=>a+ +b.invested,0);
+      const totalSell=c.reduce((a,b)=>a+ +b.invested+ +b.realized_pnl,0);
+      rowsA.push(`<tr><td class="l">${stratBadge(strat)}</td>
+        <td>${N(totalBuy/EOK,1)}억</td><td>${N(totalSell/EOK,1)}억</td>
+        <td class="${sgn(pnl)}">${pm(pnl/EOK,2)}억</td><td>${c.length}건</td><td>${o.length}건</td></tr>`);
+      rowsB.push(`<tr><td class="l">${stratBadge(strat)}</td>
+        <td>${c.length?N(win.length/c.length*100,1)+"%":"–"}</td>
+        <td>${avgL?N(avgW/avgL,1)+"배":"–"}</td>
+        <td class="${c.length?sgn(c.reduce((a,b)=>a+ +b.return_pct,0)):"" }">${c.length?pm(c.reduce((a,b)=>a+ +b.return_pct,0)/c.length,2)+"%":"–"}</td></tr>`);
+    }
+    $("#perfSummaryA").innerHTML=rowsA.join("");
+    $("#perfSummaryB").innerHTML=rowsB.join("");
+
+    // ── 누적 손익 차트 (전략 필터) ────────────────────────────────────
+    S.pnlStrat=S.pnlStrat||"ALL";
+    drawPnlChart();
+    $$("#pnlStratSel .fchip").forEach(b=>b.onclick=()=>{
+      $$("#pnlStratSel .fchip").forEach(x=>x.setAttribute("aria-pressed","false"));
+      b.setAttribute("aria-pressed","true");
+      S.pnlStrat=b.dataset.strat; drawPnlChart();
+    });
+
     $("#perfCount").innerHTML=`<b>${cl.length}</b>건`;
     $("#perfBody").innerHTML=cl.length?cl.map(p=>`<tr>
       <td class="l"><a class="lk nm" data-code="${p.code}">${nameOf[p.code]||p.code}</a></td>
-      <td>${p.entry_date}</td><td>${N(+p.entry_price)}</td><td>${N(+p.avg_price)}</td>
+      <td class="l">${stratBadge(p.strategy)}</td>
+      <td>${p.entry_date}</td><td class="opt">${N(+p.entry_price)}</td><td class="opt">${N(+p.avg_price)}</td>
       <td class="opt">${p.tranches}</td><td>${p.exit_date}</td><td>${N(+p.exit_price)}</td>
-      <td class="opt faint">${p.exit_reason==="CRASH_STOP_10"?"급락 -10%":"트레일링 -7%"}</td>
+      <td class="opt faint">${p.exit_reason==="CRASH_STOP_10"?"급락 -10%":p.exit_reason==="NEXT_OPEN_EXIT"?"익일시가":"트레일링 -7%"}</td>
       <td class="${sgn(+p.realized_pnl)}">${pm(+p.realized_pnl,0)}</td>
       <td class="${sgn(+p.return_pct)}">${pm(+p.return_pct)}%</td></tr>`).join("")
-      :'<tr><td colspan="10" class="load">청산 이력 없음</td></tr>';
+      :'<tr><td colspan="11" class="load">청산 이력 없음</td></tr>';
     $("#openCount").innerHTML=`<b>${op.length}</b>건`;
     $("#openBody").innerHTML=op.length?op.map(p=>{
       const dd=(+p.peak_price? (S.lastClose?.[p.code]/+p.peak_price-1)*100 : null);
       const pd=p.peak_date?p.peak_date.slice(5).replace("-","/"):"–";
       return `<tr><td class="l"><a class="lk nm" data-code="${p.code}">${nameOf[p.code]||p.code}</a></td>
+        <td class="l">${stratBadge(p.strategy)}</td>
         <td>${p.entry_date}</td><td>${N(+p.avg_price)}</td><td>${N(+p.peak_price)}</td>
-        <td class="faint">${pd}</td>
+        <td class="opt faint">${pd}</td>
         <td class="opt">${p.tranches}</td><td>${N(+p.invested)}</td>
         <td class="${dd==null?"":sgn(dd)}">${dd==null?"–":pm(dd,1)+"%"}</td></tr>`;}).join("")
-      :'<tr><td colspan="8" class="load">보유 중인 포지션 없음</td></tr>';
+      :'<tr><td colspan="9" class="load">보유 중인 포지션 없음</td></tr>';
     $$("#v-perf a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
     makeSortable('perfBody');
     makeSortable('openBody');
-  }catch(e){$("#perfBody").innerHTML=`<tr><td colspan="10" class="load">조회 실패: ${e.message}</td></tr>`;}
+
+    loadStrategyCandidates().catch(e=>{
+      $("#candTrend").innerHTML=$("#candClosebet").innerHTML=
+        `<div class="load">후보 조회 실패: ${e.message}</div>`;
+    });
+  }catch(e){$("#perfBody").innerHTML=`<tr><td colspan="11" class="load">조회 실패: ${e.message}</td></tr>`;}
+}
+
+function drawPnlChart(){
+  const strat=S.pnlStrat||"ALL";
+  const cl=(S.perfClosed||[]).filter(p=>strat==="ALL"||p.strategy===strat);
+  const clAsc=[...cl].sort((a,b)=>a.exit_date>b.exit_date?1:-1);
+  const cumPnl=[];let acc=0;
+  clAsc.forEach(p=>{acc+= +p.realized_pnl;cumPnl.push(acc/EOK);});
+  if(clAsc.length>1){
+    lineChart($("#cPerfPnl"),[{n:"누적손익",v:cumPnl,c:"--s1"}],
+      clAsc.map(p=>p.exit_date.slice(5).replace("-","/")),
+      {h:200,pr:72,zero:true,marks:true,fy:v=>pm(v,0)+"억",ft:v=>pm(v,1)+"억",fm:v=>pm(v,1)+"억"});
+  }else{$("#cPerfPnl").innerHTML='<div class="load">청산 건수 부족</div>';}
+}
+
+// ── 오늘의 후보 종목 · 단계별 스크리닝 (signals 테이블에서 직접 조회) ────────
+const CAND_STAGE_TYPES={
+  TREND:["V4_CAND_TREND_1","V4_CAND_TREND_2","V4_CAND_TREND_3"],
+  CLOSEBET:["V4_CAND_CLOSEBET_1","V4_CAND_CLOSEBET_2","V4_CAND_CLOSEBET_3"],
+};
+async function loadStrategyCandidates(){
+  const d=S.date;
+  $("#candDateNote").textContent=`기준일 ${d}`;
+  const nameOf={};S.codes.forEach(c=>nameOf[c.code]=c.name);
+  for(const strat of ["TREND","CLOSEBET"]){
+    const types=CAND_STAGE_TYPES[strat];
+    const rows=await q("signals",
+      `select=code,signal_type,score,reason_text&trade_date=eq.${d}&signal_type=in.(${types.join(",")})&order=score.desc`);
+    const el=$(strat==="TREND"?"#candTrend":"#candClosebet");
+    const byStage={1:[],2:[],3:[]};
+    rows.forEach(r=>{
+      const stage=+r.signal_type.slice(-1);
+      byStage[stage].push(r);
+    });
+    el.innerHTML=[1,2,3].map(stage=>{
+      const items=byStage[stage];
+      return `<div style="margin-bottom:10px">
+        <div class="faint" style="font-size:10.5px;margin:0 0 4px">${stage}단계 ${stage===3?"(가상매수 대상)":""} · ${items.length}종목</div>
+        ${items.length?`<div style="display:flex;flex-wrap:wrap;gap:5px">${items.map(r=>
+          `<span class="chip" title="${(r.reason_text||"").replace(/"/g,'&quot;')}"
+             style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:14px;cursor:pointer"
+             data-code="${r.code}">${nameOf[r.code]||r.code}</span>`).join("")}</div>`
+          :'<div class="faint" style="font-size:11px">해당 없음</div>'}
+      </div>`;
+    }).join("");
+    $$("span.chip",el).forEach(c=>c.onclick=()=>{go("detail");loadDetail(c.dataset.code);});
+  }
 }
 
 function redraw(){
