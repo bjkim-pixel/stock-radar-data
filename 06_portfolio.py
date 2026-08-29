@@ -24,8 +24,8 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅)
   추세추종 (TREND)
     · 매수: 3단계 통과 종목 전부(한도 없음), 시총 구간별 금액(위 참조)
     · 불타기: 최초 매수가 대비 +20%마다 같은 시총 구간 금액만큼 추가매수 (횟수 제한 없음)
-    · 매도: 매수 다음날부터 보유 중 최고종가(peak) 대비 -7% 트레일링 손절
-            (peak는 매수일 종가로 시작 → 사실상 첫 판정일도 매수가 기준 -7%)
+    · 매도: 매수 다음날부터 보유 중 최고가(peak, 종가가 아닌 당일 고가 기준) 대비
+            -7% 트레일링 손절 (peak는 매수일 고가로 시작, 저가는 판정에 사용 안 함)
 
   종가베팅 (CLOSEBET)
     · 매수: 3단계 통과 종목 전부(한도 없음), 시총 구간별 금액(위 참조)
@@ -78,7 +78,7 @@ def entry_amount_for(market_cap):
     return ENTRY_AMOUNT
 
 
-STOP_PCT         = -0.07         # 추세추종: 보유 중 최고종가 대비 트레일링 손절
+STOP_PCT         = -0.07         # 추세추종: 보유 중 최고가(당일 고가 기준 peak) 대비 트레일링 손절
 CRASH_PCT        = -0.10         # 추세추종: 급락 안전장치 (라벨만 다름, 결과 동일)
 PYRAMID_STEP     = 0.20          # 추세추종 불타기 트리거 간격 (최초 매수가 대비, 반복 무제한)
 COST_ONE_WAY     = 0.0012        # 편도 거래비용 (왕복 0.24%)
@@ -139,21 +139,23 @@ def load_all(cur):
             })
 
     cur.execute("""
-        SELECT p.trade_date, p.code, p.close, p.open
+        SELECT p.trade_date, p.code, p.close, p.open, p.high
         FROM daily_price p
         JOIN stocks s ON s.code = p.code
         WHERE s.security_type = 'STOCK' AND p.close > 0
     """)
-    closes, opens = {}, {}
-    for d, code, close, open_ in cur.fetchall():
+    closes, opens, highs = {}, {}, {}
+    for d, code, close, open_, high in cur.fetchall():
         closes.setdefault(d, {})[code] = int(close)
         if open_:
             opens.setdefault(d, {})[code] = int(open_)
+        # 고가가 없으면(결측) 종가로 대체 — peak 추적이 끊기지 않도록
+        highs.setdefault(d, {})[code] = int(high) if high else int(close)
 
     cur.execute("SELECT code, name FROM stocks")
     names = dict(cur.fetchall())
 
-    return candidates, closes, opens, names
+    return candidates, closes, opens, highs, names
 
 
 # ── 신호 누적기 ───────────────────────────────────────────────────────────────
@@ -219,19 +221,22 @@ class Position:
 
 
 # ── 추세추종: 하루 처리 (트레일링 손절 + 무제한 불타기 + 신규매수) ────────────
-def process_day_trend(day, open_pos, day_closes, day_candidates, stopped_codes,
+def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stopped_codes,
                       sig, suffix, allow_buy):
     closed = []
 
-    # 1) 매도 판정 — peak 갱신 후 낙폭 확인 (매수 당일은 제외)
+    # 1) 매도 판정 — peak는 종가가 아닌 "당일 고가" 기준으로 갱신(장중 급등 후
+    #    되밀리는 날도 고점으로 인정해 트레일링을 더 보수적으로 잡음), 낙폭 확인은
+    #    종가 기준(저가는 사용하지 않음). 매수 당일은 판정 제외.
     for code, pos in list(open_pos.items()):
         if pos.entry_date >= day:
             continue
         close = day_closes.get(code)
         if close is None:
             continue                       # 거래정지 등 — 판정 보류
-        if close > pos.peak_price:
-            pos.peak_price = close
+        high = day_highs.get(code, close)
+        if high > pos.peak_price:
+            pos.peak_price = high
             pos.peak_date = day
         dd = close / pos.peak_price - 1
         if dd <= STOP_PCT:
@@ -320,9 +325,13 @@ def process_day_trend(day, open_pos, day_closes, day_candidates, stopped_codes,
             if qty <= 0:
                 continue                   # 주당 매수금액 초과 — 매수 불가
             invested = qty * close
+            # peak 시작점도 매수 당일 고가 기준 — 이미 당일 크게 튄 상태로 매수한
+            # 종목은 그 고가부터 트레일링(더 보수적으로 시작)
+            entry_high = day_highs.get(cand["code"], close)
             pos = Position("VIRTUAL", "TREND", cand["code"], cand["name"], day, close,
                            qty, invested,
                            pyramid_blocked=cand["code"] in stopped_codes,
+                           peak_price=max(entry_high, close),
                            market_cap=mcap)
             open_pos[cand["code"]] = pos
             r = cand["reason"]
@@ -423,9 +432,9 @@ def process_day_closebet(day, open_pos, day_closes, day_opens, day_candidates, s
 
 
 # ── REAL(사용자 실보유) — 추세추종형 트레일링 손절 규칙만 유지 ───────────────
-def process_day_real(day, open_pos, day_closes, sig):
+def process_day_real(day, open_pos, day_closes, day_highs, sig):
     """REAL 포지션은 전략 구분 없이 기존 v4 트레일링 손절 규칙만 적용합니다."""
-    return process_day_trend(day, open_pos, day_closes, [], set(), sig, "_REAL", allow_buy=False)
+    return process_day_trend(day, open_pos, day_closes, day_highs, [], set(), sig, "_REAL", allow_buy=False)
 
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
@@ -436,7 +445,7 @@ def main():
 
     with conn.cursor() as cur:
         cur.execute("SET statement_timeout = '10min'")
-        candidates, closes, opens, names = load_all(cur)
+        candidates, closes, opens, highs, names = load_all(cur)
 
         if not candidates["TREND"] and not candidates["CLOSEBET"]:
             print("⚠ V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3 후보가 없습니다. 06_signals.sql을 먼저 실행하세요.")
@@ -488,9 +497,10 @@ def main():
         for day in sim_days:
             dc = closes.get(day, {})
             do = opens.get(day, {})
+            dh = highs.get(day, {})
 
             newly_t = process_day_trend(
-                day, open_trend, dc, candidates["TREND"].get(day, []),
+                day, open_trend, dc, dh, candidates["TREND"].get(day, []),
                 stopped_trend, sig, suffix="", allow_buy=True)
             closed_trend += newly_t
 
@@ -528,7 +538,8 @@ def main():
         if real_open:
             print(f"   REAL 포지션 {len(real_open)}건 — peak 재계산 및 판정")
             for day in [d for d in all_days if d >= min(p.entry_date for p in real_open.values())]:
-                real_closed += process_day_real(day, real_open, closes.get(day, {}), sig)
+                real_closed += process_day_real(day, real_open, closes.get(day, {}),
+                                                 highs.get(day, {}), sig)
 
         # ── 저장 ───────────────────────────────────────────────────────────
         if v_rows:

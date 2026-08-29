@@ -14,13 +14,15 @@
 --   · 시가총액 2조원 이상
 --   · 무게/주식수 당일 상위 50위 이내 (daily_metrics.weight_rank)
 --
--- ── 추세추종 (단계별 독립) ──────────────────────────────────────────────────
+-- ── 추세추종 (2·3단계는 1단계 조건을 포함하는 누적형) ─────────────────────
 --   1단계: 거래량비(전일까지 20일 평균 대비) 115% 이상 AND 종가 고가권(당일 고저
---          범위 내 상위 30% 이내, close_pos_pct ≥ 70)
---   2단계: 주도섹터(업종 RS 5위 이내) AND 거래량비 115% 이상 AND 전고점 근처
+--          범위 내 상위 30% 이내, close_pos_pct ≥ 70) AND 등락률 15% 미만
+--          (거짓 돌파 방지 — 당일 이미 과열된 종목 추격매수 제외)
+--   2단계: 1단계 조건 전부 AND 주도섹터(업종 RS 5위 이내) AND 전고점 근처
 --          (near_high 또는 pct_from_high ≥ -10%)
---   3단계: 주도섹터(업종 RS 5위 이내) AND 거래량비 115% 이상 AND 신고가 돌파
---          (상장 이후 전일까지 누적 최고 종가 돌파, 이력 20일 이상) — 가상매수 대상
+--   3단계: 1단계 조건(단, 등락률은 12% 미만으로 더 타이트) AND 주도섹터
+--          (업종 RS 5위 이내) AND 신고가 돌파(상장 이후 전일까지 누적 최고 종가
+--          돌파, 이력 20일 이상) — 가상매수 대상
 --
 -- ── 종가베팅 (단계별 독립) ──────────────────────────────────────────────────
 --   1단계: 종가 고가권(상위 30%) AND 외국인 순매수(+) AND 기관 순매수(+)
@@ -80,38 +82,45 @@ INSERT INTO signals (trade_date, code, signal_type, grade, score, reason, reason
 SELECT trade_date, code, 'V4_CAND_TREND_1', 'WATCH', score,
   jsonb_build_object('strategy','TREND','stage',1,'sector',sector,
     'vol_ratio20_prev',vol_ratio20_prev,'close_pos_pct',close_pos_pct,
+    'change_pct',change_pct,
     'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
   name || ' 추세추종 1단계 · 거래량비 ' || round(vol_ratio20_prev) || '%'
        || ' · 종가위치 상위 ' || round(100 - close_pos_pct) || '%'
+       || ' · 등락률 ' || round(change_pct, 1) || '%'
 FROM scored
-WHERE vol_ratio20_prev >= 115 AND close_pos_pct >= 70
+WHERE vol_ratio20_prev >= 115 AND close_pos_pct >= 70 AND change_pct < 15
 
 UNION ALL
 -- ── 추세추종 2단계 ──────────────────────────────────────────────────────────
 SELECT trade_date, code, 'V4_CAND_TREND_2', 'WATCH', score,
   jsonb_build_object('strategy','TREND','stage',2,'sector',sector,'sector_rs_rank',rs_rank,
-    'vol_ratio20_prev',vol_ratio20_prev,'pct_from_high',pct_from_high,
+    'vol_ratio20_prev',vol_ratio20_prev,'close_pos_pct',close_pos_pct,'change_pct',change_pct,
+    'pct_from_high',pct_from_high,
     'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
   name || ' 추세추종 2단계 · ' || sector || '(RS ' || rs_rank || '위)'
        || ' · 거래량비 ' || round(vol_ratio20_prev) || '%'
+       || ' · 종가위치 상위 ' || round(100 - close_pos_pct) || '%'
+       || ' · 등락률 ' || round(change_pct, 1) || '%'
        || ' · 전고점 ' || round(pct_from_high, 1) || '%'
 FROM scored
-WHERE rs_rank IS NOT NULL AND rs_rank <= 5
-  AND vol_ratio20_prev >= 115
+WHERE vol_ratio20_prev >= 115 AND close_pos_pct >= 70 AND change_pct < 15
+  AND rs_rank IS NOT NULL AND rs_rank <= 5
   AND (near_high OR pct_from_high >= -10)
 
 UNION ALL
 -- ── 추세추종 3단계 (가상매수 대상) ──────────────────────────────────────────
 SELECT trade_date, code, 'V4_CAND_TREND_3', 'WATCH', score,
   jsonb_build_object('strategy','TREND','stage',3,'sector',sector,'sector_rs_rank',rs_rank,
-    'vol_ratio20_prev',vol_ratio20_prev,
+    'vol_ratio20_prev',vol_ratio20_prev,'close_pos_pct',close_pos_pct,'change_pct',change_pct,
     'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
   name || ' 추세추종 3단계(매수) · ' || sector || '(RS ' || rs_rank || '위)'
        || ' · 거래량비 ' || round(vol_ratio20_prev) || '%'
+       || ' · 종가위치 상위 ' || round(100 - close_pos_pct) || '%'
+       || ' · 등락률 ' || round(change_pct, 1) || '%'
        || ' · 신고가돌파'
 FROM scored
-WHERE rs_rank IS NOT NULL AND rs_rank <= 5
-  AND vol_ratio20_prev >= 115
+WHERE vol_ratio20_prev >= 115 AND close_pos_pct >= 70 AND change_pct < 12
+  AND rs_rank IS NOT NULL AND rs_rank <= 5
   AND is_new_high_all
   AND data_span_days >= 20
 
