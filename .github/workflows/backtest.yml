@@ -1,0 +1,62 @@
+name: Backtest (읽기전용 — 시뮬레이션 시작일 지정)
+
+# 이미 DB에 계산돼 있는 daily_metrics/signals(V4_CAND_*)를 그대로 사용해서,
+# 가상매매 시뮬레이션만 원하는 시작일부터 다시 돌려봅니다. 06_portfolio.py의
+# --sim-from / --dry-run 옵션을 그대로 노출한 것뿐이라 지표·후보를 새로
+# 계산하지 않고(=06_signals.sql을 다시 돌리지 않고), positions/signals 테이블도
+# 건드리지 않습니다(dry_run=true 기본값 — DB에 아무것도 쓰지 않고 로그만 출력).
+#
+# 예) 6월 급등락장을 빼고 7~8월만 보고 싶다 → sim_from=20260701
+#
+# ⚠ dry_run=false로 실행하면 실제 VIRTUAL 포트폴리오가 이 시작일 기준으로
+#   영구히 재생성됩니다(운영 시뮬레이션 시작일이 바뀜) — 순수 비교 목적이면
+#   반드시 dry_run=true(기본값) 그대로 쓰세요.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sim_from:
+        description: '백테스트 시작일 (YYYYMMDD) — 이 날짜부터 신규매수를 센다고 가정 (예: 20260701)'
+        required: true
+      dry_run:
+        description: 'true(기본, 권장) = DB에 아무것도 쓰지 않고 결과만 로그로 출력 · false = 실제 운영 포트폴리오를 이 시작일로 영구 재생성'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install psycopg2-binary
+
+      - name: Run 06_portfolio.py (sim-from + dry-run)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          SIM_FROM="${{ github.event.inputs.sim_from }}"
+          DRY="${{ github.event.inputs.dry_run }}"
+          ARGS="--sim-from=$SIM_FROM"
+          if [ "$DRY" != "false" ]; then
+            ARGS="$ARGS --dry-run"
+            echo "▶ dry-run 모드 — DB에는 아무것도 쓰지 않습니다."
+          else
+            echo "⚠ dry-run 아님 — 운영 VIRTUAL 포트폴리오가 $SIM_FROM 기준으로 영구 재생성됩니다."
+          fi
+          echo "▶ python 06_portfolio.py $ARGS"
+          python 06_portfolio.py $ARGS
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::백테스트 실행 실패! GitHub Actions 로그를 확인하세요."

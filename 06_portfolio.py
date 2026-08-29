@@ -632,8 +632,37 @@ def main():
         print(f"  후보 발생      : {len(cand_days)}/{len(sim_days)}일 · "
               f"일평균 {n_cand/len(sim_days):.2f}종목(3단계)")
 
+    def detail_report(label, closed_all):
+        """월별 실현손익 + 상/하위 5건 — --dry-run이어도 메모리 데이터만으로 출력."""
+        if not closed_all:
+            return
+        by_month = {}
+        for p in closed_all:
+            key = p.exit_date.strftime("%Y-%m") if p.exit_date else "?"
+            by_month.setdefault(key, []).append(p.realized_pnl or 0)
+        print(f"\n  [{label}] 월별 실현손익")
+        for k in sorted(by_month):
+            vals = by_month[k]
+            print(f"    {k}: {sum(vals):+,}원 ({len(vals)}건)")
+
+        ranked = sorted(closed_all, key=lambda p: p.realized_pnl or 0, reverse=True)
+
+        def line(p):
+            rp = p.return_pct if p.return_pct is not None else 0
+            return (f"    {p.name:<10} {p.entry_date}~{p.exit_date}  "
+                    f"{(p.realized_pnl or 0):+,}원 ({rp:+.1f}%)  {p.exit_reason}")
+
+        print(f"\n  [{label}] 상위 5건")
+        for p in ranked[:5]:
+            print(line(p))
+        print(f"\n  [{label}] 하위 5건")
+        for p in ranked[-5:][::-1]:
+            print(line(p))
+
     summarize("TREND", closed_trend, open_trend, candidates["TREND"])
+    detail_report("TREND", closed_trend)
     summarize("CLOSEBET", closed_closebet, open_closebet, candidates["CLOSEBET"])
+    detail_report("CLOSEBET", closed_closebet)
 
     by_type = {}
     for r in sig.rows:
