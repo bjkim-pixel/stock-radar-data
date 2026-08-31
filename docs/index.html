@@ -570,6 +570,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         <button class="fchip" data-f="e_vol180">거래량비&lt;180%</button>
         <button class="fchip" data-f="e_aligned">정배열(MA5&gt;20&gt;60)</button>
         <button class="fchip" data-f="e_rspos">개별RS&gt;0</button>
+      <span id="scrMktAvgRS" style="display:none;font-size:11px;color:var(--ink-3);padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);white-space:nowrap">시장평균 20일 <span id="scrMktAvgRSVal" class="num">–</span>%</span>
       </div></div>
 
       <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
@@ -1905,10 +1906,32 @@ function topBuyer(row, sfx){
 async function runScreener(){
   $("#scrBody").innerHTML='<tr><td colspan="25" class="load">조회 중…</td></tr>';
   const date=$("#fDate").value||S.date;
-  let [rows,rk,per]=await Promise.all([
+  let [rows,rk,per,d20Rows]=await Promise.all([
     q("v_screener",`select=*&trade_date=eq.${date}`),
     q("v_flow_rank_today",`select=*&trade_date=eq.${date}`).catch(()=>[]),
-    q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_2m,inst_2m,fin_inv_1m,inv_trust_1m,pension_1m,pe_1m,fin_inv_2m,inv_trust_2m,pension_2m,pe_2m,individual_1m,corp_other_1m,individual_2m,corp_other_2m").catch(()=>[])]);
+    q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_2m,inst_2m,fin_inv_1m,inv_trust_1m,pension_1m,pe_1m,fin_inv_2m,inv_trust_2m,pension_2m,pe_2m,individual_1m,corp_other_1m,individual_2m,corp_other_2m").catch(()=>[])
+  ,q("daily_price",`select=trade_date&trade_date=lt.${date}&order=trade_date.desc&limit=1&offset=19`).catch(()=>[])
+]);
+  // ── 시장평균 20일 수익률 계산 ─────────────────────────────────────────
+  (async()=>{
+    try{
+      const badge=$("#scrMktAvgRS"),val=$("#scrMktAvgRSVal");
+      if(!badge||!val)return;
+      badge.style.display="none";
+      if(!d20Rows.length)return;
+      const d20=d20Rows[0].trade_date;
+      const prev=await q("daily_price",`select=code,close&trade_date=eq.${d20}`).catch(()=>[]);
+      if(!prev.length)return;
+      const prevByCode={};prev.forEach(p=>prevByCode[p.code]=+p.close);
+      const rets=rows.filter(r=>prevByCode[r.code]>0)
+                     .map(r=>(+r.close/prevByCode[r.code]-1)*100);
+      if(!rets.length)return;
+      const avg=rets.reduce((a,b)=>a+b,0)/rets.length;
+      val.textContent=(avg>=0?"+":"")+avg.toFixed(1);
+      val.className="num "+(avg>=0?"up":"down");
+      badge.style.display="inline-flex";
+    }catch(e){/* ignore */}
+  })();
   const rkByCode={};rk.forEach(p=>rkByCode[p.code]=p);
   const perByCode={};per.forEach(p=>perByCode[p.code]=p);
   rows=rows.map(r=>({...r,...(rkByCode[r.code]||{}),...(perByCode[r.code]||{})}));
