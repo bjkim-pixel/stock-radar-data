@@ -510,7 +510,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     </div>
   </div>
 
-  <div class="card"><h3>오늘 강했던 종목 <span class="r">무게/주식수(등락률×거래량회전율) 우선 · 개별RS 보조 정렬 · 상위 30종목</span></h3>
+  <div class="card"><h3>오늘 강했던 종목 <span class="r">무게/주식수(등락률×거래량회전율) 우선 · 개별RS 보조 정렬 · 상위 10종목</span></h3>
     <div class="note">무게/주식수는 "등락률 × 거래량 ÷ 상장주식수"로, 단순 상승률보다 실제 매수세(회전율)가 실린 종목을 가려냅니다.
       개별RS(rs20_vs_mkt)는 종목의 20일 수익률에서 전체 유니버스 평균 20일 수익률을 뺀 값으로, 시장 대비 초과강도를 뜻합니다.</div>
     <div class="tw"><table><thead><tr>
@@ -2071,7 +2071,7 @@ async function loadToday(){
     const idxByCode={}; universe.forEach((r,i)=>idxByCode[r.code]=i);
     const ctx={universe,idxByCode,sectorFlow:sflow};
     const scored=universe.map(r=>({r,s:computeTodayScore(r,ctx)}))
-      .sort((a,b)=>b.s.total-a.s.total).slice(0,30);
+      .sort((a,b)=>b.s.total-a.s.total).slice(0,10);
     renderTodayScoreTable(scored);
   }catch(e){
     console.error(e);
@@ -2118,7 +2118,7 @@ function renderTodayMomentum(universe){
   let rows=universe;
   if(S.tdSectorFilter)rows=rows.filter(r=>r.sector===S.tdSectorFilter);
   rows=[...rows].sort((a,b)=>(+b.weight_per_share||0)-(+a.weight_per_share||0)
-    ||(+(b.rs20_vs_mkt||-999)-+(a.rs20_vs_mkt||-999))).slice(0,30);
+    ||(+(b.rs20_vs_mkt||-999)-+(a.rs20_vs_mkt||-999))).slice(0,10);
   $("#tdMomBody").innerHTML=rows.length?rows.map((r,i)=>`
     <tr><td class="l rank">${i+1}</td>
       <td class="l"><a class="lk nm" data-code="${r.code}">
@@ -2148,7 +2148,7 @@ function renderTodayFlow(raw){
     const ratio=+r.market_cap>0?v/(+r.market_cap)*100:null;
     return {...r,v,ratio};
   }).filter(r=>r.v>0);
-  const sorted=[...rows].sort((a,b)=>S.tdFlowSort==="ratio"?(b.ratio-a.ratio):(b.v-a.v)).slice(0,15);
+  const sorted=[...rows].sort((a,b)=>S.tdFlowSort==="ratio"?(b.ratio-a.ratio):(b.v-a.v)).slice(0,10);
   $("#tdFlowBody").innerHTML=sorted.length?sorted.map((r,i)=>`
     <tr><td class="l rank">${i+1}</td>
       <td class="l"><a class="lk nm" data-code="${r.code}">
