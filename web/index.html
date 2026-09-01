@@ -2037,11 +2037,11 @@ async function loadToday(){
     S.tdFlowSubj=S.tdFlowSubj||"combo";
     renderTodayFlow(raw);
     $("#tdFlowSortSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
-      $("#tdFlowSortSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+      $$("#tdFlowSortSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
       S.tdFlowSort=b.dataset.v; renderTodayFlow(raw);
     });
     $("#tdFlowSubjSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
-      $("#tdFlowSubjSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+      $$("#tdFlowSubjSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
       S.tdFlowSubj=b.dataset.v; renderTodayFlow(raw);
     });
 
