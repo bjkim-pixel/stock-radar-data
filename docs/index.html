@@ -616,13 +616,13 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="panel-grid">
       <div class="field"><label>기준일</label><input type="date" id="fDate" title="조회할 거래일을 선택하세요"></div>
       <div class="field"><label>노출 종목수</label>
-        <select id="fLimit"><option selected>10</option><option>20</option><option>50</option><option>100</option><option>300</option></select></div>
+        <select id="fLimit"><option>10</option><option>20</option><option selected>50</option><option>100</option><option>300</option></select></div>
       <div class="field"><label>등락률 (%)</label>
-        <div class="range"><input type="number" id="fChgMin" placeholder="이상" value="1"><span>~</span>
+        <div class="range"><input type="number" id="fChgMin" placeholder="이상"><span>~</span>
           <input type="number" id="fChgMax" placeholder="이하"></div></div>
       <div class="field"><label>시가총액 (조원)</label>
-        <div class="range"><input type="number" id="fCapMin" placeholder="이상" step="0.1" value="2"><span>~</span>
-          <input type="number" id="fCapMax" placeholder="이하" step="0.1" value="2000"></div></div>
+        <div class="range"><input type="number" id="fCapMin" placeholder="이상" step="0.1"><span>~</span>
+          <input type="number" id="fCapMax" placeholder="이하" step="0.1"></div></div>
       <div class="field"><label>거래대금 ≥ (억원)</label><input type="number" id="fAmtMin"></div>
       <div class="field"><label>거래량비 ≥ (%)</label><input type="number" id="fVolMin"></div>
       <div class="field"><label>개별RS ≥ (%p)<span class="pop"><b>개별RS(rs20_vs_mkt) = 종목 20일 수익률(%) − 유니버스 평균 20일 수익률(%)</b>
@@ -1971,10 +1971,10 @@ async function runScreener(){
   makeSortable('scrBody');
 }
 $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e.message));
-const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"2","#fCapMax":"2000","#fAmtMin":"","#fVolMin":"","#fRsMin":""};
+const SCR_DEFAULTS={"#fChgMin":"","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":"","#fRsMin":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
-  $("#fLimit").value="10";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
+  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
   $("#fSector").value="";
   $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
 $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
