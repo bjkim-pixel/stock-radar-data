@@ -546,7 +546,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
   </div>
 
-  <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 40 · 수급 40 · 섹터 20 · 최근 종가베팅 백테스트 결과를 가중치에 반영 (참고용 스코어이며 투자 조언이 아닙니다)</span></h3>
+  <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 35(당일 등락률·무게/주식수·개별RS) · 수급 35(당일 실측 외국인+기관·프로그램·공통매수) · 섹터 20(섹터RS 1위 최고점) · 단발성 급등·거래량 과열 감점 (백테스트 미검증 참고용 휴리스틱, 투자 조언 아님)</span></h3>
     <div class="tw"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>스코어</th><th class="opt">모멘텀</th><th class="opt">수급</th><th class="opt">섹터</th>
       <th>등락률</th><th class="opt">시총</th><th class="l">사유</th>
@@ -1910,43 +1910,61 @@ function stockCommonBuyN(r){
   return FLOW_COMMON_SUBJ.filter(subj=>flowVal(r,subj,"1d")>0).length;
 }
 // ── 종합 스코어: 모멘텀 40 + 수급 40 + 섹터 20, 리스크 오버레이 반영 ──
+// 2026-09 개편: 기존 버전은 "오늘 실제로 강했던 종목"을 걸러내는 게 목적인데도
+// 정작 당일 등락률·당일 수급 금액을 전혀 안 쓰고, 5일 누적 스마트머니(smart_cum5·
+// 갭상승 백테스트에서 오히려 역신호로 확인됨)와 "섹터RS 3위가 제일 좋다"는
+// 근거 없는 스윗스팟 규칙에 배점을 몰아준 게 문제였습니다(주도섹터 1위가 오히려
+// 3위보다 낮은 점수를 받는 구조). 그 결과 당일 급등한 주도 테마주(2차전지·화장품 등)
+// 보다 턴오버만 큰 개별 이벤트성 종목이 위로 올라오는 왜곡이 있었습니다.
+// 이 버전은 (1) 당일 등락률과 당일 실측 수급 금액(외국인+기관, 프로그램)을 직접
+// 반영하고 (2) 섹터 랭크는 1위가 최고점이 되도록 단조 배점으로 바꾸고
+// (3) "많이 올랐는데 20일 추세가 없던" 단발성 급등 종목엔 리스크 감점을 추가한
+// 것입니다. 그래도 백테스트로 검증된 가중치는 아니고 참고용 휴리스틱입니다.
 function computeTodayScore(r,ctx){
   const reasons=[];
-  // A. 모멘텀 40
+  const chg=r.change_pct==null?null:+r.change_pct;
+  // A. 모멘텀(당일 강도) 최대 35
+  let aChg=0;
+  if(chg!=null){
+    if(chg>=15){aChg=13;reasons.push(`당일 +${N(chg,1)}%`);}
+    else if(chg>=8){aChg=10;reasons.push(`당일 +${N(chg,1)}%`);}
+    else if(chg>=5)aChg=7;
+    else if(chg>=3)aChg=4;
+    else if(chg>0)aChg=1;
+  }
   const wPct=pctRank(ctx.universe,ctx.idxByCode[r.code],"weight_per_share");
   let aWeight=0;
-  if(wPct<=0.05){aWeight=15;reasons.push("무게/주식수 상위 5%");}
-  else if(wPct<=0.10){aWeight=12;reasons.push("무게/주식수 상위 10%");}
-  else if(wPct<=0.20){aWeight=9;}
-  else if(wPct<=0.35){aWeight=6;}
-  else if(wPct<=0.50){aWeight=3;}
+  if(wPct<=0.05){aWeight=12;reasons.push("무게/주식수 상위 5%");}
+  else if(wPct<=0.10)aWeight=10;
+  else if(wPct<=0.20)aWeight=7;
+  else if(wPct<=0.35)aWeight=4;
+  else if(wPct<=0.50)aWeight=2;
   const rs=r.rs20_vs_mkt==null?null:+r.rs20_vs_mkt;
   let aRs=0;
   if(rs!=null){
-    if(rs>=15){aRs=15;reasons.push(`개별RS +${N(rs,1)}%p`);}
-    else if(rs>=10){aRs=12;reasons.push(`개별RS +${N(rs,1)}%p`);}
-    else if(rs>=5)aRs=9;
-    else if(rs>0)aRs=5;
+    if(rs>=15){aRs=10;reasons.push(`개별RS +${N(rs,1)}%p`);}
+    else if(rs>=10)aRs=8;
+    else if(rs>=5)aRs=5;
+    else if(rs>0)aRs=2;
   }
-  let aMa=0;
-  if(r.ma20!=null&&r.ma60!=null&&+r.ma60>0){
-    const gap=(+r.ma20/+r.ma60-1)*100;
-    if(gap>=5&&gap<=15){aMa=10;reasons.push("MA20/60 이격도 스윗스팟");}
-    else if((gap>0&&gap<5)||(gap>15&&gap<=25))aMa=6;
+  const momentum=aChg+aWeight+aRs;
+  // B. 수급(당일 실측 금액) 최대 35
+  const fNet=+r.foreign_net||0, iNet=+r.inst_net||0, pgtrNet=+r.pgtr_net_amt||0;
+  const cap=+r.market_cap>0?+r.market_cap:null;
+  const fiPct=cap?(fNet+iNet)/cap*100:null;
+  let bFlow=0;
+  if(fiPct!=null){
+    if(fiPct>=1.0){bFlow=14;reasons.push("외국인+기관 당일 순매수 강함");}
+    else if(fiPct>=0.5){bFlow=10;reasons.push("외국인+기관 당일 순매수 강함");}
+    else if(fiPct>=0.2)bFlow=6;
+    else if(fiPct>0)bFlow=2;
   }
-  const momentum=aWeight+aRs+aMa;
-  // B. 수급 40
-  const fNet=+r.foreign_net||0, iNet=+r.inst_net||0;
-  let bBoth=0;
-  if(fNet>0&&iNet>0){bBoth=10;reasons.push("외국인+기관 동시매수");}
-  else if(fNet>0||iNet>0)bBoth=4;
-  const capPct=+r.market_cap>0?(+r.smart_cum5||0)/(+r.market_cap)*100:null;
-  let bSmart=0;
-  if(capPct!=null){
-    if(capPct>=1.5){bSmart=15;reasons.push("스마트머니 5일 누적 강함");}
-    else if(capPct>=0.8)bSmart=11;
-    else if(capPct>=0.3)bSmart=7;
-    else if(capPct>0)bSmart=3;
+  const pgPct=cap?pgtrNet/cap*100:null;
+  let bPgtr=0;
+  if(pgPct!=null){
+    if(pgPct>=0.5){bPgtr=6;reasons.push("프로그램 당일 순매수 강함");}
+    else if(pgPct>=0.2)bPgtr=4;
+    else if(pgPct>0)bPgtr=1;
   }
   const commonN=stockCommonBuyN(r);
   let bCommon=0;
@@ -1956,25 +1974,29 @@ function computeTodayScore(r,ctx){
   else if(commonN===2)bCommon=3;
   const cb=r.consec_both_buy==null?0:+r.consec_both_buy;
   let bStreak=0;
-  if(cb===1)bStreak=5; else if(cb===2)bStreak=3; // 3일 이상은 백테스트상 신선도 저하 → 0점(패널티 없음, 가점만 배제)
-  const flow=bBoth+bSmart+bCommon+bStreak;
-  // C. 섹터 20
+  if(cb===1)bStreak=5; else if(cb===2)bStreak=3; // 3일 이상은 신선도 저하 → 가점 없음(패널티도 없음)
+  const flow=bFlow+bPgtr+bCommon+bStreak;
+  // C. 섹터 최대 20 — 랭크는 1위가 최고점(단조), 순위가 낮을수록 완만하게 감소
   const srk=r.sector_rs_rank==null?null:+r.sector_rs_rank;
   let cRank=0;
   if(srk!=null){
-    if(srk===3){cRank=15;reasons.push("섹터RS 3위(최적 구간)");}
-    else if(srk===2||srk===4)cRank=12;
-    else if(srk===1||srk===5)cRank=9;
-    else if(srk>=6&&srk<=8)cRank=5;
+    if(srk===1){cRank=15;reasons.push("섹터RS 1위(주도업종)");}
+    else if(srk===2){cRank=13;reasons.push("섹터RS 2위");}
+    else if(srk===3)cRank=11;
+    else if(srk===4)cRank=9;
+    else if(srk===5)cRank=7;
+    else if(srk>=6&&srk<=10)cRank=4;
   }
   const sf=ctx.sectorFlow[r.sector];
   let cFlow=0;
   if(sf){if(sf.buyN>sf.sellN)cFlow=5; else if(sf.buyN===sf.sellN&&sf.buyN>0)cFlow=2;}
   const sector=cRank+cFlow;
-  // 리스크 오버레이
+  // 리스크 오버레이 — 거래량 과열 단계화 + "추세 없는 단발성 급등" 감점
   let risk=0;
   const vol=r.vol_ratio20_prev==null?null:+r.vol_ratio20_prev;
-  if(vol!=null&&vol>200){risk=-10;reasons.push("거래량 과열(리스크)");}
+  if(vol!=null&&vol>300){risk-=15;reasons.push("거래량 극과열(단타성 의심)");}
+  else if(vol!=null&&vol>200){risk-=8;reasons.push("거래량 과열(리스크)");}
+  if(chg!=null&&chg>=15&&(rs==null||rs<=0)){risk-=8;reasons.push("단발성 급등 의심(20일 추세 부재)");}
   const total=Math.max(0,momentum+flow+sector+risk);
   if(cb>=3)reasons.push("연속양매수 3일+(신선도 낮음)");
   return {total,momentum,flow,sector,reasons:reasons.slice(0,3)};
