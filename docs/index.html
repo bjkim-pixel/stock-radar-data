@@ -504,18 +504,21 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <th class="l">#</th><th class="l">업종</th><th>RS순위</th><th>평균등락률</th><th class="opt">거래대금</th>
       <th class="opt">주간증감</th><th>업종수급</th>
     </tr></thead><tbody id="tdSectorBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
-    <div class="note" id="tdSectorFilterNote" style="display:none">
-      <span id="tdSectorFilterText"></span> · <a href="javascript:void(0)" id="tdSectorClear">필터 해제</a>
+    <div class="note" id="tdSectorFilterNote">
+      표시 기준: <b id="tdSectorFilterText">전체</b>
+      <span id="tdSectorClearWrap" style="display:none"> · <a href="javascript:void(0)" id="tdSectorClear">전체 보기</a></span>
     </div>
   </div>
 
-  <div class="card"><h3>오늘 강했던 종목 <span class="r">무게/주식수(등락률×거래량회전율) 우선 · 개별RS 보조 정렬</span></h3>
+  <div class="card"><h3>오늘 강했던 종목 <span class="r">무게/주식수(등락률×거래량회전율) 우선 · 개별RS 보조 정렬 · 상위 30종목</span></h3>
     <div class="note">무게/주식수는 "등락률 × 거래량 ÷ 상장주식수"로, 단순 상승률보다 실제 매수세(회전율)가 실린 종목을 가려냅니다.
       개별RS(rs20_vs_mkt)는 종목의 20일 수익률에서 전체 유니버스 평균 20일 수익률을 뺀 값으로, 시장 대비 초과강도를 뜻합니다.</div>
     <div class="tw"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>무게/주식수</th><th>개별RS</th>
       <th class="opt">업종RS순위</th><th class="grp opt">정배열</th><th class="opt">시총</th><th class="opt">거래대금</th>
-    </tr></thead><tbody id="tdMomBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
+      <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">프로그램</th>
+      <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th>
+    </tr></thead><tbody id="tdMomBody"><tr><td colspan="14" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
   <div class="card"><h3>수급 주체별 매수 상위 종목 <span class="r">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
@@ -535,9 +538,12 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     </div></div>
     <div class="tw" style="margin-top:10px"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>순매수(억)</th><th>시총대비</th>
-      <th class="opt">시총</th><th>공통매수</th>
-    </tr></thead><tbody id="tdFlowBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
-    <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·기타법인 등 서로 독립적인 6개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
+      <th class="opt">무게/주식수</th><th class="opt">개별RS</th><th class="opt">업종RS순위</th><th class="grp opt">정배열</th>
+      <th class="opt">시총</th><th class="opt">거래대금</th>
+      <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">프로그램</th>
+      <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th>공통매수</th>
+    </tr></thead><tbody id="tdFlowBody"><tr><td colspan="17" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
   </div>
 
   <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 40 · 수급 40 · 섹터 20 · 최근 종가베팅 백테스트 결과를 가중치에 반영 (참고용 스코어이며 투자 조언이 아닙니다)</span></h3>
@@ -2002,8 +2008,12 @@ async function loadToday(){
       $("#tdAmtSub").innerHTML=`<span class="${ok?"up":"down"}">20일평균 ${ok?"상회":"하회"}</span>`;
     }
     if(flowRow){
+      // 최다 "순매수" 주체 = 오늘 가장 많이 산(순매수액이 가장 큰) 주체.
+      // (이전 버전은 topV 초기값이 -Infinity인 채로 Math.abs(v)>Math.abs(topV)로
+      //  비교해 Math.abs(-Infinity)=Infinity를 절대 넘지 못했고, top이 항상
+      //  null로 남아 이 타일이 항상 "–"만 표시되던 버그였습니다.)
       let top=null,topV=-Infinity;
-      FLOW_SUBJ_COLS.forEach(k=>{const v=flowVal(flowRow,k,"1d");if(Math.abs(v)>Math.abs(topV)){topV=v;top=k;}});
+      FLOW_SUBJ_COLS.forEach(k=>{const v=flowVal(flowRow,k,"1d");if(v>topV){topV=v;top=k;}});
       if(top){
         $("#tdTopSubj").innerHTML=`<span class="${sgn(topV)}">${FLOW_SUBJ_SHORT[top]}</span>`;
         $("#tdTopSubjSub").innerHTML=`${pm(topV/EOK,0)}억`;
@@ -2070,13 +2080,14 @@ function renderTodaySectors(sflow){
   makeSortable("tdSectorBody");
   $$("#tdSectorBody tr.clk").forEach(tr=>tr.onclick=()=>{
     S.tdSectorFilter=tr.dataset.sec;
-    $("#tdSectorFilterNote").style.display="";
-    $("#tdSectorFilterText").textContent=`"${tr.dataset.sec}" 업종으로 필터링됨`;
+    $("#tdSectorFilterText").textContent=`"${tr.dataset.sec}" 업종`;
+    $("#tdSectorClearWrap").style.display="";
     loadFlowRawData().then(raw=>renderTodayMomentum(raw.filter(todayLiqOk)));
   });
   $("#tdSectorClear").onclick=()=>{
     S.tdSectorFilter=null;
-    $("#tdSectorFilterNote").style.display="none";
+    $("#tdSectorFilterText").textContent="전체";
+    $("#tdSectorClearWrap").style.display="none";
     loadFlowRawData().then(raw=>renderTodayMomentum(raw.filter(todayLiqOk)));
   };
 }
@@ -2085,7 +2096,7 @@ function renderTodayMomentum(universe){
   let rows=universe;
   if(S.tdSectorFilter)rows=rows.filter(r=>r.sector===S.tdSectorFilter);
   rows=[...rows].sort((a,b)=>(+b.weight_per_share||0)-(+a.weight_per_share||0)
-    ||(+(b.rs20_vs_mkt||-999)-+(a.rs20_vs_mkt||-999))).slice(0,20);
+    ||(+(b.rs20_vs_mkt||-999)-+(a.rs20_vs_mkt||-999))).slice(0,30);
   $("#tdMomBody").innerHTML=rows.length?rows.map((r,i)=>`
     <tr><td class="l rank">${i+1}</td>
       <td class="l"><a class="lk nm" data-code="${r.code}">
@@ -2097,8 +2108,13 @@ function renderTodayMomentum(universe){
       <td class="grp opt">${todayAligned(r)?'<span class="up">✓</span>':'<span class="dim">–</span>'}</td>
       <td class="opt">${N(+r.market_cap/JO,1)}조</td>
       <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
+      <td class="grp opt ${sgn(+r.foreign_net)}">${r.foreign_net==null?"–":pm(+r.foreign_net/EOK,0)+"억"}</td>
+      <td class="opt ${sgn(+r.inst_net)}">${r.inst_net==null?"–":pm(+r.inst_net/EOK,0)+"억"}</td>
+      <td class="opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td>
+      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
+      <td class="opt">${topBuyer(r,"1m")}</td>
     </tr>`).join("")
-    :`<tr><td colspan="9" class="load">데이터 없음</td></tr>`;
+    :`<tr><td colspan="14" class="load">데이터 없음</td></tr>`;
   $$("#tdMomBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable("tdMomBody");
 }
@@ -2118,10 +2134,20 @@ function renderTodayFlow(raw){
       <td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
       <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td>
       <td class="${sgn(r.ratio)}">${r.ratio!=null?pm(r.ratio,2)+"%":"–"}</td>
+      <td class="opt">${r.weight_per_share==null?"–":N(+r.weight_per_share,2)}</td>
+      <td class="opt ${sgn(r.rs20_vs_mkt==null?0:+r.rs20_vs_mkt)}">${r.rs20_vs_mkt==null?"–":pm(+r.rs20_vs_mkt,1)}</td>
+      <td class="opt">${r.sector_rs_rank?r.sector_rs_rank+"위":"–"}</td>
+      <td class="grp opt">${todayAligned(r)?'<span class="up">✓</span>':'<span class="dim">–</span>'}</td>
       <td class="opt">${N(+r.market_cap/JO,1)}조</td>
+      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
+      <td class="grp opt ${sgn(+r.foreign_net)}">${r.foreign_net==null?"–":pm(+r.foreign_net/EOK,0)+"억"}</td>
+      <td class="opt ${sgn(+r.inst_net)}">${r.inst_net==null?"–":pm(+r.inst_net/EOK,0)+"억"}</td>
+      <td class="opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td>
+      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
+      <td class="opt">${topBuyer(r,"1m")}</td>
       <td>${stockCommonBuyN(r)}/7</td>
     </tr>`).join("")
-    :`<tr><td colspan="7" class="load">해당 없음</td></tr>`;
+    :`<tr><td colspan="17" class="load">해당 없음</td></tr>`;
   $$("#tdFlowBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable("tdFlowBody");
 }
