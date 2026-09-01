@@ -597,7 +597,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         <button class="fchip" data-f="nearhigh">전고점 근처(-10% 이내)</button>
         <button class="fchip" data-f="closepos">종가 고가권(상위 30%)</button>
         <button class="fchip" data-f="ma5">5일선 위</button>
-        <button class="fchip" data-f="aligned">정배열</button>
+        <button class="fchip" data-f="aligned">정배열(종가&gt;5&gt;20&gt;60&gt;120)</button>
       </div></div>
       <div class="qf-group"><div class="qf-lb">수급</div><div class="qf">
         <button class="fchip" data-f="fgbuy">외국인 순매수</button>
@@ -637,7 +637,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         <button class="fchip" data-f="e_closepos70">종가위치≥70%</button>
         <button class="fchip" data-f="e_chg11">등락률&lt;11%</button>
         <button class="fchip" data-f="e_vol180">거래량비&lt;180%</button>
-        <button class="fchip" data-f="e_aligned">정배열(MA5&gt;20&gt;60)</button>
+        <button class="fchip" data-f="e_aligned">정배열(MA5&gt;20&gt;60&gt;120)</button>
         <button class="fchip" data-f="e_rspos">개별RS&gt;0</button>
       </div></div>
       <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
@@ -721,7 +721,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         <div class="ex">예) 시가 10,000 · 고가 11,500 · 저가 9,800 · 종가 11,200원<br>→ (11,200−9,800)÷(11,500−9,800)×100 ≈ 82% → 고가권 마감(조건 충족)<br>같은 날 종가가 10,200원이었다면 ≈ 24% → 저가권 마감(조건 미충족)</div>
       </span></button>
       <button class="fchip" data-f="ma5">5일선 위</button>
-      <button class="fchip" data-f="aligned">정배열</button>
+      <button class="fchip" data-f="aligned">정배열(종가&gt;5&gt;20&gt;60&gt;120)</button>
       <button class="fchip" data-f="rspos">개별RS 우위(신고가 아니어도 시장보다 강세)<span class="pop"><b>개별RS(rs20_vs_mkt) &gt; 0</b>
         <p>최근 20거래일 수익률이 유니버스 평균보다 높은 종목만 남깁니다. 신고가·전고점 조건과 달리 절대 가격 위치를 보지 않으므로, 바닥권에서 시장보다 먼저 반등을 시작한 종목을 잡는 데 유용합니다.</p>
       </span></button>
@@ -767,7 +767,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip" data-f="e_closepos70">종가위치≥70%<span class="pop"><b>종가위치 ≥ 70%</b><p>당일 고저 범위 중 상위 30% 안에서 마감한 종목. 윗꼬리(소멸형) 캔들 배제.</p></span></button>
       <button class="fchip" data-f="e_chg11">등락률&lt;11%<span class="pop"><b>등락률 절댓값 &lt; 11%</b><p>이미 급등한 종목 추격매수 방지. 하락 과대낙폭도 일부 필터됩니다.</p></span></button>
       <button class="fchip" data-f="e_vol180">거래량비&lt;180%<span class="pop"><b>20일 평균 대비 거래량비 &lt; 180%</b><p>단기 과열·급등 소멸형 종목 제외. 200~300%↑ 급등일은 제외됩니다.</p></span></button>
-      <button class="fchip" data-f="e_aligned">정배열(MA5&gt;20&gt;60)<span class="pop"><b>MA5 &gt; MA20 &gt; MA60 정배열</b><p>단기·중기·장기 이평선이 우상향 순서로 정렬된 종목만 남깁니다.</p></span></button>
+      <button class="fchip" data-f="e_aligned">정배열(MA5&gt;20&gt;60&gt;120)<span class="pop"><b>MA5 &gt; MA20 &gt; MA60 &gt; MA120 정배열</b><p>단기·중기·장기·초장기 이평선이 우상향 순서로 정렬된 종목만 남깁니다.</p></span></button>
       <button class="fchip" data-f="e_rspos">개별RS&gt;0<span class="pop"><b>개별RS(rs20_vs_mkt) &gt; 0</b><p>최근 20거래일 수익률이 유니버스 평균보다 높은 종목. 신고가가 아니어도 바닥에서 시장보다 먼저 반등 중인 종목을 잡습니다.</p></span></button>
       <span id="scrMktAvgRS" style="display:none;font-size:11px;color:var(--ink-3);padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);white-space:nowrap">시장평균 20일 <span id="scrMktAvgRSVal" class="num">–</span>%</span>
     </div></div>
@@ -2219,7 +2219,7 @@ function makeFilterFn(root,ids){
     if(on("nearhigh",root)&&!(r.near_high||+r.pct_from_high>=-10))return false;
     if(on("closepos",root)&&!(+r.close_pos_pct>=70))return false;
     if(on("ma5",root)&&!(r.ma5&&+r.close>+r.ma5))return false;
-    if(on("aligned",root)&&!(r.ma5&&r.ma20&&r.ma60&&+r.close>+r.ma5&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60))return false;
+    if(on("aligned",root)&&!(r.ma5&&r.ma20&&r.ma60&&r.ma120&&+r.close>+r.ma5&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60&&+r.ma60>+r.ma120))return false;
     if(on("rspos",root)&&!(rs!=null&&rs>0))return false;
     if(on("fgbuy",root)&&!(+r.foreign_net>0))return false;
     if(on("insbuy",root)&&!(+r.inst_net>0))return false;
@@ -2255,7 +2255,7 @@ function makeFilterFn(root,ids){
     if(on("e_closepos70",root)&&!(+r.close_pos_pct>=70))return false;
     if(on("e_chg11",root)&&!(Math.abs(+r.change_pct)<11))return false;
     if(on("e_vol180",root)&&!(vol!=null&&vol<180))return false;
-    if(on("e_aligned",root)&&!(r.ma5&&r.ma20&&r.ma60&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60))return false;
+    if(on("e_aligned",root)&&!(r.ma5&&r.ma20&&r.ma60&&r.ma120&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60&&+r.ma60>+r.ma120))return false;
     if(on("e_rspos",root)&&!(rs!=null&&rs>0))return false;
     return true;
   };
