@@ -367,6 +367,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
   <nav id="tabs">
     <button aria-selected="true" data-v="proc">시장 매크로</button>
+    <button data-v="today">오늘의 종목</button>
     <button data-v="flow">수급 동향</button>
     <button data-v="scr">종목 후보</button>
     <button data-v="pair">짝꿍매매</button>
@@ -486,6 +487,68 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 </section>
 
 
+<!-- ═══════════ 오늘의 종목 ═══════════ -->
+<section id="v-today" class="hide">
+  <div class="card" style="margin-top:16px"><h3>오늘의 시장 <span class="r" id="todayMktNote">불러오는 중…</span></h3>
+    <div class="tiles">
+      <div class="tile"><div class="lb">시장 레짐</div><div class="vl" id="tdRegime">–</div><div class="sub" id="tdRegimeSub"></div></div>
+      <div class="tile"><div class="lb">KOSPI</div><div class="vl" id="tdKospi">–</div><div class="sub" id="tdKospiSub"></div></div>
+      <div class="tile"><div class="lb">KOSDAQ</div><div class="vl" id="tdKosdaq">–</div><div class="sub" id="tdKosdaqSub"></div></div>
+      <div class="tile"><div class="lb">시장 거래대금</div><div class="vl" id="tdAmt">–</div><div class="sub" id="tdAmtSub"></div></div>
+      <div class="tile"><div class="lb">오늘 최다 순매수 주체</div><div class="vl" id="tdTopSubj">–</div><div class="sub" id="tdTopSubjSub"></div></div>
+    </div>
+  </div>
+
+  <div class="card"><h3>오늘의 주도업종 Top 5 <span class="r">업종 RS순위(20일 복리수익률 자체산출) 기준 · 클릭하면 아래 표가 그 업종으로 필터링됩니다</span></h3>
+    <div class="tw"><table><thead><tr>
+      <th class="l">#</th><th class="l">업종</th><th>RS순위</th><th>평균등락률</th><th class="opt">거래대금</th>
+      <th class="opt">주간증감</th><th>업종수급</th>
+    </tr></thead><tbody id="tdSectorBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="note" id="tdSectorFilterNote" style="display:none">
+      <span id="tdSectorFilterText"></span> · <a href="javascript:void(0)" id="tdSectorClear">필터 해제</a>
+    </div>
+  </div>
+
+  <div class="card"><h3>오늘 강했던 종목 <span class="r">무게/주식수(등락률×거래량회전율) 우선 · 개별RS 보조 정렬</span></h3>
+    <div class="note">무게/주식수는 "등락률 × 거래량 ÷ 상장주식수"로, 단순 상승률보다 실제 매수세(회전율)가 실린 종목을 가려냅니다.
+      개별RS(rs20_vs_mkt)는 종목의 20일 수익률에서 전체 유니버스 평균 20일 수익률을 뺀 값으로, 시장 대비 초과강도를 뜻합니다.</div>
+    <div class="tw"><table><thead><tr>
+      <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>무게/주식수</th><th>개별RS</th>
+      <th class="opt">업종RS순위</th><th class="grp opt">정배열</th><th class="opt">시총</th><th class="opt">거래대금</th>
+    </tr></thead><tbody id="tdMomBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
+  </div>
+
+  <div class="card"><h3>수급 주체별 매수 상위 종목 <span class="r">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
+    <div class="qf-group"><div class="qf-lb">정렬</div><div class="qf seg" id="tdFlowSortSel">
+      <button class="fchip" data-v="amt" aria-pressed="true">절대금액순</button>
+      <button class="fchip" data-v="ratio">시가총액 대비 비중순</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">주체</div><div class="qf seg" id="tdFlowSubjSel">
+      <button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button>
+      <button class="fchip" data-v="foreign">외국인</button>
+      <button class="fchip" data-v="inst">기관합계</button>
+      <button class="fchip" data-v="pgtr">프로그램</button>
+      <button class="fchip" data-v="fin_inv">금융투자</button>
+      <button class="fchip" data-v="inv_trust">투신</button>
+      <button class="fchip" data-v="pension">연기금</button>
+      <button class="fchip" data-v="pe">사모</button>
+    </div></div>
+    <div class="tw" style="margin-top:10px"><table><thead><tr>
+      <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>순매수(억)</th><th>시총대비</th>
+      <th class="opt">시총</th><th>공통매수</th>
+    </tr></thead><tbody id="tdFlowBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·기타법인 등 서로 독립적인 6개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
+  </div>
+
+  <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 40 · 수급 40 · 섹터 20 · 최근 종가베팅 백테스트 결과를 가중치에 반영 (참고용 스코어이며 투자 조언이 아닙니다)</span></h3>
+    <div class="tw"><table><thead><tr>
+      <th class="l">#</th><th class="l">종목</th><th>스코어</th><th class="opt">모멘텀</th><th class="opt">수급</th><th class="opt">섹터</th>
+      <th>등락률</th><th class="opt">시총</th><th class="l">사유</th>
+    </tr></thead><tbody id="tdScoreBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
+  </div>
+</section>
+
+
 <!-- ═══════════ 수급 동향 ═══════════ -->
 <section id="v-flow" class="hide">
   <div class="card" style="margin-top:16px"><h3>오늘의 수급주체별 순매수 거래대금
@@ -570,9 +633,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         <button class="fchip" data-f="e_vol180">거래량비&lt;180%</button>
         <button class="fchip" data-f="e_aligned">정배열(MA5&gt;20&gt;60)</button>
         <button class="fchip" data-f="e_rspos">개별RS&gt;0</button>
-      <span id="scrMktAvgRS" style="display:none;font-size:11px;color:var(--ink-3);padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);white-space:nowrap">시장평균 20일 <span id="scrMktAvgRSVal" class="num">–</span>%</span>
       </div></div>
-
       <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
         <button class="btn" id="runFlowFilter">필터 적용</button>
         <button class="btn ghost" id="resetFlowFilter">초기화</button>
@@ -616,13 +677,13 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="panel-grid">
       <div class="field"><label>기준일</label><input type="date" id="fDate" title="조회할 거래일을 선택하세요"></div>
       <div class="field"><label>노출 종목수</label>
-        <select id="fLimit"><option>10</option><option>20</option><option selected>50</option><option>100</option><option>300</option></select></div>
+        <select id="fLimit"><option selected>10</option><option>20</option><option>50</option><option>100</option><option>300</option></select></div>
       <div class="field"><label>등락률 (%)</label>
-        <div class="range"><input type="number" id="fChgMin" placeholder="이상"><span>~</span>
+        <div class="range"><input type="number" id="fChgMin" placeholder="이상" value="1"><span>~</span>
           <input type="number" id="fChgMax" placeholder="이하"></div></div>
       <div class="field"><label>시가총액 (조원)</label>
-        <div class="range"><input type="number" id="fCapMin" placeholder="이상" step="0.1"><span>~</span>
-          <input type="number" id="fCapMax" placeholder="이하" step="0.1"></div></div>
+        <div class="range"><input type="number" id="fCapMin" placeholder="이상" step="0.1" value="2"><span>~</span>
+          <input type="number" id="fCapMax" placeholder="이하" step="0.1" value="2000"></div></div>
       <div class="field"><label>거래대금 ≥ (억원)</label><input type="number" id="fAmtMin"></div>
       <div class="field"><label>거래량비 ≥ (%)</label><input type="number" id="fVolMin"></div>
       <div class="field"><label>개별RS ≥ (%p)<span class="pop"><b>개별RS(rs20_vs_mkt) = 종목 20일 수익률(%) − 유니버스 평균 20일 수익률(%)</b>
@@ -696,16 +757,14 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip" data-f="v4_nonpers">비개인 순매수</button>
       <button class="fchip" data-f="v4_leadsec">주도 섹터만</button>
     </div></div>
-
     <div class="qf-group"><div class="qf-lb">전략E<br><span style="font-size:10px;font-weight:400;color:var(--ink-3)">개별RS+소멸형 배제</span></div><div class="qf">
       <button class="fchip" data-f="e_closepos70">종가위치≥70%<span class="pop"><b>종가위치 ≥ 70%</b><p>당일 고저 범위 중 상위 30% 안에서 마감한 종목. 윗꼬리(소멸형) 캔들 배제.</p></span></button>
       <button class="fchip" data-f="e_chg11">등락률&lt;11%<span class="pop"><b>등락률 절댓값 &lt; 11%</b><p>이미 급등한 종목 추격매수 방지. 하락 과대낙폭도 일부 필터됩니다.</p></span></button>
       <button class="fchip" data-f="e_vol180">거래량비&lt;180%<span class="pop"><b>20일 평균 대비 거래량비 &lt; 180%</b><p>단기 과열·급등 소멸형 종목 제외. 200~300%↑ 급등일은 제외됩니다.</p></span></button>
       <button class="fchip" data-f="e_aligned">정배열(MA5&gt;20&gt;60)<span class="pop"><b>MA5 &gt; MA20 &gt; MA60 정배열</b><p>단기·중기·장기 이평선이 우상향 순서로 정렬된 종목만 남깁니다.</p></span></button>
       <button class="fchip" data-f="e_rspos">개별RS&gt;0<span class="pop"><b>개별RS(rs20_vs_mkt) &gt; 0</b><p>최근 20거래일 수익률이 유니버스 평균보다 높은 종목. 신고가가 아니어도 바닥에서 시장보다 먼저 반등 중인 종목을 잡습니다.</p></span></button>
+      <span id="scrMktAvgRS" style="display:none;font-size:11px;color:var(--ink-3);padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);white-space:nowrap">시장평균 20일 <span id="scrMktAvgRSVal" class="num">–</span>%</span>
     </div></div>
-
-
 
     <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
       <button class="btn" id="runScr">조회</button>
@@ -1368,10 +1427,11 @@ function go(v){
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
   if(cur&&cur!==v)S.prevView=cur;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
-  ["proc","flow","scr","pair","detail","perf"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","today","flow","scr","pair","detail","perf"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   scrollTo(0,0);
   if(v==="detail"&&!S.chart.code)loadDetail((S.codes.find(c=>c.code==="000660")||S.codes[0])?.code);
   if(v==="perf")loadPerf();
+  if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);})}
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
     Promise.all([loadFlowTrends(),loadFlowLists()]).catch(()=>{});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
@@ -1801,6 +1861,288 @@ $("#flowCondToggle").onclick=()=>{
   $("#flowCondToggle").textContent=isOpen?"상세 조건 설정 ▴":"상세 조건 설정 ▾";
 };
 
+/* ══════════════════════════════════════════════════════════════════════
+   오늘의 종목 (Today's Picks)
+   ──────────────────────────────────────────────────────────────────────
+   기존 데이터(v_screener, v_sector_rank, v_stock_flow_periods, v_market_flow_periods,
+   market_daily, v_market_amount_real)를 재사용해 5개 블록을 그립니다.
+   종합 스코어는 363건 종가베팅 백테스트 특징 분석에서 나온 인사이트를 반영한
+   참고용 점수이며 투자 조언이 아닙니다.
+   ────────────────────────────────────────────────────────────────────── */
+const TODAY_LIQ_CAP=100000000000;   // 시총 1,000억원 이상 (유동성 하한)
+const TODAY_LIQ_AMT=1000000000;     // 거래대금 10억원 이상 (유동성 하한)
+const TODAY_FLOW_CAP=100000000000;  // 수급 상위 종목 표: 시총 1,000억원 이상
+
+function todayLiqOk(r){
+  return +r.market_cap>=TODAY_LIQ_CAP && +r.trade_amount>=TODAY_LIQ_AMT;
+}
+function pctRank(arr,i,key){ // arr 내 i번째 값이 상위 몇 %인지 (0=최상위)
+  const v=+arr[i][key];
+  if(v==null||isNaN(v))return 1;
+  let better=0;
+  arr.forEach(r=>{const x=+r[key];if(x!=null&&!isNaN(x)&&x>v)better++;});
+  return better/arr.length;
+}
+// 업종별 오늘(1d) 순매수 방향 요약 — 독립 7개 주체(FLOW_COMMON_SUBJ) 기준
+function sectorFlowMap(rows){
+  const m={};
+  FLOW_COMMON_SUBJ.forEach(subj=>{
+    rows.forEach(r=>{
+      if(!r.sector)return;
+      const v=flowVal(r,subj,"1d");
+      if(!v)return;
+      const g=m[r.sector]||(m[r.sector]={buySet:new Set(),sellSet:new Set(),net:0});
+      (v>0?g.buySet:g.sellSet).add(subj);
+      g.net+=v;
+    });
+  });
+  const out={};
+  Object.keys(m).forEach(k=>out[k]={buyN:m[k].buySet.size,sellN:m[k].sellSet.size,net:m[k].net});
+  return out;
+}
+function stockCommonBuyN(r){
+  return FLOW_COMMON_SUBJ.filter(subj=>flowVal(r,subj,"1d")>0).length;
+}
+// ── 종합 스코어: 모멘텀 40 + 수급 40 + 섹터 20, 리스크 오버레이 반영 ──
+function computeTodayScore(r,ctx){
+  const reasons=[];
+  // A. 모멘텀 40
+  const wPct=pctRank(ctx.universe,ctx.idxByCode[r.code],"weight_per_share");
+  let aWeight=0;
+  if(wPct<=0.05){aWeight=15;reasons.push("무게/주식수 상위 5%");}
+  else if(wPct<=0.10){aWeight=12;reasons.push("무게/주식수 상위 10%");}
+  else if(wPct<=0.20){aWeight=9;}
+  else if(wPct<=0.35){aWeight=6;}
+  else if(wPct<=0.50){aWeight=3;}
+  const rs=r.rs20_vs_mkt==null?null:+r.rs20_vs_mkt;
+  let aRs=0;
+  if(rs!=null){
+    if(rs>=15){aRs=15;reasons.push(`개별RS +${N(rs,1)}%p`);}
+    else if(rs>=10){aRs=12;reasons.push(`개별RS +${N(rs,1)}%p`);}
+    else if(rs>=5)aRs=9;
+    else if(rs>0)aRs=5;
+  }
+  let aMa=0;
+  if(r.ma20!=null&&r.ma60!=null&&+r.ma60>0){
+    const gap=(+r.ma20/+r.ma60-1)*100;
+    if(gap>=5&&gap<=15){aMa=10;reasons.push("MA20/60 이격도 스윗스팟");}
+    else if((gap>0&&gap<5)||(gap>15&&gap<=25))aMa=6;
+  }
+  const momentum=aWeight+aRs+aMa;
+  // B. 수급 40
+  const fNet=+r.foreign_net||0, iNet=+r.inst_net||0;
+  let bBoth=0;
+  if(fNet>0&&iNet>0){bBoth=10;reasons.push("외국인+기관 동시매수");}
+  else if(fNet>0||iNet>0)bBoth=4;
+  const capPct=+r.market_cap>0?(+r.smart_cum5||0)/(+r.market_cap)*100:null;
+  let bSmart=0;
+  if(capPct!=null){
+    if(capPct>=1.5){bSmart=15;reasons.push("스마트머니 5일 누적 강함");}
+    else if(capPct>=0.8)bSmart=11;
+    else if(capPct>=0.3)bSmart=7;
+    else if(capPct>0)bSmart=3;
+  }
+  const commonN=stockCommonBuyN(r);
+  let bCommon=0;
+  if(commonN>=5){bCommon=10;reasons.push(`공통매수 ${commonN}/7`);}
+  else if(commonN===4)bCommon=8;
+  else if(commonN===3)bCommon=6;
+  else if(commonN===2)bCommon=3;
+  const cb=r.consec_both_buy==null?0:+r.consec_both_buy;
+  let bStreak=0;
+  if(cb===1)bStreak=5; else if(cb===2)bStreak=3; // 3일 이상은 백테스트상 신선도 저하 → 0점(패널티 없음, 가점만 배제)
+  const flow=bBoth+bSmart+bCommon+bStreak;
+  // C. 섹터 20
+  const srk=r.sector_rs_rank==null?null:+r.sector_rs_rank;
+  let cRank=0;
+  if(srk!=null){
+    if(srk===3){cRank=15;reasons.push("섹터RS 3위(최적 구간)");}
+    else if(srk===2||srk===4)cRank=12;
+    else if(srk===1||srk===5)cRank=9;
+    else if(srk>=6&&srk<=8)cRank=5;
+  }
+  const sf=ctx.sectorFlow[r.sector];
+  let cFlow=0;
+  if(sf){if(sf.buyN>sf.sellN)cFlow=5; else if(sf.buyN===sf.sellN&&sf.buyN>0)cFlow=2;}
+  const sector=cRank+cFlow;
+  // 리스크 오버레이
+  let risk=0;
+  const vol=r.vol_ratio20_prev==null?null:+r.vol_ratio20_prev;
+  if(vol!=null&&vol>200){risk=-10;reasons.push("거래량 과열(리스크)");}
+  const total=Math.max(0,momentum+flow+sector+risk);
+  if(cb>=3)reasons.push("연속양매수 3일+(신선도 낮음)");
+  return {total,momentum,flow,sector,reasons:reasons.slice(0,3)};
+}
+async function loadToday(){
+  try{
+    $("#todayMktNote").textContent="불러오는 중…";
+    // ── 1) 시장 요약 타일 ──
+    const [mdKospi,mdKosdaq,amtRows,flowRow]=await Promise.all([
+      q("market_daily",`select=trade_date,index_close,regime&market=eq.KOSPI&order=trade_date.desc&limit=2`),
+      q("market_daily",`select=trade_date,index_close&market=eq.KOSDAQ&order=trade_date.desc&limit=2`),
+      q("v_market_amount_real","select=*&order=trade_date.desc&limit=1"),
+      S.flowTrendRow?Promise.resolve(S.flowTrendRow):q("v_market_flow_periods","select=*").then(r=>r[0])
+    ]);
+    S.flowTrendRow=flowRow;
+    const rg=mdKospi[0]?.regime||"–";
+    const kr={RISK_ON:"양호",RISK_OFF:"위험",NEUTRAL:"중립"}[rg]||rg;
+    const col=rg==="RISK_ON"?"up":rg==="RISK_OFF"?"down":"dim";
+    $("#tdRegime").innerHTML=`<span class="${col}">${kr}</span>`;
+    $("#tdRegimeSub").textContent=S.date||"";
+    const idxChg=(rows)=>rows.length>=2&&rows[1].index_close?((+rows[0].index_close/+rows[1].index_close-1)*100):null;
+    const kospiChg=idxChg(mdKospi), kosdaqChg=idxChg(mdKosdaq);
+    $("#tdKospi").innerHTML=mdKospi[0]?.index_close?N(+mdKospi[0].index_close,2):"–";
+    $("#tdKospiSub").innerHTML=kospiChg!=null?`<span class="${sgn(kospiChg)}">${pm(kospiChg,2)}%</span>`:"";
+    $("#tdKosdaq").innerHTML=mdKosdaq[0]?.index_close?N(+mdKosdaq[0].index_close,2):"–";
+    $("#tdKosdaqSub").innerHTML=kosdaqChg!=null?`<span class="${sgn(kosdaqChg)}">${pm(kosdaqChg,2)}%</span>`:"";
+    const amt=amtRows[0];
+    if(amt){
+      $("#tdAmt").textContent=N(+amt.total_amount/JO,1)+"조";
+      const ok=+amt.total_amount>=+amt.amt_ma20;
+      $("#tdAmtSub").innerHTML=`<span class="${ok?"up":"down"}">20일평균 ${ok?"상회":"하회"}</span>`;
+    }
+    if(flowRow){
+      let top=null,topV=-Infinity;
+      FLOW_SUBJ_COLS.forEach(k=>{const v=flowVal(flowRow,k,"1d");if(Math.abs(v)>Math.abs(topV)){topV=v;top=k;}});
+      if(top){
+        $("#tdTopSubj").innerHTML=`<span class="${sgn(topV)}">${FLOW_SUBJ_SHORT[top]}</span>`;
+        $("#tdTopSubjSub").innerHTML=`${pm(topV/EOK,0)}억`;
+      }
+    }
+    $("#todayMktNote").textContent=S.date?`${S.date} 기준`:"";
+
+    // ── 데이터 로드: 스크리너 원본 + 수급 원본 ──
+    const raw=await loadFlowRawData();
+    const universe=raw.filter(todayLiqOk);
+    const sflow=sectorFlowMap(raw);
+
+    // ── 2) 오늘의 주도업종 Top5 ──
+    renderTodaySectors(sflow);
+
+    // ── 3) 오늘 강했던 종목 ──
+    renderTodayMomentum(universe);
+
+    // ── 4) 수급 주체별 매수 상위 종목 ──
+    S.tdFlowSort=S.tdFlowSort||"amt";
+    S.tdFlowSubj=S.tdFlowSubj||"combo";
+    renderTodayFlow(raw);
+    $("#tdFlowSortSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
+      $("#tdFlowSortSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+      S.tdFlowSort=b.dataset.v; renderTodayFlow(raw);
+    });
+    $("#tdFlowSubjSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
+      $("#tdFlowSubjSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+      S.tdFlowSubj=b.dataset.v; renderTodayFlow(raw);
+    });
+
+    // ── 5) 종합 스코어 랭킹 ──
+    const idxByCode={}; universe.forEach((r,i)=>idxByCode[r.code]=i);
+    const ctx={universe,idxByCode,sectorFlow:sflow};
+    const scored=universe.map(r=>({r,s:computeTodayScore(r,ctx)}))
+      .sort((a,b)=>b.s.total-a.s.total).slice(0,30);
+    renderTodayScoreTable(scored);
+  }catch(e){
+    console.error(e);
+    $("#todayMktNote").textContent="불러오기 실패";
+  }
+}
+function todaySectorRow(s,i,sflow){
+  const sf=sflow[s.sector];
+  const flowHtml=sf
+    ? (sf.buyN>sf.sellN?`<span class="up">매수 ${sf.buyN}/7</span>`
+       :sf.sellN>sf.buyN?`<span class="down">매도 ${sf.sellN}/7</span>`
+       :`<span class="dim">중립</span>`)
+    : `<span class="dim">–</span>`;
+  return `<tr class="clk" data-sec="${s.sector}">
+    <td class="l rank">${i+1}</td><td class="l"><span class="nm">${s.sector}</span></td>
+    <td>${s.rs_rank?(s.rs_rank<=5?`<b>${s.rs_rank}위</b>`:s.rs_rank+"위"):"–"}</td>
+    <td class="${sgn(+s.avg_change_pct)}">${pm(+s.avg_change_pct)}%</td>
+    <td class="opt">${N(+s.total_amount/EOK)}억</td>
+    <td class="opt ${sgn(s.amt_chg_1w_pct==null?0:+s.amt_chg_1w_pct)}">${s.amt_chg_1w_pct==null?"–":pm(+s.amt_chg_1w_pct,1)+"%"}</td>
+    <td>${flowHtml}</td>
+  </tr>`;
+}
+function renderTodaySectors(sflow){
+  const top5=[...S.sectors].filter(s=>s.rs_rank).sort((a,b)=>a.rs_rank-b.rs_rank).slice(0,5);
+  $("#tdSectorBody").innerHTML=top5.length
+    ? top5.map((s,i)=>todaySectorRow(s,i,sflow)).join("")
+    : `<tr><td colspan="7" class="load">데이터 없음</td></tr>`;
+  makeSortable("tdSectorBody");
+  $$("#tdSectorBody tr.clk").forEach(tr=>tr.onclick=()=>{
+    S.tdSectorFilter=tr.dataset.sec;
+    $("#tdSectorFilterNote").style.display="";
+    $("#tdSectorFilterText").textContent=`"${tr.dataset.sec}" 업종으로 필터링됨`;
+    loadFlowRawData().then(raw=>renderTodayMomentum(raw.filter(todayLiqOk)));
+  });
+  $("#tdSectorClear").onclick=()=>{
+    S.tdSectorFilter=null;
+    $("#tdSectorFilterNote").style.display="none";
+    loadFlowRawData().then(raw=>renderTodayMomentum(raw.filter(todayLiqOk)));
+  };
+}
+function todayAligned(r){return r.ma5!=null&&r.ma20!=null&&r.ma60!=null&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60;}
+function renderTodayMomentum(universe){
+  let rows=universe;
+  if(S.tdSectorFilter)rows=rows.filter(r=>r.sector===S.tdSectorFilter);
+  rows=[...rows].sort((a,b)=>(+b.weight_per_share||0)-(+a.weight_per_share||0)
+    ||(+(b.rs20_vs_mkt||-999)-+(a.rs20_vs_mkt||-999))).slice(0,20);
+  $("#tdMomBody").innerHTML=rows.length?rows.map((r,i)=>`
+    <tr><td class="l rank">${i+1}</td>
+      <td class="l"><a class="lk nm" data-code="${r.code}">
+        ${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>
+      <td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
+      <td>${N(+r.weight_per_share,2)}</td>
+      <td class="${sgn(r.rs20_vs_mkt==null?0:+r.rs20_vs_mkt)}">${r.rs20_vs_mkt==null?"–":pm(+r.rs20_vs_mkt,1)}</td>
+      <td class="opt">${r.sector_rs_rank?r.sector_rs_rank+"위":"–"}</td>
+      <td class="grp opt">${todayAligned(r)?'<span class="up">✓</span>':'<span class="dim">–</span>'}</td>
+      <td class="opt">${N(+r.market_cap/JO,1)}조</td>
+      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
+    </tr>`).join("")
+    :`<tr><td colspan="9" class="load">데이터 없음</td></tr>`;
+  $$("#tdMomBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+  makeSortable("tdMomBody");
+}
+const TODAY_FLOW_KEY_MAP={pgtr:"program"};
+function renderTodayFlow(raw){
+  const key=TODAY_FLOW_KEY_MAP[S.tdFlowSubj]||S.tdFlowSubj;
+  const rows=raw.filter(r=>+r.market_cap>=TODAY_FLOW_CAP).map(r=>{
+    const v=flowVal(r,key,"1d");
+    const ratio=+r.market_cap>0?v/(+r.market_cap)*100:null;
+    return {...r,v,ratio};
+  }).filter(r=>r.v>0);
+  const sorted=[...rows].sort((a,b)=>S.tdFlowSort==="ratio"?(b.ratio-a.ratio):(b.v-a.v)).slice(0,15);
+  $("#tdFlowBody").innerHTML=sorted.length?sorted.map((r,i)=>`
+    <tr><td class="l rank">${i+1}</td>
+      <td class="l"><a class="lk nm" data-code="${r.code}">
+        ${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>
+      <td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
+      <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td>
+      <td class="${sgn(r.ratio)}">${r.ratio!=null?pm(r.ratio,2)+"%":"–"}</td>
+      <td class="opt">${N(+r.market_cap/JO,1)}조</td>
+      <td>${stockCommonBuyN(r)}/7</td>
+    </tr>`).join("")
+    :`<tr><td colspan="7" class="load">해당 없음</td></tr>`;
+  $$("#tdFlowBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+  makeSortable("tdFlowBody");
+}
+function renderTodayScoreTable(scored){
+  $("#tdScoreBody").innerHTML=scored.length?scored.map(({r,s},i)=>`
+    <tr><td class="l rank">${i+1}</td>
+      <td class="l"><a class="lk nm" data-code="${r.code}">
+        ${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>
+      <td><b>${N(s.total,0)}</b></td>
+      <td class="opt faint">${N(s.momentum,0)}</td>
+      <td class="opt faint">${N(s.flow,0)}</td>
+      <td class="opt faint">${N(s.sector,0)}</td>
+      <td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
+      <td class="opt">${N(+r.market_cap/JO,1)}조</td>
+      <td class="l faint" style="font-size:11.5px">${s.reasons.join(" · ")||"–"}</td>
+    </tr>`).join("")
+    :`<tr><td colspan="9" class="load">데이터 없음</td></tr>`;
+  $$("#tdScoreBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+  makeSortable("tdScoreBody");
+}
+
 /* ══ 조건 스크리너 ══ */
 // 종목 후보 화면과 수급 동향 화면은 조건 "항목·기준"(로직)은 똑같이 쓰지만
 // 값은 서로 독립입니다 — 두 화면이 서로 다른 DOM(다른 id, 다른 chip 그룹)을
@@ -1909,9 +2251,8 @@ async function runScreener(){
   let [rows,rk,per,d20Rows]=await Promise.all([
     q("v_screener",`select=*&trade_date=eq.${date}`),
     q("v_flow_rank_today",`select=*&trade_date=eq.${date}`).catch(()=>[]),
-    q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_2m,inst_2m,fin_inv_1m,inv_trust_1m,pension_1m,pe_1m,fin_inv_2m,inv_trust_2m,pension_2m,pe_2m,individual_1m,corp_other_1m,individual_2m,corp_other_2m").catch(()=>[])
-  ,q("daily_price",`select=trade_date&trade_date=lt.${date}&order=trade_date.desc&limit=1&offset=19`).catch(()=>[])
-]);
+    q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_2m,inst_2m,fin_inv_1m,inv_trust_1m,pension_1m,pe_1m,fin_inv_2m,inv_trust_2m,pension_2m,pe_2m,individual_1m,corp_other_1m,individual_2m,corp_other_2m").catch(()=>[]),
+    q("daily_price",`select=trade_date&trade_date=lt.${date}&order=trade_date.desc&limit=1&offset=19`).catch(()=>[])]);
   // ── 시장평균 20일 수익률 계산 ─────────────────────────────────────────
   (async()=>{
     try{
@@ -1971,10 +2312,10 @@ async function runScreener(){
   makeSortable('scrBody');
 }
 $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e.message));
-const SCR_DEFAULTS={"#fChgMin":"","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":"","#fRsMin":""};
+const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"2","#fCapMax":"2000","#fAmtMin":"","#fVolMin":"","#fRsMin":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
-  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
+  $("#fLimit").value="10";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
   $("#fSector").value="";
   $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
 $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
