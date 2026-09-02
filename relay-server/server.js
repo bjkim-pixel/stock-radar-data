@@ -585,7 +585,13 @@ async function buildDailySummaryText() {
     sbGet('market_daily?select=trade_date,index_close,regime&market=eq.KOSPI&order=trade_date.desc&limit=2'),
     sbGet('market_daily?select=trade_date,index_close&market=eq.KOSDAQ&order=trade_date.desc&limit=2'),
     sbGet('v_market_amount_real?select=*&order=trade_date.desc&limit=1'),
-    sbGet('v_market_flow_periods?select=*').then(r => r[0]),
+    // 이 뷰는 종종 몇 초 걸려서 PostgREST statement timeout에 걸릴 때가 있음 —
+    // 실패해도 "최다 순매수 주체" 한 줄만 빠질 뿐 나머지 요약은 정상 발송되게
+    // 요약 전체를 막지 않고 null로 넘어감(트리거 워크플로의 3회 재시도와 별개 방어).
+    sbGet('v_market_flow_periods?select=*').then(r => r[0]).catch(err => {
+      console.error('[오늘의 종목 요약] v_market_flow_periods 조회 실패(스킵):', err.message);
+      return null;
+    }),
     sbGet(`v_screener?select=*&trade_date=eq.${date}`),
     sbGet('v_stock_flow_periods?select=code,foreign_1d,inst_1d,fin_inv_1d,inv_trust_1d,pension_1d,pe_1d,program_1d'),
     sbGet('v_sector_rank?select=*'),
