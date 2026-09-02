@@ -587,7 +587,7 @@ async function buildDailySummaryText() {
     sbGet('v_market_amount_real?select=*&order=trade_date.desc&limit=1'),
     sbGet('v_market_flow_periods?select=*').then(r => r[0]),
     sbGet(`v_screener?select=*&trade_date=eq.${date}`),
-    sbGet('v_stock_flow_periods?select=code,foreign_1d,fin_inv_1d,inv_trust_1d,pension_1d,pe_1d,individual_1d,corp_other_1d'),
+    sbGet('v_stock_flow_periods?select=code,foreign_1d,inst_1d,fin_inv_1d,inv_trust_1d,pension_1d,pe_1d,program_1d'),
     sbGet('v_sector_rank?select=*'),
   ]);
 
@@ -597,20 +597,22 @@ async function buildDailySummaryText() {
   const regimeKr = { RISK_ON: '양호', RISK_OFF: '위험', NEUTRAL: '중립' }[regime] || '–';
   const amt = amtRows[0];
 
-  const FLOW_SUBJ_COLS = ['foreign', 'inst', 'fin_inv', 'inv_trust', 'pension', 'pe', 'corp_other', 'individual'];
-  const FLOW_SUBJ_SHORT = { foreign: '외국인', inst: '기관', fin_inv: '금투', inv_trust: '투신', pension: '연금', pe: '사모', corp_other: '기타', individual: '개인' };
+  // 시장 요약 타일의 "최다 순매수 주체" 계산용 (사이트와 동일한 8개 주체)
+  const MKT_SUBJ_COLS = ['foreign', 'inst', 'fin_inv', 'inv_trust', 'pension', 'pe', 'corp_other', 'individual'];
+  const MKT_SUBJ_SHORT = { foreign: '외국인', inst: '기관', fin_inv: '금투', inv_trust: '투신', pension: '연금', pe: '사모', corp_other: '기타', individual: '개인' };
   function flowVal(row, subj, period) {
     if (subj === 'combo') return (+row['foreign_' + period] || 0) + (+row['inst_' + period] || 0);
     return +row[subj + '_' + period] || 0;
   }
   let topSubj = null, topSubjV = -Infinity;
   if (flowRow) {
-    FLOW_SUBJ_COLS.forEach(k => { const v = flowVal(flowRow, k, '1d'); if (v > topSubjV) { topSubjV = v; topSubj = k; } });
+    MKT_SUBJ_COLS.forEach(k => { const v = flowVal(flowRow, k, '1d'); if (v > topSubjV) { topSubjV = v; topSubj = k; } });
   }
 
   const byFlowCode = new Map(flowPeriods.map(p => [p.code, p]));
   const raw = screener.map(r => ({ ...r, ...(byFlowCode.get(r.code) || {}) }));
 
+  // 섹터 RS 상위의 "매수/매도 X/7" 태그 계산용 — 독립 7개 주체(사이트 sectorFlowMap과 동일)
   const FLOW_COMMON_SUBJ = ['foreign', 'fin_inv', 'inv_trust', 'pension', 'pe', 'individual', 'corp_other'];
   function sectorFlowMap(rows) {
     const m = {};
@@ -628,110 +630,45 @@ async function buildDailySummaryText() {
     Object.keys(m).forEach(k => { out[k] = { buyN: m[k].buySet.size, sellN: m[k].sellSet.size, net: m[k].net }; });
     return out;
   }
-  function stockCommonBuyN(r) { return FLOW_COMMON_SUBJ.filter(subj => flowVal(r, subj, '1d') > 0).length; }
   const sflow = sectorFlowMap(raw);
 
   const todayLiqOk = r => +r.market_cap >= TODAY_LIQ_CAP && +r.trade_amount >= TODAY_LIQ_AMT;
   const universe = raw.filter(todayLiqOk);
-  const idxByCode = {}; universe.forEach((r, i) => { idxByCode[r.code] = i; });
-  function pctRank(arr, i, key) {
-    const v = +arr[i][key];
-    if (v == null || isNaN(v)) return 1;
-    let better = 0;
-    arr.forEach(r => { const x = +r[key]; if (x != null && !isNaN(x) && x > v) better++; });
-    return better / arr.length;
-  }
-
-  // 사이트 "오늘의 종목" 탭의 종합 스코어 로직(모멘텀40+수급40+섹터20, 리스크 오버레이)을
-  // 그대로 포팅 — web/index.html의 computeTodayScore()와 동일하게 유지할 것.
-  function computeTodayScore(r) {
-    const reasons = [];
-    const chg = r.change_pct == null ? null : +r.change_pct;
-    let aChg = 0;
-    if (chg != null) {
-      if (chg >= 15) { aChg = 13; reasons.push(`당일 +${chg.toFixed(1)}%`); }
-      else if (chg >= 8) { aChg = 10; reasons.push(`당일 +${chg.toFixed(1)}%`); }
-      else if (chg >= 5) aChg = 7;
-      else if (chg >= 3) aChg = 4;
-      else if (chg > 0) aChg = 1;
-    }
-    const wPct = pctRank(universe, idxByCode[r.code], 'weight_per_share');
-    let aWeight = 0;
-    if (wPct <= 0.05) { aWeight = 12; reasons.push('무게/주식수 상위 5%'); }
-    else if (wPct <= 0.10) aWeight = 10;
-    else if (wPct <= 0.20) aWeight = 7;
-    else if (wPct <= 0.35) aWeight = 4;
-    else if (wPct <= 0.50) aWeight = 2;
-    const rs = r.rs20_vs_mkt == null ? null : +r.rs20_vs_mkt;
-    let aRs = 0;
-    if (rs != null) {
-      if (rs >= 15) { aRs = 10; reasons.push(`개별RS +${rs.toFixed(1)}%p`); }
-      else if (rs >= 10) aRs = 8;
-      else if (rs >= 5) aRs = 5;
-      else if (rs > 0) aRs = 2;
-    }
-    const momentum = aChg + aWeight + aRs;
-    const fNet = +r.foreign_net || 0, iNet = +r.inst_net || 0, pgtrNet = +r.pgtr_net_amt || 0;
-    const cap = +r.market_cap > 0 ? +r.market_cap : null;
-    const fiPct = cap ? (fNet + iNet) / cap * 100 : null;
-    let bFlow = 0;
-    if (fiPct != null) {
-      if (fiPct >= 1.0) { bFlow = 14; reasons.push('외국인+기관 당일 순매수 강함'); }
-      else if (fiPct >= 0.5) { bFlow = 10; reasons.push('외국인+기관 당일 순매수 강함'); }
-      else if (fiPct >= 0.2) bFlow = 6;
-      else if (fiPct > 0) bFlow = 2;
-    }
-    const pgPct = cap ? pgtrNet / cap * 100 : null;
-    let bPgtr = 0;
-    if (pgPct != null) {
-      if (pgPct >= 0.5) { bPgtr = 6; reasons.push('프로그램 당일 순매수 강함'); }
-      else if (pgPct >= 0.2) bPgtr = 4;
-      else if (pgPct > 0) bPgtr = 1;
-    }
-    const commonN = stockCommonBuyN(r);
-    let bCommon = 0;
-    if (commonN >= 5) { bCommon = 10; reasons.push(`공통매수 ${commonN}/7`); }
-    else if (commonN === 4) bCommon = 8;
-    else if (commonN === 3) bCommon = 6;
-    else if (commonN === 2) bCommon = 3;
-    const cb = r.consec_both_buy == null ? 0 : +r.consec_both_buy;
-    let bStreak = 0;
-    if (cb === 1) bStreak = 5; else if (cb === 2) bStreak = 3;
-    const flow = bFlow + bPgtr + bCommon + bStreak;
-    const srk = r.sector_rs_rank == null ? null : +r.sector_rs_rank;
-    let cRank = 0;
-    if (srk != null) {
-      if (srk === 1) { cRank = 15; reasons.push('섹터RS 1위(주도업종)'); }
-      else if (srk === 2) { cRank = 13; reasons.push('섹터RS 2위'); }
-      else if (srk === 3) cRank = 11;
-      else if (srk === 4) cRank = 9;
-      else if (srk === 5) cRank = 7;
-      else if (srk >= 6 && srk <= 10) cRank = 4;
-    }
-    const sf = sflow[r.sector];
-    let cFlow = 0;
-    if (sf) { if (sf.buyN > sf.sellN) cFlow = 5; else if (sf.buyN === sf.sellN && sf.buyN > 0) cFlow = 2; }
-    const sector = cRank + cFlow;
-    let risk = 0;
-    const vol = r.vol_ratio20_prev == null ? null : +r.vol_ratio20_prev;
-    if (vol != null && vol > 300) { risk -= 15; reasons.push('거래량 극과열(단타성 의심)'); }
-    else if (vol != null && vol > 200) { risk -= 8; reasons.push('거래량 과열(리스크)'); }
-    if (chg != null && chg >= 15 && (rs == null || rs <= 0)) { risk -= 8; reasons.push('단발성 급등 의심(20일 추세 부재)'); }
-    const total = Math.max(0, momentum + flow + sector + risk);
-    if (cb >= 3) reasons.push('연속양매수 3일+(신선도 낮음)');
-    return { total, reasons: reasons.slice(0, 3) };
-  }
-
-  const scored = universe.map(r => ({ r, s: computeTodayScore(r) }))
-    .sort((a, b) => b.s.total - a.s.total).slice(0, 10);
 
   const top5Sectors = sectors.filter(s => s.rs_rank).sort((a, b) => a.rs_rank - b.rs_rank).slice(0, 5);
 
-  const flowTop = raw.filter(r => +r.market_cap >= TODAY_FLOW_CAP)
-    .map(r => ({ ...r, v: flowVal(r, 'combo', '1d') }))
-    .filter(r => r.v > 0)
-    .sort((a, b) => b.v - a.v)
-    .slice(0, 5);
+  // 오늘 강했던 종목 — 사이트 renderTodayMomentum과 동일: 무게/주식수 desc, 개별RS desc, Top10
+  const momentumTop = [...universe]
+    .sort((a, b) => (+b.weight_per_share || 0) - (+a.weight_per_share || 0)
+      || (+(b.rs20_vs_mkt || -999) - +(a.rs20_vs_mkt || -999)))
+    .slice(0, 10);
+
+  // 수급 주체별 매수 상위 종목 — 사이트 tdFlowSubjSel의 8개 주체 탭을 전부 순회
+  // (pgtr 칩은 "program_*" 컬럼을 씀 — TODAY_FLOW_KEY_MAP과 동일)
+  const FLOW_SUBJ_TABS = [
+    { key: 'combo', label: '외국인+기관합계' },
+    { key: 'foreign', label: '외국인' },
+    { key: 'inst', label: '기관합계' },
+    { key: 'pgtr', label: '프로그램', col: 'program' },
+    { key: 'fin_inv', label: '금융투자' },
+    { key: 'inv_trust', label: '투신' },
+    { key: 'pension', label: '연기금' },
+    { key: 'pe', label: '사모' },
+  ];
+  const FLOW_TOP_N = 5;
+  const flowBySubj = FLOW_SUBJ_TABS.map(tab => {
+    const col = tab.col || tab.key;
+    const rows = raw.filter(r => +r.market_cap >= TODAY_FLOW_CAP)
+      .map(r => {
+        const v = flowVal(r, col, '1d');
+        const ratio = +r.market_cap > 0 ? v / (+r.market_cap) * 100 : null;
+        return { ...r, v, ratio };
+      })
+      .filter(r => r.v > 0)
+      .sort((a, b) => b.v - a.v)
+      .slice(0, FLOW_TOP_N);
+    return { ...tab, rows };
+  });
 
   const lines = [];
   lines.push(`📊 오늘의 종목 요약 (${date})`);
@@ -742,11 +679,11 @@ async function buildDailySummaryText() {
     const ok = +amt.total_amount >= +amt.amt_ma20;
     lines.push(`거래대금 ${N1(+amt.total_amount / JO, 1)}조 (20일평균 ${ok ? '상회' : '하회'})`);
   }
-  lines.push(`시장레짐 ${regimeKr}${topSubj ? ` · 최다 순매수 ${FLOW_SUBJ_SHORT[topSubj]}(${pm1(topSubjV / EOK, 0)}억)` : ''}`);
+  lines.push(`시장레짐 ${regimeKr}${topSubj ? ` · 최다 순매수 ${MKT_SUBJ_SHORT[topSubj]}(${pm1(topSubjV / EOK, 0)}억)` : ''}`);
 
   if (top5Sectors.length) {
     lines.push('');
-    lines.push('🏭 섹터 RS 상위');
+    lines.push('🏭 주도업종 Top5');
     top5Sectors.forEach((s, i) => {
       const sf = sflow[s.sector];
       const flowTag = sf ? (sf.buyN > sf.sellN ? `매수${sf.buyN}/7` : sf.sellN > sf.buyN ? `매도${sf.sellN}/7` : '중립') : '–';
@@ -754,20 +691,26 @@ async function buildDailySummaryText() {
     });
   }
 
-  if (flowTop.length) {
+  if (momentumTop.length) {
     lines.push('');
-    lines.push('💰 수급 상위 종목 (외국인+기관)');
-    flowTop.forEach((r, i) => {
-      lines.push(`${i + 1}. ${r.name} ${pm1(+r.change_pct)}% · ${pm1(r.v / EOK, 0)}억`);
+    lines.push('🔥 오늘 강했던 종목');
+    momentumTop.forEach((r, i) => {
+      const rsTxt = r.rs20_vs_mkt == null ? '–' : `${pm1(+r.rs20_vs_mkt, 1)}%p`;
+      const secRankTxt = r.sector_rs_rank ? `섹터RS${r.sector_rs_rank}위` : '섹터RS–';
+      lines.push(`${i + 1}. ${r.name} ${pm1(+r.change_pct)}% · 무게${N1(+r.weight_per_share, 2)} · 개별RS${rsTxt} · ${secRankTxt}`);
     });
   }
 
-  if (scored.length) {
+  const anyFlow = flowBySubj.some(g => g.rows.length);
+  if (anyFlow) {
     lines.push('');
-    lines.push('🏆 종합스코어 Top10 (참고용, 투자조언 아님)');
-    scored.forEach(({ r, s }, i) => {
-      const reasonTxt = s.reasons.length ? ` — ${s.reasons.join(' · ')}` : '';
-      lines.push(`${i + 1}. ${r.name} [${Math.round(s.total)}점] ${pm1(+r.change_pct)}%${reasonTxt}`);
+    lines.push('💰 수급 주체별 매수 상위 종목 (시총 대비 비중)');
+    flowBySubj.forEach(g => {
+      if (!g.rows.length) return;
+      lines.push(`[${g.label}]`);
+      g.rows.forEach((r, i) => {
+        lines.push(`${i + 1}. ${r.name} ${pm1(+r.change_pct)}% · ${pm1(r.v / EOK, 0)}억 · ${r.ratio != null ? pm1(r.ratio, 2) + '%' : '–'}`);
+      });
     });
   }
 
