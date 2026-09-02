@@ -1,0 +1,31 @@
+name: Keep KIS Relay Server Awake
+
+# Render 무료 플랜은 15분간 요청이 없으면 서비스가 슬립 모드로 들어갑니다.
+# 슬립 상태에서 처음 요청이 오면 다시 깨어나는 데 30~50초 정도 걸려서,
+# 장중에 실시간 시세 웹소켓이 붙는 순간 지연이 생길 수 있습니다.
+# 이를 막기 위해 국내 정규장 시간(KST 08:50~15:40, 평일)에 10분 간격으로
+# /health 엔드포인트에 핑을 보내 서비스를 계속 깨어있는 상태로 유지합니다.
+#
+# ⚠ KST → UTC 변환 주의: KST는 UTC+9라서 "월~금 KST 08:50~15:40"은
+#   UTC 기준으로는 "일~목 23:50" + "월~금 00:00~06:40" 두 구간으로 쪼개집니다.
+on:
+  schedule:
+    - cron: "50 23 * * 0-4"        # KST 월~금 08:50 (전날 UTC 23:50)
+    - cron: "*/10 0-5 * * 1-5"     # KST 월~금 09:00~14:50
+    - cron: "0,10,20,30,40 6 * * 1-5"  # KST 월~금 15:00~15:40
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping relay server health endpoint
+        run: |
+          STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" --max-time 30 \
+            https://kis-relay-server.onrender.com/health || echo "000")
+          echo "HTTP status: $STATUS"
+          cat /tmp/health.json 2>/dev/null || true
+          if [ "$STATUS" != "200" ]; then
+            echo "::warning::릴레이 서버 health 체크 실패 (status=$STATUS) — 슬립에서 깨어나는 중일 수 있음"
+          fi
