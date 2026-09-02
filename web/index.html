@@ -958,9 +958,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
   <div class="card"><h3>보유 중 <span class="r" id="openCount"></span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>종가</th><th class="l">전략</th><th>진입일</th><th class="l">매수사유</th><th>평단</th><th>수익률</th><th>고점</th>
+      <th class="l">종목</th><th>종가</th><th title="한국투자증권 실시간 웹소켓 시세 (relay 서버 연결 시)">시세</th><th class="l">전략</th><th>진입일</th><th class="l">매수사유</th><th>평단</th><th>수익률</th><th>고점</th>
       <th class="opt">고점일</th><th class="opt">트랜치</th><th>투입금액</th><th>미실현손익</th><th>고점대비</th>
-    </tr></thead><tbody id="openBody"><tr><td colspan="13" class="load">불러오는 중…</td></tr></tbody></table></div>
+    </tr></thead><tbody id="openBody"><tr><td colspan="14" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
   <div class="card"><h3>청산 이력 <span class="r" id="perfCount"></span></h3>
     <div class="tw"><table><thead><tr>
@@ -995,6 +995,10 @@ const CFG = {
   url: "https://frurnmrwuopvttoqdvgj.supabase.co",
   key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZydXJubXJ3dW9wdnR0b3FkdmdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MDEwMDIsImV4cCI6MjEwMjQ3NzAwMn0.rf49NKE9vLLNNODp6ZBsmEYkr1ar3sZ6ViH65MF5jHc"     // ← Supabase 대시보드 › Project Settings › API › anon public 키
 };
+
+// KIS 실시간 시세 릴레이 서버(Render) — "보유 중" 표 전용, 종목 수가 적을 때만 사용
+// (KIS 실시간 구독은 approval_key당 동시 구독 가능 종목 수 제한이 있음)
+const RELAY_WS_URL = "wss://kis-relay-server.onrender.com/ws";
 
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const N=(v,d=0)=>(v==null||isNaN(v))?"–":Number(v).toLocaleString("ko-KR",
@@ -1037,7 +1041,62 @@ async function loadDataStatus(){
 
 /* ── 상태 ────────────────────────────────────────────────────────────── */
 const S={date:null,sectors:[],sector:null,stocks:[],market:[],flowCache:{},chart:{},codes:[],
-  pairStockSort:"change_pct"};
+  pairStockSort:"change_pct",
+  liveWs:null,liveSubscribed:new Set(),livePrices:{},liveReconnectTimer:null,liveReconnectDelay:2000};
+
+/* ══ KIS 실시간 시세 릴레이 연결 (보유 중 표 전용) ═══════════════════════ */
+function liveCellHtml(code){
+  const m=S.livePrices[code];
+  if(!m) return {cls:"num dim",html:"–"};
+  return {cls:"num "+sgn(m.changePct), html:`${N(m.price)} <span class="faint">${pm(m.changePct,2)}%</span>`};
+}
+function updateLiveCell(code,m){
+  $$(`#openBody td[data-live="${code}"]`).forEach(cell=>{
+    cell.className=liveCellHtml(code).cls;
+    cell.innerHTML=liveCellHtml(code).html;
+  });
+}
+function ensureLiveConn(){
+  if(S.liveWs && (S.liveWs.readyState===0 || S.liveWs.readyState===1)) return;
+  let ws;
+  try{ ws=new WebSocket(RELAY_WS_URL); }catch(_){ return; }
+  S.liveWs=ws;
+  ws.onopen=()=>{
+    S.liveReconnectDelay=2000;
+    if(S.liveSubscribed.size) ws.send(JSON.stringify({type:"subscribe",codes:[...S.liveSubscribed]}));
+  };
+  ws.onmessage=(e)=>{
+    let m; try{m=JSON.parse(e.data);}catch(_){return;}
+    if(m.type!=="price"||!m.code) return;
+    S.livePrices[m.code]=m;
+    updateLiveCell(m.code,m);
+  };
+  ws.onclose=()=>{
+    if(S.liveWs===ws) S.liveWs=null;
+    if(!S.liveSubscribed.size) return; // 구독할 종목 없으면 재연결 불필요
+    clearTimeout(S.liveReconnectTimer);
+    S.liveReconnectTimer=setTimeout(ensureLiveConn, S.liveReconnectDelay);
+    S.liveReconnectDelay=Math.min(30000, S.liveReconnectDelay*1.5); // Render 무료 플랜 슬립 대비 백오프
+  };
+  ws.onerror=()=>{ try{ws.close();}catch(_){} };
+}
+// 보유 중 종목이 바뀔 때마다 호출 — 이전 구독과 비교해서 늘어난/줄어든 종목만 갱신
+function setLiveSubscription(codes){
+  const want=new Set(codes);
+  const cur=S.liveSubscribed;
+  const toAdd=[...want].filter(c=>!cur.has(c));
+  const toRemove=[...cur].filter(c=>!want.has(c));
+  S.liveSubscribed=want;
+  toRemove.forEach(c=>delete S.livePrices[c]);
+  if(!toAdd.length && !toRemove.length) return;
+  ensureLiveConn();
+  const ws=S.liveWs;
+  if(ws && ws.readyState===1){
+    if(toRemove.length) ws.send(JSON.stringify({type:"unsubscribe",codes:toRemove}));
+    if(toAdd.length) ws.send(JSON.stringify({type:"subscribe",codes:toAdd}));
+  }
+  // 아직 연결 전이면 onopen 핸들러가 S.liveSubscribed 전체를 구독 요청함
+}
 
 /* ══ 테이블 정렬 ═══════════════════════════════════════════════════ */
 function sortVal(txt){
@@ -2784,6 +2843,7 @@ async function loadPerf(){
 
     // 보유 중 종목의 당일 종가 (미실현손익·수익률 계산용)
     const opCodes=[...new Set(op.map(p=>p.code))];
+    setLiveSubscription(opCodes); // KIS 실시간 시세 구독을 보유 종목에 맞춰 갱신
     S.lastClose={};
     if(opCodes.length){
       const cRows=await q("v_screener",
@@ -2876,8 +2936,10 @@ async function loadPerf(){
       const up=(close? uPnl(p) : null);
       const pd=p.peak_date?p.peak_date.slice(5).replace("-","/"):"–";
       const br=buyReasonShort(p);
+      const lc=liveCellHtml(p.code);
       return `<tr><td class="l"><a class="lk nm" data-code="${p.code}">${nameOf[p.code]||p.code}</a></td>
         <td class="num">${close?N(close):"–"}</td>
+        <td class="${lc.cls}" data-live="${p.code}">${lc.html}</td>
         <td class="l">${stratBadge(p.strategy)}</td>
         <td>${p.entry_date}</td>
         <td class="l faint" title="${br.full.replace(/"/g,'&quot;')}">${br.short}</td>
@@ -2888,7 +2950,7 @@ async function loadPerf(){
         <td class="opt">${p.tranches}</td><td>${N(+p.invested)}</td>
         <td class="${up==null?"":sgn(up)}">${up==null?"–":pm(up,0)}</td>
         <td class="${dd==null?"":sgn(dd)}">${dd==null?"–":pm(dd,1)+"%"}</td></tr>`;}).join("")
-      :'<tr><td colspan="13" class="load">보유 중인 포지션 없음</td></tr>';
+      :'<tr><td colspan="14" class="load">보유 중인 포지션 없음</td></tr>';
     $$("#v-perf a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
     makeSortable('perfBody');
     makeSortable('openBody');
