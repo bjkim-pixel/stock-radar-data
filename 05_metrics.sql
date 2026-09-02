@@ -219,9 +219,16 @@ ON CONFLICT (trade_date, sector, market) DO UPDATE SET
 
 -- @@STEP: daily_metrics (종목별 파생지표 — 핵심)
 -- ----------------------------------------------------------------------------
+-- ma120(120거래일 이동평균, 최소 120일 이력 필요)은 56_daily_metrics_ma120.sql
+-- 에서 daily_metrics 컬럼 추가 + v_sector_stocks 노출과 함께 도입되었습니다.
+-- 화면의 "정배열(종가>MA5>MA20>MA60>MA120)" 필터 3종(오늘의 종목/종목후보/
+-- 전략E)이 프론트에서 이 값을 참조합니다 — 그전까지는 컬럼 자체가 없어
+-- ma120이 항상 undefined였고, JS에서 undefined != null이 false로 평가되어
+-- 조건이 무조건 거짓(0건)이 되는 버그가 있었습니다.
+-- ----------------------------------------------------------------------------
 INSERT INTO daily_metrics (
   trade_date, code,
-  ma5, ma10, ma20, ma60, above_ma20, ma_aligned,
+  ma5, ma10, ma20, ma60, ma120, above_ma20, ma_aligned,
   amt_avg20, amt_ratio20, vol_avg20, vol_ratio20, quarter_amt,
   high_period, high_period_date, pct_from_high, is_new_high, near_high, high_60d,
   data_span_days, high_label,
@@ -279,6 +286,7 @@ w AS (
          avg(close) OVER w10 AS a10, count(*) OVER w10 AS c10,
          avg(close) OVER w20 AS a20, count(*) OVER w20 AS c20,
          avg(close) OVER w60 AS a60, count(*) OVER w60 AS c60,
+         avg(close) OVER w120 AS a120, count(*) OVER w120 AS c120,
          -- 거래대금 · 거래량
          avg(trade_amount) OVER w20 AS amt_avg20,
          avg(volume)       OVER w20 AS vol_avg20,
@@ -318,6 +326,7 @@ w AS (
     w10  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN   9 PRECEDING AND CURRENT ROW),
     w20  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  19 PRECEDING AND CURRENT ROW),
     w60  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  59 PRECEDING AND CURRENT ROW),
+    w120 AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN 119 PRECEDING AND CURRENT ROW),
     w90  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  89 PRECEDING AND CURRENT ROW),
     w250 AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN 249 PRECEDING AND CURRENT ROW),
     wall AS (PARTITION BY code ORDER BY trade_date ROWS UNBOUNDED PRECEDING),
@@ -353,6 +362,7 @@ SELECT
   CASE WHEN c10 >= 10 THEN round(a10::numeric, 2) END,
   CASE WHEN c20 >= 20 THEN round(a20::numeric, 2) END,
   CASE WHEN c60 >= 60 THEN round(a60::numeric, 2) END,
+  CASE WHEN c120 >= 120 THEN round(a120::numeric, 2) END,
   CASE WHEN c20 >= 20 THEN close > a20 END                                AS above_ma20,
   CASE WHEN c60 >= 60 THEN (close > a20 AND a20 > a60) END                AS ma_aligned,
   round(amt_avg20)::bigint,
@@ -422,6 +432,7 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
   ma10                = EXCLUDED.ma10,
   ma20                = EXCLUDED.ma20,
   ma60                = EXCLUDED.ma60,
+  ma120               = EXCLUDED.ma120,
   above_ma20          = EXCLUDED.above_ma20,
   ma_aligned          = EXCLUDED.ma_aligned,
   amt_avg20           = EXCLUDED.amt_avg20,
