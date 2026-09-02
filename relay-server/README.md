@@ -12,6 +12,11 @@
 - 트레일링 손절(-7%) 근접(고점 대비 -5%↓) / 도달(-7%↓)
 - 텔레그램 명령으로 지정한 목표가 도달
 
+또한 사이트의 "오늘의 종목" 탭(종합스코어/섹터RS/수급 상위)과 같은 로직을
+서버에서 재계산해서 매 거래일 16:10 KST에 텔레그램으로 요약을 보냅니다
+(`.github/workflows/daily_summary_trigger.yml`이 그 시각에 서버를 깨우며
+`/trigger-daily-summary`를 호출).
+
 ## 텔레그램 명령어
 
 봇에게 아래 메시지를 보내면 됩니다 (`/` 없이 보내도 인식).
@@ -20,6 +25,7 @@
 - `/목표가 삼성전자 165000` — 종목명으로도 설정 가능 (현재 보유 중인 종목만 인식)
 - `/목표가삭제 005930` (또는 종목명) — 목표가 삭제
 - `/목표가확인` — 현재 설정된 목표가 목록
+- `/오늘요약` — "오늘의 종목" 요약을 즉시 받기 (자동 발송은 매일 16:10)
 - `/help` — 사용법 안내
 
 ## 로컬 실행
@@ -49,7 +55,14 @@ ws.onmessage = (e) => {
 
 ## 헬스체크
 
-`GET /health` → `{ ok, kisWsReady, subscribedCodes, heldCodes, targetPrices, telegramConfigured, approvalKeyAgeMs }`
+`GET /health` → `{ ok, kisWsReady, subscribedCodes, heldCodes, targetPrices, targetPricesPersisted, telegramConfigured, dailySummaryTokenSet, lastDailySummaryDate, approvalKeyAgeMs }`
+
+## 오늘의 종목 요약 수동 트리거
+
+`GET /trigger-daily-summary?token=<DAILY_SUMMARY_TOKEN>` — 즉시 요약을 계산해서
+텔레그램으로 보냅니다. 같은 날 이미 보냈으면 스킵하고, `&force=1`을 추가하면
+이미 보냈어도 다시 보냅니다(테스트용). `DAILY_SUMMARY_TOKEN`이 설정 안 돼 있으면
+토큰 검사 없이 열려있으니 반드시 설정하세요.
 
 ## Render 배포 시 환경변수
 
@@ -68,6 +81,10 @@ ws.onmessage = (e) => {
   초기화됩니다** — 반드시 실행해야 하는 `60_alert_targets.sql` 마이그레이션과
   세트입니다. RLS를 우회하는 강력한 키라 절대 프론트엔드 코드나 공개
   저장소에는 넣지 말고 Render 환경변수로만 보관하세요.
+- `DAILY_SUMMARY_TOKEN` — `/trigger-daily-summary` 엔드포인트를 아무나 못 부르게
+  막는 임의의 비밀 문자열. GitHub 저장소의 Actions 시크릿에도 같은 값으로
+  `DAILY_SUMMARY_TOKEN`을 등록해야 `daily_summary_trigger.yml`이 호출할 수
+  있습니다. 비워두면 인증 없이 열려있게 되니 반드시 설정하세요.
 
 ## 참고
 

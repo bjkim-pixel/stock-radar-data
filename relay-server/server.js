@@ -509,12 +509,23 @@ async function handleTelegramCommand(chatId, text) {
     await sendTelegramTo(chatId, '📋 현재 목표가 설정\n' + lines.join('\n'));
     return;
   }
+  if (/^\/?(?:오늘요약|todaysummary|today)\s*$/i.test(text)) {
+    await sendTelegramTo(chatId, '오늘의 종목 요약을 불러오는 중…');
+    try {
+      const text2 = await buildDailySummaryText();
+      await sendTelegramTo(chatId, text2);
+    } catch (err) {
+      await sendTelegramTo(chatId, `요약 생성 실패: ${err.message}`);
+    }
+    return;
+  }
   if (/^\/?(?:help|도움말|start)\s*$/i.test(text)) {
     await sendTelegramTo(chatId,
       '📌 사용 가능한 명령어\n' +
       '/목표가 [종목코드 또는 종목명] [가격] — 목표가 설정 (예: /목표가 005930 165000, /목표가 삼성전자 165000)\n' +
       '/목표가삭제 [종목코드 또는 종목명] — 목표가 삭제\n' +
       '/목표가확인 — 현재 설정 목록\n' +
+      '/오늘요약 — "오늘의 종목" 요약 즉시 받기 (매일 16:10엔 자동 발송)\n' +
       '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
       '보유 종목의 당일 신고가·신저가 갱신, 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.');
     return;
@@ -547,9 +558,260 @@ async function pollTelegramCommands() {
 setInterval(pollTelegramCommands, 4000);
 
 // ----------------------------------------------------------------------------
-// 6) 프론트엔드용 웹소켓 서버
+// 6) "오늘의 종목" 요약 — 매일 장마감 후 텔레그램으로 발송
+// ----------------------------------------------------------------------------
+// 사이트의 "오늘의 종목" 탭(종합스코어/섹터RS/수급 상위)과 동일한 로직을
+// 서버에서 재계산해 텔레그램 메시지로 요약합니다. 발송 시점(16:10 KST)에는
+// Render 무료 플랜이 이미 슬립 상태일 수 있어, 서버 내부 타이머 대신
+// GitHub Actions 크론이 /trigger-daily-summary 를 호출하는 방식으로 깨움+발송을
+// 한 번에 처리합니다(daily_summary_trigger.yml 참고).
+const DAILY_SUMMARY_TOKEN = process.env.DAILY_SUMMARY_TOKEN || '';
+if (!DAILY_SUMMARY_TOKEN) {
+  console.warn('[오늘의 종목 요약] DAILY_SUMMARY_TOKEN 미설정 — /trigger-daily-summary 가 인증 없이 열려있습니다.');
+}
+
+const N1 = (v, d = 0) => (v == null || isNaN(+v)) ? '–' : (+v).toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const pm1 = (v, d = 2) => (v == null || isNaN(+v)) ? '–' : (v > 0 ? '+' : '') + N1(v, d);
+
+async function buildDailySummaryText() {
+  const EOK = 1e8, JO = 1e12;
+  const TODAY_LIQ_CAP = 1e11, TODAY_LIQ_AMT = 1e9, TODAY_FLOW_CAP = 1e11;
+
+  const dateRows = await sbGet('v_market_overview?select=trade_date&order=trade_date.desc&limit=1');
+  const date = dateRows[0]?.trade_date;
+  if (!date) throw new Error('기준일(trade_date)을 찾지 못함');
+
+  const [kospiRows, kosdaqRows, amtRows, flowRow, screener, flowPeriods, sectors] = await Promise.all([
+    sbGet('market_daily?select=trade_date,index_close,regime&market=eq.KOSPI&order=trade_date.desc&limit=2'),
+    sbGet('market_daily?select=trade_date,index_close&market=eq.KOSDAQ&order=trade_date.desc&limit=2'),
+    sbGet('v_market_amount_real?select=*&order=trade_date.desc&limit=1'),
+    sbGet('v_market_flow_periods?select=*').then(r => r[0]),
+    sbGet(`v_screener?select=*&trade_date=eq.${date}`),
+    sbGet('v_stock_flow_periods?select=code,foreign_1d,fin_inv_1d,inv_trust_1d,pension_1d,pe_1d,individual_1d,corp_other_1d'),
+    sbGet('v_sector_rank?select=*'),
+  ]);
+
+  const idxChg = rows => (rows.length >= 2 && rows[1].index_close) ? ((+rows[0].index_close / +rows[1].index_close - 1) * 100) : null;
+  const kospiChg = idxChg(kospiRows), kosdaqChg = idxChg(kosdaqRows);
+  const regime = kospiRows[0]?.regime || null;
+  const regimeKr = { RISK_ON: '양호', RISK_OFF: '위험', NEUTRAL: '중립' }[regime] || '–';
+  const amt = amtRows[0];
+
+  const FLOW_SUBJ_COLS = ['foreign', 'inst', 'fin_inv', 'inv_trust', 'pension', 'pe', 'corp_other', 'individual'];
+  const FLOW_SUBJ_SHORT = { foreign: '외국인', inst: '기관', fin_inv: '금투', inv_trust: '투신', pension: '연금', pe: '사모', corp_other: '기타', individual: '개인' };
+  function flowVal(row, subj, period) {
+    if (subj === 'combo') return (+row['foreign_' + period] || 0) + (+row['inst_' + period] || 0);
+    return +row[subj + '_' + period] || 0;
+  }
+  let topSubj = null, topSubjV = -Infinity;
+  if (flowRow) {
+    FLOW_SUBJ_COLS.forEach(k => { const v = flowVal(flowRow, k, '1d'); if (v > topSubjV) { topSubjV = v; topSubj = k; } });
+  }
+
+  const byFlowCode = new Map(flowPeriods.map(p => [p.code, p]));
+  const raw = screener.map(r => ({ ...r, ...(byFlowCode.get(r.code) || {}) }));
+
+  const FLOW_COMMON_SUBJ = ['foreign', 'fin_inv', 'inv_trust', 'pension', 'pe', 'individual', 'corp_other'];
+  function sectorFlowMap(rows) {
+    const m = {};
+    FLOW_COMMON_SUBJ.forEach(subj => {
+      rows.forEach(r => {
+        if (!r.sector) return;
+        const v = flowVal(r, subj, '1d');
+        if (!v) return;
+        const g = m[r.sector] || (m[r.sector] = { buySet: new Set(), sellSet: new Set(), net: 0 });
+        (v > 0 ? g.buySet : g.sellSet).add(subj);
+        g.net += v;
+      });
+    });
+    const out = {};
+    Object.keys(m).forEach(k => { out[k] = { buyN: m[k].buySet.size, sellN: m[k].sellSet.size, net: m[k].net }; });
+    return out;
+  }
+  function stockCommonBuyN(r) { return FLOW_COMMON_SUBJ.filter(subj => flowVal(r, subj, '1d') > 0).length; }
+  const sflow = sectorFlowMap(raw);
+
+  const todayLiqOk = r => +r.market_cap >= TODAY_LIQ_CAP && +r.trade_amount >= TODAY_LIQ_AMT;
+  const universe = raw.filter(todayLiqOk);
+  const idxByCode = {}; universe.forEach((r, i) => { idxByCode[r.code] = i; });
+  function pctRank(arr, i, key) {
+    const v = +arr[i][key];
+    if (v == null || isNaN(v)) return 1;
+    let better = 0;
+    arr.forEach(r => { const x = +r[key]; if (x != null && !isNaN(x) && x > v) better++; });
+    return better / arr.length;
+  }
+
+  // 사이트 "오늘의 종목" 탭의 종합 스코어 로직(모멘텀40+수급40+섹터20, 리스크 오버레이)을
+  // 그대로 포팅 — web/index.html의 computeTodayScore()와 동일하게 유지할 것.
+  function computeTodayScore(r) {
+    const reasons = [];
+    const chg = r.change_pct == null ? null : +r.change_pct;
+    let aChg = 0;
+    if (chg != null) {
+      if (chg >= 15) { aChg = 13; reasons.push(`당일 +${chg.toFixed(1)}%`); }
+      else if (chg >= 8) { aChg = 10; reasons.push(`당일 +${chg.toFixed(1)}%`); }
+      else if (chg >= 5) aChg = 7;
+      else if (chg >= 3) aChg = 4;
+      else if (chg > 0) aChg = 1;
+    }
+    const wPct = pctRank(universe, idxByCode[r.code], 'weight_per_share');
+    let aWeight = 0;
+    if (wPct <= 0.05) { aWeight = 12; reasons.push('무게/주식수 상위 5%'); }
+    else if (wPct <= 0.10) aWeight = 10;
+    else if (wPct <= 0.20) aWeight = 7;
+    else if (wPct <= 0.35) aWeight = 4;
+    else if (wPct <= 0.50) aWeight = 2;
+    const rs = r.rs20_vs_mkt == null ? null : +r.rs20_vs_mkt;
+    let aRs = 0;
+    if (rs != null) {
+      if (rs >= 15) { aRs = 10; reasons.push(`개별RS +${rs.toFixed(1)}%p`); }
+      else if (rs >= 10) aRs = 8;
+      else if (rs >= 5) aRs = 5;
+      else if (rs > 0) aRs = 2;
+    }
+    const momentum = aChg + aWeight + aRs;
+    const fNet = +r.foreign_net || 0, iNet = +r.inst_net || 0, pgtrNet = +r.pgtr_net_amt || 0;
+    const cap = +r.market_cap > 0 ? +r.market_cap : null;
+    const fiPct = cap ? (fNet + iNet) / cap * 100 : null;
+    let bFlow = 0;
+    if (fiPct != null) {
+      if (fiPct >= 1.0) { bFlow = 14; reasons.push('외국인+기관 당일 순매수 강함'); }
+      else if (fiPct >= 0.5) { bFlow = 10; reasons.push('외국인+기관 당일 순매수 강함'); }
+      else if (fiPct >= 0.2) bFlow = 6;
+      else if (fiPct > 0) bFlow = 2;
+    }
+    const pgPct = cap ? pgtrNet / cap * 100 : null;
+    let bPgtr = 0;
+    if (pgPct != null) {
+      if (pgPct >= 0.5) { bPgtr = 6; reasons.push('프로그램 당일 순매수 강함'); }
+      else if (pgPct >= 0.2) bPgtr = 4;
+      else if (pgPct > 0) bPgtr = 1;
+    }
+    const commonN = stockCommonBuyN(r);
+    let bCommon = 0;
+    if (commonN >= 5) { bCommon = 10; reasons.push(`공통매수 ${commonN}/7`); }
+    else if (commonN === 4) bCommon = 8;
+    else if (commonN === 3) bCommon = 6;
+    else if (commonN === 2) bCommon = 3;
+    const cb = r.consec_both_buy == null ? 0 : +r.consec_both_buy;
+    let bStreak = 0;
+    if (cb === 1) bStreak = 5; else if (cb === 2) bStreak = 3;
+    const flow = bFlow + bPgtr + bCommon + bStreak;
+    const srk = r.sector_rs_rank == null ? null : +r.sector_rs_rank;
+    let cRank = 0;
+    if (srk != null) {
+      if (srk === 1) { cRank = 15; reasons.push('섹터RS 1위(주도업종)'); }
+      else if (srk === 2) { cRank = 13; reasons.push('섹터RS 2위'); }
+      else if (srk === 3) cRank = 11;
+      else if (srk === 4) cRank = 9;
+      else if (srk === 5) cRank = 7;
+      else if (srk >= 6 && srk <= 10) cRank = 4;
+    }
+    const sf = sflow[r.sector];
+    let cFlow = 0;
+    if (sf) { if (sf.buyN > sf.sellN) cFlow = 5; else if (sf.buyN === sf.sellN && sf.buyN > 0) cFlow = 2; }
+    const sector = cRank + cFlow;
+    let risk = 0;
+    const vol = r.vol_ratio20_prev == null ? null : +r.vol_ratio20_prev;
+    if (vol != null && vol > 300) { risk -= 15; reasons.push('거래량 극과열(단타성 의심)'); }
+    else if (vol != null && vol > 200) { risk -= 8; reasons.push('거래량 과열(리스크)'); }
+    if (chg != null && chg >= 15 && (rs == null || rs <= 0)) { risk -= 8; reasons.push('단발성 급등 의심(20일 추세 부재)'); }
+    const total = Math.max(0, momentum + flow + sector + risk);
+    if (cb >= 3) reasons.push('연속양매수 3일+(신선도 낮음)');
+    return { total, reasons: reasons.slice(0, 3) };
+  }
+
+  const scored = universe.map(r => ({ r, s: computeTodayScore(r) }))
+    .sort((a, b) => b.s.total - a.s.total).slice(0, 10);
+
+  const top5Sectors = sectors.filter(s => s.rs_rank).sort((a, b) => a.rs_rank - b.rs_rank).slice(0, 5);
+
+  const flowTop = raw.filter(r => +r.market_cap >= TODAY_FLOW_CAP)
+    .map(r => ({ ...r, v: flowVal(r, 'combo', '1d') }))
+    .filter(r => r.v > 0)
+    .sort((a, b) => b.v - a.v)
+    .slice(0, 5);
+
+  const lines = [];
+  lines.push(`📊 오늘의 종목 요약 (${date})`);
+  lines.push('');
+  lines.push('📈 시장');
+  lines.push(`코스피 ${N1(kospiRows[0]?.index_close, 2)} (${pm1(kospiChg, 2)}%) · 코스닥 ${N1(kosdaqRows[0]?.index_close, 2)} (${pm1(kosdaqChg, 2)}%)`);
+  if (amt) {
+    const ok = +amt.total_amount >= +amt.amt_ma20;
+    lines.push(`거래대금 ${N1(+amt.total_amount / JO, 1)}조 (20일평균 ${ok ? '상회' : '하회'})`);
+  }
+  lines.push(`시장레짐 ${regimeKr}${topSubj ? ` · 최다 순매수 ${FLOW_SUBJ_SHORT[topSubj]}(${pm1(topSubjV / EOK, 0)}억)` : ''}`);
+
+  if (top5Sectors.length) {
+    lines.push('');
+    lines.push('🏭 섹터 RS 상위');
+    top5Sectors.forEach((s, i) => {
+      const sf = sflow[s.sector];
+      const flowTag = sf ? (sf.buyN > sf.sellN ? `매수${sf.buyN}/7` : sf.sellN > sf.buyN ? `매도${sf.sellN}/7` : '중립') : '–';
+      lines.push(`${i + 1}. ${s.sector} (RS ${s.rs_rank}위, ${pm1(+s.avg_change_pct)}%, ${flowTag})`);
+    });
+  }
+
+  if (flowTop.length) {
+    lines.push('');
+    lines.push('💰 수급 상위 종목 (외국인+기관)');
+    flowTop.forEach((r, i) => {
+      lines.push(`${i + 1}. ${r.name} ${pm1(+r.change_pct)}% · ${pm1(r.v / EOK, 0)}억`);
+    });
+  }
+
+  if (scored.length) {
+    lines.push('');
+    lines.push('🏆 종합스코어 Top10 (참고용, 투자조언 아님)');
+    scored.forEach(({ r, s }, i) => {
+      const reasonTxt = s.reasons.length ? ` — ${s.reasons.join(' · ')}` : '';
+      lines.push(`${i + 1}. ${r.name} [${Math.round(s.total)}점] ${pm1(+r.change_pct)}%${reasonTxt}`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
+let lastDailySummaryDate = null;
+async function sendDailySummary(force = false) {
+  const today = kstDateStr();
+  if (!force && lastDailySummaryDate === today) {
+    console.log('[오늘의 종목 요약] 오늘 이미 발송함, 스킵');
+    return;
+  }
+  const text = await buildDailySummaryText();
+  await sendTelegram(text);
+  lastDailySummaryDate = today;
+  console.log('[오늘의 종목 요약] 발송 완료');
+}
+
+// ----------------------------------------------------------------------------
+// 7) 프론트엔드용 웹소켓 서버
 // ----------------------------------------------------------------------------
 const server = http.createServer((req, res) => {
+  if (req.url && req.url.startsWith('/trigger-daily-summary')) {
+    const u = new URL(req.url, 'http://internal');
+    const token = u.searchParams.get('token');
+    const force = u.searchParams.get('force') === '1';
+    if (DAILY_SUMMARY_TOKEN && token !== DAILY_SUMMARY_TOKEN) {
+      res.writeHead(403, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'forbidden' }));
+      return;
+    }
+    sendDailySummary(force)
+      .then(() => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      })
+      .catch(err => {
+        console.error('[오늘의 종목 요약] 트리거 실패:', err.message);
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      });
+    return;
+  }
   if (req.url === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
@@ -560,6 +822,8 @@ const server = http.createServer((req, res) => {
       targetPrices: Object.fromEntries([...targetPrices].map(([c, t]) => [c, t.price])),
       targetPricesPersisted: !!SUPABASE_SERVICE_KEY,
       telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID),
+      dailySummaryTokenSet: !!DAILY_SUMMARY_TOKEN,
+      lastDailySummaryDate,
       approvalKeyAgeMs: approvalKey ? Date.now() - approvalKeyIssuedAt : null,
     }));
     return;
