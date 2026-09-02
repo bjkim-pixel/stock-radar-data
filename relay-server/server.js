@@ -11,7 +11,7 @@
 //        - 당일 신고가/신저가 갱신
 //        - 트레일링 손절(-7%) 근접(-5%↓)/도달(-7%↓)
 //        - 텔레그램 명령으로 지정한 목표가 도달
-//   3) 텔레그램 봇에 "/목표가 종목코드 가격" 같은 명령을 보내면 목표가를
+//   3) 텔레그램 봇에 "/목표가 종목코드(또는 보유 종목명) 가격" 같은 명령을 보내면 목표가를
 //      등록/삭제/조회할 수 있음 (long polling, 별도 웹훅 서버 불필요)
 //
 // 환경변수(.env 또는 Render 대시보드에 등록):
@@ -439,14 +439,42 @@ function sendTelegram(text) {
   return sendTelegramTo(TELEGRAM_CHAT_ID, text);
 }
 
-function parsePriceNum(s) { return Number(String(s).replace(/,/g, '')); }
+function parsePriceNum(s) { return Number(String(s).replace(/[^\d]/g, '')); }
+
+// 종목코드(6자리 숫자) 또는 종목명(보유 종목 기준, 정확히/부분 일치)을 코드로 변환.
+// 여러 종목이 부분 일치하면 ambiguous:true와 후보 목록을 돌려줌.
+function resolveCode(token) {
+  const t = String(token).trim();
+  if (/^\d{6}$/.test(t)) return { code: t };
+  for (const [code, name] of codeNames.entries()) {
+    if (name === t) return { code };
+  }
+  const partial = [...codeNames.entries()].filter(
+    ([, name]) => name.includes(t) || t.includes(name)
+  );
+  if (partial.length === 1) return { code: partial[0][0] };
+  if (partial.length > 1) {
+    return { ambiguous: true, candidates: partial.map(([c, n]) => `${n}(${c})`) };
+  }
+  return { notFound: true };
+}
 
 async function handleTelegramCommand(chatId, text) {
   let m;
-  if ((m = text.match(/^\/?(?:target|목표가)\s+(\d{6})\s+([\d,]+)\s*$/i))) {
-    const code = m[1], price = parsePriceNum(m[2]);
+  if ((m = text.match(/^\/?(?:target|목표가)\s+(\S+)\s+([\d,]+)\s*원?\s*$/i))) {
+    const price = parsePriceNum(m[2]);
+    const r = resolveCode(m[1]);
+    if (r.notFound) {
+      await sendTelegramTo(chatId, `"${m[1]}" 종목을 찾지 못했어요. 종목코드로 시도하거나, 보유 종목명으로 정확히 입력해보세요.`);
+      return;
+    }
+    if (r.ambiguous) {
+      await sendTelegramTo(chatId, `"${m[1]}"에 해당하는 종목이 여러 개예요: ${r.candidates.join(', ')}\n종목코드로 다시 시도해주세요.`);
+      return;
+    }
+    const code = r.code;
     if (!Number.isFinite(price) || price <= 0) {
-      await sendTelegramTo(chatId, '목표가 형식이 올바르지 않아요. 예) /목표가 005930 165000');
+      await sendTelegramTo(chatId, '목표가 형식이 올바르지 않아요. 예) /목표가 005930 165000 또는 /목표가 삼성전자 165000');
       return;
     }
     targetPrices.set(code, { price });
@@ -456,8 +484,17 @@ async function handleTelegramCommand(chatId, text) {
     await sendTelegramTo(chatId, `✅ ${codeNames.get(code) || code}(${code}) 목표가 ${fmt(price)}원으로 설정했어요.${savedNote}`);
     return;
   }
-  if ((m = text.match(/^\/?(?:target|목표가)\s*(?:clear|삭제|취소)\s+(\d{6})\s*$/i))) {
-    const code = m[1];
+  if ((m = text.match(/^\/?(?:target|목표가)\s*(?:clear|삭제|취소)\s+(\S+)\s*$/i))) {
+    const r = resolveCode(m[1]);
+    if (r.notFound) {
+      await sendTelegramTo(chatId, `"${m[1]}" 종목을 찾지 못했어요.`);
+      return;
+    }
+    if (r.ambiguous) {
+      await sendTelegramTo(chatId, `"${m[1]}"에 해당하는 종목이 여러 개예요: ${r.candidates.join(', ')}\n종목코드로 다시 시도해주세요.`);
+      return;
+    }
+    const code = r.code;
     targetPrices.delete(code);
     await deleteTargetPrice(code);
     await sendTelegramTo(chatId, `🗑 ${codeNames.get(code) || code}(${code}) 목표가를 삭제했어요.`);
@@ -475,9 +512,10 @@ async function handleTelegramCommand(chatId, text) {
   if (/^\/?(?:help|도움말|start)\s*$/i.test(text)) {
     await sendTelegramTo(chatId,
       '📌 사용 가능한 명령어\n' +
-      '/목표가 [종목코드] [가격] — 목표가 설정 (예: /목표가 005930 165000)\n' +
-      '/목표가삭제 [종목코드] — 목표가 삭제\n' +
-      '/목표가확인 — 현재 설정 목록\n\n' +
+      '/목표가 [종목코드 또는 종목명] [가격] — 목표가 설정 (예: /목표가 005930 165000, /목표가 삼성전자 165000)\n' +
+      '/목표가삭제 [종목코드 또는 종목명] — 목표가 삭제\n' +
+      '/목표가확인 — 현재 설정 목록\n' +
+      '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
       '보유 종목의 당일 신고가·신저가 갱신, 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.');
     return;
   }
