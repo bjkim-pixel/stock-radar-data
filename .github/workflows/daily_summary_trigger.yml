@@ -1,0 +1,35 @@
+name: Daily Stock Summary to Telegram
+
+# 매 거래일(월~금) 16:10 KST에 relay-server(Render)의 /trigger-daily-summary
+# 엔드포인트를 호출해서, 사이트의 "오늘의 종목" 탭과 같은 로직으로 계산한
+# 요약(시장 요약·섹터RS 상위·수급 상위 종목·종합스코어 Top10)을 텔레그램으로 보냅니다.
+#
+# ⚠ 발송 로직을 relay-server 내부 타이머로 하지 않고 굳이 이 워크플로가 "깨우는"
+#   방식을 쓰는 이유: Render 무료 플랜은 keep_relay_awake.yml이 핑을 멈추는
+#   15:40 KST 이후 유휴 상태가 지속되면 슬립에 들어가서, 서버 내부 타이머는
+#   16:10에 아예 깨어있지 않을 수 있습니다. 이 워크플로의 HTTP 요청 자체가
+#   서버를 깨우는 트리거를 겸합니다(콜드스타트 30~50초 감안해 넉넉히 대기).
+#
+# ⚠ KST → UTC 변환: KST 16:10 = UTC 07:10 (같은 날짜, 자정 넘어가지 않음).
+on:
+  schedule:
+    - cron: "10 7 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Trigger daily summary
+        env:
+          TOKEN: ${{ secrets.DAILY_SUMMARY_TOKEN }}
+        run: |
+          STATUS=$(curl -s -o /tmp/resp.json -w "%{http_code}" --max-time 90 \
+            "https://kis-relay-server.onrender.com/trigger-daily-summary?token=${TOKEN}")
+          echo "HTTP status: $STATUS"
+          cat /tmp/resp.json 2>/dev/null || true
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::오늘의 종목 요약 트리거 실패 (status=$STATUS)"
+            exit 1
+          fi
