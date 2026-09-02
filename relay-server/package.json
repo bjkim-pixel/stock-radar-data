@@ -1,0 +1,16 @@
+{
+  "name": "kis-relay-server",
+  "version": "1.0.0",
+  "description": "KIS(한국투자증권) 실전투자 웹소켓 실시간 시세를 중계하는 서버 - stock-radar 프론트엔드용",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
