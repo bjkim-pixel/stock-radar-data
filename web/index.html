@@ -432,9 +432,14 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <div class="note">
         <b>주간증감</b> = 최근 5거래일 거래대금 합계 ÷ 이전 5거래일 거래대금 합계.
         <b>평균 등락률</b> = 그날 업종 소속 종목들의 당일 등락률 단순평균.
-        <b>RS</b> = 업종 평균 등락률의 20거래일 복리 누적수익률을 업종끼리 비교한 순위입니다
+        <b>RS20</b> = 업종 평균 등락률의 20거래일(≈1개월) 복리 누적수익률을 업종끼리 비교한 순위입니다
         (KOSPI/KOSDAQ 지수 등 외부 벤치마크 대비가 아니라 업종 간 상대 순위이며,
         최소 15거래일 데이터 · 소속 3종목 이상인 업종만 순위를 매깁니다 · <b>자체 산출</b>).
+        <b>RS5</b>는 같은 방식의 5거래일(≈1주) 버전으로, 빠른 순환매를 더 민감하게 잡아냅니다.
+        <span class="up">신흥 주도</span> = RS5 상위 5위가 2일 연속 유지됐지만 아직 RS20 상위 5위는
+        아닌 업종(막 뜨기 시작). <span class="down">이탈 조짐</span> = RS20은 아직 상위 5위인데
+        RS5가 당장 5위 밖으로 밀린 업종(꺾이기 시작 — 진입은 2일 연속으로 신중히, 이탈은 하루만으로
+        빠르게 표시합니다).
       </div>
       <div class="faint" style="font-size:11px;margin:10px 0 4px">상위 5</div>
       <div class="tw"><table><thead><tr id="secHeadTop"></tr></thead>
@@ -1528,7 +1533,10 @@ const SEC_COLS=[
   {k:"amt_chg_1w_pct",l:"주간증감", fmt:s=>s.amt_chg_1w_pct==null?"–":pm(+s.amt_chg_1w_pct,1)+"%",
     cls:s=>sgn(s.amt_chg_1w_pct==null?0:+s.amt_chg_1w_pct)},
   {k:"avg_change_pct",l:"평균 등락률", fmt:s=>pm(+s.avg_change_pct)+"%", cls:s=>sgn(+s.avg_change_pct)},
-  {k:"rs_rank",      l:"RS", opt:true, fmt:s=>s.rs_rank?(s.rs_rank<=5?`<b>${s.rs_rank}위</b>`:s.rs_rank+"위"):"–"},
+  {k:"rs_rank",      l:"RS20", opt:true, fmt:s=>s.rs_rank?(s.rs_rank<=5?`<b>${s.rs_rank}위</b>`:s.rs_rank+"위"):"–"},
+  {k:"rs5_rank",     l:"RS5", opt:true, fmt:s=>s.rs5_rank?(s.rs5_rank<=5?`<b>${s.rs5_rank}위</b>`:s.rs5_rank+"위"):"–"},
+  {k:"leadership",   l:"", fmt:s=>s.is_emerging_leader?'<span class="up">신흥 주도</span>'
+    :s.is_weakening_leader?'<span class="down">이탈 조짐</span>':""},
   {k:"stock_count",  l:"종목수", opt:true, fmt:s=>s.stock_count, cls:()=>"faint"},
 ];
 S.secSort=S.secSort||"total_amount";
@@ -1541,7 +1549,7 @@ function secBodyRows(list){
     <tr class="clk" data-sec="${s.sector}" ${S.sector===s.sector?'aria-selected="true"':''}>
       <td class="l rank">${i+1}</td><td class="l"><span class="nm">${s.sector}</span></td>
       ${SEC_COLS.map(c=>`<td class="${c.opt?"opt ":""}${c.cls?c.cls(s):""}">${c.fmt(s)}</td>`).join("")}
-    </tr>`).join(""):`<tr><td colspan="8" class="load">데이터 없음</td></tr>`;
+    </tr>`).join(""):`<tr><td colspan="10" class="load">데이터 없음</td></tr>`;
 }
 function renderSectors(){
   const sorted=[...S.sectors].sort((a,b)=>{
