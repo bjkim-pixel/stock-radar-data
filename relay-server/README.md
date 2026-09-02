@@ -1,8 +1,25 @@
-# KIS 실시간 시세 릴레이 서버
+# KIS 실시간 시세 릴레이 서버 + 텔레그램 알림
 
 한국투자증권(KIS) 실전투자 API의 실시간 체결가(H0STCNT0) 웹소켓을 구독해서,
 `stock-radar` 프론트엔드가 원하는 종목의 실시간 시세를 받아볼 수 있도록
 중계하는 작은 Node.js 서버입니다.
+
+추가로 Supabase의 "보유 중"(positions, status=OPEN) 종목을 5분마다 조회해서
+프론트엔드가 열려있지 않아도 항상 그 종목들을 KIS에 구독해두고, 아래 조건을
+감지하면 텔레그램으로 알림을 보냅니다.
+
+- 당일 신고가·신저가 갱신
+- 트레일링 손절(-7%) 근접(고점 대비 -5%↓) / 도달(-7%↓)
+- 텔레그램 명령으로 지정한 목표가 도달
+
+## 텔레그램 명령어
+
+봇에게 아래 메시지를 보내면 됩니다 (`/` 없이 보내도 인식).
+
+- `/목표가 005930 165000` — 삼성전자 목표가를 165,000원으로 설정
+- `/목표가삭제 005930` — 목표가 삭제
+- `/목표가확인` — 현재 설정된 목표가 목록
+- `/help` — 사용법 안내
 
 ## 로컬 실행
 
@@ -31,13 +48,19 @@ ws.onmessage = (e) => {
 
 ## 헬스체크
 
-`GET /health` → `{ ok, kisWsReady, subscribedCodes, approvalKeyAgeMs }`
+`GET /health` → `{ ok, kisWsReady, subscribedCodes, heldCodes, targetPrices, telegramConfigured, approvalKeyAgeMs }`
 
 ## Render 배포 시 환경변수
 
 - `KIS_APP_KEY`
 - `KIS_APP_SECRET`
 - `ALLOWED_ORIGIN` (기본값 `https://bjkim-pixel.github.io`)
+- `TELEGRAM_BOT_TOKEN` — BotFather에서 발급받은 봇 토큰
+- `TELEGRAM_CHAT_ID` — 알림 받을 chat_id. 모르면 일단 비워두고 배포한 뒤
+  봇에게 아무 메시지나 보내면 서버 로그(Render 대시보드 Logs)에
+  `chat_id=...`가 찍힙니다. 그 값을 이 환경변수로 등록하고 재배포하세요.
+- `SUPABASE_URL` / `SUPABASE_ANON_KEY` — 기본값이 이미 stock-radar 것으로
+  채워져 있어 보통 설정 불필요 (읽기 전용 public anon key)
 
 ## 참고
 

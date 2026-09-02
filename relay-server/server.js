@@ -1,37 +1,46 @@
 // ============================================================================
-// KIS 실시간 시세 릴레이 서버
+// KIS 실시간 시세 릴레이 서버 + 텔레그램 알림
 // ============================================================================
-// 역할: 한국투자증권(KIS) 실전투자 웹소켓에 접속해서 실시간 체결가를 받아오고,
-// 우리 프론트엔드(index.html)가 이 서버의 웹소켓에 붙어서 원하는 종목의
-// 실시간 시세를 받아볼 수 있도록 중계합니다.
-//
-// 흐름:
-//   1) 서버 시작 시 KIS App Key/Secret으로 실시간 접속키(approval_key)를 발급받음
-//      (approval_key는 유효기간이 있어 주기적으로 재발급함)
-//   2) KIS 웹소켓(ws://ops.koreainvestment.com:21000)에 접속
-//   3) 프론트엔드 클라이언트가 이 서버 /ws 에 접속해서
-//      {"type":"subscribe","codes":["005930","000660"]} 형태로 원하는 종목을 알려주면
-//      서버가 (아직 구독 안 한 종목이면) KIS에 실시간 체결가(H0STCNT0)를 등록
-//   4) KIS에서 데이터가 오면 파싱해서 구독 중인 프론트엔드 클라이언트들에게 전달
-//      {"type":"price","code":"005930","price":71400,"changePct":1.23,"time":"093012"}
+// 역할:
+//   1) 한국투자증권(KIS) 실전투자 웹소켓에 접속해서 실시간 체결가를 받아오고,
+//      프론트엔드(index.html)가 이 서버 /ws 에 붙어서 원하는 종목의 실시간
+//      시세를 받아볼 수 있도록 중계
+//   2) Supabase의 "보유 중"(positions, status=OPEN) 종목을 주기적으로 조회해서
+//      프론트엔드가 열려있지 않아도 항상 그 종목들을 KIS에 구독해두고,
+//      아래 조건을 감지하면 텔레그램으로 알림을 보냄:
+//        - 당일 신고가/신저가 갱신
+//        - 트레일링 손절(-7%) 근접(-5%↓)/도달(-7%↓)
+//        - 텔레그램 명령으로 지정한 목표가 도달
+//   3) 텔레그램 봇에 "/목표가 종목코드 가격" 같은 명령을 보내면 목표가를
+//      등록/삭제/조회할 수 있음 (long polling, 별도 웹훅 서버 불필요)
 //
 // 환경변수(.env 또는 Render 대시보드에 등록):
-//   KIS_APP_KEY     - 실전투자 App Key
-//   KIS_APP_SECRET  - 실전투자 App Secret
-//   PORT            - (Render가 자동 주입, 기본 3000)
-//   ALLOWED_ORIGIN  - 프론트엔드 도메인 (CORS/Origin 체크용, 콤마로 여러개 가능)
-//                     기본값: https://bjkim-pixel.github.io
+//   KIS_APP_KEY        - 실전투자 App Key (필수)
+//   KIS_APP_SECRET     - 실전투자 App Secret (필수)
+//   TELEGRAM_BOT_TOKEN - 텔레그램 봇 토큰 (BotFather 발급)
+//   TELEGRAM_CHAT_ID   - 알림을 받을 chat_id (없으면 봇에 아무 메시지나 보낸 뒤
+//                        서버 로그에서 chat_id를 확인해서 등록)
+//   SUPABASE_URL / SUPABASE_ANON_KEY - 기본값이 stock-radar 것으로 이미 채워져
+//                        있음 (읽기 전용 public anon key라 노출돼도 안전)
+//   PORT               - (Render가 자동 주입, 기본 3000)
+//   ALLOWED_ORIGIN     - 프론트엔드 도메인 (콤마로 여러개 가능)
 // ============================================================================
 
 const http = require('http');
 const WebSocket = require('ws');
-const crypto = require('crypto');
 
 const KIS_APP_KEY = process.env.KIS_APP_KEY;
 const KIS_APP_SECRET = process.env.KIS_APP_SECRET;
 const PORT = process.env.PORT || 3000;
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGIN || 'https://bjkim-pixel.github.io')
   .split(',').map(s => s.trim()).filter(Boolean);
+
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+let TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
+
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://frurnmrwuopvttoqdvgj.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZydXJubXJ3dW9wdnR0b3FkdmdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MDEwMDIsImV4cCI6MjEwMjQ3NzAwMn0.rf49NKE9vLLNNODp6ZBsmEYkr1ar3sZ6ViH65MF5jHc';
 
 // 실전투자 도메인 (모의투자로 바꾸려면 openapivts.../ops.../31000 로 교체)
 const KIS_REST_BASE = 'https://openapi.koreainvestment.com:9443';
@@ -41,6 +50,14 @@ if (!KIS_APP_KEY || !KIS_APP_SECRET) {
   console.error('[FATAL] KIS_APP_KEY / KIS_APP_SECRET 환경변수가 설정되지 않았습니다.');
   process.exit(1);
 }
+if (!TELEGRAM_BOT_TOKEN) {
+  console.warn('[telegram] TELEGRAM_BOT_TOKEN 미설정 — 텔레그램 알림 기능이 꺼진 채로 시작합니다.');
+}
+
+const fmt = n => (n == null || !Number.isFinite(+n)) ? '–' : Math.round(+n).toLocaleString('ko-KR');
+const KST_TZ = 'Asia/Seoul';
+const kstDateStr = (d = new Date()) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: KST_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 
 // ----------------------------------------------------------------------------
 // 상태
@@ -51,10 +68,15 @@ let kisWs = null;
 let kisWsReady = false;
 let reconnectAttempt = 0;
 
-// code -> Set(clientWs) : 이 종목을 구독 중인 프론트엔드 클라이언트들
-const subscribers = new Map();
-// code -> 마지막으로 받은 시세 (클라이언트가 새로 구독하자마자 바로 보여줄 캐시)
-const lastPrice = new Map();
+const subscribers = new Map();   // code -> Set(clientWs) : 프론트엔드가 요청한 구독
+const lastPrice = new Map();     // code -> 마지막 시세 (신규 구독 시 즉시 전달용)
+const currentKisSubs = new Set(); // 지금 KIS에 실제로 등록해둔 코드
+
+const heldCodes = new Set();        // "보유 중" 종목 코드 (Supabase에서 주기적으로 갱신)
+const positionsByCode = new Map();  // code -> {avg_price, peak_price}
+const codeNames = new Map();        // code -> 종목명
+const targetPrices = new Map();     // code -> {price} (텔레그램 명령으로 설정)
+const alertState = new Map();       // code -> {date, high, low, alertedHigh, alertedLow, trailNear, trailHit, targetHit}
 
 // ----------------------------------------------------------------------------
 // 1) approval_key 발급/재발급
@@ -83,8 +105,6 @@ async function issueApprovalKey() {
   return approvalKey;
 }
 
-// approval_key는 발급 후 24시간 유효. 12시간마다 선제적으로 재발급하고
-// KIS 웹소켓을 재연결(새 키로 재등록)한다.
 const APPROVAL_KEY_REFRESH_MS = 12 * 60 * 60 * 1000;
 setInterval(() => {
   console.log('[approval_key] 정기 재발급 + 웹소켓 재연결');
@@ -94,8 +114,33 @@ setInterval(() => {
 }, APPROVAL_KEY_REFRESH_MS);
 
 // ----------------------------------------------------------------------------
-// 2) KIS 웹소켓 연결 + 구독 관리
+// 2) KIS 웹소켓 연결 + 구독 관리 (구독 대상 = 보유 종목 ∪ 프론트엔드 요청 종목)
 // ----------------------------------------------------------------------------
+function wantedCodes() {
+  const w = new Set(heldCodes);
+  for (const code of subscribers.keys()) w.add(code);
+  return w;
+}
+
+function reconcileKisSubscriptions() {
+  const want = wantedCodes();
+  for (const code of want) {
+    if (!currentKisSubs.has(code)) {
+      currentKisSubs.add(code);
+      sendKisSubscribe(code, true);
+      console.log('[구독 추가]', code);
+    }
+  }
+  for (const code of [...currentKisSubs]) {
+    if (!want.has(code)) {
+      currentKisSubs.delete(code);
+      sendKisSubscribe(code, false);
+      lastPrice.delete(code);
+      console.log('[구독 해제]', code);
+    }
+  }
+}
+
 function connectKisWs() {
   kisWs = new WebSocket(KIS_WS_URL);
   kisWsReady = false;
@@ -104,15 +149,12 @@ function connectKisWs() {
     console.log('[KIS WS] 연결됨');
     kisWsReady = true;
     reconnectAttempt = 0;
-    // 재연결 시 기존에 구독 중이던 종목들을 다시 등록
-    for (const code of subscribers.keys()) {
-      sendKisSubscribe(code, true);
-    }
+    currentKisSubs.clear(); // 새 연결이라 KIS 쪽엔 아무것도 등록 안 된 상태
+    reconcileKisSubscriptions();
   });
 
   kisWs.on('message', (raw) => {
-    const text = raw.toString('utf-8');
-    handleKisMessage(text);
+    handleKisMessage(raw.toString('utf-8'));
   });
 
   kisWs.on('close', (code, reason) => {
@@ -128,14 +170,12 @@ function connectKisWs() {
 
 function scheduleReconnect() {
   reconnectAttempt += 1;
-  const delay = Math.min(30000, 1000 * 2 ** Math.min(reconnectAttempt, 5)); // 최대 30초
+  const delay = Math.min(30000, 1000 * 2 ** Math.min(reconnectAttempt, 5));
   setTimeout(() => connectKisWs(), delay);
 }
 
 function reconnectKisWs() {
   try { kisWs && kisWs.close(); } catch (_) {}
-  // close 이벤트 핸들러가 재연결을 예약하므로 별도 호출 불필요.
-  // 다만 approval_key 재발급 직후엔 바로 붙고 싶으므로 즉시 시도.
   setTimeout(() => connectKisWs(), 500);
 }
 
@@ -149,29 +189,19 @@ function sendKisSubscribe(code, subscribe) {
       tr_type: subscribe ? '1' : '2',
       'content-type': 'utf-8',
     },
-    body: {
-      input: {
-        tr_id: 'H0STCNT0', // 주식 실시간 체결가
-        tr_key: code,
-      },
-    },
+    body: { input: { tr_id: 'H0STCNT0', tr_key: code } },
   };
   kisWs.send(JSON.stringify(msg));
 }
 
-// H0STCNT0(실시간 체결가) 레코드 1건의 필드 순서 중 우리가 쓰는 것만 인덱스로.
-// 공식 필드 순서: 0 종목코드, 1 체결시간, 2 현재가, 3 전일대비부호, 4 전일대비,
-// 5 전일대비율, ... (전체 40여개 필드 중 앞부분만 사용)
 const F_CODE = 0, F_TIME = 1, F_PRICE = 2, F_SIGN = 3, F_DIFF = 4, F_RATE = 5;
 
 function handleKisMessage(text) {
-  // PINGPONG 등 제어 메시지는 JSON, 실시간 데이터는 '0|TR_ID|건수|필드^필드^...' 형태
   if (text[0] === '{') {
     let json;
     try { json = JSON.parse(text); } catch (_) { return; }
     const trId = json.header && json.header.tr_id;
     if (trId === 'PINGPONG') {
-      // 살아있음을 알리기 위해 받은 그대로 되돌려준다
       if (kisWs && kisWs.readyState === WebSocket.OPEN) kisWs.send(text);
       return;
     }
@@ -181,11 +211,10 @@ function handleKisMessage(text) {
     return;
   }
 
-  // 암호화 플래그(0/1) | tr_id | 데이터건수 | 데이터...
   const parts = text.split('|');
   if (parts.length < 4) return;
   const [encFlag, trId, countStr, dataStr] = parts;
-  if (trId !== 'H0STCNT0') return; // 다른 tr_id는 아직 미사용
+  if (trId !== 'H0STCNT0') return;
 
   const count = parseInt(countStr, 10) || 1;
   const fields = dataStr.split('^');
@@ -205,11 +234,12 @@ function handleKisMessage(text) {
       code,
       price,
       changePct: Number.isFinite(rate) ? rate : null,
-      sign: rec[F_SIGN] || null, // 1:상한 2:상승 3:보합 4:하한 5:하락
+      sign: rec[F_SIGN] || null,
       time: rec[F_TIME] || null,
     };
     lastPrice.set(code, payload);
     broadcastToSubscribers(code, payload);
+    checkAlerts(code, price);
   }
 }
 
@@ -223,7 +253,194 @@ function broadcastToSubscribers(code, payload) {
 }
 
 // ----------------------------------------------------------------------------
-// 3) 프론트엔드용 웹소켓 서버
+// 3) 보유 종목 조회 (Supabase) — 프론트엔드가 안 열려있어도 알림은 계속 돌게 함
+// ----------------------------------------------------------------------------
+async function sbGet(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+  });
+  if (!res.ok) throw new Error(`${path} ${res.status} ${await res.text().catch(() => '')}`);
+  return res.json();
+}
+
+async function refreshHoldings() {
+  try {
+    const positions = await sbGet('positions?select=code,avg_price,peak_price&portfolio=eq.VIRTUAL&status=eq.OPEN');
+    const newHeld = new Set(positions.map(p => p.code));
+
+    positionsByCode.clear();
+    positions.forEach(p => positionsByCode.set(p.code, p));
+
+    const missingNames = [...newHeld].filter(c => !codeNames.has(c));
+    if (missingNames.length) {
+      const rows = await sbGet(`stocks?select=code,name&code=in.(${missingNames.join(',')})`);
+      rows.forEach(r => codeNames.set(r.code, r.name));
+    }
+
+    heldCodes.clear();
+    newHeld.forEach(c => heldCodes.add(c));
+    reconcileKisSubscriptions();
+  } catch (err) {
+    console.error('[holdings] 갱신 실패:', err.message);
+  }
+}
+const HOLDINGS_POLL_MS = 5 * 60 * 1000; // 보유 종목은 하루 단위로만 바뀌므로 5분이면 충분
+setInterval(refreshHoldings, HOLDINGS_POLL_MS);
+
+// ----------------------------------------------------------------------------
+// 4) 알림 조건 감지 (당일 신고가/신저가, 트레일링 손절 근접/도달, 목표가 도달)
+// ----------------------------------------------------------------------------
+function getAlertState(code) {
+  const today = kstDateStr();
+  let st = alertState.get(code);
+  if (!st || st.date !== today) {
+    st = { date: today, high: null, low: null, alertedHigh: false, alertedLow: false, trailNear: false, trailHit: false, targetHit: false };
+    alertState.set(code, st);
+  }
+  return st;
+}
+
+function checkAlerts(code, price) {
+  if (!heldCodes.has(code)) return; // 보유 중인 종목만 알림 대상
+  const name = codeNames.get(code) || code;
+  const st = getAlertState(code);
+
+  // ── 당일 신고가/신저가 갱신 ─────────────────────────────────────────
+  if (st.high == null) {
+    st.high = price;
+    st.low = price;
+  } else {
+    if (price > st.high) {
+      st.high = price;
+      sendTelegram(`📈 ${name}(${code}) 당일 신고가 갱신: ${fmt(price)}원`);
+    }
+    if (price < st.low) {
+      st.low = price;
+      sendTelegram(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원`);
+    }
+  }
+
+  // ── 트레일링 손절(-7%) 근접/도달 ───────────────────────────────────
+  const pos = positionsByCode.get(code);
+  if (pos) {
+    const effPeak = Math.max(+pos.peak_price || 0, st.high || 0);
+    if (effPeak > 0) {
+      const drawdown = (price / effPeak - 1) * 100;
+      if (drawdown <= -7 && !st.trailHit) {
+        st.trailHit = true;
+        sendTelegram(`🚨 ${name}(${code}) 트레일링 손절선(-7%) 도달! 고점 대비 ${drawdown.toFixed(1)}% (현재가 ${fmt(price)}원)`);
+      } else if (drawdown <= -5 && !st.trailNear && !st.trailHit) {
+        st.trailNear = true;
+        sendTelegram(`⚠️ ${name}(${code}) 트레일링 손절(-7%) 근접: 고점 대비 ${drawdown.toFixed(1)}% (현재가 ${fmt(price)}원)`);
+      }
+    }
+  }
+
+  // ── 목표가 도달 (평단보다 높으면 상향 도달, 낮으면 하향 도달로 판단) ──
+  const target = targetPrices.get(code);
+  if (target && !st.targetHit) {
+    const avg = pos ? +pos.avg_price : null;
+    const upward = avg == null || target.price >= avg;
+    const reached = upward ? price >= target.price : price <= target.price;
+    if (reached) {
+      st.targetHit = true;
+      sendTelegram(`🎯 ${name}(${code}) 목표가(${fmt(target.price)}원) 도달! 현재가 ${fmt(price)}원`);
+    }
+  }
+}
+
+// ----------------------------------------------------------------------------
+// 5) 텔레그램 전송 + 명령 처리 (목표가 등록/삭제/조회)
+// ----------------------------------------------------------------------------
+async function sendTelegramTo(chatId, text) {
+  if (!TELEGRAM_BOT_TOKEN || !chatId) return;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    });
+    if (!res.ok) console.error('[telegram] 전송 실패:', res.status, await res.text().catch(() => ''));
+  } catch (err) {
+    console.error('[telegram] 전송 에러:', err.message);
+  }
+}
+function sendTelegram(text) {
+  if (!TELEGRAM_CHAT_ID) {
+    console.warn('[telegram] TELEGRAM_CHAT_ID 미설정 — 메시지 스킵:', text);
+    return;
+  }
+  return sendTelegramTo(TELEGRAM_CHAT_ID, text);
+}
+
+function parsePriceNum(s) { return Number(String(s).replace(/,/g, '')); }
+
+async function handleTelegramCommand(chatId, text) {
+  let m;
+  if ((m = text.match(/^\/?(?:target|목표가)\s+(\d{6})\s+([\d,]+)\s*$/i))) {
+    const code = m[1], price = parsePriceNum(m[2]);
+    if (!Number.isFinite(price) || price <= 0) {
+      await sendTelegramTo(chatId, '목표가 형식이 올바르지 않아요. 예) /목표가 005930 165000');
+      return;
+    }
+    targetPrices.set(code, { price });
+    getAlertState(code).targetHit = false;
+    await sendTelegramTo(chatId, `✅ ${codeNames.get(code) || code}(${code}) 목표가 ${fmt(price)}원으로 설정했어요.`);
+    return;
+  }
+  if ((m = text.match(/^\/?(?:target|목표가)\s*(?:clear|삭제|취소)\s+(\d{6})\s*$/i))) {
+    const code = m[1];
+    targetPrices.delete(code);
+    await sendTelegramTo(chatId, `🗑 ${codeNames.get(code) || code}(${code}) 목표가를 삭제했어요.`);
+    return;
+  }
+  if (/^\/?(?:target|목표가)\s*(?:list|목록|확인)\s*$/i.test(text)) {
+    if (!targetPrices.size) {
+      await sendTelegramTo(chatId, '설정된 목표가가 없어요.');
+      return;
+    }
+    const lines = [...targetPrices.entries()].map(([code, t]) => `${codeNames.get(code) || code}(${code}): ${fmt(t.price)}원`);
+    await sendTelegramTo(chatId, '📋 현재 목표가 설정\n' + lines.join('\n'));
+    return;
+  }
+  if (/^\/?(?:help|도움말|start)\s*$/i.test(text)) {
+    await sendTelegramTo(chatId,
+      '📌 사용 가능한 명령어\n' +
+      '/목표가 [종목코드] [가격] — 목표가 설정 (예: /목표가 005930 165000)\n' +
+      '/목표가삭제 [종목코드] — 목표가 삭제\n' +
+      '/목표가확인 — 현재 설정 목록\n\n' +
+      '보유 종목의 당일 신고가·신저가 갱신, 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.');
+    return;
+  }
+  if (text.startsWith('/')) {
+    await sendTelegramTo(chatId, '이해하지 못했어요. /help 로 사용법을 확인하세요.');
+  }
+}
+
+let tgUpdateOffset = 0;
+async function pollTelegramCommands() {
+  if (!TELEGRAM_BOT_TOKEN) return;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${tgUpdateOffset}&timeout=0`);
+    const json = await res.json();
+    if (!json.ok) return;
+    for (const upd of json.result) {
+      tgUpdateOffset = upd.update_id + 1;
+      const msg = upd.message;
+      if (!msg || !msg.text) continue;
+      if (!TELEGRAM_CHAT_ID) {
+        console.log(`[telegram] 새 메시지 수신 — chat_id=${msg.chat.id} (이 값을 Render 환경변수 TELEGRAM_CHAT_ID로 등록하세요)`);
+      }
+      handleTelegramCommand(msg.chat.id, msg.text.trim());
+    }
+  } catch (err) {
+    console.error('[telegram] getUpdates 에러:', err.message);
+  }
+}
+setInterval(pollTelegramCommands, 4000);
+
+// ----------------------------------------------------------------------------
+// 6) 프론트엔드용 웹소켓 서버
 // ----------------------------------------------------------------------------
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
@@ -231,7 +448,10 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       kisWsReady,
-      subscribedCodes: [...subscribers.keys()],
+      subscribedCodes: [...currentKisSubs],
+      heldCodes: [...heldCodes],
+      targetPrices: Object.fromEntries([...targetPrices].map(([c, t]) => [c, t.price])),
+      telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID),
       approvalKeyAgeMs: approvalKey ? Date.now() - approvalKeyIssuedAt : null,
     }));
     return;
@@ -260,7 +480,6 @@ wss.on('connection', (client, req) => {
       for (const code of msg.codes) {
         if (typeof code !== 'string' || !/^\d{6}$/.test(code)) continue;
         addSubscription(client, code);
-        // 캐시된 최근 시세가 있으면 즉시 전달
         const cached = lastPrice.get(code);
         if (cached) client.send(JSON.stringify(cached));
       }
@@ -277,19 +496,10 @@ wss.on('connection', (client, req) => {
 function addSubscription(client, code) {
   if (client.subscribedCodes.has(code)) return;
   client.subscribedCodes.add(code);
-
   let set = subscribers.get(code);
-  const isNewCode = !set;
-  if (isNewCode) {
-    set = new Set();
-    subscribers.set(code, set);
-  }
+  if (!set) { set = new Set(); subscribers.set(code, set); }
   set.add(client);
-
-  if (isNewCode) {
-    console.log('[구독 추가]', code);
-    sendKisSubscribe(code, true);
-  }
+  reconcileKisSubscriptions();
 }
 
 function removeSubscription(client, code) {
@@ -297,12 +507,8 @@ function removeSubscription(client, code) {
   const set = subscribers.get(code);
   if (!set) return;
   set.delete(client);
-  if (set.size === 0) {
-    subscribers.delete(code);
-    lastPrice.delete(code);
-    console.log('[구독 해제]', code);
-    sendKisSubscribe(code, false);
-  }
+  if (set.size === 0) subscribers.delete(code);
+  reconcileKisSubscriptions();
 }
 
 // ----------------------------------------------------------------------------
@@ -311,6 +517,7 @@ function removeSubscription(client, code) {
 issueApprovalKey()
   .then(() => {
     connectKisWs();
+    refreshHoldings();
     server.listen(PORT, () => {
       console.log(`[server] 릴레이 서버 실행 중 (port ${PORT})`);
     });
