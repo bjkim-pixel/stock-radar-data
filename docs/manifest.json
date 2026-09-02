@@ -1,0 +1,17 @@
+{
+  "name": "STOCK RADAR",
+  "short_name": "STOCK RADAR",
+  "description": "국내 주식 수급/기술 스크리너 · 가상매매 전략 성과 대시보드",
+  "start_url": "./?pwa=1",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f9f9f7",
+  "theme_color": "#0b0b0b",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

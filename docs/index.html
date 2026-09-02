@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>STOCK RADAR</title>
+<!-- PWA: 홈화면 설치 + 웹푸시 지원 -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b0b0b">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="STOCK RADAR">
 <style>
 :root{
   color-scheme: light;
@@ -999,6 +1008,7 @@ const CFG = {
 // KIS 실시간 시세 릴레이 서버(Render) — "보유 중" 표 전용, 종목 수가 적을 때만 사용
 // (KIS 실시간 구독은 approval_key당 동시 구독 가능 종목 수 제한이 있음)
 const RELAY_WS_URL = "wss://kis-relay-server.onrender.com/ws";
+const RELAY_HTTP_BASE = "https://kis-relay-server.onrender.com";
 
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const N=(v,d=0)=>(v==null||isNaN(v))?"–":Number(v).toLocaleString("ko-KR",
@@ -3118,6 +3128,41 @@ async function boot(){
 }
 boot();
 addEventListener("resize",()=>{clearTimeout(window._t);window._t=setTimeout(redraw,250);});
+
+/* ══ PWA: 서비스워커 등록 + 웹푸시 구독 ══
+   sw.js는 앱 셸(정적 파일)만 캐싱하고 Supabase/relay-server 호출은 그대로 네트워크로
+   통과시킴 — 데이터가 캐시 때문에 오래된 값으로 보일 걱정은 없음. */
+const PUSH_VAPID_PUBLIC_KEY = "BOnRw7DbgYaGmAYE5xh9D6S51qZMU0rS5LEWszmb9FZQ8txQLri0RYOB4MCJbFmH2owPbmqiL1uX_OqZakHFmSE"; // 공개키 — 노출돼도 안전
+function urlBase64ToUint8Array(base64String){
+  const padding="=".repeat((4-base64String.length%4)%4);
+  const base64=(base64String+padding).replace(/-/g,"+").replace(/_/g,"/");
+  const raw=atob(base64), out=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);
+  return out;
+}
+async function setupPush(reg){
+  if(!PUSH_VAPID_PUBLIC_KEY||!("PushManager" in window))return;
+  try{
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub){
+      if(Notification.permission==="default")await Notification.requestPermission();
+      if(Notification.permission!=="granted")return;
+      sub=await reg.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:urlBase64ToUint8Array(PUSH_VAPID_PUBLIC_KEY)
+      });
+    }
+    await fetch(`${RELAY_HTTP_BASE}/push-subscribe`,{
+      method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify(sub)
+    }).catch(()=>{});
+  }catch(e){console.warn("[push] 구독 실패",e);}
+}
+if("serviceWorker" in navigator){
+  addEventListener("load",()=>{
+    navigator.serviceWorker.register("sw.js").then(reg=>setupPush(reg)).catch(()=>{});
+  });
+}
 </script>
 </body>
 </html>
