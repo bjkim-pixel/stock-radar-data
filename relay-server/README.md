@@ -61,6 +61,12 @@ ws.onmessage = (e) => {
   `chat_id=...`가 찍힙니다. 그 값을 이 환경변수로 등록하고 재배포하세요.
 - `SUPABASE_URL` / `SUPABASE_ANON_KEY` — 기본값이 이미 stock-radar 것으로
   채워져 있어 보통 설정 불필요 (읽기 전용 public anon key)
+- `SUPABASE_SERVICE_KEY` — Supabase 대시보드 › Project Settings › API ›
+  `service_role` 비밀키. 목표가(`alert_targets` 테이블) 쓰기 전용으로만
+  사용됩니다. **비워두면 목표가가 서버 메모리에만 저장되어 재배포 시
+  초기화됩니다** — 반드시 실행해야 하는 `60_alert_targets.sql` 마이그레이션과
+  세트입니다. RLS를 우회하는 강력한 키라 절대 프론트엔드 코드나 공개
+  저장소에는 넣지 말고 Render 환경변수로만 보관하세요.
 
 ## 참고
 

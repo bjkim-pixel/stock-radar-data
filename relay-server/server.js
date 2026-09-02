@@ -41,6 +41,10 @@ let TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://frurnmrwuopvttoqdvgj.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZydXJubXJ3dW9wdnR0b3FkdmdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MDEwMDIsImV4cCI6MjEwMjQ3NzAwMn0.rf49NKE9vLLNNODp6ZBsmEYkr1ar3sZ6ViH65MF5jHc';
+// service_role 키 — 목표가(alert_targets) 쓰기 전용. RLS를 우회하므로 절대
+// 프론트엔드에는 넣지 말고 Render 환경변수로만 보관. 없으면 목표가는
+// 메모리에만 저장되고(재배포 시 초기화) 경고만 남김.
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 
 // 실전투자 도메인 (모의투자로 바꾸려면 openapivts.../ops.../31000 로 교체)
 const KIS_REST_BASE = 'https://openapi.koreainvestment.com:9443';
@@ -263,6 +267,50 @@ async function sbGet(path) {
   return res.json();
 }
 
+// service_role 키로 쓰기 (alert_targets 전용, RLS 우회)
+async function sbWrite(path, method, body) {
+  if (!SUPABASE_SERVICE_KEY) throw new Error('SUPABASE_SERVICE_KEY 미설정');
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: {
+      apikey: SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      'content-type': 'application/json',
+      Prefer: method === 'POST' ? 'resolution=merge-duplicates,return=minimal' : 'return=minimal',
+    },
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${method} ${path} ${res.status} ${await res.text().catch(() => '')}`);
+}
+
+// ── 목표가 영속 저장 (alert_targets 테이블) ─────────────────────────────
+async function loadTargetPrices() {
+  try {
+    const rows = await sbGet('alert_targets?select=code,target_price');
+    targetPrices.clear();
+    rows.forEach(r => targetPrices.set(r.code, { price: +r.target_price }));
+    console.log(`[목표가] Supabase에서 ${rows.length}건 로드`);
+  } catch (err) {
+    console.error('[목표가] 로드 실패:', err.message);
+  }
+}
+
+async function persistTargetPrice(code, price) {
+  try {
+    await sbWrite('alert_targets', 'POST', [{ code, target_price: price, updated_at: new Date().toISOString() }]);
+  } catch (err) {
+    console.error('[목표가] 저장 실패 (메모리에는 반영됨):', err.message);
+  }
+}
+
+async function deleteTargetPrice(code) {
+  try {
+    await sbWrite(`alert_targets?code=eq.${code}`, 'DELETE');
+  } catch (err) {
+    console.error('[목표가] 삭제 실패 (메모리에서는 반영됨):', err.message);
+  }
+}
+
 async function refreshHoldings() {
   try {
     const positions = await sbGet('positions?select=code,avg_price,peak_price,quantity,invested&portfolio=eq.VIRTUAL&status=eq.OPEN');
@@ -403,12 +451,15 @@ async function handleTelegramCommand(chatId, text) {
     }
     targetPrices.set(code, { price });
     getAlertState(code).targetHit = false;
-    await sendTelegramTo(chatId, `✅ ${codeNames.get(code) || code}(${code}) 목표가 ${fmt(price)}원으로 설정했어요.`);
+    await persistTargetPrice(code, price);
+    const savedNote = SUPABASE_SERVICE_KEY ? '' : ' (⚠ 영구저장 미설정 — 서버 재배포 시 초기화될 수 있어요)';
+    await sendTelegramTo(chatId, `✅ ${codeNames.get(code) || code}(${code}) 목표가 ${fmt(price)}원으로 설정했어요.${savedNote}`);
     return;
   }
   if ((m = text.match(/^\/?(?:target|목표가)\s*(?:clear|삭제|취소)\s+(\d{6})\s*$/i))) {
     const code = m[1];
     targetPrices.delete(code);
+    await deleteTargetPrice(code);
     await sendTelegramTo(chatId, `🗑 ${codeNames.get(code) || code}(${code}) 목표가를 삭제했어요.`);
     return;
   }
@@ -469,6 +520,7 @@ const server = http.createServer((req, res) => {
       subscribedCodes: [...currentKisSubs],
       heldCodes: [...heldCodes],
       targetPrices: Object.fromEntries([...targetPrices].map(([c, t]) => [c, t.price])),
+      targetPricesPersisted: !!SUPABASE_SERVICE_KEY,
       telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID),
       approvalKeyAgeMs: approvalKey ? Date.now() - approvalKeyIssuedAt : null,
     }));
@@ -532,10 +584,15 @@ function removeSubscription(client, code) {
 // ----------------------------------------------------------------------------
 // 시작
 // ----------------------------------------------------------------------------
+if (!SUPABASE_SERVICE_KEY) {
+  console.warn('[목표가] SUPABASE_SERVICE_KEY 미설정 — 목표가가 메모리에만 저장되고 재배포 시 초기화됩니다.');
+}
+
 issueApprovalKey()
   .then(() => {
     connectKisWs();
     refreshHoldings();
+    loadTargetPrices();
     server.listen(PORT, () => {
       console.log(`[server] 릴레이 서버 실행 중 (port ${PORT})`);
     });
