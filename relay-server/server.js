@@ -265,7 +265,7 @@ async function sbGet(path) {
 
 async function refreshHoldings() {
   try {
-    const positions = await sbGet('positions?select=code,avg_price,peak_price&portfolio=eq.VIRTUAL&status=eq.OPEN');
+    const positions = await sbGet('positions?select=code,avg_price,peak_price,quantity,invested&portfolio=eq.VIRTUAL&status=eq.OPEN');
     const newHeld = new Set(positions.map(p => p.code));
 
     positionsByCode.clear();
@@ -300,10 +300,28 @@ function getAlertState(code) {
   return st;
 }
 
+// 매수가/수익률/수익금을 알림 문구에 덧붙이기 위한 요약 문자열
+// (수익률은 사이트 "보유 중" 표와 동일하게 현재가 기준으로 계산: (현재가-매수가)/현재가)
+function posInfo(code, price) {
+  const pos = positionsByCode.get(code);
+  if (!pos) return null;
+  const avg = +pos.avg_price;
+  if (!Number.isFinite(avg) || avg <= 0) return null;
+  const qty = +pos.quantity, invested = +pos.invested;
+  const retPct = (price - avg) / price * 100;
+  const pnl = (Number.isFinite(qty) && Number.isFinite(invested)) ? Math.round(qty * price - invested) : null;
+  const sign = v => (v >= 0 ? '+' : '');
+  const bits = [`매수가 ${fmt(avg)}원`, `수익률 ${sign(retPct)}${retPct.toFixed(2)}%`];
+  if (pnl != null) bits.push(`수익금 ${sign(pnl)}${fmt(pnl)}원`);
+  return bits.join(' · ');
+}
+
 function checkAlerts(code, price) {
   if (!heldCodes.has(code)) return; // 보유 중인 종목만 알림 대상
   const name = codeNames.get(code) || code;
   const st = getAlertState(code);
+  const info = posInfo(code, price);
+  const infoSuffix = info ? ` (${info})` : '';
 
   // ── 당일 신고가/신저가 갱신 ─────────────────────────────────────────
   if (st.high == null) {
@@ -312,11 +330,11 @@ function checkAlerts(code, price) {
   } else {
     if (price > st.high) {
       st.high = price;
-      sendTelegram(`📈 ${name}(${code}) 당일 신고가 갱신: ${fmt(price)}원`);
+      sendTelegram(`📈 ${name}(${code}) 당일 신고가 갱신: ${fmt(price)}원${infoSuffix}`);
     }
     if (price < st.low) {
       st.low = price;
-      sendTelegram(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원`);
+      sendTelegram(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원${infoSuffix}`);
     }
   }
 
@@ -328,10 +346,10 @@ function checkAlerts(code, price) {
       const drawdown = (price / effPeak - 1) * 100;
       if (drawdown <= -7 && !st.trailHit) {
         st.trailHit = true;
-        sendTelegram(`🚨 ${name}(${code}) 트레일링 손절선(-7%) 도달! 고점 대비 ${drawdown.toFixed(1)}% (현재가 ${fmt(price)}원)`);
+        sendTelegram(`🚨 ${name}(${code}) 트레일링 손절선(-7%) 도달! 고점 대비 ${drawdown.toFixed(1)}% · 현재가 ${fmt(price)}원${infoSuffix}`);
       } else if (drawdown <= -5 && !st.trailNear && !st.trailHit) {
         st.trailNear = true;
-        sendTelegram(`⚠️ ${name}(${code}) 트레일링 손절(-7%) 근접: 고점 대비 ${drawdown.toFixed(1)}% (현재가 ${fmt(price)}원)`);
+        sendTelegram(`⚠️ ${name}(${code}) 트레일링 손절(-7%) 근접: 고점 대비 ${drawdown.toFixed(1)}% · 현재가 ${fmt(price)}원${infoSuffix}`);
       }
     }
   }
@@ -344,7 +362,7 @@ function checkAlerts(code, price) {
     const reached = upward ? price >= target.price : price <= target.price;
     if (reached) {
       st.targetHit = true;
-      sendTelegram(`🎯 ${name}(${code}) 목표가(${fmt(target.price)}원) 도달! 현재가 ${fmt(price)}원`);
+      sendTelegram(`🎯 ${name}(${code}) 목표가(${fmt(target.price)}원) 도달! 현재가 ${fmt(price)}원${infoSuffix}`);
     }
   }
 }
