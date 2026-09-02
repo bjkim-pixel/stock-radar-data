@@ -93,10 +93,17 @@ ON CONFLICT (trade_date, market) DO UPDATE SET
   regime           = EXCLUDED.regime;
 
 
--- @@STEP: sector_daily (업종별 집계 + 업종 RS20 순위)
+-- @@STEP: sector_daily (업종별 집계 + 업종 RS20/RS5 순위)
 -- ----------------------------------------------------------------------------
 -- v4 매수조건 1번: "업종 RS 상위 5위 이내".
 --   업종RS20 = 업종 소속 종목 등락률 평균의 20거래일 누적수익률(rolling, 최소 15일)
+--   업종RS5  = 같은 방식의 5거래일 누적수익률(rolling, 최소 4일) — 빠른 순환매
+--             장세에서 RS20 하나만으로는 이미 꺾인 섹터가 며칠간 계속 주도로
+--             잡히는 지연이 있어(과거 랠리분이 20일 창에 남아있음) 보조 지표로
+--             추가. rs5_top5_streak(5위 이내 연속일)까지 같이 계산해두면
+--             "RS5 상위 2일 연속(신흥 주도)" / "RS20은 상위인데 RS5 이탈
+--             (이탈 조짐)" 배지를 화면에서 바로 구성할 수 있음(55_sector_rs5.sql
+--             의 v_sector_rank에서 계산).
 --   소속 종목 3개 미만 업종은 랭킹에서 제외
 -- 20일 창을 채우려면 start_date 이전 데이터가 필요하므로 lookback부터 집계하고
 -- 저장만 start_date~end_date로 제한합니다.
@@ -104,7 +111,7 @@ ON CONFLICT (trade_date, market) DO UPDATE SET
 INSERT INTO sector_daily (
   trade_date, sector, market, avg_change_pct,
   total_amount, foreign_net, inst_net, smart_net, stock_count,
-  rs20, rs_rank
+  rs20, rs_rank, rs5, rs5_rank, rs5_top5_streak
 )
 WITH base AS (
   -- sector는 v_stock_sector(= sector_override가 있으면 그 값, 없으면 sector_krx)
@@ -131,25 +138,54 @@ WITH base AS (
 ),
 rs AS (
   SELECT base.*,
-         -- 20일 누적수익률 = Π(1 + r) - 1 = exp(Σ ln(1 + r)) - 1
+         -- N일 누적수익률 = Π(1 + r) - 1 = exp(Σ ln(1 + r)) - 1
          exp(sum(ln(greatest(1 + avg_change_pct / 100.0, 0.01))) OVER w20) - 1 AS rs20_raw,
-         count(*) OVER w20 AS c20
+         count(*) OVER w20 AS c20,
+         exp(sum(ln(greatest(1 + avg_change_pct / 100.0, 0.01))) OVER w5) - 1  AS rs5_raw,
+         count(*) OVER w5 AS c5
   FROM base
   WINDOW w20 AS (PARTITION BY sector ORDER BY trade_date
-                 ROWS BETWEEN 19 PRECEDING AND CURRENT ROW)
+                 ROWS BETWEEN 19 PRECEDING AND CURRENT ROW),
+         w5  AS (PARTITION BY sector ORDER BY trade_date
+                 ROWS BETWEEN 4 PRECEDING AND CURRENT ROW)
 ),
 elig AS (
-  -- 최소 15일 + 소속 3종목 이상인 업종만 랭킹 대상
+  -- RS20: 최소 15일, RS5: 최소 4일 + 둘 다 소속 3종목 이상인 업종만 랭킹 대상
   SELECT rs.*,
-         CASE WHEN c20 >= 15 AND stock_count >= 3 THEN rs20_raw END AS rs20_eligible
+         CASE WHEN c20 >= 15 AND stock_count >= 3 THEN rs20_raw END AS rs20_eligible,
+         CASE WHEN c5  >= 4  AND stock_count >= 3 THEN rs5_raw  END AS rs5_eligible
   FROM rs
 ),
 ranked AS (
   SELECT elig.*,
          CASE WHEN rs20_eligible IS NOT NULL
               THEN rank() OVER (PARTITION BY trade_date
-                                ORDER BY rs20_eligible DESC NULLS LAST) END AS rs_rank
+                                ORDER BY rs20_eligible DESC NULLS LAST) END AS rs_rank,
+         CASE WHEN rs5_eligible IS NOT NULL
+              THEN rank() OVER (PARTITION BY trade_date
+                                ORDER BY rs5_eligible DESC NULLS LAST) END AS rs5_rank
   FROM elig
+),
+flg AS (
+  SELECT ranked.*,
+         CASE WHEN rs5_rank IS NOT NULL AND rs5_rank <= 5 THEN 1 ELSE 0 END AS is_rs5_top5
+  FROM ranked
+),
+grp AS (
+  -- 연속일 계산용 그룹 번호 (RS5 5위 이내가 끊길 때마다 +1 → gaps & islands,
+  -- daily_metrics.consec_both_buy/sell과 동일한 패턴)
+  SELECT flg.*,
+         sum(1 - is_rs5_top5) OVER (PARTITION BY sector ORDER BY trade_date
+                                    ROWS UNBOUNDED PRECEDING) AS g_top5
+  FROM flg
+),
+streak AS (
+  SELECT grp.*,
+         CASE WHEN is_rs5_top5 = 1
+              THEN sum(is_rs5_top5) OVER (PARTITION BY sector, g_top5
+                                          ORDER BY trade_date ROWS UNBOUNDED PRECEDING)
+              ELSE 0 END AS rs5_top5_streak
+  FROM grp
 )
 SELECT trade_date,
        sector,
@@ -161,18 +197,24 @@ SELECT trade_date,
        smart_net,
        stock_count,
        round(rs20_eligible::numeric, 6),
-       rs_rank
-FROM ranked
+       rs_rank,
+       round(rs5_eligible::numeric, 6),
+       rs5_rank,
+       rs5_top5_streak
+FROM streak
 WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
 ON CONFLICT (trade_date, sector, market) DO UPDATE SET
-  avg_change_pct = EXCLUDED.avg_change_pct,
-  total_amount   = EXCLUDED.total_amount,
-  foreign_net    = EXCLUDED.foreign_net,
-  inst_net       = EXCLUDED.inst_net,
-  smart_net      = EXCLUDED.smart_net,
-  stock_count    = EXCLUDED.stock_count,
-  rs20           = EXCLUDED.rs20,
-  rs_rank        = EXCLUDED.rs_rank;
+  avg_change_pct  = EXCLUDED.avg_change_pct,
+  total_amount    = EXCLUDED.total_amount,
+  foreign_net     = EXCLUDED.foreign_net,
+  inst_net        = EXCLUDED.inst_net,
+  smart_net       = EXCLUDED.smart_net,
+  stock_count     = EXCLUDED.stock_count,
+  rs20            = EXCLUDED.rs20,
+  rs_rank         = EXCLUDED.rs_rank,
+  rs5             = EXCLUDED.rs5,
+  rs5_rank        = EXCLUDED.rs5_rank,
+  rs5_top5_streak = EXCLUDED.rs5_top5_streak;
 
 
 -- @@STEP: daily_metrics (종목별 파생지표 — 핵심)
