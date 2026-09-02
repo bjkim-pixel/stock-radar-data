@@ -664,8 +664,8 @@ async function buildDailySummaryText() {
         const ratio = +r.market_cap > 0 ? v / (+r.market_cap) * 100 : null;
         return { ...r, v, ratio };
       })
-      .filter(r => r.v > 0)
-      .sort((a, b) => b.v - a.v)
+      .filter(r => r.v > 0 && r.ratio != null)
+      .sort((a, b) => b.ratio - a.ratio)
       .slice(0, FLOW_TOP_N);
     return { ...tab, rows };
   });
@@ -704,7 +704,7 @@ async function buildDailySummaryText() {
   const anyFlow = flowBySubj.some(g => g.rows.length);
   if (anyFlow) {
     lines.push('');
-    lines.push('💰 수급 주체별 매수 상위 종목 (시총 대비 비중)');
+    lines.push('💰 수급 주체별 매수 상위 종목 (시가총액 대비 비중순)');
     flowBySubj.forEach(g => {
       if (!g.rows.length) return;
       lines.push(`[${g.label}]`);
