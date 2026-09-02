@@ -21,15 +21,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Trigger daily summary
+      - name: Trigger daily summary (최대 3회 재시도)
         env:
           TOKEN: ${{ secrets.DAILY_SUMMARY_TOKEN }}
         run: |
-          STATUS=$(curl -s -o /tmp/resp.json -w "%{http_code}" --max-time 90 \
-            "https://kis-relay-server.onrender.com/trigger-daily-summary?token=${TOKEN}")
-          echo "HTTP status: $STATUS"
-          cat /tmp/resp.json 2>/dev/null || true
-          if [ "$STATUS" != "200" ]; then
-            echo "::error::오늘의 종목 요약 트리거 실패 (status=$STATUS)"
-            exit 1
-          fi
+          # Supabase 뷰(v_market_flow_periods 등) 쿼리가 가끔 몇 초 걸려서
+          # PostgREST statement timeout(500)에 걸릴 때가 있어 재시도를 둡니다.
+          for i in 1 2 3; do
+            STATUS=$(curl -s -o /tmp/resp.json -w "%{http_code}" --max-time 90 \
+              "https://kis-relay-server.onrender.com/trigger-daily-summary?token=${TOKEN}")
+            echo "시도 $i — HTTP status: $STATUS"
+            cat /tmp/resp.json 2>/dev/null || true
+            echo ""
+            if [ "$STATUS" == "200" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::오늘의 종목 요약 트리거 3회 모두 실패 (마지막 status=$STATUS)"
+          exit 1
