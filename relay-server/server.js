@@ -28,6 +28,7 @@
 
 const http = require('http');
 const WebSocket = require('ws');
+const webpush = require('web-push');
 
 const KIS_APP_KEY = process.env.KIS_APP_KEY;
 const KIS_APP_SECRET = process.env.KIS_APP_SECRET;
@@ -41,10 +42,23 @@ let TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://frurnmrwuopvttoqdvgj.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZydXJubXJ3dW9wdnR0b3FkdmdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MDEwMDIsImV4cCI6MjEwMjQ3NzAwMn0.rf49NKE9vLLNNODp6ZBsmEYkr1ar3sZ6ViH65MF5jHc';
-// service_role 키 — 목표가(alert_targets) 쓰기 전용. RLS를 우회하므로 절대
-// 프론트엔드에는 넣지 말고 Render 환경변수로만 보관. 없으면 목표가는
-// 메모리에만 저장되고(재배포 시 초기화) 경고만 남김.
+// service_role 키 — 목표가(alert_targets)·푸시 구독(push_subscriptions) 쓰기 전용.
+// RLS를 우회하므로 절대 프론트엔드에는 넣지 말고 Render 환경변수로만 보관.
+// 없으면 목표가는 메모리에만 저장되고(재배포 시 초기화) 경고만 남김.
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
+
+// 웹푸시(PWA 앱 알림)용 VAPID 키 쌍. 공개키는 프론트엔드(web/index.html)에도
+// 그대로 박혀 있음(노출돼도 안전). 비밀키는 반드시 Render 환경변수로만 보관.
+// 둘 다 없으면 웹푸시는 꺼진 채로 시작하고 텔레그램만 계속 동작함.
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY ||
+  'BOnRw7DbgYaGmAYE5xh9D6S51qZMU0rS5LEWszmb9FZQ8txQLri0RYOB4MCJbFmH2owPbmqiL1uX_OqZakHFmSE';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'https://bjkim-pixel.github.io/stock-radar-data/';
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} else {
+  console.warn('[push] VAPID_PRIVATE_KEY 미설정 — 웹푸시(앱 알림)는 꺼진 채로 시작합니다(텔레그램은 정상 동작).');
+}
 
 // 실전투자 도메인 (모의투자로 바꾸려면 openapivts.../ops.../31000 로 교체)
 const KIS_REST_BASE = 'https://openapi.koreainvestment.com:9443';
@@ -311,6 +325,76 @@ async function deleteTargetPrice(code) {
   }
 }
 
+// ── 웹푸시(PWA 앱 알림) 구독 저장/발송 ──────────────────────────────────
+// endpoint(브라우저가 발급하는 구독 고유 URL) 기준으로 Map에 들고, Supabase
+// push_subscriptions 테이블에도 영구 저장(Render 재배포로 날아가지 않게).
+const pushSubscriptions = new Map(); // endpoint -> {endpoint, keys:{p256dh,auth}}
+
+async function loadPushSubscriptions() {
+  try {
+    const rows = await sbGet('push_subscriptions?select=endpoint,p256dh,auth');
+    pushSubscriptions.clear();
+    rows.forEach(r => pushSubscriptions.set(r.endpoint, {
+      endpoint: r.endpoint,
+      keys: { p256dh: r.p256dh, auth: r.auth },
+    }));
+    console.log(`[push] Supabase에서 구독 ${rows.length}건 로드`);
+  } catch (err) {
+    console.error('[push] 구독 로드 실패:', err.message);
+  }
+}
+
+async function savePushSubscription(sub) {
+  pushSubscriptions.set(sub.endpoint, sub);
+  try {
+    await sbWrite('push_subscriptions', 'POST', [{
+      endpoint: sub.endpoint,
+      p256dh: sub.keys && sub.keys.p256dh,
+      auth: sub.keys && sub.keys.auth,
+      created_at: new Date().toISOString(),
+    }]);
+  } catch (err) {
+    console.error('[push] 구독 저장 실패 (메모리에는 반영됨):', err.message);
+  }
+}
+
+async function removePushSubscription(endpoint) {
+  pushSubscriptions.delete(endpoint);
+  try {
+    await sbWrite(`push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}`, 'DELETE');
+  } catch (err) {
+    console.error('[push] 구독 삭제 실패:', err.message);
+  }
+}
+
+// 등록된 모든 기기에 웹푸시 발송. 구독이 만료/취소된 경우(410/404) 자동 정리.
+async function sendWebPushToAll(payload) {
+  if (!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY)) return;
+  const body = JSON.stringify(payload);
+  for (const sub of [...pushSubscriptions.values()]) {
+    try {
+      await webpush.sendNotification(sub, body);
+    } catch (err) {
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        await removePushSubscription(sub.endpoint);
+      } else {
+        console.error('[push] 발송 실패:', err.statusCode, err.message);
+      }
+    }
+  }
+}
+
+// 텔레그램 + 웹푸시 동시 발송 (알림 조건 감지·오늘의 종목 요약에서 공용으로 사용)
+async function notifyAll(text, opts = {}) {
+  await sendTelegram(text);
+  await sendWebPushToAll({
+    title: opts.title || 'STOCK RADAR',
+    body: text,
+    url: opts.url || 'https://bjkim-pixel.github.io/stock-radar-data/',
+    tag: opts.tag,
+  });
+}
+
 async function refreshHoldings() {
   try {
     const positions = await sbGet('positions?select=code,avg_price,peak_price,quantity,invested&portfolio=eq.VIRTUAL&status=eq.OPEN');
@@ -378,11 +462,11 @@ function checkAlerts(code, price) {
   } else {
     if (price > st.high) {
       st.high = price;
-      sendTelegram(`📈 ${name}(${code}) 당일 신고가 갱신: ${fmt(price)}원${infoSuffix}`);
+      notifyAll(`📈 ${name}(${code}) 당일 신고가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📈 ${name} 신고가`, tag: `high-${code}` });
     }
     if (price < st.low) {
       st.low = price;
-      sendTelegram(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원${infoSuffix}`);
+      notifyAll(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📉 ${name} 신저가`, tag: `low-${code}` });
     }
   }
 
@@ -394,10 +478,10 @@ function checkAlerts(code, price) {
       const drawdown = (price / effPeak - 1) * 100;
       if (drawdown <= -7 && !st.trailHit) {
         st.trailHit = true;
-        sendTelegram(`🚨 ${name}(${code}) 트레일링 손절선(-7%) 도달! 고점 대비 ${drawdown.toFixed(1)}% · 현재가 ${fmt(price)}원${infoSuffix}`);
+        notifyAll(`🚨 ${name}(${code}) 트레일링 손절선(-7%) 도달! 고점 대비 ${drawdown.toFixed(1)}% · 현재가 ${fmt(price)}원${infoSuffix}`, { title: `🚨 ${name} 손절선 도달`, tag: `trail-hit-${code}` });
       } else if (drawdown <= -5 && !st.trailNear && !st.trailHit) {
         st.trailNear = true;
-        sendTelegram(`⚠️ ${name}(${code}) 트레일링 손절(-7%) 근접: 고점 대비 ${drawdown.toFixed(1)}% · 현재가 ${fmt(price)}원${infoSuffix}`);
+        notifyAll(`⚠️ ${name}(${code}) 트레일링 손절(-7%) 근접: 고점 대비 ${drawdown.toFixed(1)}% · 현재가 ${fmt(price)}원${infoSuffix}`, { title: `⚠️ ${name} 손절 근접`, tag: `trail-near-${code}` });
       }
     }
   }
@@ -410,7 +494,7 @@ function checkAlerts(code, price) {
     const reached = upward ? price >= target.price : price <= target.price;
     if (reached) {
       st.targetHit = true;
-      sendTelegram(`🎯 ${name}(${code}) 목표가(${fmt(target.price)}원) 도달! 현재가 ${fmt(price)}원${infoSuffix}`);
+      notifyAll(`🎯 ${name}(${code}) 목표가(${fmt(target.price)}원) 도달! 현재가 ${fmt(price)}원${infoSuffix}`, { title: `🎯 ${name} 목표가 도달`, tag: `target-${code}` });
     }
   }
 }
@@ -731,7 +815,7 @@ async function sendDailySummary(force = false) {
     return;
   }
   const text = await buildDailySummaryText();
-  await sendTelegram(text);
+  await notifyAll(text, { title: '📊 오늘의 종목 요약', tag: 'daily-summary' });
   lastDailySummaryDate = today;
   console.log('[오늘의 종목 요약] 발송 완료');
 }
@@ -739,7 +823,46 @@ async function sendDailySummary(force = false) {
 // ----------------------------------------------------------------------------
 // 7) 프론트엔드용 웹소켓 서버
 // ----------------------------------------------------------------------------
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (chunk) => { data += chunk; if (data.length > 1e6) req.destroy(); });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
+}
+
 const server = http.createServer((req, res) => {
+  // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
+  if (req.url === '/push-subscribe') {
+    const origin = req.headers.origin;
+    const corsOrigin = (origin && ALLOWED_ORIGINS.includes(origin)) ? origin : ALLOWED_ORIGINS[0];
+    res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'content-type');
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+    if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+    readBody(req).then(async (raw) => {
+      let sub;
+      try { sub = JSON.parse(raw); } catch (_) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'invalid JSON' }));
+        return;
+      }
+      if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'invalid subscription' }));
+        return;
+      }
+      await savePushSubscription(sub);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    }).catch(err => {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    });
+    return;
+  }
   if (req.url && req.url.startsWith('/trigger-daily-summary')) {
     const u = new URL(req.url, 'http://internal');
     const token = u.searchParams.get('token');
@@ -773,6 +896,8 @@ const server = http.createServer((req, res) => {
       telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID),
       dailySummaryTokenSet: !!DAILY_SUMMARY_TOKEN,
       lastDailySummaryDate,
+      pushConfigured: !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY),
+      pushSubscriptionCount: pushSubscriptions.size,
       approvalKeyAgeMs: approvalKey ? Date.now() - approvalKeyIssuedAt : null,
     }));
     return;
@@ -844,6 +969,7 @@ issueApprovalKey()
     connectKisWs();
     refreshHoldings();
     loadTargetPrices();
+    loadPushSubscriptions();
     server.listen(PORT, () => {
       console.log(`[server] 릴레이 서버 실행 중 (port ${PORT})`);
     });

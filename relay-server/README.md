@@ -18,6 +18,10 @@
 서버를 깨우며 `/trigger-daily-summary`를 호출). 종합스코어 랭킹은 정확도가
 검증되지 않은 참고용 휴리스틱이라 요약에서는 제외했습니다.
 
+위의 모든 알림(신고가/신저가, 트레일링 손절, 목표가 도달, 오늘의 종목 요약)은
+텔레그램과 **PWA 앱 웹푸시**로 동시에 발송됩니다(`notifyAll()`). 사이트를
+홈화면에 설치한 기기가 있으면 그 기기로도 알림이 옵니다.
+
 ## 텔레그램 명령어
 
 봇에게 아래 메시지를 보내면 됩니다 (`/` 없이 보내도 인식).
@@ -56,7 +60,13 @@ ws.onmessage = (e) => {
 
 ## 헬스체크
 
-`GET /health` → `{ ok, kisWsReady, subscribedCodes, heldCodes, targetPrices, targetPricesPersisted, telegramConfigured, dailySummaryTokenSet, lastDailySummaryDate, approvalKeyAgeMs }`
+`GET /health` → `{ ok, kisWsReady, subscribedCodes, heldCodes, targetPrices, targetPricesPersisted, telegramConfigured, dailySummaryTokenSet, lastDailySummaryDate, pushConfigured, pushSubscriptionCount, approvalKeyAgeMs }`
+
+## 웹푸시 구독 등록
+
+`POST /push-subscribe` — 프론트엔드가 `PushManager.subscribe()`로 받은 구독 객체를
+그대로 JSON body로 보내면 Supabase `push_subscriptions` 테이블에 저장합니다.
+`ALLOWED_ORIGIN`에 등록된 오리진에서만 호출 가능(CORS).
 
 ## 오늘의 종목 요약 수동 트리거
 
@@ -86,6 +96,14 @@ ws.onmessage = (e) => {
   막는 임의의 비밀 문자열. GitHub 저장소의 Actions 시크릿에도 같은 값으로
   `DAILY_SUMMARY_TOKEN`을 등록해야 `daily_summary_trigger.yml`이 호출할 수
   있습니다. 비워두면 인증 없이 열려있게 되니 반드시 설정하세요.
+- `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` — PWA 웹푸시용 키 쌍
+  (`npx web-push generate-vapid-keys`로 생성). 공개키는 `web/index.html`·
+  `docs/index.html`에도 그대로 박혀 있어 노출돼도 안전하지만, **비밀키는 반드시
+  Render 환경변수로만 보관**하세요. `VAPID_PRIVATE_KEY`가 비어 있으면 웹푸시
+  기능 전체가 꺼진 채로 시작하고(텔레그램은 정상 동작) 서버 로그에 경고가 남습니다.
+  둘 다 실행해야 하는 `61_push_subscriptions.sql` 마이그레이션과 세트입니다.
+- `VAPID_SUBJECT` — 웹푸시 표준이 요구하는 연락처(기본값: 사이트 URL). 보통
+  안 바꿔도 됩니다.
 
 ## 참고
 
