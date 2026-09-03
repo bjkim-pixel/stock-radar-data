@@ -37,34 +37,34 @@
 --    포함하지 않아 이 STEP이 실제 지수 값을 덮어쓸 수 없습니다.
 -- ----------------------------------------------------------------------------
 INSERT INTO market_daily (
-  trade_date, market, total_amount, foreign_net, inst_net, individual_net, regime
-)
+    trade_date, market, total_amount, foreign_net, inst_net, individual_net, regime
+  )
 WITH base AS (
-  SELECT p.trade_date,
-         s.market,
-         p.trade_amount,
-         f.foreign_net,
-         f.inst_net,
-         f.individual_net
-  FROM daily_price p
-  JOIN stocks s      ON s.code = p.code
-  LEFT JOIN daily_flow f ON f.trade_date = p.trade_date AND f.code = p.code
-  WHERE s.security_type = 'STOCK'
-    AND s.market IN ('KOSPI', 'KOSDAQ')
-    AND p.trade_date BETWEEN %(lookback)s AND %(end_date)s
-    AND p.close > 0
-    AND p.market_cap > 0
-),
+    SELECT p.trade_date,
+           s.market,
+           p.trade_amount,
+           f.foreign_net,
+           f.inst_net,
+           f.individual_net
+    FROM daily_price p
+    JOIN stocks s      ON s.code = p.code
+    LEFT JOIN daily_flow f ON f.trade_date = p.trade_date AND f.code = p.code
+    WHERE s.security_type = 'STOCK'
+      AND s.market IN ('KOSPI', 'KOSDAQ')
+      AND p.trade_date BETWEEN %(lookback)s AND %(end_date)s
+      AND p.close > 0
+      AND p.market_cap > 0
+  ),
 agg AS (
-  SELECT trade_date,
-         market,
-         sum(trade_amount)   AS total_amount,
-         sum(foreign_net)    AS foreign_net,
-         sum(inst_net)       AS inst_net,
-         sum(individual_net) AS individual_net
-  FROM base
-  GROUP BY trade_date, market
-)
+    SELECT trade_date,
+           market,
+           sum(trade_amount)   AS total_amount,
+           sum(foreign_net)    AS foreign_net,
+           sum(inst_net)       AS inst_net,
+           sum(individual_net) AS individual_net
+    FROM base
+    GROUP BY trade_date, market
+  )
 SELECT a.trade_date,
        a.market,
        a.total_amount,
@@ -109,84 +109,84 @@ ON CONFLICT (trade_date, market) DO UPDATE SET
 -- 저장만 start_date~end_date로 제한합니다.
 -- ----------------------------------------------------------------------------
 INSERT INTO sector_daily (
-  trade_date, sector, market, avg_change_pct,
-  total_amount, foreign_net, inst_net, smart_net, stock_count,
-  rs20, rs_rank, rs5, rs5_rank, rs5_top5_streak
-)
+    trade_date, sector, market, avg_change_pct,
+    total_amount, foreign_net, inst_net, smart_net, stock_count,
+    rs20, rs_rank, rs5, rs5_rank, rs5_top5_streak
+  )
 WITH base AS (
-  -- sector는 v_stock_sector(= sector_override가 있으면 그 값, 없으면 sector_krx)
+    -- sector는 v_stock_sector(= sector_override가 있으면 그 값, 없으면 sector_krx)
   -- 기준입니다. sector_krx 원본은 백테스트 재현성을 위해 그대로 두되, 업종 RS
   -- 랭킹은 화면에 노출되는 보정된 업종으로 그룹핑되어야 STEP2/STEP3/스크리너의
   -- sector 표시값과 일치합니다(28_sector_override.sql 참고).
   SELECT p.trade_date,
-         vs.sector                                          AS sector,
-         avg(p.change_pct)                                  AS avg_change_pct,
-         sum(p.trade_amount)                                AS total_amount,
-         sum(f.foreign_net)                                 AS foreign_net,
-         sum(f.inst_net)                                    AS inst_net,
-         sum(coalesce(f.foreign_net, 0) + coalesce(f.inst_net, 0)) AS smart_net,
-         count(*)                                           AS stock_count
-  FROM daily_price p
-  JOIN stocks s      ON s.code = p.code
-  JOIN v_stock_sector vs ON vs.code = p.code
-  LEFT JOIN daily_flow f ON f.trade_date = p.trade_date AND f.code = p.code
-  WHERE s.security_type = 'STOCK'
-    AND vs.sector IS NOT NULL
-    AND p.trade_date BETWEEN %(lookback)s AND %(end_date)s
-    AND p.close > 0
-  GROUP BY p.trade_date, vs.sector
-),
+           vs.sector                                          AS sector,
+           avg(p.change_pct)                                  AS avg_change_pct,
+           sum(p.trade_amount)                                AS total_amount,
+           sum(f.foreign_net)                                 AS foreign_net,
+           sum(f.inst_net)                                    AS inst_net,
+           sum(coalesce(f.foreign_net, 0) + coalesce(f.inst_net, 0)) AS smart_net,
+           count(*)                                           AS stock_count
+    FROM daily_price p
+    JOIN stocks s      ON s.code = p.code
+    JOIN v_stock_sector vs ON vs.code = p.code
+    LEFT JOIN daily_flow f ON f.trade_date = p.trade_date AND f.code = p.code
+    WHERE s.security_type = 'STOCK'
+      AND vs.sector IS NOT NULL
+      AND p.trade_date BETWEEN %(lookback)s AND %(end_date)s
+      AND p.close > 0
+    GROUP BY p.trade_date, vs.sector
+  ),
 rs AS (
-  SELECT base.*,
-         -- N일 누적수익률 = Π(1 + r) - 1 = exp(Σ ln(1 + r)) - 1
+    SELECT base.*,
+           -- N일 누적수익률 = Π(1 + r) - 1 = exp(Σ ln(1 + r)) - 1
          exp(sum(ln(greatest(1 + avg_change_pct / 100.0, 0.01))) OVER w20) - 1 AS rs20_raw,
-         count(*) OVER w20 AS c20,
-         exp(sum(ln(greatest(1 + avg_change_pct / 100.0, 0.01))) OVER w5) - 1  AS rs5_raw,
-         count(*) OVER w5 AS c5
-  FROM base
-  WINDOW w20 AS (PARTITION BY sector ORDER BY trade_date
-                 ROWS BETWEEN 19 PRECEDING AND CURRENT ROW),
-         w5  AS (PARTITION BY sector ORDER BY trade_date
-                 ROWS BETWEEN 4 PRECEDING AND CURRENT ROW)
-),
+           count(*) OVER w20 AS c20,
+           exp(sum(ln(greatest(1 + avg_change_pct / 100.0, 0.01))) OVER w5) - 1  AS rs5_raw,
+           count(*) OVER w5 AS c5
+    FROM base
+    WINDOW w20 AS (PARTITION BY sector ORDER BY trade_date
+                   ROWS BETWEEN 19 PRECEDING AND CURRENT ROW),
+           w5  AS (PARTITION BY sector ORDER BY trade_date
+                   ROWS BETWEEN 4 PRECEDING AND CURRENT ROW)
+  ),
 elig AS (
-  -- RS20: 최소 15일, RS5: 최소 4일 + 둘 다 소속 3종목 이상인 업종만 랭킹 대상
+    -- RS20: 최소 15일, RS5: 최소 4일 + 둘 다 소속 3종목 이상인 업종만 랭킹 대상
   SELECT rs.*,
-         CASE WHEN c20 >= 15 AND stock_count >= 3 THEN rs20_raw END AS rs20_eligible,
-         CASE WHEN c5  >= 4  AND stock_count >= 3 THEN rs5_raw  END AS rs5_eligible
-  FROM rs
-),
+           CASE WHEN c20 >= 15 AND stock_count >= 3 THEN rs20_raw END AS rs20_eligible,
+           CASE WHEN c5  >= 4  AND stock_count >= 3 THEN rs5_raw  END AS rs5_eligible
+    FROM rs
+  ),
 ranked AS (
-  SELECT elig.*,
-         CASE WHEN rs20_eligible IS NOT NULL
-              THEN rank() OVER (PARTITION BY trade_date
-                                ORDER BY rs20_eligible DESC NULLS LAST) END AS rs_rank,
-         CASE WHEN rs5_eligible IS NOT NULL
-              THEN rank() OVER (PARTITION BY trade_date
-                                ORDER BY rs5_eligible DESC NULLS LAST) END AS rs5_rank
-  FROM elig
-),
+    SELECT elig.*,
+           CASE WHEN rs20_eligible IS NOT NULL
+                THEN rank() OVER (PARTITION BY trade_date
+                                  ORDER BY rs20_eligible DESC NULLS LAST) END AS rs_rank,
+           CASE WHEN rs5_eligible IS NOT NULL
+                THEN rank() OVER (PARTITION BY trade_date
+                                  ORDER BY rs5_eligible DESC NULLS LAST) END AS rs5_rank
+    FROM elig
+  ),
 flg AS (
-  SELECT ranked.*,
-         CASE WHEN rs5_rank IS NOT NULL AND rs5_rank <= 5 THEN 1 ELSE 0 END AS is_rs5_top5
-  FROM ranked
-),
+    SELECT ranked.*,
+           CASE WHEN rs5_rank IS NOT NULL AND rs5_rank <= 5 THEN 1 ELSE 0 END AS is_rs5_top5
+    FROM ranked
+  ),
 grp AS (
-  -- 연속일 계산용 그룹 번호 (RS5 5위 이내가 끊길 때마다 +1 → gaps & islands,
+    -- 연속일 계산용 그룹 번호 (RS5 5위 이내가 끊길 때마다 +1 → gaps & islands,
   -- daily_metrics.consec_both_buy/sell과 동일한 패턴)
   SELECT flg.*,
-         sum(1 - is_rs5_top5) OVER (PARTITION BY sector ORDER BY trade_date
-                                    ROWS UNBOUNDED PRECEDING) AS g_top5
-  FROM flg
-),
+           sum(1 - is_rs5_top5) OVER (PARTITION BY sector ORDER BY trade_date
+                                      ROWS UNBOUNDED PRECEDING) AS g_top5
+    FROM flg
+  ),
 streak AS (
-  SELECT grp.*,
-         CASE WHEN is_rs5_top5 = 1
-              THEN sum(is_rs5_top5) OVER (PARTITION BY sector, g_top5
-                                          ORDER BY trade_date ROWS UNBOUNDED PRECEDING)
-              ELSE 0 END AS rs5_top5_streak
-  FROM grp
-)
+    SELECT grp.*,
+           CASE WHEN is_rs5_top5 = 1
+                THEN sum(is_rs5_top5) OVER (PARTITION BY sector, g_top5
+                                            ORDER BY trade_date ROWS UNBOUNDED PRECEDING)
+                ELSE 0 END AS rs5_top5_streak
+    FROM grp
+  )
 SELECT trade_date,
        sector,
        'ALL',
@@ -227,134 +227,164 @@ ON CONFLICT (trade_date, sector, market) DO UPDATE SET
 -- 조건이 무조건 거짓(0건)이 되는 버그가 있었습니다.
 -- ----------------------------------------------------------------------------
 INSERT INTO daily_metrics (
-  trade_date, code,
-  ma5, ma10, ma20, ma60, ma120, above_ma20, ma_aligned,
-  amt_avg20, amt_ratio20, vol_avg20, vol_ratio20, quarter_amt,
-  high_period, high_period_date, pct_from_high, is_new_high, near_high, high_60d,
-  data_span_days, high_label,
-  foreign_cum5, foreign_cum20, inst_cum5, inst_cum20,
-  smart_cum5, smart_cum20, smart_cum5_prev,
-  smart_cum5_cap_pct, smart_cum20_cap_pct,
-  foreign_slope, inst_slope, flow_lead,
-  consec_both_buy, consec_both_sell,
-  inst_lead_field, inst_lead_value,
-  vol_avg20_prev, vol_ratio20_prev, high_all_prev, is_new_high_all,
-  nonpersonal_net, weight_rank, cap_rank, pick_score,
-  rs20_vs_mkt,
-  computed_at
-)
+    trade_date, code,
+    ma5, ma10, ma20, ma60, ma120, above_ma20, ma_aligned,
+    amt_avg20, amt_ratio20, vol_avg20, vol_ratio20, quarter_amt,
+    high_period, high_period_date, pct_from_high, is_new_high, near_high, high_60d,
+    data_span_days, high_label,
+    foreign_cum5, foreign_cum20, inst_cum5, inst_cum20,
+    smart_cum5, smart_cum20, smart_cum5_prev,
+    smart_cum5_cap_pct, smart_cum20_cap_pct,
+    foreign_slope, inst_slope, flow_lead,
+    consec_both_buy, consec_both_sell,
+    inst_lead_field, inst_lead_value,
+    vol_avg20_prev, vol_ratio20_prev, high_all_prev, is_new_high_all,
+    nonpersonal_net, weight_rank, cap_rank, pick_score,
+    rs20_vs_mkt, rs5_vs_mkt, rs20_pctl, rs5_pctl,
+    computed_at
+  )
 WITH src AS (
-  SELECT p.trade_date, p.code, p.close, p.volume, p.trade_amount,
-         p.market_cap, p.change_pct, p.weight_per_share,
-         coalesce(f.individual_net, 0) AS individual_net,
-         coalesce(f.foreign_net,   0) AS foreign_net,
-         coalesce(f.inst_net,      0) AS inst_net,
-         coalesce(f.smart_net,     0) AS smart_net,
-         coalesce(f.fin_inv_net,   0) AS fin_inv_net,
-         coalesce(f.inv_trust_net, 0) AS inv_trust_net,
-         coalesce(f.pension_net,   0) AS pension_net,
-         coalesce(f.pe_net,        0) AS pe_net
-  FROM daily_price p
-  JOIN stocks s      ON s.code = p.code
-  LEFT JOIN daily_flow f ON f.trade_date = p.trade_date AND f.code = p.code
-  WHERE s.security_type = 'STOCK'
-    AND p.trade_date BETWEEN %(lookback)s AND %(end_date)s
-    AND p.close > 0
-),
+    SELECT p.trade_date, p.code, p.close, p.volume, p.trade_amount,
+           p.market_cap, p.change_pct, p.weight_per_share,
+           coalesce(f.individual_net, 0) AS individual_net,
+           coalesce(f.foreign_net,   0) AS foreign_net,
+           coalesce(f.inst_net,      0) AS inst_net,
+           coalesce(f.smart_net,     0) AS smart_net,
+           coalesce(f.fin_inv_net,   0) AS fin_inv_net,
+           coalesce(f.inv_trust_net, 0) AS inv_trust_net,
+           coalesce(f.pension_net,   0) AS pension_net,
+           coalesce(f.pe_net,        0) AS pe_net
+    FROM daily_price p
+    JOIN stocks s      ON s.code = p.code
+    LEFT JOIN daily_flow f ON f.trade_date = p.trade_date AND f.code = p.code
+    WHERE s.security_type = 'STOCK'
+      AND p.trade_date BETWEEN %(lookback)s AND %(end_date)s
+      AND p.close > 0
+  ),
 flg AS (
-  SELECT src.*,
-         row_number() OVER (PARTITION BY code ORDER BY trade_date) AS rn,
-         CASE WHEN foreign_net > 0 AND inst_net > 0 THEN 1 ELSE 0 END AS both_buy,
-         CASE WHEN foreign_net < 0 AND inst_net < 0 THEN 1 ELSE 0 END AS both_sell
-  FROM src
-),
+    SELECT src.*,
+           row_number() OVER (PARTITION BY code ORDER BY trade_date) AS rn,
+           CASE WHEN foreign_net > 0 AND inst_net > 0 THEN 1 ELSE 0 END AS both_buy,
+           CASE WHEN foreign_net < 0 AND inst_net < 0 THEN 1 ELSE 0 END AS both_sell
+    FROM src
+  ),
 grp AS (
-  -- 연속일 계산용 그룹 번호 (동반매수가 끊길 때마다 +1 → gaps & islands)
+    -- 연속일 계산용 그룹 번호 (동반매수가 끊길 때마다 +1 → gaps & islands)
   SELECT flg.*,
-         sum(1 - both_buy)  OVER (PARTITION BY code ORDER BY trade_date
-                                  ROWS UNBOUNDED PRECEDING) AS g_buy,
-         sum(1 - both_sell) OVER (PARTITION BY code ORDER BY trade_date
-                                  ROWS UNBOUNDED PRECEDING) AS g_sell
-  FROM flg
-),
+           sum(1 - both_buy)  OVER (PARTITION BY code ORDER BY trade_date
+                                    ROWS UNBOUNDED PRECEDING) AS g_buy,
+           sum(1 - both_sell) OVER (PARTITION BY code ORDER BY trade_date
+                                    ROWS UNBOUNDED PRECEDING) AS g_sell
+    FROM flg
+  ),
 w AS (
-  SELECT grp.*,
-         -- v4: 개별종목 상대강도(RS)용 — 20거래일 전 종가 (LAG는 프레임 무관)
+    SELECT grp.*,
+           -- v4: 개별종목 상대강도(RS)용 — 20거래일 전 종가 (LAG는 프레임 무관)
          lag(close, 20) OVER (PARTITION BY code ORDER BY trade_date) AS close_20d_ago,
-         -- 이동평균 (유효성 검사용 건수 동반)
+           -- 개별RS 5일 버전용 — 5거래일 전 종가
+         lag(close, 5)  OVER (PARTITION BY code ORDER BY trade_date) AS close_5d_ago,
+           -- 이동평균 (유효성 검사용 건수 동반)
          avg(close) OVER w5  AS a5,  count(*) OVER w5  AS c5,
-         avg(close) OVER w10 AS a10, count(*) OVER w10 AS c10,
-         avg(close) OVER w20 AS a20, count(*) OVER w20 AS c20,
-         avg(close) OVER w60 AS a60, count(*) OVER w60 AS c60,
-         avg(close) OVER w120 AS a120, count(*) OVER w120 AS c120,
-         -- 거래대금 · 거래량
+           avg(close) OVER w10 AS a10, count(*) OVER w10 AS c10,
+           avg(close) OVER w20 AS a20, count(*) OVER w20 AS c20,
+           avg(close) OVER w60 AS a60, count(*) OVER w60 AS c60,
+           avg(close) OVER w120 AS a120, count(*) OVER w120 AS c120,
+           -- 거래대금 · 거래량
          avg(trade_amount) OVER w20 AS amt_avg20,
-         avg(volume)       OVER w20 AS vol_avg20,
-         sum(trade_amount) OVER w90 AS quarter_amt,
-         -- v4: "전일까지" 20일 평균 거래량 (당일 제외) + 상장 이후 전일까지 최고 종가
+           avg(volume)       OVER w20 AS vol_avg20,
+           sum(trade_amount) OVER w90 AS quarter_amt,
+           -- v4: "전일까지" 20일 평균 거래량 (당일 제외) + 상장 이후 전일까지 최고 종가
          avg(volume) OVER w20p  AS vol_avg20_prev,
-         count(*)    OVER w20p  AS c20p,
-         max(close)  OVER wprev AS high_all_prev,
-         count(*)    OVER wprev AS cprev,
-         -- 신고가: 배열 비교로 [최고종가, 그 날짜]를 한 번에 구합니다.
+           count(*)    OVER w20p  AS c20p,
+           max(close)  OVER wprev AS high_all_prev,
+           count(*)    OVER wprev AS cprev,
+           -- 신고가: 배열 비교로 [최고종가, 그 날짜]를 한 번에 구합니다.
          --   배열은 사전식으로 비교되므로 max()가 곧 "최고 종가를 기록한 행"입니다.
          max(ARRAY[close, (trade_date - DATE '1970-01-01')::bigint]) OVER w250 AS hi,
-         max(close) OVER w60  AS high_60d,
-         count(*)   OVER wall AS span_days,
-         -- 누적 순매수
+           max(close) OVER w60  AS high_60d,
+           count(*)   OVER wall AS span_days,
+           -- 누적 순매수
          sum(foreign_net)   OVER w5  AS f5,
-         sum(foreign_net)   OVER w20 AS f20,
-         sum(inst_net)      OVER w5  AS i5,
-         sum(inst_net)      OVER w20 AS i20,
-         sum(smart_net)     OVER w5  AS s5,
-         sum(smart_net)     OVER w20 AS s20,
-         sum(fin_inv_net)   OVER w5  AS fi5,
-         sum(inv_trust_net) OVER w5  AS it5,
-         sum(pension_net)   OVER w5  AS pn5,
-         sum(pe_net)        OVER w5  AS pe5,
-         -- 수급 기울기: 시총 대비 bp로 정규화한 5일 선형회귀 계수
+           sum(foreign_net)   OVER w20 AS f20,
+           sum(inst_net)      OVER w5  AS i5,
+           sum(inst_net)      OVER w20 AS i20,
+           sum(smart_net)     OVER w5  AS s5,
+           sum(smart_net)     OVER w20 AS s20,
+           sum(fin_inv_net)   OVER w5  AS fi5,
+           sum(inv_trust_net) OVER w5  AS it5,
+           sum(pension_net)   OVER w5  AS pn5,
+           sum(pe_net)        OVER w5  AS pe5,
+           -- 수급 기울기: 시총 대비 bp로 정규화한 5일 선형회귀 계수
          regr_slope(foreign_net::numeric / nullif(market_cap, 0) * 10000, rn) OVER w5 AS f_slope,
-         regr_slope(inst_net::numeric    / nullif(market_cap, 0) * 10000, rn) OVER w5 AS i_slope,
-         -- 연속 동반매수/매도일
+           regr_slope(inst_net::numeric    / nullif(market_cap, 0) * 10000, rn) OVER w5 AS i_slope,
+           -- 연속 동반매수/매도일
          sum(both_buy)  OVER (PARTITION BY code, g_buy  ORDER BY trade_date
-                              ROWS UNBOUNDED PRECEDING) AS cbuy,
-         sum(both_sell) OVER (PARTITION BY code, g_sell ORDER BY trade_date
-                              ROWS UNBOUNDED PRECEDING) AS csell
-  FROM grp
-  WINDOW
-    w5   AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN   4 PRECEDING AND CURRENT ROW),
-    w10  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN   9 PRECEDING AND CURRENT ROW),
-    w20  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  19 PRECEDING AND CURRENT ROW),
-    w60  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  59 PRECEDING AND CURRENT ROW),
-    w120 AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN 119 PRECEDING AND CURRENT ROW),
-    w90  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  89 PRECEDING AND CURRENT ROW),
-    w250 AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN 249 PRECEDING AND CURRENT ROW),
-    wall AS (PARTITION BY code ORDER BY trade_date ROWS UNBOUNDED PRECEDING),
-    -- v4용: 당일을 제외한 창들
+                                ROWS UNBOUNDED PRECEDING) AS cbuy,
+           sum(both_sell) OVER (PARTITION BY code, g_sell ORDER BY trade_date
+                                ROWS UNBOUNDED PRECEDING) AS csell
+    FROM grp
+    WINDOW
+      w5   AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN   4 PRECEDING AND CURRENT ROW),
+      w10  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN   9 PRECEDING AND CURRENT ROW),
+      w20  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  19 PRECEDING AND CURRENT ROW),
+      w60  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  59 PRECEDING AND CURRENT ROW),
+      w120 AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN 119 PRECEDING AND CURRENT ROW),
+      w90  AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN  89 PRECEDING AND CURRENT ROW),
+      w250 AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN 249 PRECEDING AND CURRENT ROW),
+      wall AS (PARTITION BY code ORDER BY trade_date ROWS UNBOUNDED PRECEDING),
+      -- v4용: 당일을 제외한 창들
     w20p AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING),
-    wprev AS (PARTITION BY code ORDER BY trade_date
-              ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
-),
+      wprev AS (PARTITION BY code ORDER BY trade_date
+                ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
+  ),
 fin AS (
-  SELECT w.*,
-         -- 직전 5일 누적 (가속/감속 판정용): 5행 전의 5일 누적값
+    SELECT w.*,
+           -- 직전 5일 누적 (가속/감속 판정용): 5행 전의 5일 누적값
          lag(s5, 5) OVER (PARTITION BY code ORDER BY trade_date) AS s5_prev,
-         -- v4: 종목 20일 수익률. 20거래일 이력 없으면(신규상장 등) NULL.
+           -- v4: 종목 20일 수익률. 20거래일 이력 없으면(신규상장 등) NULL.
          CASE WHEN close_20d_ago > 0
-              THEN (close::numeric / close_20d_ago - 1) * 100 END AS ret20
-  FROM w
-),
+                THEN (close::numeric / close_20d_ago - 1) * 100 END AS ret20,
+           -- 개별RS 5일 버전용: 종목 5일 수익률. 5거래일 이력 없으면 NULL.
+         CASE WHEN close_5d_ago > 0
+                THEN (close::numeric / close_5d_ago - 1) * 100 END AS ret5
+    FROM w
+  ),
 rk AS (
-  -- v4 후보 우선순위용 당일 횡단면 순위 (유니버스 전체 기준)
+    -- v4 후보 우선순위용 당일 횡단면 순위 (유니버스 전체 기준)
   SELECT fin.*,
-         rank() OVER (PARTITION BY trade_date
-                      ORDER BY weight_per_share DESC NULLS LAST) AS weight_rank,
-         rank() OVER (PARTITION BY trade_date
-                      ORDER BY market_cap DESC NULLS LAST)       AS cap_rank,
-         -- v4: 그날 유니버스(daily_metrics 전종목) 평균 20일 수익률 — 개별RS의 기준선
-         avg(ret20) OVER (PARTITION BY trade_date)                AS mkt_ret20
-  FROM fin
-)
+           rank() OVER (PARTITION BY trade_date
+                        ORDER BY weight_per_share DESC NULLS LAST) AS weight_rank,
+           rank() OVER (PARTITION BY trade_date
+                        ORDER BY market_cap DESC NULLS LAST)       AS cap_rank,
+           -- v4: 그날 유니버스(daily_metrics 전종목) 평균 20일/5일 수익률 — 개별RS의 기준선
+         avg(ret20) OVER (PARTITION BY trade_date)                AS mkt_ret20,
+           avg(ret5)  OVER (PARTITION BY trade_date)                AS mkt_ret5
+    FROM fin
+  ),
+rs AS (
+    -- 개별RS(20일/5일) = 종목 수익률 - 그날 유니버스 평균 수익률
+  SELECT rk.*,
+           CASE WHEN ret20 IS NOT NULL THEN round((ret20 - mkt_ret20)::numeric, 2) END AS rs20_vs_mkt,
+           CASE WHEN ret5  IS NOT NULL THEN round((ret5  - mkt_ret5)::numeric,  2) END AS rs5_vs_mkt
+    FROM rk
+  ),
+pr AS (
+    -- 개별RS를 그날 유니버스(값 존재 종목만) 안에서 0~100 백분위로 환산.
+  -- PARTITION BY trade_date, (rs_x IS NOT NULL)로 NULL 종목을 별도 분단에
+  -- 몰아넣어, NULL이 아닌 종목끼리만 percent_rank 분모(count-1)에 들어가게 함.
+  SELECT rs.*,
+           CASE WHEN rs20_vs_mkt IS NOT NULL THEN
+             round(100 * percent_rank() OVER (
+               PARTITION BY trade_date, (rs20_vs_mkt IS NOT NULL) ORDER BY rs20_vs_mkt
+             ), 1)
+           END AS rs20_pctl,
+           CASE WHEN rs5_vs_mkt IS NOT NULL THEN
+             round(100 * percent_rank() OVER (
+               PARTITION BY trade_date, (rs5_vs_mkt IS NOT NULL) ORDER BY rs5_vs_mkt
+             ), 1)
+           END AS rs5_pctl
+    FROM rs
+  )
 SELECT
   trade_date,
   code,
@@ -422,10 +452,13 @@ SELECT
   weight_rank,
   cap_rank,
   round(weight_rank * 0.6 + cap_rank * 0.4, 2)                            AS pick_score,
-  -- v4: 개별종목 상대강도 = 종목 20일수익률 - 그날 유니버스 평균 20일수익률
-  CASE WHEN ret20 IS NOT NULL THEN round((ret20 - mkt_ret20)::numeric, 2) END AS rs20_vs_mkt,
+  -- v4: 개별종목 상대강도(20일/5일, 원시 %p) + 백분위 환산(0~100) — 계산은 rs/pr CTE에서 완료
+  rs20_vs_mkt,
+  rs5_vs_mkt,
+  rs20_pctl,
+  rs5_pctl,
   now()
-FROM rk
+FROM pr
 WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
 ON CONFLICT (trade_date, code) DO UPDATE SET
   ma5                 = EXCLUDED.ma5,
@@ -473,6 +506,9 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
   cap_rank            = EXCLUDED.cap_rank,
   pick_score          = EXCLUDED.pick_score,
   rs20_vs_mkt         = EXCLUDED.rs20_vs_mkt,
+  rs5_vs_mkt          = EXCLUDED.rs5_vs_mkt,
+  rs20_pctl           = EXCLUDED.rs20_pctl,
+  rs5_pctl            = EXCLUDED.rs5_pctl,
   computed_at         = now();
 
 
