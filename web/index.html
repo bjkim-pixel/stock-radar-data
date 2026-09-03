@@ -526,13 +526,14 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
   <div class="card"><h3>오늘 강했던 종목 <span class="r">무게/주식수(등락률×거래량회전율) 우선 · 개별RS 보조 정렬 · 상위 10종목</span></h3>
     <div class="note">무게/주식수는 "등락률 × 거래량 ÷ 상장주식수"로, 단순 상승률보다 실제 매수세(회전율)가 실린 종목을 가려냅니다.
-      개별RS(rs20_vs_mkt)는 종목의 20일 수익률에서 전체 유니버스 평균 20일 수익률을 뺀 값으로, 시장 대비 초과강도를 뜻합니다.</div>
+      개별RS5/개별RS20은 각각 종목의 5일/20일 수익률에서 그날 유니버스 평균 수익률을 뺀 값(시장 대비 초과강도)을
+      그날 유니버스 내 백분위(0~100, "상위 N%")로 환산해 보여줍니다. 값이 작을수록(=상위 %가 작을수록) 더 강한 종목입니다.</div>
     <div class="tw"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>무게/주식수</th><th>개별RS</th>
+      <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>무게/주식수</th><th>개별RS5</th><th>개별RS20</th>
       <th class="opt">업종RS순위</th><th class="grp opt">정배열</th><th class="opt">시총</th><th class="opt">거래대금</th>
       <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">프로그램</th>
       <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th>
-    </tr></thead><tbody id="tdMomBody"><tr><td colspan="14" class="load">불러오는 중…</td></tr></tbody></table></div>
+    </tr></thead><tbody id="tdMomBody"><tr><td colspan="15" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
   <div class="card"><h3>수급 주체별 매수 상위 종목 <span class="r">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
@@ -552,11 +553,11 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     </div></div>
     <div class="tw" style="margin-top:10px"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>순매수(억)</th><th>시총대비</th>
-      <th class="opt">무게/주식수</th><th class="opt">개별RS</th><th class="opt">업종RS순위</th><th class="grp opt">정배열</th>
+      <th class="opt">무게/주식수</th><th class="opt">개별RS5</th><th class="opt">개별RS20</th><th class="opt">업종RS순위</th><th class="grp opt">정배열</th>
       <th class="opt">시총</th><th class="opt">거래대금</th>
       <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">프로그램</th>
       <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th>공통매수</th>
-    </tr></thead><tbody id="tdFlowBody"><tr><td colspan="17" class="load">불러오는 중…</td></tr></tbody></table></div>
+    </tr></thead><tbody id="tdFlowBody"><tr><td colspan="18" class="load">불러오는 중…</td></tr></tbody></table></div>
     <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
   </div>
 
@@ -652,7 +653,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         <button class="fchip" data-f="e_chg11">등락률&lt;11%</button>
         <button class="fchip" data-f="e_vol180">거래량비&lt;180%</button>
         <button class="fchip" data-f="e_aligned">정배열(종가&gt;5&gt;20&gt;60&gt;120)</button>
-        <button class="fchip" data-f="e_rspos">개별RS&gt;0</button>
+        <button class="fchip" data-f="e_rspos">개별RS20&gt;0</button>
       </div></div>
       <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
         <button class="btn" id="runFlowFilter">필터 적용</button>
@@ -706,9 +707,12 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
           <input type="number" id="fCapMax" placeholder="이하" step="0.1" value="2000"></div></div>
       <div class="field"><label>거래대금 ≥ (억원)</label><input type="number" id="fAmtMin"></div>
       <div class="field"><label>거래량비 ≥ (%)</label><input type="number" id="fVolMin"></div>
-      <div class="field"><label>개별RS ≥ (%p)<span class="pop"><b>개별RS(rs20_vs_mkt) = 종목 20일 수익률(%) − 유니버스 평균 20일 수익률(%)</b>
-        <p>양수면 최근 20거래일 동안 시장 평균보다 더 많이 올랐다는 뜻입니다. 신고가나 전고점 근처가 아니어도, 바닥권에서 시장 대비 먼저 반등하기 시작한 종목을 잡아낼 수 있습니다.</p>
-        <div class="ex">예) 종목이 20일간 +8%, 같은 기간 유니버스 평균이 +2%라면 개별RS = +6%p → 시장보다 강한 초과수익</div>
+      <div class="field"><label>개별RS5 ≥ (%p)<span class="pop"><b>개별RS5(rs5_vs_mkt) = 종목 5일 수익률(%) − 유니버스 평균 5일 수익률(%)</b>
+        <p>계산 방식은 개별RS20과 동일하고 창만 5거래일로 짧습니다. 최근 며칠 사이 새로 시장보다 강해지기 시작한 종목을 더 빠르게 잡아내는 용도입니다.</p>
+      </span></label><input type="number" id="fRs5Min" placeholder="예: 0" step="0.1"></div>
+      <div class="field"><label>개별RS20 ≥ (%p)<span class="pop"><b>개별RS20(rs20_vs_mkt) = 종목 20일 수익률(%) − 유니버스 평균 20일 수익률(%)</b>
+        <p>양수면 최근 20거래일 동안 시장 평균보다 더 많이 올랐다는 뜻입니다. 신고가나 전고점 근처가 아니어도, 바닥권에서 시장 대비 먼저 반등하기 시작한 종목을 잡아낼 수 있습니다. 화면 표시는 이 원시값을 그날 유니버스 내 백분위(상위 N%)로 환산해서 보여주지만, 이 입력칸은 원시 %p 기준으로 필터링합니다.</p>
+        <div class="ex">예) 종목이 20일간 +8%, 같은 기간 유니버스 평균이 +2%라면 개별RS20 = +6%p → 시장보다 강한 초과수익</div>
       </span></label><input type="number" id="fRsMin" placeholder="예: 0" step="0.1"></div>
       <div class="field"><label>업종</label><select id="fSector"><option value="">전체</option></select></div>
       <div class="field"><label>정렬 기준</label>
@@ -721,7 +725,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
           <option value="inst_net">기관 순매수</option>
           <option value="consec_both_buy">연속 양매수일</option>
           <option value="vol_ratio20_prev">거래량비</option>
-          <option value="rs20_vs_mkt">개별RS</option>
+          <option value="rs5_vs_mkt">개별RS5</option>
+          <option value="rs20_vs_mkt">개별RS20</option>
         </select></div>
       <div class="field"><label>정렬 방향</label>
         <select id="fDir"><option value="desc" selected>내림차순</option><option value="asc">오름차순</option></select></div>
@@ -736,7 +741,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       </span></button>
       <button class="fchip" data-f="ma5">5일선 위</button>
       <button class="fchip" data-f="aligned">정배열(종가&gt;5&gt;20&gt;60&gt;120)</button>
-      <button class="fchip" data-f="rspos">개별RS 우위(신고가 아니어도 시장보다 강세)<span class="pop"><b>개별RS(rs20_vs_mkt) &gt; 0</b>
+      <button class="fchip" data-f="rs5pos">개별RS5 우위(최근 5일 신규 전환)<span class="pop"><b>개별RS5(rs5_vs_mkt) &gt; 0</b>
+        <p>최근 5거래일 수익률이 유니버스 평균보다 높은 종목만 남깁니다. 20일 기준보다 반응이 빨라, 이제 막 시장보다 강해지기 시작한 종목을 잡는 데 유용합니다.</p>
+      </span></button>
+      <button class="fchip" data-f="rspos">개별RS20 우위(신고가 아니어도 시장보다 강세)<span class="pop"><b>개별RS20(rs20_vs_mkt) &gt; 0</b>
         <p>최근 20거래일 수익률이 유니버스 평균보다 높은 종목만 남깁니다. 신고가·전고점 조건과 달리 절대 가격 위치를 보지 않으므로, 바닥권에서 시장보다 먼저 반등을 시작한 종목을 잡는 데 유용합니다.</p>
       </span></button>
     </div></div>
@@ -782,7 +790,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip" data-f="e_chg11">등락률&lt;11%<span class="pop"><b>등락률 절댓값 &lt; 11%</b><p>이미 급등한 종목 추격매수 방지. 하락 과대낙폭도 일부 필터됩니다.</p></span></button>
       <button class="fchip" data-f="e_vol180">거래량비&lt;180%<span class="pop"><b>20일 평균 대비 거래량비 &lt; 180%</b><p>단기 과열·급등 소멸형 종목 제외. 200~300%↑ 급등일은 제외됩니다.</p></span></button>
       <button class="fchip" data-f="e_aligned">정배열(종가&gt;5&gt;20&gt;60&gt;120)<span class="pop"><b>종가 &gt; MA5 &gt; MA20 &gt; MA60 &gt; MA120 정배열</b><p>단기·중기·장기·초장기 이평선이 우상향 순서로 정렬되고, 종가가 그 위에 있는 종목만 남깁니다.</p></span></button>
-      <button class="fchip" data-f="e_rspos">개별RS&gt;0<span class="pop"><b>개별RS(rs20_vs_mkt) &gt; 0</b><p>최근 20거래일 수익률이 유니버스 평균보다 높은 종목. 신고가가 아니어도 바닥에서 시장보다 먼저 반등 중인 종목을 잡습니다.</p></span></button>
+      <button class="fchip" data-f="e_rspos">개별RS20&gt;0<span class="pop"><b>개별RS20(rs20_vs_mkt) &gt; 0</b><p>최근 20거래일 수익률이 유니버스 평균보다 높은 종목. 신고가가 아니어도 바닥에서 시장보다 먼저 반등 중인 종목을 잡습니다.</p></span></button>
       <span id="scrMktAvgRS" style="display:none;font-size:11px;color:var(--ink-3);padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);white-space:nowrap">시장평균 20일 <span id="scrMktAvgRSVal" class="num">–</span>%</span>
     </div></div>
 
@@ -799,12 +807,12 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <th>종가</th><th>등락률</th><th>무게/주식수</th>
       <th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th>
       <th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th>
-      <th class="grp opt">개별RS</th>
+      <th class="grp opt">개별RS5</th><th class="opt">개별RS20</th>
       <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th class="opt">외+기(2m)</th><th class="opt">2m주도</th>
       <th class="grp">외국인</th><th>기관합계</th><th class="opt">금융투자</th>
       <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th>
       <th class="grp opt">프로그램</th>
-    </tr></thead><tbody id="scrBody"><tr><td colspan="25" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
+    </tr></thead><tbody id="scrBody"><tr><td colspan="26" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
 
@@ -967,9 +975,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
   <div class="card"><h3>보유 중 <span class="r" id="openCount"></span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>종가</th><th title="한국투자증권 실시간 웹소켓 시세 (relay 서버 연결 시)">시세</th><th class="l">전략</th><th>진입일</th><th class="l">매수사유</th><th>평단</th><th>수익률</th><th>고점</th>
-      <th class="opt">고점일</th><th class="opt">트랜치</th><th>투입금액</th><th>미실현손익</th><th>고점대비</th>
-    </tr></thead><tbody id="openBody"><tr><td colspan="14" class="load">불러오는 중…</td></tr></tbody></table></div>
+      <th class="l">종목</th><th>종가</th><th title="한국투자증권 실시간 웹소켓 시세 (relay 서버 연결 시)">시세</th><th class="l">전략</th><th>진입일</th><th class="l">매수사유</th><th>평단</th><th>수익률</th><th title="장중에는 웹소켓 실시간 체결가 기준으로 즉시 갱신, 장마감 후에는 배치가 재계산">고점</th>
+      <th class="opt">고점일</th><th class="opt" title="고점이 기록된 시각(월/일 시:분). 장중 실시간 갱신값은 그날 배치가 돌기 전까지만 분단위로 정확함">고점시각</th><th class="opt">트랜치</th><th>투입금액</th><th>미실현손익</th><th>고점대비</th>
+    </tr></thead><tbody id="openBody"><tr><td colspan="15" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
   <div class="card"><h3>청산 이력 <span class="r" id="perfCount"></span></h3>
     <div class="tw"><table><thead><tr>
@@ -1015,6 +1023,10 @@ const N=(v,d=0)=>(v==null||isNaN(v))?"–":Number(v).toLocaleString("ko-KR",
   {minimumFractionDigits:d,maximumFractionDigits:d});
 const sgn=v=>(v>0?"up":v<0?"down":"dim");
 const pm=(v,d=2)=>(v==null||isNaN(v))?"–":(v>0?"+":"")+N(v,d);
+// 개별RS 백분위(0~100, 100=그날 유니버스 내 최상위) 표시 — 원시 %p 대신
+// "상위 N%"로 보여줘서 그날 유니버스 안에서 얼마나 강한지 바로 감이 오게 함.
+const pctlSgn=v=>v==null?"dim":(v>50?"up":v<50?"down":"dim");
+const pctlLabel=v=>v==null?"–":`상위 ${N(100-v,0)}%`;
 const shortDate=d=>d?d.slice(2).replace(/-/g,"."):"–"; // 2026-04-28 → 26.04.28
 const EOK=1e8, JO=1e12;
 const LINE_W=1.5;
@@ -1052,7 +1064,8 @@ async function loadDataStatus(){
 /* ── 상태 ────────────────────────────────────────────────────────────── */
 const S={date:null,sectors:[],sector:null,stocks:[],market:[],flowCache:{},chart:{},codes:[],
   pairStockSort:"change_pct",
-  liveWs:null,liveSubscribed:new Set(),livePrices:{},liveReconnectTimer:null,liveReconnectDelay:2000};
+  liveWs:null,liveSubscribed:new Set(),livePrices:{},liveReconnectTimer:null,liveReconnectDelay:2000,
+  dbPeak:{}};
 
 /* ══ KIS 실시간 시세 릴레이 연결 (보유 중 표 전용) ═══════════════════════ */
 function liveCellHtml(code){
@@ -1060,10 +1073,58 @@ function liveCellHtml(code){
   if(!m) return {cls:"num dim",html:"–"};
   return {cls:"num "+sgn(m.changePct), html:`${N(m.price)} <span class="faint">${pm(m.changePct,2)}%</span>`};
 }
+// "고점" 컬럼의 실제 값을 결정: relay-server가 웹소켓 체결가로 실시간 갱신한
+// dayHigh가 DB에 저장된 peak_price(배치가 전날까지 계산해둔 값)보다 높으면
+// 그 값을 우선 사용. 아직 해당 종목의 실시간 틱을 못 받았거나 DB 값이 더
+// 높으면(장 시작 직후 등) DB 값을 그대로 씀 — 절대 DB 값보다 낮게 보이지 않음.
+function effectivePeak(code){
+  const db=S.dbPeak[code]||{price:0,atIso:null,dateStr:null};
+  const live=S.livePrices[code];
+  if(live && live.dayHigh!=null && live.dayHigh>db.price){
+    return {price:live.dayHigh, atIso:new Date(live.dayHighAt).toISOString(), live:true};
+  }
+  return {price:db.price||null, atIso:db.atIso, live:false};
+}
+function fmtKstParts(iso,opts){
+  const d=new Date(iso);
+  if(isNaN(d)) return null;
+  const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Seoul",hour12:false,...opts}).formatToParts(d);
+  const g=t=>parts.find(x=>x.type===t)?.value||"";
+  return g;
+}
+function fmtPeakAt(iso){ // "MM/DD HH:mm"
+  const g=fmtKstParts(iso,{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+  return g?`${g("month")}/${g("day")} ${g("hour")}:${g("minute")}`:"–";
+}
+function fmtPeakDateOnly(iso){ // "MM/DD"
+  const g=fmtKstParts(iso,{month:"2-digit",day:"2-digit"});
+  return g?`${g("month")}/${g("day")}`:"–";
+}
+function peakDateLabel(code){
+  const ep=effectivePeak(code);
+  if(ep.live) return fmtPeakDateOnly(ep.atIso);
+  const db=S.dbPeak[code];
+  return db&&db.dateStr?db.dateStr.slice(5).replace("-","/"):"–";
+}
+function peakAtLabel(code){
+  const ep=effectivePeak(code);
+  return ep.atIso?fmtPeakAt(ep.atIso):"–";
+}
 function updateLiveCell(code,m){
   $$(`#openBody td[data-live="${code}"]`).forEach(cell=>{
     cell.className=liveCellHtml(code).cls;
     cell.innerHTML=liveCellHtml(code).html;
+  });
+  if(m.dayHigh==null) return; // 보유 종목이 아니거나(전략성과 표 대상 아님) 아직 갱신 없음
+  const ep=effectivePeak(code);
+  $$(`#openBody td[data-peak="${code}"]`).forEach(cell=>{cell.textContent=ep.price?N(ep.price):"–";});
+  $$(`#openBody td[data-peakdate="${code}"]`).forEach(cell=>{cell.textContent=peakDateLabel(code);});
+  $$(`#openBody td[data-peakat="${code}"]`).forEach(cell=>{cell.textContent=peakAtLabel(code);});
+  const close=S.lastClose&&S.lastClose[code];
+  const dd=(ep.price&&close?(close/ep.price-1)*100:null);
+  $$(`#openBody td[data-peakdd="${code}"]`).forEach(cell=>{
+    cell.className=dd==null?"":sgn(dd);
+    cell.textContent=dd==null?"–":pm(dd,1)+"%";
   });
 }
 function ensureLiveConn(){
@@ -1374,8 +1435,7 @@ function volumeBars(host,vals,labels,opt={}){
   if(opt.refLine!=null){const ry=Y(opt.refLine);
     svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:ry,y2:ry,
       stroke:css("--ink-3"),strokeDasharray:"4 3","stroke-width":1,opacity:.7}));
-    const rt=el("text",{x:W-P.r+4,y:ry+3.5,"font-size":9,fill:css("--ink-3")});
-    rt.textContent=opt.refLabel||"";svg.appendChild(rt);}
+    const rt=el("text",{x:W-P.r+4,y:ry+3.5,"font-size":9,fill:css("--ink-3")});   rt.textContent=opt.refLabel||"";svg.appendChild(rt);}
   host.appendChild(svg);
 }
 /* 매물대(개인/외국인+기관 공용) — 가격대(종가 구간)별 순매수 거래대금을 가로 막대로 표시.
@@ -2202,7 +2262,8 @@ function renderTodayMomentum(universe){
         ${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>
       <td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
       <td>${N(+r.weight_per_share,2)}</td>
-      <td class="${sgn(r.rs20_vs_mkt==null?0:+r.rs20_vs_mkt)}">${r.rs20_vs_mkt==null?"–":pm(+r.rs20_vs_mkt,1)}</td>
+      <td class="${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
+      <td class="${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
       <td class="opt">${r.sector_rs_rank?r.sector_rs_rank+"위":"–"}</td>
       <td class="grp opt">${todayAligned(r)?'<span class="up">✓</span>':'<span class="dim">–</span>'}</td>
       <td class="opt">${N(+r.market_cap/JO,1)}조</td>
@@ -2213,7 +2274,7 @@ function renderTodayMomentum(universe){
       <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
       <td class="opt">${topBuyer(r,"1m")}</td>
     </tr>`).join("")
-    :`<tr><td colspan="14" class="load">데이터 없음</td></tr>`;
+    :`<tr><td colspan="15" class="load">데이터 없음</td></tr>`;
   $$("#tdMomBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable("tdMomBody");
 }
@@ -2234,7 +2295,8 @@ function renderTodayFlow(raw){
       <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td>
       <td class="${sgn(r.ratio)}">${r.ratio!=null?pm(r.ratio,2)+"%":"–"}</td>
       <td class="opt">${r.weight_per_share==null?"–":N(+r.weight_per_share,2)}</td>
-      <td class="opt ${sgn(r.rs20_vs_mkt==null?0:+r.rs20_vs_mkt)}">${r.rs20_vs_mkt==null?"–":pm(+r.rs20_vs_mkt,1)}</td>
+      <td class="opt ${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
+      <td class="opt ${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
       <td class="opt">${r.sector_rs_rank?r.sector_rs_rank+"위":"–"}</td>
       <td class="grp opt">${todayAligned(r)?'<span class="up">✓</span>':'<span class="dim">–</span>'}</td>
       <td class="opt">${N(+r.market_cap/JO,1)}조</td>
@@ -2246,7 +2308,7 @@ function renderTodayFlow(raw){
       <td class="opt">${topBuyer(r,"1m")}</td>
       <td>${stockCommonBuyN(r)}/7</td>
     </tr>`).join("")
-    :`<tr><td colspan="17" class="load">해당 없음</td></tr>`;
+    :`<tr><td colspan="18" class="load">해당 없음</td></tr>`;
   $$("#tdFlowBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable("tdFlowBody");
 }
@@ -2280,10 +2342,12 @@ function makeFilterFn(root,ids){
     const f={chgMin:num(ids.chgMin),chgMax:num(ids.chgMax),capMin:num(ids.capMin),
       capMax:num(ids.capMax),amtMin:num(ids.amtMin),volMin:num(ids.volMin),
       rsMin:ids.rsMin?num(ids.rsMin):null,
+      rs5Min:ids.rs5Min?num(ids.rs5Min):null,
       sec:$(ids.sector,root).value};
     const cap=+r.market_cap/JO, amt=+r.trade_amount/EOK, chg=+r.change_pct;
     const vol=r.vol_ratio20_prev==null?null:+r.vol_ratio20_prev;
     const rs=r.rs20_vs_mkt==null?null:+r.rs20_vs_mkt;
+    const rs5=r.rs5_vs_mkt==null?null:+r.rs5_vs_mkt;
     if(f.chgMin!=null&&chg<f.chgMin)return false;
     if(f.chgMax!=null&&chg>f.chgMax)return false;
     if(f.capMin!=null&&cap<f.capMin)return false;
@@ -2291,6 +2355,7 @@ function makeFilterFn(root,ids){
     if(f.amtMin!=null&&amt<f.amtMin)return false;
     if(f.volMin!=null&&(vol==null||vol<f.volMin))return false;
     if(f.rsMin!=null&&(rs==null||rs<f.rsMin))return false;
+    if(f.rs5Min!=null&&(rs5==null||rs5<f.rs5Min))return false;
     if(f.sec&&r.sector!==f.sec)return false;
     if(on("newhigh",root)&&!(r.is_new_high_all||r.is_new_high))return false;
     if(on("nearhigh",root)&&!(r.near_high||+r.pct_from_high>=-10))return false;
@@ -2298,6 +2363,7 @@ function makeFilterFn(root,ids){
     if(on("ma5",root)&&!(r.ma5&&+r.close>+r.ma5))return false;
     if(on("aligned",root)&&!(r.ma5&&r.ma20&&r.ma60&&r.ma120&&+r.close>+r.ma5&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60&&+r.ma60>+r.ma120))return false;
     if(on("rspos",root)&&!(rs!=null&&rs>0))return false;
+    if(on("rs5pos",root)&&!(rs5!=null&&rs5>0))return false;
     if(on("fgbuy",root)&&!(+r.foreign_net>0))return false;
     if(on("insbuy",root)&&!(+r.inst_net>0))return false;
     if(on("bothbuy",root)&&!(+r.foreign_net>0&&+r.inst_net>0))return false;
@@ -2338,7 +2404,7 @@ function makeFilterFn(root,ids){
   };
 }
 const SCR_IDS={chgMin:"#fChgMin",chgMax:"#fChgMax",capMin:"#fCapMin",capMax:"#fCapMax",
-  amtMin:"#fAmtMin",volMin:"#fVolMin",rsMin:"#fRsMin",sector:"#fSector"};
+  amtMin:"#fAmtMin",volMin:"#fVolMin",rsMin:"#fRsMin",rs5Min:"#fRs5Min",sector:"#fSector"};
 const FLOW_FILTER_IDS={chgMin:"#gChgMin",chgMax:"#gChgMax",capMin:"#gCapMin",capMax:"#gCapMax",
   amtMin:"#gAmtMin",volMin:"#gVolMin",sector:"#gSector"};
 const screenerFilterPass=makeFilterFn($("#v-scr"),SCR_IDS);
@@ -2371,7 +2437,7 @@ function topBuyer(row, sfx){
   return`<span class="${sgn(bestAmt)}">${best.lb} ${pm(bestAmt/EOK,0)}억</span>`;
 }
 async function runScreener(){
-  $("#scrBody").innerHTML='<tr><td colspan="25" class="load">조회 중…</td></tr>';
+  $("#scrBody").innerHTML='<tr><td colspan="26" class="load">조회 중…</td></tr>';
   const date=$("#fDate").value||S.date;
   let [rows,rk,per,d20Rows]=await Promise.all([
     q("v_screener",`select=*&trade_date=eq.${date}`),
@@ -2418,7 +2484,8 @@ async function runScreener(){
       <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,0)}</td>
       <td class="opt dim">${shortDate(r.high_period_date)}</td>
       <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
-      <td class="grp opt ${r.rs20_vs_mkt==null?"":sgn(+r.rs20_vs_mkt)}">${r.rs20_vs_mkt==null?"–":pm(+r.rs20_vs_mkt,1)+"%p"}</td>
+      <td class="grp opt ${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
+      <td class="opt ${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
       <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
       <td class="opt">${topBuyer(r,"1m")}</td>
       <td class="opt ${sgn((+r.foreign_2m||0)+(+r.inst_2m||0))}">${(r.foreign_2m==null&&r.inst_2m==null)?"–":pm(((+r.foreign_2m||0)+(+r.inst_2m||0))/EOK,0)+"억"}</td>
@@ -2432,12 +2499,12 @@ async function runScreener(){
       <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
       <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
       <td class="grp opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td></tr>`).join("")
-    :'<tr><td colspan="25" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+    :'<tr><td colspan="26" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
   makeSortable('scrBody');
 }
 $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e.message));
-const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"2","#fCapMax":"2000","#fAmtMin":"","#fVolMin":"","#fRsMin":""};
+const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"2","#fCapMax":"2000","#fAmtMin":"","#fVolMin":"","#fRsMin":"","#fRs5Min":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
   $("#fLimit").value="10";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
@@ -2939,12 +3006,14 @@ async function loadPerf(){
       <td class="${sgn(+p.return_pct)}">${pm(+p.return_pct)}%</td></tr>`).join("")
       :'<tr><td colspan="11" class="load">청산 이력 없음</td></tr>';
     $("#openCount").innerHTML=`<b>${op.length}</b>건`;
+    S.dbPeak={};
+    op.forEach(p=>{S.dbPeak[p.code]={price:+p.peak_price||0,atIso:p.peak_at||null,dateStr:p.peak_date||null};});
     $("#openBody").innerHTML=op.length?op.map(p=>{
       const close=S.lastClose[p.code];
-      const dd=(+p.peak_price&&close? (close/+p.peak_price-1)*100 : null);
       const ret=(close? (close-+p.avg_price)/close*100 : null);
       const up=(close? uPnl(p) : null);
-      const pd=p.peak_date?p.peak_date.slice(5).replace("-","/"):"–";
+      const ep=effectivePeak(p.code);
+      const dd=(ep.price&&close? (close/ep.price-1)*100 : null);
       const br=buyReasonShort(p);
       const lc=liveCellHtml(p.code);
       return `<tr><td class="l"><a class="lk nm" data-code="${p.code}">${nameOf[p.code]||p.code}</a></td>
@@ -2955,12 +3024,13 @@ async function loadPerf(){
         <td class="l faint" title="${br.full.replace(/"/g,'&quot;')}">${br.short}</td>
         <td>${N(+p.avg_price)}</td>
         <td class="${ret==null?"":sgn(ret)}">${ret==null?"–":pm(ret,2)+"%"}</td>
-        <td>${N(+p.peak_price)}</td>
-        <td class="opt faint">${pd}</td>
+        <td data-peak="${p.code}">${ep.price?N(ep.price):"–"}</td>
+        <td class="opt faint" data-peakdate="${p.code}">${peakDateLabel(p.code)}</td>
+        <td class="opt faint" data-peakat="${p.code}">${peakAtLabel(p.code)}</td>
         <td class="opt">${p.tranches}</td><td>${N(+p.invested)}</td>
         <td class="${up==null?"":sgn(up)}">${up==null?"–":pm(up,0)}</td>
-        <td class="${dd==null?"":sgn(dd)}">${dd==null?"–":pm(dd,1)+"%"}</td></tr>`;}).join("")
-      :'<tr><td colspan="14" class="load">보유 중인 포지션 없음</td></tr>';
+        <td class="${dd==null?"":sgn(dd)}" data-peakdd="${p.code}">${dd==null?"–":pm(dd,1)+"%"}</td></tr>`;}).join("")
+      :'<tr><td colspan="15" class="load">보유 중인 포지션 없음</td></tr>';
     $$("#v-perf a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
     makeSortable('perfBody');
     makeSortable('openBody');
