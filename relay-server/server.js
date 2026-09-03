@@ -256,6 +256,8 @@ function handleKisMessage(text) {
     const rate = Number(rec[F_RATE]);
     if (!Number.isFinite(price)) continue;
 
+    const dayHigh = trackDayHighLow(code, price); // 보유 종목이면 당일 고가/저가를 틱마다 갱신(트레일링·화면표시 공용)
+
     const payload = {
       type: 'price',
       code,
@@ -264,9 +266,15 @@ function handleKisMessage(text) {
       sign: rec[F_SIGN] || null,
       time: rec[F_TIME] || null,
     };
+    if (dayHigh) {
+      // 프론트 "전략성과" 표의 "고점"/"고점시각" 컬럼을 시세와 같은 틱으로 즉시 갱신하기 위한 필드.
+      payload.dayHigh = dayHigh.high;
+      payload.dayHighAt = dayHigh.highAt;
+    }
     lastPrice.set(code, payload);
     broadcastToSubscribers(code, payload);
     checkAlerts(code, price);
+    if (dayHigh) maybePersistPeak(code, dayHigh); // Supabase에 스로틀 저장(재시작/재접속 대비 영속화)
   }
 }
 
@@ -275,7 +283,7 @@ function broadcastToSubscribers(code, payload) {
   if (!set || set.size === 0) return;
   const msg = JSON.stringify(payload);
   for (const client of set) {
-    if (client.readyState === WebSocket.OPEN) client.send(msg);
+    if (client.readyState ===WebSocket.OPEN) client.send(msg);
   }
 }
 
@@ -455,10 +463,59 @@ function getAlertState(code) {
   const today = kstDateStr();
   let st = alertState.get(code);
   if (!st || st.date !== today) {
-    st = { date: today, high: null, low: null, alertedHigh: null, alertedLow: null, trailNear: false, trailHit: false, targetHit: false };
+    st = { date: today, high: null, low: null, highAt: null, lowAt: null,
+           alertedHigh: null, alertedLow: null, trailNear: false, trailHit: false, targetHit: false };
     alertState.set(code, st);
   }
   return st;
+}
+
+// 틱마다(브로드캐스트 이전에) 보유 종목의 당일 고가/저가와 그 시각을 갱신.
+// 알림 스팸 방지용 임계치(alertedHigh/alertedLow)와는 별개로, 실제 당일 고점/저점
+// 자체는 여기서 매 틱 정확하게 추적해서 화면 표시(전략성과 "고점"/"고점시각")와
+// 트레일링 손절 판정에 공용으로 씀. 보유 종목이 아니면 추적하지 않고 null 반환.
+function trackDayHighLow(code, price) {
+  if (!heldCodes.has(code)) return null;
+  const st = getAlertState(code);
+  const now = Date.now();
+  st._isNewHigh = false;
+  st._isNewLow = false;
+  if (st.high == null) {
+    st.high = price; st.low = price;
+    st.highAt = now; st.lowAt = now;
+    st.alertedHigh = price; st.alertedLow = price;
+  } else {
+    if (price > st.high) { st.high = price; st.highAt = now; st._isNewHigh = true; }
+    if (price < st.low) { st.low = price; st.lowAt = now; st._isNewLow = true; }
+  }
+  return { high: st.high, highAt: st.highAt };
+}
+
+// positions.peak_price가 재배포/재시작 후에도 살아남도록, 그리고 relay-server를
+// 안 보고 있던 다른 기기·다음 방문에서도 정확한 고점이 보이도록 Supabase에
+// 스로틀(종목당 최소 간격)을 두고 써둠. 배치(06_portfolio.py)가 매일 밤 이
+// 값을 다시 계산해서 덮어쓰므로, 여기서는 "오늘 하루" 동안만 유효한 값.
+const lastPeakWriteAt = new Map(); // code -> 마지막 DB 기록 시각(ms)
+const PEAK_WRITE_MIN_INTERVAL_MS = 5000;
+
+async function maybePersistPeak(code, dayHigh) {
+  const pos = positionsByCode.get(code);
+  if (!pos) return;
+  const known = +pos.peak_price || 0;
+  if (dayHigh.high <= known) return;              // DB에 이미 반영된 값보다 높지 않으면 쓸 필요 없음
+  const last = lastPeakWriteAt.get(code) || 0;
+  if (Date.now() - last < PEAK_WRITE_MIN_INTERVAL_MS) return;  // 너무 잦은 쓰기 방지
+  lastPeakWriteAt.set(code, Date.now());
+  pos.peak_price = dayHigh.high;                  // 로컬 캐시도 즉시 갱신 → effPeak 계산에 바로 반영
+  try {
+    await sbWrite(
+      `positions?portfolio=eq.VIRTUAL&status=eq.OPEN&code=eq.${code}`,
+      'PATCH',
+      { peak_price: dayHigh.high, peak_at: new Date(dayHigh.highAt).toISOString() }
+    );
+  } catch (err) {
+    console.error(`[peak] ${code} 고점 영속화 실패(다음 틱에 재시도):`, err.message);
+  }
 }
 
 // 매수가/수익률/수익금을 알림 문구에 덧붙이기 위한 요약 문자열
@@ -484,30 +541,18 @@ function checkAlerts(code, price) {
   const info = posInfo(code, price);
   const infoSuffix = info ? ` (${info})` : '';
 
-  // ── 당일 신고가/신저가 갱신 ─────────────────────────────────────────
-  // st.high/st.low는 틱마다 실제 당일 고점/저점을 그대로 갱신(트레일링 손절 계산용).
-  // 알림은 마지막으로 "알림을 보낸" 고점/저점 대비 ALERT_MIN_MOVE_PCT% 이상
-  // 갱신됐을 때만 보내서, 상승/하락 추세에서 틱마다 알림이 쏟아지는 걸 방지.
-  if (st.high == null) {
-    st.high = price;
-    st.low = price;
+  // ── 당일 신고가/신저가 알림 ─────────────────────────────────────────
+  // st.high/st.low 자체는 trackDayHighLow()가 브로드캐스트 전에 이미 갱신해둠
+  // (화면 표시·트레일링 손절 계산 공용). 여기서는 "알림을 보낼지"만 판단 —
+  // 마지막으로 알림을 보낸 고점/저점 대비 ALERT_MIN_MOVE_PCT% 이상 갱신됐을
+  // 때만 보내서, 상승/하락 추세에서 틱마다 알림이 쏟아지는 걸 방지.
+  if (st._isNewHigh && !alertsPaused && price >= st.alertedHigh * (1 + ALERT_MIN_MOVE_PCT / 100)) {
     st.alertedHigh = price;
+    notifyAll(`📈 ${name}(${code}) 당일 신고가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📈 ${name} 신고가`, tag: `high-${code}` });
+  }
+  if (st._isNewLow && !alertsPaused && price <= st.alertedLow * (1 - ALERT_MIN_MOVE_PCT / 100)) {
     st.alertedLow = price;
-  } else {
-    if (price > st.high) {
-      st.high = price;
-      if (!alertsPaused && price >= st.alertedHigh * (1 + ALERT_MIN_MOVE_PCT / 100)) {
-        st.alertedHigh = price;
-        notifyAll(`📈 ${name}(${code}) 당일 신고가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📈 ${name} 신고가`, tag: `high-${code}` });
-      }
-    }
-    if (price < st.low) {
-      st.low = price;
-      if (!alertsPaused && price <= st.alertedLow * (1 - ALERT_MIN_MOVE_PCT / 100)) {
-        st.alertedLow = price;
-        notifyAll(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📉 ${name} 신저가`, tag: `low-${code}` });
-      }
-    }
+    notifyAll(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📉 ${name} 신저가`, tag: `low-${code}` });
   }
 
   // ── 트레일링 손절(-7%) 근접/도달 ───────────────────────────────────
@@ -885,7 +930,7 @@ const server = http.createServer((req, res) => {
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;
-    const corsOrigin = (origin && ALLOWED_ORIGINS.includes(origin)) ? origin : ALLOWED_ORIGINS[0];
+    const corsOrigin = (origin&& ALLOWED_ORIGINS.includes(origin)) ? origin : ALLOWED_ORIGINS[0];
     res.setHeader('Access-Control-Allow-Origin', corsOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'content-type');
