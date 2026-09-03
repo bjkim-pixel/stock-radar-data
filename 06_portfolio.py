@@ -59,6 +59,15 @@ DB_URL = os.environ.get("SUPABASE_DB_URL", "")
 if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 환경변수를 설정하세요.")
 
+KST = datetime.timezone(datetime.timedelta(hours=9))
+
+
+def market_close_ts(day):
+    """peak_at의 배치 계산용 근사치 — 정확한 장중 시각을 모르므로 그날 15:30 KST로 채움.
+    (relay-server가 장중에 실시간으로 기록한 정확한 시각은 이 배치가 그 날을
+    재계산하는 순간 이 근사치로 대체됨 — 62_positions_peak_at.sql 참고)"""
+    return datetime.datetime.combine(day, datetime.time(15, 30), tzinfo=KST)
+
 # ── 파라미터 ──────────────────────────────────────────────────────────────────
 ENTRY_AMOUNT     = 10_000_000    # 시총 5조원 미만 매수 금액 (원) · 폴백 기본값
 # 시가총액 구간별 1회 매수/불타기 금액 — (하한 시가총액, 금액) 내림차순 탐색
@@ -177,13 +186,13 @@ class SignalBuffer:
 class Position:
     __slots__ = ("portfolio", "strategy", "code", "name", "entry_date", "entry_price",
                  "avg_price", "quantity", "invested", "tranches", "peak_price",
-                 "peak_date", "pyramid_blocked", "status", "exit_date",
+                 "peak_date", "peak_at", "pyramid_blocked", "status", "exit_date",
                  "exit_price", "exit_reason", "realized_pnl", "return_pct",
                  "market_cap")
 
     def __init__(self, portfolio, strategy, code, name, entry_date, entry_price,
                  quantity, invested, pyramid_blocked=False, tranches=1,
-                 avg_price=None, peak_price=None, peak_date=None, market_cap=None):
+                 avg_price=None, peak_price=None, peak_date=None, peak_at=None, market_cap=None):
         self.portfolio = portfolio
         self.strategy = strategy
         self.code = code
@@ -196,6 +205,7 @@ class Position:
         self.tranches = tranches
         self.peak_price = peak_price if peak_price is not None else entry_price
         self.peak_date = peak_date or entry_date
+        self.peak_at = peak_at or market_close_ts(self.peak_date)
         self.pyramid_blocked = pyramid_blocked
         self.status = "OPEN"
         self.exit_date = self.exit_price = self.exit_reason = None
@@ -215,7 +225,7 @@ class Position:
     def as_row(self):
         return (self.portfolio, self.strategy, self.code, self.status, self.entry_date,
                 self.entry_price, round(self.avg_price, 2), self.quantity,
-                self.invested, self.tranches, self.peak_price, self.peak_date,
+                self.invested, self.tranches, self.peak_price, self.peak_date, self.peak_at,
                 self.pyramid_blocked, self.exit_date, self.exit_price,
                 self.exit_reason, self.realized_pnl, self.return_pct)
 
@@ -238,6 +248,7 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
         if high > pos.peak_price:
             pos.peak_price = high
             pos.peak_date = day
+            pos.peak_at = market_close_ts(day)
         dd = close / pos.peak_price - 1
         if dd <= STOP_PCT:
             crash = dd <= CRASH_PCT
@@ -332,6 +343,7 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
                            qty, invested,
                            pyramid_blocked=cand["code"] in stopped_codes,
                            peak_price=max(entry_high, close),
+                           peak_at=market_close_ts(day),
                            market_cap=mcap)
             open_pos[cand["code"]] = pos
             r = cand["reason"]
@@ -344,8 +356,7 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
                         "rs20_vs_mkt":     r.get("rs20_vs_mkt"),
                         "vol_ratio20_prev": r.get("vol_ratio20_prev"),
                         "market_cap":      r.get("market_cap"),
-                        "entry_price":     close,
-                        "quantity":        qty,
+                        "entry_price":     close,                  "quantity":        qty,
                         "invested":        invested,
                         "pyramid_blocked": pos.pyramid_blocked,
                     },
@@ -545,7 +556,7 @@ def main():
             execute_values(cur, """
                 INSERT INTO positions
                   (portfolio, strategy, code, status, entry_date, entry_price, avg_price,
-                   quantity, invested, tranches, peak_price, peak_date,
+                   quantity, invested, tranches, peak_price, peak_date, peak_at,
                    pyramid_blocked, exit_date, exit_price, exit_reason,
                    realized_pnl, return_pct)
                 VALUES %s
@@ -555,12 +566,12 @@ def main():
             cur.execute("""
                 UPDATE positions SET
                   status = %s, avg_price = %s, quantity = %s, invested = %s,
-                  tranches = %s, peak_price = %s, peak_date = %s,
+                  tranches = %s, peak_price = %s, peak_date = %s, peak_at = %s,
                   exit_date = %s, exit_price = %s, exit_reason = %s,
                   realized_pnl = %s, return_pct = %s
                 WHERE portfolio = 'REAL' AND code = %s AND status = 'OPEN'
             """, (p.status, round(p.avg_price, 2), p.quantity, p.invested,
-                  p.tranches, p.peak_price, p.peak_date, p.exit_date,
+                  p.tranches, p.peak_price, p.peak_date, p.peak_at, p.exit_date,
                   p.exit_price, p.exit_reason, p.realized_pnl, p.return_pct,
                   p.code))
 
