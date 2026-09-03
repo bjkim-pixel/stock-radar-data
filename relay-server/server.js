@@ -281,6 +281,26 @@ async function sbGet(path) {
   return res.json();
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// PostgREST statement timeout(57014)이 종종 발생하는 무거운 뷰 조회용 —
+// 짧은 간격을 두고 최대 attempts회 재시도하고, 그래도 실패하면 fallback으로
+// 넘어가서 "오늘의 종목 요약" 전체가 죽지 않도록 함(개별 섹션만 빠짐).
+async function sbGetResilient(path, { attempts = 3, delayMs = 4000, label = path, fallback = [] } = {}) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await sbGet(path);
+    } catch (err) {
+      lastErr = err;
+      console.error(`[오늘의 종목 요약] ${label} 조회 실패 (시도 ${i + 1}/${attempts}):`, err.message);
+      if (i < attempts - 1) await sleep(delayMs);
+    }
+  }
+  console.error(`[오늘의 종목 요약] ${label} 최종 실패, 해당 섹션 생략:`, lastErr?.message);
+  return fallback;
+}
+
 // service_role 키로 쓰기 (alert_targets 전용, RLS 우회)
 async function sbWrite(path, method, body) {
   if (!SUPABASE_SERVICE_KEY) throw new Error('SUPABASE_SERVICE_KEY 미설정');
@@ -672,13 +692,10 @@ async function buildDailySummaryText() {
     // 이 뷰는 종종 몇 초 걸려서 PostgREST statement timeout에 걸릴 때가 있음 —
     // 실패해도 "최다 순매수 주체" 한 줄만 빠질 뿐 나머지 요약은 정상 발송되게
     // 요약 전체를 막지 않고 null로 넘어감(트리거 워크플로의 3회 재시도와 별개 방어).
-    sbGet('v_market_flow_periods?select=*').then(r => r[0]).catch(err => {
-      console.error('[오늘의 종목 요약] v_market_flow_periods 조회 실패(스킵):', err.message);
-      return null;
-    }),
-    sbGet(`v_screener?select=*&trade_date=eq.${date}`),
-    sbGet('v_stock_flow_periods?select=code,foreign_1d,inst_1d,fin_inv_1d,inv_trust_1d,pension_1d,pe_1d,program_1d'),
-    sbGet('v_sector_rank?select=*'),
+    sbGetResilient('v_market_flow_periods?select=*', { label: 'v_market_flow_periods', fallback: [] }).then(r => r[0] || null),
+    sbGetResilient(`v_screener?select=*&trade_date=eq.${date}`, { label: 'v_screener', fallback: [] }),
+    sbGetResilient('v_stock_flow_periods?select=code,foreign_1d,inst_1d,fin_inv_1d,inv_trust_1d,pension_1d,pe_1d,program_1d', { label: 'v_stock_flow_periods', fallback: [] }),
+    sbGetResilient('v_sector_rank?select=*', { label: 'v_sector_rank', fallback: [] }),
   ]);
 
   const idxChg = rows => (rows.length >= 2 && rows[1].index_close) ? ((+rows[0].index_close / +rows[1].index_close - 1) * 100) : null;
