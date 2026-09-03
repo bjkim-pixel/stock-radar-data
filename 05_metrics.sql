@@ -342,7 +342,8 @@ fin AS (
          -- 직전 5일 누적 (가속/감속 판정용): 5행 전의 5일 누적값
          lag(s5, 5) OVER (PARTITION BY code ORDER BY trade_date) AS s5_prev,
          -- v4: 종목 20일 수익률. 20거래일 이력 없으면(신규상장 등) NULL.
-         CASE WHEN close_20d_ago > 0           THEN (close::numeric / close_20d_ago - 1) * 100 END AS ret20,
+         CASE WHEN close_20d_ago > 0
+                THEN (close::numeric / close_20d_ago - 1) * 100 END AS ret20,
          -- 개별RS 5일 버전용: 종목 5일 수익률. 5거래일 이력 없으면 NULL.
          CASE WHEN close_5d_ago > 0
               THEN (close::numeric / close_5d_ago - 1) * 100 END AS ret5
@@ -447,7 +448,8 @@ SELECT
   CASE WHEN cprev >= 20 THEN close > high_all_prev END                    AS is_new_high_all,
   -- 비개인 순매수 = -(개인). 투자자 주체 순매수 총합이 0이므로
   -- 외국인+기관+기타법인과 같은 값입니다(기타법인 컬럼은 용량 정리 때 삭제됨).
-  -individual_net                                                         AS nonpersonal_net, weight_rank,
+  -individual_net                                                         AS nonpersonal_net,
+  weight_rank,
   cap_rank,
   round(weight_rank * 0.6 + cap_rank * 0.4, 2)                            AS pick_score,
   -- v4: 개별종목 상대강도(20일/5일, 원시 %p) + 백분위 환산(0~100) — 계산은 rs/pr CTE에서 완료
