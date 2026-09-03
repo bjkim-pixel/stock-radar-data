@@ -96,6 +96,15 @@ const codeNames = new Map();        // code -> 종목명
 const targetPrices = new Map();     // code -> {price} (텔레그램 명령으로 설정)
 const alertState = new Map();       // code -> {date, high, low, alertedHigh, alertedLow, trailNear, trailHit, targetHit}
 
+// 신고가/신저가 알림 스팸 방지: 마지막으로 "알림을 보낸" 고점/저점 대비 이 비율(%) 이상
+// 갱신됐을 때만 다시 알림. 트레일링 손절 계산은 이 값과 무관하게 실제 당일 고점(st.high)을 그대로 씀.
+const ALERT_MIN_MOVE_PCT = 1;
+
+// 텔레그램 /알림끄기, /알림켜기 로 켜고 끄는 전역 스위치.
+// 꺼져 있는 동안은 신고가/신저가·트레일링 손절·목표가 알림만 멈추고,
+// "오늘의 종목" 요약(자동/수동)은 이 스위치와 무관하게 계속 발송됨.
+let alertsPaused = false;
+
 // ----------------------------------------------------------------------------
 // 1) approval_key 발급/재발급
 // ----------------------------------------------------------------------------
@@ -446,7 +455,7 @@ function getAlertState(code) {
   const today = kstDateStr();
   let st = alertState.get(code);
   if (!st || st.date !== today) {
-    st = { date: today, high: null, low: null, alertedHigh: false, alertedLow: false, trailNear: false, trailHit: false, targetHit: false };
+    st = { date: today, high: null, low: null, alertedHigh: null, alertedLow: null, trailNear: false, trailHit: false, targetHit: false };
     alertState.set(code, st);
   }
   return st;
@@ -476,17 +485,28 @@ function checkAlerts(code, price) {
   const infoSuffix = info ? ` (${info})` : '';
 
   // ── 당일 신고가/신저가 갱신 ─────────────────────────────────────────
+  // st.high/st.low는 틱마다 실제 당일 고점/저점을 그대로 갱신(트레일링 손절 계산용).
+  // 알림은 마지막으로 "알림을 보낸" 고점/저점 대비 ALERT_MIN_MOVE_PCT% 이상
+  // 갱신됐을 때만 보내서, 상승/하락 추세에서 틱마다 알림이 쏟아지는 걸 방지.
   if (st.high == null) {
     st.high = price;
     st.low = price;
+    st.alertedHigh = price;
+    st.alertedLow = price;
   } else {
     if (price > st.high) {
       st.high = price;
-      notifyAll(`📈 ${name}(${code}) 당일 신고가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📈 ${name} 신고가`, tag: `high-${code}` });
+      if (!alertsPaused && price >= st.alertedHigh * (1 + ALERT_MIN_MOVE_PCT / 100)) {
+        st.alertedHigh = price;
+        notifyAll(`📈 ${name}(${code}) 당일 신고가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📈 ${name} 신고가`, tag: `high-${code}` });
+      }
     }
     if (price < st.low) {
       st.low = price;
-      notifyAll(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📉 ${name} 신저가`, tag: `low-${code}` });
+      if (!alertsPaused && price <= st.alertedLow * (1 - ALERT_MIN_MOVE_PCT / 100)) {
+        st.alertedLow = price;
+        notifyAll(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📉 ${name} 신저가`, tag: `low-${code}` });
+      }
     }
   }
 
@@ -496,10 +516,10 @@ function checkAlerts(code, price) {
     const effPeak = Math.max(+pos.peak_price || 0, st.high || 0);
     if (effPeak > 0) {
       const drawdown = (price / effPeak - 1) * 100;
-      if (drawdown <= -7 && !st.trailHit) {
+      if (drawdown <= -7 && !st.trailHit && !alertsPaused) {
         st.trailHit = true;
         notifyAll(`🚨 ${name}(${code}) 트레일링 손절선(-7%) 도달! 고점 대비 ${drawdown.toFixed(1)}% · 현재가 ${fmt(price)}원${infoSuffix}`, { title: `🚨 ${name} 손절선 도달`, tag: `trail-hit-${code}` });
-      } else if (drawdown <= -5 && !st.trailNear && !st.trailHit) {
+      } else if (drawdown <= -5 && !st.trailNear && !st.trailHit && !alertsPaused) {
         st.trailNear = true;
         notifyAll(`⚠️ ${name}(${code}) 트레일링 손절(-7%) 근접: 고점 대비 ${drawdown.toFixed(1)}% · 현재가 ${fmt(price)}원${infoSuffix}`, { title: `⚠️ ${name} 손절 근접`, tag: `trail-near-${code}` });
       }
@@ -512,7 +532,7 @@ function checkAlerts(code, price) {
     const avg = pos ? +pos.avg_price : null;
     const upward = avg == null || target.price >= avg;
     const reached = upward ? price >= target.price : price <= target.price;
-    if (reached) {
+    if (reached && !alertsPaused) {
       st.targetHit = true;
       notifyAll(`🎯 ${name}(${code}) 목표가(${fmt(target.price)}원) 도달! 현재가 ${fmt(price)}원${infoSuffix}`, { title: `🎯 ${name} 목표가 도달`, tag: `target-${code}` });
     }
@@ -613,6 +633,16 @@ async function handleTelegramCommand(chatId, text) {
     await sendTelegramTo(chatId, '📋 현재 목표가 설정\n' + lines.join('\n'));
     return;
   }
+  if (/^\/?(?:알림끄기|알림중지|알림일시정지|mute|pause)\s*$/i.test(text)) {
+    alertsPaused = true;
+    await sendTelegramTo(chatId, '🔕 신고가·신저가·손절·목표가 알림을 일시정지했어요. ("오늘의 종목" 요약은 계속 발송돼요)\n다시 켜려면 /알림켜기');
+    return;
+  }
+  if (/^\/?(?:알림켜기|알림재개|알림켜|unmute|resume)\s*$/i.test(text)) {
+    alertsPaused = false;
+    await sendTelegramTo(chatId, '🔔 알림을 다시 켰어요.');
+    return;
+  }
   if (/^\/?(?:오늘요약|todaysummary|today)\s*$/i.test(text)) {
     await sendTelegramTo(chatId, '오늘의 종목 요약을 불러오는 중…');
     try {
@@ -630,8 +660,10 @@ async function handleTelegramCommand(chatId, text) {
       '/목표가삭제 [종목코드 또는 종목명] — 목표가 삭제\n' +
       '/목표가확인 — 현재 설정 목록\n' +
       '/오늘요약 — "오늘의 종목" 요약 즉시 받기 (매일 16:10엔 자동 발송)\n' +
+      '/알림끄기 — 신고가·신저가·손절·목표가 알림 일시정지 (오늘의 종목 요약은 계속 발송)\n' +
+      '/알림켜기 — 알림 다시 켜기\n' +
       '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
-      '보유 종목의 당일 신고가·신저가 갱신, 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.');
+      `보유 종목의 당일 신고가·신저가 갱신(직전 알림 대비 ${ALERT_MIN_MOVE_PCT}% 이상 갱신 시), 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.`);
     return;
   }
   if (text.startsWith('/')) {
@@ -915,6 +947,7 @@ const server = http.createServer((req, res) => {
       lastDailySummaryDate,
       pushConfigured: !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY),
       pushSubscriptionCount: pushSubscriptions.size,
+      alertsPaused,
       approvalKeyAgeMs: approvalKey ? Date.now() - approvalKeyIssuedAt : null,
     }));
     return;
