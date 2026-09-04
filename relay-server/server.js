@@ -245,6 +245,7 @@ const SANGTTA_LARGE_PRINT_MIN_COUNT = 3;         // 3회 이상
 const SANGTTA_MINUTE_VOL_RATIO_MIN  = 2.0;       // 분당거래대금 최근5분평균 대비 200%↑
 const SANGTTA_MINUTE_HISTORY_MIN    = 5;         // "최근 5분" 평균에 쓸 과거 분봉 수
 const SANGTTA_MAX_ENTRIES_PER_CODE  = 2;         // 3번째 진입 시도부터는 등급 C(배제)로 간주
+const SANGTTA_MAX_TRACKED           = 40;        // KIS 웹소켓 동시구독 한도 대응 — 최근 갱신순 상위 N개만 실시간 추적
 
 // 진입 등급별 가상매수 금액(스펙 4-1절 — 절대금액은 스펙에 없어 임의 기본값,
 // 필요시 조정하세요). A=풀사이즈, B=1/2, C=진입 배제.
@@ -333,9 +334,24 @@ async function sbWriteReturning(path, method, body) {
 async function refreshSangttaCandidates() {
   try {
     const today = kstDateStr();
-    const rows = await sbGet(`intraday_candidates?select=code&trade_date=eq.${today}`);
+    // created_at desc로 정렬해 "가장 최근에 (재)선정된" 순서를 얻고, 상위
+    // SANGTTA_MAX_TRACKED개만 남긴다 — KIS 웹소켓 동시구독 한도(~40) 대응.
+    // SCAN 단계가 하루종일 새 후보를 계속 upsert하면서 매번 created_at을
+    // now()로 갱신하므로, 오래 갱신되지 않은(=더 이상 조건에 안 걸리는)
+    // 후보는 자연스럽게 이 상위 N개 밖으로 밀려나 실시간 추적에서 제외된다.
+    const rows = await sbGet(
+      `intraday_candidates?select=code,created_at&trade_date=eq.${today}&order=created_at.desc`
+    );
+    const seen = new Set();
+    const ordered = [];
+    for (const r of rows) {
+      if (seen.has(r.code)) continue;
+      seen.add(r.code);
+      ordered.push(r.code);
+      if (ordered.length >= SANGTTA_MAX_TRACKED) break;
+    }
     sangttaCandidates.clear();
-    rows.forEach(r => sangttaCandidates.add(r.code));
+    ordered.forEach(c => sangttaCandidates.add(c));
     const missingNames = [...sangttaCandidates].filter(c => !codeNames.has(c));
     if (missingNames.length) {
       const nameRows = await sbGet(`stocks?select=code,name&code=in.(${missingNames.join(',')})`);
@@ -531,10 +547,80 @@ function checkSangttaExit(code, price, now) {
   if (price <= line) exitSangttaPosition(code, price, type);
 }
 
+// 프론트 "실시간 조건 트래킹" 표용 스냅샷. 후보/보유 종목이 아니면 null을
+// 반환해 관계없는 종목(기존 VIRTUAL 보유분 등)의 페이로드를 부풀리지 않는다.
+// handleSangttaTick() 호출(통계 갱신 + 진입/청산 판정) 이후에 불러야 그 틱의
+// 최신 상태(방금 갱신된 largePrints/minuteRatio, 방금 발생한 진입/청산 등)가
+// 반영된다. 기존 websocket 'price' 메시지에 sangtta 필드만 추가하는 방식이라
+// 새 메시지 타입/프로토콜 변경 없이, 이미 그 종목을 구독 중인 클라이언트가
+// 그대로 이 필드를 받는다.
+function sangttaLiveSnapshot(code, rec, price, now) {
+  const isCandidate = sangttaCandidates.has(code);
+  const pos = sangttaOpenPositions.get(code);
+  const isOpenPosition = !!pos;
+  if (!isCandidate && !isOpenPosition) return null;
+
+  const st = getSangttaStats(code);
+  const minuteKey = Math.floor(now / 60000);
+  const cttr = Number(rec[F_CTTR]);
+  const high = Number(rec[F_HIGH]);
+  const changePct = Number(rec[F_RATE]);
+  const largePrints = st.largePrints.length;
+  const minuteRatio = sangttaMinuteVolumeRatio(st, minuteKey);
+  const isNewHigh = Number.isFinite(high) && Number.isFinite(price) && price >= high;
+
+  const conditions = {
+    cttr: {
+      ok: Number.isFinite(cttr) && cttr >= SANGTTA_CTTR_MIN,
+      value: Number.isFinite(cttr) ? cttr : null,
+      threshold: SANGTTA_CTTR_MIN,
+      label: '체결강도',
+    },
+    largePrints: {
+      ok: largePrints >= SANGTTA_LARGE_PRINT_MIN_COUNT,
+      value: largePrints,
+      threshold: SANGTTA_LARGE_PRINT_MIN_COUNT,
+      label: '순간체결 5천만원+ (1분내)',
+    },
+    minuteRatio: {
+      ok: minuteRatio != null && minuteRatio >= SANGTTA_MINUTE_VOL_RATIO_MIN,
+      value: minuteRatio,
+      threshold: SANGTTA_MINUTE_VOL_RATIO_MIN,
+      label: '분당거래대금 비율',
+    },
+  };
+  const metConditions = Object.values(conditions).filter(c => c.ok).length;
+
+  const snap = {
+    isCandidate,
+    isOpenPosition,
+    entriesToday: sangttaEntriesToday.get(code) || 0,
+    isNewHigh,
+    changePct: Number.isFinite(changePct) ? changePct : null,
+    conditions,
+    metConditions,
+    totalConditions: Object.keys(conditions).length,
+  };
+
+  if (isOpenPosition) {
+    const { line, type } = sangttaStopLine(pos.entryPrice, pos.peakPrice);
+    snap.position = {
+      entryPrice: pos.entryPrice,
+      peakPrice: pos.peakPrice,
+      grade: pos.grade,
+      returnPct: (price - pos.entryPrice) / pos.entryPrice * 100,
+      peakReturnPct: (pos.peakPrice - pos.entryPrice) / pos.entryPrice * 100,
+      stopLine: line,
+      stopType: type,
+    };
+  }
+  return snap;
+}
+
 // handleKisMessage의 체결 틱 루프에서 매 틱 호출 — 후보/보유 종목이 아니면
 // 즉시 리턴하므로 관계없는 종목(기존 VIRTUAL 보유분 등) 처리에 부담을 주지 않음.
-function handleSangttaTick(code, price, rec) {
-  const now = Date.now();
+function handleSangttaTick(code, price, rec, now) {
+  now = now || Date.now();
   if (sangttaOpenPositions.has(code)) {
     checkSangttaExit(code, price, now);
     return;
@@ -628,6 +714,8 @@ function handleKisMessage(text) {
     if (!Number.isFinite(price)) continue;
 
     const dayHigh = trackDayHighLow(code, price); // 보유 종목이면 당일 고가/저가를 틱마다 갱신(트레일링·화면표시 공용)
+    const tickNow = Date.now();
+    handleSangttaTick(code, price, rec, tickNow); // 전략성과2(상따) 실시간 진입/청산 판정 — 스냅샷 생성 전에 먼저 실행해야 이번 틱 결과가 반영됨
 
     const payload = {
       type: 'price',
@@ -642,11 +730,12 @@ function handleKisMessage(text) {
       payload.dayHigh = dayHigh.high;
       payload.dayHighAt = dayHigh.highAt;
     }
+    const sangttaSnap = sangttaLiveSnapshot(code, rec, price, tickNow); // 전략성과2 "실시간 조건 트래킹" 표용 — 후보/보유 종목이 아니면 null
+    if (sangttaSnap) payload.sangtta = sangttaSnap;
     lastPrice.set(code, payload);
     broadcastToSubscribers(code, payload);
     checkAlerts(code, price);
     if (dayHigh) maybePersistPeak(code, dayHigh); // Supabase에 스로틀 저장(재시작/재접속 대비 영속화)
-    handleSangttaTick(code, price, rec); // 전략성과2(상따) 실시간 진입/청산 판정
   }
 }
 
