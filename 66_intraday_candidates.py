@@ -27,12 +27,25 @@ intraday_candidates(trade_date, code, source, rank, snapshot)에
   SUPABASE_DB_URL
   KIS_ACCESS_TOKEN               (있으면 재사용 — daily_collect.yml과 동일 관례)
 
+  - SCAN 단계는 장중(09:15~15:20 KST) 5분 간격으로 실행되어 거래대금순위
+    (FHPST01710000)로 "지금까지 후보에 없던" 신규 급등 종목을 계속 편입시킵
+    니다. 이 랭킹 API 파라미터(FID_COND_SCR_DIV_CODE=20171,
+    FID_DIV_CLS_CODE=3 등)도 이 환경에서는 실거래 없이 검증 불가능하여, 실패해도
+    스크립트가 죽지 않고 경고만 남기도록 방어적으로 구현했습니다. 최초 장중
+    실행 로그를 꼭 확인하세요.
+  - intraday_candidates는 (trade_date, code, source) UPSERT 시 created_at을
+    항상 now()로 갱신하므로, relay-server 쪽에서는 "최근에 갱신된 순"으로만
+    정렬해 상위 N개만 실시간 구독하면 자연스럽게 오래된 후보가 밀려납니다
+    (KIS 웹소켓 동시구독 한도 대응 — server.js SANGTTA_MAX_TRACKED 참고).
+
 사용법
   python 66_intraday_candidates.py pre_market
   python 66_intraday_candidates.py nxt
   python 66_intraday_candidates.py regular
+  python 66_intraday_candidates.py scan
 """
 import os, sys, time, datetime, json, threading
+from datetime import timezone, timedelta
 import requests, psycopg2
 from psycopg2.extras import execute_values, Json
 
@@ -43,15 +56,25 @@ DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
 CANDIDATE_POOL_LIMIT = 40   # NXT/REGULAR 단계에서 종목별 현재가를 조회할 최대 종목 수
 TOP_N = 10
+SCAN_TOP_N = 15             # SCAN 단계에서 신규 편입할 최대 종목 수(1회 실행당)
+
+# SCAN 단계 유효 시간대(KST, 분 단위) — 정규장 초반 재선별(09:12) 직후부터
+# 장 마감 전까지만 의미가 있음. 크론 자체는 넉넉하게 걸어두고 여기서 내부 가드.
+SCAN_START_MIN = 9 * 60 + 15
+SCAN_END_MIN = 15 * 60 + 20
+
+KST = timezone(timedelta(hours=9))
 
 if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 환경변수를 설정하세요.")
 
 STAGE = sys.argv[1] if len(sys.argv) > 1 else ""
-if STAGE not in ("pre_market", "nxt", "regular"):
-    sys.exit("사용법: python 66_intraday_candidates.py [pre_market|nxt|regular]")
+if STAGE not in ("pre_market", "nxt", "regular", "scan"):
+    sys.exit("사용법: python 66_intraday_candidates.py [pre_market|nxt|regular|scan]")
 
-TODAY = datetime.date.today().isoformat()
+_now_kst = datetime.datetime.now(KST)
+TODAY = _now_kst.date().isoformat()
+_KST_MINUTES_NOW = _now_kst.hour * 60 + _now_kst.minute
 
 
 # ── 공통 유틸 ────────────────────────────────────────────────────────────────
@@ -341,14 +364,117 @@ def stage_regular():
     upsert_candidates(rows, "REGULAR")
 
 
+def fetch_all_known_codes():
+    """오늘 이미 후보로 잡힌 모든 종목(어느 source든) — SCAN에서 중복 편입 방지용."""
+    conn = psycopg2.connect(DB_URL)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT code FROM intraday_candidates WHERE trade_date=%s",
+                (TODAY,),
+            )
+            return {r[0] for r in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def fetch_volume_rank(token, limit=30):
+    """FHPST01710000 (거래대금순위). 파라미터 검증 불가 항목 — 구현 노트 참고.
+    실패 시 빈 리스트를 반환하고 경고만 남김(스크립트는 계속 진행)."""
+    _rate.acquire()
+    try:
+        r = requests.get(
+            f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/volume-rank",
+            headers=kis_headers(token, "FHPST01710000"),
+            params={
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_COND_SCR_DIV_CODE": "20171",
+                "FID_INPUT_ISCD": "0000",
+                "FID_DIV_CLS_CODE": "3",       # 3=거래대금순 (검증 필요)
+                "FID_BLNG_CLS_CODE": "0",
+                "FID_TRGT_CLS_CODE": "111111111",
+                "FID_TRGT_EXLS_CLS_CODE": "0000000000",
+                "FID_INPUT_PRICE_1": "",
+                "FID_INPUT_PRICE_2": "",
+                "FID_VOL_CNT": "",
+                "FID_INPUT_DATE_1": "",
+            },
+            timeout=10,
+        )
+        if r.status_code != 200:
+            print(f"  ⚠ SCAN: 거래대금순위 API 응답코드 {r.status_code} — 스킵")
+            return []
+        d = r.json()
+        if d.get("rt_cd") != "0":
+            print(f"  ⚠ SCAN: 거래대금순위 API rt_cd={d.get('rt_cd')} msg={d.get('msg1')} — 파라미터 재검증 필요, 스킵")
+            return []
+        rows = d.get("output", []) or []
+        return rows[:limit]
+    except Exception as e:
+        print(f"  ⚠ SCAN: 거래대금순위 조회 실패(파라미터 재검증 필요): {e}")
+        return []
+
+
+# ── 4) 장중 연속 스캔 (SCAN, 09:15~15:20, 5분 간격) ───────────────────────────
+def stage_scan():
+    """휴리스틱: NEW_DETECTED(웹소켓 체결 기반)는 이미 구독 중인 종목에서만
+    포착 가능하므로, 시장 전체에서 완전히 새로운 급등 종목을 잡아내려면 REST
+    랭킹 API로 주기적으로 훑어야 함. 여기서 찾은 신규 종목만 SCAN 소스로
+    upsert하고(기존 후보 재중복 skip), relay-server가 2분 주기로 폴링해
+    자동으로 실시간 구독 대상에 편입시킨다(server.js refreshSangttaCandidates)."""
+    if not (SCAN_START_MIN <= _KST_MINUTES_NOW <= SCAN_END_MIN):
+        print(f"  SCAN: 장중 스캔 시간대(09:15~15:20 KST) 밖(현재 {_now_kst.strftime('%H:%M')} KST) — 스킵")
+        return
+
+    token = get_token()
+    if not token:
+        print("  SCAN: KIS 토큰 없음 — 스킵")
+        return
+
+    ranked = fetch_volume_rank(token, limit=30)
+    if not ranked:
+        return
+
+    known = fetch_all_known_codes()
+    new_rows = []
+    for i, out in enumerate(ranked, start=1):
+        code = out.get("mksc_shrn_iscd") or out.get("stck_shrn_iscd") or out.get("code")
+        if not code or code in known:
+            continue
+        change_pct = safe_num(out.get("prdy_ctrt"))
+        price = safe_num(out.get("stck_prpr"))
+        acc_amt = safe_num(out.get("acml_tr_pbmn"))
+        new_rows.append({
+            "code": code,
+            "rank": i,
+            "snapshot": {
+                "price": price,
+                "change_pct": change_pct,
+                "acc_amt": acc_amt,
+                "detected_at": _now_kst.strftime("%H:%M:%S"),
+            },
+        })
+        if len(new_rows) >= SCAN_TOP_N:
+            break
+
+    if not new_rows:
+        print(f"  SCAN: 거래대금순위 {len(ranked)}건 중 신규 종목 없음(모두 기존 후보) — 저장 생략")
+        return
+
+    print(f"  SCAN: 거래대금순위 {len(ranked)}건 중 신규 {len(new_rows)}건 편입")
+    upsert_candidates(new_rows, "SCAN")
+
+
 def main():
-    print(f"▶ 전략성과2 후보 생성 — stage={STAGE}, date={TODAY}")
+    print(f"▶ 전략성과2 후보 생성 — stage={STAGE}, date={TODAY} (KST {_now_kst.strftime('%H:%M')})")
     if STAGE == "pre_market":
         stage_pre_market()
     elif STAGE == "nxt":
         stage_nxt()
     elif STAGE == "regular":
         stage_regular()
+    elif STAGE == "scan":
+        stage_scan()
 
 
 if __name__ == "__main__":
