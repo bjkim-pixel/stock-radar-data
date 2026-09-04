@@ -44,7 +44,7 @@ body{margin:0;background:var(--page);color:var(--ink);font-size:13.5px;line-heig
   -webkit-font-smoothing:antialiased}
 .wrap{max-width:1480px;margin:0 auto;padding:0 20px 80px}
 .num{font-variant-numeric:tabular-nums}
-.up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--ink-2)} .faint{color:var(--ink-3)}
+.up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--ink-2)} .faint{color:var(--ink-3)} .good{color:var(--good)}
 b{font-weight:640}
 a.lk{color:inherit;text-decoration:underline dotted var(--ink-3);text-underline-offset:2px;cursor:pointer}
 a.lk:hover{color:var(--up);text-decoration-color:var(--up)}
@@ -1004,6 +1004,13 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       손절 · 진입가 기준 -2% 하드캡, 이후 고점 대비 트레일링(-2%→-1.5%→-1%로 단계적으로 좁힘) &nbsp;·&nbsp; 장마감 전 강제청산</div>
   </div>
 
+  <div class="card"><h3>실시간 조건 트래킹 <span class="r" id="i2LiveCount"></span></h3>
+    <div class="faint" style="font-size:11px;margin:0 0 8px">지금 추적 중인 후보/보유 종목이 매수 조건을 실시간으로 얼마나 충족하고 있는지 보여줍니다(체결 틱마다 갱신, KIS 웹소켓 동시구독 한도 대응으로 최근 갱신순 상위 종목만 표시). 초록 배지가 붙은 조건은 지금 충족 중이라는 뜻입니다.</div>
+    <div class="tw"><table><thead><tr>
+      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th>충족조건</th>
+    </tr></thead><tbody id="i2LiveBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
+  </div>
+
   <div class="card"><h3>보유 중 <span class="r" id="i2OpenCount"></span></h3>
     <div class="tw"><table><thead><tr>
       <th class="l">종목</th><th>진입가</th><th title="한국투자증권 실시간 웹소켓 시세">시세</th><th>수익률</th><th class="l">매수사유</th><th>진입시각</th>
@@ -1095,7 +1102,9 @@ async function loadDataStatus(){
 const S={date:null,sectors:[],sector:null,stocks:[],market:[],flowCache:{},chart:{},codes:[],
   pairStockSort:"change_pct",
   liveWs:null,liveSubscribed:new Set(),livePrices:{},liveReconnectTimer:null,liveReconnectDelay:2000,
-  dbPeak:{}};
+  dbPeak:{},
+  swingWanted:new Set(),sangttaWanted:new Set(),   // "전략성과"/"전략성과2" 탭이 각각 원하는 실시간 구독 코드 — reconcileLiveSubscription()이 합쳐서 실제 구독
+  i2Live:{},i2NameOf:{},i2LiveRenderPending:false,curTab:null};
 
 /* ══ KIS 실시간 시세 릴레이 연결 (보유 중 표 전용) ═══════════════════════ */
 function liveCellHtml(code){
@@ -1171,6 +1180,7 @@ function ensureLiveConn(){
     if(m.type!=="price"||!m.code) return;
     S.livePrices[m.code]=m;
     updateLiveCell(m.code,m);
+    if(m.sangtta) updateI2Live(m.code,m);
   };
   ws.onclose=()=>{
     if(S.liveWs===ws) S.liveWs=null;
@@ -1181,14 +1191,17 @@ function ensureLiveConn(){
   };
   ws.onerror=()=>{ try{ws.close();}catch(_){} };
 }
-// 보유 중 종목이 바뀔 때마다 호출 — 이전 구독과 비교해서 늘어난/줄어든 종목만 갱신
-function setLiveSubscription(codes){
-  const want=new Set(codes);
+// "전략성과"(스윙, VIRTUAL) 탭과 "전략성과2"(상따) 탭은 각자 원하는 실시간
+// 구독 종목이 다르지만 KIS 웹소켓 연결은 하나만 씀. 두 탭을 동시에 열어봐도
+// 서로의 구독을 덮어쓰지 않도록, 원하는 코드 집합을 따로 들고 있다가
+// 합집합으로만 실제 구독을 갱신한다.
+function reconcileLiveSubscription(){
+  const want=new Set([...S.swingWanted,...S.sangttaWanted]);
   const cur=S.liveSubscribed;
   const toAdd=[...want].filter(c=>!cur.has(c));
   const toRemove=[...cur].filter(c=>!want.has(c));
   S.liveSubscribed=want;
-  toRemove.forEach(c=>delete S.livePrices[c]);
+  toRemove.forEach(c=>{delete S.livePrices[c]; delete S.i2Live[c];});
   if(!toAdd.length && !toRemove.length) return;
   ensureLiveConn();
   const ws=S.liveWs;
@@ -1198,6 +1211,8 @@ function setLiveSubscription(codes){
   }
   // 아직 연결 전이면 onopen 핸들러가 S.liveSubscribed 전체를 구독 요청함
 }
+function setSwingLiveCodes(codes){ S.swingWanted=new Set(codes); reconcileLiveSubscription(); }
+function setSangttaLiveCodes(codes){ S.sangttaWanted=new Set(codes); reconcileLiveSubscription(); }
 
 /* ══ 테이블 정렬 ═══════════════════════════════════════════════════ */
 function sortVal(txt){
@@ -1596,6 +1611,7 @@ $$("#tabs button").forEach(b=>b.onclick=()=>go(b.dataset.v));
 function go(v){
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
   if(cur&&cur!==v)S.prevView=cur;
+  S.curTab=v;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
   ["proc","today","flow","scr","pair","detail","perf","perf2"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   scrollTo(0,0);
@@ -1610,6 +1626,11 @@ function go(v){
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
 $("#dBackTop").onclick=()=>go(S.prevView||"proc");
+// 전략성과2 탭이 열려있는 동안 30초마다 후보/보유/청산 목록을 새로 불러와
+// 장중 계속 바뀌는 후보(SCAN 신규 편입 등)와 방금 일어난 매수/매도를 반영.
+// 틱 단위 실시간 갱신(체결강도 등)은 웹소켓이 담당하고, 이 폴링은 그보다
+// 느리게 바뀌는 목록 자체(누가 후보인지/보유인지/청산됐는지)를 갱신한다.
+setInterval(()=>{ if(S.curTab==="perf2") loadPerf2().catch(()=>{}); }, 30000);
 // 표 헤더가 sticky로 붙는 위치(--stick-top)를 전역 헤더의 실제 렌더 높이로
 // 맞춥니다. 고정폭을 하드코딩하면 모바일에서 헤더 줄바꿈 등으로 어긋나므로,
 // 항상 실측치를 씁니다. 표는 안쪽 스크롤 없이 페이지 스크롤을 그대로 씁니다.
@@ -2941,6 +2962,77 @@ function setupPairCarouselNav(pageCount){
 const I_EXIT_LABEL={HARD_STOP:"하드캡 손절 -2%",TRAILING_STOP:"트레일링 손절",MARKET_CLOSE:"장마감 강제청산"};
 const I_STAGE_LABEL={PRE_MARKET:"장전(전날 배치)",NXT:"NXT(08:00~08:45)",REGULAR:"정규장 초반(09:10~09:15)",NEW_DETECTED:"장중 신규 포착"};
 
+// 체결 틱마다 날아오는 sangtta 스냅샷을 저장하고, 너무 잦은 재렌더(초당
+// 수십 회 가능)를 막기 위해 requestAnimationFrame으로 한 프레임에 몰아서 그림.
+function updateI2Live(code,m){
+  S.i2Live[code]={code,price:m.price,changePct:m.changePct,...m.sangtta};
+  if(S.i2LiveRenderPending) return;
+  S.i2LiveRenderPending=true;
+  requestAnimationFrame(()=>{ S.i2LiveRenderPending=false; renderI2LiveFromState(); });
+}
+// loadPerf2()가 만들어둔 최근 표시 대상(wanted)·보유종목(openCodes) 기준으로
+// 다시 그릴 때 씀 — 틱이 와서 재렌더할 때는 그 목록을 S에 저장해뒀다가 재사용.
+function renderI2LiveFromState(){
+  renderI2Live(S.i2LiveWanted||[], S.i2LiveOpenCodes||[]);
+}
+const I2_COND_LABEL={cttr:"체결강도",largePrints:"대량체결",minuteRatio:"분당거래대금"};
+function condBadges(conds){
+  if(!conds) return '<span class="faint">–</span>';
+  return Object.entries(conds).map(([k,c])=>{
+    const label=I2_COND_LABEL[k]||k;
+    const cls=c.ok?"good":"faint";
+    return `<span class="${cls}" style="margin-right:6px;font-size:10.5px">${c.ok?"●":"○"} ${label}</span>`;
+  }).join("");
+}
+// wanted: 지금 표에 보여야 할 코드 목록(후보+보유), openCodes: 그중 보유중인 것.
+// 정렬: 보유중 먼저(진입가 대비 손절선까지 여유가 핵심 관심사), 그 다음
+// 후보는 "충족 조건 개수 desc → 등락률 desc" 순 — 매수 임박도가 높은 순.
+function renderI2Live(wanted,openCodes){
+  S.i2LiveWanted=wanted; S.i2LiveOpenCodes=openCodes;
+  const openSet=new Set(openCodes||[]);
+  $("#i2LiveCount").innerHTML = wanted.length?`<b>${wanted.length}</b>종목 추적 중`:"";
+  if(!wanted.length){
+    $("#i2LiveBody").innerHTML='<tr><td colspan="9" class="load">추적 중인 종목 없음</td></tr>';
+    return;
+  }
+  const rows=wanted.map(code=>{
+    const live=S.i2Live[code];
+    return {code, live, isOpen:openSet.has(code)};
+  });
+  rows.sort((a,b)=>{
+    if(a.isOpen!==b.isOpen) return a.isOpen?-1:1;
+    const am=a.live?.metConditions??-1, bm=b.live?.metConditions??-1;
+    if(am!==bm) return bm-am;
+    const ac=a.live?.changePct??-999, bc=b.live?.changePct??-999;
+    return bc-ac;
+  });
+  $("#i2LiveBody").innerHTML = rows.map(({code,live,isOpen})=>{
+    const name=S.i2NameOf[code]||code;
+    if(!live){
+      return `<tr><td class="l"><a class="lk nm" data-code="${code}">${name}</a></td>
+        <td class="faint">${isOpen?"보유중":"후보"}</td>
+        <td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td>
+        <td class="faint">체결 대기 중…</td></tr>`;
+    }
+    const cttr=live.conditions?.cttr;
+    const lp=live.conditions?.largePrints;
+    const mr=live.conditions?.minuteRatio;
+    const statusLabel=isOpen
+      ? `보유중${live.position?` <span class="faint">(${live.position.grade}등급)</span>`:""}`
+      : (live.metConditions>=3?'<span class="good">매수 임박</span>':`후보(${live.metConditions??0}/${live.totalConditions??3})`);
+    return `<tr><td class="l"><a class="lk nm" data-code="${code}">${name}</a></td>
+      <td class="l">${statusLabel}</td>
+      <td class="num">${N(live.price)}</td>
+      <td class="${sgn(live.changePct)}">${live.changePct==null?"–":pm(live.changePct,2)+"%"}</td>
+      <td class="${cttr?.ok?"good":""}">${cttr&&cttr.value!=null?N(cttr.value,0):"–"}</td>
+      <td class="${lp?.ok?"good":""}">${lp?lp.value:"–"}</td>
+      <td class="${mr?.ok?"good":""}">${mr&&mr.value!=null?N(mr.value,1)+"x":"–"}</td>
+      <td class="${live.isNewHigh?"good":"faint"}">${live.isNewHigh?"신고가":"–"}</td>
+      <td class="l">${condBadges(live.conditions)}</td></tr>`;
+  }).join("");
+  $$("#i2LiveBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+}
+
 async function loadPerf2(){
   try{
     const today = S.date;
@@ -2968,12 +3060,25 @@ async function loadPerf2(){
       <div class="tile"><div class="lb">당일 실현손익</div><div class="vl ${sgn(+s.realized_pnl||0)}">${pm((+s.realized_pnl||0)/EOK,3)}억</div></div>
       <div class="tile"><div class="lb">승률</div><div class="vl">${s.trade_count?N(s.win_count/s.trade_count*100,1)+"%":"–"}</div></div>`;
 
-    // ── 보유중 실시간가 ───────────────────────────────────────────────
-    // 주의: 기존 setLiveSubscription은 "전략 성과" 탭의 보유종목 구독용으로도
-    // 쓰이므로, 두 탭을 동시에 볼 때 구독 목록이 서로 덮어써질 수 있음.
-    // 추후 두 리스트를 합쳐서 구독하도록 setLiveSubscription 쪽 보완 필요.
+    // ── 실시간 조건 트래킹 대상 선정 ────────────────────────────────────
+    // 보유 중 종목은 항상 포함(계속 감시해야 하므로), 후보는 최근 갱신순으로
+    // 최대 I2_LIVE_DISPLAY_MAX개까지만 화면에 표시 + 실시간 구독한다(KIS
+    // 웹소켓 동시구독 한도 ~40개 대응). intraday_candidates는 이미
+    // source.asc,rank.asc 순으로 받아왔으므로 여기서는 등장 순서를 그대로
+    // "최근성" 근사치로 사용한다(정확한 최근 갱신순은 relay-server가 이미
+    // created_at desc로 골라 추적 중인 코드 목록이며, 서버가 다시 만들어
+    // 보내주는 것은 아니라서 프론트에서는 이 근사치로 표시 대상만 추린다).
+    const I2_LIVE_DISPLAY_MAX=18;
     const opCodes=[...new Set(op.map(p=>p.code))];
-    setLiveSubscription(opCodes);
+    const candCodesOrdered=[...new Set(cand.map(c=>c.code))];
+    const candDisplay=candCodesOrdered.filter(c=>!opCodes.includes(c)).slice(0,I2_LIVE_DISPLAY_MAX);
+    const liveWanted=[...new Set([...opCodes,...candDisplay])];
+    setSangttaLiveCodes(liveWanted);
+    S.i2NameOf={...nameOf};
+    cand.forEach(c=>{ if(!S.i2NameOf[c.code]) S.i2NameOf[c.code]=c.code; });
+    // 더 이상 추적 대상이 아닌 종목은 표에서도 지움
+    Object.keys(S.i2Live).forEach(c=>{ if(!liveWanted.includes(c)) delete S.i2Live[c]; });
+    renderI2Live(liveWanted, opCodes);
     S.i2LastClose={};
     if(opCodes.length){
       const cRows=await q("v_screener",`select=code,close&trade_date=eq.${today}&code=in.(${opCodes.join(",")})`);
@@ -3023,7 +3128,7 @@ async function loadPerf(){
 
     // 보유 중 종목의 당일 종가 (미실현손익·수익률 계산용)
     const opCodes=[...new Set(op.map(p=>p.code))];
-    setLiveSubscription(opCodes); // KIS 실시간 시세 구독을 보유 종목에 맞춰 갱신
+    setSwingLiveCodes(opCodes); // KIS 실시간 시세 구독을 보유 종목에 맞춰 갱신
     S.lastClose={};
     if(opCodes.length){
       const cRows=await q("v_screener",
