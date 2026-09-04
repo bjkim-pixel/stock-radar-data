@@ -55,7 +55,7 @@
 --    만족 못 하는" 과거 후보 행을 절대 지우지 않습니다. 조건을 더 엄격하게
 --    바꿔도(예: 등락률 필터 추가) 예전 느슨한 조건일 때 만들어진 V4_CAND_* 행이
 --    테이블에 그대로 남아있어서 06_portfolio.py가 여전히 그 종목을 사들이는
---    문제가 있었습니다. 매번 재계산 구간의 후보를 통째로 지우고 새로 채웁니다.
+--    문제가 있었습니다. 매번 재계산 구간의 후보를 통째로 지우고 새로 채웁.
 DELETE FROM signals
 WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
   AND signal_type LIKE 'V4_CAND_%'
