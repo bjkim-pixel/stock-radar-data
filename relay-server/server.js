@@ -146,6 +146,8 @@ setInterval(() => {
 function wantedCodes() {
   const w = new Set(heldCodes);
   for (const code of subscribers.keys()) w.add(code);
+  for (const code of sangttaCandidates) w.add(code);
+  for (const code of sangttaOpenPositions.keys()) w.add(code);
   return w;
 }
 
@@ -222,6 +224,375 @@ function sendKisSubscribe(code, subscribe) {
 }
 
 const F_CODE = 0, F_TIME = 1, F_PRICE = 2, F_SIGN = 3, F_DIFF = 4, F_RATE = 5;
+// H0STCNT0(주식체결) 전체 필드 — 상따 엔진이 체결강도/순간체결금액/거래대금을
+// 계산하려면 앞 6개 필드만으로는 부족해서 추가로 씀 (KIS 공식 필드 순서).
+const F_HIGH = 8, F_CNTG_VOL = 12, F_ACML_AMT = 14, F_CTTR = 18;
+
+// ----------------------------------------------------------------------------
+// 3-B) 전략성과2(상따) 실시간 엔진 — sangtta_virtual_trading_spec.md 4~7절
+// ----------------------------------------------------------------------------
+// 기존 "전략 성과"(VIRTUAL 스윙 포트폴리오)와 완전히 분리된 별도 엔진입니다.
+// intraday_positions(portfolio='INTRADAY_SANGTTA') 테이블만 다루고,
+// positions(portfolio='VIRTUAL') 쪽 로직(위 1~2절)에는 손대지 않습니다.
+const SANGTTA_ENTRY_START_MIN = 9 * 60 + 15;   // 09:15 이전 진입 금지(관망+재선별 구간)
+const SANGTTA_FORCE_CLOSE_MIN = 15 * 60 + 19;  // 15:19 이후 보유분 강제 청산(동시호가 직전)
+const SANGTTA_MARKET_END_MIN  = 15 * 60 + 30;  // 이 시각 이후엔 신규 체결 자체가 없다고 보고 정산 트리거
+
+const SANGTTA_CTTR_MIN            = 150;         // 체결강도 150%↑
+const SANGTTA_LARGE_PRINT_KRW     = 50_000_000;  // 순간체결금액 5천만원↑
+const SANGTTA_LARGE_PRINT_WINDOW_MS = 60_000;    // "최근 1분 내"
+const SANGTTA_LARGE_PRINT_MIN_COUNT = 3;         // 3회 이상
+const SANGTTA_MINUTE_VOL_RATIO_MIN  = 2.0;       // 분당거래대금 최근5분평균 대비 200%↑
+const SANGTTA_MINUTE_HISTORY_MIN    = 5;         // "최근 5분" 평균에 쓸 과거 분봉 수
+const SANGTTA_MAX_ENTRIES_PER_CODE  = 2;         // 3번째 진입 시도부터는 등급 C(배제)로 간주
+
+// 진입 등급별 가상매수 금액(스펙 4-1절 — 절대금액은 스펙에 없어 임의 기본값,
+// 필요시 조정하세요). A=풀사이즈, B=1/2, C=진입 배제.
+const SANGTTA_SIZE_KRW = { A: 10_000_000, B: 5_000_000 };
+
+// 6-1절 단계형 트레일링 손절표 — 진입가 대비 "고점 기준" 최고수익률 구간별로
+// 손절선을 좁혀감. 0~5% 구간만 예외적으로 "진입가" 기준 하드캡(-2%).
+function sangttaStopLine(entryPrice, peakPrice) {
+  const peakRet = (peakPrice - entryPrice) / entryPrice * 100;
+  if (peakRet <= 5)  return { line: entryPrice * (1 - 0.02),  type: 'HARD_STOP' };
+  if (peakRet <= 10) return { line: peakPrice  * (1 - 0.02),  type: 'TRAILING_STOP' };
+  if (peakRet <= 20) return { line: peakPrice  * (1 - 0.015), type: 'TRAILING_STOP' };
+  return                    { line: peakPrice  * (1 - 0.01),  type: 'TRAILING_STOP' };
+}
+
+function kstMinutesNow() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: KST_TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  const h = +parts.find(p => p.type === 'hour').value;
+  const m = +parts.find(p => p.type === 'minute').value;
+  return h * 60 + m;
+}
+
+const sangttaCandidates   = new Set();               // 오늘의 후보 코드 (intraday_candidates)
+const sangttaOpenPositions = new Map();               // code -> {id, entryPrice, peakPrice, peakTime, qty, grade}
+const sangttaEntriesToday  = new Map();               // code -> 오늘 누적 진입 시도 횟수 (등급 C 판정용)
+const sangttaTickStats     = new Map();               // code -> {minuteBuckets:Map, largePrints:number[]}
+let sangttaDailySummaryDoneFor = null;                // 오늘 이미 정산했으면 날짜 문자열
+
+function getSangttaStats(code) {
+  let st = sangttaTickStats.get(code);
+  if (!st) { st = { minuteBuckets: new Map(), largePrints: [] }; sangttaTickStats.set(code, st); }
+  return st;
+}
+
+// 틱마다 분당 누적거래대금 버킷과 "대량체결(5천만원↑)" 발생 시각을 갱신.
+// minuteBuckets는 최근 SANGTTA_MINUTE_HISTORY_MIN+1분치만 남기고 정리.
+function updateSangttaTickStats(code, price, cntgVol, now) {
+  const st = getSangttaStats(code);
+  const minuteKey = Math.floor(now / 60000);
+  const amt = price * (Number.isFinite(cntgVol) ? cntgVol : 0);
+
+  st.minuteBuckets.set(minuteKey, (st.minuteBuckets.get(minuteKey) || 0) + amt);
+  const cutoffMinute = minuteKey - (SANGTTA_MINUTE_HISTORY_MIN + 1);
+  for (const k of st.minuteBuckets.keys()) if (k < cutoffMinute) st.minuteBuckets.delete(k);
+
+  if (amt >= SANGTTA_LARGE_PRINT_KRW) st.largePrints.push(now);
+  const cutoffMs = now - SANGTTA_LARGE_PRINT_WINDOW_MS;
+  while (st.largePrints.length && st.largePrints[0] < cutoffMs) st.largePrints.shift();
+
+  return { minuteKey, st };
+}
+
+// 현재 진행 중인 분(minuteKey)의 누적거래대금 ÷ 그 직전 완결된 최근 N분 평균.
+// 과거 분봉 데이터가 부족하면(장 시작 직후 등) null을 돌려주고 진입 조건에서 스킵.
+function sangttaMinuteVolumeRatio(st, minuteKey) {
+  const cur = st.minuteBuckets.get(minuteKey) || 0;
+  const prevKeys = [];
+  for (let k = minuteKey - 1; k >= minuteKey - SANGTTA_MINUTE_HISTORY_MIN; k--) prevKeys.push(k);
+  const prevAmts = prevKeys.map(k => st.minuteBuckets.get(k)).filter(v => v != null);
+  if (prevAmts.length < SANGTTA_MINUTE_HISTORY_MIN) return null;
+  const avg = prevAmts.reduce((a, b) => a + b, 0) / prevAmts.length;
+  if (avg <= 0) return null;
+  return cur / avg;
+}
+
+// service_role 키로 쓰기 + INSERT 결과 반환(대기 중인 id를 바로 알아야 해서
+// 기존 sbWrite의 Prefer:return=minimal 대신 return=representation 사용).
+async function sbWriteReturning(path, method, body) {
+  if (!SUPABASE_SERVICE_KEY) throw new Error('SUPABASE_SERVICE_KEY 미설정');
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: {
+      apikey: SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      'content-type': 'application/json',
+      Prefer: 'return=representation',
+    },
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${method} ${path} ${res.status} ${await res.text().catch(() => '')}`);
+  return res.json();
+}
+
+async function refreshSangttaCandidates() {
+  try {
+    const today = kstDateStr();
+    const rows = await sbGet(`intraday_candidates?select=code&trade_date=eq.${today}`);
+    sangttaCandidates.clear();
+    rows.forEach(r => sangttaCandidates.add(r.code));
+    const missingNames = [...sangttaCandidates].filter(c => !codeNames.has(c));
+    if (missingNames.length) {
+      const nameRows = await sbGet(`stocks?select=code,name&code=in.(${missingNames.join(',')})`);
+      nameRows.forEach(r => codeNames.set(r.code, r.name));
+    }
+    reconcileKisSubscriptions();
+  } catch (err) {
+    console.error('[상따] 후보 갱신 실패:', err.message);
+  }
+}
+const SANGTTA_CANDIDATE_POLL_MS = 2 * 60 * 1000;
+setInterval(refreshSangttaCandidates, SANGTTA_CANDIDATE_POLL_MS);
+
+// 이미 CLOSED된 오늘자 포지션을 서버 재시작 후에도 "몇 번째 진입인지" 알 수 있게
+// 시작 시 한 번 채워둠(sangttaEntriesToday는 메모리 상태라 재시작하면 0부터
+// 다시 셀 위험이 있어서, 서버 켤 때 오늘자 기존 포지션 수로 보정).
+async function primeSangttaEntryCounts() {
+  try {
+    const today = kstDateStr();
+    const rows = await sbGet(`intraday_positions?select=code&portfolio=eq.INTRADAY_SANGTTA&trade_date=eq.${today}`);
+    rows.forEach(r => sangttaEntriesToday.set(r.code, (sangttaEntriesToday.get(r.code) || 0) + 1));
+  } catch (err) {
+    console.error('[상따] 진입횟수 초기화 실패:', err.message);
+  }
+}
+
+async function primeSangttaOpenPositions() {
+  try {
+    const rows = await sbGet('intraday_positions?select=*&portfolio=eq.INTRADAY_SANGTTA&status=eq.OPEN');
+    rows.forEach(p => {
+      sangttaOpenPositions.set(p.code, {
+        id: p.id,
+        entryPrice: +p.entry_price,
+        peakPrice: +p.peak_price || +p.entry_price,
+        entryTime: p.entry_time ? new Date(p.entry_time).getTime() : Date.now(),
+        peakTime: p.peak_at ? new Date(p.peak_at).getTime() : Date.now(),
+        qty: (p.entry_reason && p.entry_reason.quantity) || 0,
+        grade: (p.entry_reason && p.entry_reason.entry_grade) || null,
+      });
+    });
+    if (rows.length) reconcileKisSubscriptions();
+  } catch (err) {
+    console.error('[상따] 보유 포지션 초기화 실패:', err.message);
+  }
+}
+
+function sangttaGradeFor(code, isNewHigh) {
+  const tries = (sangttaEntriesToday.get(code) || 0) + 1; // 이번 시도 포함
+  if (tries >= SANGTTA_MAX_ENTRIES_PER_CODE + 1) return 'C';   // 3번째 시도부터 배제
+  if (tries === 1) return isNewHigh ? 'A' : 'B';               // 최초 진입: 신고가 돌파면 A, 아니면 보수적으로 B
+  return 'B';                                                   // 재진입은 B(1/2 사이즈)
+}
+
+async function enterSangttaPosition(code, price, grade, ctx) {
+  const sizeKrw = SANGTTA_SIZE_KRW[grade];
+  const qty = Math.max(1, Math.floor(sizeKrw / price));
+  const now = new Date();
+  const reasonText = `체결강도 ${ctx.cttr.toFixed(0)}% · 1분내 대량체결 ${ctx.largePrints}회 · `
+    + `분당거래대금 ${ctx.minuteRatio.toFixed(1)}배 · 등급${grade} (${ctx.source})`;
+  const entry_reason = {
+    entry_grade: grade,
+    source: ctx.source,
+    execution_strength: ctx.cttr,
+    large_prints_1min: ctx.largePrints,
+    minute_volume_ratio: ctx.minuteRatio,
+    change_pct_at_entry: ctx.changePct,
+    entry_amount_krw: sizeKrw,
+    quantity: qty,
+    reason_text: reasonText,
+  };
+
+  sangttaEntriesToday.set(code, (sangttaEntriesToday.get(code) || 0) + 1);
+  // 낙관적으로 먼저 메모리에 반영 — DB insert가 늦게 끝나는 사이 다음 틱이
+  // 같은 종목을 중복 진입시키지 않도록 함(placeholder id는 insert 성공 시 교체).
+  sangttaOpenPositions.set(code, { id: null, entryPrice: price, peakPrice: price, entryTime: now.getTime(), peakTime: now.getTime(), qty, grade });
+
+  try {
+    const rows = await sbWriteReturning('intraday_positions', 'POST', [{
+      portfolio: 'INTRADAY_SANGTTA', code, name: codeNames.get(code) || null,
+      trade_date: kstDateStr(), entry_time: now.toISOString(), entry_price: Math.round(price),
+      entry_reason, peak_price: Math.round(price), peak_time: now.toISOString(), status: 'OPEN',
+    }]);
+    const row = rows && rows[0];
+    if (row) {
+      const pos = sangttaOpenPositions.get(code);
+      if (pos) pos.id = row.id;
+      insertSangttaDecisionEvent(row.id, 'ENTRY', { price, ...entry_reason }).catch(() => {});
+      console.log(`[상따] 진입 ${codeNames.get(code) || code}(${code}) ${grade}등급 @${price} — ${reasonText}`);
+    }
+  } catch (err) {
+    console.error(`[상따] ${code} 진입 기록 실패:`, err.message);
+  }
+  reconcileKisSubscriptions();
+}
+
+async function exitSangttaPosition(code, price, exitType, extra = {}) {
+  const pos = sangttaOpenPositions.get(code);
+  if (!pos) return;
+  sangttaOpenPositions.delete(code); // 중복 청산 방지를 위해 먼저 제거
+
+  const now = new Date();
+  const holdMinutes = Math.round((now.getTime() - (pos.entryTime || pos.peakTime)) / 60000);
+  const realized_pnl = Math.round(pos.qty * (price - pos.entryPrice));
+  const return_pct = (price - pos.entryPrice) / pos.entryPrice * 100;
+  const peakRet = (pos.peakPrice - pos.entryPrice) / pos.entryPrice * 100;
+  const reasonText = exitType === 'MARKET_CLOSE'
+    ? `장마감 강제청산 · 최고수익 ${peakRet >= 0 ? '+' : ''}${peakRet.toFixed(1)}%에서 마감`
+    : `${exitType === 'HARD_STOP' ? '하드캡' : '트레일링'} 손절 · 최고수익 ${peakRet >= 0 ? '+' : ''}${peakRet.toFixed(1)}%에서 반락`;
+  const exit_reason = {
+    exit_type: exitType,
+    peak_price: Math.round(pos.peakPrice),
+    peak_time: new Date(pos.peakTime).toISOString(),
+    hold_minutes: holdMinutes,
+    reason_text: reasonText,
+  };
+
+  try {
+    await sbWrite(`intraday_positions?id=eq.${pos.id}`, 'PATCH', {
+      status: 'CLOSED', exit_time: now.toISOString(), exit_price: Math.round(price),
+      exit_reason, realized_pnl, return_pct,
+    });
+    insertSangttaDecisionEvent(pos.id, 'EXIT', { price, ...exit_reason, realized_pnl, return_pct }).catch(() => {});
+    console.log(`[상따] 청산 ${codeNames.get(code) || code}(${code}) ${exitType} @${price} — ${reasonText}`);
+  } catch (err) {
+    console.error(`[상따] ${code} 청산 기록 실패:`, err.message);
+  }
+  reconcileKisSubscriptions();
+}
+
+async function insertSangttaDecisionEvent(positionId, eventType, metrics) {
+  if (!positionId) return;
+  try {
+    await sbWrite('intraday_decision_events', 'POST', [{
+      position_id: positionId, event_type: eventType,
+      event_time: new Date().toISOString(), metrics,
+    }]);
+  } catch (err) {
+    console.error('[상따] decision_event 기록 실패:', err.message);
+  }
+}
+
+// 진입 조건 판정 (스펙 4절) — 후보 목록에 있거나, 목록 밖이라도 대량체결이
+// 반복되면(3-3절 "장중 신규 편입") 조건 검사 대상에 포함.
+function maybeEnterSangtta(code, price, rec, now) {
+  if (sangttaOpenPositions.has(code)) return;              // 이미 보유 중
+  // 통계(분당거래대금 버킷·대량체결 카운트)는 진입 허용 시각과 무관하게 09:00
+  // 장 시작 틱부터 계속 쌓아둬야, 09:15에 진입이 열리는 순간 바로 "최근 5분
+  // 평균"을 계산할 수 있음(그렇지 않으면 09:15~09:20은 항상 데이터 부족으로
+  // 진입 불가능해짐).
+  const { minuteKey, st } = updateSangttaTickStats(code, price, Number(rec[F_CNTG_VOL]), now);
+
+  const minutesNow = kstMinutesNow();
+  if (minutesNow < SANGTTA_ENTRY_START_MIN || minutesNow >= SANGTTA_FORCE_CLOSE_MIN) return;
+
+  const isCandidate = sangttaCandidates.has(code);
+  const largePrints = st.largePrints.length;
+  const isNewDetected = !isCandidate && largePrints >= SANGTTA_LARGE_PRINT_MIN_COUNT;
+  if (!isCandidate && !isNewDetected) return;
+
+  const cttr = Number(rec[F_CTTR]);
+  const changePct = Number(rec[F_RATE]);
+  const high = Number(rec[F_HIGH]);
+  if (!Number.isFinite(cttr) || cttr < SANGTTA_CTTR_MIN) return;
+  if (largePrints < SANGTTA_LARGE_PRINT_MIN_COUNT) return;
+  const minuteRatio = sangttaMinuteVolumeRatio(st, minuteKey);
+  if (minuteRatio == null || minuteRatio < SANGTTA_MINUTE_VOL_RATIO_MIN) return;
+
+  const isNewHigh = Number.isFinite(high) && price >= high;
+  const grade = sangttaGradeFor(code, isNewHigh);
+  if (grade === 'C') {
+    console.log(`[상따] ${code} 조건 충족했으나 등급C(배제) — 진입 스킵`);
+    return;
+  }
+  enterSangttaPosition(code, price, grade, {
+    source: isCandidate ? 'CANDIDATE' : 'NEW_DETECTED',
+    cttr, largePrints, minuteRatio, changePct,
+  });
+}
+
+// 보유 중인 상따 포지션의 고점 갱신 + 트레일링 손절 판정 (스펙 6-1절) +
+// 장마감 강제청산 (6-2절)
+function checkSangttaExit(code, price, now) {
+  const pos = sangttaOpenPositions.get(code);
+  if (!pos) return;
+  if (price > pos.peakPrice) { pos.peakPrice = price; pos.peakTime = now; }
+
+  const minutesNow = kstMinutesNow();
+  if (minutesNow >= SANGTTA_FORCE_CLOSE_MIN) {
+    exitSangttaPosition(code, price, 'MARKET_CLOSE');
+    return;
+  }
+  const { line, type } = sangttaStopLine(pos.entryPrice, pos.peakPrice);
+  if (price <= line) exitSangttaPosition(code, price, type);
+}
+
+// handleKisMessage의 체결 틱 루프에서 매 틱 호출 — 후보/보유 종목이 아니면
+// 즉시 리턴하므로 관계없는 종목(기존 VIRTUAL 보유분 등) 처리에 부담을 주지 않음.
+function handleSangttaTick(code, price, rec) {
+  const now = Date.now();
+  if (sangttaOpenPositions.has(code)) {
+    checkSangttaExit(code, price, now);
+    return;
+  }
+  if (!sangttaCandidates.has(code)) {
+    // 후보 목록 밖이라도 대량체결 누적 여부는 계속 추적해야 "장중 신규 편입"을
+    // 감지할 수 있으므로, 통계 갱신 자체는 스킵하지 않고 진행.
+  }
+  maybeEnterSangtta(code, price, rec, now);
+}
+
+// intraday_daily_summary는 trade_date가 PK라 그냥 POST하면 이미 있을 때 실패함 —
+// POST 먼저 시도하고 충돌 나면 PATCH로 덮어써서 upsert처럼 동작시킴(재정산 시에도 안전).
+async function upsertSangttaDailySummary(row) {
+  try {
+    await sbWrite('intraday_daily_summary', 'POST', [row]);
+  } catch (_) {
+    await sbWrite(`intraday_daily_summary?trade_date=eq.${row.trade_date}`, 'PATCH', row);
+  }
+}
+
+async function computeAndSaveSangttaDailySummary() {
+  const today = kstDateStr();
+  if (sangttaDailySummaryDoneFor === today) return;
+  try {
+    const closed = await sbGet(`intraday_positions?select=entry_price,exit_price,entry_reason,realized_pnl&portfolio=eq.INTRADAY_SANGTTA&status=eq.CLOSED&trade_date=eq.${today}`);
+    if (!closed.length) { sangttaDailySummaryDoneFor = today; return; }
+    const qtyOf = p => (p.entry_reason && p.entry_reason.quantity) || 0;
+    const total_buy_amt  = closed.reduce((a, p) => a + (+p.entry_price || 0) * qtyOf(p), 0);
+    const total_sell_amt = closed.reduce((a, p) => a + (+p.exit_price  || 0) * qtyOf(p), 0);
+    const realized_pnl = closed.reduce((a, p) => a + (+p.realized_pnl || 0), 0);
+    const win_count = closed.filter(p => +p.realized_pnl > 0).length;
+    const loss_count = closed.filter(p => +p.realized_pnl <= 0).length;
+    const return_pct = total_buy_amt > 0 ? realized_pnl / total_buy_amt * 100 : null;
+    await upsertSangttaDailySummary({
+      trade_date: today, total_buy_amt, total_sell_amt, realized_pnl, return_pct,
+      trade_count: closed.length, win_count, loss_count,
+    });
+    sangttaDailySummaryDoneFor = today;
+    console.log(`[상따] 일별 정산 완료 (${today}) — ${closed.length}건, 손익 ${realized_pnl.toLocaleString('ko-KR')}원`);
+  } catch (err) {
+    console.error('[상따] 일별 정산 실패:', err.message);
+  }
+}
+
+// 15:19~15:25 KST 사이, 남아있는 상따 보유분을 마지막 시세로 강제 청산하고
+// 정산을 트리거. setInterval 주기(30초) 안에서 매번 체크하되 하루 한 번만 동작.
+setInterval(() => {
+  const minutesNow = kstMinutesNow();
+  if (minutesNow < SANGTTA_FORCE_CLOSE_MIN || minutesNow > SANGTTA_MARKET_END_MIN) return;
+  for (const code of [...sangttaOpenPositions.keys()]) {
+    const cached = lastPrice.get(code);
+    const price = cached ? cached.price : sangttaOpenPositions.get(code).peakPrice;
+    exitSangttaPosition(code, price, 'MARKET_CLOSE');
+  }
+  computeAndSaveSangttaDailySummary();
+}, 30_000);
+
 
 function handleKisMessage(text) {
   if (text[0] === '{') {
@@ -275,6 +646,7 @@ function handleKisMessage(text) {
     broadcastToSubscribers(code, payload);
     checkAlerts(code, price);
     if (dayHigh) maybePersistPeak(code, dayHigh); // Supabase에 스로틀 저장(재시작/재접속 대비 영속화)
+    handleSangttaTick(code, price, rec); // 전략성과2(상따) 실시간 진입/청산 판정
   }
 }
 
@@ -978,6 +1350,26 @@ const server = http.createServer((req, res) => {
       });
     return;
   }
+  if (req.url && req.url.startsWith('/trigger-intraday-summary')) {
+    const u = new URL(req.url, 'http://internal');
+    const token = u.searchParams.get('token');
+    if (DAILY_SUMMARY_TOKEN && token !== DAILY_SUMMARY_TOKEN) {
+      res.writeHead(403, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'forbidden' }));
+      return;
+    }
+    sangttaDailySummaryDoneFor = null; // 강제 트리거는 이미 정산했어도 다시 계산
+    computeAndSaveSangttaDailySummary()
+      .then(() => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      })
+      .catch(err => {
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      });
+    return;
+  }
   if (req.url === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
@@ -994,6 +1386,11 @@ const server = http.createServer((req, res) => {
       pushSubscriptionCount: pushSubscriptions.size,
       alertsPaused,
       approvalKeyAgeMs: approvalKey ? Date.now() - approvalKeyIssuedAt : null,
+      sangtta: {
+        candidateCount: sangttaCandidates.size,
+        openPositionCount: sangttaOpenPositions.size,
+        dailySummaryDoneFor: sangttaDailySummaryDoneFor,
+      },
     }));
     return;
   }
@@ -1065,6 +1462,9 @@ issueApprovalKey()
     refreshHoldings();
     loadTargetPrices();
     loadPushSubscriptions();
+    primeSangttaEntryCounts();
+    primeSangttaOpenPositions();
+    refreshSangttaCandidates();
     server.listen(PORT, () => {
       console.log(`[server] 릴레이 서버 실행 중 (port ${PORT})`);
     });
