@@ -382,6 +382,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <button data-v="pair">짝꿍매매</button>
     <button data-v="detail">종목 상세</button>
     <button data-v="perf">전략 성과</button>
+    <button data-v="perf2">전략 성과2</button>
   </nav>
 </header>
 
@@ -987,6 +988,35 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 </section>
 
+<!-- ═══════════ 전략 성과2 (상따 가상매매) ═══════════ -->
+<section id="v-perf2" class="hide">
+  <div class="card" style="margin-top:16px"><h3>당일 요약 <span class="r">가상매매 · 상한가 따라잡기(상따)</span></h3>
+    <div class="tiles" id="i2Summary"><div class="load">불러오는 중…</div></div>
+  </div>
+
+  <div class="card"><h3>오늘의 후보 <span class="r" id="i2StageNote">단계별 갱신</span></h3>
+    <div class="faint" style="font-size:11px;margin:0 0 8px">진행 순서: 장전(전날 배치 재활용) → NXT(08:00~08:45) → 정규장 초반(09:10~09:15 관망 후 재선별) → 장중 신규 포착(순간체결량 감지)</div>
+    <div id="i2CandWrap"><div class="load">불러오는 중…</div></div>
+  </div>
+
+  <div class="card"><h3>매수 조건</h3>
+    <div class="cond-common">체결강도 150%↑ &nbsp;·&nbsp; 1분 내 5천만원↑ 대량체결 3회↑ &nbsp;·&nbsp; 분당거래대금 최근5분 평균 대비 200%↑ &nbsp;·&nbsp; 관망구간(09:00~09:10) 제외<br>
+      손절 · 진입가 기준 -2% 하드캡, 이후 고점 대비 트레일링(-2%→-1.5%→-1%로 단계적으로 좁힘) &nbsp;·&nbsp; 장마감 전 강제청산</div>
+  </div>
+
+  <div class="card"><h3>보유 중 <span class="r" id="i2OpenCount"></span></h3>
+    <div class="tw"><table><thead><tr>
+      <th class="l">종목</th><th>진입가</th><th title="한국투자증권 실시간 웹소켓 시세">시세</th><th>수익률</th><th class="l">매수사유</th><th>진입시각</th>
+    </tr></thead><tbody id="i2OpenBody"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
+  </div>
+
+  <div class="card"><h3>청산 이력 <span class="r" id="i2PerfCount"></span></h3>
+    <div class="tw"><table><thead><tr>
+      <th class="l">종목</th><th>진입가</th><th>청산가</th><th>수익률</th><th class="l">매수사유</th><th class="l">매도사유</th><th>실현손익</th>
+    </tr></thead><tbody id="i2PerfBody"><tr><td colspan="7" class="load">청산 이력 없음</td></tr></tbody></table></div>
+  </div>
+</section>
+
 </div>
 
 <!-- ── 스크리닝 조건 팝업 ── -->
@@ -1567,10 +1597,11 @@ function go(v){
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
   if(cur&&cur!==v)S.prevView=cur;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
-  ["proc","today","flow","scr","pair","detail","perf"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","today","flow","scr","pair","detail","perf","perf2"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   scrollTo(0,0);
   if(v==="detail"&&!S.chart.code)loadDetail((S.codes.find(c=>c.code==="000660")||S.codes[0])?.code);
   if(v==="perf")loadPerf();
+  if(v==="perf2")loadPerf2();
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);})}
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
     Promise.all([loadFlowTrends(),loadFlowLists()]).catch(()=>{});}
@@ -2904,6 +2935,78 @@ function setupPairCarouselNav(pageCount){
   };
   track.onscroll=()=>requestAnimationFrame(update);
   update();
+}
+
+/* ══ 전략 성과2 (상따 가상매매) ══ */
+const I_EXIT_LABEL={HARD_STOP:"하드캡 손절 -2%",TRAILING_STOP:"트레일링 손절",MARKET_CLOSE:"장마감 강제청산"};
+const I_STAGE_LABEL={PRE_MARKET:"장전(전날 배치)",NXT:"NXT(08:00~08:45)",REGULAR:"정규장 초반(09:10~09:15)",NEW_DETECTED:"장중 신규 포착"};
+
+async function loadPerf2(){
+  try{
+    const today = S.date;
+    const cl = await q("intraday_positions","select=*&portfolio=eq.INTRADAY_SANGTTA&status=eq.CLOSED&order=exit_time.desc");
+    const op = await q("intraday_positions","select=*&portfolio=eq.INTRADAY_SANGTTA&status=eq.OPEN&order=entry_time.asc");
+    const cand = await q("intraday_candidates",`select=*&trade_date=eq.${today}&order=source.asc,rank.asc`);
+    const sumRows = await q("intraday_daily_summary",`select=*&trade_date=eq.${today}`);
+    const nameOf={}; S.codes.forEach(c=>nameOf[c.code]=c.name);
+
+    // ── 오늘의 후보 (단계별) ──────────────────────────────────────────
+    const bySource={};
+    cand.forEach(c=>{(bySource[c.source]=bySource[c.source]||[]).push(c);});
+    const stageOrder=["PRE_MARKET","NXT","REGULAR","NEW_DETECTED"];
+    $("#i2CandWrap").innerHTML = stageOrder.filter(s=>bySource[s]?.length).map(s=>`
+      <div style="margin-bottom:10px">
+        <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">${I_STAGE_LABEL[s]}</div>
+        <div>${bySource[s].map(c=>`<span class="fchip" style="margin:0 4px 4px 0">${nameOf[c.code]||c.code}</span>`).join("")}</div>
+      </div>`).join("") || '<div class="load">아직 후보 없음</div>';
+
+    // ── 당일 요약 카드 ────────────────────────────────────────────────
+    const s = sumRows[0]||{};
+    $("#i2Summary").innerHTML = `
+      <div class="tile"><div class="lb">보유중</div><div class="vl">${op.length}건</div></div>
+      <div class="tile"><div class="lb">청산</div><div class="vl">${cl.length}건</div></div>
+      <div class="tile"><div class="lb">당일 실현손익</div><div class="vl ${sgn(+s.realized_pnl||0)}">${pm((+s.realized_pnl||0)/EOK,3)}억</div></div>
+      <div class="tile"><div class="lb">승률</div><div class="vl">${s.trade_count?N(s.win_count/s.trade_count*100,1)+"%":"–"}</div></div>`;
+
+    // ── 보유중 실시간가 ───────────────────────────────────────────────
+    // 주의: 기존 setLiveSubscription은 "전략 성과" 탭의 보유종목 구독용으로도
+    // 쓰이므로, 두 탭을 동시에 볼 때 구독 목록이 서로 덮어써질 수 있음.
+    // 추후 두 리스트를 합쳐서 구독하도록 setLiveSubscription 쪽 보완 필요.
+    const opCodes=[...new Set(op.map(p=>p.code))];
+    setLiveSubscription(opCodes);
+    S.i2LastClose={};
+    if(opCodes.length){
+      const cRows=await q("v_screener",`select=code,close&trade_date=eq.${today}&code=in.(${opCodes.join(",")})`);
+      cRows.forEach(r=>S.i2LastClose[r.code]=+r.close);
+    }
+
+    $("#i2OpenCount").innerHTML=`<b>${op.length}</b>건`;
+    $("#i2OpenBody").innerHTML = op.length ? op.map(p=>{
+      const close=S.i2LastClose[p.code]||+p.entry_price;
+      const ret=(close-+p.entry_price)/+p.entry_price*100;
+      const reason=(p.entry_reason&&p.entry_reason.reason_text)||"–";
+      return `<tr>
+        <td class="l"><a class="lk nm" data-code="${p.code}">${p.name||nameOf[p.code]||p.code}</a></td>
+        <td>${N(+p.entry_price)}</td><td>${N(close)}</td>
+        <td class="${sgn(ret)}">${pm(ret)}%</td>
+        <td class="l faint">${reason}</td>
+        <td>${p.entry_time?p.entry_time.slice(11,16):"–"}</td>
+      </tr>`;
+    }).join("") : '<tr><td colspan="6" class="load">보유중 없음</td></tr>';
+
+    $("#i2PerfCount").innerHTML=`<b>${cl.length}</b>건`;
+    $("#i2PerfBody").innerHTML = cl.length ? cl.map(p=>{
+      const er=p.exit_reason||{};
+      return `<tr>
+      <td class="l"><a class="lk nm" data-code="${p.code}">${p.name||nameOf[p.code]||p.code}</a></td>
+      <td>${N(+p.entry_price)}</td><td>${N(+p.exit_price)}</td>
+      <td class="${sgn(+p.return_pct)}">${pm(+p.return_pct)}%</td>
+      <td class="l faint">${(p.entry_reason&&p.entry_reason.reason_text)||"–"}</td>
+      <td class="l faint">${I_EXIT_LABEL[er.exit_type]||er.reason_text||"–"}</td>
+      <td class="${sgn(+p.realized_pnl)}">${pm(+p.realized_pnl,0)}</td>
+    </tr>`;
+    }).join("") : '<tr><td colspan="7" class="load">청산 이력 없음</td></tr>';
+  }catch(e){ console.error("loadPerf2 실패", e); }
 }
 
 /* ══ 전략 성과 ══ */
