@@ -1,0 +1,80 @@
+name: Intraday Sangtta Candidates (전략성과2 후보)
+
+# sangtta_virtual_trading_spec.md 1~3절의 3단계 후보 생성을 스케줄대로 실행합니다.
+# intraday_candidates 테이블에 단계별(source)로 UPSERT됩니다.
+#
+# ⚠ KST → UTC 변환 (KST = UTC+9)
+#   07:50 KST(장전)      = 전날 22:50 UTC → cron dow 0-4 (일~목)
+#   08:40 KST(NXT 막판)  = 전날 23:40 UTC → cron dow 0-4 (일~목)
+#   09:12 KST(정규장초반) = 당일 00:12 UTC → cron dow 1-5 (월~금)
+on:
+  schedule:
+    - cron: "50 22 * * 0-4"   # 07:50 KST — PRE_MARKET
+    - cron: "40 23 * * 0-4"   # 08:40 KST — NXT
+    - cron: "12 0 * * 1-5"    # 09:12 KST — REGULAR
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: '수동 실행 단계 (pre_market / nxt / regular)'
+        required: true
+        default: 'pre_market'
+
+jobs:
+  candidates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install psycopg2-binary requests
+
+      - name: Determine stage
+        id: stage
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "stage=${{ github.event.inputs.stage }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "50 22 * * 0-4" ]; then
+            echo "stage=pre_market" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "40 23 * * 0-4" ]; then
+            echo "stage=nxt" >> "$GITHUB_OUTPUT"
+          else
+            echo "stage=regular" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get shared KIS token (NXT/REGULAR 단계만 필요)
+        id: kistoken
+        if: steps.stage.outputs.stage != 'pre_market'
+        env:
+          KIS_APP_KEY:    ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: |
+          RESP=$(curl -s -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
+            -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
+          TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+          if [ -z "$TOKEN" ]; then
+            echo "::error::KIS 토큰 발급 실패: $RESP"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Run candidate generation
+        env:
+          KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+          KIS_ACCESS_TOKEN: ${{ steps.kistoken.outputs.token }}
+        run: python 66_intraday_candidates.py "${{ steps.stage.outputs.stage }}"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::전략성과2 후보 생성 실패(${{ steps.stage.outputs.stage }})! GitHub Actions 로그를 확인하세요."
