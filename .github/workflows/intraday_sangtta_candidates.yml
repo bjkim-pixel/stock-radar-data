@@ -7,22 +7,30 @@ name: Intraday Sangtta Candidates (전략성과2 후보)
 #   07:50 KST(장전)      = 전날 22:50 UTC → cron dow 0-4 (일~목)
 #   08:40 KST(NXT 막판)  = 전날 23:40 UTC → cron dow 0-4 (일~목)
 #   09:12 KST(정규장초반) = 당일 00:12 UTC → cron dow 1-5 (월~금)
+#   09:00~15:55 KST(장중 연속 스캔, 5분 간격) = 당일 00:00~06:55 UTC → dow 1-5 (월~금)
+#     (같은 UTC 날짜 구간이라 요일 이동 없음 — SCAN 단계 자체 내부에서도
+#      09:15~15:20만 실제로 동작하도록 한 번 더 가드함, 크론 구간은 여유있게)
 on:
   schedule:
     - cron: "50 22 * * 0-4"   # 07:50 KST — PRE_MARKET
     - cron: "40 23 * * 0-4"   # 08:40 KST — NXT
     - cron: "12 0 * * 1-5"    # 09:12 KST — REGULAR
+    - cron: "*/5 0-6 * * 1-5" # 09:00~15:55 KST, 5분 간격 — SCAN
   workflow_dispatch:
     inputs:
       stage:
-        description: '수동 실행 단계 (pre_market / nxt / regular)'
+        description: '수동 실행 단계 (pre_market / nxt / regular / scan)'
         required: true
         default: 'pre_market'
+
+concurrency:
+  group: intraday-sangtta-candidates
+  cancel-in-progress: false
 
 jobs:
   candidates:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 4
 
     steps:
       - name: Checkout
@@ -45,11 +53,13 @@ jobs:
             echo "stage=pre_market" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "40 23 * * 0-4" ]; then
             echo "stage=nxt" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "${{ github.event.schedule }}" = "12 0 * * 1-5" ]; then
             echo "stage=regular" >> "$GITHUB_OUTPUT"
+          else
+            echo "stage=scan" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Get shared KIS token (NXT/REGULAR 단계만 필요)
+      - name: Get shared KIS token (NXT/REGULAR/SCAN 단계만 필요)
         id: kistoken
         if: steps.stage.outputs.stage != 'pre_market'
         env:
