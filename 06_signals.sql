@@ -58,7 +58,8 @@
 --    문제가 있었습니다. 매번 재계산 구간의 후보를 통째로 지우고 새로 채웁니다.
 DELETE FROM signals
 WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
-  AND signal_type LIKE 'V4_CAND_%';
+  AND signal_type LIKE 'V4_CAND_%'
+  AND trade_date >= current_date - interval '1 day';
 
 -- @@STEP: V4_CAND_TREND / V4_CAND_CLOSEBET 생성 (전략별 1·2·3단계 스크리닝)
 WITH base AS (
