@@ -1007,8 +1007,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   <div class="card"><h3>실시간 조건 트래킹 <span class="r" id="i2LiveCount"></span></h3>
     <div class="faint" style="font-size:11px;margin:0 0 8px">지금 추적 중인 후보/보유 종목이 매수 조건을 실시간으로 얼마나 충족하고 있는지 보여줍니다(체결 틱마다 갱신, KIS 웹소켓 동시구독 한도 대응으로 최근 갱신순 상위 종목만 표시). 초록 배지가 붙은 조건은 지금 충족 중이라는 뜻입니다.</div>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th>충족조건</th>
-    </tr></thead><tbody id="i2LiveBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
+      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th title="보유 종목만 추적(구독 슬롯 절약) — 최근 5분 순매수거래대금">프로그램매매(5분)</th><th>충족조건</th>
+    </tr></thead><tbody id="i2LiveBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
   <div class="card"><h3>보유 중 <span class="r" id="i2OpenCount"></span></h3>
@@ -2984,6 +2984,18 @@ function condBadges(conds){
     return `<span class="${cls}" style="margin-right:6px;font-size:10.5px">${c.ok?"●":"○"} ${label}</span>`;
   }).join("");
 }
+// 프로그램매매는 보유 종목에만 구독(구독 슬롯 절약 — relay-server 설계 참고)하므로
+// "후보"는 항상 미추적, "보유중"인데 값이 없으면 구독은 됐지만 아직 체결 틱이
+// 없었다는 뜻 — 이 둘을 다른 문구로 구분해서 헷갈리지 않게 함.
+function programTradeCell(live,isOpen){
+  if(!isOpen) return '<span class="faint" title="프로그램매매는 보유 종목만 추적합니다">–</span>';
+  const pt=live?.position?.programTrade;
+  if(!pt) return '<span class="faint">체결 없음</span>';
+  const amt=pt.netBuyAmt5min;
+  const cls=amt>0?"good":(amt<0?"down":"faint");
+  const sign=amt>0?"+":"";
+  return `<span class="${cls}" title="최근 5분 순매수거래대금 합계 · 틱 ${pt.tickCount}건">${sign}${N(amt/10000,0)}만</span>`;
+}
 // wanted: 지금 표에 보여야 할 코드 목록(후보+보유), openCodes: 그중 보유중인 것.
 // 정렬: 보유중 먼저(진입가 대비 손절선까지 여유가 핵심 관심사), 그 다음
 // 후보는 "충족 조건 개수 desc → 등락률 desc" 순 — 매수 임박도가 높은 순.
@@ -2992,7 +3004,7 @@ function renderI2Live(wanted,openCodes){
   const openSet=new Set(openCodes||[]);
   $("#i2LiveCount").innerHTML = wanted.length?`<b>${wanted.length}</b>종목 추적 중`:"";
   if(!wanted.length){
-    $("#i2LiveBody").innerHTML='<tr><td colspan="9" class="load">추적 중인 종목 없음</td></tr>';
+    $("#i2LiveBody").innerHTML='<tr><td colspan="10" class="load">추적 중인 종목 없음</td></tr>';
     return;
   }
   const rows=wanted.map(code=>{
@@ -3011,7 +3023,7 @@ function renderI2Live(wanted,openCodes){
     if(!live){
       return `<tr><td class="l"><a class="lk nm" data-code="${code}">${name}</a></td>
         <td class="faint">${isOpen?"보유중":"후보"}</td>
-        <td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td>
+        <td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td>
         <td class="faint">체결 대기 중…</td></tr>`;
     }
     const cttr=live.conditions?.cttr;
@@ -3028,6 +3040,7 @@ function renderI2Live(wanted,openCodes){
       <td class="${lp?.ok?"good":""}">${lp?lp.value:"–"}</td>
       <td class="${mr?.ok?"good":""}">${mr&&mr.value!=null?N(mr.value,1)+"x":"–"}</td>
       <td class="${live.isNewHigh?"good":"faint"}">${live.isNewHigh?"신고가":"–"}</td>
+      <td>${programTradeCell(live,isOpen)}</td>
       <td class="l">${condBadges(live.conditions)}</td></tr>`;
   }).join("");
   $$("#i2LiveBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
