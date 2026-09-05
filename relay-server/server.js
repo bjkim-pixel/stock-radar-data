@@ -88,7 +88,8 @@ let reconnectAttempt = 0;
 
 const subscribers = new Map();   // code -> Set(clientWs) : 프론트엔드가 요청한 구독
 const lastPrice = new Map();     // code -> 마지막 시세 (신규 구독 시 즉시 전달용)
-const currentKisSubs = new Set(); // 지금 KIS에 실제로 등록해둔 코드
+const currentKisSubs = new Set(); // 지금 KIS에 실제로 등록해둔 코드(H0STCNT0, 체결가)
+const currentProgramTradeSubs = new Set(); // 지금 KIS에 실제로 등록해둔 코드(H0STPGM0, 프로그램매매)
 
 const heldCodes = new Set();        // "보유 중" 종목 코드 (Supabase에서 주기적으로 갱신)
 const positionsByCode = new Map();  // code -> {avg_price, peak_price}
@@ -178,8 +179,10 @@ function connectKisWs() {
     console.log('[KIS WS] 연결됨');
     kisWsReady = true;
     reconnectAttempt = 0;
-    currentKisSubs.clear(); // 새 연결이라 KIS 쪽엔 아무것도 등록 안 된 상태
+    currentKisSubs.clear();          // 새 연결이라 KIS 쪽엔 아무것도 등록 안 된 상태
+    currentProgramTradeSubs.clear();
     reconcileKisSubscriptions();
+    reconcileProgramTradeSubscriptions();
   });
 
   kisWs.on('message', (raw) => {
@@ -208,8 +211,9 @@ function reconnectKisWs() {
   setTimeout(() => connectKisWs(), 500);
 }
 
-// tr_type: '1' = 등록(구독), '2' = 해지
-function sendKisSubscribe(code, subscribe) {
+// tr_type: '1' = 등록(구독), '2' = 해지. trId를 인자로 받도록 일반화해서
+// H0STCNT0(체결가) 뿐 아니라 H0STPGM0(프로그램매매) 구독/해지에도 재사용.
+function sendKisSubscribe(code, subscribe, trId = 'H0STCNT0') {
   if (!kisWsReady || !approvalKey) return;
   const msg = {
     header: {
@@ -218,7 +222,7 @@ function sendKisSubscribe(code, subscribe) {
       tr_type: subscribe ? '1' : '2',
       'content-type': 'utf-8',
     },
-    body: { input: { tr_id: 'H0STCNT0', tr_key: code } },
+    body: { input: { tr_id: trId, tr_key: code } },
   };
   kisWs.send(JSON.stringify(msg));
 }
@@ -227,6 +231,115 @@ const F_CODE = 0, F_TIME = 1, F_PRICE = 2, F_SIGN = 3, F_DIFF = 4, F_RATE = 5;
 // H0STCNT0(주식체결) 전체 필드 — 상따 엔진이 체결강도/순간체결금액/거래대금을
 // 계산하려면 앞 6개 필드만으로는 부족해서 추가로 씀 (KIS 공식 필드 순서).
 const F_HIGH = 8, F_CNTG_VOL = 12, F_ACML_AMT = 14, F_CTTR = 18;
+
+// ----------------------------------------------------------------------------
+// 3-C) 프로그램매매(H0STPGM0) 실시간 구독 — 상따 보조 신호
+// ----------------------------------------------------------------------------
+// 종목별로 구독을 1개 더 늘리는 비용이 있어서(KIS 웹소켓 동시구독 슬롯 제한),
+// 후보 40개 전체가 아니라 "실제로 포지션을 보유 중인" 종목에만 건다.
+// (설계 검토 문서 "구독 슬롯 문제" 참고 — 슬롯이 넉넉한 걸로 확인되면
+// programTradeWantedCodes()에 sangttaCandidates도 합치면 됨)
+const KIS_PROGRAM_TRADE_TR_ID = 'H0STPGM0';
+const SANGTTA_PROGRAM_TRADE_WINDOW_MS = 5 * 60 * 1000; // "최근 5분" 순매수 합산 윈도우
+
+// H0STPGM0 응답 Body 필드 순서(KIS Developers 포털 확정본).
+// ⚠ NTBY_CNQN/NTBY_TR_PBMN엔 ACML_(누적) 접두어가 없음 — H0STCNT0의
+//   CNTG_VOL(틱당,접두어없음) vs ACML_VOL(누적,ACML_ 접두어) 네이밍 패턴과
+//   같다고 보고 일단 "이번 체결 건 단독 값"으로 구현했음. 월요일 장 시작
+//   직후 실제 tick 로그("[프로그램매매 검증]")로 재검증 필요 — 만약 누적치로
+//   밝혀지면 updateProgramTradeStats()의 합산 로직만 델타 계산으로 바꾸면 됨.
+const P_CODE = 0, P_TIME = 1, P_SELN_CNQN = 2, P_SELN_AMT = 3,
+      P_SHNU_CNQN = 4, P_SHNU_AMT = 5, P_NTBY_CNQN = 6, P_NTBY_AMT = 7,
+      P_SELN_RSQN = 8, P_SHNU_RSQN = 9, P_WHOL_NTBY_QTY = 10;
+
+const sangttaProgramStats = new Map();     // code -> { ticks: [{t, ntbyCnqn, ntbyAmt}] }
+const programTradeVerifyLogged = new Map(); // code -> 검증 로그 출력 횟수(종목당 최대 3회)
+
+function programTradeWantedCodes() {
+  return new Set(sangttaOpenPositions.keys());
+}
+
+function reconcileProgramTradeSubscriptions() {
+  const want = programTradeWantedCodes();
+  for (const code of want) {
+    if (!currentProgramTradeSubs.has(code)) {
+      currentProgramTradeSubs.add(code);
+      sendKisSubscribe(code, true, KIS_PROGRAM_TRADE_TR_ID);
+      console.log('[프로그램매매 구독 추가]', code);
+    }
+  }
+  for (const code of [...currentProgramTradeSubs]) {
+    if (!want.has(code)) {
+      currentProgramTradeSubs.delete(code);
+      sendKisSubscribe(code, false, KIS_PROGRAM_TRADE_TR_ID);
+      sangttaProgramStats.delete(code);
+      programTradeVerifyLogged.delete(code);
+      console.log('[프로그램매매 구독 해제]', code);
+    }
+  }
+}
+
+function getProgramStats(code) {
+  let st = sangttaProgramStats.get(code);
+  if (!st) { st = { ticks: [] }; sangttaProgramStats.set(code, st); }
+  return st;
+}
+
+// 프로그램매매 틱 1건을 반영하고 최근 5분 윈도우로 정리.
+function updateProgramTradeStats(code, ntbyCnqn, ntbyAmt, now) {
+  const st = getProgramStats(code);
+  st.ticks.push({ t: now, ntbyCnqn, ntbyAmt });
+  const cutoff = now - SANGTTA_PROGRAM_TRADE_WINDOW_MS;
+  while (st.ticks.length && st.ticks[0].t < cutoff) st.ticks.shift();
+}
+
+// 프론트/스냅샷용 — 최근 5분간 순매수거래대금 합계, 마지막 틱 값 등을 반환.
+// 아직 틱이 한 번도 없었으면(프로그램매매 자체가 없는 종목) null.
+function getProgramTradeSnapshot(code) {
+  const st = sangttaProgramStats.get(code);
+  if (!st || !st.ticks.length) return null;
+  const netBuyAmt5min = st.ticks.reduce((a, x) => a + x.ntbyAmt, 0);
+  const netBuyQty5min = st.ticks.reduce((a, x) => a + x.ntbyCnqn, 0);
+  const last = st.ticks[st.ticks.length - 1];
+  return {
+    netBuyAmt5min,
+    netBuyQty5min,
+    lastNtbyAmt: last.ntbyAmt,
+    lastTickAt: last.t,
+    tickCount: st.ticks.length,
+  };
+}
+
+// handleKisMessage에서 trId==='H0STPGM0'일 때 호출.
+function handleProgramTradeMessage(countStr, dataStr) {
+  const count = parseInt(countStr, 10) || 1;
+  const fields = dataStr.split('^');
+  const perRecord = Math.floor(fields.length / count);
+  if (perRecord <= 0) return;
+
+  for (let i = 0; i < count; i++) {
+    const rec = fields.slice(i * perRecord, (i + 1) * perRecord);
+    const code = rec[P_CODE];
+    if (!code) continue;
+    const ntbyCnqn = Number(rec[P_NTBY_CNQN]);
+    const ntbyAmt = Number(rec[P_NTBY_AMT]);
+    if (!Number.isFinite(ntbyAmt)) continue;
+    const now = Date.now();
+
+    // 검증용 로그 — 종목당 처음 3틱만. 값이 계속 커지기만 하면 "누적치",
+    // 오르내리면 "틱당 값" — 월요일에 이 로그로 확인.
+    const seenCount = programTradeVerifyLogged.get(code) || 0;
+    if (seenCount < 3) {
+      console.log(`[프로그램매매 검증] ${code} tick#${seenCount + 1} NTBY_CNQN=${rec[P_NTBY_CNQN]} NTBY_TR_PBMN=${rec[P_NTBY_AMT]}`);
+      programTradeVerifyLogged.set(code, seenCount + 1);
+    }
+
+    updateProgramTradeStats(code, ntbyCnqn, ntbyAmt, now);
+    // 별도 즉시 브로드캐스트는 하지 않음 — 프로그램매매 틱은 가격 틱보다 훨씬
+    // 드물어서, 다음 H0STCNT0 가격 틱이 올 때 sangttaLiveSnapshot()이 최신
+    // 통계를 실어 그대로 보내준다.
+  }
+}
 
 // ----------------------------------------------------------------------------
 // 3-B) 전략성과2(상따) 실시간 엔진 — sangtta_virtual_trading_spec.md 4~7절
@@ -392,7 +505,10 @@ async function primeSangttaOpenPositions() {
         grade: (p.entry_reason && p.entry_reason.entry_grade) || null,
       });
     });
-    if (rows.length) reconcileKisSubscriptions();
+    if (rows.length) {
+      reconcileKisSubscriptions();
+      reconcileProgramTradeSubscriptions(); // 서버 재시작 시에도 기존 보유분에 H0STPGM0 구독 복원
+    }
   } catch (err) {
     console.error('[상따] 보유 포지션 초기화 실패:', err.message);
   }
@@ -445,6 +561,7 @@ async function enterSangttaPosition(code, price, grade, ctx) {
     console.error(`[상따] ${code} 진입 기록 실패:`, err.message);
   }
   reconcileKisSubscriptions();
+  reconcileProgramTradeSubscriptions(); // 방금 보유 종목이 됐으므로 H0STPGM0 구독 추가
 }
 
 async function exitSangttaPosition(code, price, exitType, extra = {}) {
@@ -479,6 +596,7 @@ async function exitSangttaPosition(code, price, exitType, extra = {}) {
     console.error(`[상따] ${code} 청산 기록 실패:`, err.message);
   }
   reconcileKisSubscriptions();
+  reconcileProgramTradeSubscriptions(); // 더 이상 보유 종목이 아니므로 H0STPGM0 구독 해제
 }
 
 async function insertSangttaDecisionEvent(positionId, eventType, metrics) {
@@ -613,6 +731,11 @@ function sangttaLiveSnapshot(code, rec, price, now) {
       stopLine: line,
       stopType: type,
     };
+    // 프로그램매매(H0STPGM0)는 보유 종목에만 구독하므로 후보 상태에서는 항상 null.
+    // null이면 "프로그램매매 구독 전"이 아니라 "아직 틱이 없음"(체결이 뜸한
+    // 종목일 수 있음) — 프론트에서 이 둘을 구분해서 표시할 것.
+    const pt = getProgramTradeSnapshot(code);
+    if (pt) snap.programTrade = pt;
   }
   return snap;
 }
@@ -698,6 +821,7 @@ function handleKisMessage(text) {
   const parts = text.split('|');
   if (parts.length < 4) return;
   const [encFlag, trId, countStr, dataStr] = parts;
+  if (trId === KIS_PROGRAM_TRADE_TR_ID) { handleProgramTradeMessage(countStr, dataStr); return; }
   if (trId !== 'H0STCNT0') return;
 
   const count = parseInt(countStr, 10) || 1;
@@ -1465,6 +1589,7 @@ const server = http.createServer((req, res) => {
       ok: true,
       kisWsReady,
       subscribedCodes: [...currentKisSubs],
+      programTradeSubscribedCodes: [...currentProgramTradeSubs],
       heldCodes: [...heldCodes],
       targetPrices: Object.fromEntries([...targetPrices].map(([c, t]) => [c, t.price])),
       targetPricesPersisted: !!SUPABASE_SERVICE_KEY,
