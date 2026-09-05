@@ -27,12 +27,23 @@ intraday_candidates(trade_date, code, source, rank, snapshot)에
   SUPABASE_DB_URL
   KIS_ACCESS_TOKEN               (있으면 재사용 — daily_collect.yml과 동일 관례)
 
-  - SCAN 단계는 장중(09:15~15:20 KST) 5분 간격으로 실행되어 거래대금순위
-    (FHPST01710000)로 "지금까지 후보에 없던" 신규 급등 종목을 계속 편입시킵
-    니다. 이 랭킹 API 파라미터(FID_COND_SCR_DIV_CODE=20171,
-    FID_DIV_CLS_CODE=3 등)도 이 환경에서는 실거래 없이 검증 불가능하여, 실패해도
-    스크립트가 죽지 않고 경고만 남기도록 방어적으로 구현했습니다. 최초 장중
-    실행 로그를 꼭 확인하세요.
+  - SCAN 단계는 장중(09:15~15:20 KST) 5분 간격으로 실행되어 "지금까지 후보에
+    없던" 신규 급등 종목을 계속 편입시킵니다. ⚠ 최초 구현에서는 거래대금순위
+    (FHPST01710000)를 썼는데, 이건 삼성전자·SK하이닉스처럼 시가총액이 커서
+    등락률은 낮아도(1~2%) 거래대금 절대액은 항상 큰 종목이 상위를 독점하는
+    구조적 문제가 있습니다. 상따는 "당일 등락률이 빠르게 오르는 중인 종목을
+    초반에 잡는 것"이 목적이라 거래대금 절대액이 아니라 등락률 자체로 줄을
+    세워야 합니다. 그래서 국내주식 등락률 순위(FHPST01700000, 상승율순)로
+    교체했습니다 — 이 종목이 지금 얼마나 빠르게 오르고 있는지가 직접 정렬
+    기준이 되므로, 시가총액이 큰 종목은 애초에 그만큼 급등하기 어려워 자연히
+    상위권에서 걸러집니다. 이 랭킹 API의 정확한 파라미터(FID_RANK_SORT_CLS_CODE
+    값 매핑, FID_COND_SCR_DIV_CODE=20170 등)도 이 환경에서는 실거래 없이
+    검증 불가능하여, 실패해도 스크립트가 죽지 않고 경고만 남기도록 방어적으로
+    구현했습니다. 최초 장중 실행 로그를 꼭 확인하세요.
+  - 등락률 순위 API 자체에도 최소 등락률(SCAN_MIN_CHANGE_PCT)·최소가격
+    (SCAN_MIN_PRICE)·최소거래량 필터를 걸어 동전주·품절주 노이즈를 줄이고,
+    응답에서 우선주/스팩으로 보이는 종목명은 Python 쪽에서 한 번 더 걸러냅니다
+    (정확한 제외 플래그 조합도 미검증이라 이름 패턴으로 이중 방어).
   - intraday_candidates는 (trade_date, code, source) UPSERT 시 created_at을
     항상 now()로 갱신하므로, relay-server 쪽에서는 "최근에 갱신된 순"으로만
     정렬해 상위 N개만 실시간 구독하면 자연스럽게 오래된 후보가 밀려납니다
@@ -44,7 +55,7 @@ intraday_candidates(trade_date, code, source, rank, snapshot)에
   python 66_intraday_candidates.py regular
   python 66_intraday_candidates.py scan
 """
-import os, sys, time, datetime, json, threading
+import os, sys, time, datetime, json, threading, re
 from datetime import timezone, timedelta
 import requests, psycopg2
 from psycopg2.extras import execute_values, Json
@@ -57,6 +68,12 @@ DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 CANDIDATE_POOL_LIMIT = 40   # NXT/REGULAR 단계에서 종목별 현재가를 조회할 최대 종목 수
 TOP_N = 10
 SCAN_TOP_N = 15             # SCAN 단계에서 신규 편입할 최대 종목 수(1회 실행당)
+SCAN_MIN_CHANGE_PCT = 5.0   # 등락률 순위 API에 걸 최소 상승률(%) — 이 밑은 아예 조회 안 함
+SCAN_MIN_PRICE = 1000       # 최소 주가(원) — 동전주 노이즈 제외
+SCAN_MIN_VOL = 10000        # 최소 누적거래량(주) — 품절주/거래정지성 종목 노이즈 제외
+# 우선주(...우, ...우B, ...2우 등)·스팩("OOO기업인수목적" 류) 이름 패턴 — 등락률
+# 순위 API의 제외 플래그 조합이 미검증이라 이름으로 한 번 더 방어적으로 거름.
+_PREFERRED_OR_SPAC_RE = re.compile(r"(\d?우[A-Z]?$|스팩|기업인수목적)")
 
 # SCAN 단계 유효 시간대(KST, 분 단위) — 정규장 초반 재선별(09:12) 직후부터
 # 장 마감 전까지만 의미가 있음. 크론 자체는 넉넉하게 걸어두고 여기서 내부 가드.
@@ -378,40 +395,47 @@ def fetch_all_known_codes():
         conn.close()
 
 
-def fetch_volume_rank(token, limit=30):
-    """FHPST01710000 (거래대금순위). 파라미터 검증 불가 항목 — 구현 노트 참고.
+def fetch_change_rate_rank(token, limit=30):
+    """FHPST01700000 (국내주식 등락률 순위, 상승율순). 거래대금순위와 달리
+    "지금 얼마나 빠르게 오르고 있는가" 자체로 정렬하므로, 시가총액이 커서
+    거래대금은 항상 크지만 등락률은 낮은 삼성전자·SK하이닉스 같은 종목이
+    상위를 독점하는 문제가 구조적으로 없다(그런 종목은 이 API에서 애초에
+    상위권에 오르지 못함). 파라미터 검증 불가 항목 — 구현 노트 참고.
     실패 시 빈 리스트를 반환하고 경고만 남김(스크립트는 계속 진행)."""
     _rate.acquire()
     try:
         r = requests.get(
-            f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/volume-rank",
-            headers=kis_headers(token, "FHPST01710000"),
+            f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/fluctuation-rank",
+            headers=kis_headers(token, "FHPST01700000"),
             params={
                 "FID_COND_MRKT_DIV_CODE": "J",
-                "FID_COND_SCR_DIV_CODE": "20171",
-                "FID_INPUT_ISCD": "0000",
-                "FID_DIV_CLS_CODE": "3",       # 3=거래대금순 (검증 필요)
-                "FID_BLNG_CLS_CODE": "0",
-                "FID_TRGT_CLS_CODE": "111111111",
-                "FID_TRGT_EXLS_CLS_CODE": "0000000000",
-                "FID_INPUT_PRICE_1": "",
+                "FID_COND_SCR_DIV_CODE": "20170",
+                "FID_INPUT_ISCD": "0000",           # 0000=전체(코스피+코스닥)
+                "FID_RANK_SORT_CLS_CODE": "0",       # 0=상승율순 (검증 필요)
+                "FID_INPUT_CNT_1": "0",
+                "FID_PRC_CLS_CODE": "0",
+                "FID_INPUT_PRICE_1": str(SCAN_MIN_PRICE),
                 "FID_INPUT_PRICE_2": "",
-                "FID_VOL_CNT": "",
-                "FID_INPUT_DATE_1": "",
+                "FID_VOL_CNT": str(SCAN_MIN_VOL),
+                "FID_TRGT_CLS_CODE": "0",
+                "FID_TRGT_EXLS_CLS_CODE": "0000000000",
+                "FID_DIV_CLS_CODE": "0",
+                "FID_RSFL_RATE1": str(SCAN_MIN_CHANGE_PCT),  # 최소 등락률(%) — 이 밑은 API가 아예 제외
+                "FID_RSFL_RATE2": "",
             },
             timeout=10,
         )
         if r.status_code != 200:
-            print(f"  ⚠ SCAN: 거래대금순위 API 응답코드 {r.status_code} — 스킵")
+            print(f"  ⚠ SCAN: 등락률순위 API 응답코드 {r.status_code} — 스킵")
             return []
         d = r.json()
         if d.get("rt_cd") != "0":
-            print(f"  ⚠ SCAN: 거래대금순위 API rt_cd={d.get('rt_cd')} msg={d.get('msg1')} — 파라미터 재검증 필요, 스킵")
+            print(f"  ⚠ SCAN: 등락률순위 API rt_cd={d.get('rt_cd')} msg={d.get('msg1')} — 파라미터 재검증 필요, 스킵")
             return []
         rows = d.get("output", []) or []
         return rows[:limit]
     except Exception as e:
-        print(f"  ⚠ SCAN: 거래대금순위 조회 실패(파라미터 재검증 필요): {e}")
+        print(f"  ⚠ SCAN: 등락률순위 조회 실패(파라미터 재검증 필요): {e}")
         return []
 
 
@@ -421,7 +445,14 @@ def stage_scan():
     포착 가능하므로, 시장 전체에서 완전히 새로운 급등 종목을 잡아내려면 REST
     랭킹 API로 주기적으로 훑어야 함. 여기서 찾은 신규 종목만 SCAN 소스로
     upsert하고(기존 후보 재중복 skip), relay-server가 2분 주기로 폴링해
-    자동으로 실시간 구독 대상에 편입시킨다(server.js refreshSangttaCandidates)."""
+    자동으로 실시간 구독 대상에 편입시킨다(server.js refreshSangttaCandidates).
+
+    ⚠ 거래대금순위가 아니라 등락률순위(상승율순)를 쓰는 이유: 상따는 "지금
+    빠르게 오르고 있는 종목"을 찾는 것이 목적인데, 거래대금 절대액 기준으로
+    줄을 세우면 삼성전자·SK하이닉스처럼 등락률은 1~2%뿐이어도 시가총액이
+    커서 거래대금 자체는 항상 최상위인 종목들이 계속 걸려버린다. 등락률로
+    직접 정렬하면 그런 종목은 애초에 그 정도로 급등하는 일이 드물어 자연히
+    걸러지고, 실제로 오늘 크게 움직이는 중소형주 위주로 후보가 채워진다."""
     if not (SCAN_START_MIN <= _KST_MINUTES_NOW <= SCAN_END_MIN):
         print(f"  SCAN: 장중 스캔 시간대(09:15~15:20 KST) 밖(현재 {_now_kst.strftime('%H:%M')} KST) — 스킵")
         return
@@ -431,23 +462,31 @@ def stage_scan():
         print("  SCAN: KIS 토큰 없음 — 스킵")
         return
 
-    ranked = fetch_volume_rank(token, limit=30)
+    ranked = fetch_change_rate_rank(token, limit=30)
     if not ranked:
         return
 
     known = fetch_all_known_codes()
+    skipped_pref = 0
     new_rows = []
     for i, out in enumerate(ranked, start=1):
-        code = out.get("mksc_shrn_iscd") or out.get("stck_shrn_iscd") or out.get("code")
+        code = out.get("stck_shrn_iscd") or out.get("mksc_shrn_iscd") or out.get("code")
+        name = out.get("hts_kor_isnm") or ""
         if not code or code in known:
+            continue
+        if _PREFERRED_OR_SPAC_RE.search(name):
+            skipped_pref += 1
             continue
         change_pct = safe_num(out.get("prdy_ctrt"))
         price = safe_num(out.get("stck_prpr"))
         acc_amt = safe_num(out.get("acml_tr_pbmn"))
+        if price and price < SCAN_MIN_PRICE:
+            continue
         new_rows.append({
             "code": code,
             "rank": i,
             "snapshot": {
+                "name": name or None,
                 "price": price,
                 "change_pct": change_pct,
                 "acc_amt": acc_amt,
@@ -458,10 +497,10 @@ def stage_scan():
             break
 
     if not new_rows:
-        print(f"  SCAN: 거래대금순위 {len(ranked)}건 중 신규 종목 없음(모두 기존 후보) — 저장 생략")
+        print(f"  SCAN: 등락률순위 {len(ranked)}건 중 신규 종목 없음(모두 기존 후보, 우선주/스팩 {skipped_pref}건 제외) — 저장 생략")
         return
 
-    print(f"  SCAN: 거래대금순위 {len(ranked)}건 중 신규 {len(new_rows)}건 편입")
+    print(f"  SCAN: 등락률순위 {len(ranked)}건 중 신규 {len(new_rows)}건 편입(우선주/스팩 {skipped_pref}건 제외)")
     upsert_candidates(new_rows, "SCAN")
 
 
