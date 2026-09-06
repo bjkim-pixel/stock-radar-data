@@ -1,0 +1,68 @@
+name: Add Single Stock
+
+on:
+  workflow_dispatch:
+    inputs:
+      code:
+        description: '종목 코드 (6자리, 예: 419530)'
+        required: true
+      name:
+        description: '종목명 (예: SAMG엔터)'
+        required: true
+      market:
+        description: '시장 구분'
+        required: true
+        type: choice
+        options:
+          - KOSDAQ
+          - KOSPI
+          - KONEX
+        default: 'KOSDAQ'
+      start_date:
+        description: '시작일 (YYYYMMDD, 기본 20250901)'
+        required: false
+        default: '20250901'
+      sector:
+        description: '업종명 (선택, 비워도 됨)'
+        required: false
+        default: ''
+
+jobs:
+  add-stock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install psycopg2-binary requests
+
+      - name: Add single stock + backfill
+        env:
+          KIS_APP_KEY:     ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          CODE="${{ github.event.inputs.code }}"
+          NAME="${{ github.event.inputs.name }}"
+          MARKET="${{ github.event.inputs.market }}"
+          START="${{ github.event.inputs.start_date }}"
+          SECTOR="${{ github.event.inputs.sector }}"
+
+          CMD="python add_single_stock.py $CODE $NAME $MARKET"
+          [ -n "$START" ] && CMD="$CMD --start $START"
+          [ -n "$SECTOR" ] && CMD="$CMD --sector $SECTOR"
+
+          echo "▶ 실행: $CMD"
+          eval $CMD
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::종목 추가 실패! GitHub Actions 로그를 확인하세요."
