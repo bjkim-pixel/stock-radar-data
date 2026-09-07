@@ -27,16 +27,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: 거래일 확인 (공휴일 스킵)
+        id: market_day
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "is_market_day=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TODAY=$(TZ=Asia/Seoul date +%F)
+          HOLIDAYS="2026-01-01 2026-02-16 2026-02-17 2026-02-18 2026-03-02 2026-05-01 2026-05-05 2026-05-25 2026-06-03 2026-07-17 2026-08-17 2026-09-24 2026-09-25 2026-10-05 2026-10-09 2026-12-25 2026-12-31"
+          if echo " $HOLIDAYS " | grep -q " $TODAY "; then
+            echo "is_market_day=false" >> "$GITHUB_OUTPUT"
+            echo "⏸️ $TODAY 은 KRX 휴장일 — 이후 단계를 건너뜁니다"
+          else
+            echo "is_market_day=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup Python 3.11
+        if: steps.market_day.outputs.is_market_day == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.market_day.outputs.is_market_day == 'true'
         run: pip install psycopg2-binary requests
 
       - name: Get shared KIS token
         id: kistoken
+        if: steps.market_day.outputs.is_market_day == 'true'
         env:
           KIS_APP_KEY:    ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
@@ -56,6 +75,7 @@ jobs:
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Run collection
+        if: steps.market_day.outputs.is_market_day == 'true'
         env:
           KIS_APP_KEY:     ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
@@ -70,6 +90,7 @@ jobs:
           fi
 
       - name: Run program-trade / US market collection
+        if: steps.market_day.outputs.is_market_day == 'true'
         env:
           KIS_APP_KEY:     ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
