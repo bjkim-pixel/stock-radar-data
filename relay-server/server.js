@@ -342,6 +342,318 @@ function handleProgramTradeMessage(countStr, dataStr) {
 }
 
 // ----------------------------------------------------------------------------
+// 3-A2) 전략성과2(상따) 후보 발굴 엔진 — PRE_MARKET/NXT/REGULAR/SCAN
+// ----------------------------------------------------------------------------
+// GitHub Actions(intraday_sangtta_candidates.yml + 66_intraday_candidates.py)를
+// 완전히 대체합니다. 로직은 66_intraday_candidates.py와 1:1로 동일하니 각 단계의
+// 설계 근거(왜 등락률순위 API를 쓰는지, NXT market_div="NX" 미검증 이슈 등)는
+// 그 파일 상단 주석을 참고하세요. 차이점은 딱 하나 — SCAN 주기를 GitHub Actions
+// cron의 5분에서 1분으로 단축했습니다(상따는 초단타라 종목 편입/이탈을 더 빠르게
+// 반영해야 한다는 요청). 이 서버는 이미 상시 실행 중인 프로세스라 GitHub Actions
+// 무료 사용량(월 2,000분)과 완전히 무관하게 동작합니다.
+const KIS_REST_RATE_MIN_INTERVAL_MS = 70; // 초당 약 14회 — 04_backfill.py RateLimiter(15)와 동급
+let _kisRestLastCall = 0;
+async function kisRestThrottle() {
+  const wait = KIS_REST_RATE_MIN_INTERVAL_MS - (Date.now() - _kisRestLastCall);
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  _kisRestLastCall = Date.now();
+}
+
+let kisAccessToken = null;
+let kisAccessTokenExpiresAt = 0; // ms epoch
+
+// KIS REST API(tr_id 기반 시세/랭킹 조회)용 access_token. approval_key(웹소켓
+// 전용, /oauth2/Approval)와는 별개 발급 경로(/oauth2/tokenP)라 따로 관리합니다.
+// 앱키당 발급 빈도 제한이 있어 만료 10분 전까지는 재사용합니다(기본 유효기간 24시간).
+async function getKisRestToken() {
+  if (kisAccessToken && Date.now() < kisAccessTokenExpiresAt - 10 * 60 * 1000) return kisAccessToken;
+  const res = await fetch(`${KIS_REST_BASE}/oauth2/tokenP`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json; utf-8' },
+    body: JSON.stringify({ grant_type: 'client_credentials', appkey: KIS_APP_KEY, appsecret: KIS_APP_SECRET }),
+  });
+  if (!res.ok) throw new Error(`KIS REST 토큰 발급 실패: ${res.status} ${await res.text().catch(() => '')}`);
+  const json = await res.json();
+  if (!json.access_token) throw new Error(`KIS REST 토큰 응답에 값 없음: ${JSON.stringify(json)}`);
+  kisAccessToken = json.access_token;
+  kisAccessTokenExpiresAt = Date.now() + (Number(json.expires_in) || 86400) * 1000;
+  console.log('[상따후보] KIS REST 토큰 발급 완료');
+  return kisAccessToken;
+}
+
+function kisRestHeaders(token, trId) {
+  return {
+    'content-type': 'application/json; charset=utf-8',
+    authorization: `Bearer ${token}`,
+    appkey: KIS_APP_KEY,
+    appsecret: KIS_APP_SECRET,
+    tr_id: trId,
+    custtype: 'P',
+  };
+}
+
+function safeNum(v, d = 0) {
+  if (v == null) return d;
+  const s = String(v).replace(/,/g, '').trim();
+  if (s === '' || s === '-') return d;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : d;
+}
+
+// FHKST01010100 (주식현재가 시세). marketDiv="NX"는 NXT 시도용 — 66_intraday_candidates.py와
+// 동일하게 실거래 미검증 상태이니 최초 NXT 개장 시간대 로그(snapshot.market_div_tried)를 확인하세요.
+async function fetchKisPrice(code, marketDiv = 'J') {
+  await kisRestThrottle();
+  try {
+    const token = await getKisRestToken();
+    const url = `${KIS_REST_BASE}/uapi/domestic-stock/v1/quotations/inquire-price?FID_COND_MRKT_DIV_CODE=${marketDiv}&FID_INPUT_ISCD=${code}`;
+    const res = await fetch(url, { headers: kisRestHeaders(token, 'FHKST01010100') });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json.rt_cd !== '0') return null;
+    return json.output || null;
+  } catch (err) {
+    console.error(`[상따후보] ${code} 시세 조회 실패(${marketDiv}):`, err.message);
+    return null;
+  }
+}
+
+// FHPST01700000 (국내주식 등락률 순위, 상승율순) — SCAN 단계 전용. 거래대금순위가
+// 아니라 등락률순위를 쓰는 이유는 66_intraday_candidates.py 상단 주석 참고
+// (시가총액 큰 종목이 거래대금 상위를 독점하는 문제를 피하기 위함).
+const SCAN_MIN_CHANGE_PCT = 5.0, SCAN_MIN_PRICE = 1000, SCAN_MIN_VOL = 10000;
+const PREFERRED_OR_SPAC_RE = /(\d?우[A-Z]?$|스팩|기업인수목적)/;
+
+async function fetchChangeRateRank(limit = 30) {
+  await kisRestThrottle();
+  try {
+    const token = await getKisRestToken();
+    const params = new URLSearchParams({
+      FID_COND_MRKT_DIV_CODE: 'J', FID_COND_SCR_DIV_CODE: '20170', FID_INPUT_ISCD: '0000',
+      FID_RANK_SORT_CLS_CODE: '0', FID_INPUT_CNT_1: '0', FID_PRC_CLS_CODE: '0',
+      FID_INPUT_PRICE_1: String(SCAN_MIN_PRICE), FID_INPUT_PRICE_2: '',
+      FID_VOL_CNT: String(SCAN_MIN_VOL), FID_TRGT_CLS_CODE: '0',
+      FID_TRGT_EXLS_CLS_CODE: '0000000000', FID_DIV_CLS_CODE: '0',
+      FID_RSFL_RATE1: String(SCAN_MIN_CHANGE_PCT), FID_RSFL_RATE2: '',
+    });
+    const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/quotations/fluctuation-rank?${params}`, {
+      headers: kisRestHeaders(token, 'FHPST01700000'),
+    });
+    if (!res.ok) { console.warn(`[상따후보] SCAN 등락률순위 응답코드 ${res.status} — 스킵`); return []; }
+    const json = await res.json();
+    if (json.rt_cd !== '0') { console.warn(`[상따후보] SCAN 등락률순위 rt_cd=${json.rt_cd} msg=${json.msg1} — 파라미터 재검증 필요, 스킵`); return []; }
+    return (json.output || []).slice(0, limit);
+  } catch (err) {
+    console.error('[상따후보] SCAN 등락률순위 조회 실패:', err.message);
+    return [];
+  }
+}
+
+// intraday_candidates UPSERT — PostgREST on_conflict+merge-duplicates로
+// SQL의 "ON CONFLICT (trade_date, code, source) DO UPDATE"와 동등하게 동작.
+// created_at을 매번 명시적으로 채우는 이유: refreshSangttaCandidates()가
+// "최근 갱신순" 정렬에 의존하는데, merge-duplicates UPDATE 경로에는 DB 기본값이
+// 자동 적용되지 않기 때문(INSERT 시에만 default now()가 붙음).
+async function upsertCandidates(rows, source) {
+  if (!rows.length) { console.log(`[상따후보] ${source}: 후보 없음 — 저장 생략`); return; }
+  const today = kstDateStr();
+  const nowIso = new Date().toISOString();
+  const payload = rows.map(r => ({
+    trade_date: today, code: r.code, source, rank: r.rank, snapshot: r.snapshot, created_at: nowIso,
+  }));
+  try {
+    await sbWrite('intraday_candidates?on_conflict=trade_date,code,source', 'POST', payload);
+    console.log(`[상따후보] ${source}: ${rows.length}건 저장 완료`);
+  } catch (err) {
+    console.error(`[상따후보] ${source} 저장 실패:`, err.message);
+  }
+}
+
+async function fetchCandidateCodesBySource(sources) {
+  const today = kstDateStr();
+  const rows = await sbGet(`intraday_candidates?select=code&trade_date=eq.${today}&source=in.(${sources.join(',')})`);
+  return [...new Set(rows.map(r => r.code))];
+}
+
+async function fetchAllKnownCandidateCodes() {
+  const today = kstDateStr();
+  const rows = await sbGet(`intraday_candidates?select=code&trade_date=eq.${today}`);
+  return new Set(rows.map(r => r.code));
+}
+
+const CANDIDATE_POOL_LIMIT = 40, CANDIDATE_TOP_N = 10, SCAN_TOP_N = 15;
+const SCAN_START_MIN = 9 * 60 + 15, SCAN_END_MIN = 15 * 60 + 20; // 09:15~15:20 KST
+
+// ── 1) PRE_MARKET — 순수 DB 기반(전략3단계 신호 + 무게상위), API 불필요 ──────
+async function stagePreMarket() {
+  const latestRows = await sbGet('signals?select=trade_date&signal_type=like.V4_CAND_*&order=trade_date.desc&limit=1');
+  const latest = latestRows[0]?.trade_date;
+  if (!latest) { console.log('[상따후보] PRE_MARKET: V4_CAND_* 신호가 없음 — 후보 생성 불가'); return; }
+
+  const [trendRows, weightRows] = await Promise.all([
+    sbGet(`signals?select=code,signal_type,score,reason&trade_date=eq.${latest}&signal_type=in.(V4_CAND_TREND_3,V4_CAND_CLOSEBET_3)`),
+    sbGet(`daily_metrics?select=code,weight_rank,pick_score&trade_date=eq.${latest}&weight_rank=not.is.null&order=weight_rank.asc&limit=${CANDIDATE_TOP_N}`),
+  ]);
+
+  const codes = new Set([...trendRows.map(r => r.code), ...weightRows.map(r => r.code)]);
+  const nameOf = new Map();
+  if (codes.size) {
+    const nameRows = await sbGet(`stocks?select=code,name&code=in.(${[...codes].join(',')})`);
+    nameRows.forEach(r => nameOf.set(r.code, r.name));
+  }
+
+  const merged = new Map();
+  for (const r of trendRows) {
+    const m = merged.get(r.code) || { code: r.code, name: nameOf.get(r.code) || null, sources: [], score: null };
+    m.sources.push(r.signal_type);
+    m.reason = r.reason;
+    if (r.score != null) m.score = Math.max(m.score ?? 0, +r.score);
+    merged.set(r.code, m);
+  }
+  for (const r of weightRows) {
+    const m = merged.get(r.code) || { code: r.code, name: nameOf.get(r.code) || null, sources: [], score: null };
+    m.sources.push(`WEIGHT_TOP10(#${r.weight_rank})`);
+    m.weight_rank = r.weight_rank;
+    m.pick_score = r.pick_score != null ? +r.pick_score : null;
+    merged.set(r.code, m);
+  }
+
+  const ordered = [...merged.values()].sort((a, b) => {
+    const as = a.score ?? -1, bs = b.score ?? -1;
+    if (as !== bs) return bs - as;
+    return (a.weight_rank ?? 999) - (b.weight_rank ?? 999);
+  });
+
+  const rows = ordered.map((m, i) => ({
+    code: m.code,
+    rank: i + 1,
+    snapshot: {
+      name: m.name, base_date: latest, sources: m.sources,
+      score: m.score ?? null, weight_rank: m.weight_rank ?? null, pick_score: m.pick_score ?? null,
+    },
+  }));
+  console.log(`[상따후보] PRE_MARKET: 기준일 ${latest}, 전략3단계 ${trendRows.length}건 + 무게상위 ${weightRows.length}건 → 유니크 ${rows.length}건`);
+  await upsertCandidates(rows, 'PRE_MARKET');
+}
+
+// ── 2) NXT (08:00~08:45) ────────────────────────────────────────────────────
+async function stageNxt() {
+  const pool = (await fetchCandidateCodesBySource(['PRE_MARKET'])).slice(0, CANDIDATE_POOL_LIMIT);
+  if (!pool.length) { console.log('[상따후보] NXT: PRE_MARKET 후보가 없어 조회 유니버스가 비어있음 — 스킵'); return; }
+
+  const scored = [];
+  for (const code of pool) {
+    const out = await fetchKisPrice(code, 'NX');
+    if (!out) continue;
+    scored.push({ code, change_pct: safeNum(out.prdy_ctrt), price: safeNum(out.stck_prpr) });
+  }
+  if (!scored.length) { console.log('[상따후보] NXT: 유효 응답 없음(market_div=NX 파라미터 재검증 필요) — 스킵'); return; }
+
+  scored.sort((a, b) => b.change_pct - a.change_pct);
+  const top = scored.slice(0, CANDIDATE_TOP_N);
+  const rows = top.map((r, i) => ({ code: r.code, rank: i + 1, snapshot: { change_pct: r.change_pct, price: r.price, market_div_tried: 'NX' } }));
+  console.log(`[상따후보] NXT: 조회 ${pool.length}건 중 유효 ${scored.length}건 → Top${rows.length} 저장`);
+  await upsertCandidates(rows, 'NXT');
+}
+
+// ── 3) 정규장 초반 재선별 (09:10~09:15) ──────────────────────────────────────
+async function stageRegular() {
+  const pool = (await fetchCandidateCodesBySource(['PRE_MARKET', 'NXT'])).slice(0, CANDIDATE_POOL_LIMIT);
+  if (!pool.length) { console.log('[상따후보] REGULAR: 이전 단계 후보가 없어 조회 유니버스가 비어있음 — 스킵'); return; }
+
+  const scored = [];
+  for (const code of pool) {
+    const out = await fetchKisPrice(code, 'J');
+    if (!out) continue;
+    const price = safeNum(out.stck_prpr), high = safeNum(out.stck_hgpr);
+    scored.push({
+      code, price, acc_amt: safeNum(out.acml_tr_pbmn), change_pct: safeNum(out.prdy_ctrt),
+      is_new_high: price > 0 && price >= high,
+    });
+  }
+  if (!scored.length) { console.log('[상따후보] REGULAR: 유효 응답 없음 — 스킵'); return; }
+
+  scored.sort((a, b) => (Number(b.is_new_high) - Number(a.is_new_high)) || (b.acc_amt - a.acc_amt));
+  const top = scored.slice(0, CANDIDATE_TOP_N);
+  const rows = top.map((r, i) => ({ code: r.code, rank: i + 1, snapshot: { price: r.price, acc_amt: r.acc_amt, change_pct: r.change_pct, is_new_high: r.is_new_high } }));
+  console.log(`[상따후보] REGULAR: 조회 ${pool.length}건 중 유효 ${scored.length}건 → Top${rows.length} 저장 (신고가 ${top.filter(r => r.is_new_high).length}건)`);
+  await upsertCandidates(rows, 'REGULAR');
+}
+
+// ── 4) 장중 연속 스캔 (SCAN, 09:15~15:20) ────────────────────────────────────
+// GitHub Actions cron은 5분 간격이었으나, 상따는 초단타라 종목 편입/이탈을 더
+// 빠르게 반영해야 한다는 요청에 따라 1분 간격으로 단축(SCAN_INTERVAL_MS 참고).
+async function stageScan() {
+  const minutesNow = kstMinutesNow();
+  if (minutesNow < SCAN_START_MIN || minutesNow > SCAN_END_MIN) return;
+
+  const ranked = await fetchChangeRateRank(30);
+  if (!ranked.length) return;
+
+  const known = await fetchAllKnownCandidateCodes();
+  let skippedPref = 0;
+  const newRows = [];
+  const nowKstStr = new Intl.DateTimeFormat('en-GB', { timeZone: KST_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
+
+  for (let i = 0; i < ranked.length; i++) {
+    const out = ranked[i];
+    const code = out.stck_shrn_iscd || out.mksc_shrn_iscd || out.code;
+    const name = out.hts_kor_isnm || '';
+    if (!code || known.has(code)) continue;
+    if (PREFERRED_OR_SPAC_RE.test(name)) { skippedPref++; continue; }
+    const price = safeNum(out.stck_prpr);
+    if (price && price < SCAN_MIN_PRICE) continue;
+    newRows.push({
+      code, rank: i + 1,
+      snapshot: { name: name || null, price, change_pct: safeNum(out.prdy_ctrt), acc_amt: safeNum(out.acml_tr_pbmn), detected_at: nowKstStr },
+    });
+    if (newRows.length >= SCAN_TOP_N) break;
+  }
+
+  if (!newRows.length) {
+    console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 신규 종목 없음(모두 기존 후보, 우선주/스팩 ${skippedPref}건 제외) — 저장 생략`);
+    return;
+  }
+  console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 신규 ${newRows.length}건 편입(우선주/스팩 ${skippedPref}건 제외)`);
+  await upsertCandidates(newRows, 'SCAN');
+}
+
+// ── 스케줄러 — GitHub Actions cron을 대신해 이 프로세스 안에서 시각을 감시 ────
+// PRE_MARKET/NXT/REGULAR는 하루 1회, 지정 시각을 지나면 실행하고 당일 재실행하지
+// 않음(실패 시 다음 하트비트에 재시도하도록 상태를 되돌림). SCAN은 유효 시간대
+// 안에서 SCAN_INTERVAL_MS(1분)마다 반복 실행.
+const _candidateStageDoneFor = { preMarket: null, nxt: null, regular: null };
+async function runCandidateStageOnce(stageKey, minuteThreshold, fn) {
+  const today = kstDateStr();
+  if (_candidateStageDoneFor[stageKey] === today) return;
+  if (kstMinutesNow() < minuteThreshold) return;
+  _candidateStageDoneFor[stageKey] = today;
+  try {
+    await fn();
+  } catch (err) {
+    console.error(`[상따후보] ${stageKey} 실행 실패(다음 하트비트에 재시도):`, err.message);
+    _candidateStageDoneFor[stageKey] = null;
+  }
+}
+
+let _lastScanRunAt = 0;
+const SCAN_INTERVAL_MS = 60 * 1000;
+const CANDIDATE_HEARTBEAT_MS = 15 * 1000;
+
+async function candidateEngineHeartbeat() {
+  await runCandidateStageOnce('preMarket', 7 * 60 + 50, stagePreMarket);
+  await runCandidateStageOnce('nxt', 8 * 60 + 40, stageNxt);
+  await runCandidateStageOnce('regular', 9 * 60 + 12, stageRegular);
+
+  const minutesNow = kstMinutesNow();
+  if (minutesNow >= SCAN_START_MIN && minutesNow <= SCAN_END_MIN && Date.now() - _lastScanRunAt >= SCAN_INTERVAL_MS) {
+    _lastScanRunAt = Date.now();
+    stageScan().catch(err => console.error('[상따후보] SCAN 실행 실패:', err.message));
+  }
+}
+setInterval(candidateEngineHeartbeat, CANDIDATE_HEARTBEAT_MS);
+
+// ----------------------------------------------------------------------------
 // 3-B) 전략성과2(상따) 실시간 엔진 — sangtta_virtual_trading_spec.md 4~7절
 // ----------------------------------------------------------------------------
 // 기존 "전략 성과"(VIRTUAL 스윙 포트폴리오)와 완전히 분리된 별도 엔진입니다.
@@ -1605,6 +1917,13 @@ const server = http.createServer((req, res) => {
         openPositionCount: sangttaOpenPositions.size,
         dailySummaryDoneFor: sangttaDailySummaryDoneFor,
       },
+      candidateEngine: {
+        preMarketDoneFor: _candidateStageDoneFor.preMarket,
+        nxtDoneFor: _candidateStageDoneFor.nxt,
+        regularDoneFor: _candidateStageDoneFor.regular,
+        lastScanAt: _lastScanRunAt ? new Date(_lastScanRunAt).toISOString() : null,
+        kisRestTokenAgeMs: kisAccessToken ? Date.now() - (kisAccessTokenExpiresAt - 86400 * 1000) : null,
+      },
     }));
     return;
   }
@@ -1679,6 +1998,7 @@ issueApprovalKey()
     primeSangttaEntryCounts();
     primeSangttaOpenPositions();
     refreshSangttaCandidates();
+    candidateEngineHeartbeat(); // 서버 재시작이 장중 시간대에 일어나도 그 즉시 해당 단계를 따라잡음
     server.listen(PORT, () => {
       console.log(`[server] 릴레이 서버 실행 중 (port ${PORT})`);
     });
