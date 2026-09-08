@@ -404,14 +404,18 @@ def fetch_change_rate_rank(token, limit=30):
     실패 시 빈 리스트를 반환하고 경고만 남김(스크립트는 계속 진행)."""
     _rate.acquire()
     try:
+        # KIS 공식 샘플(koreainvestment/open-trading-api examples_user/domestic_stock_functions.py
+        # fluctuation() 함수, [v1_국내주식-088])로 확인한 결과 실제 엔드포인트는
+        # /quotations/fluctuation-rank가 아니라 /ranking/fluctuation — 이 오타 때문에
+        # 계속 404가 나서 SCAN 단계가 스킵되고 있었음(2026-09-08 발견·수정).
         r = requests.get(
-            f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/fluctuation-rank",
+            f"{KIS_BASE}/uapi/domestic-stock/v1/ranking/fluctuation",
             headers=kis_headers(token, "FHPST01700000"),
             params={
                 "FID_COND_MRKT_DIV_CODE": "J",
                 "FID_COND_SCR_DIV_CODE": "20170",
                 "FID_INPUT_ISCD": "0000",           # 0000=전체(코스피+코스닥)
-                "FID_RANK_SORT_CLS_CODE": "0",       # 0=상승율순 (검증 필요)
+                "FID_RANK_SORT_CLS_CODE": "0000",    # 0000=등락률순(KIS 공식 샘플 기준)
                 "FID_INPUT_CNT_1": "0",
                 "FID_PRC_CLS_CODE": "0",
                 "FID_INPUT_PRICE_1": str(SCAN_MIN_PRICE),
