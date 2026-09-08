@@ -671,10 +671,13 @@ const SANGTTA_FORCE_CLOSE_MIN = 15 * 60 + 19;  // 15:19 이후 보유분 강제 
 const SANGTTA_MARKET_END_MIN  = 15 * 60 + 30;  // 이 시각 이후엔 신규 체결 자체가 없다고 보고 정산 트리거
 
 const SANGTTA_CTTR_MIN            = 150;         // 체결강도 150%↑
-const SANGTTA_LARGE_PRINT_KRW     = 50_000_000;  // 순간체결금액 5천만원↑
+// 2026-09-08: 첫 가상거래일에 후보 종목이 +12%대까지 움직였는데도 매수 진입이
+// 단 한 건도 안 나서, 대량체결·분당거래대금 조건을 완화(체결강도는 유지).
+// 손실이 과하게 나면 다시 조이는 방향으로 조정 예정.
+const SANGTTA_LARGE_PRINT_KRW     = 30_000_000;  // 순간체결금액 3천만원↑ (기존 5천만원)
 const SANGTTA_LARGE_PRINT_WINDOW_MS = 60_000;    // "최근 1분 내"
-const SANGTTA_LARGE_PRINT_MIN_COUNT = 3;         // 3회 이상
-const SANGTTA_MINUTE_VOL_RATIO_MIN  = 2.0;       // 분당거래대금 최근5분평균 대비 200%↑
+const SANGTTA_LARGE_PRINT_MIN_COUNT = 2;         // 2회 이상 (기존 3회)
+const SANGTTA_MINUTE_VOL_RATIO_MIN  = 1.5;       // 분당거래대금 최근5분평균 대비 150%↑ (기존 200%)
 const SANGTTA_MINUTE_HISTORY_MIN    = 5;         // "최근 5분" 평균에 쓸 과거 분봉 수
 const SANGTTA_MAX_ENTRIES_PER_CODE  = 2;         // 3번째 진입 시도부터는 등급 C(배제)로 간주
 const SANGTTA_MAX_TRACKED           = 40;        // KIS 웹소켓 동시구독 한도 대응 — 최근 갱신순 상위 N개만 실시간 추적
