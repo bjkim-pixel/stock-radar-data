@@ -12,8 +12,20 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅)
   06_signals.sql  → V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3  (3단계 통과 종목)
   06_portfolio.py → V4_BUY_TREND    / V4_BUY_CLOSEBET      (실제 가상매수)
                     V4_PYRAMID_TREND                       (+20%마다 불타기, 무제한)
-                    V4_SELL_TREND / V4_CRASH_SELL_TREND    (고점 대비 -7% 트레일링 손절)
+                    V4_SELL_TREND / V4_CRASH_SELL_TREND    (고점 대비 -7% 트레일링 손절,
+                                                             단 손익분기 보호선 적용 — 아래 참조)
                     V4_SELL_CLOSEBET                       (매수 익일 시가 전량 매도)
+
+  ⚠ 2026-09-08 손익분기 보호선(breakeven floor) 추가 — 배경: 6월까지 지수 9000대
+    상승장에선 -7% 트레일링도 종종 수익으로 마감했지만, 7월 급락 이후 6000~7000대
+    횡보장에서는 이 전략이 잡는 종목의 평균 고점 상승폭이 9~11%대뿐이라 -7%가
+    상승폭 대부분을 깎아먹어 "수익 구간을 다 지나서 손해보고 파는" 거래가 반복됨
+    (과거 데이터 검증: 고점 +5%↑ 찍고도 결국 마이너스로 마감한 거래 12건, 합계
+    -14,926,803원 — 이 규칙이 있었다면 대략 +832,957원으로 바뀌었을 것으로 추정).
+    고점이 매수가 대비 BREAKEVEN_TRIGGER_PCT(+5%) 이상 찍은 적이 있으면, 그 뒤로는
+    "고점×(1-7%)"와 "매수가×(1+0.3%)" 중 더 높은 쪽을 손절선으로 씀 — 즉 한 번
+    +5%를 넘긴 거래는 그 뒤로 손실로 뒤집히지 않도록 보호(왕복거래비용 0.24%는
+    +0.3%가 커버). 이 청산은 새 사유코드 BREAKEVEN_STOP으로 기록됨.
 
 매수 금액 — 시가총액 구간별 차등 (불타기 포함, ENTRY_AMOUNT_TIERS)
   · 시가총액 5조원 미만          : 1천만원
@@ -91,6 +103,13 @@ STOP_PCT         = -0.07         # 추세추종: 보유 중 최고가(당일 고
 CRASH_PCT        = -0.10         # 추세추종: 급락 안전장치 (라벨만 다름, 결과 동일)
 PYRAMID_STEP     = 0.20          # 추세추종 불타기 트리거 간격 (최초 매수가 대비, 반복 무제한)
 COST_ONE_WAY     = 0.0012        # 편도 거래비용 (왕복 0.24%)
+
+# 2026-09-08 손익분기 보호선(breakeven floor): 고점이 매수가 대비 이 비율 이상
+# 오른 적이 있으면, 그 뒤로는 트레일링선(고점×(1+STOP_PCT))과 손익분기선
+# (매수가×(1+BREAKEVEN_FLOOR_PCT)) 중 더 높은 쪽을 손절선으로 사용합니다.
+# 즉 한 번 +5%를 넘긴 거래는 그 뒤로 손실로 뒤집히지 않도록 보호합니다.
+BREAKEVEN_TRIGGER_PCT = 0.05      # 고점이 매수가 대비 +5% 이상 찍은 적 있으면 활성화
+BREAKEVEN_FLOOR_PCT   = 0.003     # 활성화 시 매수가 +0.3%(왕복비용 0.24% 커버) 밑으로는 손절선이 안 내려감
 
 CAND_SIGNAL = {"TREND": "V4_CAND_TREND_3", "CLOSEBET": "V4_CAND_CLOSEBET_3"}
 
@@ -250,15 +269,21 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
             pos.peak_date = day
             pos.peak_at = market_close_ts(day)
         dd = close / pos.peak_price - 1
-        if dd <= STOP_PCT:
+        peak_gain = pos.peak_price / pos.entry_price - 1
+        breakeven_active = peak_gain >= BREAKEVEN_TRIGGER_PCT
+        breakeven_floor = pos.entry_price * (1 + BREAKEVEN_FLOOR_PCT) if breakeven_active else None
+        trail_stop = pos.peak_price * (1 + STOP_PCT)
+        stop_line = max(trail_stop, breakeven_floor) if breakeven_active else trail_stop
+        if close <= stop_line:
             crash = dd <= CRASH_PCT
-            reason_code = "CRASH_STOP_10" if crash else "TRAIL_STOP_7"
+            used_breakeven = breakeven_active and breakeven_floor > trail_stop
+            reason_code = "BREAKEVEN_STOP" if used_breakeven else ("CRASH_STOP_10" if crash else "TRAIL_STOP_7")
             pos.close_out(day, close, reason_code)
             closed.append(pos)
             del open_pos[code]
             stopped_codes.add(code)        # 이후 재진입 시 불타기 중단
             sig.add(day, code,
-                    ("V4_CRASH_SELL_TREND" if crash else "V4_SELL_TREND") + suffix,
+                    ("V4_CRASH_SELL_TREND" if (crash and not used_breakeven) else "V4_SELL_TREND") + suffix,
                     "SELL",
                     min(100.0, abs(dd) * 1000),
                     {

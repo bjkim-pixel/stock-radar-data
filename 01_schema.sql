@@ -361,7 +361,7 @@ create table if not exists positions (
 
   exit_date       date,
   exit_price      bigint,
-  exit_reason     text,                                -- TRAIL_STOP_7 | CRASH_STOP_10
+  exit_reason     text,                                -- TRAIL_STOP_7 | CRASH_STOP_10 | BREAKEVEN_STOP
   realized_pnl    bigint,                              -- 거래비용 반영 실현손익 (원)
   return_pct      numeric(10,4),
 
