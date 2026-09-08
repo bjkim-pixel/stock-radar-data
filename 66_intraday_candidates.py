@@ -415,7 +415,7 @@ def fetch_change_rate_rank(token, limit=30):
                 "FID_COND_MRKT_DIV_CODE": "J",
                 "FID_COND_SCR_DIV_CODE": "20170",
                 "FID_INPUT_ISCD": "0000",           # 0000=전체(코스피+코스닥)
-                "FID_RANK_SORT_CLS_CODE": "0000",    # 0000=등락률순(KIS 공식 샘플 기준)
+                "FID_RANK_SORT_CLS_CODE": "0",        # 0=등락률상위 (실제 호출 시 "0000"은 필드 길이 오류로 거부됨)
                 "FID_INPUT_CNT_1": "0",
                 "FID_PRC_CLS_CODE": "0",
                 "FID_INPUT_PRICE_1": str(SCAN_MIN_PRICE),
