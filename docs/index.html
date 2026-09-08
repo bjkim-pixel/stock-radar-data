@@ -1553,7 +1553,7 @@ function profileChart(host,buckets,opt={}){
 // 범위를 좁힌 만큼 그 밖에 있는 종가는 이제 어느 구간에도 집계되지 않고 제외됩니다
 // (예전처럼 맨 끝 구간에 뭉뚱그려 넣으면 그 구간 값이 왜곡되기 때문).
 // 반환 배열은 가격 높은 구간이 먼저 오도록 정렬(=profileChart에서 위쪽에 그려짐).
-const PRICE_PROFILE_DOWN_PCT=0.25, PRICE_PROFILE_UP_PCT=0.75; // 현재가 -25%~+75%
+const PRICE_PROFILE_DOWN_PCT=0.10, PRICE_PROFILE_UP_PCT=0.90; // 현재가 -10%~+90%
 function buildPriceProfile(rows,bucketCount=24,valueFn=r=>+r.individual_net||0){
   const closes=rows.map(r=>+r.close).filter(v=>!isNaN(v));
   if(!closes.length)return[];
