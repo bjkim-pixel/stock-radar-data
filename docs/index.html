@@ -1545,16 +1545,32 @@ function profileChart(host,buckets,opt={}){
 }
 // rows(v_stock_chart 행 배열)에서 종가를 bucketCount개 가격 구간으로 나눠 구간별
 // valueFn(row) 합계(원→억원)를 만듭니다. 기본 valueFn은 개인 순매수(individual_net).
+// 구간 범위는 1년 전체 최저~최고가가 아니라 "현재가 기준 아래 PRICE_PROFILE_DOWN_PCT%
+// ~위 PRICE_PROFILE_UP_PCT%"로 좁혀서 잡습니다 — 예전엔 24구간을 1년 최저~최고 전체에
+// 걸쳐 나누다 보니 현재가보다 한참 위/아래 구간까지 포함돼서 정작 주가가 오를 때
+// 부딪힐 상단 매물대(저항대) 하나하나가 너무 넓어 구분이 안 됐음(2026-09 요청으로 변경,
+// 기본값 -25%~+75%는 대략치라 아래 두 상수만 바꾸면 비율 조정 가능).
+// 범위를 좁힌 만큼 그 밖에 있는 종가는 이제 어느 구간에도 집계되지 않고 제외됩니다
+// (예전처럼 맨 끝 구간에 뭉뚱그려 넣으면 그 구간 값이 왜곡되기 때문).
 // 반환 배열은 가격 높은 구간이 먼저 오도록 정렬(=profileChart에서 위쪽에 그려짐).
+const PRICE_PROFILE_DOWN_PCT=0.25, PRICE_PROFILE_UP_PCT=0.75; // 현재가 -25%~+75%
 function buildPriceProfile(rows,bucketCount=24,valueFn=r=>+r.individual_net||0){
   const closes=rows.map(r=>+r.close).filter(v=>!isNaN(v));
   if(!closes.length)return[];
-  const lo=Math.min(...closes),hi=Math.max(...closes),span=(hi-lo)||Math.max(1,lo*0.02);
+  const cur=+rows.at(-1).close;
+  const lo=cur*(1-PRICE_PROFILE_DOWN_PCT),hi=cur*(1+PRICE_PROFILE_UP_PCT);
+  const span=(hi-lo)||Math.max(1,lo*0.02);
   const size=span/bucketCount;
-  const idxOf=c=>Math.min(bucketCount-1,Math.max(0,Math.floor((c-lo)/size)));
+  const idxOf=c=>Math.floor((c-lo)/size); // 범위 밖이면 음수 또는 bucketCount 이상이 나옴(아래서 걸러냄)
   const buckets=Array.from({length:bucketCount},()=>0);
-  rows.forEach(r=>{buckets[idxOf(+r.close)]+=valueFn(r)/EOK;});
-  const curIdx=idxOf(+rows.at(-1).close);
+  rows.forEach(r=>{
+    const c=+r.close;
+    if(isNaN(c))return;
+    const idx=idxOf(c);
+    if(idx<0||idx>=bucketCount)return;
+    buckets[idx]+=valueFn(r)/EOK;
+  });
+  const curIdx=Math.min(bucketCount-1,Math.max(0,idxOf(cur)));
   return buckets.map((v,i)=>{
     const bLo=lo+i*size,bHi=lo+(i+1)*size;
     return {lo:bLo,hi:bHi,label:`${N(bLo,0)}~${N(bHi,0)}`,v,cur:i===curIdx};
