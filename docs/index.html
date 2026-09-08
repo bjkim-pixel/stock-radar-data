@@ -952,6 +952,15 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     </tr></thead><tbody id="perfSummaryC"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
+  <div class="card"><h3>매수·매도 기준</h3>
+    <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 4px">추세추종</div>
+    <div class="faint" style="font-size:11px;margin:0 0 10px">매수: 3단계 통과 종목 전량 매수(시총별 차등) · 피라미딩 제한 없음(+20%마다 같은 금액)<br>
+      매도: 보유 중 최고가(당일 고가 기준) 대비 <b>-7% 트레일링 손절</b>. 단 고점이 매수가 대비 <b>+5%</b> 이상 찍은 적이 있으면, 그 뒤로는 매수가 <b>+0.3%</b> 아래로는 손절선이 내려가지 않는 <b>손익분기 보호선</b>을 함께 적용(둘 중 더 높은 가격이 손절선) — 왕복거래비용 0.24%를 커버해 한 번 +5%를 넘긴 거래가 그 뒤로 손실로 뒤집히지 않도록 보호 (2026-09-08 추가)</div>
+    <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 4px">종가베팅</div>
+    <div class="faint" style="font-size:11px;margin:0">매수: 3단계 통과 종목 전량 매수(시총별 차등) · 피라미딩 없음<br>
+      매도: 매수 익일 시가에 전량 무조건 청산</div>
+  </div>
+
   <div class="card"><h3>오늘의 후보 종목 · 단계별 스크리닝 <span class="r" id="candDateNote">기준일 확인 중…</span></h3>
     <div class="faint" style="font-size:11px;margin:0 0 8px">공통조건: 시가총액 1조원↑ · 일거래대금 500억원↑ · 무게/주식수 당일 상위 50위 · 각 단계는 독립 조건(누적 아님) · 3단계 통과 종목만 실제 가상매수</div>
     <div class="grid2" id="candGrid">
@@ -978,7 +987,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="tw"><table><thead><tr>
       <th class="l">종목</th><th>종가</th><th title="한국투자증권 실시간 웹소켓 시세 (relay 서버 연결 시)">시세</th><th class="l">전략</th><th>진입일</th><th class="l">매수사유</th><th>평단</th><th>수익률</th><th title="장중에는 웹소켓 실시간 체결가 기준으로 즉시 갱신, 장마감 후에는 배치가 재계산">고점</th>
       <th class="opt">고점일</th><th class="opt" title="고점이 기록된 시각(월/일 시:분). 장중 실시간 갱신값은 그날 배치가 돌기 전까지만 분단위로 정확함">고점시각</th><th class="opt">트랜치</th><th>투입금액</th><th>미실현손익</th><th>고점대비</th>
-    </tr></thead><tbody id="openBody"><tr><td colspan="15" class="load">불러오는 중…</td></tr></tbody></table></div>
+      <th title="현재 손절선(트레일링 -7% 또는 손익분기 보호선 중 더 높은 값). 종가베팅은 익일 시가에 무조건 청산하므로 가격 목표가 없습니다.">매도목표가</th>
+    </tr></thead><tbody id="openBody"><tr><td colspan="16" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
   <div class="card"><h3>청산 이력 <span class="r" id="perfCount"></span></h3>
     <div class="tw"><table><thead><tr>
@@ -1116,6 +1126,20 @@ function liveCellHtml(code){
 // dayHigh가 DB에 저장된 peak_price(배치가 전날까지 계산해둔 값)보다 높으면
 // 그 값을 우선 사용. 아직 해당 종목의 실시간 틱을 못 받았거나 DB 값이 더
 // 높으면(장 시작 직후 등) DB 값을 그대로 씀 — 절대 DB 값보다 낮게 보이지 않음.
+function sellTargetHtml(p,ep){
+  if(p.strategy!=="TREND") return `<span class="faint">익일시가 매도</span>`;
+  const entry=+p.entry_price;
+  const peak=ep.price||entry;
+  if(!entry||!peak) return "–";
+  const peakGain=peak/entry-1;
+  const trail=peak*(1-0.07);
+  const beActive=peakGain>=0.05;
+  const beFloor=beActive?entry*(1+0.003):null;
+  const stopLine=beActive?Math.max(trail,beFloor):trail;
+  const usingBe=beActive&&beFloor>trail;
+  const label=usingBe?"손익분기 보호":"트레일링 -7%";
+  return `${N(stopLine)} <span class="faint" style="font-size:10px">(${label})</span>`;
+}
 function effectivePeak(code){
   const db=S.dbPeak[code]||{price:0,atIso:null,dateStr:null};
   const live=S.livePrices[code];
@@ -1545,32 +1569,16 @@ function profileChart(host,buckets,opt={}){
 }
 // rows(v_stock_chart 행 배열)에서 종가를 bucketCount개 가격 구간으로 나눠 구간별
 // valueFn(row) 합계(원→억원)를 만듭니다. 기본 valueFn은 개인 순매수(individual_net).
-// 구간 범위는 1년 전체 최저~최고가가 아니라 "현재가 기준 아래 PRICE_PROFILE_DOWN_PCT%
-// ~위 PRICE_PROFILE_UP_PCT%"로 좁혀서 잡습니다 — 예전엔 24구간을 1년 최저~최고 전체에
-// 걸쳐 나누다 보니 현재가보다 한참 위/아래 구간까지 포함돼서 정작 주가가 오를 때
-// 부딪힐 상단 매물대(저항대) 하나하나가 너무 넓어 구분이 안 됐음(2026-09 요청으로 변경,
-// 기본값 -25%~+75%는 대략치라 아래 두 상수만 바꾸면 비율 조정 가능).
-// 범위를 좁힌 만큼 그 밖에 있는 종가는 이제 어느 구간에도 집계되지 않고 제외됩니다
-// (예전처럼 맨 끝 구간에 뭉뚱그려 넣으면 그 구간 값이 왜곡되기 때문).
 // 반환 배열은 가격 높은 구간이 먼저 오도록 정렬(=profileChart에서 위쪽에 그려짐).
-const PRICE_PROFILE_DOWN_PCT=0.10, PRICE_PROFILE_UP_PCT=0.90; // 현재가 -10%~+90%
 function buildPriceProfile(rows,bucketCount=24,valueFn=r=>+r.individual_net||0){
   const closes=rows.map(r=>+r.close).filter(v=>!isNaN(v));
   if(!closes.length)return[];
-  const cur=+rows.at(-1).close;
-  const lo=cur*(1-PRICE_PROFILE_DOWN_PCT),hi=cur*(1+PRICE_PROFILE_UP_PCT);
-  const span=(hi-lo)||Math.max(1,lo*0.02);
+  const lo=Math.min(...closes),hi=Math.max(...closes),span=(hi-lo)||Math.max(1,lo*0.02);
   const size=span/bucketCount;
-  const idxOf=c=>Math.floor((c-lo)/size); // 범위 밖이면 음수 또는 bucketCount 이상이 나옴(아래서 걸러냄)
+  const idxOf=c=>Math.min(bucketCount-1,Math.max(0,Math.floor((c-lo)/size)));
   const buckets=Array.from({length:bucketCount},()=>0);
-  rows.forEach(r=>{
-    const c=+r.close;
-    if(isNaN(c))return;
-    const idx=idxOf(c);
-    if(idx<0||idx>=bucketCount)return;
-    buckets[idx]+=valueFn(r)/EOK;
-  });
-  const curIdx=Math.min(bucketCount-1,Math.max(0,idxOf(cur)));
+  rows.forEach(r=>{buckets[idxOf(+r.close)]+=valueFn(r)/EOK;});
+  const curIdx=idxOf(+rows.at(-1).close);
   return buckets.map((v,i)=>{
     const bLo=lo+i*size,bHi=lo+(i+1)*size;
     return {lo:bLo,hi:bHi,label:`${N(bLo,0)}~${N(bHi,0)}`,v,cur:i===curIdx};
@@ -3239,7 +3247,7 @@ async function loadPerf(){
       <td class="l">${stratBadge(p.strategy)}</td>
       <td>${p.entry_date}</td><td class="opt">${N(+p.entry_price)}</td><td class="opt">${N(+p.avg_price)}</td>
       <td class="opt">${p.tranches}</td><td>${p.exit_date}</td><td>${N(+p.exit_price)}</td>
-      <td class="opt faint">${p.exit_reason==="CRASH_STOP_10"?"급락 -10%":p.exit_reason==="NEXT_OPEN_EXIT"?"익일시가":"트레일링 -7%"}</td>
+      <td class="opt faint">${p.exit_reason==="CRASH_STOP_10"?"급락 -10%":p.exit_reason==="NEXT_OPEN_EXIT"?"익일시가":p.exit_reason==="BREAKEVEN_STOP"?"손익분기 보호":"트레일링 -7%"}</td>
       <td class="${sgn(+p.realized_pnl)}">${pm(+p.realized_pnl,0)}</td>
       <td class="${sgn(+p.return_pct)}">${pm(+p.return_pct)}%</td></tr>`).join("")
       :'<tr><td colspan="11" class="load">청산 이력 없음</td></tr>';
@@ -3267,8 +3275,9 @@ async function loadPerf(){
         <td class="opt faint" data-peakat="${p.code}">${peakAtLabel(p.code)}</td>
         <td class="opt">${p.tranches}</td><td>${N(+p.invested)}</td>
         <td class="${up==null?"":sgn(up)}">${up==null?"–":pm(up,0)}</td>
-        <td class="${dd==null?"":sgn(dd)}" data-peakdd="${p.code}">${dd==null?"–":pm(dd,1)+"%"}</td></tr>`;}).join("")
-      :'<tr><td colspan="15" class="load">보유 중인 포지션 없음</td></tr>';
+        <td class="${dd==null?"":sgn(dd)}" data-peakdd="${p.code}">${dd==null?"–":pm(dd,1)+"%"}</td>
+        <td class="faint" style="font-size:11px">${sellTargetHtml(p,ep)}</td></tr>`;}).join("")
+      :'<tr><td colspan="16" class="load">보유 중인 포지션 없음</td></tr>';
     $$("#v-perf a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
     makeSortable('perfBody');
     makeSortable('openBody');
@@ -3297,7 +3306,7 @@ function drawPnlChart(){
 const COND_DEF={
   TREND:{
     label:"추세추종",
-    buy:"매수: 3단계 통과 종목 전량 매수 (시총별 차등, 아래 참조) · 피라미딩 제한 없음(+20%마다 같은 금액) · 매도: 보유 중 최고가(당일 고가 기준 peak) 대비 -7% 트레일링 손절",
+    buy:"매수: 3단계 통과 종목 전량 매수 (시총별 차등, 아래 참조) · 피라미딩 제한 없음(+20%마다 같은 금액) · 매도: 보유 중 최고가(당일 고가 기준 peak) 대비 -7% 트레일링 손절 · 단, 고점이 매수가 대비 +5% 이상 찍은 적이 있으면 그 뒤로는 매수가 +0.3% 아래로 손절선이 내려가지 않는 손익분기 보호선 적용(2026-09-08 추가)",
     stages:[
       {tag:"1단계",items:["종가위치 상위 30% (고저범위 내 상위 30%)","등락률 12% 미만 (당일 이미 과열된 급등 종목 추격매수 제외)"]},
       {tag:"2단계",items:["1단계 조건 전부 (종가위치 상위30% · 등락률 12%미만)","전고점 근처 (near_high 또는 전고대비 -10% 이내)","정배열 (5일 > 10일 > 20일 > 60일 이동평균)"]},
