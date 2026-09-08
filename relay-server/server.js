@@ -430,7 +430,7 @@ async function fetchChangeRateRank(limit = 30) {
     const token = await getKisRestToken();
     const params = new URLSearchParams({
       FID_COND_MRKT_DIV_CODE: 'J', FID_COND_SCR_DIV_CODE: '20170', FID_INPUT_ISCD: '0000',
-      FID_RANK_SORT_CLS_CODE: '0000', FID_INPUT_CNT_1: '0', FID_PRC_CLS_CODE: '0',
+      FID_RANK_SORT_CLS_CODE: '0', FID_INPUT_CNT_1: '0', FID_PRC_CLS_CODE: '0',
       FID_INPUT_PRICE_1: String(SCAN_MIN_PRICE), FID_INPUT_PRICE_2: '',
       FID_VOL_CNT: String(SCAN_MIN_VOL), FID_TRGT_CLS_CODE: '0',
       FID_TRGT_EXLS_CLS_CODE: '0000000000', FID_DIV_CLS_CODE: '0',
@@ -440,6 +440,9 @@ async function fetchChangeRateRank(limit = 30) {
     // fluctuation() 함수, [v1_국내주식-088])을 확인해보니 실제 엔드포인트가
     // /quotations/fluctuation-rank가 아니라 /ranking/fluctuation 이었음 — 이 오타 때문에
     // 계속 404가 나서 SCAN 단계가 하루종일 스킵되고 있었음(2026-09-08 발견·수정).
+    // FID_RANK_SORT_CLS_CODE는 공식 샘플 docstring엔 "0000"으로 나오지만 실제 호출해보니
+    // "ERROR INVALID INPUT_FILED_SIZE [FID_RANK_SORT_CLS_CODE] [4]"로 거부됨 — 한 자리
+    // 코드("0"=등락률상위)가 맞는 것으로 확인되어 원래 값으로 되돌림.
     const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/ranking/fluctuation?${params}`, {
       headers: kisRestHeaders(token, 'FHPST01700000'),
     });
