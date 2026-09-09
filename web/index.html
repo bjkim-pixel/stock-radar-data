@@ -1010,14 +1010,14 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 
   <div class="card"><h3>매수 조건</h3>
-    <div class="cond-common">체결강도 150%↑ &nbsp;·&nbsp; 1분 내 5천만원↑ 대량체결 3회↑ &nbsp;·&nbsp; 분당거래대금 최근5분 평균 대비 200%↑ &nbsp;·&nbsp; 관망구간(09:00~09:10) 제외<br>
-      손절 · 진입가 기준 -2% 하드캡, 이후 고점 대비 트레일링(-2%→-1.5%→-1%로 단계적으로 좁힘) &nbsp;·&nbsp; 장마감 전 강제청산</div>
+    <div class="cond-common">체결강도 150%↑ &nbsp;·&nbsp; 1분 내 3천만원↑ 대량체결 2회↑ &nbsp;·&nbsp; 분당거래대금 최근5분 평균 대비 150%↑ &nbsp;·&nbsp; 프로그램 순매수(최근 2분) 0원 초과 &nbsp;·&nbsp; 관망구간(09:00~09:15) 제외<br>
+      손절 · 진입가 기준 -2% 하드캡, 이후 고점 대비 트레일링(-2%→-1.5%→-1%로 단계적으로 좁힘) &nbsp;·&nbsp; 장마감 전 강제청산 (2026-09-09: 조건 완화 반영 + 프로그램 순매수 조건 추가)</div>
   </div>
 
   <div class="card"><h3>실시간 조건 트래킹 <span class="r" id="i2LiveCount"></span></h3>
     <div class="faint" style="font-size:11px;margin:0 0 8px">지금 추적 중인 후보/보유 종목이 매수 조건을 실시간으로 얼마나 충족하고 있는지 보여줍니다(체결 틱마다 갱신, KIS 웹소켓 동시구독 한도 대응으로 최근 갱신순 상위 종목만 표시). 초록 배지가 붙은 조건은 지금 충족 중이라는 뜻입니다.</div>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th title="보유 종목만 추적(구독 슬롯 절약) — 최근 5분 순매수거래대금">프로그램매매(5분)</th><th>충족조건</th>
+      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th title="후보+보유 종목 모두 추적(2026-09-09 확장) — 최근 2분 순매수거래대금, 매수 조건에도 포함">프로그램순매수(2분)</th><th>충족조건</th>
     </tr></thead><tbody id="i2LiveBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
@@ -1566,13 +1566,22 @@ function profileChart(host,buckets,opt={}){
   }
   host.appendChild(svg);
 }
+// 매물대 가격 범위: 전체 기간 최저~최고가 아니라 "현재가 기준" 아래/위 비율로
+// 잡음(2026-09-08 결정) — 주가가 상승하며 만날 수 있는 매물대를 더 세분화해서
+// 보기 위해, 위쪽(저항 구간)에 더 넓은 비중을 둠.
+const PRICE_PROFILE_DOWN_PCT=0.10;  // 현재가 기준 아래로 10%까지
+const PRICE_PROFILE_UP_PCT=0.90;    // 현재가 기준 위로 90%까지
 // rows(v_stock_chart 행 배열)에서 종가를 bucketCount개 가격 구간으로 나눠 구간별
 // valueFn(row) 합계(원→억원)를 만듭니다. 기본 valueFn은 개인 순매수(individual_net).
+// 가격 범위는 전체 기간 최저~최고가 아니라 현재가 기준 -10%~+90%(위 상수)로 고정.
+// 그 범위를 벗어나는 종가는 가장 가까운 끝 구간(0번 또는 마지막)에 합산(clamp)됨.
 // 반환 배열은 가격 높은 구간이 먼저 오도록 정렬(=profileChart에서 위쪽에 그려짐).
 function buildPriceProfile(rows,bucketCount=24,valueFn=r=>+r.individual_net||0){
   const closes=rows.map(r=>+r.close).filter(v=>!isNaN(v));
   if(!closes.length)return[];
-  const lo=Math.min(...closes),hi=Math.max(...closes),span=(hi-lo)||Math.max(1,lo*0.02);
+  const curPrice=+rows.at(-1).close;
+  const lo=curPrice*(1-PRICE_PROFILE_DOWN_PCT),hi=curPrice*(1+PRICE_PROFILE_UP_PCT);
+  const span=(hi-lo)||Math.max(1,lo*0.02);
   const size=span/bucketCount;
   const idxOf=c=>Math.min(bucketCount-1,Math.max(0,Math.floor((c-lo)/size)));
   const buckets=Array.from({length:bucketCount},()=>0);
@@ -2999,7 +3008,7 @@ function updateI2Live(code,m){
 function renderI2LiveFromState(){
   renderI2Live(S.i2LiveWanted||[], S.i2LiveOpenCodes||[]);
 }
-const I2_COND_LABEL={cttr:"체결강도",largePrints:"대량체결",minuteRatio:"분당거래대금"};
+const I2_COND_LABEL={cttr:"체결강도",largePrints:"대량체결",minuteRatio:"분당거래대금",programNetBuy:"프로그램순매수"};
 function condBadges(conds){
   if(!conds) return '<span class="faint">–</span>';
   return Object.entries(conds).map(([k,c])=>{
@@ -3008,17 +3017,16 @@ function condBadges(conds){
     return `<span class="${cls}" style="margin-right:6px;font-size:10.5px">${c.ok?"●":"○"} ${label}</span>`;
   }).join("");
 }
-// 프로그램매매는 보유 종목에만 구독(구독 슬롯 절약 — relay-server 설계 참고)하므로
-// "후보"는 항상 미추적, "보유중"인데 값이 없으면 구독은 됐지만 아직 체결 틱이
-// 없었다는 뜻 — 이 둘을 다른 문구로 구분해서 헷갈리지 않게 함.
-function programTradeCell(live,isOpen){
-  if(!isOpen) return '<span class="faint" title="프로그램매매는 보유 종목만 추적합니다">–</span>';
-  const pt=live?.position?.programTrade;
+// 2026-09-09: 프로그램매매 구독을 후보 단계까지 확장 — "후보"든 "보유중"이든
+// 값이 없으면 구독은 됐지만 아직 체결 틱이 없었다는 뜻(프로그램매매 자체가
+// 뜸한 종목일 수 있음).
+function programTradeCell(live){
+  const pt=live?.programTrade;
   if(!pt) return '<span class="faint">체결 없음</span>';
-  const amt=pt.netBuyAmt5min;
+  const amt=pt.netBuyAmt;
   const cls=amt>0?"good":(amt<0?"down":"faint");
   const sign=amt>0?"+":"";
-  return `<span class="${cls}" title="최근 5분 순매수거래대금 합계 · 틱 ${pt.tickCount}건">${sign}${N(amt/10000,0)}만</span>`;
+  return `<span class="${cls}" title="최근 2분 순매수거래대금 합계 · 틱 ${pt.tickCount}건">${sign}${N(amt/10000,0)}만</span>`;
 }
 // wanted: 지금 표에 보여야 할 코드 목록(후보+보유), openCodes: 그중 보유중인 것.
 // 정렬: 보유중 먼저(진입가 대비 손절선까지 여유가 핵심 관심사), 그 다음
@@ -3055,7 +3063,7 @@ function renderI2Live(wanted,openCodes){
     const mr=live.conditions?.minuteRatio;
     const statusLabel=isOpen
       ? `보유중${live.position?` <span class="faint">(${live.position.grade}등급)</span>`:""}`
-      : (live.metConditions>=3?'<span class="good">매수 임박</span>':`후보(${live.metConditions??0}/${live.totalConditions??3})`);
+      : (live.metConditions>=(live.totalConditions??4)?'<span class="good">매수 임박</span>':`후보(${live.metConditions??0}/${live.totalConditions??4})`);
     return `<tr><td class="l"><a class="lk nm" data-code="${code}">${name}</a></td>
       <td class="l">${statusLabel}</td>
       <td class="num">${N(live.price)}</td>
@@ -3064,7 +3072,7 @@ function renderI2Live(wanted,openCodes){
       <td class="${lp?.ok?"good":""}">${lp?lp.value:"–"}</td>
       <td class="${mr?.ok?"good":""}">${mr&&mr.value!=null?N(mr.value,1)+"x":"–"}</td>
       <td class="${live.isNewHigh?"good":"faint"}">${live.isNewHigh?"신고가":"–"}</td>
-      <td>${programTradeCell(live,isOpen)}</td>
+      <td>${programTradeCell(live)}</td>
       <td class="l">${condBadges(live.conditions)}</td></tr>`;
   }).join("");
   $$("#i2LiveBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
