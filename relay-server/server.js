@@ -237,10 +237,10 @@ const F_HIGH = 8, F_CNTG_VOL = 12, F_ACML_AMT = 14, F_CTTR = 18;
 // ----------------------------------------------------------------------------
 // 2026-09-09: 기존엔 "실제로 포지션을 보유 중인" 종목에만 구독을 걸었으나(구독
 // 슬롯 절약 목적), 후보 단계에서도 순매수 흐름을 보고 싶다는 요청으로 후보
-// 40개 전체 + 보유 종목까지 구독 대상을 넓힘. KIS 웹소켓 동시구독 슬롯이
-// 부족해지면(SANGTTA_MAX_TRACKED=40 근처) 일부 종목 구독이 누락될 수 있으니
-// 서버 로그의 "[프로그램매매 구독 추가/해제]" 빈도를 봐서 필요하면
-// SANGTTA_MAX_TRACKED를 줄이는 방향으로 조정할 것.
+// 전체 + 보유 종목까지 구독 대상을 넓힘. 같은 날 추적 슬롯 수를
+// SANGTTA_MAX_TRACKED로 줄여둔 만큼 구독 슬롯 부족 문제는 크게 줄었지만,
+// 혹시 부족해지면 서버 로그의 "[프로그램매매 구독 추가/해제]" 빈도를 보고
+// SANGTTA_MAX_TRACKED를 더 줄이는 방향으로 조정할 것.
 const KIS_PROGRAM_TRADE_TR_ID = 'H0STPGM0';
 const SANGTTA_PROGRAM_TRADE_WINDOW_MS = 2 * 60 * 1000; // "최근 2분" 순매수 합산 윈도우(기존 5분→단축)
 
@@ -601,12 +601,15 @@ async function stageRegular() {
 // 하루종일 고정되고(추가만 되고 교체는 안 됨), 이미 모멘텀이 식은 종목도
 // 실시간 추적 대상에 계속 남아있는 문제가 있었음. 이제는 "지금도 등락률
 // 상위권(top 30)에 남아있는 종목"은 이미 알던 종목이어도 매번 새 SCAN 행으로
-// upsert해서 created_at을 갱신함 — refreshSangttaCandidates()가 "최근 갱신순
-// top 40"으로 실시간 추적 대상을 뽑으므로, 상위권에서 계속 밀려나 갱신이
-// 끊긴 예전 후보는 자연스럽게 추적 대상에서 빠지고 지금 뜨거운 종목이 그
-// 자리를 대체함(교체는 오늘 누적 후보 수가 SANGTTA_MAX_TRACKED=40을 넘어야
-// 실제로 일어남 — 조용한 날엔 교체가 거의 없을 수 있음). 보유 중인 포지션은
-// wantedCodes()에서 항상 별도로 포함되므로 이 로테이션으로 추적이 끊기지 않음.
+// upsert해서 created_at을 갱신함 — refreshSangttaCandidates()가 이 데이터를
+// 가지고 실시간 추적 대상을 뽑으므로, 상위권에서 계속 밀려나 갱신이 끊긴 예전
+// 후보는 자연스럽게 추적 대상에서 빠지고 지금 뜨거운 종목이 그 자리를 대체함.
+// 2026-09-09 2차 개선: SANGTTA_MAX_TRACKED를 40→소수로 줄이고
+// refreshSangttaCandidates()의 정렬 기준도 "단순 최신순"에서 "최신순 + 동일
+// 배치 내에서는 등락률순위(rank) 우선"으로 바꿔서, 지금 가장 강하게 오르는
+// 종목이 확실히 앞자리를 차지하도록 함 — 교체가 더 자주, 더 확실하게 일어남.
+// 보유 중인 포지션은 wantedCodes()에서 항상 별도로 포함되므로 이 로테이션으로
+// 추적이 끊기지 않음.
 async function stageScan() {
   const minutesNow = kstMinutesNow();
   if (minutesNow < SCAN_START_MIN || minutesNow > SCAN_END_MIN) return;
@@ -702,8 +705,25 @@ const SANGTTA_MINUTE_HISTORY_MIN    = 5;         // "최근 5분" 평균에 쓸 
 // 진입 허용 — 프로그램매매 틱 자체가 뜸한 종목은 조건 미충족으로 남을 수 있음
 // (진입이 너무 안 나오면 이 조건부터 완화/제거 검토).
 const SANGTTA_PROGRAM_NET_BUY_MIN   = 0;         // 프로그램 순매수(2분) > 0원
+// 2026-09-09 2차 개선: 실제 전략은 하루 중 가장 강하게 오르는 1~3종목을 짧게
+// 사고파는 단타 회전매매라, 40개씩이나 되는 넓은 후보 풀을 유지할 필요가
+// 없음(오히려 교체가 뜸해지고 "지금 가장 뜨거운 종목"에 집중하기 어려워짐).
+// 40 → 12로 축소해 추적 대상을 좁히고, 아래 refreshSangttaCandidates()의
+// 정렬 로직도 "최신순 + 동률이면 등락률순위 우선"으로 바꿔 진짜 지금 강한
+// 종목이 상위에 남도록 함. 너무 좁아서 매수 기회를 자주 놓친다면 다시 늘릴 것.
+const SANGTTA_MAX_TRACKED           = 12;        // 실시간 추적(=웹소켓 구독) 대상 상위 N개
+// 프로그램 순매수 규모가 이 이상이면 "강한 프로그램 매수세 동반"으로 보고
+// 진입 등급을 A(풀사이즈)로 올림(기존엔 신고가 돌파 여부만 봤음) — 사용자
+// 지적대로 프로그램 매수가 붙으면 상승 추세가 더 오래/가파르게 이어질 수
+// 있다고 보고 사이징에 반영.
+const SANGTTA_PROGRAM_NET_BUY_STRONG = 150_000_000; // 프로그램 순매수(2분) 1.5억원↑
+// 보유 중 어느 정도 수익(peakRet)이 난 뒤, 프로그램매매가 순매수→순매도로
+// 뚜렷하게 전환되면 "큰손/프로그램이 물량을 넘기기 시작"한 신호로 보고
+// 트레일링 손절선에 닿기 전에 선제적으로 청산 — 사용자가 설명한 "초반 상승
+// 후 고수 매도 물량이 상승을 꺾는" 패턴에 대응.
+const SANGTTA_PROGRAM_REVERSAL_MIN_GAIN_PCT = 3;      // 최고수익 3%↑ 구간에서만 반전 신호 체크(노이즈 방지)
+const SANGTTA_PROGRAM_REVERSAL_NET_SELL_KRW = -50_000_000; // 최근 2분 순매도 5천만원↑ 전환 시 선제 청산
 const SANGTTA_MAX_ENTRIES_PER_CODE  = 2;         // 3번째 진입 시도부터는 등급 C(배제)로 간주
-const SANGTTA_MAX_TRACKED           = 40;        // KIS 웹소켓 동시구독 한도 대응 — 최근 갱신순 상위 N개만 실시간 추적
 
 // 진입 등급별 가상매수 금액(스펙 4-1절 — 절대금액은 스펙에 없어 임의 기본값,
 // 필요시 조정하세요). A=풀사이즈, B=1/2, C=진입 배제.
@@ -792,13 +812,15 @@ async function sbWriteReturning(path, method, body) {
 async function refreshSangttaCandidates() {
   try {
     const today = kstDateStr();
-    // created_at desc로 정렬해 "가장 최근에 (재)선정된" 순서를 얻고, 상위
-    // SANGTTA_MAX_TRACKED개만 남긴다 — KIS 웹소켓 동시구독 한도(~40) 대응.
-    // SCAN 단계가 하루종일 새 후보를 계속 upsert하면서 매번 created_at을
-    // now()로 갱신하므로, 오래 갱신되지 않은(=더 이상 조건에 안 걸리는)
-    // 후보는 자연스럽게 이 상위 N개 밖으로 밀려나 실시간 추적에서 제외된다.
+    // created_at desc로 정렬해 "가장 최근에 (재)선정된" 순서를 얻되, 동일한
+    // SCAN 배치는 upsertCandidates()가 created_at을 한 번에 같은 값으로
+    // 채우므로(같은 분 안에서는 사실상 동시각) rank(등락률순위, 1이 가장 강함)
+    // 오름차순을 2차 정렬 기준으로 둬서 "같은 시각에 갱신된 종목들 중에서도
+    // 지금 진짜 더 강하게 오르는 종목"이 앞자리를 차지하도록 함. 이렇게 뽑은
+    // 상위 SANGTTA_MAX_TRACKED개만 실시간 추적 대상으로 남긴다. 오래 갱신되지
+    // 않은(=더 이상 조건에 안 걸리는) 후보는 자연스럽게 밀려나 제외된다.
     const rows = await sbGet(
-      `intraday_candidates?select=code,created_at&trade_date=eq.${today}&order=created_at.desc`
+      `intraday_candidates?select=code,rank,created_at&trade_date=eq.${today}&order=created_at.desc,rank.asc`
     );
     const seen = new Set();
     const ordered = [];
@@ -821,7 +843,9 @@ async function refreshSangttaCandidates() {
     console.error('[상따] 후보 갱신 실패:', err.message);
   }
 }
-const SANGTTA_CANDIDATE_POLL_MS = 2 * 60 * 1000;
+// stageScan()이 1분마다 갱신하므로 여기도 1분으로 맞춰서 교체가 최대 1분
+// 지연 안에 반영되도록 함(기존 2분 → 1분, 회전을 더 빠르게).
+const SANGTTA_CANDIDATE_POLL_MS = 60 * 1000;
 setInterval(refreshSangttaCandidates, SANGTTA_CANDIDATE_POLL_MS);
 
 // 이미 CLOSED된 오늘자 포지션을 서버 재시작 후에도 "몇 번째 진입인지" 알 수 있게
@@ -860,10 +884,14 @@ async function primeSangttaOpenPositions() {
   }
 }
 
-function sangttaGradeFor(code, isNewHigh) {
+// 2026-09-09: 신고가 돌파 여부만 보던 A/B 등급 판정에 프로그램 순매수 강도를
+// 추가 — 신고가 돌파가 아니어도 프로그램 매수세가 강하면(SANGTTA_PROGRAM_NET_BUY_STRONG↑)
+// 상승이 더 이어질 가능성이 높다고 보고 A등급(풀사이즈)을 부여.
+function sangttaGradeFor(code, isNewHigh, programNetBuy) {
   const tries = (sangttaEntriesToday.get(code) || 0) + 1; // 이번 시도 포함
   if (tries >= SANGTTA_MAX_ENTRIES_PER_CODE + 1) return 'C';   // 3번째 시도부터 배제
-  if (tries === 1) return isNewHigh ? 'A' : 'B';               // 최초 진입: 신고가 돌파면 A, 아니면 보수적으로 B
+  const strongProgram = Number.isFinite(programNetBuy) && programNetBuy >= SANGTTA_PROGRAM_NET_BUY_STRONG;
+  if (tries === 1) return (isNewHigh || strongProgram) ? 'A' : 'B'; // 최초 진입: 신고가 돌파 or 강한 프로그램 매수면 A
   return 'B';                                                   // 재진입은 B(1/2 사이즈)
 }
 
@@ -871,14 +899,17 @@ async function enterSangttaPosition(code, price, grade, ctx) {
   const sizeKrw = SANGTTA_SIZE_KRW[grade];
   const qty = Math.max(1, Math.floor(sizeKrw / price));
   const now = new Date();
+  const programNetBuyManwon = Number.isFinite(ctx.programNetBuy) ? Math.round(ctx.programNetBuy / 10000) : null;
   const reasonText = `체결강도 ${ctx.cttr.toFixed(0)}% · 1분내 대량체결 ${ctx.largePrints}회 · `
-    + `분당거래대금 ${ctx.minuteRatio.toFixed(1)}배 · 등급${grade} (${ctx.source})`;
+    + `분당거래대금 ${ctx.minuteRatio.toFixed(1)}배 · 프로그램순매수 ${programNetBuyManwon != null ? programNetBuyManwon + '만원' : '–'} · `
+    + `등급${grade} (${ctx.source})`;
   const entry_reason = {
     entry_grade: grade,
     source: ctx.source,
     execution_strength: ctx.cttr,
     large_prints_1min: ctx.largePrints,
     minute_volume_ratio: ctx.minuteRatio,
+    program_net_buy_krw: ctx.programNetBuy != null ? Math.round(ctx.programNetBuy) : null,
     change_pct_at_entry: ctx.changePct,
     entry_amount_krw: sizeKrw,
     quantity: qty,
@@ -922,6 +953,8 @@ async function exitSangttaPosition(code, price, exitType, extra = {}) {
   const peakRet = (pos.peakPrice - pos.entryPrice) / pos.entryPrice * 100;
   const reasonText = exitType === 'MARKET_CLOSE'
     ? `장마감 강제청산 · 최고수익 ${peakRet >= 0 ? '+' : ''}${peakRet.toFixed(1)}%에서 마감`
+    : exitType === 'PROGRAM_REVERSAL'
+    ? `프로그램 매도 전환 감지 · 최고수익 ${peakRet >= 0 ? '+' : ''}${peakRet.toFixed(1)}%에서 선제청산`
     : `${exitType === 'HARD_STOP' ? '하드캡' : '트레일링'} 손절 · 최고수익 ${peakRet >= 0 ? '+' : ''}${peakRet.toFixed(1)}%에서 반락`;
   const exit_reason = {
     exit_type: exitType,
@@ -989,14 +1022,14 @@ function maybeEnterSangtta(code, price, rec, now) {
   if (!pt || pt.netBuyAmt <= SANGTTA_PROGRAM_NET_BUY_MIN) return;
 
   const isNewHigh = Number.isFinite(high) && price >= high;
-  const grade = sangttaGradeFor(code, isNewHigh);
+  const grade = sangttaGradeFor(code, isNewHigh, pt.netBuyAmt);
   if (grade === 'C') {
     console.log(`[상따] ${code} 조건 충족했으나 등급C(배제) — 진입 스킵`);
     return;
   }
   enterSangttaPosition(code, price, grade, {
     source: isCandidate ? 'CANDIDATE' : 'NEW_DETECTED',
-    cttr, largePrints, minuteRatio, changePct,
+    cttr, largePrints, minuteRatio, changePct, programNetBuy: pt.netBuyAmt,
   });
 }
 
@@ -1012,6 +1045,21 @@ function checkSangttaExit(code, price, now) {
     exitSangttaPosition(code, price, 'MARKET_CLOSE');
     return;
   }
+
+  // 2026-09-09: 프로그램 반전 매도 선제 청산 — 어느 정도 수익(peakRet)이 난
+  // 뒤 프로그램매매가 순매수→뚜렷한 순매도로 돌아서면, 트레일링 손절선에
+  // 닿기 전에 먼저 빠져나옴. "초반 상승 후 고수 물량이 상승을 꺾는" 패턴을
+  // 트레일링 손절보다 한 박자 빠르게 잡아내기 위한 leading-indicator 성격의
+  // 청산으로, 아래 일반 손절 판정보다 먼저 체크한다.
+  const peakRet = (pos.peakPrice - pos.entryPrice) / pos.entryPrice * 100;
+  if (peakRet >= SANGTTA_PROGRAM_REVERSAL_MIN_GAIN_PCT) {
+    const pt = getProgramTradeSnapshot(code);
+    if (pt && pt.netBuyAmt <= SANGTTA_PROGRAM_REVERSAL_NET_SELL_KRW) {
+      exitSangttaPosition(code, price, 'PROGRAM_REVERSAL');
+      return;
+    }
+  }
+
   const { line, type } = sangttaStopLine(pos.entryPrice, pos.peakPrice);
   if (price <= line) exitSangttaPosition(code, price, type);
 }
