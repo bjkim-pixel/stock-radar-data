@@ -700,11 +700,31 @@ const SANGTTA_LARGE_PRINT_WINDOW_MS = 60_000;    // "최근 1분 내"
 const SANGTTA_LARGE_PRINT_MIN_COUNT = 2;         // 2회 이상 (기존 3회)
 const SANGTTA_MINUTE_VOL_RATIO_MIN  = 1.5;       // 분당거래대금 최근5분평균 대비 150%↑ (기존 200%)
 const SANGTTA_MINUTE_HISTORY_MIN    = 5;         // "최근 5분" 평균에 쓸 과거 분봉 수
-// 2026-09-09: 후보 단계까지 프로그램매매 구독을 넓히면서 매수 조건에 추가.
-// 최근 2분(SANGTTA_PROGRAM_TRADE_WINDOW_MS) 순매수거래대금이 0원보다 커야
-// 진입 허용 — 프로그램매매 틱 자체가 뜸한 종목은 조건 미충족으로 남을 수 있음
-// (진입이 너무 안 나오면 이 조건부터 완화/제거 검토).
-const SANGTTA_PROGRAM_NET_BUY_MIN   = 0;         // 프로그램 순매수(2분) > 0원
+// 2026-09-09 3차 개선: "프로그램 순매수(2분) > 0원"을 진입 필수조건으로
+// 걸었더니, 정작 오늘 실제 상승률 상위(머큐리·삼미금속 등 소형/저유동주)는
+// 프로그램매매 자체가 거의 안 붙는 종목이라 pt가 계속 null로 남아 원천적으로
+// 진입이 막혀버리는 문제를 발견함(상따 전략이 정작 노려야 할 종목군이
+// 배제되는 역설). 그래서 "매수 필수조건"에서 내리고, 대신 아래 두 방향으로
+// 재구성:
+//  1) 프로그램 데이터가 없으면(pt==null) 중립으로 보고 진입을 막지 않음.
+//  2) 프로그램매매가 뚜렷하게 순매도로 잡히면(SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW
+//     이하) "큰손/프로그램이 물량을 넘기는 중"으로 보고 그때만 진입을 차단.
+// 프로그램 순매수가 강하면(SANGTTA_PROGRAM_NET_BUY_STRONG↑) 여전히 등급을
+// A로 올려 사이징에 반영(아래).
+const SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW = -30_000_000; // 프로그램 순매수(2분) -3천만원 이하면 진입 차단
+// 오늘 실제 매매 4종목(삼화콘덴서·SK이노베이션·가온전선·비에이치아이)이
+// 당일 급상승 Top100(머큐리 +30%, 삼미금속 +29.9% 등)과 겹치지 않는 문제를
+// 확인 — 체결강도/분당거래대금 비율 같은 "종목 자체 대비 상대적" 지표만으로는
+// 오늘 시장에서 진짜 강한 종목인지 보장이 안 됨. 그래서 "지금 실제 등락률"
+// 자체를 최소 기준으로 추가해, 상따 전략의 본래 타겟(당일 급등 초입 종목)에
+// 확실히 집중되도록 함.
+const SANGTTA_MIN_CHANGE_PCT_ENTRY = 8;          // 현재 등락률 8%↑ (진짜 "오늘 뜨는 종목"인지 확인)
+// 매수 잔량(실제 체결 가능성) 문제 — 현재 엔진은 체결(H0STCNT0) 틱만 보고
+// 실시간 호가(매도잔량)는 구독하지 않아 진짜 주문가능한 잔량을 보진 못함.
+// 완전한 호가잔량 체크는 별도 KIS 호가 구독(H0STPGM0처럼 추가 구독 슬롯 필요)이
+// 있어야 정확하지만, 우선 "오늘 누적거래대금"을 유동성 대리지표로 써서 너무
+// 얇은(체결 자체가 드문) 종목은 걸러냄 — 실제 매도잔량 체크는 추가 검토 필요.
+const SANGTTA_MIN_ACML_AMT_ENTRY = 3_000_000_000; // 오늘 누적거래대금 30억원↑
 // 2026-09-09 2차 개선: 실제 전략은 하루 중 가장 강하게 오르는 1~3종목을 짧게
 // 사고파는 단타 회전매매라, 40개씩이나 되는 넓은 후보 풀을 유지할 필요가
 // 없음(오히려 교체가 뜸해지고 "지금 가장 뜨거운 종목"에 집중하기 어려워짐).
@@ -900,15 +920,17 @@ async function enterSangttaPosition(code, price, grade, ctx) {
   const qty = Math.max(1, Math.floor(sizeKrw / price));
   const now = new Date();
   const programNetBuyManwon = Number.isFinite(ctx.programNetBuy) ? Math.round(ctx.programNetBuy / 10000) : null;
-  const reasonText = `체결강도 ${ctx.cttr.toFixed(0)}% · 1분내 대량체결 ${ctx.largePrints}회 · `
-    + `분당거래대금 ${ctx.minuteRatio.toFixed(1)}배 · 프로그램순매수 ${programNetBuyManwon != null ? programNetBuyManwon + '만원' : '–'} · `
-    + `등급${grade} (${ctx.source})`;
+  const acmlAmtEok = Number.isFinite(ctx.acmlAmt) ? (ctx.acmlAmt / 100_000_000).toFixed(1) : null;
+  const reasonText = `등락률 ${ctx.changePct.toFixed(1)}% · 체결강도 ${ctx.cttr.toFixed(0)}% · 1분내 대량체결 ${ctx.largePrints}회 · `
+    + `분당거래대금 ${ctx.minuteRatio.toFixed(1)}배 · 누적거래대금 ${acmlAmtEok != null ? acmlAmtEok + '억' : '–'} · `
+    + `프로그램순매수 ${programNetBuyManwon != null ? programNetBuyManwon + '만원' : '–'} · 등급${grade} (${ctx.source})`;
   const entry_reason = {
     entry_grade: grade,
     source: ctx.source,
     execution_strength: ctx.cttr,
     large_prints_1min: ctx.largePrints,
     minute_volume_ratio: ctx.minuteRatio,
+    acml_amt_krw: ctx.acmlAmt != null ? Math.round(ctx.acmlAmt) : null,
     program_net_buy_krw: ctx.programNetBuy != null ? Math.round(ctx.programNetBuy) : null,
     change_pct_at_entry: ctx.changePct,
     entry_amount_krw: sizeKrw,
@@ -1011,25 +1033,33 @@ function maybeEnterSangtta(code, price, rec, now) {
   const cttr = Number(rec[F_CTTR]);
   const changePct = Number(rec[F_RATE]);
   const high = Number(rec[F_HIGH]);
+  const acmlAmt = Number(rec[F_ACML_AMT]);
   if (!Number.isFinite(cttr) || cttr < SANGTTA_CTTR_MIN) return;
   if (largePrints < SANGTTA_LARGE_PRINT_MIN_COUNT) return;
   const minuteRatio = sangttaMinuteVolumeRatio(st, minuteKey);
   if (minuteRatio == null || minuteRatio < SANGTTA_MINUTE_VOL_RATIO_MIN) return;
-  // 2026-09-09: 프로그램 순매수(최근 2분) > 0원 조건 추가. NEW_DETECTED(후보
-  // 목록 밖 장중 신규 편입) 종목은 프로그램매매 구독이 안 걸려있어 pt가 항상
-  // null이라 이 조건에서 항상 걸러짐 — 문제가 되면 isCandidate만 게이트하도록 조정.
+  // 2026-09-09 3차 개선: "지금 실제로 오늘 급등 종목인지"를 직접 확인 —
+  // 체결강도·분당거래대금비율은 종목 자체 평소 대비 상대값이라, 원래 거래가
+  // 적던 종목이 살짝만 움직여도 조건을 만족할 수 있음. 실제 등락률과
+  // 누적거래대금(유동성 대리지표)을 최소 기준으로 추가해 "오늘 시장에서
+  // 진짜 강하게 오르는, 실제로 체결 가능한" 종목에만 진입하도록 함.
+  if (!Number.isFinite(changePct) || changePct < SANGTTA_MIN_CHANGE_PCT_ENTRY) return;
+  if (!Number.isFinite(acmlAmt) || acmlAmt < SANGTTA_MIN_ACML_AMT_ENTRY) return;
+  // 프로그램매매: 데이터가 없으면(소형/저유동주는 흔함) 중립으로 통과시키고,
+  // 뚜렷한 순매도 전환(큰손 이탈 신호)일 때만 차단. 강한 순매수는 진입 여부와
+  // 무관하게 아래 등급 판정에서 A등급(풀사이즈) 보너스로 반영됨.
   const pt = getProgramTradeSnapshot(code);
-  if (!pt || pt.netBuyAmt <= SANGTTA_PROGRAM_NET_BUY_MIN) return;
+  if (pt && pt.netBuyAmt <= SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW) return;
 
   const isNewHigh = Number.isFinite(high) && price >= high;
-  const grade = sangttaGradeFor(code, isNewHigh, pt.netBuyAmt);
+  const grade = sangttaGradeFor(code, isNewHigh, pt ? pt.netBuyAmt : null);
   if (grade === 'C') {
     console.log(`[상따] ${code} 조건 충족했으나 등급C(배제) — 진입 스킵`);
     return;
   }
   enterSangttaPosition(code, price, grade, {
     source: isCandidate ? 'CANDIDATE' : 'NEW_DETECTED',
-    cttr, largePrints, minuteRatio, changePct, programNetBuy: pt.netBuyAmt,
+    cttr, largePrints, minuteRatio, changePct, acmlAmt, programNetBuy: pt ? pt.netBuyAmt : null,
   });
 }
 
@@ -1082,6 +1112,7 @@ function sangttaLiveSnapshot(code, rec, price, now) {
   const cttr = Number(rec[F_CTTR]);
   const high = Number(rec[F_HIGH]);
   const changePct = Number(rec[F_RATE]);
+  const acmlAmt = Number(rec[F_ACML_AMT]);
   const largePrints = st.largePrints.length;
   const minuteRatio = sangttaMinuteVolumeRatio(st, minuteKey);
   const isNewHigh = Number.isFinite(high) && Number.isFinite(price) && price >= high;
@@ -1090,6 +1121,12 @@ function sangttaLiveSnapshot(code, rec, price, now) {
   const pt = getProgramTradeSnapshot(code);
 
   const conditions = {
+    changePctMin: {
+      ok: Number.isFinite(changePct) && changePct >= SANGTTA_MIN_CHANGE_PCT_ENTRY,
+      value: Number.isFinite(changePct) ? changePct : null,
+      threshold: SANGTTA_MIN_CHANGE_PCT_ENTRY,
+      label: '실제 등락률',
+    },
     cttr: {
       ok: Number.isFinite(cttr) && cttr >= SANGTTA_CTTR_MIN,
       value: Number.isFinite(cttr) ? cttr : null,
@@ -1108,11 +1145,19 @@ function sangttaLiveSnapshot(code, rec, price, now) {
       threshold: SANGTTA_MINUTE_VOL_RATIO_MIN,
       label: '분당거래대금 비율',
     },
+    liquidity: {
+      ok: Number.isFinite(acmlAmt) && acmlAmt >= SANGTTA_MIN_ACML_AMT_ENTRY,
+      value: Number.isFinite(acmlAmt) ? acmlAmt : null,
+      threshold: SANGTTA_MIN_ACML_AMT_ENTRY,
+      label: '누적거래대금(유동성)',
+    },
+    // 2026-09-09 3차 개선: 필수조건이 아니라 "위험 신호 감시"로 성격 변경 —
+    // 데이터 없음/순매수는 ok=true(정상), 뚜렷한 순매도 전환일 때만 ok=false.
     programNetBuy: {
-      ok: pt != null && pt.netBuyAmt > SANGTTA_PROGRAM_NET_BUY_MIN,
+      ok: !(pt != null && pt.netBuyAmt <= SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW),
       value: pt ? pt.netBuyAmt : null,
-      threshold: SANGTTA_PROGRAM_NET_BUY_MIN,
-      label: '프로그램 순매수(2분)',
+      threshold: SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW,
+      label: '프로그램 매도전환 감시(2분)',
     },
   };
   const metConditions = Object.values(conditions).filter(c => c.ok).length;
