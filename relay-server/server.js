@@ -711,20 +711,30 @@ const SANGTTA_MINUTE_HISTORY_MIN    = 5;         // "최근 5분" 평균에 쓸 
 //     이하) "큰손/프로그램이 물량을 넘기는 중"으로 보고 그때만 진입을 차단.
 // 프로그램 순매수가 강하면(SANGTTA_PROGRAM_NET_BUY_STRONG↑) 여전히 등급을
 // A로 올려 사이징에 반영(아래).
-const SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW = -30_000_000; // 프로그램 순매수(2분) -3천만원 이하면 진입 차단
+// 이 값 "이하"가 되면 진입을 막는 차단선이지, 이 값 이하여야 매수한다는
+// 뜻이 아님(주의: 조건명이 헷갈리기 쉬워 한 번 더 적음) — 프로그램이 순매수
+// 중이거나 데이터가 없으면 그냥 통과, 뚜렷하게 순매도(-3천만원 이하)로
+// 잡힐 때만 매수를 "막는다".
+const SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW = -30_000_000; // 프로그램 순매수(2분) -3천만원 이하 → 매수 차단(반대 아님)
 // 오늘 실제 매매 4종목(삼화콘덴서·SK이노베이션·가온전선·비에이치아이)이
 // 당일 급상승 Top100(머큐리 +30%, 삼미금속 +29.9% 등)과 겹치지 않는 문제를
 // 확인 — 체결강도/분당거래대금 비율 같은 "종목 자체 대비 상대적" 지표만으로는
-// 오늘 시장에서 진짜 강한 종목인지 보장이 안 됨. 그래서 "지금 실제 등락률"
-// 자체를 최소 기준으로 추가해, 상따 전략의 본래 타겟(당일 급등 초입 종목)에
-// 확실히 집중되도록 함.
-const SANGTTA_MIN_CHANGE_PCT_ENTRY = 8;          // 현재 등락률 8%↑ (진짜 "오늘 뜨는 종목"인지 확인)
+// 오늘 시장에서 진짜 강한 종목인지 보장이 안 됨. 다만 상따는 "이미 많이 오른
+// 종목"이 아니라 "오를 기미가 보이는 종목을 초반에" 잡는 전략이라는 지적을
+// 반영해 최초엔 8%로 뒀던 걸 3%로 크게 낮춤 — 완전히 평평한(노이즈) 종목만
+// 걸러내는 최소한의 안전장치로만 쓰고, "초반 조짐" 판단은 아래 체결강도·
+// 대량체결·분당거래대금비율(모두 상대적/즉각적 지표) 3개에 맡김.
+const SANGTTA_MIN_CHANGE_PCT_ENTRY = 3;          // 현재 등락률 3%↑ (완전 평평한 노이즈만 배제)
 // 매수 잔량(실제 체결 가능성) 문제 — 현재 엔진은 체결(H0STCNT0) 틱만 보고
 // 실시간 호가(매도잔량)는 구독하지 않아 진짜 주문가능한 잔량을 보진 못함.
-// 완전한 호가잔량 체크는 별도 KIS 호가 구독(H0STPGM0처럼 추가 구독 슬롯 필요)이
-// 있어야 정확하지만, 우선 "오늘 누적거래대금"을 유동성 대리지표로 써서 너무
-// 얇은(체결 자체가 드문) 종목은 걸러냄 — 실제 매도잔량 체크는 추가 검토 필요.
-const SANGTTA_MIN_ACML_AMT_ENTRY = 3_000_000_000; // 오늘 누적거래대금 30억원↑
+// 완전한 호가잔량 체크는 별도 KIS 호가 구독(추가 구독 슬롯 필요)이 있어야
+// 정확함(추후 검토). 1차 조치로 "오늘 09:00부터의 누적거래대금"을 대리지표로
+// 썼었으나, 09:15~09:20 초반 진입 구간엔 아직 누적치가 쌓일 시간이 없어
+// 오히려 "초반 진입"을 막는 장벽이 된다는 지적을 반영해 "분당 평균 거래대금
+// (직전 5분 평균 — minuteRatio 계산에 쓰는 것과 동일 데이터)"으로 바꿈. 이건
+// 시각과 무관하게 "지금 이 순간 실제로 거래가 활발한지"만 보므로 09:15든
+// 14:00든 동일한 기준이 적용됨.
+const SANGTTA_MIN_MINUTE_AMT_ENTRY = 30_000_000; // 직전 5분 평균 분당거래대금 3천만원↑
 // 2026-09-09 2차 개선: 실제 전략은 하루 중 가장 강하게 오르는 1~3종목을 짧게
 // 사고파는 단타 회전매매라, 40개씩이나 되는 넓은 후보 풀을 유지할 필요가
 // 없음(오히려 교체가 뜸해지고 "지금 가장 뜨거운 종목"에 집중하기 어려워짐).
@@ -798,17 +808,19 @@ function updateSangttaTickStats(code, price, cntgVol, now) {
   return { minuteKey, st };
 }
 
-// 현재 진행 중인 분(minuteKey)의 누적거래대금 ÷ 그 직전 완결된 최근 N분 평균.
-// 과거 분봉 데이터가 부족하면(장 시작 직후 등) null을 돌려주고 진입 조건에서 스킵.
-function sangttaMinuteVolumeRatio(st, minuteKey) {
+// 현재 진행 중인 분(minuteKey)의 누적거래대금 ÷ 그 직전 완결된 최근 N분 평균,
+// 그리고 그 평균값(avg) 자체도 함께 돌려줌 — avg는 "지금 이 종목이 시각과
+// 무관하게 분당 얼마나 거래되고 있는지"를 보여주는 유동성 지표로도 쓰임
+// (SANGTTA_MIN_MINUTE_AMT_ENTRY 진입 조건). 과거 분봉 데이터가 부족하면
+// (장 시작 직후 등) null을 돌려주고 진입 조건에서 스킵.
+function sangttaMinuteVolumeStats(st, minuteKey) {
   const cur = st.minuteBuckets.get(minuteKey) || 0;
   const prevKeys = [];
   for (let k = minuteKey - 1; k >= minuteKey - SANGTTA_MINUTE_HISTORY_MIN; k--) prevKeys.push(k);
   const prevAmts = prevKeys.map(k => st.minuteBuckets.get(k)).filter(v => v != null);
   if (prevAmts.length < SANGTTA_MINUTE_HISTORY_MIN) return null;
   const avg = prevAmts.reduce((a, b) => a + b, 0) / prevAmts.length;
-  if (avg <= 0) return null;
-  return cur / avg;
+  return { ratio: avg > 0 ? cur / avg : null, avg, cur };
 }
 
 // service_role 키로 쓰기 + INSERT 결과 반환(대기 중인 id를 바로 알아야 해서
@@ -920,9 +932,9 @@ async function enterSangttaPosition(code, price, grade, ctx) {
   const qty = Math.max(1, Math.floor(sizeKrw / price));
   const now = new Date();
   const programNetBuyManwon = Number.isFinite(ctx.programNetBuy) ? Math.round(ctx.programNetBuy / 10000) : null;
-  const acmlAmtEok = Number.isFinite(ctx.acmlAmt) ? (ctx.acmlAmt / 100_000_000).toFixed(1) : null;
+  const minuteAvgAmtManwon = Number.isFinite(ctx.minuteAvgAmt) ? Math.round(ctx.minuteAvgAmt / 10000) : null;
   const reasonText = `등락률 ${ctx.changePct.toFixed(1)}% · 체결강도 ${ctx.cttr.toFixed(0)}% · 1분내 대량체결 ${ctx.largePrints}회 · `
-    + `분당거래대금 ${ctx.minuteRatio.toFixed(1)}배 · 누적거래대금 ${acmlAmtEok != null ? acmlAmtEok + '억' : '–'} · `
+    + `분당거래대금 ${ctx.minuteRatio.toFixed(1)}배(평균 ${minuteAvgAmtManwon != null ? minuteAvgAmtManwon + '만원/분' : '–'}) · `
     + `프로그램순매수 ${programNetBuyManwon != null ? programNetBuyManwon + '만원' : '–'} · 등급${grade} (${ctx.source})`;
   const entry_reason = {
     entry_grade: grade,
@@ -930,7 +942,7 @@ async function enterSangttaPosition(code, price, grade, ctx) {
     execution_strength: ctx.cttr,
     large_prints_1min: ctx.largePrints,
     minute_volume_ratio: ctx.minuteRatio,
-    acml_amt_krw: ctx.acmlAmt != null ? Math.round(ctx.acmlAmt) : null,
+    minute_avg_amt_krw: ctx.minuteAvgAmt != null ? Math.round(ctx.minuteAvgAmt) : null,
     program_net_buy_krw: ctx.programNetBuy != null ? Math.round(ctx.programNetBuy) : null,
     change_pct_at_entry: ctx.changePct,
     entry_amount_krw: sizeKrw,
@@ -1033,21 +1045,22 @@ function maybeEnterSangtta(code, price, rec, now) {
   const cttr = Number(rec[F_CTTR]);
   const changePct = Number(rec[F_RATE]);
   const high = Number(rec[F_HIGH]);
-  const acmlAmt = Number(rec[F_ACML_AMT]);
   if (!Number.isFinite(cttr) || cttr < SANGTTA_CTTR_MIN) return;
   if (largePrints < SANGTTA_LARGE_PRINT_MIN_COUNT) return;
-  const minuteRatio = sangttaMinuteVolumeRatio(st, minuteKey);
-  if (minuteRatio == null || minuteRatio < SANGTTA_MINUTE_VOL_RATIO_MIN) return;
-  // 2026-09-09 3차 개선: "지금 실제로 오늘 급등 종목인지"를 직접 확인 —
-  // 체결강도·분당거래대금비율은 종목 자체 평소 대비 상대값이라, 원래 거래가
-  // 적던 종목이 살짝만 움직여도 조건을 만족할 수 있음. 실제 등락률과
-  // 누적거래대금(유동성 대리지표)을 최소 기준으로 추가해 "오늘 시장에서
-  // 진짜 강하게 오르는, 실제로 체결 가능한" 종목에만 진입하도록 함.
+  const mv = sangttaMinuteVolumeStats(st, minuteKey);
+  if (mv == null || mv.ratio == null || mv.ratio < SANGTTA_MINUTE_VOL_RATIO_MIN) return;
+  const minuteRatio = mv.ratio, minuteAvgAmt = mv.avg;
+  // 2026-09-09 3차 개선: "지금 실제로 오늘 뜨는 종목인지"를 직접 확인하되,
+  // 상따는 "이미 많이 오른 종목"이 아니라 "오를 기미가 보이는 종목을 초반에"
+  // 잡는 전략이므로 등락률 기준은 완전 평평한 노이즈만 거르는 낮은 값(3%)만
+  // 씀. 유동성은 "오늘 09:00부터 누적거래대금"이 아니라 "지금 이 순간의
+  // 분당 평균 거래대금"으로 봐서 09:15 초반 진입을 불리하게 만들지 않음.
   if (!Number.isFinite(changePct) || changePct < SANGTTA_MIN_CHANGE_PCT_ENTRY) return;
-  if (!Number.isFinite(acmlAmt) || acmlAmt < SANGTTA_MIN_ACML_AMT_ENTRY) return;
+  if (minuteAvgAmt < SANGTTA_MIN_MINUTE_AMT_ENTRY) return;
   // 프로그램매매: 데이터가 없으면(소형/저유동주는 흔함) 중립으로 통과시키고,
-  // 뚜렷한 순매도 전환(큰손 이탈 신호)일 때만 차단. 강한 순매수는 진입 여부와
-  // 무관하게 아래 등급 판정에서 A등급(풀사이즈) 보너스로 반영됨.
+  // 뚜렷한 순매도 전환(큰손 이탈 신호)일 때만 차단 — "매도해야 산다"가 아니라
+  // "매도 중이면 안 산다"는 뜻. 강한 순매수는 진입 여부와 무관하게 아래 등급
+  // 판정에서 A등급(풀사이즈) 보너스로 반영됨.
   const pt = getProgramTradeSnapshot(code);
   if (pt && pt.netBuyAmt <= SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW) return;
 
@@ -1059,7 +1072,7 @@ function maybeEnterSangtta(code, price, rec, now) {
   }
   enterSangttaPosition(code, price, grade, {
     source: isCandidate ? 'CANDIDATE' : 'NEW_DETECTED',
-    cttr, largePrints, minuteRatio, changePct, acmlAmt, programNetBuy: pt ? pt.netBuyAmt : null,
+    cttr, largePrints, minuteRatio, minuteAvgAmt, changePct, programNetBuy: pt ? pt.netBuyAmt : null,
   });
 }
 
@@ -1112,9 +1125,10 @@ function sangttaLiveSnapshot(code, rec, price, now) {
   const cttr = Number(rec[F_CTTR]);
   const high = Number(rec[F_HIGH]);
   const changePct = Number(rec[F_RATE]);
-  const acmlAmt = Number(rec[F_ACML_AMT]);
   const largePrints = st.largePrints.length;
-  const minuteRatio = sangttaMinuteVolumeRatio(st, minuteKey);
+  const mv = sangttaMinuteVolumeStats(st, minuteKey);
+  const minuteRatio = mv ? mv.ratio : null;
+  const minuteAvgAmt = mv ? mv.avg : null;
   const isNewHigh = Number.isFinite(high) && Number.isFinite(price) && price >= high;
   // 2026-09-09: 프로그램매매 구독을 후보 단계까지 넓혀서, 후보 상태에서도
   // "아직 틱 없음"과 "순매수 마이너스/플러스"를 구분해 보여주고 매수 조건에도 반영.
@@ -1146,10 +1160,10 @@ function sangttaLiveSnapshot(code, rec, price, now) {
       label: '분당거래대금 비율',
     },
     liquidity: {
-      ok: Number.isFinite(acmlAmt) && acmlAmt >= SANGTTA_MIN_ACML_AMT_ENTRY,
-      value: Number.isFinite(acmlAmt) ? acmlAmt : null,
-      threshold: SANGTTA_MIN_ACML_AMT_ENTRY,
-      label: '누적거래대금(유동성)',
+      ok: minuteAvgAmt != null && minuteAvgAmt >= SANGTTA_MIN_MINUTE_AMT_ENTRY,
+      value: minuteAvgAmt,
+      threshold: SANGTTA_MIN_MINUTE_AMT_ENTRY,
+      label: '분당거래대금(유동성)',
     },
     // 2026-09-09 3차 개선: 필수조건이 아니라 "위험 신호 감시"로 성격 변경 —
     // 데이터 없음/순매수는 ok=true(정상), 뚜렷한 순매도 전환일 때만 ok=false.
