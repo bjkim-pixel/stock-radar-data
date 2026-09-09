@@ -1010,16 +1010,17 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 
   <div class="card"><h3>매수 조건</h3>
-    <div class="cond-common">실제 등락률 8%↑ &nbsp;·&nbsp; 체결강도 150%↑ &nbsp;·&nbsp; 1분 내 3천만원↑ 대량체결 2회↑ &nbsp;·&nbsp; 분당거래대금 최근5분 평균 대비 150%↑ &nbsp;·&nbsp; 오늘 누적거래대금 30억원↑(유동성) &nbsp;·&nbsp; 프로그램 순매수(최근 2분)가 -3천만원 이하(뚜렷한 순매도 전환)면 진입 보류 &nbsp;·&nbsp; 관망구간(09:00~09:15) 제외<br>
+    <div class="cond-common">실제 등락률 3%↑(완전 평평한 노이즈만 배제) &nbsp;·&nbsp; 체결강도 150%↑ &nbsp;·&nbsp; 1분 내 3천만원↑ 대량체결 2회↑ &nbsp;·&nbsp; 분당거래대금 최근5분 평균 대비 150%↑ &nbsp;·&nbsp; 분당 평균거래대금 3천만원↑(유동성, 시각과 무관) &nbsp;·&nbsp; 관망구간(09:00~09:15) 제외<br>
+      프로그램 순매수(2분) · <b>매수 필수조건 아님</b> — 데이터 없음/순매수는 정상 통과, -3천만원 이하로 뚜렷한 순매도 전환일 때만 매수 보류(매도해야 사는 게 아니라 매도 중이면 안 사는 것) &nbsp;·&nbsp;
       등급 · 신고가 돌파 <b>또는</b> 프로그램 순매수(2분) 1.5억원↑이면 A등급(풀사이즈), 그 외 B등급(1/2사이즈) &nbsp;·&nbsp;
       손절 · 진입가 기준 -2% 하드캡, 이후 고점 대비 트레일링(-2%→-1.5%→-1%로 단계적으로 좁힘), 단 최고수익 3%↑ 구간에서 프로그램 순매수가 5천만원↑ 순매도로 전환되면 선제청산 &nbsp;·&nbsp; 장마감 전 강제청산
-      (2026-09-09 3차: 프로그램 순매수 "0원 초과" 필수조건이 소형/저유동 급등주를 원천 배제하던 문제를 발견해 "순매도 전환시에만 차단"으로 완화하고, 대신 실제 등락률·유동성 기준을 추가해 진짜 오늘 급등 종목에 집중하도록 재설계)</div>
+      (2026-09-09 4차: 등락률 기준을 8%→3%로 낮춰 "이미 많이 오른 종목"이 아닌 "오를 기미가 보이는 초반 종목"을 노리도록 조정, 유동성 기준을 09:00 누적거래대금→분당 평균거래대금으로 바꿔 09:15 초반 진입이 불리해지지 않도록 개선)</div>
   </div>
 
   <div class="card"><h3>실시간 조건 트래킹 <span class="r" id="i2LiveCount"></span></h3>
     <div class="faint" style="font-size:11px;margin:0 0 8px">지금 추적 중인 후보/보유 종목이 매수 조건을 실시간으로 얼마나 충족하고 있는지 보여줍니다(체결 틱마다 갱신, 등락률 상위권 중 최근 갱신순 상위 12종목만 실시간 추적 — 식은 종목은 빠지고 지금 뜨거운 종목으로 계속 교체됨). 초록 배지가 붙은 조건은 지금 충족 중이라는 뜻입니다.</div>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th title="필수조건 아님 — 뚜렷한 순매도 전환(-3천만원↓)시에만 진입 차단, 강한 순매수(+1.5억↑)는 등급 A 보너스">프로그램순매수(2분)</th><th>충족조건</th>
+      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th title="매수 필수조건 아님 — 데이터 없음/순매수는 정상, 뚜렷한 순매도 전환(-3천만원↓)일 때만 진입 차단. 강한 순매수(+1.5억↑)는 등급 A 보너스">프로그램순매수(2분)</th><th>충족조건</th>
     </tr></thead><tbody id="i2LiveBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
@@ -3010,7 +3011,7 @@ function updateI2Live(code,m){
 function renderI2LiveFromState(){
   renderI2Live(S.i2LiveWanted||[], S.i2LiveOpenCodes||[]);
 }
-const I2_COND_LABEL={changePctMin:"실제 등락률",cttr:"체결강도",largePrints:"대량체결",minuteRatio:"분당거래대금",liquidity:"유동성",programNetBuy:"프로그램매도감시"};
+const I2_COND_LABEL={changePctMin:"실제 등락률",cttr:"체결강도",largePrints:"대량체결",minuteRatio:"분당거래대금",liquidity:"분당유동성",programNetBuy:"프로그램매도감시"};
 // 2026-09-09: 배지에 라벨만 있고 실제 값이 없어 "충족조건"만 보고는 왜 충족/
 // 미충족인지 알 수 없다는 피드백 반영 — 배지 자체에 "현재값(기준값)"을 같이
 // 표시해서 좌우로 스크롤해서 다른 열과 대조하지 않아도 바로 확인 가능하게 함.
@@ -3021,8 +3022,8 @@ function condValueText(k,c){
     case "cttr":         return `${N(c.value,0)}(${c.threshold}↑)`;
     case "largePrints":  return `${c.value}회(${c.threshold}회↑)`;
     case "minuteRatio":  return `${N(c.value,1)}x(${c.threshold}x↑)`;
-    case "liquidity":    return `${N(c.value/100000000,1)}억(${N(c.threshold/100000000,0)}억↑)`;
-    case "programNetBuy":return `${N(c.value/10000,0)}만원(${N(c.threshold/10000,0)}만원↓ 위험)`;
+    case "liquidity":    return `${N(c.value/10000,0)}만원/분(${N(c.threshold/10000,0)}만원↑)`;
+    case "programNetBuy":return c.value<=c.threshold?`${N(c.value/10000,0)}만원 순매도(위험)`:`${N(c.value/10000,0)}만원(정상)`;
     default:              return `${c.value}`;
   }
 }
