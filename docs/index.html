@@ -3010,12 +3010,26 @@ function renderI2LiveFromState(){
   renderI2Live(S.i2LiveWanted||[], S.i2LiveOpenCodes||[]);
 }
 const I2_COND_LABEL={cttr:"체결강도",largePrints:"대량체결",minuteRatio:"분당거래대금",programNetBuy:"프로그램순매수"};
+// 2026-09-09: 배지에 라벨만 있고 실제 값이 없어 "충족조건"만 보고는 왜 충족/
+// 미충족인지 알 수 없다는 피드백 반영 — 배지 자체에 "현재값(기준값)"을 같이
+// 표시해서 좌우로 스크롤해서 다른 열과 대조하지 않아도 바로 확인 가능하게 함.
+function condValueText(k,c){
+  if(c.value==null) return "–";
+  switch(k){
+    case "cttr":         return `${N(c.value,0)}(${c.threshold}↑)`;
+    case "largePrints":  return `${c.value}회(${c.threshold}회↑)`;
+    case "minuteRatio":  return `${N(c.value,1)}x(${c.threshold}x↑)`;
+    case "programNetBuy":return `${N(c.value/10000,0)}만원(${c.threshold}원↑)`;
+    default:              return `${c.value}`;
+  }
+}
 function condBadges(conds){
   if(!conds) return '<span class="faint">–</span>';
   return Object.entries(conds).map(([k,c])=>{
     const label=I2_COND_LABEL[k]||k;
     const cls=c.ok?"good":"faint";
-    return `<span class="${cls}" style="margin-right:6px;font-size:10.5px">${c.ok?"●":"○"} ${label}</span>`;
+    const vt=condValueText(k,c);
+    return `<span class="${cls}" style="margin-right:8px;font-size:10.5px;white-space:nowrap" title="${label}: 현재 ${vt}">${c.ok?"●":"○"} ${label} ${vt}</span>`;
   }).join("");
 }
 // 2026-09-09: 프로그램매매 구독을 후보 단계까지 확장 — "후보"든 "보유중"이든
