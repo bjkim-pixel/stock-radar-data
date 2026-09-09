@@ -233,14 +233,16 @@ const F_CODE = 0, F_TIME = 1, F_PRICE = 2, F_SIGN = 3, F_DIFF = 4, F_RATE = 5;
 const F_HIGH = 8, F_CNTG_VOL = 12, F_ACML_AMT = 14, F_CTTR = 18;
 
 // ----------------------------------------------------------------------------
-// 3-C) 프로그램매매(H0STPGM0) 실시간 구독 — 상따 보조 신호
+// 3-C) 프로그램매매(H0STPGM0) 실시간 구독 — 상따 매수 조건 신호
 // ----------------------------------------------------------------------------
-// 종목별로 구독을 1개 더 늘리는 비용이 있어서(KIS 웹소켓 동시구독 슬롯 제한),
-// 후보 40개 전체가 아니라 "실제로 포지션을 보유 중인" 종목에만 건다.
-// (설계 검토 문서 "구독 슬롯 문제" 참고 — 슬롯이 넉넉한 걸로 확인되면
-// programTradeWantedCodes()에 sangttaCandidates도 합치면 됨)
+// 2026-09-09: 기존엔 "실제로 포지션을 보유 중인" 종목에만 구독을 걸었으나(구독
+// 슬롯 절약 목적), 후보 단계에서도 순매수 흐름을 보고 싶다는 요청으로 후보
+// 40개 전체 + 보유 종목까지 구독 대상을 넓힘. KIS 웹소켓 동시구독 슬롯이
+// 부족해지면(SANGTTA_MAX_TRACKED=40 근처) 일부 종목 구독이 누락될 수 있으니
+// 서버 로그의 "[프로그램매매 구독 추가/해제]" 빈도를 봐서 필요하면
+// SANGTTA_MAX_TRACKED를 줄이는 방향으로 조정할 것.
 const KIS_PROGRAM_TRADE_TR_ID = 'H0STPGM0';
-const SANGTTA_PROGRAM_TRADE_WINDOW_MS = 5 * 60 * 1000; // "최근 5분" 순매수 합산 윈도우
+const SANGTTA_PROGRAM_TRADE_WINDOW_MS = 2 * 60 * 1000; // "최근 2분" 순매수 합산 윈도우(기존 5분→단축)
 
 // H0STPGM0 응답 Body 필드 순서(KIS Developers 포털 확정본).
 // ⚠ NTBY_CNQN/NTBY_TR_PBMN엔 ACML_(누적) 접두어가 없음 — H0STCNT0의
@@ -256,7 +258,9 @@ const sangttaProgramStats = new Map();     // code -> { ticks: [{t, ntbyCnqn, nt
 const programTradeVerifyLogged = new Map(); // code -> 검증 로그 출력 횟수(종목당 최대 3회)
 
 function programTradeWantedCodes() {
-  return new Set(sangttaOpenPositions.keys());
+  const w = new Set(sangttaCandidates);
+  for (const code of sangttaOpenPositions.keys()) w.add(code);
+  return w;
 }
 
 function reconcileProgramTradeSubscriptions() {
@@ -293,17 +297,18 @@ function updateProgramTradeStats(code, ntbyCnqn, ntbyAmt, now) {
   while (st.ticks.length && st.ticks[0].t < cutoff) st.ticks.shift();
 }
 
-// 프론트/스냅샷용 — 최근 5분간 순매수거래대금 합계, 마지막 틱 값 등을 반환.
-// 아직 틱이 한 번도 없었으면(프로그램매매 자체가 없는 종목) null.
+// 프론트/스냅샷용 — 최근 SANGTTA_PROGRAM_TRADE_WINDOW_MS(2분)간 순매수거래대금
+// 합계, 마지막 틱 값 등을 반환. 아직 틱이 한 번도 없었으면(프로그램매매
+// 자체가 없는 종목) null.
 function getProgramTradeSnapshot(code) {
   const st = sangttaProgramStats.get(code);
   if (!st || !st.ticks.length) return null;
-  const netBuyAmt5min = st.ticks.reduce((a, x) => a + x.ntbyAmt, 0);
-  const netBuyQty5min = st.ticks.reduce((a, x) => a + x.ntbyCnqn, 0);
+  const netBuyAmt = st.ticks.reduce((a, x) => a + x.ntbyAmt, 0);
+  const netBuyQty = st.ticks.reduce((a, x) => a + x.ntbyCnqn, 0);
   const last = st.ticks[st.ticks.length - 1];
   return {
-    netBuyAmt5min,
-    netBuyQty5min,
+    netBuyAmt,
+    netBuyQty,
     lastNtbyAmt: last.ntbyAmt,
     lastTickAt: last.t,
     tickCount: st.ticks.length,
@@ -679,6 +684,11 @@ const SANGTTA_LARGE_PRINT_WINDOW_MS = 60_000;    // "최근 1분 내"
 const SANGTTA_LARGE_PRINT_MIN_COUNT = 2;         // 2회 이상 (기존 3회)
 const SANGTTA_MINUTE_VOL_RATIO_MIN  = 1.5;       // 분당거래대금 최근5분평균 대비 150%↑ (기존 200%)
 const SANGTTA_MINUTE_HISTORY_MIN    = 5;         // "최근 5분" 평균에 쓸 과거 분봉 수
+// 2026-09-09: 후보 단계까지 프로그램매매 구독을 넓히면서 매수 조건에 추가.
+// 최근 2분(SANGTTA_PROGRAM_TRADE_WINDOW_MS) 순매수거래대금이 0원보다 커야
+// 진입 허용 — 프로그램매매 틱 자체가 뜸한 종목은 조건 미충족으로 남을 수 있음
+// (진입이 너무 안 나오면 이 조건부터 완화/제거 검토).
+const SANGTTA_PROGRAM_NET_BUY_MIN   = 0;         // 프로그램 순매수(2분) > 0원
 const SANGTTA_MAX_ENTRIES_PER_CODE  = 2;         // 3번째 진입 시도부터는 등급 C(배제)로 간주
 const SANGTTA_MAX_TRACKED           = 40;        // KIS 웹소켓 동시구독 한도 대응 — 최근 갱신순 상위 N개만 실시간 추적
 
@@ -793,6 +803,7 @@ async function refreshSangttaCandidates() {
       nameRows.forEach(r => codeNames.set(r.code, r.name));
     }
     reconcileKisSubscriptions();
+    reconcileProgramTradeSubscriptions(); // 후보 목록이 바뀌었으므로 프로그램매매 구독도 재조정
   } catch (err) {
     console.error('[상따] 후보 갱신 실패:', err.message);
   }
@@ -958,6 +969,11 @@ function maybeEnterSangtta(code, price, rec, now) {
   if (largePrints < SANGTTA_LARGE_PRINT_MIN_COUNT) return;
   const minuteRatio = sangttaMinuteVolumeRatio(st, minuteKey);
   if (minuteRatio == null || minuteRatio < SANGTTA_MINUTE_VOL_RATIO_MIN) return;
+  // 2026-09-09: 프로그램 순매수(최근 2분) > 0원 조건 추가. NEW_DETECTED(후보
+  // 목록 밖 장중 신규 편입) 종목은 프로그램매매 구독이 안 걸려있어 pt가 항상
+  // null이라 이 조건에서 항상 걸러짐 — 문제가 되면 isCandidate만 게이트하도록 조정.
+  const pt = getProgramTradeSnapshot(code);
+  if (!pt || pt.netBuyAmt <= SANGTTA_PROGRAM_NET_BUY_MIN) return;
 
   const isNewHigh = Number.isFinite(high) && price >= high;
   const grade = sangttaGradeFor(code, isNewHigh);
@@ -1008,6 +1024,9 @@ function sangttaLiveSnapshot(code, rec, price, now) {
   const largePrints = st.largePrints.length;
   const minuteRatio = sangttaMinuteVolumeRatio(st, minuteKey);
   const isNewHigh = Number.isFinite(high) && Number.isFinite(price) && price >= high;
+  // 2026-09-09: 프로그램매매 구독을 후보 단계까지 넓혀서, 후보 상태에서도
+  // "아직 틱 없음"과 "순매수 마이너스/플러스"를 구분해 보여주고 매수 조건에도 반영.
+  const pt = getProgramTradeSnapshot(code);
 
   const conditions = {
     cttr: {
@@ -1028,6 +1047,12 @@ function sangttaLiveSnapshot(code, rec, price, now) {
       threshold: SANGTTA_MINUTE_VOL_RATIO_MIN,
       label: '분당거래대금 비율',
     },
+    programNetBuy: {
+      ok: pt != null && pt.netBuyAmt > SANGTTA_PROGRAM_NET_BUY_MIN,
+      value: pt ? pt.netBuyAmt : null,
+      threshold: SANGTTA_PROGRAM_NET_BUY_MIN,
+      label: '프로그램 순매수(2분)',
+    },
   };
   const metConditions = Object.values(conditions).filter(c => c.ok).length;
 
@@ -1041,6 +1066,7 @@ function sangttaLiveSnapshot(code, rec, price, now) {
     metConditions,
     totalConditions: Object.keys(conditions).length,
   };
+  if (pt) snap.programTrade = pt;
 
   if (isOpenPosition) {
     const { line, type } = sangttaStopLine(pos.entryPrice, pos.peakPrice);
@@ -1053,11 +1079,6 @@ function sangttaLiveSnapshot(code, rec, price, now) {
       stopLine: line,
       stopType: type,
     };
-    // 프로그램매매(H0STPGM0)는 보유 종목에만 구독하므로 후보 상태에서는 항상 null.
-    // null이면 "프로그램매매 구독 전"이 아니라 "아직 틱이 없음"(체결이 뜸한
-    // 종목일 수 있음) — 프론트에서 이 둘을 구분해서 표시할 것.
-    const pt = getProgramTradeSnapshot(code);
-    if (pt) snap.programTrade = pt;
   }
   return snap;
 }
