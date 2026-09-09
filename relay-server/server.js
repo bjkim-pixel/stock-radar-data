@@ -595,6 +595,18 @@ async function stageRegular() {
 // ── 4) 장중 연속 스캔 (SCAN, 09:15~15:20) ────────────────────────────────────
 // GitHub Actions cron은 5분 간격이었으나, 상따는 초단타라 종목 편입/이탈을 더
 // 빠르게 반영해야 한다는 요청에 따라 1분 간격으로 단축(SCAN_INTERVAL_MS 참고).
+//
+// 2026-09-09: 기존엔 "이미 한 번이라도 후보였던 종목(known)"은 매번 skip해서
+// 다시는 건드리지 않았음 — 그 결과 09:15 REGULAR까지 정해진 리스트가 사실상
+// 하루종일 고정되고(추가만 되고 교체는 안 됨), 이미 모멘텀이 식은 종목도
+// 실시간 추적 대상에 계속 남아있는 문제가 있었음. 이제는 "지금도 등락률
+// 상위권(top 30)에 남아있는 종목"은 이미 알던 종목이어도 매번 새 SCAN 행으로
+// upsert해서 created_at을 갱신함 — refreshSangttaCandidates()가 "최근 갱신순
+// top 40"으로 실시간 추적 대상을 뽑으므로, 상위권에서 계속 밀려나 갱신이
+// 끊긴 예전 후보는 자연스럽게 추적 대상에서 빠지고 지금 뜨거운 종목이 그
+// 자리를 대체함(교체는 오늘 누적 후보 수가 SANGTTA_MAX_TRACKED=40을 넘어야
+// 실제로 일어남 — 조용한 날엔 교체가 거의 없을 수 있음). 보유 중인 포지션은
+// wantedCodes()에서 항상 별도로 포함되므로 이 로테이션으로 추적이 끊기지 않음.
 async function stageScan() {
   const minutesNow = kstMinutesNow();
   if (minutesNow < SCAN_START_MIN || minutesNow > SCAN_END_MIN) return;
@@ -603,31 +615,32 @@ async function stageScan() {
   if (!ranked.length) return;
 
   const known = await fetchAllKnownCandidateCodes();
-  let skippedPref = 0;
-  const newRows = [];
+  let skippedPref = 0, newCount = 0, refreshedCount = 0;
+  const rows = [];
   const nowKstStr = new Intl.DateTimeFormat('en-GB', { timeZone: KST_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
 
   for (let i = 0; i < ranked.length; i++) {
     const out = ranked[i];
     const code = out.stck_shrn_iscd || out.mksc_shrn_iscd || out.code;
     const name = out.hts_kor_isnm || '';
-    if (!code || known.has(code)) continue;
+    if (!code) continue;
     if (PREFERRED_OR_SPAC_RE.test(name)) { skippedPref++; continue; }
     const price = safeNum(out.stck_prpr);
     if (price && price < SCAN_MIN_PRICE) continue;
-    newRows.push({
+    if (known.has(code)) refreshedCount++; else newCount++;
+    rows.push({
       code, rank: i + 1,
       snapshot: { name: name || null, price, change_pct: safeNum(out.prdy_ctrt), acc_amt: safeNum(out.acml_tr_pbmn), detected_at: nowKstStr },
     });
-    if (newRows.length >= SCAN_TOP_N) break;
+    if (rows.length >= SCAN_TOP_N) break;
   }
 
-  if (!newRows.length) {
-    console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 신규 종목 없음(모두 기존 후보, 우선주/스팩 ${skippedPref}건 제외) — 저장 생략`);
+  if (!rows.length) {
+    console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 저장할 종목 없음(우선주/스팩 ${skippedPref}건 제외)`);
     return;
   }
-  console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 신규 ${newRows.length}건 편입(우선주/스팩 ${skippedPref}건 제외)`);
-  await upsertCandidates(newRows, 'SCAN');
+  console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 신규 ${newCount}건 + 상위권 유지 갱신 ${refreshedCount}건 반영(우선주/스팩 ${skippedPref}건 제외)`);
+  await upsertCandidates(rows, 'SCAN');
 }
 
 // ── 스케줄러 — GitHub Actions cron을 대신해 이 프로세스 안에서 시각을 감시 ────
