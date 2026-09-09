@@ -691,52 +691,38 @@ const SANGTTA_ENTRY_START_MIN = 9 * 60 + 15;   // 09:15 이전 진입 금지(관
 const SANGTTA_FORCE_CLOSE_MIN = 15 * 60 + 19;  // 15:19 이후 보유분 강제 청산(동시호가 직전)
 const SANGTTA_MARKET_END_MIN  = 15 * 60 + 30;  // 이 시각 이후엔 신규 체결 자체가 없다고 보고 정산 트리거
 
-// 2026-09-09 5차: "우선 기준을 낮게 잡고 다양한 가상매매를 통해 전략을
-// 다듬어보자"는 방침으로 진입 조건 전반을 한 번 더 완화. 목적은 정답을
-// 맞히는 게 아니라 오늘 하루 여러 종목·여러 패턴의 가상매매 표본을 최대한
-// 많이 쌓아서, 그 결과(승률·평균수익률)를 보고 각 기준을 다시 조이는 방향의
-// 데이터 기반 튜닝을 하려는 것 — 손실이 과하게 누적되면 즉시 다시 조일 것.
-const SANGTTA_CTTR_MIN            = 120;         // 체결강도 120%↑ (기존 150%)
-const SANGTTA_LARGE_PRINT_KRW     = 20_000_000;  // 순간체결금액 2천만원↑ (기존 3천만원)
+// 2026-09-09 6차: 사용자가 직접 지정한 기준으로 확정.
+// "진입 조건 전반을 완화했습니다(오늘 하루 다양한 표본을 쌓아 승률/평균
+// 수익률을 보고 다시 조율하려는 목적)"는 방침은 유지하되, 구체적인 값은
+// 아래처럼 사용자가 다시 명시한 값으로 고정:
+//  · 체결강도 150%
+//  · 대량체결 2회, 3천만원
+//  · 분당거래대금비율 150%
+//  · 분당 평균거래대금(유동성) 3천만원
+//  · 실제 등락률 3%
+//  · 프로그램 순매수 → 일단 제외
+const SANGTTA_CTTR_MIN            = 150;         // 체결강도 150%↑
+const SANGTTA_LARGE_PRINT_KRW     = 30_000_000;  // 순간체결금액 3천만원↑
 const SANGTTA_LARGE_PRINT_WINDOW_MS = 60_000;    // "최근 1분 내"
-const SANGTTA_LARGE_PRINT_MIN_COUNT = 1;         // 1회 이상 (기존 2회)
-const SANGTTA_MINUTE_VOL_RATIO_MIN  = 1.2;       // 분당거래대금 최근5분평균 대비 120%↑ (기존 150%)
+const SANGTTA_LARGE_PRINT_MIN_COUNT = 2;         // 2회 이상
+const SANGTTA_MINUTE_VOL_RATIO_MIN  = 1.5;       // 분당거래대금 최근5분평균 대비 150%↑
 const SANGTTA_MINUTE_HISTORY_MIN    = 5;         // "최근 5분" 평균에 쓸 과거 분봉 수
-// 2026-09-09 3차 개선: "프로그램 순매수(2분) > 0원"을 진입 필수조건으로
-// 걸었더니, 정작 오늘 실제 상승률 상위(머큐리·삼미금속 등 소형/저유동주)는
-// 프로그램매매 자체가 거의 안 붙는 종목이라 pt가 계속 null로 남아 원천적으로
-// 진입이 막혀버리는 문제를 발견함(상따 전략이 정작 노려야 할 종목군이
-// 배제되는 역설). 그래서 "매수 필수조건"에서 내리고, 대신 아래 두 방향으로
-// 재구성:
-//  1) 프로그램 데이터가 없으면(pt==null) 중립으로 보고 진입을 막지 않음.
-//  2) 프로그램매매가 뚜렷하게 순매도로 잡히면(SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW
-//     이하) "큰손/프로그램이 물량을 넘기는 중"으로 보고 그때만 진입을 차단.
-// 프로그램 순매수가 강하면(SANGTTA_PROGRAM_NET_BUY_STRONG↑) 여전히 등급을
-// A로 올려 사이징에 반영(아래).
-// 이 값 "이하"가 되면 진입을 막는 차단선이지, 이 값 이하여야 매수한다는
-// 뜻이 아님(주의: 조건명이 헷갈리기 쉬워 한 번 더 적음) — 프로그램이 순매수
-// 중이거나 데이터가 없으면 그냥 통과, 뚜렷하게 순매도(-3천만원 이하)로
-// 잡힐 때만 매수를 "막는다".
-const SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW = -50_000_000; // 프로그램 순매수(2분) -5천만원 이하 → 매수 차단(반대 아님, 기존 -3천만원에서 더 완화)
-// 오늘 실제 매매 4종목(삼화콘덴서·SK이노베이션·가온전선·비에이치아이)이
-// 당일 급상승 Top100(머큐리 +30%, 삼미금속 +29.9% 등)과 겹치지 않는 문제를
-// 확인 — 체결강도/분당거래대금 비율 같은 "종목 자체 대비 상대적" 지표만으로는
-// 오늘 시장에서 진짜 강한 종목인지 보장이 안 됨. 다만 상따는 "이미 많이 오른
-// 종목"이 아니라 "오를 기미가 보이는 종목을 초반에" 잡는 전략이라는 지적을
-// 반영해 최초엔 8%로 뒀던 걸 3%로 크게 낮춤 — 완전히 평평한(노이즈) 종목만
-// 걸러내는 최소한의 안전장치로만 쓰고, "초반 조짐" 판단은 아래 체결강도·
-// 대량체결·분당거래대금비율(모두 상대적/즉각적 지표) 3개에 맡김.
-const SANGTTA_MIN_CHANGE_PCT_ENTRY = 2;          // 현재 등락률 2%↑ (완전 평평한 노이즈만 배제, 기존 3%에서 더 완화)
+// 2026-09-09 6차: 프로그램 순매수는 "일단 제외" — 진입을 막거나 허용하는
+// 판단에 더 이상 쓰지 않음(아래 maybeEnterSangtta()에 있던 차단 로직 제거).
+// 다만 데이터 구독·표시는 계속 유지하고(실시간 조건 트래킹 표의 "프로그램
+// 순매수(2분)" 컬럼은 그대로 참고용으로 보임), 등급(A/B) 산정의 보너스
+// 조건과 보유 중 반전매도 선제청산(PROGRAM_REVERSAL)에는 계속 쓰고 있음 —
+// 이 부분도 빼길 원하면 알려줄 것. 아래 상수는 더는 진입 차단에 쓰이지
+// 않지만, 나중에 다시 켤 수 있도록 남겨둠(현재 미사용).
+const SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW = -50_000_000; // (현재 미사용) 프로그램 순매수(2분) -5천만원 이하 기준값
+const SANGTTA_MIN_CHANGE_PCT_ENTRY = 3;          // 현재 등락률 3%↑
 // 매수 잔량(실제 체결 가능성) 문제 — 현재 엔진은 체결(H0STCNT0) 틱만 보고
 // 실시간 호가(매도잔량)는 구독하지 않아 진짜 주문가능한 잔량을 보진 못함.
 // 완전한 호가잔량 체크는 별도 KIS 호가 구독(추가 구독 슬롯 필요)이 있어야
-// 정확함(추후 검토). 1차 조치로 "오늘 09:00부터의 누적거래대금"을 대리지표로
-// 썼었으나, 09:15~09:20 초반 진입 구간엔 아직 누적치가 쌓일 시간이 없어
-// 오히려 "초반 진입"을 막는 장벽이 된다는 지적을 반영해 "분당 평균 거래대금
-// (직전 5분 평균 — minuteRatio 계산에 쓰는 것과 동일 데이터)"으로 바꿈. 이건
-// 시각과 무관하게 "지금 이 순간 실제로 거래가 활발한지"만 보므로 09:15든
-// 14:00든 동일한 기준이 적용됨.
-const SANGTTA_MIN_MINUTE_AMT_ENTRY = 15_000_000; // 직전 5분 평균 분당거래대금 1,500만원↑ (기존 3천만원에서 더 완화)
+// 정확함(추후 검토). 1차 조치로 "직전 5분 평균 분당거래대금"을 대리지표로
+// 씀 — 시각과 무관하게 "지금 이 순간 실제로 거래가 활발한지"만 보므로
+// 09:15든 14:00든 동일한 기준이 적용됨.
+const SANGTTA_MIN_MINUTE_AMT_ENTRY = 30_000_000; // 직전 5분 평균 분당거래대금 3천만원↑
 // 2026-09-09 2차 개선: 실제 전략은 하루 중 가장 강하게 오르는 1~3종목을 짧게
 // 사고파는 단타 회전매매라, 40개씩이나 되는 넓은 후보 풀을 유지할 필요가
 // 없음(오히려 교체가 뜸해지고 "지금 가장 뜨거운 종목"에 집중하기 어려워짐).
@@ -1059,12 +1045,10 @@ function maybeEnterSangtta(code, price, rec, now) {
   // 분당 평균 거래대금"으로 봐서 09:15 초반 진입을 불리하게 만들지 않음.
   if (!Number.isFinite(changePct) || changePct < SANGTTA_MIN_CHANGE_PCT_ENTRY) return;
   if (minuteAvgAmt < SANGTTA_MIN_MINUTE_AMT_ENTRY) return;
-  // 프로그램매매: 데이터가 없으면(소형/저유동주는 흔함) 중립으로 통과시키고,
-  // 뚜렷한 순매도 전환(큰손 이탈 신호)일 때만 차단 — "매도해야 산다"가 아니라
-  // "매도 중이면 안 산다"는 뜻. 강한 순매수는 진입 여부와 무관하게 아래 등급
-  // 판정에서 A등급(풀사이즈) 보너스로 반영됨.
+  // 2026-09-09 6차: 프로그램 순매수는 "일단 제외" — 더 이상 진입을 막는
+  // 조건으로 쓰지 않음(이전엔 뚜렷한 순매도 전환 시 차단했었음). 데이터는
+  // 계속 받아서 아래 등급(A등급 보너스) 판정에만 참고용으로 씀.
   const pt = getProgramTradeSnapshot(code);
-  if (pt && pt.netBuyAmt <= SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW) return;
 
   const isNewHigh = Number.isFinite(high) && price >= high;
   const grade = sangttaGradeFor(code, isNewHigh, pt ? pt.netBuyAmt : null);
@@ -1132,8 +1116,10 @@ function sangttaLiveSnapshot(code, rec, price, now) {
   const minuteRatio = mv ? mv.ratio : null;
   const minuteAvgAmt = mv ? mv.avg : null;
   const isNewHigh = Number.isFinite(high) && Number.isFinite(price) && price >= high;
-  // 2026-09-09: 프로그램매매 구독을 후보 단계까지 넓혀서, 후보 상태에서도
-  // "아직 틱 없음"과 "순매수 마이너스/플러스"를 구분해 보여주고 매수 조건에도 반영.
+  // 2026-09-09 6차: 프로그램 순매수는 진입 조건에서 "일단 제외"했으므로
+  // 아래 conditions(=진입 필수조건 5개)에는 더 이상 포함하지 않음. 다만
+  // 후보 단계까지 구독은 계속 유지해 snap.programTrade로 참고용 표시는
+  // 계속하고, 등급(A등급 보너스) 판정에도 그대로 씀.
   const pt = getProgramTradeSnapshot(code);
 
   const conditions = {
@@ -1166,14 +1152,6 @@ function sangttaLiveSnapshot(code, rec, price, now) {
       value: minuteAvgAmt,
       threshold: SANGTTA_MIN_MINUTE_AMT_ENTRY,
       label: '분당거래대금(유동성)',
-    },
-    // 2026-09-09 3차 개선: 필수조건이 아니라 "위험 신호 감시"로 성격 변경 —
-    // 데이터 없음/순매수는 ok=true(정상), 뚜렷한 순매도 전환일 때만 ok=false.
-    programNetBuy: {
-      ok: !(pt != null && pt.netBuyAmt <= SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW),
-      value: pt ? pt.netBuyAmt : null,
-      threshold: SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW,
-      label: '프로그램 매도전환 감시(2분)',
     },
   };
   const metConditions = Object.values(conditions).filter(c => c.ok).length;
