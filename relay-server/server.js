@@ -488,20 +488,34 @@ async function fetchMinuteChart(code, hour) {
 
 // 하루 전체(09:00~endHour)를 여러 번 페이징 호출해서 이어붙임 — 위 함수 참고.
 async function fetchMinuteChartFullDay(code, endHour = '153000', startMinutes = 9 * 60) {
+  // 2026-09-10 버그 수정: hour=090000(장 시작 시각) 근처를 요청하면 KIS가
+  // "오늘 09:00 이전 데이터 없음" 대신 전날(예: 09-09) 오후 데이터로 자연스럽게
+  // 이어붙여서 돌려줌 — stck_bsop_date가 어제 날짜인데 stck_cntg_hour는 오늘과
+  // 겹치는 시각(예: "153000")을 또 써서, 날짜 구분 없이 시각만으로 Map 키를
+  // 잡으면 어제 데이터가 오늘 데이터를 덮어씀(실제로 이 버그로 종가가
+  // 11750→10500으로 오염된 걸 확인함). 오늘 날짜(stck_bsop_date) 아닌 행은
+  // 무조건 제외하고, 오늘 날짜 행이 하나도 안 남으면 그 페이지에서 멈춘다.
+  const today = kstDateStr().replace(/-/g, '');
   const rowsMap = new Map();
   let hour = endHour, prdyClpr = null;
   const pages = [];
   for (let i = 0; i < 16; i++) {
     const json = await fetchMinuteChart(code, hour);
     if (json.output1 && prdyClpr == null) prdyClpr = json.output1.stck_prdy_clpr;
-    const output2 = json.output2 || [];
-    pages.push({ requestedHour: hour, rt_cd: json.rt_cd, count: output2.length,
-      first: output2[0] && output2[0].stck_cntg_hour, last: output2[output2.length - 1] && output2[output2.length - 1].stck_cntg_hour });
-    if (!output2.length) break;
+    const output2raw = json.output2 || [];
+    const output2 = output2raw.filter(r => r.stck_bsop_date === today);
+    pages.push({
+      requestedHour: hour, rt_cd: json.rt_cd, rawCount: output2raw.length, todayCount: output2.length,
+      first: output2raw[0] && `${output2raw[0].stck_bsop_date} ${output2raw[0].stck_cntg_hour}`,
+      last: output2raw[output2raw.length - 1] && `${output2raw[output2raw.length - 1].stck_bsop_date} ${output2raw[output2raw.length - 1].stck_cntg_hour}`,
+    });
+    if (!output2.length) break; // 오늘 데이터가 하나도 없으면(=전날로 넘어감) 종료
     output2.forEach(r => rowsMap.set(r.stck_cntg_hour, r));
     const oldest = output2[output2.length - 1].stck_cntg_hour;
     const oldestMinutes = parseInt(oldest.slice(0, 2), 10) * 60 + parseInt(oldest.slice(2, 4), 10);
     if (oldestMinutes <= startMinutes) break;
+    // raw(필터 전) 마지막 행 기준으로 다음 조회 시각을 잡되, 오늘 범위를 벗어난
+    // 지점(=oldestMinutes<=startMinutes)이면 위에서 이미 break했으므로 안전함.
     const nextMinutes = oldestMinutes - 1;
     const hh = String(Math.floor(nextMinutes / 60)).padStart(2, '0');
     const mm = String(nextMinutes % 60).padStart(2, '0');
