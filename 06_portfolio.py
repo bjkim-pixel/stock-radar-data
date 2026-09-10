@@ -12,7 +12,7 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅)
   06_signals.sql  → V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3  (3단계 통과 종목)
   06_portfolio.py → V4_BUY_TREND    / V4_BUY_CLOSEBET      (실제 가상매수)
                     V4_PYRAMID_TREND                       (+20%마다 불타기, 무제한)
-                    V4_SELL_TREND / V4_CRASH_SELL_TREND    (고점 대비 -7% 트레일링 손절,
+                    V4_SELL_TREND / V4_CRASH_SELL_TREND    (고점 대비 단계형 트레일링 손절,
                                                              단 손익분기 보호선 적용 — 아래 참조)
                     V4_SELL_CLOSEBET                       (매수 익일 시가 전량 매도)
 
@@ -23,9 +23,25 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅)
     (과거 데이터 검증: 고점 +5%↑ 찍고도 결국 마이너스로 마감한 거래 12건, 합계
     -14,926,803원 — 이 규칙이 있었다면 대략 +832,957원으로 바뀌었을 것으로 추정).
     고점이 매수가 대비 BREAKEVEN_TRIGGER_PCT(+5%) 이상 찍은 적이 있으면, 그 뒤로는
-    "고점×(1-7%)"와 "매수가×(1+0.3%)" 중 더 높은 쪽을 손절선으로 씀 — 즉 한 번
+    "트레일링선"과 "매수가×(1+0.3%)" 중 더 높은 쪽을 손절선으로 씀 — 즉 한 번
     +5%를 넘긴 거래는 그 뒤로 손실로 뒤집히지 않도록 보호(왕복거래비용 0.24%는
     +0.3%가 커버). 이 청산은 새 사유코드 BREAKEVEN_STOP으로 기록됨.
+
+  ⚠ 2026-09-10 단계형 트레일링(STOP_TIERS) 도입 — 배경: "전략성과2"(상따 실시간
+    엔진)가 쓰는 "고점수익이 커질수록 트레일링 폭을 좁혀 이익을 더 단단히
+    지킨다"는 방식이 낫다는 사용자 피드백을 반영. 상따 원안은 틱 단위 실시간
+    체결가 기준(0~5%→진입가 하드캡, 5~10%→고점-2%, 10~20%→고점-1.5%, 20%+→
+    고점-1%)이라 그대로 가져오면 일봉 하루 변동폭만으로도 수시로 털릴 만큼
+    타이트합니다. 그래서 폭은 일봉 기준에 맞게 넉넉히 넓히되 "갈수록 좁아지는"
+    구조는 그대로 가져왔습니다.
+      고점수익 < 5%  : 고점 대비 -7% (기존과 동일 — 사용자가 이 구간은 안 건드리기로 함)
+      고점수익 5~15% : 고점 대비 -5%
+      고점수익 15~30%: 고점 대비 -4%
+      고점수익 ≥ 30% : 고점 대비 -3%
+    손익분기 보호선(위 문단)은 그대로 유지해, 트레일링선이 이 보호선보다
+    낮아지는 경계 구간에서도 "+5% 찍은 뒤 손실 마감"은 계속 막습니다.
+    (사용자 확인: 상따의 "프로그램 반전 선제청산"은 이번엔 추세추종에 추가하지
+    않기로 함 — 일봉 배치라 상따처럼 분 단위로 반전을 잡을 수 없어 실익이 적음)
 
 매수 금액 — 시가총액 구간별 차등 (불타기 포함, ENTRY_AMOUNT_TIERS)
   · 시가총액 5조원 미만          : 1천만원
@@ -99,14 +115,33 @@ def entry_amount_for(market_cap):
     return ENTRY_AMOUNT
 
 
-STOP_PCT         = -0.07         # 추세추종: 보유 중 최고가(당일 고가 기준 peak) 대비 트레일링 손절
-CRASH_PCT        = -0.10         # 추세추종: 급락 안전장치 (라벨만 다름, 결과 동일)
+# 2026-09-10: 고점수익(peak_gain) 구간별 트레일링 폭 — 갈수록 좁혀서 이익을
+# 더 단단히 지킵니다("전략성과2" 상따 실시간 엔진의 단계형 트레일링을 일봉
+# 배치에 맞게 폭을 넓혀 이식 — 위 모듈 docstring 2026-09-10 항목 참고).
+# (peak_gain 상한, 그 구간에서 쓸 고점 대비 트레일링%) 오름차순 — 처음 맞는
+# 구간을 사용.
+STOP_TIERS = [
+    (0.05,  -0.07),   # 고점수익 <5%   : 고점 대비 -7% (기존과 동일)
+    (0.15,  -0.05),   # 고점수익 5~15% : 고점 대비 -5%
+    (0.30,  -0.04),   # 고점수익 15~30%: 고점 대비 -4%
+    (None,  -0.03),   # 고점수익 ≥30%  : 고점 대비 -3%
+]
+CRASH_PCT        = -0.10         # 추세추종: 급락 안전장치 (라벨만 다름, 결과 동일 — <5%tier에서만 의미 있음)
 PYRAMID_STEP     = 0.20          # 추세추종 불타기 트리거 간격 (최초 매수가 대비, 반복 무제한)
 COST_ONE_WAY     = 0.0012        # 편도 거래비용 (왕복 0.24%)
 
+
+def trail_pct_for(peak_gain):
+    """고점수익(peak_gain, 소수 — 0.05=5%) 구간에 맞는 트레일링 폭(음수)을 반환."""
+    for ceiling, pct in STOP_TIERS:
+        if ceiling is None or peak_gain < ceiling:
+            return pct
+    return STOP_TIERS[-1][1]
+
+
 # 2026-09-08 손익분기 보호선(breakeven floor): 고점이 매수가 대비 이 비율 이상
-# 오른 적이 있으면, 그 뒤로는 트레일링선(고점×(1+STOP_PCT))과 손익분기선
-# (매수가×(1+BREAKEVEN_FLOOR_PCT)) 중 더 높은 쪽을 손절선으로 사용합니다.
+# 오른 적이 있으면, 그 뒤로는 트레일링선(위 STOP_TIERS로 정해지는 고점 기준선)과
+# 손익분기선(매수가×(1+BREAKEVEN_FLOOR_PCT)) 중 더 높은 쪽을 손절선으로 사용합니다.
 # 즉 한 번 +5%를 넘긴 거래는 그 뒤로 손실로 뒤집히지 않도록 보호합니다.
 BREAKEVEN_TRIGGER_PCT = 0.05      # 고점이 매수가 대비 +5% 이상 찍은 적 있으면 활성화
 BREAKEVEN_FLOOR_PCT   = 0.003     # 활성화 시 매수가 +0.3%(왕복비용 0.24% 커버) 밑으로는 손절선이 안 내려감
@@ -270,14 +305,18 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
             pos.peak_at = market_close_ts(day)
         dd = close / pos.peak_price - 1
         peak_gain = pos.peak_price / pos.entry_price - 1
+        # 2026-09-10: 고점수익 구간별로 트레일링 폭이 달라짐(STOP_TIERS) — 갈수록
+        # 좁아져 이익을 더 단단히 지킴. 손익분기 보호선은 그대로 유지(아래).
+        trail_pct = trail_pct_for(peak_gain)
         breakeven_active = peak_gain >= BREAKEVEN_TRIGGER_PCT
         breakeven_floor = pos.entry_price * (1 + BREAKEVEN_FLOOR_PCT) if breakeven_active else None
-        trail_stop = pos.peak_price * (1 + STOP_PCT)
+        trail_stop = pos.peak_price * (1 + trail_pct)
         stop_line = max(trail_stop, breakeven_floor) if breakeven_active else trail_stop
         if close <= stop_line:
             crash = dd <= CRASH_PCT
             used_breakeven = breakeven_active and breakeven_floor > trail_stop
-            reason_code = "BREAKEVEN_STOP" if used_breakeven else ("CRASH_STOP_10" if crash else "TRAIL_STOP_7")
+            reason_code = "BREAKEVEN_STOP" if used_breakeven else (
+                "CRASH_STOP_10" if crash else f"TRAIL_STOP_{int(round(abs(trail_pct) * 100))}")
             pos.close_out(day, close, reason_code)
             closed.append(pos)
             del open_pos[code]
@@ -296,6 +335,8 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
                         "peak_date":    pos.peak_date.isoformat(),
                         "close":        close,
                         "drawdown_pct": round(dd * 100, 2),
+                        "peak_gain_pct": round(peak_gain * 100, 2),
+                        "trail_pct":    round(trail_pct * 100, 2),
                         "tranches":     pos.tranches,
                         "quantity":     pos.quantity,
                         "invested":     pos.invested,
