@@ -466,65 +466,6 @@ async function fetchChangeRateRank(limit = 30) {
   }
 }
 
-// ── 임시 진단용(2026-09-10) ──────────────────────────────────────────────
-// 에스투더블유(488280)처럼 하루 종일 완만히 오른 종목을, 제안한 SCAN
-// 모멘텀 규칙(3분 연속 상승 + 3분 누적 1%p↑)으로 재구성해서 검증하기 위해
-// KIS 주식당일분봉조회(FHKST03010200)로 1분봉 이력을 가져옴. 분석 끝나면
-// 이 함수와 /debug/minute-chart 엔드포인트는 제거할 예정 — 상시 기능 아님.
-// hour(HHMMSS) 기준 최대 30건을 그 이전 시각 순으로 반환하는 API라, 하루
-// 전체(09:00~15:30)를 보려면 여러 번 호출해서 이어붙여야 함.
-async function fetchMinuteChart(code, hour) {
-  await kisRestThrottle();
-  const token = await getKisRestToken();
-  const params = new URLSearchParams({
-    FID_ETC_CLS_CODE: '', FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code,
-    FID_INPUT_HOUR_1: hour, FID_PW_DATA_INCU_YN: 'Y',
-  });
-  const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice?${params}`, {
-    headers: kisRestHeaders(token, 'FHKST03010200'),
-  });
-  return res.json();
-}
-
-// 하루 전체(09:00~endHour)를 여러 번 페이징 호출해서 이어붙임 — 위 함수 참고.
-async function fetchMinuteChartFullDay(code, endHour = '153000', startMinutes = 9 * 60) {
-  // 2026-09-10 버그 수정: hour=090000(장 시작 시각) 근처를 요청하면 KIS가
-  // "오늘 09:00 이전 데이터 없음" 대신 전날(예: 09-09) 오후 데이터로 자연스럽게
-  // 이어붙여서 돌려줌 — stck_bsop_date가 어제 날짜인데 stck_cntg_hour는 오늘과
-  // 겹치는 시각(예: "153000")을 또 써서, 날짜 구분 없이 시각만으로 Map 키를
-  // 잡으면 어제 데이터가 오늘 데이터를 덮어씀(실제로 이 버그로 종가가
-  // 11750→10500으로 오염된 걸 확인함). 오늘 날짜(stck_bsop_date) 아닌 행은
-  // 무조건 제외하고, 오늘 날짜 행이 하나도 안 남으면 그 페이지에서 멈춘다.
-  const today = kstDateStr().replace(/-/g, '');
-  const rowsMap = new Map();
-  let hour = endHour, prdyClpr = null;
-  const pages = [];
-  for (let i = 0; i < 16; i++) {
-    const json = await fetchMinuteChart(code, hour);
-    if (json.output1 && prdyClpr == null) prdyClpr = json.output1.stck_prdy_clpr;
-    const output2raw = json.output2 || [];
-    const output2 = output2raw.filter(r => r.stck_bsop_date === today);
-    pages.push({
-      requestedHour: hour, rt_cd: json.rt_cd, rawCount: output2raw.length, todayCount: output2.length,
-      first: output2raw[0] && `${output2raw[0].stck_bsop_date} ${output2raw[0].stck_cntg_hour}`,
-      last: output2raw[output2raw.length - 1] && `${output2raw[output2raw.length - 1].stck_bsop_date} ${output2raw[output2raw.length - 1].stck_cntg_hour}`,
-    });
-    if (!output2.length) break; // 오늘 데이터가 하나도 없으면(=전날로 넘어감) 종료
-    output2.forEach(r => rowsMap.set(r.stck_cntg_hour, r));
-    const oldest = output2[output2.length - 1].stck_cntg_hour;
-    const oldestMinutes = parseInt(oldest.slice(0, 2), 10) * 60 + parseInt(oldest.slice(2, 4), 10);
-    if (oldestMinutes <= startMinutes) break;
-    // raw(필터 전) 마지막 행 기준으로 다음 조회 시각을 잡되, 오늘 범위를 벗어난
-    // 지점(=oldestMinutes<=startMinutes)이면 위에서 이미 break했으므로 안전함.
-    const nextMinutes = oldestMinutes - 1;
-    const hh = String(Math.floor(nextMinutes / 60)).padStart(2, '0');
-    const mm = String(nextMinutes % 60).padStart(2, '0');
-    hour = `${hh}${mm}00`;
-  }
-  const rows = [...rowsMap.values()].sort((a, b) => a.stck_cntg_hour.localeCompare(b.stck_cntg_hour));
-  return { prdyClpr, rows, pages };
-}
-
 // intraday_candidates UPSERT — PostgREST on_conflict+merge-duplicates로
 // SQL의 "ON CONFLICT (trade_date, code, source) DO UPDATE"와 동등하게 동작.
 // created_at을 매번 명시적으로 채우는 이유: refreshSangttaCandidates()가
@@ -2144,46 +2085,6 @@ const server = http.createServer((req, res) => {
       candidates: [...sangttaCandidates],
       openPositions: [...sangttaOpenPositions.keys()],
     }));
-    return;
-  }
-  // 임시 진단용(2026-09-10) — 위 fetchMinuteChart() 참고. 분석 끝나면 제거 예정.
-  // 주의: '/debug/minute-chart-full'도 이 prefix에 걸리므로, 그 라우트를
-  // 반드시 이 블록보다 먼저 체크해야 함(아래 -full 라우트 참고).
-  if (req.url && req.url.startsWith('/debug/minute-chart?')) {
-    const u = new URL(req.url, 'http://internal');
-    const code = u.searchParams.get('code');
-    const hour = u.searchParams.get('hour') || '153000';
-    if (!code) {
-      res.writeHead(400, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: 'code query param required' }));
-      return;
-    }
-    fetchMinuteChart(code, hour).then(json => {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(json));
-    }).catch(err => {
-      res.writeHead(500, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: err.message }));
-    });
-    return;
-  }
-  // 임시 진단용(2026-09-10) — fetchMinuteChartFullDay() 참고. 분석 끝나면 제거 예정.
-  if (req.url && req.url.startsWith('/debug/minute-chart-full')) {
-    const u = new URL(req.url, 'http://internal');
-    const code = u.searchParams.get('code');
-    const endHour = u.searchParams.get('endHour') || '153000';
-    if (!code) {
-      res.writeHead(400, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: 'code query param required' }));
-      return;
-    }
-    fetchMinuteChartFullDay(code, endHour).then(result => {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(result));
-    }).catch(err => {
-      res.writeHead(500, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: err.message }));
-    });
     return;
   }
   if (req.url === '/health') {
