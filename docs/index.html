@@ -3127,17 +3127,25 @@ async function loadPerf2(){
       <div class="tile"><div class="lb">승률</div><div class="vl">${s.trade_count?N(s.win_count/s.trade_count*100,1)+"%":"–"}</div></div>`;
 
     // ── 실시간 조건 트래킹 대상 선정 ────────────────────────────────────
-    // 보유 중 종목은 항상 포함(계속 감시해야 하므로), 후보는 최근 갱신순으로
-    // 최대 I2_LIVE_DISPLAY_MAX개까지만 화면에 표시 + 실시간 구독한다(KIS
-    // 웹소켓 동시구독 한도 ~40개 대응). intraday_candidates는 이미
-    // source.asc,rank.asc 순으로 받아왔으므로 여기서는 등장 순서를 그대로
-    // "최근성" 근사치로 사용한다(정확한 최근 갱신순은 relay-server가 이미
-    // created_at desc로 골라 추적 중인 코드 목록이며, 서버가 다시 만들어
-    // 보내주는 것은 아니라서 프론트에서는 이 근사치로 표시 대상만 추린다).
+    // 2026-09-10 이전: intraday_candidates를 source.asc,rank.asc로 받아와
+    // 등장 순서를 "최근성" 근사치로 썼는데, source 알파벳순이 NXT<PRE_MARKET
+    // <REGULAR<SCAN이라 장중 실시간으로 계속 새로 올라오는 SCAN 후보가 항상
+    // 맨 뒤로 밀려 상위 I2_LIVE_DISPLAY_MAX(18)개 표시 슬롯에 거의 못 들어가는
+    // 문제가 있었음(+마이너스로 꺾인 예전 후보가 relay-server 내부적으로는
+    // 이미 제외됐어도 화면엔 계속 보이는 문제도 겹침). relay-server가 실시간
+    // 시세로 걸러낸 "진짜 지금 추적 중인" 목록을 /sangtta-candidates로 그대로
+    // 받아와 쓰고, relay-server 응답이 없을 때만 예전 근사치로 대체한다.
     const I2_LIVE_DISPLAY_MAX=18;
     const opCodes=[...new Set(op.map(p=>p.code))];
+    let liveCandidates=null;
+    try{
+      const rc=await fetch(`${RELAY_HTTP_BASE}/sangtta-candidates`);
+      if(rc.ok){ const rj=await rc.json(); if(rj&&Array.isArray(rj.candidates)) liveCandidates=rj.candidates; }
+    }catch(_){ /* relay-server 응답 없음 — 아래 DB 근사치로 대체 */ }
     const candCodesOrdered=[...new Set(cand.map(c=>c.code))];
-    const candDisplay=candCodesOrdered.filter(c=>!opCodes.includes(c)).slice(0,I2_LIVE_DISPLAY_MAX);
+    const candDisplay = liveCandidates
+      ? liveCandidates.filter(c=>!opCodes.includes(c))
+      : candCodesOrdered.filter(c=>!opCodes.includes(c)).slice(0,I2_LIVE_DISPLAY_MAX);
     const liveWanted=[...new Set([...opCodes,...candDisplay])];
     setSangttaLiveCodes(liveWanted);
     S.i2NameOf={...nameOf};
