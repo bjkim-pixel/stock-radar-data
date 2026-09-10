@@ -486,6 +486,28 @@ async function fetchMinuteChart(code, hour) {
   return res.json();
 }
 
+// 하루 전체(09:00~endHour)를 여러 번 페이징 호출해서 이어붙임 — 위 함수 참고.
+async function fetchMinuteChartFullDay(code, endHour = '153000', startMinutes = 9 * 60) {
+  const rowsMap = new Map();
+  let hour = endHour, prdyClpr = null;
+  for (let i = 0; i < 16; i++) {
+    const json = await fetchMinuteChart(code, hour);
+    if (json.output1 && prdyClpr == null) prdyClpr = json.output1.stck_prdy_clpr;
+    const output2 = json.output2 || [];
+    if (!output2.length) break;
+    output2.forEach(r => rowsMap.set(r.stck_cntg_hour, r));
+    const oldest = output2[output2.length - 1].stck_cntg_hour;
+    const oldestMinutes = parseInt(oldest.slice(0, 2), 10) * 60 + parseInt(oldest.slice(2, 4), 10);
+    if (oldestMinutes <= startMinutes) break;
+    const nextMinutes = oldestMinutes - 1;
+    const hh = String(Math.floor(nextMinutes / 60)).padStart(2, '0');
+    const mm = String(nextMinutes % 60).padStart(2, '0');
+    hour = `${hh}${mm}00`;
+  }
+  const rows = [...rowsMap.values()].sort((a, b) => a.stck_cntg_hour.localeCompare(b.stck_cntg_hour));
+  return { prdyClpr, rows };
+}
+
 // intraday_candidates UPSERT — PostgREST on_conflict+merge-duplicates로
 // SQL의 "ON CONFLICT (trade_date, code, source) DO UPDATE"와 동등하게 동작.
 // created_at을 매번 명시적으로 채우는 이유: refreshSangttaCandidates()가
@@ -2120,6 +2142,25 @@ const server = http.createServer((req, res) => {
     fetchMinuteChart(code, hour).then(json => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(json));
+    }).catch(err => {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    });
+    return;
+  }
+  // 임시 진단용(2026-09-10) — fetchMinuteChartFullDay() 참고. 분석 끝나면 제거 예정.
+  if (req.url && req.url.startsWith('/debug/minute-chart-full')) {
+    const u = new URL(req.url, 'http://internal');
+    const code = u.searchParams.get('code');
+    const endHour = u.searchParams.get('endHour') || '153000';
+    if (!code) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'code query param required' }));
+      return;
+    }
+    fetchMinuteChartFullDay(code, endHour).then(result => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(result));
     }).catch(err => {
       res.writeHead(500, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: err.message }));
