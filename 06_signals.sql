@@ -13,7 +13,13 @@
 -- ── 공통 조건 (두 전략 모두, 모든 단계에 적용) ──────────────────────────────
 --   · 시가총액 1조원 이상
 --   · 일거래대금 500억원 이상
---   · 무게/주식수 당일 상위 50위 이내 (daily_metrics.weight_rank)
+--   · (2026-09-10 변경) 무게/주식수 상위 N위 캡 제거 — 어차피 전략마다 3단계
+--     조건으로 걸러지므로, 사전에 상위 50위로 좁힐 필요 없이 관리 중인 유니버스
+--     전체(시총·거래대금 조건 통과분)를 대상으로 삼습니다.
+--
+-- ── 2026-09-10 단계 조건 완화 (배경: 최근 15거래일 실측 결과 추세추종 2→3단계
+--    통과가 193→26→18건, 종가베팅은 116→6→0건으로 3단계가 사실상 막혀있었음.
+--    병목 조건을 실측 데이터로 특정해 완화함 — 아래 각 단계 주석 참고) ─────
 --
 -- ── 추세추종 (2026-08-29 제로베이스 재설계 — 백테스트 A~G 실험 결과 반영) ───
 -- 업종(섹터) RS 대신 개별종목 상대강도(rs20_vs_mkt = 종목 20일수익률 - 유니버스
@@ -23,17 +29,33 @@
 -- 이 매일 전 종목 일괄 계산 → daily_metrics.rs20_vs_mkt).
 --   1단계: 종가 고가권(당일 고저 범위 내 상위 30% 이내, close_pos_pct ≥ 70)
 --          AND 등락률 12% 미만 (거짓 돌파 방지 — 당일 이미 과열된 종목 추격매수 제외)
---   2단계: 1단계 조건 전부 AND 전고점 근처(near_high 또는 pct_from_high ≥ -10%)
+--   2단계: 1단계 조건 전부 AND 전고점 근처(near_high 또는 pct_from_high ≥ -20%
+--          · 2026-09-10 -10%→-20% 완화 — 1→2단계 탈락 167건 중 71%가 이 조건과
+--          정배열을 동시에 실패, 근접 조건만 단독 실패한 39건 중 상당수가 이
+--          완화로 구제됨)
 --          AND MA 정배열(5일 > 10일 > 20일 > 60일 이동평균)
---   3단계: 2단계 조건 전부 AND 거래량비(전일까지 20일 평균 대비) 180% 미만
+--   3단계: 2단계 조건 전부 AND 거래량비(전일까지 20일 평균 대비) 250% 미만
+--          (2026-09-10 180%→250% 완화 — 2→3단계 탈락 8건 중 5건이 이 조건에서
+--          걸렸고, 250%로 올리면 전부 구제됨을 실측으로 확인)
 --          (거래량 폭발 종목 배제 — "소멸형" 시그니처 차단)
---          AND 개별종목 상대강도(rs20_vs_mkt) > 0 (시장 대비 초과수익 종목만)
+--          AND 개별종목 상대강도(rs20_vs_mkt) > 0 (시장 대비 초과수익 종목만
+--          — 이 조건은 병목 기여도가 낮아 그대로 유지)
 --          — 가상매수 대상
 --
 -- ── 종가베팅 (단계별 독립) ──────────────────────────────────────────────────
 --   1단계: 종가 고가권(상위 30%) AND 외국인 순매수(+) AND 기관 순매수(+)
---   2단계: 주도섹터 AND 전고점 근처 AND 외국인 순매수(+) AND 기관 순매수(+)
---   3단계: 주도섹터 AND 신고가 돌파 AND 외국인 순매수(+) AND 기관 순매수(+)
+--   2단계: 주도섹터(업종 RS 8위 이내, 2026-09-10 5위→8위 완화) AND 전고점 근처
+--          (near_high 또는 pct_from_high ≥ -20%, 2026-09-10 -10%→-20% 완화)
+--          AND 외국인 순매수(+) AND 기관 순매수(+)
+--          (1→2단계 탈락 111건 중 전고점 단독실패 52건·RS단독실패 11건·둘다실패
+--          48건이었고, 실측상 RS 8위 완화가 6건, 전고점 -20% 완화가 5건 구제)
+--   3단계: 주도섹터(업종 RS 8위 이내) AND 전고점 근처(pct_from_high ≥ -5%,
+--          2026-09-10 "당일 52주 신고가 경신" 요건 → "전고점 -5% 이내 근접"으로
+--          대체 — 원래 조건으로는 최근 15거래일간 2→3단계 통과가 0건이었고
+--          탈락 6건 전부가 이 신고가 요건 단독 실패였음, 데이터이력·프로그램
+--          순매수는 전혀 병목이 아니었음. -5%로 바꾸면 6건 중 4건 구제)
+--          AND 데이터 이력 20일 이상
+--          AND 외국인 순매수(+) AND 기관 순매수(+)
 --          AND 프로그램 순매수(+) — 가상매수 대상
 --
 -- 후보 우선순위: pick_score = 무게/주식수 순위 × 0.6 + 시가총액 순위 × 0.4
@@ -86,7 +108,7 @@ WITH base AS (
     AND s.security_type = 'STOCK'
     AND p.market_cap >= 1000000000000        -- 공통조건: 시총 1조원 이상
     AND p.trade_amount >= 50000000000        -- 공통조건: 일거래대금 500억원 이상
-    AND m.weight_rank <= 50                  -- 공통조건: 무게/주식수 당일 top 50
+    -- 2026-09-10: 무게/주식수 top 50 캡 제거 (관리 유니버스 전체 대상, 위 주석 참고)
 ),
 scored AS (
   SELECT base.*,
@@ -121,7 +143,7 @@ SELECT trade_date, code, 'V4_CAND_TREND_2', 'WATCH', score,
        || ' · 등락률 ' || round(change_pct, 1) || '%'
 FROM scored
 WHERE close_pos_pct >= 70 AND change_pct < 12
-  AND (near_high OR pct_from_high >= -10)
+  AND (near_high OR pct_from_high >= -20)   -- 2026-09-10: -10%→-20% 완화
   AND ma5 > ma10 AND ma10 > ma20 AND ma20 > ma60
 
 UNION ALL
@@ -139,9 +161,9 @@ SELECT trade_date, code, 'V4_CAND_TREND_3', 'WATCH', score,
        || ' · 등락률 ' || round(change_pct, 1) || '%'
 FROM scored
 WHERE close_pos_pct >= 70 AND change_pct < 12
-  AND (near_high OR pct_from_high >= -10)
+  AND (near_high OR pct_from_high >= -20)   -- 2026-09-10: -10%→-20% 완화
   AND ma5 > ma10 AND ma10 > ma20 AND ma20 > ma60
-  AND vol_ratio20_prev < 180
+  AND vol_ratio20_prev < 250                -- 2026-09-10: 180%→250% 완화
   AND rs20_vs_mkt IS NOT NULL AND rs20_vs_mkt > 0
 
 UNION ALL
@@ -165,21 +187,24 @@ SELECT trade_date, code, 'V4_CAND_CLOSEBET_2', 'WATCH', score,
        || ' · 전고점 ' || round(pct_from_high, 1) || '%'
        || ' · 외국인+기관 순매수'
 FROM scored
-WHERE rs_rank IS NOT NULL AND rs_rank <= 5
-  AND (near_high OR pct_from_high >= -10)
+WHERE rs_rank IS NOT NULL AND rs_rank <= 8       -- 2026-09-10: 5위→8위 완화
+  AND (near_high OR pct_from_high >= -20)        -- 2026-09-10: -10%→-20% 완화
   AND coalesce(foreign_net,0) > 0 AND coalesce(inst_net,0) > 0
 
 UNION ALL
 -- ── 종가베팅 3단계 (가상매수 대상) ──────────────────────────────────────────
 SELECT trade_date, code, 'V4_CAND_CLOSEBET_3', 'WATCH', score,
   jsonb_build_object('strategy','CLOSEBET','stage',3,'sector',sector,'sector_rs_rank',rs_rank,
+    'pct_from_high',pct_from_high,
     'foreign_net',foreign_net,'inst_net',inst_net,'pgtr_net_amt',pgtr_net_amt,
     'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
   name || ' 종가베팅 3단계(매수) · ' || sector || '(RS ' || rs_rank || '위)'
-       || ' · 신고가돌파 · 외국인+기관+프로그램 순매수'
+       || ' · 전고점 ' || round(pct_from_high, 1) || '% 근접 · 외국인+기관+프로그램 순매수'
 FROM scored
-WHERE rs_rank IS NOT NULL AND rs_rank <= 5
-  AND is_new_high_all
+WHERE rs_rank IS NOT NULL AND rs_rank <= 8       -- 2026-09-10: 5위→8위 완화
+  -- 2026-09-10: "당일 52주 신고가 경신"(is_new_high_all) → "전고점 -5% 이내 근접"
+  -- 으로 완화. 원래 조건은 최근 15거래일 2→3단계 통과 0건의 유일한 원인이었음.
+  AND pct_from_high >= -5
   AND data_span_days >= 20
   AND coalesce(foreign_net,0) > 0 AND coalesce(inst_net,0) > 0 AND coalesce(pgtr_net_amt,0) > 0
 
