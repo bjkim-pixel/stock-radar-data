@@ -426,7 +426,12 @@ async function fetchKisPrice(code, marketDiv = 'J') {
 // FHPST01700000 (국내주식 등락률 순위, 상승율순) — SCAN 단계 전용. 거래대금순위가
 // 아니라 등락률순위를 쓰는 이유는 66_intraday_candidates.py 상단 주석 참고
 // (시가총액 큰 종목이 거래대금 상위를 독점하는 문제를 피하기 위함).
-const SCAN_MIN_CHANGE_PCT = 5.0, SCAN_MIN_PRICE = 1000, SCAN_MIN_VOL = 10000;
+// 2026-09-10: 5.0% 기준으로는 09:15~정오까지 KIS 등락률순위 응답이 계속
+// 0건이라(로그 확인 결과 오류가 아니라 "조건 만족 종목 없음"으로 판단됨),
+// 상따가 데이 트레이딩인 점을 감안해 3.0%로 낮춤. stageScan()의 진단
+// 로그(바로 아래 ranked.length===0 분기)로 이후에도 0건이 반복되는지
+// 계속 관찰 가능.
+const SCAN_MIN_CHANGE_PCT = 3.0, SCAN_MIN_PRICE = 1000, SCAN_MIN_VOL = 10000;
 const PREFERRED_OR_SPAC_RE = /(\d?우[A-Z]?$|스팩|기업인수목적)/;
 
 async function fetchChangeRateRank(limit = 30) {
@@ -615,7 +620,15 @@ async function stageScan() {
   if (minutesNow < SCAN_START_MIN || minutesNow > SCAN_END_MIN) return;
 
   const ranked = await fetchChangeRateRank(30);
-  if (!ranked.length) return;
+  if (!ranked.length) {
+    // fetchChangeRateRank()는 실패 시 반드시 warn/error를 남기므로, 이 로그가
+    // 찍힌다는 건 KIS 응답 자체는 정상(rt_cd='0')인데 조건(등락률≥SCAN_MIN_CHANGE_PCT%,
+    // 가격≥SCAN_MIN_PRICE, 거래량≥SCAN_MIN_VOL) 만족 종목이 0건이라는 뜻.
+    // 2026-09-10 이전엔 이 분기가 완전히 무로그였어서 "진짜 0건"과 "조용한 실패"를
+    // 구분할 수 없었음 — 그 문제를 해결하기 위해 추가.
+    console.log(`[상따후보] SCAN: 등락률순위 0건 응답(조건 등락률≥${SCAN_MIN_CHANGE_PCT}%·가격≥${SCAN_MIN_PRICE}·거래량≥${SCAN_MIN_VOL} 만족 종목 없음) — 스킵`);
+    return;
+  }
 
   const known = await fetchAllKnownCandidateCodes();
   let skippedPref = 0, newCount = 0, refreshedCount = 0;
