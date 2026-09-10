@@ -2130,7 +2130,9 @@ const server = http.createServer((req, res) => {
     return;
   }
   // 임시 진단용(2026-09-10) — 위 fetchMinuteChart() 참고. 분석 끝나면 제거 예정.
-  if (req.url && req.url.startsWith('/debug/minute-chart')) {
+  // 주의: '/debug/minute-chart-full'도 이 prefix에 걸리므로, 그 라우트를
+  // 반드시 이 블록보다 먼저 체크해야 함(아래 -full 라우트 참고).
+  if (req.url && req.url.startsWith('/debug/minute-chart?')) {
     const u = new URL(req.url, 'http://internal');
     const code = u.searchParams.get('code');
     const hour = u.searchParams.get('hour') || '153000';
