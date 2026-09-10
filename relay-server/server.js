@@ -2051,6 +2051,29 @@ const server = http.createServer((req, res) => {
       });
     return;
   }
+  // 2026-09-10: 프론트("전략성과2" 화면)가 지금까지는 intraday_candidates
+  // 테이블을 직접 다시 읽어서 "표시할 후보"를 자체적으로 근사 추정했음
+  // (source.asc,rank.asc 정렬 — PRE_MARKET/NXT/REGULAR가 알파벳순으로 항상
+  // SCAN보다 앞에 와서, 정작 장중 실시간으로 새로 뜨는 SCAN 후보가 상위
+  // 18개 표시 슬롯에 거의 못 들어가는 문제가 있었음). 게다가 relay-server가
+  // 이미 실시간 시세로 마이너스 전환된 종목을 걸러낸 "진짜 지금 추적 중인"
+  // sangttaCandidates Set을 따로 들고 있는데, 프론트는 그 결과를 전혀 못
+  // 받아서 자체 근사치(DB 원본)를 계속 보여주고 있었음. 이 엔드포인트로
+  // 그 실제 목록을 그대로 노출해서 프론트가 근사 대신 이 값을 쓰게 함.
+  if (req.url === '/sangtta-candidates') {
+    const origin = req.headers.origin;
+    const corsOrigin = (origin && ALLOWED_ORIGINS.includes(origin)) ? origin : ALLOWED_ORIGINS[0];
+    res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: true,
+      candidates: [...sangttaCandidates],
+      openPositions: [...sangttaOpenPositions.keys()],
+    }));
+    return;
+  }
   if (req.url === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
