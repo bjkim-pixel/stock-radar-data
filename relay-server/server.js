@@ -466,6 +466,26 @@ async function fetchChangeRateRank(limit = 30) {
   }
 }
 
+// ── 임시 진단용(2026-09-10) ──────────────────────────────────────────────
+// 에스투더블유(488280)처럼 하루 종일 완만히 오른 종목을, 제안한 SCAN
+// 모멘텀 규칙(3분 연속 상승 + 3분 누적 1%p↑)으로 재구성해서 검증하기 위해
+// KIS 주식당일분봉조회(FHKST03010200)로 1분봉 이력을 가져옴. 분석 끝나면
+// 이 함수와 /debug/minute-chart 엔드포인트는 제거할 예정 — 상시 기능 아님.
+// hour(HHMMSS) 기준 최대 30건을 그 이전 시각 순으로 반환하는 API라, 하루
+// 전체(09:00~15:30)를 보려면 여러 번 호출해서 이어붙여야 함.
+async function fetchMinuteChart(code, hour) {
+  await kisRestThrottle();
+  const token = await getKisRestToken();
+  const params = new URLSearchParams({
+    FID_ETC_CLS_CODE: '', FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code,
+    FID_INPUT_HOUR_1: hour, FID_PW_DATA_INCU_YN: 'Y',
+  });
+  const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice?${params}`, {
+    headers: kisRestHeaders(token, 'FHKST03010200'),
+  });
+  return res.json();
+}
+
 // intraday_candidates UPSERT — PostgREST on_conflict+merge-duplicates로
 // SQL의 "ON CONFLICT (trade_date, code, source) DO UPDATE"와 동등하게 동작.
 // created_at을 매번 명시적으로 채우는 이유: refreshSangttaCandidates()가
@@ -2085,6 +2105,25 @@ const server = http.createServer((req, res) => {
       candidates: [...sangttaCandidates],
       openPositions: [...sangttaOpenPositions.keys()],
     }));
+    return;
+  }
+  // 임시 진단용(2026-09-10) — 위 fetchMinuteChart() 참고. 분석 끝나면 제거 예정.
+  if (req.url && req.url.startsWith('/debug/minute-chart')) {
+    const u = new URL(req.url, 'http://internal');
+    const code = u.searchParams.get('code');
+    const hour = u.searchParams.get('hour') || '153000';
+    if (!code) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'code query param required' }));
+      return;
+    }
+    fetchMinuteChart(code, hour).then(json => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(json));
+    }).catch(err => {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    });
     return;
   }
   if (req.url === '/health') {
