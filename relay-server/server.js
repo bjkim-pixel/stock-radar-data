@@ -434,6 +434,27 @@ async function fetchKisPrice(code, marketDiv = 'J') {
 const SCAN_MIN_CHANGE_PCT = 3.0, SCAN_MIN_PRICE = 1000, SCAN_MIN_VOL = 10000;
 const PREFERRED_OR_SPAC_RE = /(\d?우[A-Z]?$|스팩|기업인수목적)/;
 
+// 2026-09-10: SCAN이 상위 15개를 고를 때 "등락률 단순 내림차순" 대신 "무게
+// (weight = 등락률 × 누적거래량 ÷ 상장주식수)" 기준으로 재정렬하기 위한
+// 상장주식수 캐시 — sql/01_schema.sql의 daily_price.weight_per_share, 그리고
+// stagePreMarket()의 "무게상위" 후보 선정과 동일한 공식(사용자 제안, 2026-09-10).
+// 시총 큰 종목이 절대 거래대금만으로 상위를 독점하지 않고, 유통물량 대비
+// 실제로 활발히 도는 종목을 우선시함. stocks 테이블이 전체 상장종목(2,774+개)
+// 기준이라 SCAN이 훑는 전체 시장 종목을 대부분 커버함. 서버 시작 시 1회 로드
+// (상장주식수는 증자/분할 외엔 거의 안 바뀌므로 재배포 시마다 새로 읽는 것으로
+// 충분 — 이 서비스가 코드 수정 때마다 자주 재배포되는 걸 감안하면 오히려 자주
+// 갱신되는 편).
+const listedSharesMap = new Map(); // code -> 상장주식수(주)
+async function loadListedSharesCache() {
+  try {
+    const rows = await sbGet('stocks?select=code,listed_shares&listed_shares=not.is.null');
+    rows.forEach(r => listedSharesMap.set(r.code, Number(r.listed_shares)));
+    console.log(`[상따후보] 상장주식수 캐시 로드 완료: ${listedSharesMap.size}종목`);
+  } catch (err) {
+    console.error('[상따후보] 상장주식수 캐시 로드 실패:', err.message);
+  }
+}
+
 async function fetchChangeRateRank(limit = 30) {
   await kisRestThrottle();
   try {
@@ -631,10 +652,15 @@ async function stageScan() {
   }
 
   const known = await fetchAllKnownCandidateCodes();
-  let skippedPref = 0, newCount = 0, refreshedCount = 0;
-  const rows = [];
+  let skippedPref = 0;
   const nowKstStr = new Intl.DateTimeFormat('en-GB', { timeZone: KST_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
 
+  // 2026-09-10: 위 loadListedSharesCache() 주석 참고 — 등락률순위 30건(이미
+  // 등락률 기준으로 걸러진 집합) "안에서" 무게(weight) 기준으로 재정렬함.
+  // KIS 등락률순위 API 자체가 상위 30건만 주는 구조라, 등락률 30위 밖에
+  // 있지만 회전율이 극단적인 종목까지 새로 찾아내진 못함 — 그러려면 별도의
+  // 거래량/회전율 순위 API가 필요해서 이번엔 범위 밖으로 둠(추후 검토 가능).
+  const eligible = [];
   for (let i = 0; i < ranked.length; i++) {
     const out = ranked[i];
     const code = out.stck_shrn_iscd || out.mksc_shrn_iscd || out.code;
@@ -643,19 +669,37 @@ async function stageScan() {
     if (PREFERRED_OR_SPAC_RE.test(name)) { skippedPref++; continue; }
     const price = safeNum(out.stck_prpr);
     if (price && price < SCAN_MIN_PRICE) continue;
-    if (known.has(code)) refreshedCount++; else newCount++;
-    rows.push({
-      code, rank: i + 1,
-      snapshot: { name: name || null, price, change_pct: safeNum(out.prdy_ctrt), acc_amt: safeNum(out.acml_tr_pbmn), detected_at: nowKstStr },
-    });
-    if (rows.length >= SCAN_TOP_N) break;
+    const changePct = safeNum(out.prdy_ctrt);
+    const accVol = safeNum(out.acml_vol);
+    const listedShares = listedSharesMap.get(code);
+    const weight = (Number.isFinite(changePct) && Number.isFinite(accVol) && listedShares > 0)
+      ? changePct * accVol / listedShares : null;
+    eligible.push({ code, name, price, changePct, accVol, accAmt: safeNum(out.acml_tr_pbmn), weight, origRank: i + 1 });
   }
 
-  if (!rows.length) {
+  if (!eligible.length) {
     console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 저장할 종목 없음(우선주/스팩 ${skippedPref}건 제외)`);
     return;
   }
-  console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 신규 ${newCount}건 + 상위권 유지 갱신 ${refreshedCount}건 반영(우선주/스팩 ${skippedPref}건 제외)`);
+  // acml_vol 필드명이 실제 응답과 다르거나 상장주식수 캐시가 비어있으면 weight가
+  // 전부 null이 됨 — 이 경우 기존 방식(등락률순위 그대로)으로 조용히 대체하되,
+  // 최초 1회는 반드시 경고를 남겨서 필드명 확인이 필요함을 알 수 있게 함.
+  const haveWeight = eligible.some(e => e.weight != null);
+  if (!haveWeight) console.warn('[상따후보] SCAN: 무게(weight) 계산 불가(acml_vol 필드 또는 상장주식수 캐시 확인 필요) — 등락률순 정렬로 대체');
+  const sorted = haveWeight
+    ? [...eligible].sort((a, b) => (b.weight ?? -Infinity) - (a.weight ?? -Infinity))
+    : [...eligible].sort((a, b) => a.origRank - b.origRank);
+  const top = sorted.slice(0, SCAN_TOP_N);
+
+  let newCount = 0, refreshedCount = 0;
+  const rows = top.map((e, i) => {
+    if (known.has(e.code)) refreshedCount++; else newCount++;
+    return {
+      code: e.code, rank: i + 1,
+      snapshot: { name: e.name || null, price: e.price, change_pct: e.changePct, acc_amt: e.accAmt, weight: e.weight, detected_at: nowKstStr },
+    };
+  });
+  console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 신규 ${newCount}건 + 상위권 유지 갱신 ${refreshedCount}건 반영(${haveWeight ? '무게순' : '등락률순'}, 우선주/스팩 ${skippedPref}건 제외)`);
   await upsertCandidates(rows, 'SCAN');
 }
 
@@ -792,6 +836,14 @@ const sangttaCandidates   = new Set();               // 오늘의 후보 코드 
 const sangttaOpenPositions = new Map();               // code -> {id, entryPrice, peakPrice, peakTime, qty, grade}
 const sangttaEntriesToday  = new Map();               // code -> 오늘 누적 진입 시도 횟수 (등급 C 판정용)
 const sangttaTickStats     = new Map();               // code -> {minuteBuckets:Map, largePrints:number[]}
+// 2026-09-10: 손절/선제청산 후 "거래량은 진정됐지만 가격이 이전 고점을 다시
+// 뚫고 재상승"하는 경우를 잡기 위한 재진입 완화 조건용 — 청산 시점의
+// peakPrice를 기억해뒀다가, 현재가가 이 값을 다시 넘는 순간 분당거래대금비율
+// 조건(SANGTTA_MINUTE_VOL_RATIO_MIN)만 면제하고 나머지 조건은 그대로 요구함.
+// (에스투더블유 재구성 분석에서, 최초 급등 이후 5분평균이 높아진 채 유지돼
+// "평균 대비 150% 폭증"이 다시는 안 나와 재진입 기회가 원천봉쇄됐던 문제 대응.)
+// 장마감 강제청산(MARKET_CLOSE)은 어차피 그날 재진입 여지가 없으므로 기록 안 함.
+const sangttaExitPeaks     = new Map();               // code -> 청산 시점 peakPrice
 let sangttaDailySummaryDoneFor = null;                // 오늘 이미 정산했으면 날짜 문자열
 
 function getSangttaStats(code) {
@@ -1005,6 +1057,8 @@ async function exitSangttaPosition(code, price, exitType, extra = {}) {
   const pos = sangttaOpenPositions.get(code);
   if (!pos) return;
   sangttaOpenPositions.delete(code); // 중복 청산 방지를 위해 먼저 제거
+  // 재진입 완화 조건(위 sangttaExitPeaks 선언부 주석 참고)용 — 장마감 강제청산은 제외.
+  if (exitType !== 'MARKET_CLOSE') sangttaExitPeaks.set(code, pos.peakPrice);
 
   const now = new Date();
   const holdMinutes = Math.round((now.getTime() - (pos.entryTime || pos.peakTime)) / 60000);
@@ -1073,8 +1127,19 @@ function maybeEnterSangtta(code, price, rec, now) {
   const high = Number(rec[F_HIGH]);
   if (!Number.isFinite(cttr) || cttr < SANGTTA_CTTR_MIN) return;
   if (largePrints < SANGTTA_LARGE_PRINT_MIN_COUNT) return;
+  // 2026-09-10: 이전에 이 종목에서 손절/선제청산된 적이 있고, 지금 그 청산
+  // 시점의 고점(peakPrice)을 다시 넘어서는 "재돌파" 순간이면 분당거래대금
+  // 비율(SANGTTA_MINUTE_VOL_RATIO_MIN) 조건만 면제한다. 최초 급등 이후
+  // "최근 5분 평균"이 이미 높아진 채로 유지되면 그 평균 대비 150% 폭증이
+  // 다시는 안 나와서 재진입 기회가 원천봉쇄되는 문제 대응(위 sangttaExitPeaks
+  // 선언부 주석 참고). 등락률·체결강도·대량체결·분당평균거래대금 조건은
+  // 그대로 요구하므로, "가격만 슬쩍 올랐다"가 아니라 실제로 거래가 받쳐주는
+  // 재상승에서만 트리거된다.
+  const exitPeak = sangttaExitPeaks.get(code);
+  const reboundReclaim = exitPeak != null && Number.isFinite(price) && price > exitPeak;
   const mv = sangttaMinuteVolumeStats(st, minuteKey);
-  if (mv == null || mv.ratio == null || mv.ratio < SANGTTA_MINUTE_VOL_RATIO_MIN) return;
+  if (mv == null) return; // 직전 5분 이력 부족 — 재진입이어도 유동성 판단 근거가 없으면 스킵
+  if (!reboundReclaim && (mv.ratio == null || mv.ratio < SANGTTA_MINUTE_VOL_RATIO_MIN)) return;
   const minuteRatio = mv.ratio, minuteAvgAmt = mv.avg;
   // 2026-09-09 3차 개선: "지금 실제로 오늘 뜨는 종목인지"를 직접 확인하되,
   // 상따는 "이미 많이 오른 종목"이 아니라 "오를 기미가 보이는 종목을 초반에"
@@ -1095,7 +1160,7 @@ function maybeEnterSangtta(code, price, rec, now) {
     return;
   }
   enterSangttaPosition(code, price, grade, {
-    source: isCandidate ? 'CANDIDATE' : 'NEW_DETECTED',
+    source: reboundReclaim ? 'REBOUND_RECLAIM' : (isCandidate ? 'CANDIDATE' : 'NEW_DETECTED'),
     cttr, largePrints, minuteRatio, minuteAvgAmt, changePct, programNetBuy: pt ? pt.netBuyAmt : null,
   });
 }
@@ -2189,6 +2254,7 @@ issueApprovalKey()
     loadPushSubscriptions();
     primeSangttaEntryCounts();
     primeSangttaOpenPositions();
+    loadListedSharesCache(); // SCAN 무게(weight) 재정렬용 상장주식수 캐시
     refreshSangttaCandidates();
     candidateEngineHeartbeat(); // 서버 재시작이 장중 시간대에 일어나도 그 즉시 해당 단계를 따라잡음
     server.listen(PORT, () => {
