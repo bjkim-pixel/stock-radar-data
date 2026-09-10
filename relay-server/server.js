@@ -490,10 +490,13 @@ async function fetchMinuteChart(code, hour) {
 async function fetchMinuteChartFullDay(code, endHour = '153000', startMinutes = 9 * 60) {
   const rowsMap = new Map();
   let hour = endHour, prdyClpr = null;
+  const pages = [];
   for (let i = 0; i < 16; i++) {
     const json = await fetchMinuteChart(code, hour);
     if (json.output1 && prdyClpr == null) prdyClpr = json.output1.stck_prdy_clpr;
     const output2 = json.output2 || [];
+    pages.push({ requestedHour: hour, rt_cd: json.rt_cd, count: output2.length,
+      first: output2[0] && output2[0].stck_cntg_hour, last: output2[output2.length - 1] && output2[output2.length - 1].stck_cntg_hour });
     if (!output2.length) break;
     output2.forEach(r => rowsMap.set(r.stck_cntg_hour, r));
     const oldest = output2[output2.length - 1].stck_cntg_hour;
@@ -505,7 +508,7 @@ async function fetchMinuteChartFullDay(code, endHour = '153000', startMinutes = 
     hour = `${hh}${mm}00`;
   }
   const rows = [...rowsMap.values()].sort((a, b) => a.stck_cntg_hour.localeCompare(b.stck_cntg_hour));
-  return { prdyClpr, rows };
+  return { prdyClpr, rows, pages };
 }
 
 // intraday_candidates UPSERT — PostgREST on_conflict+merge-duplicates로
