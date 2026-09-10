@@ -730,6 +730,15 @@ const SANGTTA_MIN_MINUTE_AMT_ENTRY = 30_000_000; // 직전 5분 평균 분당거
 // 정렬 로직도 "최신순 + 동률이면 등락률순위 우선"으로 바꿔 진짜 지금 강한
 // 종목이 상위에 남도록 함. 너무 좁아서 매수 기회를 자주 놓친다면 다시 늘릴 것.
 const SANGTTA_MAX_TRACKED           = 12;        // 실시간 추적(=웹소켓 구독) 대상 상위 N개
+// 2026-09-10 3차 개선: "최신 갱신순" 정렬만으로는 회전이 느렸음 — 등락률 5%+
+// 신규 종목이 드문드문 나오는 날엔 새 후보가 충분히 안 들어와서, 이미
+// 마이너스로 전환된 예전 후보가 며칠이고 화면에 "후보"로 계속 남아있는 문제가
+// 있었음(사용자 스크린샷으로 확인: 대한광통신 -3.48%, 우리기술 -5.87%,
+// 가온전선 -7.72% 등이 계속 후보에 떠 있었음). 단타 전략 특성상 방향이
+// 꺾인 종목을 계속 들고 감시할 이유가 없으므로, 실시간 등락률이 이 값
+// 밑으로 떨어지면 즉시 후보 목록에서 제외한다(보유 중인 포지션은 청산
+// 판단을 계속 해야 하므로 예외 — wantedCodes()가 별도로 구독을 유지함).
+const SANGTTA_CANDIDATE_STALE_FLOOR_PCT = 0;
 // 프로그램 순매수 규모가 이 이상이면 "강한 프로그램 매수세 동반"으로 보고
 // 진입 등급을 A(풀사이즈)로 올림(기존엔 신고가 돌파 여부만 봤음) — 사용자
 // 지적대로 프로그램 매수가 붙으면 상승 추세가 더 오래/가파르게 이어질 수
@@ -843,15 +852,29 @@ async function refreshSangttaCandidates() {
       `intraday_candidates?select=code,rank,created_at&trade_date=eq.${today}&order=created_at.desc,rank.asc`
     );
     const seen = new Set();
-    const ordered = [];
+    const allOrdered = [];
     for (const r of rows) {
       if (seen.has(r.code)) continue;
       seen.add(r.code);
-      ordered.push(r.code);
-      if (ordered.length >= SANGTTA_MAX_TRACKED) break;
+      allOrdered.push(r.code);
     }
+    // 순번을 자르기(top N) 전에 "지금 실시간으로 마이너스 전환된" 종목을 먼저
+    // 걸러낸다. lastPrice는 H0STCNT0 틱마다 갱신되는 최신 시세 캐시라 DB보다
+    // 훨씬 신선함 — 아직 틱을 한 번도 못 받은 신규 후보(lastPrice 없음)는
+    // 판단할 근거가 없으니 일단 유지하고, 다음 주기에 다시 판단한다.
+    const stillAlive = allOrdered.filter(code => {
+      if (sangttaOpenPositions.has(code)) return true; // 보유 중이면 무조건 유지(청산 판단용)
+      const live = lastPrice.get(code);
+      if (!live || !Number.isFinite(live.changePct)) return true;
+      return live.changePct >= SANGTTA_CANDIDATE_STALE_FLOOR_PCT;
+    });
+    const staleDropped = allOrdered.filter(c => !stillAlive.includes(c));
+    const ordered = stillAlive.slice(0, SANGTTA_MAX_TRACKED);
     sangttaCandidates.clear();
     ordered.forEach(c => sangttaCandidates.add(c));
+    if (staleDropped.length) {
+      console.log(`[상따후보] 마이너스 전환으로 후보 제외: ${staleDropped.join(', ')}`);
+    }
     const missingNames = [...sangttaCandidates].filter(c => !codeNames.has(c));
     if (missingNames.length) {
       const nameRows = await sbGet(`stocks?select=code,name&code=in.(${missingNames.join(',')})`);
@@ -863,9 +886,11 @@ async function refreshSangttaCandidates() {
     console.error('[상따] 후보 갱신 실패:', err.message);
   }
 }
-// stageScan()이 1분마다 갱신하므로 여기도 1분으로 맞춰서 교체가 최대 1분
-// 지연 안에 반영되도록 함(기존 2분 → 1분, 회전을 더 빠르게).
-const SANGTTA_CANDIDATE_POLL_MS = 60 * 1000;
+// stageScan()의 신규 후보 발굴 자체는 KIS API 호출이 있어 1분 간격을 유지하지만,
+// 여기(refreshSangttaCandidates)는 DB 조회 + 로컬 lastPrice 캐시 비교뿐이라
+// 비용이 거의 없음. 마이너스 전환된 후보를 더 빨리 걸러내라는 요청(2026-09-10)에
+// 따라 60초 → 20초로 단축 — "수시로" 후보 목록이 갱신되도록 함.
+const SANGTTA_CANDIDATE_POLL_MS = 20 * 1000;
 setInterval(refreshSangttaCandidates, SANGTTA_CANDIDATE_POLL_MS);
 
 // 이미 CLOSED된 오늘자 포지션을 서버 재시작 후에도 "몇 번째 진입인지" 알 수 있게
