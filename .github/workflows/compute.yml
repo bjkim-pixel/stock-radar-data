@@ -7,17 +7,26 @@ on:
     # 재계산하지 않게 합니다(하루치만 계산하는 용도로 스크립트가 이미 지원).
     #
     # 1차 16:30 KST — 지표·신호 계산 + 실제 가상매수/매도 실행(포지션 확정)
-    # 2차 18:30 KST — 지표·신호만 재계산해 3단계 후보를 다시 보여줌(--no-portfolio,
-    #                 가상매수는 실행하지 않음). 1차 대비 후보 종목 변화 비교용.
-    # 3차 20:15 KST (2026-09-11 신설) — nxt_collect.yml(20:10 KST)이 그날 NXT
-    #                 마감 시세를 채운 직후 실행. "종가베팅2"는 NXT 마감가에
-    #                 매수하는 전략이라 이 시점에야 신호·매수가 확정됨. 포지션
-    #                 엔진(06_portfolio.py)은 항상 전체 이력을 재생성하는
-    #                 구조라 TREND/CLOSEBET도 같이 다시 계산되지만 입력값이
-    #                 안 바뀌었으니 결과는 1차와 동일 — 사실상 CLOSEBET2만
-    #                 새로 반영되는 실행입니다.
+    #                 · TREND/CLOSEBET 신규매수, 전 전략 매도 판정
+    # 2~6차 18:05~19:55 KST (2026-09-11 신설) — nxt_collect.yml의 장중 NXT
+    #                 반복 수집(18:00~19:50 KST, 각 수집 5분 뒤로 잡아 수집
+    #                 완료를 기다림) 직후마다 실행. "종가베팅2" 1·2단계 후보
+    #                 (괴리율 top10 → 시총 top3)를 그때그때 새로고침해 사용자가
+    #                 NXT 장중에 실제 매수 판단에 쓸 수 있게 함. --no-portfolio로
+    #                 후보만 재계산하고 가상매수는 실행하지 않음(마감 전 값이라
+    #                 아직 확정 아님).
+    # 7차 20:15 KST — nxt_collect.yml(20:10 KST)이 그날 NXT "공식 마감가"를
+    #                 확정 수집한 직후 실행. 이 시점에야 종가베팅2 신호·매수가
+    #                 확정됨. 포지션 엔진(06_portfolio.py)은 항상 전체 이력을
+    #                 재생성하는 구조라 TREND/CLOSEBET도 같이 다시 계산되지만
+    #                 입력값이 안 바뀌었으니 결과는 1차와 동일 — 사실상
+    #                 CLOSEBET2만 새로 반영되는 실행입니다.
     - cron: "30 7 * * 1-5"   # 16:30 KST = 07:30 UTC (매수·매도 실행)
-    - cron: "30 9 * * 1-5"   # 18:30 KST = 09:30 UTC (후보만 재조회, 매수 없음)
+    - cron: "5 9 * * 1-5"    # 18:05 KST = 09:05 UTC (장중 후보 재조회, 매수 없음)
+    - cron: "35 9 * * 1-5"   # 18:35 KST = 09:35 UTC (장중 후보 재조회, 매수 없음)
+    - cron: "5 10 * * 1-5"   # 19:05 KST = 10:05 UTC (장중 후보 재조회, 매수 없음)
+    - cron: "35 10 * * 1-5"  # 19:35 KST = 10:35 UTC (장중 후보 재조회, 매수 없음)
+    - cron: "55 10 * * 1-5"  # 19:55 KST = 10:55 UTC (장중 후보 재조회, 매수 없음)
     - cron: "15 11 * * 1-5"  # 20:15 KST = 11:15 UTC (종가베팅2 NXT 마감 매수 확정)
   workflow_dispatch:
     inputs:
@@ -71,17 +80,23 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            # 스케줄 실행 = daily_collect 직후 그날 하루치만 재계산
-            # 18:30 KST(09:30 UTC) 스케줄은 후보 재조회만 하고 가상매수는 실행하지 않음
-            if [ "${{ github.event.schedule }}" = "30 9 * * 1-5" ]; then
-              echo "▶ 18:30 KST 2차 실행 — 후보만 재계산 (가상매수 없음)"
-              python 05_compute.py "$(date +%Y%m%d)" --no-portfolio
-            elif [ "${{ github.event.schedule }}" = "15 11 * * 1-5" ]; then
-              echo "▶ 20:15 KST 3차 실행 — NXT 마감 반영, 종가베팅2 매수 확정"
-              python 05_compute.py "$(date +%Y%m%d)"
-            else
-              python 05_compute.py "$(date +%Y%m%d)"
-            fi
+            # 스케줄 실행 = daily_collect/nxt_collect 직후 그날 하루치만 재계산.
+            # 18:05~19:55 KST(장중 NXT 반복수집 직후)는 후보 재조회만 하고
+            # 가상매수는 실행하지 않음(--no-portfolio) — 마감 전 값이라 미확정.
+            SCHED="${{ github.event.schedule }}"
+            case "$SCHED" in
+              "5 9 * * 1-5"|"35 9 * * 1-5"|"5 10 * * 1-5"|"35 10 * * 1-5"|"55 10 * * 1-5")
+                echo "▶ 장중 실행($SCHED) — 종가베팅2 등 후보만 재계산 (가상매수 없음)"
+                python 05_compute.py "$(date +%Y%m%d)" --no-portfolio
+                ;;
+              "15 11 * * 1-5")
+                echo "▶ 20:15 KST 마감 실행 — NXT 마감 반영, 종가베팅2 매수 확정"
+                python 05_compute.py "$(date +%Y%m%d)"
+                ;;
+              *)
+                python 05_compute.py "$(date +%Y%m%d)"
+                ;;
+            esac
           else
             START="${{ github.event.inputs.start_date }}"
             END="${{ github.event.inputs.end_date }}"
