@@ -984,7 +984,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 
   <div class="card"><h3>오늘의 후보 종목 · 단계별 스크리닝 <span class="r" id="candDateNote">기준일 확인 중…</span></h3>
-    <div class="faint" style="font-size:11px;margin:0 0 8px">공통조건: 시가총액 1조원↑ · 일거래대금 500억원↑ · 관리 유니버스 전체 대상(무게순위 캡 없음, 2026-09-10 변경) · 각 단계는 독립 조건(누적 아님) · 3단계 통과 종목만 실제 가상매수</div>
+    <div class="faint" style="font-size:11px;margin:0 0 8px">공통조건: 시가총액 1조원↑ · 일거래대금 500억원↑ · 관리 유니버스 전체 대상(무게순위 캡 없음, 2026-09-10 변경) · 단, 추세추종 1단계는 pick_score 상위 40위 캡 적용(2026-09-11 재도입) · 각 단계는 독립 조건(누적 아님) · 3단계 통과 종목만 실제 가상매수</div>
     <div class="grid2" id="candGrid">
       <div>
         <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">추세추종</div>
@@ -3445,8 +3445,8 @@ const COND_DEF={
     label:"추세추종",
     buy:"매수: 3단계 통과 종목 전량 매수 (시총별 차등, 아래 참조) · 피라미딩 제한 없음(+20%마다 같은 금액) · 매도: 보유 중 최고가(당일 고가 기준 peak) 대비 단계형 트레일링 손절 — 고점수익 5%미만 -7% · 5~15% -5% · 15~30% -4% · 30%이상 -3%(2026-09-10, 전략성과2 상따 방식 이식) · 단, 고점이 매수가 대비 +5% 이상 찍은 적이 있으면 그 뒤로는 매수가 +0.3% 아래로 손절선이 내려가지 않는 손익분기 보호선 적용(2026-09-08 추가)",
     stages:[
-      {tag:"1단계",items:["종가위치 상위 30% (고저범위 내 상위 30%)","등락률 12% 미만 (당일 이미 과열된 급등 종목 추격매수 제외)"]},
-      {tag:"2단계",items:["1단계 조건 전부 (종가위치 상위30% · 등락률 12%미만)","전고점 근처 (near_high 또는 전고대비 -20% 이내 · 2026-09-10 -10%→-20% 완화)","정배열 (5일 > 10일 > 20일 > 60일 이동평균)"]},
+      {tag:"1단계",items:["종가위치 상위 15% (고저범위 내 상위 15% · 2026-09-11 상위30%→상위15% 강화)","등락률 1%~12% (2026-09-11 보합권 거짓돌파 방지용 하한 1% 추가)","pick_score 상위 40위 이내 (2026-09-11 추세추종 1단계 전용 캡 재도입)"]},
+      {tag:"2단계",items:["1단계 조건 전부 (종가위치 상위15% · 등락률 1~12% · pick순위 40위 이내)","전고점 근처 (near_high 또는 전고대비 -15% 이내 · 2026-09-10 -10%→-20% 완화 후 2026-09-11 -20%→-15% 부분 복원)","정배열 (5일 > 10일 > 20일 > 60일 이동평균)"]},
       {tag:"3단계 ★",items:["2단계 조건 전부","거래량비(전일까지 20일 평균 대비) 250% 미만 (2026-09-10 180%→250% 완화 · 거래량 폭발 종목 배제)","개별종목 상대강도 &gt; 0 (종목 20일 수익률 - 유니버스 평균 20일 수익률)"]},
     ]
   },
@@ -3473,7 +3473,7 @@ function showCondPopup(strat,stage){
   $("#condSub").textContent=def.buy;
   $("#condBody").innerHTML=sd.items.map(it=>
     `<div class="cond-row"><span class="cond-tag">조건</span><span>${it}</span></div>`
-    + (it.includes("종가위치 상위 30%")?CLOSEPOS_EXPLAIN:"")
+    + (it.includes("종가위치 상위")?CLOSEPOS_EXPLAIN:"")
   ).join("")+
   (stage===3?`<div style="font-size:11px;color:var(--up);margin-top:8px;font-weight:600">★ 3단계 통과 종목만 실제 가상매수 대상</div>`:"");
   $("#condOverlay").classList.remove("hidden");
