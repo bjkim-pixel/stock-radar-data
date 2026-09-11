@@ -32,6 +32,10 @@ on:
         description: '수집 날짜 (YYYYMMDD, 비우면 오늘)'
         required: false
         default: ''
+      debug_code:
+        description: '(디버그) 이 종목코드만 조회해 API 원본 응답을 Summary에 출력 (공백으로 여러 개, 비우면 일반 수집)'
+        required: false
+        default: ''
 
 jobs:
   collect-nxt:
@@ -103,7 +107,13 @@ jobs:
           KIS_ACCESS_TOKEN: ${{ steps.kistoken.outputs.token }}
         run: |
           DATE="${{ github.event.inputs.target_date }}"
-          if [ -z "$DATE" ]; then
+          CODE="${{ github.event.inputs.debug_code }}"
+          if [ -n "$CODE" ]; then
+            echo "### 🔍 NXT API 디버그: $CODE" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            python 70_nxt_collect.py --debug $CODE 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          elif [ -z "$DATE" ]; then
             python 70_nxt_collect.py
           else
             python 70_nxt_collect.py "$DATE"
