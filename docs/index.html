@@ -3541,10 +3541,17 @@ async function loadStrategyCandidates(){
             조건 보기
           </button>
         </div>
-        ${items.length?`<div style="display:flex;flex-wrap:wrap;gap:5px">${items.map(r=>
-          `<span class="chip" title="${(r.reason_text||"").replace(/"/g,'&quot;')}"
-             style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:14px;cursor:pointer"
-             data-code="${r.code}">${nameOf[r.code]||r.code}</span>`).join("")}</div>`
+        ${items.length?`<div style="display:flex;flex-wrap:wrap;gap:6px">${items.map(r=>{
+          const detail=isBuy?(/\d단계\(매수\)\s*·\s*(.*)$/.exec(r.reason_text||"")||[])[1]:"";
+          return isBuy
+            ? `<span class="chip" title="${(r.reason_text||"").replace(/"/g,'&quot;')}"
+                 style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:10px;cursor:pointer;
+                        display:flex;flex-direction:column;align-items:flex-start;gap:2px;max-width:100%"
+                 data-code="${r.code}"><b>${nameOf[r.code]||r.code}</b>${detail?`<span class="faint" style="font-size:10px;font-weight:400;white-space:normal;line-height:1.4">${detail}</span>`:""}</span>`
+            : `<span class="chip" title="${(r.reason_text||"").replace(/"/g,'&quot;')}"
+                 style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:14px;cursor:pointer"
+                 data-code="${r.code}">${nameOf[r.code]||r.code}</span>`;
+        }).join("")}</div>`
           :'<div class="faint" style="font-size:11px">해당 없음</div>'}
       </div>`;
     }).join("");
