@@ -35,9 +35,10 @@ daily_price.nxt_close / nxt_change_pct 두 컬럼만 채우며(같은 컬럼을 
   SUPABASE_DB_URL                Supabase Session pooler URI
 
 사용법
-  python 70_nxt_collect.py                  # 오늘 수집
-  python 70_nxt_collect.py 20260911         # 특정 날짜 재수집
-  python 70_nxt_collect.py --debug 005930   # 삼성전자 API 원본 응답 확인
+  python 70_nxt_collect.py                            # 오늘 수집
+  python 70_nxt_collect.py 20260911                   # 특정 날짜 재수집
+  python 70_nxt_collect.py --debug 005930             # 삼성전자 API 원본 응답 확인
+  python 70_nxt_collect.py --debug 353200 036930 240810   # 여러 종목 한번에 확인(공백 구분)
 """
 import os, sys, time, datetime
 import requests, psycopg2
@@ -52,14 +53,14 @@ MAX_RPS = 14   # relay-server(server.js) KIS_REST_RATE_MIN_INTERVAL_MS=70ms와 �
 BATCH   = 500
 
 DEBUG_MODE  = False
-DEBUG_CODE  = None
+DEBUG_CODES = []
 TARGET_DATE = datetime.date.today().strftime("%Y%m%d")
 
 _args = sys.argv[1:]
 if _args:
     if _args[0] == "--debug":
         DEBUG_MODE = True
-        DEBUG_CODE = _args[1] if len(_args) > 1 else "005930"
+        DEBUG_CODES = _args[1:] if len(_args) > 1 else ["005930"]
     elif _args[0].isdigit() and len(_args[0]) == 8:
         TARGET_DATE = _args[0]
 
@@ -164,8 +165,9 @@ def main():
     token = get_token()
 
     if DEBUG_MODE:
-        out = fetch_nxt_price(token, DEBUG_CODE)
-        print(f"[NXT 원본 응답] {DEBUG_CODE}: {out}")
+        for code in DEBUG_CODES:
+            out = fetch_nxt_price(token, code)
+            print(f"[NXT 원본 응답] {code}: {out}")
         return
 
     codes = load_stocks()
