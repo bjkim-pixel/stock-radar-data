@@ -380,6 +380,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <button data-v="flow">수급 동향</button>
     <button data-v="scr">종목 후보</button>
     <button data-v="pair">짝꿍매매</button>
+    <button data-v="sector">업종동향</button>
     <button data-v="detail">종목 상세</button>
     <button data-v="perf">전략 성과</button>
     <button data-v="perf2">전략 성과2</button>
@@ -852,6 +853,22 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <div class="pair-track" id="pairTrack"><div class="load">업종을 선택하세요</div></div>
     </div>
     <div class="pair-dots" id="pairDots"></div>
+  </div>
+</section>
+
+
+<!-- ═══════════ 업종동향 ═══════════ -->
+<section id="v-sector" class="hide">
+  <div class="card" style="margin-top:16px"><h3>업종별 수급 현황
+    <span class="r">전체 업종 · 헤더 클릭 = 그 기준 내림차순 · 기본 거래대금 내림차순</span></h3>
+    <div class="tw"><table><thead><tr id="sectorTrendHead"></tr></thead>
+      <tbody id="sectorTrendBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="note">행을 누르면 아래 수급 주체별 누적 차트가 그 업종으로 바뀝니다.</div>
+  </div>
+
+  <div class="card"><h3><span id="sectorTrendMinisTitle">업종을 선택하세요</span>
+    <span class="r">전 기간 · 억원 · 각 차트 오른쪽 끝이 오늘</span></h3>
+    <div class="grid5" id="sectorTrendMinis"></div>
   </div>
 </section>
 
@@ -1651,7 +1668,7 @@ function go(v){
   if(cur&&cur!==v)S.prevView=cur;
   S.curTab=v;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
-  ["proc","today","flow","scr","pair","detail","perf","perf2"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","today","flow","scr","pair","sector","detail","perf","perf2"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   scrollTo(0,0);
   if(v==="detail"&&!S.chart.code)loadDetail((S.codes.find(c=>c.code==="000660")||S.codes[0])?.code);
   if(v==="perf")loadPerf();
@@ -1660,6 +1677,7 @@ function go(v){
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
     Promise.all([loadFlowTrends(),loadFlowLists()]).catch(()=>{});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
+  if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadSectorTrend().catch(()=>{});}
   redraw();
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
@@ -1848,6 +1866,84 @@ async function selectSector(sec){
   makeSortable('stkBody');
   $("#stkOut").innerHTML=`<b>${stkShow.length}종목</b>${S.stocks.length>10?` <span class="faint">(전체 ${S.stocks.length}종목 중 상위 10)</span>`:""}`;
   $("#fn3").innerHTML=`${stkShow.length}<small>/${S.stocks.length}</small>`;
+}
+
+/* ══ 업종동향 ══════════════════════════════════════════════════════
+   STEP2 "업종별 거래대금"과 동일한 SEC_COLS·정렬 로직을 쓰되, 상위5·하위5로
+   자르지 않고 전체 업종을 한 표에 보여줍니다(정렬 상태는 STEP2/짝꿍매매와
+   독립적인 S.sectorTrendSort). 행을 고르면 아래에 v_sector_flow_daily를
+   그대로 써서 종목상세 dMinis와 동일한 9개 미니차트(외국인+기관합계·개인·
+   외국인·기관합계·금융투자·투신·연기금·사모·기타법인)를 그 업종 기준으로
+   그립니다 — STEP2의 cSecFlow(외국인/기관/개인/기타법인 4종 조합차트)를
+   9종 전부로 확장한 버전입니다. */
+S.sectorTrendSort=S.sectorTrendSort||"total_amount";
+function sectorTrendHeadRow(){
+  return `<th class="l">#</th><th class="l">업종</th>`+SEC_COLS.map(c=>
+    `<th class="${c.opt?"opt ":""}sortable${c.k===S.sectorTrendSort?" active":""}" data-key="${c.k}">${c.l}${c.k===S.sectorTrendSort?" ▾":""}</th>`).join("");
+}
+function sectorTrendBodyRows(list){
+  return list.length?list.map((s,i)=>`
+    <tr class="clk" data-sec="${s.sector}" ${S.sectorTrendSel===s.sector?'aria-selected="true"':''}>
+      <td class="l rank">${i+1}</td><td class="l"><span class="nm">${s.sector}</span></td>
+      ${SEC_COLS.map(c=>`<td class="${c.opt?"opt ":""}${c.cls?c.cls(s):""}">${c.fmt(s)}</td>`).join("")}
+    </tr>`).join(""):`<tr><td colspan="10" class="load">데이터 없음</td></tr>`;
+}
+function renderSectorTrendTable(){
+  if(!S.sectors)return;
+  const sorted=[...S.sectors].sort((a,b)=>{
+    const av=a[S.sectorTrendSort],bv=b[S.sectorTrendSort];
+    if(av==null&&bv==null)return 0; if(av==null)return 1; if(bv==null)return -1;
+    return +bv-+av;
+  });
+  $("#sectorTrendHead").innerHTML=sectorTrendHeadRow();
+  $("#sectorTrendBody").innerHTML=sectorTrendBodyRows(sorted);
+  $$("#sectorTrendHead th.sortable").forEach(th=>
+    th.onclick=()=>{S.sectorTrendSort=th.dataset.key;renderSectorTrendTable();});
+  $$("#sectorTrendBody tr[data-sec]").forEach(tr=>
+    tr.onclick=()=>selectSectorTrend(tr.dataset.sec).catch(()=>{}));
+}
+async function loadSectorTrend(){
+  if(!S.sectors||!S.sectors.length){S.sectors=await q("v_sector_rank","select=*");}
+  renderSectorTrendTable();
+  if(S.sectors.length){
+    const keep=S.sectorTrendSel&&S.sectors.some(s=>s.sector===S.sectorTrendSel);
+    const sorted=[...S.sectors].sort((a,b)=>(+b.total_amount||0)-(+a.total_amount||0));
+    await selectSectorTrend(keep?S.sectorTrendSel:sorted[0].sector);
+  }
+}
+const SECTOR_MINI_K_OF={"금융투자":"fin_inv_cum","투신":"inv_trust_cum","연기금":"pension_cum","사모":"pe_cum",
+  "개인":"individual_cum","기타법인":"corp_other_cum"};
+async function selectSectorTrend(sec){
+  S.sectorTrendSel=sec;
+  $$("#sectorTrendBody tr[data-sec]").forEach(t=>t.toggleAttribute("aria-selected",t.dataset.sec===sec));
+  $("#sectorTrendMinisTitle").textContent=`${sec} · 수급 주체별 누적`;
+  $("#sectorTrendMinis").innerHTML='<div class="load">불러오는 중…</div>';
+  const fl=await q("v_sector_flow_daily",
+    `select=*&sector=eq.${encodeURIComponent(sec)}&order=trade_date.asc`);
+  if(!fl.length){$("#sectorTrendMinis").innerHTML='<div class="load">데이터 없음</div>';return;}
+  const lb=fl.map(p=>p.trade_date.slice(2).replace(/-/g,"/"));
+  const cumOf=k=>fl.map(p=>+p[k]/EOK);
+  const cumFg=cumOf("foreign_cum"), cumInst=cumOf("inst_cum");
+  const cumCombo=cumFg.map((v,i)=>v+cumInst[i]);
+  const last=fl.at(-1);
+  const minis=[
+    ["외국인+기관합계",cumCombo,cumCombo.at(-1)],
+    ["개인",cumOf("individual_cum"),null],
+    ["외국인",cumFg,cumFg.at(-1)],
+    ["기관합계",cumInst,cumInst.at(-1)],
+    ["금융투자",cumOf("fin_inv_cum"),null],
+    ["투신",cumOf("inv_trust_cum"),null],
+    ["연기금",cumOf("pension_cum"),null],
+    ["사모",cumOf("pe_cum"),null],
+    ["기타법인",cumOf("corp_other_cum"),null],
+  ];
+  minis.forEach(m=>{if(m[2]==null)m[2]=+last[SECTOR_MINI_K_OF[m[0]]]/EOK;});
+  $("#sectorTrendMinis").innerHTML=minis.map(([n,,lastV],i)=>
+    `<div class="mini"><h4>${n}<span class="${sgn(lastV)}">${pm(lastV,0)}억</span></h4>
+      <div class="chart" id="stMini_${i}"></div></div>`).join("");
+  minis.forEach(([n,arr],i)=>lineChart($("#stMini_"+i),
+    [{n,v:arr,c:"--s1"}],lb,{h:110,w:300,pr:8,pl:38,zero:true,labelEnds:false,
+      fy:v=>N(v,0),ft:v=>pm(v,0)+"억"}));
 }
 
 /* ══ STEP4 수급 / STEP5 타점 ══ */
@@ -3436,6 +3532,7 @@ function redraw(){
   loadMarketAmount().catch(()=>{});
   if(S.market.length)loadMarket().catch(()=>{});
   if(S.sector)selectSector(S.sector).catch(()=>{});
+  if(S.sectorTrendSel)selectSectorTrend(S.sectorTrendSel).catch(()=>{});
   if(S.chart.code)loadDetail(S.chart.code).catch(()=>{});
 }
 
