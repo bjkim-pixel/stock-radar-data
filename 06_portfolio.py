@@ -1,20 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅)
+STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅 / 종가베팅2)
 ==========================================================================
-06_signals.sql이 만든 V4_CAND_{TREND|CLOSEBET}_3(3단계 통과 종목)를 받아,
-포지션 상태가 있어야만 판정할 수 있는 매수·불타기·매도를 처리합니다.
+06_signals.sql이 만든 V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3(3단계 통과 종목)
+/ V4_CAND_CLOSEBET2_2(2단계 통과 종목)를 받아, 포지션 상태가 있어야만
+판정할 수 있는 매수·불타기·매도를 처리합니다.
 
-두 전략은 완전히 독립적으로 운용됩니다 — 추세추종이 산 종목은 추세추종
-규칙으로만 팔고, 종가베팅이 산 종목은 종가베팅 규칙으로만 팝니다. 같은
-종목을 두 전략이 동시에 보유할 수도 있습니다(서로 다른 포지션으로 취급).
+세 전략은 완전히 독립적으로 운용됩니다 — 추세추종이 산 종목은 추세추종
+규칙으로만 팔고, 종가베팅/종가베팅2가 산 종목은 각자 규칙으로만 팝니다.
+같은 종목을 여러 전략이 동시에 보유할 수도 있습니다(서로 다른 포지션으로
+취급).
 
-  06_signals.sql  → V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3  (3단계 통과 종목)
-  06_portfolio.py → V4_BUY_TREND    / V4_BUY_CLOSEBET      (실제 가상매수)
+  06_signals.sql  → V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3 / V4_CAND_CLOSEBET2_2
+  06_portfolio.py → V4_BUY_TREND / V4_BUY_CLOSEBET / V4_BUY_CLOSEBET2 (실제 가상매수)
                     V4_PYRAMID_TREND                       (+20%마다 불타기, 무제한)
                     V4_SELL_TREND / V4_CRASH_SELL_TREND    (고점 대비 단계형 트레일링 손절,
                                                              단 손익분기 보호선 적용 — 아래 참조)
-                    V4_SELL_CLOSEBET                       (매수 익일 시가 전량 매도)
+                    V4_SELL_CLOSEBET / V4_SELL_CLOSEBET2   (매수 익일 시가 전량 매도)
 
   ⚠ 2026-09-08 손익분기 보호선(breakeven floor) 추가 — 배경: 6월까지 지수 9000대
     상승장에선 -7% 트레일링도 종종 수익으로 마감했지만, 7월 급락 이후 6000~7000대
@@ -60,9 +62,17 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅)
     · 불타기: 없음
     · 매도: 매수 익일 정규장 시가에 무조건 전량 매도 (보유기간 1거래일 고정)
 
+  종가베팅2 (CLOSEBET2, 2026-09-11 신설)
+    · 매수: 2단계 통과 종목 전부(한도 없음, 정규장 마감 후 NXT 마감가에 매수),
+            시총 구간별 금액(위 참조) — NXT 마감가 미수집 시 그날 정규장 종가로 대체
+    · 불타기: 없음
+    · 매도: 매수 익일 정규장 시가에 무조건 전량 매도 (종가베팅과 동일한 청산 규칙)
+    · 신호·매수는 그날 세 번째 계산 실행(20:15 KST, nxt_collect.yml 이후)에서만
+      확정됨 — compute.yml 참고
+
 포트폴리오 두 종류
   VIRTUAL : 엔진이 자동 운용. 매 실행 시 전 기간을 처음부터 재생성하므로
-            (결정론적) 직접 수정하지 마세요. strategy 컬럼으로 TREND/CLOSEBET 구분.
+            (결정론적) 직접 수정하지 마세요. strategy 컬럼으로 TREND/CLOSEBET/CLOSEBET2 구분.
   REAL    : 사용자가 positions에 직접 넣은 실제 보유분(전략 구분 없음, 기존
             추세추종형 트레일링 손절 규칙 그대로 적용). 엔진은 peak_price
             갱신과 신호 생성만 합니다. ⚠ 손절 조건이 걸리면 REAL 포지션도
@@ -146,12 +156,14 @@ def trail_pct_for(peak_gain):
 BREAKEVEN_TRIGGER_PCT = 0.05      # 고점이 매수가 대비 +5% 이상 찍은 적 있으면 활성화
 BREAKEVEN_FLOOR_PCT   = 0.003     # 활성화 시 매수가 +0.3%(왕복비용 0.24% 커버) 밑으로는 손절선이 안 내려감
 
-CAND_SIGNAL = {"TREND": "V4_CAND_TREND_3", "CLOSEBET": "V4_CAND_CLOSEBET_3"}
+CAND_SIGNAL = {"TREND": "V4_CAND_TREND_3", "CLOSEBET": "V4_CAND_CLOSEBET_3",
+               "CLOSEBET2": "V4_CAND_CLOSEBET2_2"}
 
 # VIRTUAL 신호는 매 실행 시 전 기간을 재생성하므로 "지우고 다시 넣기"가 안전합니다.
 VIRTUAL_SIGNAL_TYPES = [
     "V4_BUY_TREND", "V4_PYRAMID_TREND", "V4_SELL_TREND", "V4_CRASH_SELL_TREND",
     "V4_BUY_CLOSEBET", "V4_SELL_CLOSEBET",
+    "V4_BUY_CLOSEBET2", "V4_SELL_CLOSEBET2",
 ]
 
 # REAL 신호는 다릅니다. 한 번 청산된 REAL 포지션은 다음 실행 때 OPEN이 아니라서
@@ -183,7 +195,7 @@ DRY_RUN = "--dry-run" in sys.argv
 # ── 데이터 로드 ───────────────────────────────────────────────────────────────
 def load_all(cur):
     """전략별 3단계 후보·종가·시가·종목명을 한 번에 읽어 메모리에 올립니다."""
-    candidates = {"TREND": {}, "CLOSEBET": {}}
+    candidates = {"TREND": {}, "CLOSEBET": {}, "CLOSEBET2": {}}
     for strat, sigtype in CAND_SIGNAL.items():
         cur.execute("""
             SELECT sg.trade_date, sg.code, sg.reason, s.name
@@ -198,6 +210,7 @@ def load_all(cur):
                 "name": name,
                 "pick_score": float(reason.get("pick_score") or 1e9),
                 "close": int(reason.get("close") or 0),
+                "nxt_close": int(reason.get("nxt_close") or 0),
                 "reason": reason,
             })
 
@@ -507,6 +520,80 @@ def process_day_closebet(day, open_pos, day_closes, day_opens, day_candidates, s
     return closed
 
 
+# ── 종가베팅2: 하루 처리 (NXT 마감가 매수 · 익일 시가 전량 매도 · 불타기 없음) ──
+def process_day_closebet2(day, open_pos, day_closes, day_opens, day_candidates, sig, allow_buy):
+    closed = []
+
+    # 1) 매도 판정 — 매수 다음 거래일 시가에 무조건 전량 매도 (종가베팅과 동일)
+    for code, pos in list(open_pos.items()):
+        if pos.entry_date >= day:
+            continue
+        openp = day_opens.get(code)
+        if openp is None:
+            openp = day_closes.get(code)   # 시가 데이터가 없으면 종가로 대체
+        if openp is None:
+            continue                       # 거래정지 등 — 판정 보류(다음날 재시도)
+        pos.close_out(day, openp, "NEXT_OPEN_EXIT")
+        closed.append(pos)
+        del open_pos[code]
+        sig.add(day, code, "V4_SELL_CLOSEBET2", "SELL",
+                min(100.0, max(0.0, 50 + float(pos.return_pct or 0))),
+                {
+                    "portfolio":    pos.portfolio,
+                    "strategy":     "CLOSEBET2",
+                    "entry_date":   pos.entry_date.isoformat(),
+                    "entry_price":  pos.entry_price,
+                    "exit_price":   openp,
+                    "quantity":     pos.quantity,
+                    "invested":     pos.invested,
+                    "realized_pnl": pos.realized_pnl,
+                    "return_pct":   float(pos.return_pct or 0),
+                    "exit_reason":  "NEXT_OPEN_EXIT",
+                },
+                f"[종가베팅2] {pos.name} 익일시가 전량매도 · {openp:,}원 · "
+                f"실현 {pos.return_pct:.1f}% ({pos.realized_pnl:,}원)")
+
+    # 2) 신규 매수 — 2단계 통과 후보 전부(기보유 제외), NXT 마감가에 매수, 불타기 없음
+    if allow_buy:
+        picks = [c for c in day_candidates if c["code"] not in open_pos]
+        picks.sort(key=lambda c: c["reason"].get("gap_rank") or 999)
+        for cand in picks:
+            # NXT 마감가가 우선, 없으면(수집 실패 등) 그날 정규장 종가로 대체
+            close = cand.get("nxt_close") or day_closes.get(cand["code"]) or cand["close"]
+            if not close:
+                continue
+            mcap = cand["reason"].get("market_cap")
+            amount = entry_amount_for(mcap)
+            qty = amount // close
+            if qty <= 0:
+                continue
+            invested = qty * close
+            pos = Position("VIRTUAL", "CLOSEBET2", cand["code"], cand["name"], day, close,
+                           qty, invested, market_cap=mcap)
+            open_pos[cand["code"]] = pos
+            r = cand["reason"]
+            sig.add(day, cand["code"], "V4_BUY_CLOSEBET2", "BUY",
+                    min(100.0, max(0.0, 50 + float(r.get("gap_pct") or 0))),
+                    {
+                        "portfolio":       "VIRTUAL",
+                        "strategy":        "CLOSEBET2",
+                        "change_pct":      r.get("change_pct"),
+                        "nxt_change_pct":  r.get("nxt_change_pct"),
+                        "gap_pct":         r.get("gap_pct"),
+                        "gap_rank":        r.get("gap_rank"),
+                        "cap_rank_top10":  r.get("cap_rank_top10"),
+                        "market_cap":      r.get("market_cap"),
+                        "entry_price":     close,
+                        "quantity":        qty,
+                        "invested":        invested,
+                    },
+                    f"[종가베팅2] {cand['name']} 2단계 신규매수(NXT괴리+시총) · NXT 마감가 {close:,}원 "
+                    f"{qty:,}주 ({invested:,}원) · 괴리 {r.get('gap_pct')}%p(상위{r.get('gap_rank')}위) "
+                    f"· 시총 상위{r.get('cap_rank_top10')}위 · 익일 시가 전량매도 예정")
+
+    return closed
+
+
 # ── REAL(사용자 실보유) — 추세추종형 트레일링 손절 규칙만 유지 ───────────────
 def process_day_real(day, open_pos, day_closes, day_highs, sig):
     """REAL 포지션은 전략 구분 없이 기존 v4 트레일링 손절 규칙만 적용합니다."""
@@ -523,13 +610,13 @@ def main():
         cur.execute("SET statement_timeout = '10min'")
         candidates, closes, opens, highs, names = load_all(cur)
 
-        if not candidates["TREND"] and not candidates["CLOSEBET"]:
-            print("⚠ V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3 후보가 없습니다. 06_signals.sql을 먼저 실행하세요.")
+        if not candidates["TREND"] and not candidates["CLOSEBET"] and not candidates["CLOSEBET2"]:
+            print("⚠ V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3 / V4_CAND_CLOSEBET2_2 후보가 없습니다. 06_signals.sql을 먼저 실행하세요.")
             conn.rollback()
             return
 
         all_days = sorted(closes.keys())
-        first_cand_days = [min(candidates[s].keys()) for s in ("TREND", "CLOSEBET") if candidates[s]]
+        first_cand_days = [min(candidates[s].keys()) for s in ("TREND", "CLOSEBET", "CLOSEBET2") if candidates[s]]
         first_cand = min(first_cand_days)
         effective_start = max(first_cand, SIM_START)
         if SIM_FROM:
@@ -562,13 +649,13 @@ def main():
         if cur.rowcount:
             print(f"   {SIM_START} 이전 VIRTUAL 신호 {cur.rowcount:,}건 삭제 (구 백테스트 이력)")
 
-        open_trend, open_closebet = {}, {}
-        closed_trend, closed_closebet = [], []
+        open_trend, open_closebet, open_closebet2 = {}, {}, {}
+        closed_trend, closed_closebet, closed_closebet2 = [], [], []
         stopped_trend = set()
-        cum_realized = {"TREND": 0, "CLOSEBET": 0}
-        peak_equity = {"TREND": 0, "CLOSEBET": 0}
-        mdd_amount = {"TREND": 0, "CLOSEBET": 0}
-        max_invested = {"TREND": 0, "CLOSEBET": 0}
+        cum_realized = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
+        peak_equity = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
+        mdd_amount = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
+        max_invested = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
 
         for day in sim_days:
             dc = closes.get(day, {})
@@ -585,8 +672,14 @@ def main():
                 sig, allow_buy=True)
             closed_closebet += newly_c
 
+            newly_c2 = process_day_closebet2(
+                day, open_closebet2, dc, do, candidates["CLOSEBET2"].get(day, []),
+                sig, allow_buy=True)
+            closed_closebet2 += newly_c2
+
             for label, newly, open_pos in (("TREND", newly_t, open_trend),
-                                            ("CLOSEBET", newly_c, open_closebet)):
+                                            ("CLOSEBET", newly_c, open_closebet),
+                                            ("CLOSEBET2", newly_c2, open_closebet2)):
                 cum_realized[label] += sum(p.realized_pnl or 0 for p in newly)
                 invested_open = sum(p.invested for p in open_pos.values())
                 unrealized = sum(p.quantity * dc[p.code] - p.invested
@@ -597,7 +690,8 @@ def main():
                 max_invested[label] = max(max_invested[label], invested_open)
 
         v_rows = ([p.as_row() for p in closed_trend] + [p.as_row() for p in open_trend.values()] +
-                  [p.as_row() for p in closed_closebet] + [p.as_row() for p in open_closebet.values()])
+                  [p.as_row() for p in closed_closebet] + [p.as_row() for p in open_closebet.values()] +
+                  [p.as_row() for p in closed_closebet2] + [p.as_row() for p in open_closebet2.values()])
 
         # ── REAL: 사용자 보유분 — peak 갱신·신호만, 신규매수 없음 ──────────
         cur.execute("""
@@ -740,6 +834,8 @@ def main():
     detail_report("TREND", closed_trend)
     summarize("CLOSEBET", closed_closebet, open_closebet, candidates["CLOSEBET"])
     detail_report("CLOSEBET", closed_closebet)
+    summarize("CLOSEBET2", closed_closebet2, open_closebet2, candidates["CLOSEBET2"])
+    detail_report("CLOSEBET2", closed_closebet2)
 
     by_type = {}
     for r in sig.rows:
