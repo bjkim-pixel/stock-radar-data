@@ -44,7 +44,7 @@ body{margin:0;background:var(--page);color:var(--ink);font-size:13.5px;line-heig
   -webkit-font-smoothing:antialiased}
 .wrap{max-width:1480px;margin:0 auto;padding:0 20px 80px}
 .num{font-variant-numeric:tabular-nums}
-.up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--ink-2)} .faint{color:var(--ink-3)} .good{color:var(--good)}
+.up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--ink-2)} .faint{color:var(--ink-3)} .good{color:var(--good)} .warn{color:var(--warn)}
 b{font-weight:640}
 a.lk{color:inherit;text-decoration:underline dotted var(--ink-3);text-underline-offset:2px;cursor:pointer}
 a.lk:hover{color:var(--up);text-decoration-color:var(--up)}
@@ -962,7 +962,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
 <!-- ═══════════ 전략 성과 ═══════════ -->
 <section id="v-perf" class="hide">
-  <div class="card" style="margin-top:16px"><h3>전략별 요약 <span class="r">추세추종 · 종가베팅 — 완전 독립 운용</span></h3>
+  <div class="card" style="margin-top:16px"><h3>전략별 요약 <span class="r">추세추종 · 종가베팅 · 종가베팅2 — 완전 독립 운용</span></h3>
     <div class="tw"><table><thead><tr>
       <th class="l">전략</th><th>총매수</th><th>총매도</th><th>실현손익</th><th>청산건수</th><th>보유중</th>
     </tr></thead><tbody id="perfSummaryA"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
@@ -979,13 +979,16 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="faint" style="font-size:11px;margin:0 0 10px">매수: 3단계 통과 종목 전량 매수(시총별 차등) · 피라미딩 제한 없음(+20%마다 같은 금액)<br>
       매도: 보유 중 최고가(당일 고가 기준) 대비 <b>단계형 트레일링 손절</b> — 고점수익 5%미만 <b>-7%</b> · 5~15% <b>-5%</b> · 15~30% <b>-4%</b> · 30%이상 <b>-3%</b>로 갈수록 좁아짐(2026-09-10, "전략성과2" 상따 방식 이식). 단 고점이 매수가 대비 <b>+5%</b> 이상 찍은 적이 있으면, 그 뒤로는 매수가 <b>+0.3%</b> 아래로는 손절선이 내려가지 않는 <b>손익분기 보호선</b>을 함께 적용(둘 중 더 높은 가격이 손절선) — 왕복거래비용 0.24%를 커버해 한 번 +5%를 넘긴 거래가 그 뒤로 손실로 뒤집히지 않도록 보호 (2026-09-08 추가)</div>
     <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 4px">종가베팅</div>
-    <div class="faint" style="font-size:11px;margin:0">매수: 3단계 통과 종목 전량 매수(시총별 차등) · 피라미딩 없음<br>
+    <div class="faint" style="font-size:11px;margin:0 0 10px">매수: 3단계 통과 종목 전량 매수(시총별 차등) · 피라미딩 없음<br>
+      매도: 매수 익일 시가에 전량 무조건 청산</div>
+    <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 4px">종가베팅2 <span class="faint" style="font-weight:400">(2026-09-11 신설)</span></div>
+    <div class="faint" style="font-size:11px;margin:0">매수: 2단계 통과 종목 전량 매수(시총별 차등) · <b>정규장 마감 등락률 대비 NXT(넥스트레이드) 애프터마켓 등락률 괴리</b>가 큰 종목을 NXT 마감가(20시)에 매수 · 피라미딩 없음 · 신호·매수는 그날 20:15 KST 3차 계산에서만 확정<br>
       매도: 매수 익일 시가에 전량 무조건 청산</div>
   </div>
 
   <div class="card"><h3>오늘의 후보 종목 · 단계별 스크리닝 <span class="r" id="candDateNote">기준일 확인 중…</span></h3>
-    <div class="faint" style="font-size:11px;margin:0 0 8px">공통조건: 시가총액 1조원↑ · 일거래대금 500억원↑ · 관리 유니버스 전체 대상(무게순위 캡 없음, 2026-09-10 변경) · 단, 추세추종 1단계는 pick_score 상위 40위 캡 적용(2026-09-11 재도입) · 각 단계는 독립 조건(누적 아님) · 3단계 통과 종목만 실제 가상매수</div>
-    <div class="grid2" id="candGrid">
+    <div class="faint" style="font-size:11px;margin:0 0 8px">공통조건: 시가총액 1조원↑ · 일거래대금 500억원↑ · 관리 유니버스 전체 대상(무게순위 캡 없음, 2026-09-10 변경) · 단, 추세추종 1단계는 pick_score 상위 40위 캡 적용(2026-09-11 재도입) · 각 단계는 독립 조건(누적 아님) · 추세추종/종가베팅은 3단계, 종가베팅2는 2단계 통과 종목만 실제 가상매수(종가베팅2는 NXT 마감가에 매수)</div>
+    <div class="grid3" id="candGrid">
       <div>
         <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">추세추종</div>
         <div id="candTrend"></div>
@@ -993,6 +996,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <div>
         <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">종가베팅</div>
         <div id="candClosebet"></div>
+      </div>
+      <div>
+        <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">종가베팅2</div>
+        <div id="candClosebet2"></div>
       </div>
     </div>
   </div>
@@ -1002,6 +1009,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip strat" data-strat="ALL" aria-pressed="true">전체</button>
       <button class="fchip strat" data-strat="TREND">추세추종</button>
       <button class="fchip strat" data-strat="CLOSEBET">종가베팅</button>
+      <button class="fchip strat" data-strat="CLOSEBET2">종가베팅2</button>
     </div>
     <div class="chart" id="cPerfPnl"></div>
   </div>
@@ -3290,8 +3298,8 @@ async function loadPerf2(){
 }
 
 /* ══ 전략 성과 ══ */
-const STRAT_LABEL={TREND:"추세추종",CLOSEBET:"종가베팅",null:"–"};
-const STRAT_BADGE_CLS={TREND:"up",CLOSEBET:"down"};
+const STRAT_LABEL={TREND:"추세추종",CLOSEBET:"종가베팅",CLOSEBET2:"종가베팅2",null:"–"};
+const STRAT_BADGE_CLS={TREND:"up",CLOSEBET:"down",CLOSEBET2:"warn"};
 const stratBadge=s=>`<span class="${STRAT_BADGE_CLS[s]||"dim"}" style="font-size:10.5px;font-weight:700">${STRAT_LABEL[s]||"–"}</span>`;
 
 async function loadPerf(){
@@ -3313,13 +3321,13 @@ async function loadPerf(){
     const uPnl=p=>{const c=S.lastClose[p.code];return c?Math.round(+p.quantity*c-+p.invested):null;};
 
     // 보유 중 종목의 매수 사유 (진입일 신규매수 신호의 reason_text에서 간략 추출)
-    const BUY_SIGTYPE={TREND:"V4_BUY_TREND",CLOSEBET:"V4_BUY_CLOSEBET"};
+    const BUY_SIGTYPE={TREND:"V4_BUY_TREND",CLOSEBET:"V4_BUY_CLOSEBET",CLOSEBET2:"V4_BUY_CLOSEBET2"};
     S.openReason={};
     if(op.length){
       const opDates=[...new Set(op.map(p=>p.entry_date))];
       const rRows=await q("signals",
         `select=code,trade_date,signal_type,reason_text&trade_date=in.(${opDates.join(",")})`+
-        `&code=in.(${opCodes.join(",")})&signal_type=in.(V4_BUY_TREND,V4_BUY_CLOSEBET)`);
+        `&code=in.(${opCodes.join(",")})&signal_type=in.(V4_BUY_TREND,V4_BUY_CLOSEBET,V4_BUY_CLOSEBET2)`);
       rRows.forEach(r=>{S.openReason[`${r.code}_${r.trade_date}_${r.signal_type}`]=r.reason_text||"";});
     }
     const buyReasonShort=p=>{
@@ -3333,7 +3341,7 @@ async function loadPerf(){
       cl: cl.filter(p=>p.strategy===strat), op: op.filter(p=>p.strategy===strat)
     });
     const rowsA=[], rowsB=[];
-    for(const strat of ["TREND","CLOSEBET"]){
+    for(const strat of ["TREND","CLOSEBET","CLOSEBET2"]){
       const {cl:c,op:o}=bystrat(strat);
       const pnl=c.reduce((a,b)=>a+ +b.realized_pnl,0);
       const win=c.filter(p=>+p.realized_pnl>0);
@@ -3355,7 +3363,7 @@ async function loadPerf(){
 
     // ── 전략별 미실현손익 요약 ──────────────────────────────────────────
     const rowsC=[];
-    for(const strat of ["TREND","CLOSEBET"]){
+    for(const strat of ["TREND","CLOSEBET","CLOSEBET2"]){
       const o=op.filter(p=>p.strategy===strat);
       const priced=o.filter(p=>S.lastClose[p.code]);
       const invested=o.reduce((a,b)=>a+ +b.invested,0);
@@ -3458,6 +3466,14 @@ const COND_DEF={
       {tag:"2단계",items:["주도섹터 (업종 RS 8위 이내 · 2026-09-10 5위→8위 완화)","전고점 근처 (near_high 또는 전고대비 -20% 이내 · 2026-09-10 -10%→-20% 완화)","외국인 순매수 (+)","기관 순매수 (+)"]},
       {tag:"3단계 ★",items:["주도섹터 (업종 RS 8위 이내 · 2026-09-10 5위→8위 완화)","전고점 근접 (전고대비 -5% 이내 · 2026-09-10 \"당일 52주 신고가 경신\" 요건에서 완화)","데이터 이력 20일 이상","외국인 순매수 (+)","기관 순매수 (+)","프로그램 순매수 (+)"]},
     ]
+  },
+  CLOSEBET2:{
+    label:"종가베팅2",
+    buy:"매수: 2단계 통과 종목 전량 매수 (시총별 차등, 아래 참조) · NXT(넥스트레이드) 애프터마켓 마감가(20시)에 매수 · 피라미딩 없음 · 익일 시가에 무조건 청산 · 신호·매수는 그날 20:15 KST 3차 계산에서만 확정(2026-09-11 신설)",
+    stages:[
+      {tag:"1단계",items:["괴리율 상위 10종목 (gap_pct = NXT 등락률 − 정규장 마감 등락률, 큰 순 · NXT에서 더 강하게 상승 중인 종목)"]},
+      {tag:"2단계 ★",items:["1단계 10종목 전부","1단계 10종목 중 시가총액 상위 3위 이내"]},
+    ]
   }
 };
 const CLOSEPOS_EXPLAIN=`<div class="cond-explain"><b>종가위치 = (종가−저가)÷(고가−저가)×100</b><br>
@@ -3475,7 +3491,7 @@ function showCondPopup(strat,stage){
     `<div class="cond-row"><span class="cond-tag">조건</span><span>${it}</span></div>`
     + (it.includes("종가위치 상위")?CLOSEPOS_EXPLAIN:"")
   ).join("")+
-  (stage===3?`<div style="font-size:11px;color:var(--up);margin-top:8px;font-weight:600">★ 3단계 통과 종목만 실제 가상매수 대상</div>`:"");
+  (stage===def.stages.length?`<div style="font-size:11px;color:var(--up);margin-top:8px;font-weight:600">★ ${stage}단계 통과 종목만 실제 가상매수 대상</div>`:"");
   $("#condOverlay").classList.remove("hidden");
 }
 (function initCondPopup(){
@@ -3495,24 +3511,27 @@ function showCondPopup(strat,stage){
 const CAND_STAGE_TYPES={
   TREND:["V4_CAND_TREND_1","V4_CAND_TREND_2","V4_CAND_TREND_3"],
   CLOSEBET:["V4_CAND_CLOSEBET_1","V4_CAND_CLOSEBET_2","V4_CAND_CLOSEBET_3"],
+  CLOSEBET2:["V4_CAND_CLOSEBET2_1","V4_CAND_CLOSEBET2_2"],
 };
+const STRAT_CAND_EL={TREND:"#candTrend",CLOSEBET:"#candClosebet",CLOSEBET2:"#candClosebet2"};
 async function loadStrategyCandidates(){
   const d=S.date;
   $("#candDateNote").textContent=`기준일 ${d}`;
   const nameOf={};S.codes.forEach(c=>nameOf[c.code]=c.name);
-  for(const strat of ["TREND","CLOSEBET"]){
+  for(const strat of ["TREND","CLOSEBET","CLOSEBET2"]){
     const types=CAND_STAGE_TYPES[strat];
+    const nStages=types.length;
     const rows=await q("signals",
       `select=code,signal_type,score,reason_text&trade_date=eq.${d}&signal_type=in.(${types.join(",")})&order=score.desc`);
-    const el=$(strat==="TREND"?"#candTrend":"#candClosebet");
-    const byStage={1:[],2:[],3:[]};
+    const el=$(STRAT_CAND_EL[strat]);
+    const byStage={};for(let s=1;s<=nStages;s++)byStage[s]=[];
     rows.forEach(r=>{
       const stage=+r.signal_type.slice(-1);
       byStage[stage].push(r);
     });
-    el.innerHTML=[1,2,3].map(stage=>{
+    el.innerHTML=Array.from({length:nStages},(_,i)=>i+1).map(stage=>{
       const items=byStage[stage];
-      const isBuy=stage===3;
+      const isBuy=stage===nStages;
       return `<div style="margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:6px;margin:0 0 4px">
           <span class="faint" style="font-size:10.5px">${stage}단계${isBuy?" (가상매수 대상)":""} · ${items.length}종목</span>
