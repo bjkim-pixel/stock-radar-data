@@ -1,10 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-STOCK RADAR · NXT(넥스트레이드) 애프터마켓 마감 시세 수집
+STOCK RADAR · NXT(넥스트레이드) 시세 수집 (장중 실시간 확인 + 마감가 확정)
 ==========================================================================
-GitHub Actions에서 매 거래일 20:10 KST(11:10 UTC, NXT 애프터마켓 종료
-20:00 이후)에 자동 실행됩니다. "종가베팅2" 전략(06_signals.sql)이 쓰는
-daily_price.nxt_close / nxt_change_pct 두 컬럼만 채웁니다.
+GitHub Actions(nxt_collect.yml)에서 매 거래일 두 가지 목적으로 실행됩니다.
+daily_price.nxt_close / nxt_change_pct 두 컬럼만 채우며(같은 컬럼을 그때
+그때 덮어씀), "종가베팅2" 전략(06_signals.sql)이 이 값을 읽습니다.
+
+  ① 18:00~19:50 KST(30분 간격, 19:30 이후는 20분 간격) — NXT 애프터마켓이
+     아직 열려 있는 동안(20:00 마감 전) 정규장 대비 괴리율을 실시간에 가깝게
+     확인하기 위한 반복 수집(2026-09-11 추가). 이 시간대에 수집된 값은
+     "현재가"이지 마감가가 아니므로, 실제 매수 판단에 참고하는 용도입니다.
+  ② 20:10 KST(11:10 UTC, NXT 애프터마켓 종료 20:00 이후) — 그날의 공식
+     NXT 마감가를 확정 수집. compute.yml 20:15 KST 3차 실행(종가베팅2 배치
+     가상매수)이 반드시 이 값을 기준으로 신호를 만듭니다.
+
+  스크립트 자체는 시각을 구분하지 않고 그때그때의 "현재가"(마감 후엔 곧
+  마감가와 동일)를 조회·저장할 뿐입니다 — ①/②의 구분은 nxt_collect.yml의
+  실행 스케줄에서만 이뤄집니다.
 
 ⚠ 사전 준비: 69_nxt_price_columns.sql을 먼저 Supabase SQL Editor에서
   실행해서 두 컬럼을 만들어둬야 합니다(Claude는 DB 스키마 변경 권한이 없어
@@ -58,7 +70,7 @@ if not KIS_KEY or not KIS_SECRET:
 if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 환경변수를 설정하세요.")
 
-print(f"▶ NXT 마감 시세 수집: {TARGET_DATE_ISO}")
+print(f"▶ NXT 시세 수집: {TARGET_DATE_ISO}")
 
 
 def safe_num(v, default=None):
