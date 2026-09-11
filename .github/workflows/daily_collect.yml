@@ -63,10 +63,23 @@ jobs:
           # KIS는 앱키당 토큰 발급을 1분에 1회로 제한합니다.
           # 이 스텝에서 딱 한 번만 발급받아 아래 두 파이썬 스텝이 공유합니다
           # (각자 발급받으면 두 번째 요청이 403으로 막힙니다).
-          RESP=$(curl -s -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
-            -H "Content-Type: application/json" \
-            -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
-          TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+          #
+          # 2026-09-11: GitHub Actions 러너가 전 세계 무작위 리전에 배정되다 보니
+          # 어쩌다 KIS 서버로의 네트워크 경로가 느린/막힌 리전에 걸리면 --max-time
+          # 없는 curl이 2분 넘게 응답 없이 멈췄다가 exit 28로 실패하는 경우가 있어
+          # (GitHub Actions 실패 로그 확인 결과) 타임아웃 + 짧은 재시도를 추가함.
+          TOKEN=""
+          for i in 1 2 3; do
+            RESP=$(curl -s --connect-timeout 8 --max-time 20 -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
+              -H "Content-Type: application/json" \
+              -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
+            TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
+            if [ -n "$TOKEN" ]; then
+              break
+            fi
+            echo "KIS 토큰 발급 재시도 ($i/3) — 5초 후 재시도: $RESP"
+            sleep 5
+          done
           if [ -z "$TOKEN" ]; then
             echo "::error::KIS 토큰 발급 실패: $RESP"
             exit 1

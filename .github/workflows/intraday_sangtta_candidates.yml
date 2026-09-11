@@ -11,11 +11,20 @@ name: Intraday Sangtta Candidates (전략성과2 후보)
 #     (같은 UTC 날짜 구간이라 요일 이동 없음 — SCAN 단계 자체 내부에서도
 #      09:15~15:20만 실제로 동작하도록 한 번 더 가드함, 크론 구간은 여유있게)
 on:
-  schedule:
-    - cron: "50 22 * * 0-4"   # 07:50 KST — PRE_MARKET
-    - cron: "40 23 * * 0-4"   # 08:40 KST — NXT
-    - cron: "12 0 * * 1-5"    # 09:12 KST — REGULAR
-    - cron: "*/5 0-6 * * 1-5" # 09:00~15:55 KST, 5분 간격 — SCAN
+  # 2026-09-11: 이 워크플로(PRE_MARKET/NXT/REGULAR/SCAN 3단계 후보 생성)는
+  # relay-server/server.js의 candidateEngineHeartbeat()로 완전히 대체됨
+  # (server.js 상단 "3-A2) 전략성과2(상따) 후보 발굴 엔진" 절 주석 참고,
+  # 2026-09-09 전환). 그 사실을 모르고 이 스케줄이 계속 살아있어서 장중 5분
+  # 간격으로 중복 실행되며 불필요한 Actions 사용량 + KIS 공유 토큰 요청을
+  # 추가로 발생시키고(GitHub Actions 실패 로그의 EGW00133 "1분당 1회" 레이트
+  # 리밋 충돌 원인 중 하나로 보임) 있었음이 확인되어 스케줄을 껐음.
+  # relay-server가 내려가는 등 비상시엔 아래 workflow_dispatch로 수동 실행
+  # 가능(예: stage=regular).
+  # schedule:
+  #   - cron: "50 22 * * 0-4"   # 07:50 KST — PRE_MARKET
+  #   - cron: "40 23 * * 0-4"   # 08:40 KST — NXT
+  #   - cron: "12 0 * * 1-5"    # 09:12 KST — REGULAR
+  #   - cron: "*/5 0-6 * * 1-5" # 09:00~15:55 KST, 5분 간격 — SCAN
   workflow_dispatch:
     inputs:
       stage:
@@ -85,10 +94,22 @@ jobs:
           KIS_APP_KEY:    ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
         run: |
-          RESP=$(curl -s -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
-            -H "Content-Type: application/json" \
-            -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
-          TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+          # 2026-09-11: GitHub Actions 러너가 전 세계 무작위 리전에 배정되다 보니
+          # 어쩌다 KIS 서버로의 네트워크 경로가 느린/막힌 리전에 걸리면 --max-time
+          # 없는 curl이 2분 넘게 응답 없이 멈췄다가 exit 28로 실패하는 경우가 있어
+          # (GitHub Actions 실패 로그 확인 결과) 타임아웃 + 짧은 재시도를 추가함.
+          TOKEN=""
+          for i in 1 2 3; do
+            RESP=$(curl -s --connect-timeout 8 --max-time 20 -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
+              -H "Content-Type: application/json" \
+              -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
+            TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
+            if [ -n "$TOKEN" ]; then
+              break
+            fi
+            echo "KIS 토큰 발급 재시도 ($i/3) — 5초 후 재시도: $RESP"
+            sleep 5
+          done
           if [ -z "$TOKEN" ]; then
             echo "::error::KIS 토큰 발급 실패: $RESP"
             exit 1
