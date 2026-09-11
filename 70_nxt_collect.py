@@ -181,7 +181,12 @@ def main():
             continue
         close = safe_num(out.get("stck_prpr"))
         chg   = safe_num(out.get("prdy_ctrt"))
-        if close is None:
+        # close<=0 → 그날 NXT에서 체결이 전혀 없었던 종목(KIS API가 에러 없이
+        # rt_cd='0' + 전 필드 0인 "빈 응답"을 반환함 — --debug로 확인됨,
+        # 2026-09-12). 진짜 마감가는 절대 0원일 수 없으므로 저장하지 않고
+        # 스킵 — 이 컬럼을 NULL로 남겨둬야 06_signals.sql의 종가베팅2가
+        # "NXT 미체결 종목"과 "NXT 등락률 0%로 마감"을 구분할 수 있다.
+        if close is None or close <= 0:
             skip += 1
             continue
         rows.append((TARGET_DATE_ISO, code, int(close), chg))

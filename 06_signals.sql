@@ -168,12 +168,19 @@ scored AS (
 -- ── 종가베팅2 전용 풀 (2026-09-11 신설) ────────────────────────────────────
 -- NXT 시세가 있는 종목만 대상으로 괴리율(gap_pct)을 계산하고, 그날 괴리율
 -- 상위 10위(gap_rank)까지만 남깁니다 — 이게 1단계 통과 종목 전체입니다.
+-- ⚠ 2026-09-12: nxt_close > 0 조건 추가. KIS API는 해당 종목이 그날 NXT에서
+--   실제 체결이 전혀 없었을 때도 에러 없이 rt_cd='0'(성공) + 전 필드 0인
+--   "빈 응답"을 돌려준다(70_nxt_collect.py --debug로 직접 확인, 대덕전자
+--   353200 등). nxt_change_pct만으로는 이 빈 응답(0.00%)과 "정말 NXT에서
+--   등락률이 0%로 마감"인 진짜 데이터를 구분할 수 없으므로, NXT 마감가가
+--   0원(=체결 없음의 신호)인 종목은 애초에 괴리율 계산 대상에서 제외한다.
 closebet2_pool AS (
   SELECT scored.*,
          (nxt_change_pct - change_pct) AS gap_pct,
          rank() OVER (PARTITION BY trade_date ORDER BY (nxt_change_pct - change_pct) DESC) AS gap_rank
   FROM scored
   WHERE nxt_change_pct IS NOT NULL
+    AND nxt_close IS NOT NULL AND nxt_close > 0
 ),
 -- 1단계(gap_rank<=10) 통과 종목 안에서만 시가총액 순위를 다시 매깁니다 —
 -- 전체 유니버스 기준 시총 순위가 아니라 "그 10종목 중" 순위여야 하므로
