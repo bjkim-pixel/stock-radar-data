@@ -1,0 +1,100 @@
+name: NXT After-market Collection
+
+# 2026-09-11 신설 — "종가베팅2" 전략(정규장 등락률 vs NXT 등락률 괴리 top10 →
+# 시가총액 상위 3개)이 쓰는 daily_price.nxt_close/nxt_change_pct를 채웁니다.
+# NXT 애프터마켓이 끝나는 20:00 KST 이후, Daily KIS Collection의 마지막
+# 실행(20:05 KST)이 그날 정규장 확정 데이터를 다 채운 뒤에 돌도록 20:10으로
+# 잡았습니다.
+#
+# ⚠ 사전 준비: 69_nxt_price_columns.sql을 Supabase SQL Editor에서 먼저
+#   실행해야 합니다 — 컬럼이 없으면 이 워크플로는 매번 실패합니다.
+on:
+  schedule:
+    # 매 거래일 20:10 KST = 11:10 UTC (월~금)
+    - cron: "10 11 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: '수집 날짜 (YYYYMMDD, 비우면 오늘)'
+        required: false
+        default: ''
+
+jobs:
+  collect-nxt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 거래일 확인 (공휴일 스킵)
+        id: market_day
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "is_market_day=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TODAY=$(TZ=Asia/Seoul date +%F)
+          HOLIDAYS="2026-01-01 2026-02-16 2026-02-17 2026-02-18 2026-03-02 2026-05-01 2026-05-05 2026-05-25 2026-06-03 2026-07-17 2026-08-17 2026-09-24 2026-09-25 2026-10-05 2026-10-09 2026-12-25 2026-12-31"
+          if echo " $HOLIDAYS " | grep -q " $TODAY "; then
+            echo "is_market_day=false" >> "$GITHUB_OUTPUT"
+            echo "⏸️ $TODAY 은 KRX 휴장일 — 이후 단계를 건너뜁니다"
+          else
+            echo "is_market_day=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Python 3.11
+        if: steps.market_day.outputs.is_market_day == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        if: steps.market_day.outputs.is_market_day == 'true'
+        run: pip install psycopg2-binary requests
+
+      - name: Get shared KIS token
+        id: kistoken
+        if: steps.market_day.outputs.is_market_day == 'true'
+        env:
+          KIS_APP_KEY:    ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: |
+          TOKEN=""
+          for i in 1 2 3; do
+            RESP=$(curl -s --connect-timeout 8 --max-time 20 -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
+              -H "Content-Type: application/json" \
+              -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
+            TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
+            if [ -n "$TOKEN" ]; then
+              break
+            fi
+            echo "KIS 토큰 발급 재시도 ($i/3) — 5초 후 재시도: $RESP"
+            sleep 5
+          done
+          if [ -z "$TOKEN" ]; then
+            echo "::error::KIS 토큰 발급 실패: $RESP"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Run NXT collection
+        if: steps.market_day.outputs.is_market_day == 'true'
+        env:
+          KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+          KIS_ACCESS_TOKEN: ${{ steps.kistoken.outputs.token }}
+        run: |
+          DATE="${{ github.event.inputs.target_date }}"
+          if [ -z "$DATE" ]; then
+            python 70_nxt_collect.py
+          else
+            python 70_nxt_collect.py "$DATE"
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::NXT 마감 시세 수집 실패! 69_nxt_price_columns.sql을 실행했는지 먼저 확인하고, GitHub Actions 로그를 확인하세요."
