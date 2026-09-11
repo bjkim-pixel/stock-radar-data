@@ -316,6 +316,11 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   #flowTrendWrap{overflow-x:visible}
   #flowTrendWrap table{font-size:10px;width:100%}
   #flowTrendWrap th,#flowTrendWrap td{padding:3px 3px;font-size:10px}
+  /* 전략성과2(상따) 표 — 컬럼이 많아 안쪽 스크롤을 두면 표 밖 다른 내용과
+     분리되어 보기 불편하다는 피드백(2026-09-11)에 따라, 위 flowTrendWrap과
+     동일하게 안쪽 스크롤을 끄고 표가 화면 폭 밖으로 그대로 펼쳐지게 둠 —
+     대신 페이지를 핀치줌(확대)해서 전체를 보는 방식(스크롤바 없음) */
+  #v-perf2 .tw{overflow-x:visible}
   /* 종목후보 표 — 모든 컬럼 표시, 가로 스크롤로 펼쳐 보기
      첫 2열(# · 종목)은 sticky로 고정 */
   #scrWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
