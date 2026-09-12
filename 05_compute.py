@@ -72,11 +72,21 @@ if START < METRICS_RETENTION_START:
           f"{METRICS_RETENTION_START}로 올립니다 (lookback 계산엔 원래 start_date 영향 없음).")
     START = max(START, METRICS_RETENTION_START)
 
+# 2026-09-12: 06_signals.sql의 V4_CAND_* 재계산-전-삭제(DELETE) 안전장치용.
+# 인자 없이 실행(= DB 전체 기간 기본값, args가 빈 경우)하면 실수로 과거 확정
+# 이력을 통째로 지우는 사고를 막기 위해 "최근 1일"만 삭제 허용. 반면 날짜를
+# 명시해서 호출한 경우(스케줄 실행의 하루치, 또는 workflow_dispatch로 과거
+# 구간을 지정한 재계산)는 그 구간을 지우고 다시 채우는 게 정확히 의도한
+# 동작이므로 안전장치 없이 요청 구간 전체를 삭제 허용합니다(이전엔 과거
+# 구간을 재실행해도 낡은 후보가 안 지워지는 버그가 있었음).
+CAND_DELETE_FLOOR = START if args else (datetime.date.today() - datetime.timedelta(days=1))
+
 PARAMS = {
     "start_date": START.isoformat(),
     "end_date":   END.isoformat(),
     "lookback":   (START - datetime.timedelta(LOOKBACK_DAYS)).isoformat(),
     "lookback_s": (START - datetime.timedelta(LOOKBACK_SIGNAL)).isoformat(),
+    "cand_delete_floor": CAND_DELETE_FLOOR.isoformat(),
 }
 
 print(f"▶ 계산 범위: {PARAMS['start_date']} ~ {PARAMS['end_date']}")

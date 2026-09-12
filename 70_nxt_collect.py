@@ -23,10 +23,16 @@ daily_price.nxt_close / nxt_change_pct 두 컬럼만 채우며(같은 컬럼을 
   대신 실행할 수 없습니다).
 
 ⚠ market_div="NX" 파라미터는 relay-server(server.js stageNxt())와
-  66_intraday_candidates.py가 이미 쓰고 있는 것과 동일하지만, 실거래
-  응답으로 검증된 적은 없습니다(그 두 곳 주석 참고). 이 스크립트도 같은
-  가정을 그대로 씁니다 — 최초 실행 로그(수집 성공/스킵 건수, --debug
-  옵션의 원본 응답)로 정상 동작하는지 확인하세요.
+  66_intraday_candidates.py도 쓰고 있으며, KIS 공식 GitHub
+  (koreainvestment/open-trading-api, examples_llm/domestic_stock/
+  inquire_price/inquire_price.py 문서)에 J:KRX, NX:NXT, UN:통합로 명시된
+  공식 문서화된 값입니다. 2026-09-12 --debug로 실제 NXT 거래가 있었던
+  종목(대덕전자 353200 등)에 정상적인 체결가·등락률이 응답됨을 직접
+  확인했습니다 — 이전엔 "실거래 응답으로 검증된 적 없음"이라 적어뒀으나
+  이제 파라미터 자체는 문제 없음이 확인됐습니다. 남은 유일한 특이사항은
+  그날 NXT에서 전혀 체결이 없었던 종목에 대해 KIS가 에러가 아니라
+  rt_cd='0'(성공) + 전 필드 0인 "빈 응답"을 돌려준다는 점 뿐이며, 이는
+  아래 main()의 close<=0 스킵 로직으로 이미 처리하고 있습니다.
 
 필요 환경변수
   KIS_APP_KEY / KIS_APP_SECRET   KIS Open API 앱키·시크릿

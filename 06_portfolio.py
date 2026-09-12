@@ -425,6 +425,13 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
                            peak_at=market_close_ts(day),
                            market_cap=mcap)
             open_pos[cand["code"]] = pos
+            # 2026-09-12 수정: stopped_codes는 이전엔 여기서 한 번도 안 지워져서,
+            # 한 번 손절된 종목은 이 시뮬레이션 전체 기간(수개월) 동안 재진입할
+            # 때마다 영원히 불타기가 막혔음(원래 의도는 "손절 직후 바로 다음
+            # 재진입 1회만" 막는 것 — 위 pyramid_blocked에 이미 반영). 여기서
+            # 소비 처리해 다음번 재진입부터는 다시 허용하고, 이 포지션이 나중에
+            # 또 손절되면 그때 다시 add()되어 그 다음 재진입 1회만 막습니다.
+            stopped_codes.discard(cand["code"])
             r = cand["reason"]
             sig.add(day, cand["code"], "V4_BUY_TREND", "BUY",
                     min(100.0, max(0.0, 100.0 - cand["pick_score"] / 3.0)),

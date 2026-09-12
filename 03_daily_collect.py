@@ -135,15 +135,33 @@ def get_token():
     return d["access_token"]
 
 # ── KIS: 주식 현재가 조회 ─────────────────────────────────────────────────────
-def fetch_price(token, code):
-    _rate.acquire()   # 전역 속도 제한
-    r = requests.get(
-        f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-price",
-        headers=kis_headers(token, "FHKST01010100"),
-        params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
-        timeout=10
-    )
-    if r.status_code != 200:
+def fetch_price(token, code, retries=2):
+    """2026-09-12: fetch_program()과 같은 이유로 재시도 추가 — 이전엔 타임아웃
+    /5xx 같은 일시적 오류가 나면 그 즉시 None을 반환해 그 종목이 그날 통째로
+    빠졌음(효성중공업 사고와 같은 유형이 이 함수·fetch_investor에는 아직
+    남아있었음)."""
+    r = None
+    for attempt in range(retries + 1):
+        _rate.acquire()   # 전역 속도 제한
+        try:
+            r = requests.get(
+                f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-price",
+                headers=kis_headers(token, "FHKST01010100"),
+                params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+                timeout=10
+            )
+        except Exception:
+            if attempt < retries:
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            return None
+        if r.status_code == 200:
+            break
+        if attempt < retries and r.status_code >= 500:
+            time.sleep(0.5 * (attempt + 1))
+            continue
+        return None
+    if r is None or r.status_code != 200:
         return None
     d = r.json()
     if d.get("rt_cd") != "0":
@@ -222,24 +240,40 @@ def fetch_program(token, code, date_str, retries=2):
     return rows[0] if rows else None
 
 # ── KIS: 일별 투자자별 순매수 ─────────────────────────────────────────────────
-def fetch_investor(token, code, date_str):
-    _rate.acquire()   # 전역 속도 제한
-    r = requests.get(
-        f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
-        headers=kis_headers(token, "FHPTJ04160001"),
-        params={
-            # 2026-08-19 진단으로 확정된 파라미터.
-            # MKSC_SHRN_ISCD / STRT_BSNS_DT 계열은 이 엔드포인트가 받지 않습니다
-            # (rt_cd=2 "NOT FOUND [FID_COND_MRKT_DIV_CODE]" 로 조용히 실패했었음).
-            "FID_COND_MRKT_DIV_CODE": "J",
-            "FID_INPUT_ISCD": code,
-            "FID_INPUT_DATE_1": date_str,   # 기준일 → 과거 30거래일 반환
-            "FID_ORG_ADJ_PRC": "0",
-            "FID_ETC_CLS_CODE": "0",
-        },
-        timeout=10
-    )
-    if r.status_code != 200:
+def fetch_investor(token, code, date_str, retries=2):
+    """2026-09-12: fetch_program()과 같은 이유로 재시도 추가."""
+    r = None
+    for attempt in range(retries + 1):
+        _rate.acquire()   # 전역 속도 제한
+        try:
+            r = requests.get(
+                f"{KIS_BASE}/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily",
+                headers=kis_headers(token, "FHPTJ04160001"),
+                params={
+                    # 2026-08-19 진단으로 확정된 파라미터.
+                    # MKSC_SHRN_ISCD / STRT_BSNS_DT 계열은 이 엔드포인트가 받지
+                    # 않습니다(rt_cd=2 "NOT FOUND [FID_COND_MRKT_DIV_CODE]"로
+                    # 조용히 실패했었음).
+                    "FID_COND_MRKT_DIV_CODE": "J",
+                    "FID_INPUT_ISCD": code,
+                    "FID_INPUT_DATE_1": date_str,   # 기준일 → 과거 30거래일 반환
+                    "FID_ORG_ADJ_PRC": "0",
+                    "FID_ETC_CLS_CODE": "0",
+                },
+                timeout=10
+            )
+        except Exception:
+            if attempt < retries:
+                time.sleep(0.5 * (attempt + 1))
+                continue
+            return None
+        if r.status_code == 200:
+            break
+        if attempt < retries and r.status_code >= 500:
+            time.sleep(0.5 * (attempt + 1))
+            continue
+        return None
+    if r is None or r.status_code != 200:
         return None
     d = r.json()
     if d.get("rt_cd") != "0":
@@ -489,6 +523,7 @@ def main():
     duration_ms = int((time.time() - t_start) * 1000)
 
     holiday = (skip / n_total >= 0.9) if n_total else False
+    err_rate = (err / n_total) if n_total else 0.0
     if holiday:
         status_str = "SKIP_HOLIDAY"
         print(f"\n📅 장 없는 날로 판단 (데이터 없음 {skip:,}/{n_total:,})")
@@ -504,9 +539,20 @@ def main():
     log_result("program", status_str, len(program_rows), duration_ms, f"ok={ok} skip={skip} err={err}")
 
     # PARTIAL(일부 실패)은 정상 완료로 처리 — 소수의 연결 끊김은 KIS 쪽 일시적 문제.
-    # FAIL(아무것도 수집 못 함)만 GitHub Action 실패로 처리.
-    if status_str == "FAIL" and not holiday:
-        sys.exit(1)
+    # FAIL(아무것도 수집 못 함)은 물론 GitHub Action 실패로 처리.
+    # 2026-09-12 추가: PARTIAL이어도 오류 비율이 너무 크면(예: KIS 쪽 장애로
+    # 30%가 실패) 그냥 넘어가지 않도록 임계치를 둠 — 이전엔 ok가 1건만 있어도
+    # "정상 완료"로 넘어가 Notify on failure가 전혀 동작하지 않았고, 사이트는
+    # 그날 후보가 조용히 불완전한 채로 나갔음. 소수 종목의 일시적 연결 끊김은
+    # 여전히 실패로 안 잡음(원래 의도 유지).
+    PARTIAL_FAIL_THRESHOLD = 0.10
+    if not holiday:
+        if status_str == "FAIL":
+            sys.exit(1)
+        if status_str == "PARTIAL" and err_rate >= PARTIAL_FAIL_THRESHOLD:
+            print(f"❌ 오류 비율 {err_rate:.0%}이 임계치({PARTIAL_FAIL_THRESHOLD:.0%}) 이상이라 "
+                  f"실패로 처리합니다 (성공 {ok:,} / 오류 {err:,} / 전체 {n_total:,}).")
+            sys.exit(1)
 
 # ── 진입점 ────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":

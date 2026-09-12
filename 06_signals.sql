@@ -102,9 +102,16 @@
 -- 다른 두 전략과 달리 "종가"가 아니라 NXT 마감가(daily_price.nxt_close)에
 -- 매수하고, 매도는 종가베팅과 동일하게 익일 정규장 시가 전량 청산입니다
 -- (06_portfolio.py process_day_closebet2 참고). NXT 마감 데이터는 정규장
--- 마감 후 20:00 KST 이후에나 확정되므로, 이 전략의 신호·매수는 그날의
--- 세 번째 계산 실행(20:15 KST, compute.yml)에서만 확정됩니다 — 16:30/18:30
--- 실행 시점엔 nxt_change_pct가 아직 없어 1단계 후보 자체가 비어 있습니다.
+-- 마감 후 20:00 KST 이후에나 확정되므로, 실제 가상매수 확정은 nxt_collect.yml
+-- 공식마감 수집(20:10 KST) 직후 compute.yml 실행에서만 이뤄집니다.
+-- ⚠ 2026-09-12 정정: 이 문단은 원래 "16:30/18:30 실행 시점엔 nxt_change_pct가
+-- 없어 1단계 후보가 비어있다"고 적혀 있었으나, 그 사이 compute.yml에 장중
+-- 반복실행(18:05~19:55 KST, --no-portfolio)이 5회 추가되면서 실제로는 그
+-- 시간대에도 nxt_collect.yml의 장중 수집값(18:00~19:50 KST)으로 1·2단계
+-- 후보가 채워져 화면에 표시됩니다(참고용 — 아직 확정 아님). 다만
+-- --no-portfolio라 06_portfolio.py 자체가 그 시점엔 실행되지 않으므로,
+-- notified 플래그가 미확정 가격으로 먼저 세팅될 위험은 없습니다 — 확정은
+-- 여전히 20:10 KST 공식마감 수집 이후 한 번뿐입니다.
 -- ⚠ daily_price.nxt_close/nxt_change_pct는 69_nxt_price_columns.sql(스키마)
 --   과 70_nxt_collect.py(수집, nxt_collect.yml 20:10 KST)가 있어야 채워집니다.
 --
@@ -128,10 +135,21 @@
 --    바꿔도(예: 등락률 필터 추가) 예전 느슨한 조건일 때 만들어진 V4_CAND_* 행이
 --    테이블에 그대로 남아있어서 06_portfolio.py가 여전히 그 종목을 사들이는
 --    문제가 있었습니다. 매번 재계산 구간의 후보를 통째로 지우고 새로 채웁.
+-- ⚠ 2026-09-12 수정: 예전엔 이 DELETE에 "trade_date >= current_date - 1일"
+--    안전장치가 걸려 있어서, 조건 변경 후 "과거 날짜 구간"을 명시적으로
+--    재실행(예: start_date=20260901)해도 그 구간의 낡은 후보가 전혀 안
+--    지워지는 버그가 있었습니다. 이 안전장치 자체는 필요합니다 —
+--    05_compute.py를 인자 없이 실행하면 DB 전체 기간이 기본값이 되는데, 이때
+--    과거 확정 이력을 통째로 지우는 사고를 막기 위한 것(전용 커밋 메시지
+--    "V4_CAND 신호 소급삭제 방지 — 과거 확정 신호 보존" 참고). 그래서 완전히
+--    없애는 대신, 05_compute.py가 "호출자가 날짜를 명시했는지"를
+--    %(cand_delete_floor)s 파라미터로 넘겨주도록 바꿨습니다 — 명시적 구간
+--    재계산(오늘 이 세션에서 20260911 재실행한 것처럼)은 그 구간을 전부
+--    지우고, 인자 없는 기본 전체기간 실행만 계속 "최근 1일"로 보호합니다.
 DELETE FROM signals
 WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
   AND signal_type LIKE 'V4_CAND_%'
-  AND trade_date >= current_date - interval '1 day';
+  AND trade_date >= %(cand_delete_floor)s;
 
 -- @@STEP: V4_CAND_TREND / V4_CAND_CLOSEBET 생성 (전략별 1·2·3단계 스크리닝)
 WITH base AS (
@@ -141,8 +159,13 @@ WITH base AS (
          m.ma5, m.ma10, m.ma20, m.ma60, m.rs20_vs_mkt,
          p.close, p.high, p.low, p.change_pct, p.market_cap, p.trade_amount,
          p.nxt_close, p.nxt_change_pct,
+         -- 2026-09-12 수정: high=low(상한가 종일 고정 등 당일 변동폭 0)이면
+         -- 이전엔 NULL 처리돼 "종가위치 상위 X%" 조건에서 항상 탈락했습니다.
+         -- 상한가 락은 가장 강한 상승 신호인데 오히려 배제되는 게 맞지 않으므로,
+         -- 변동폭이 0인 날은 종가위치를 100(최고점)으로 간주합니다.
          CASE WHEN p.high > p.low
               THEN round((p.close - p.low)::numeric / (p.high - p.low) * 100, 1)
+              WHEN p.high = p.low AND p.high > 0 THEN 100
          END                                                     AS close_pos_pct,
          s.name, vs.sector, sd.rs_rank,
          f.foreign_net, f.inst_net,
@@ -168,11 +191,28 @@ scored AS (
          )), 2) AS score,
          -- 2026-09-11: 추세추종 1단계 전용 재도입 캡(TREND에만 사용, CLOSEBET·
          -- 공통 유니버스에는 영향 없음) — pick_score 낮을수록 우선이므로 오름차순
-         rank() OVER (PARTITION BY trade_date ORDER BY pick_score ASC) AS pick_rank_trend,
+         -- ⚠ 2026-09-12: rank()는 동점이면 같은 순위를 여러 행에 매겨서 "상위
+         -- 40위 이내" 같은 캡이 동점 시 40개보다 더 많이 통과할 수 있었습니다
+         -- (pick_score가 weight_rank/cap_rank 조합이라 동점이 드물지 않음).
+         -- row_number()+code 타이브레이크로 캡이 정확히 지켜지도록 수정.
+         row_number() OVER (PARTITION BY trade_date ORDER BY pick_score ASC, code ASC) AS pick_rank_trend,
          -- 2026-09-12: 개별RS(rs20_vs_mkt) 원값(%p)만 보면 그날 어느 수준인지 판단이
          -- 안 되므로, 그날 공통조건 통과 유니버스(base, 시총·거래대금 조건 통과분
-         -- 전체 — 사이트 상단 "유니버스 N종목"과 같은 모집단) 안에서 순위와 전체
-         -- 종목수를 매겨 "N위 / 전체 M종목" 형태로 추세추종 3단계에 표시.
+         -- 전체) 안에서 순위와 전체 종목수를 매겨 "N위 / 전체 M종목" 형태로
+         -- 추세추종 3단계에 표시.
+         -- ⚠ 알려진 불일치(2026-09-12 리뷰, 의도적으로 값 자체는 그대로 둠):
+         -- 이 순위의 모집단은 base(시총·거래대금 필터 통과분)이지만, 정작
+         -- rs20_vs_mkt 값 자체(그리고 아래 stage3의 ">0" 합격선)는
+         -- 05_metrics.sql에서 daily_metrics 전체(훨씬 넓은, 필터 이전 모집단)
+         -- 평균 대비로 계산됩니다. 즉 "3위/전체 40종목"처럼 보여도, 합격/불합격을
+         -- 가른 기준선은 이 40종목이 아니라 그보다 훨씬 큰 모집단 평균입니다.
+         -- rs20_vs_mkt는 다른 화면(종목상세 등)에서도 범용으로 쓰는 컬럼이라
+         -- 여기서 재정의하면 실거래 매수 결정 자체가 바뀌므로(백테스트로
+         -- 검증된 현재 기준을 건드리게 됨), 표시 목적의 순위만 두고 값은
+         -- 손대지 않았습니다. 두 모집단을 일치시키려면 05_metrics.sql에 원시
+         -- ret20 컬럼을 추가로 노출해 여기서 base-scoped 평균을 다시 계산해야
+         -- 하는데, 이는 전략 자체의 기준을 바꾸는 결정이라 사용자 확인 후
+         -- 별도로 진행하는 게 안전합니다.
          rank() OVER (PARTITION BY trade_date ORDER BY rs20_vs_mkt DESC NULLS LAST) AS rs20_rank,
          count(rs20_vs_mkt) OVER (PARTITION BY trade_date) AS rs20_universe_n
   FROM base
@@ -190,10 +230,13 @@ scored AS (
 --   등락률 자체가 마이너스면 "정규장보다 덜 빠진 것"일 뿐 실제 매수세가
 --   붙은 게 아니므로 제외 — 1단계는 NXT에서 실제로 플러스(+) 전환된
 --   종목만 대상으로 한다.
+-- ⚠ 2026-09-12: gap_rank/cap_rank_top10 둘 다 "상위 N개만" 캡으로 쓰이므로
+-- (아래 gap_rank<=10, cap_rank_top10<=3), rank() 대신 row_number()+code
+-- 타이브레이크를 써서 동점 시 N개보다 더 많이 통과하는 걸 방지합니다.
 closebet2_pool AS (
   SELECT scored.*,
          (nxt_change_pct - change_pct) AS gap_pct,
-         rank() OVER (PARTITION BY trade_date ORDER BY (nxt_change_pct - change_pct) DESC) AS gap_rank
+         row_number() OVER (PARTITION BY trade_date ORDER BY (nxt_change_pct - change_pct) DESC, code ASC) AS gap_rank
   FROM scored
   WHERE nxt_change_pct IS NOT NULL
     AND nxt_close IS NOT NULL AND nxt_close > 0
@@ -204,7 +247,7 @@ closebet2_pool AS (
 -- closebet2_pool 전체가 아니라 gap_rank<=10으로 좁힌 뒤 별도로 랭크를 매김.
 closebet2_stage1 AS (
   SELECT *,
-         rank() OVER (PARTITION BY trade_date ORDER BY market_cap DESC) AS cap_rank_top10
+         row_number() OVER (PARTITION BY trade_date ORDER BY market_cap DESC, code ASC) AS cap_rank_top10
   FROM closebet2_pool
   WHERE gap_rank <= 10
 )
