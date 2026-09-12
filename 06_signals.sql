@@ -168,7 +168,13 @@ scored AS (
          )), 2) AS score,
          -- 2026-09-11: 추세추종 1단계 전용 재도입 캡(TREND에만 사용, CLOSEBET·
          -- 공통 유니버스에는 영향 없음) — pick_score 낮을수록 우선이므로 오름차순
-         rank() OVER (PARTITION BY trade_date ORDER BY pick_score ASC) AS pick_rank_trend
+         rank() OVER (PARTITION BY trade_date ORDER BY pick_score ASC) AS pick_rank_trend,
+         -- 2026-09-12: 개별RS(rs20_vs_mkt) 원값(%p)만 보면 그날 어느 수준인지 판단이
+         -- 안 되므로, 그날 공통조건 통과 유니버스(base, 시총·거래대금 조건 통과분
+         -- 전체 — 사이트 상단 "유니버스 N종목"과 같은 모집단) 안에서 순위와 전체
+         -- 종목수를 매겨 "N위 / 전체 M종목" 형태로 추세추종 3단계에 표시.
+         rank() OVER (PARTITION BY trade_date ORDER BY rs20_vs_mkt DESC NULLS LAST) AS rs20_rank,
+         count(rs20_vs_mkt) OVER (PARTITION BY trade_date) AS rs20_universe_n
   FROM base
 ),
 -- ── 종가베팅2 전용 풀 (2026-09-11 신설) ────────────────────────────────────
@@ -238,11 +244,15 @@ UNION ALL
 -- ── 추세추종 3단계 (가상매수 대상) ──────────────────────────────────────────
 SELECT trade_date, code, 'V4_CAND_TREND_3', 'WATCH', score,
   jsonb_build_object('strategy','TREND','stage',3,
-    'rs20_vs_mkt',rs20_vs_mkt,
+    'rs20_vs_mkt',rs20_vs_mkt,'rs20_rank',rs20_rank,'rs20_universe_n',rs20_universe_n,
     'vol_ratio20_prev',vol_ratio20_prev,'close_pos_pct',close_pos_pct,'change_pct',change_pct,
     'pct_from_high',pct_from_high,'pick_rank_trend',pick_rank_trend,
     'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
-  name || ' 추세추종 3단계(매수) · 개별RS ' || round(rs20_vs_mkt, 1) || '%p'
+  -- 2026-09-12: 개별RS 원값(%p)만 보면 그날 어느 수준인지 판단이 안 돼서, 그날
+  -- 공통조건 유니버스 안에서의 순위(rs20_rank/전체 rs20_universe_n)로 표시.
+  -- 원값(%p)도 괄호로 같이 남겨 둠.
+  name || ' 추세추종 3단계(매수) · 개별RS ' || rs20_rank || '위/전체 ' || rs20_universe_n || '종목'
+       || '(원값 ' || round(rs20_vs_mkt, 1) || '%p)'
        || ' · 거래량비 ' || round(vol_ratio20_prev) || '%'
        || ' · 정배열'
        || ' · 종가위치 상위 ' || round(100 - close_pos_pct) || '%'
