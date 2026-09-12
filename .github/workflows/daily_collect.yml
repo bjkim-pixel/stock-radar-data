@@ -127,4 +127,18 @@ jobs:
 
       - name: Notify on failure
         if: failure()
-        run: echo "::error::일별 수집 실패! GitHub Actions 로그를 확인하세요."
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="일별 수집 실패! GitHub Actions 로그를 확인하세요."
+          echo "::error::$MSG"
+          # 2026-09-12: ::error:: 주석은 GitHub Actions 로그를 직접 열어보지 않으면
+          # 아무도 못 보므로, relay-server가 이미 쓰는 것과 같은 텔레그램 봇으로 실제
+          # 알림을 보냅니다. 리포지토리 시크릿에 TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID를
+          # 등록해야 동작하고(둘 다 relay-server Render 환경변수와 같은 값 사용 가능),
+          # 등록 전까지는 예전처럼 ::error:: 로그만 남습니다.
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+              -d "chat_id=$TELEGRAM_CHAT_ID" --data-urlencode "text=$MSG" >/dev/null || true
+          fi

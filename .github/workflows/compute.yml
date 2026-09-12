@@ -6,28 +6,25 @@ on:
     # 스케줄 실행에서는 05_compute.py에 오늘 날짜 하루만 넘겨 매번 전체 기간을
     # 재계산하지 않게 합니다(하루치만 계산하는 용도로 스크립트가 이미 지원).
     #
-    # 1차 16:30 KST — 지표·신호 계산 + 실제 가상매수/매도 실행(포지션 확정)
-    #                 · TREND/CLOSEBET 신규매수, 전 전략 매도 판정
-    # 2~6차 18:05~19:55 KST (2026-09-11 신설) — nxt_collect.yml의 장중 NXT
-    #                 반복 수집(18:00~19:50 KST, 각 수집 5분 뒤로 잡아 수집
-    #                 완료를 기다림) 직후마다 실행. "종가베팅2" 1·2단계 후보
-    #                 (괴리율 top10 → 시총 top3)를 그때그때 새로고침해 사용자가
-    #                 NXT 장중에 실제 매수 판단에 쓸 수 있게 함. --no-portfolio로
-    #                 후보만 재계산하고 가상매수는 실행하지 않음(마감 전 값이라
-    #                 아직 확정 아님).
-    # 7차 20:15 KST — nxt_collect.yml(20:10 KST)이 그날 NXT "공식 마감가"를
-    #                 확정 수집한 직후 실행. 이 시점에야 종가베팅2 신호·매수가
-    #                 확정됨. 포지션 엔진(06_portfolio.py)은 항상 전체 이력을
-    #                 재생성하는 구조라 TREND/CLOSEBET도 같이 다시 계산되지만
-    #                 입력값이 안 바뀌었으니 결과는 1차와 동일 — 사실상
-    #                 CLOSEBET2만 새로 반영되는 실행입니다.
+    # 16:30 KST — 지표·신호 계산 + 실제 가상매수/매도 실행(포지션 확정)
+    #             · TREND/CLOSEBET 신규매수, 전 전략 매도 판정
+    #
+    # NXT 관련 실행(장중 후보 재조회 5회 + 20:10 공식마감 확정 1회)은 원래
+    # "nxt_collect.yml 수집 후 5분 뒤"로 고정된 cron 6개였으나, 2026-09-12
+    # workflow_run 트리거로 교체했습니다 — nxt_collect.py가 API 지연으로 5분
+    # 안에 못 끝나면(순차 수집이라 가능) 이 5분 buffer로는 부족해서, 아직 일부만
+    # 채워진 daily_price.nxt_close로 종가베팅2 매수가 확정될 위험이 있었습니다
+    # (레이스컨디션). workflow_run은 nxt_collect.yml이 실제로 끝난 뒤에만
+    # 발화하므로 고정 시간 추측이 필요 없어집니다. 아래 workflow_run: 참고.
     - cron: "30 7 * * 1-5"   # 16:30 KST = 07:30 UTC (매수·매도 실행)
-    - cron: "5 9 * * 1-5"    # 18:05 KST = 09:05 UTC (장중 후보 재조회, 매수 없음)
-    - cron: "35 9 * * 1-5"   # 18:35 KST = 09:35 UTC (장중 후보 재조회, 매수 없음)
-    - cron: "5 10 * * 1-5"   # 19:05 KST = 10:05 UTC (장중 후보 재조회, 매수 없음)
-    - cron: "35 10 * * 1-5"  # 19:35 KST = 10:35 UTC (장중 후보 재조회, 매수 없음)
-    - cron: "55 10 * * 1-5"  # 19:55 KST = 10:55 UTC (장중 후보 재조회, 매수 없음)
-    - cron: "15 11 * * 1-5"  # 20:15 KST = 11:15 UTC (종가베팅2 NXT 마감 매수 확정)
+  workflow_run:
+    # nxt_collect.yml("NXT After-market Collection")의 6개 스케줄 실행
+    # (18:00~19:50 KST 장중 5회 + 20:10 KST 공식마감 1회)이 끝날 때마다 발화.
+    # Compute 스텝에서 시각(KST)으로 장중/마감을 구분해 --no-portfolio 여부를
+    # 결정합니다(아래 참고) — nxt_collect.yml 쪽 cron을 나중에 바꿔도 이 워크플로
+    # 수정 없이 그대로 따라갑니다.
+    workflows: ["NXT After-market Collection"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       start_date:
@@ -51,7 +48,23 @@ jobs:
       - name: 거래일 확인 (공휴일 스킵)
         id: market_day
         run: |
-          if [ "${{ github.event_name }}" != "schedule" ]; then
+          # 2026-09-12: workflow_run 트리거 전용 가드 — nxt_collect.yml 실행이
+          # 실패/취소됐으면 그 값으로 매수를 확정하면 안 되므로 건너뜁니다.
+          # 또한 nxt_collect.yml의 debug_code 등 수동/디버그 실행에는 반응하지
+          # 않고, 정상 스케줄 실행 완료에만 반응합니다.
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+              echo "is_market_day=false" >> "$GITHUB_OUTPUT"
+              echo "⏸️ nxt_collect 실행이 성공하지 못해(conclusion=${{ github.event.workflow_run.conclusion }}) compute를 건너뜁니다"
+              exit 0
+            fi
+            if [ "${{ github.event.workflow_run.event }}" != "schedule" ]; then
+              echo "is_market_day=false" >> "$GITHUB_OUTPUT"
+              echo "⏸️ 수동/디버그로 트리거된 nxt_collect라 compute는 건너뜁니다(event=${{ github.event.workflow_run.event }})"
+              exit 0
+            fi
+          fi
+          if [ "${{ github.event_name }}" != "schedule" ] && [ "${{ github.event_name }}" != "workflow_run" ]; then
             echo "is_market_day=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -80,23 +93,24 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            # 스케줄 실행 = daily_collect/nxt_collect 직후 그날 하루치만 재계산.
-            # 18:05~19:55 KST(장중 NXT 반복수집 직후)는 후보 재조회만 하고
-            # 가상매수는 실행하지 않음(--no-portfolio) — 마감 전 값이라 미확정.
-            SCHED="${{ github.event.schedule }}"
-            case "$SCHED" in
-              "5 9 * * 1-5"|"35 9 * * 1-5"|"5 10 * * 1-5"|"35 10 * * 1-5"|"55 10 * * 1-5")
-                echo "▶ 장중 실행($SCHED) — 종가베팅2 등 후보만 재계산 (가상매수 없음)"
-                python 05_compute.py "$(date +%Y%m%d)" --no-portfolio
-                ;;
-              "15 11 * * 1-5")
-                echo "▶ 20:15 KST 마감 실행 — NXT 마감 반영, 종가베팅2 매수 확정"
-                python 05_compute.py "$(date +%Y%m%d)"
-                ;;
-              *)
-                python 05_compute.py "$(date +%Y%m%d)"
-                ;;
-            esac
+            # 16:30 KST 하나뿐 — 지표·신호 계산 + 실제 가상매수/매도 실행.
+            python 05_compute.py "$(date +%Y%m%d)"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            # nxt_collect.yml 스케줄 실행이 성공적으로 끝난 직후 실행됨
+            # (2026-09-12, 레이스컨디션 수정 — 예전엔 20:10/20:15처럼 고정
+            # 5분 buffer로 "그때쯤이면 끝났겠지"하고 추측했으나, 이제 실제
+            # 완료 이벤트를 직접 기다립니다). 시각으로 장중 반복수집인지
+            # 20:10 공식마감 수집인지 구분 — 장중은 후보만 재조회
+            # (--no-portfolio, 마감 전 값이라 미확정), 20:00 KST 이후 완료는
+            # 공식마감으로 보고 종가베팅2 매수를 확정합니다.
+            HOUR=$(TZ=Asia/Seoul date +%H%M)
+            if [ "$((10#$HOUR))" -ge 2000 ]; then
+              echo "▶ NXT 공식마감 수집 완료 감지(${HOUR} KST) — 종가베팅2 매수 확정"
+              python 05_compute.py "$(date +%Y%m%d)"
+            else
+              echo "▶ NXT 장중 수집 완료 감지(${HOUR} KST) — 후보만 재계산 (가상매수 없음)"
+              python 05_compute.py "$(date +%Y%m%d)" --no-portfolio
+            fi
           else
             START="${{ github.event.inputs.start_date }}"
             END="${{ github.event.inputs.end_date }}"
@@ -111,4 +125,18 @@ jobs:
 
       - name: Notify on failure
         if: failure()
-        run: echo "::error::지표·신호 계산 실패! GitHub Actions 로그를 확인하세요."
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="지표·신호 계산 실패! GitHub Actions 로그를 확인하세요."
+          echo "::error::$MSG"
+          # 2026-09-12: ::error:: 주석은 GitHub Actions 로그를 직접 열어보지 않으면
+          # 아무도 못 보므로, relay-server가 이미 쓰는 것과 같은 텔레그램 봇으로 실제
+          # 알림을 보냅니다. 리포지토리 시크릿에 TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID를
+          # 등록해야 동작하고(둘 다 relay-server Render 환경변수와 같은 값 사용 가능),
+          # 등록 전까지는 예전처럼 ::error:: 로그만 남습니다.
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+              -d "chat_id=$TELEGRAM_CHAT_ID" --data-urlencode "text=$MSG" >/dev/null || true
+          fi

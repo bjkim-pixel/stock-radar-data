@@ -40,10 +40,21 @@ jobs:
           KIS_APP_KEY:    ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
         run: |
-          RESP=$(curl -s -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
-            -H "Content-Type: application/json" \
-            -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
-          TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+          # 2026-09-12: 다른 워크플로(daily_collect.yml 등)와 동일하게 타임아웃
+          # + 짧은 재시도를 추가 — GitHub Actions 러너가 KIS 서버로의 네트워크
+          # 경로가 느린 리전에 배정되면 재시도 없이 한 번에 실패했었음.
+          TOKEN=""
+          for i in 1 2 3; do
+            RESP=$(curl -s --connect-timeout 8 --max-time 20 -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
+              -H "Content-Type: application/json" \
+              -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
+            TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
+            if [ -n "$TOKEN" ]; then
+              break
+            fi
+            echo "KIS 토큰 발급 재시도 ($i/3) — 5초 후 재시도: $RESP"
+            sleep 5
+          done
           if [ -z "$TOKEN" ]; then
             echo "::error::KIS 토큰 발급 실패: $RESP"
             exit 1
@@ -69,4 +80,18 @@ jobs:
 
       - name: Notify on failure
         if: failure()
-        run: echo "::error::업종 분류 갱신 실패! GitHub Actions 로그를 확인하세요."
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="업종 분류 갱신 실패! GitHub Actions 로그를 확인하세요."
+          echo "::error::$MSG"
+          # 2026-09-12: ::error:: 주석은 GitHub Actions 로그를 직접 열어보지 않으면
+          # 아무도 못 보므로, relay-server가 이미 쓰는 것과 같은 텔레그램 봇으로 실제
+          # 알림을 보냅니다. 리포지토리 시크릿에 TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID를
+          # 등록해야 동작하고(둘 다 relay-server Render 환경변수와 같은 값 사용 가능),
+          # 등록 전까지는 예전처럼 ::error:: 로그만 남습니다.
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+              -d "chat_id=$TELEGRAM_CHAT_ID" --data-urlencode "text=$MSG" >/dev/null || true
+          fi

@@ -50,19 +50,39 @@ jobs:
           KIS_APP_SECRET:  ${{ secrets.KIS_APP_SECRET }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          # 2026-09-12 수정: 이전엔 문자열을 이어붙여 eval로 실행해서, 종목명/
+          # 업종명(자유 입력)에 공백이나 셸 특수문자가 들어가면 인자가 엉뚱하게
+          # 나뉘거나(예: 다른 필드에 잘못된 값 저장) 최악의 경우 이 잡의 시크릿
+          # (KIS_APP_SECRET, SUPABASE_DB_URL)에 접근 가능한 임의 명령이 실행될
+          # 수 있었습니다. bash 배열로 각 인자를 독립된 토큰으로 넘겨 그 문제를
+          # 없앴습니다 — eval/문자열 이어붙이기 없음.
           CODE="${{ github.event.inputs.code }}"
           NAME="${{ github.event.inputs.name }}"
           MARKET="${{ github.event.inputs.market }}"
           START="${{ github.event.inputs.start_date }}"
           SECTOR="${{ github.event.inputs.sector }}"
 
-          CMD="python add_single_stock.py $CODE $NAME $MARKET"
-          [ -n "$START" ] && CMD="$CMD --start $START"
-          [ -n "$SECTOR" ] && CMD="$CMD --sector $SECTOR"
+          ARGS=("$CODE" "$NAME" "$MARKET")
+          [ -n "$START" ] && ARGS+=(--start "$START")
+          [ -n "$SECTOR" ] && ARGS+=(--sector "$SECTOR")
 
-          echo "▶ 실행: $CMD"
-          eval $CMD
+          echo "▶ 실행: python add_single_stock.py ${ARGS[*]}"
+          python add_single_stock.py "${ARGS[@]}"
 
       - name: Notify on failure
         if: failure()
-        run: echo "::error::종목 추가 실패! GitHub Actions 로그를 확인하세요."
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="종목 추가 실패! GitHub Actions 로그를 확인하세요."
+          echo "::error::$MSG"
+          # 2026-09-12: ::error:: 주석은 GitHub Actions 로그를 직접 열어보지 않으면
+          # 아무도 못 보므로, relay-server가 이미 쓰는 것과 같은 텔레그램 봇으로 실제
+          # 알림을 보냅니다. 리포지토리 시크릿에 TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID를
+          # 등록해야 동작하고(둘 다 relay-server Render 환경변수와 같은 값 사용 가능),
+          # 등록 전까지는 예전처럼 ::error:: 로그만 남습니다.
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+              -d "chat_id=$TELEGRAM_CHAT_ID" --data-urlencode "text=$MSG" >/dev/null || true
+          fi
