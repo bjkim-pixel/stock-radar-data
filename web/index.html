@@ -336,6 +336,25 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   #scrWrap th:nth-child(1),#scrWrap td:nth-child(1){position:sticky;left:0;background:var(--surface);z-index:2}
   #scrWrap th:nth-child(2),#scrWrap td:nth-child(2){position:sticky;left:22px;background:var(--surface);z-index:2;box-shadow:2px 0 4px rgba(0,0,0,.12)}
 
+  /* 2026-09-12(2): 위 3개(#flowTrendWrap·#v-perf2 .tw·#scrWrap)와 같은 원칙을
+     "오늘의 종목" 등 나머지 폭 넓은 표에도 확대 적용 — 표마다 새 id 규칙을 또
+     만드는 대신 재사용 가능한 .tw-scroll(/.tw-rank) 클래스로 통일해서 해당
+     표의 wrapper div에 클래스만 붙이면 됩니다.
+     .tw 기본값(위 127행)을 전역으로 바꾸지 않는 이유: 표 전체를 overflow-x:auto로
+     만들면 세로 스크롤 시 표 헤더가 화면에 붙어 따라오는 sticky-top 동작이
+     깨지므로(overflow-x를 지정하면 overflow-y도 자동으로 auto가 돼 표 자신이
+     별도 스크롤 컨테이너가 됨), 실제로 필요한 표에만 이 클래스로 opt-in합니다.
+     .tw-rank가 붙은 표는 첫 열이 "#" 순번이라 그 열 대신 두 번째 열(종목/업종)을
+     고정 — "#"는 스크롤해서 안 보여도 되지만 어느 행인지는 계속 보여야 하므로,
+     #scrWrap처럼 "#"열 너비를 추정해 고정하는 대신 아예 두 번째 열만 고정해
+     너비 추정 없이도 항상 정확히 맞습니다. */
+  .tw-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tw-scroll th,.tw-scroll td{white-space:nowrap}
+  .tw-scroll:not(.tw-rank) th:first-child,.tw-scroll:not(.tw-rank) td:first-child{
+    position:sticky;left:0;background:var(--surface);z-index:2}
+  .tw-scroll.tw-rank th:nth-child(2),.tw-scroll.tw-rank td:nth-child(2){
+    position:sticky;left:0;background:var(--surface);z-index:2}
+
   /* 섹션 헤더 scroll-margin: JS가 --scroll-margin 설정, 미설정 시 100px */
   .step-hd{margin:18px 0 10px;scroll-margin-top:var(--scroll-margin,100px)}
   .step-hd h2{font-size:15px}
@@ -465,10 +484,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         빠르게 표시합니다).
       </div>
       <div class="faint" style="font-size:11px;margin:10px 0 4px">상위 5</div>
-      <div class="tw"><table><thead><tr id="secHeadTop"></tr></thead>
+      <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadTop"></tr></thead>
         <tbody id="secBodyTop"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
       <div class="faint" style="font-size:11px;margin:14px 0 4px">하위 5</div>
-      <div class="tw"><table><thead><tr id="secHeadBot"></tr></thead>
+      <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadBot"></tr></thead>
         <tbody id="secBodyBot"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
       <div class="note">행을 누르면 오른쪽 수급과 STEP 3 종목 목록이 그 업종으로 바뀝니다.</div>
     </div>
@@ -485,7 +504,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <span class="out" id="stkOut"></span></div>
 
   <div class="card"><h3>구성 종목 <span class="r" id="secName"></span></h3>
-    <div class="tw"><table><thead><tr>
+    <div class="tw tw-scroll tw-rank"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th class="grp">시총</th>
       <th class="opt">거래대금</th><th class="opt">거래량비</th>
       <th>무게/주식수</th>
@@ -528,7 +547,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 
   <div class="card"><h3>오늘의 주도업종 Top 5 <span class="r">업종 RS순위(20일 복리수익률 자체산출) 기준 · 클릭하면 아래 표가 그 업종으로 필터링됩니다</span></h3>
-    <div class="tw"><table><thead><tr>
+    <div class="tw tw-scroll tw-rank"><table><thead><tr>
       <th class="l">#</th><th class="l">업종</th><th>RS순위</th><th>평균등락률</th><th class="opt">거래대금</th>
       <th class="opt">주간증감</th><th>업종수급</th>
     </tr></thead><tbody id="tdSectorBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
@@ -542,7 +561,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="note">무게/주식수는 "등락률 × 거래량 ÷ 상장주식수"로, 단순 상승률보다 실제 매수세(회전율)가 실린 종목을 가려냅니다.
       개별RS5/개별RS20은 각각 종목의 5일/20일 수익률에서 그날 유니버스 평균 수익률을 뺀 값(시장 대비 초과강도)을
       그날 유니버스 내 백분위(0~100, "상위 N%")로 환산해 보여줍니다. 값이 작을수록(=상위 %가 작을수록) 더 강한 종목입니다.</div>
-    <div class="tw"><table><thead><tr>
+    <div class="tw tw-scroll tw-rank"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>무게/주식수</th><th>개별RS5</th><th>개별RS20</th>
       <th class="opt">업종RS순위</th><th class="grp opt">정배열</th><th class="opt">시총</th><th class="opt">거래대금</th>
       <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">프로그램</th>
@@ -565,7 +584,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip" data-v="pension">연기금</button>
       <button class="fchip" data-v="pe">사모</button>
     </div></div>
-    <div class="tw" style="margin-top:10px"><table><thead><tr>
+    <div class="tw tw-scroll tw-rank" style="margin-top:10px"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>순매수(억)</th><th>시총대비</th>
       <th class="opt">무게/주식수</th><th class="opt">개별RS5</th><th class="opt">개별RS20</th><th class="opt">업종RS순위</th><th class="grp opt">정배열</th>
       <th class="opt">시총</th><th class="opt">거래대금</th>
@@ -576,7 +595,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 
   <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 35(당일 등락률·무게/주식수·개별RS) · 수급 35(당일 실측 외국인+기관·프로그램·공통매수) · 섹터 20(섹터RS 1위 최고점) · 단발성 급등·거래량 과열 감점 (백테스트 미검증 참고용 휴리스틱, 투자 조언 아님)</span></h3>
-    <div class="tw"><table><thead><tr>
+    <div class="tw tw-scroll tw-rank"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>스코어</th><th class="opt">모멘텀</th><th class="opt">수급</th><th class="opt">섹터</th>
       <th>등락률</th><th class="opt">시총</th><th class="l">사유</th>
     </tr></thead><tbody id="tdScoreBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
@@ -587,7 +606,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 <!-- ═══════════ 수급 동향 ═══════════ -->
 <section id="v-flow" class="hide">
   <div class="card" style="margin-top:16px"><h3>오늘의 수급주체별 순매수 거래대금
-    <span class="r">시장 전체 · 억원 · 헤더 클릭 = 그 주체 기준 내림차순</span></h3>
+    <span class="r">시장 전체 · 억원 · 헤더 클릭 = 그 주체 기준 정렬(다시 클릭하면 오름차순↔내림차순 전환)</span></h3>
     <div class="tw" id="flowTrendWrap"><table><thead><tr id="flowTrendHead"></tr></thead>
       <tbody id="flowTrendBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
@@ -836,10 +855,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   <div class="card" style="margin-top:16px"><h3>업종별 거래대금
     <span class="r">시장매크로와 동일 로직 · 헤더 클릭 = 그 기준 상위5·하위5 · 기본 평균 등락률 내림차순</span></h3>
     <div class="faint" style="font-size:11px;margin:10px 0 4px">상위 5</div>
-    <div class="tw"><table><thead><tr id="pairSecHeadTop"></tr></thead>
+    <div class="tw tw-scroll tw-rank"><table><thead><tr id="pairSecHeadTop"></tr></thead>
       <tbody id="pairSecBodyTop"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
     <div class="faint" style="font-size:11px;margin:14px 0 4px">하위 5</div>
-    <div class="tw"><table><thead><tr id="pairSecHeadBot"></tr></thead>
+    <div class="tw tw-scroll tw-rank"><table><thead><tr id="pairSecHeadBot"></tr></thead>
       <tbody id="pairSecBodyBot"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
     <div class="note">행을 누르면 아래 구성 종목이 그 업종으로 바뀝니다.</div>
   </div>
@@ -954,8 +973,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 
   <div class="card"><h3>이 종목의 수급주체별 순매수 거래대금
-    <span class="r">억원 · 헤더 클릭 = 그 주체 기준 내림차순</span></h3>
-    <div class="tw" id="dFlowPeriodWrap"><table><thead><tr id="dFlowPeriodHead"></tr></thead>
+    <span class="r">억원 · 헤더 클릭 = 그 주체 기준 정렬(다시 클릭하면 오름차순↔내림차순 전환)</span></h3>
+    <div class="tw tw-scroll" id="dFlowPeriodWrap"><table><thead><tr id="dFlowPeriodHead"></tr></thead>
       <tbody id="dFlowPeriodBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
@@ -1021,14 +1040,14 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="chart" id="cPerfPnl"></div>
   </div>
   <div class="card"><h3>보유 중 <span class="r" id="openCount"></span></h3>
-    <div class="tw"><table><thead><tr>
+    <div class="tw tw-scroll"><table><thead><tr>
       <th class="l">종목</th><th>종가</th><th title="한국투자증권 실시간 웹소켓 시세 (relay 서버 연결 시)">시세</th><th class="l">전략</th><th>진입일</th><th class="l">매수사유</th><th>평단</th><th>수익률</th><th title="장중에는 웹소켓 실시간 체결가 기준으로 즉시 갱신, 장마감 후에는 배치가 재계산">고점</th>
       <th class="opt">고점일</th><th class="opt" title="고점이 기록된 시각(월/일 시:분). 장중 실시간 갱신값은 그날 배치가 돌기 전까지만 분단위로 정확함">고점시각</th><th class="opt">트랜치</th><th>투입금액(원)</th><th>미실현손익(원)</th><th>고점대비</th>
       <th title="현재 손절선(트레일링 -7% 또는 손익분기 보호선 중 더 높은 값). 종가베팅은 익일 시가에 무조건 청산하므로 가격 목표가 없습니다.">매도목표가</th>
     </tr></thead><tbody id="openBody"><tr><td colspan="16" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
   <div class="card"><h3>청산 이력 <span class="r" id="perfCount"></span></h3>
-    <div class="tw"><table><thead><tr>
+    <div class="tw tw-scroll"><table><thead><tr>
       <th class="l">종목</th><th class="l">전략</th><th>진입일</th><th class="opt">진입가</th><th class="opt">평단</th><th class="opt">트랜치</th>
       <th>청산일</th><th>청산가</th><th class="opt">사유</th><th>실현손익(원)</th><th>수익률</th>
     </tr></thead><tbody id="perfBody"><tr><td colspan="11" class="load">불러오는 중…</td></tr></tbody></table></div>
@@ -1546,7 +1565,8 @@ function volumeBars(host,vals,labels,opt={}){
   if(opt.refLine!=null){const ry=Y(opt.refLine);
     svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:ry,y2:ry,
       stroke:css("--ink-3"),strokeDasharray:"4 3","stroke-width":1,opacity:.7}));
-    const rt=el("text",{x:W-P.r+4,y:ry+3.5,"font-size":9,fill:css("--ink-3")});   rt.textContent=opt.refLabel||"";svg.appendChild(rt);}
+    const rt=el("text",{x:W-P.r+4,y:ry+3.5,"font-size":9,fill:css("--ink-3")});
+   rt.textContent=opt.refLabel||"";svg.appendChild(rt);}
   host.appendChild(svg);
 }
 /* 매물대(개인/외국인+기관 공용) — 가격대(종가 구간)별 순매수 거래대금을 가로 막대로 표시.
@@ -2046,6 +2066,7 @@ const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension",
 // 실은 3곳의 파생값). 서로 독립적인 7개(외국인/금융투자/투신/연기금/사모/개인/기타법인)만 씁니다.
 const FLOW_COMMON_SUBJ=["foreign","fin_inv","inv_trust","pension","pe","individual","corp_other"];
 S.flowPeriod=S.flowPeriod||"1d";
+S.flowTrendDir=S.flowTrendDir||"desc";
 function flowVal(row,subj,period){
   if(subj==="combo")return (+row["foreign_"+period]||0)+(+row["inst_"+period]||0);
   return +row[subj+"_"+period]||0;
@@ -2055,10 +2076,11 @@ async function loadFlowTrends(){
   const r=S.flowTrendRow;
   if(!r){$("#flowTrendBody").innerHTML='<tr><td colspan="9" class="load">데이터 없음</td></tr>';return;}
   const isMob=window.innerWidth<=960;
+  const dir=S.flowTrendDir==="asc"?-1:1; // desc(기본)=b-a와 동일(dir=1), asc면 부호 반전(dir=-1)
   $("#flowTrendHead").innerHTML=`<th class="l">기간</th>`+FLOW_SUBJ_COLS.map(k=>
-    `<th class="sortable${S.flowTrendSort===k?" active":""}" data-key="${k}" title="${FLOW_SUBJ[k]}">${isMob?FLOW_SUBJ_SHORT[k]:FLOW_SUBJ[k]}${S.flowTrendSort===k?" ▾":""}</th>`).join("");
+    `<th class="sortable${S.flowTrendSort===k?" active":""}" data-key="${k}" title="${FLOW_SUBJ[k]}">${isMob?FLOW_SUBJ_SHORT[k]:FLOW_SUBJ[k]}${S.flowTrendSort===k?(S.flowTrendDir==="asc"?" ▴":" ▾"):""}</th>`).join("");
   let periods=[...FLOW_PERIOD_ROWS];
-  if(S.flowTrendSort)periods.sort((a,b)=>flowVal(r,S.flowTrendSort,b)-flowVal(r,S.flowTrendSort,a));
+  if(S.flowTrendSort)periods.sort((a,b)=>(flowVal(r,S.flowTrendSort,b)-flowVal(r,S.flowTrendSort,a))*dir);
   $("#flowTrendBody").innerHTML=periods.map(p=>{
     const cells=FLOW_SUBJ_COLS.map(k=>{
       const v=flowVal(r,k,p)/EOK;
@@ -2066,7 +2088,11 @@ async function loadFlowTrends(){
     }).join("");
     return `<tr><td class="l">${FLOW_PERIOD[p]}</td>${cells}</tr>`;
   }).join("");
-  $$("#flowTrendHead th.sortable").forEach(th=>th.onclick=()=>{S.flowTrendSort=th.dataset.key;loadFlowTrends();});
+  $$("#flowTrendHead th.sortable").forEach(th=>th.onclick=()=>{
+    if(S.flowTrendSort===th.dataset.key){S.flowTrendDir=S.flowTrendDir==="asc"?"desc":"asc";}
+    else{S.flowTrendSort=th.dataset.key;S.flowTrendDir="desc";}
+    loadFlowTrends();
+  });
 }
 // 종목상세 · 이 종목의 수급주체별 순매수 거래대금 (시장 전체 표와 동일 구성, code 한정)
 const STOCK_FLOW_SUBJ={foreign:"외국인",inst:"기관합계",fin_inv:"금융투자",
@@ -2076,15 +2102,17 @@ const STOCK_FLOW_SUBJ_SHORT={foreign:"외국인",inst:"기관",fin_inv:"금투",
 const STOCK_FLOW_SUBJ_COLS=["foreign","inst","fin_inv","inv_trust","pension","pe","corp_other","individual","program"];
 const STOCK_FLOW_PERIOD={"6m":"6개월","3m":"3개월","2m":"2개월","1m":"1개월","2w":"2주","1w":"1주","1d":"오늘"};
 const STOCK_FLOW_PERIOD_ROWS=["6m","3m","2m","1m","2w","1w","1d"];
+S.dFlowPeriodDir=S.dFlowPeriodDir||"desc";
 async function loadStockFlowPeriods(code){
   const r=(await q("v_stock_flow_periods",`select=*&code=eq.${code}`))[0];
   if(!r){$("#dFlowPeriodBody").innerHTML='<tr><td colspan="10" class="load">데이터 없음</td></tr>';return;}
   S.dFlowPeriodRow=r;
   const isMob=window.innerWidth<=960;
+  const dir=S.dFlowPeriodDir==="asc"?-1:1; // desc(기본)=b-a와 동일(dir=1), asc면 부호 반전(dir=-1)
   $("#dFlowPeriodHead").innerHTML=`<th class="l">기간</th>`+STOCK_FLOW_SUBJ_COLS.map(k=>
-    `<th class="sortable${S.dFlowPeriodSort===k?" active":""}" data-key="${k}" title="${STOCK_FLOW_SUBJ[k]}">${isMob?STOCK_FLOW_SUBJ_SHORT[k]:STOCK_FLOW_SUBJ[k]}${S.dFlowPeriodSort===k?" ▾":""}</th>`).join("");
+    `<th class="sortable${S.dFlowPeriodSort===k?" active":""}" data-key="${k}" title="${STOCK_FLOW_SUBJ[k]}">${isMob?STOCK_FLOW_SUBJ_SHORT[k]:STOCK_FLOW_SUBJ[k]}${S.dFlowPeriodSort===k?(S.dFlowPeriodDir==="asc"?" ▴":" ▾"):""}</th>`).join("");
   let periods=[...STOCK_FLOW_PERIOD_ROWS];
-  if(S.dFlowPeriodSort)periods.sort((a,b)=>(+r[S.dFlowPeriodSort+"_"+b]||0)-(+r[S.dFlowPeriodSort+"_"+a]||0));
+  if(S.dFlowPeriodSort)periods.sort((a,b)=>((+r[S.dFlowPeriodSort+"_"+b]||0)-(+r[S.dFlowPeriodSort+"_"+a]||0))*dir);
   $("#dFlowPeriodBody").innerHTML=periods.map(p=>{
     const cells=STOCK_FLOW_SUBJ_COLS.map(k=>{
       const raw=r[k+"_"+p];
@@ -2094,7 +2122,11 @@ async function loadStockFlowPeriods(code){
     }).join("");
     return `<tr><td class="l">${STOCK_FLOW_PERIOD[p]}</td>${cells}</tr>`;
   }).join("");
-  $$("#dFlowPeriodHead th.sortable").forEach(th=>th.onclick=()=>{S.dFlowPeriodSort=th.dataset.key;loadStockFlowPeriods(code);});
+  $$("#dFlowPeriodHead th.sortable").forEach(th=>th.onclick=()=>{
+    if(S.dFlowPeriodSort===th.dataset.key){S.dFlowPeriodDir=S.dFlowPeriodDir==="asc"?"desc":"asc";}
+    else{S.dFlowPeriodSort=th.dataset.key;S.dFlowPeriodDir="desc";}
+    loadStockFlowPeriods(code);
+  });
 }
 // RANK · 종목명 · 순매수/시총(%) · 금액(억) · 역대순위 — 5열 압축 포맷 (참고 이미지 + 역대순위 추가)
 // 역대순위 = 당일 이 종목에 대한 이 주체의 순매수 대금이, 같은 종목·주체의
