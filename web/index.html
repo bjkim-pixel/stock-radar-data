@@ -3378,7 +3378,7 @@ async function loadPerf(){
       const unrl=priced.reduce((a,b)=>a+uPnl(b),0);
       rowsC.push(`<tr><td class="l">${stratBadge(strat)}</td>
         <td>${o.length}건</td><td>${N(invested/EOK,2)}억</td><td>${N(value/EOK,2)}억</td>
-        <td class="${priced.length?sgn(unrl):""}">${priced.length?pm(unrl,0):"–"}</td>
+        <td class="${priced.length?sgn(unrl):""}">${priced.length?pm(unrl/EOK,2)+"억":"–"}</td>
         <td class="${priced.length&&invested?sgn(unrl):""}">${priced.length&&invested?pm(unrl/invested*100,2)+"%":"–"}</td></tr>`);
     }
     $("#perfSummaryC").innerHTML=rowsC.join("");
