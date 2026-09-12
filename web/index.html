@@ -41,7 +41,7 @@
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--page);color:var(--ink);font-size:13.5px;line-height:1.55;
-  -webkit-font-smoothing:antialiased}
+  -webkit-font-smoothing:antialiased;overflow-x:hidden}
 .wrap{max-width:1480px;margin:0 auto;padding:0 20px 80px}
 .num{font-variant-numeric:tabular-nums}
 .up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--ink-2)} .faint{color:var(--ink-3)} .good{color:var(--good)} .warn{color:var(--warn)}
@@ -312,20 +312,27 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
   th{font-size:10px;padding:7px 7px;position:sticky;top:0}
   td{font-size:11.5px;padding:7px 7px}
-  /* 수급동향 기간별 표 — 모바일에서 스크롤 없이 전체 펼침 */
-  #flowTrendWrap{overflow-x:visible}
-  #flowTrendWrap table{font-size:10px;width:100%}
-  #flowTrendWrap th,#flowTrendWrap td{padding:3px 3px;font-size:10px}
-  /* 전략성과2(상따) 표 — 컬럼이 많아 안쪽 스크롤을 두면 표 밖 다른 내용과
-     분리되어 보기 불편하다는 피드백(2026-09-11)에 따라, 위 flowTrendWrap과
-     동일하게 안쪽 스크롤을 끄고 표가 화면 폭 밖으로 그대로 펼쳐지게 둠 —
-     대신 페이지를 핀치줌(확대)해서 전체를 보는 방식(스크롤바 없음) */
-  #v-perf2 .tw{overflow-x:visible}
+  /* 수급동향 기간별 표 — 예전엔 overflow-x:visible로 "펼쳐서 핀치줌으로 보기"
+     방식이었으나(표 밖 다른 내용과 분리되는 게 불편하다는 2026-09-11 피드백
+     대응), 상위 컨테이너에 clip이 없어 표 하나 때문에 페이지 전체가 옆으로
+     스크롤되는 문제가 있었음(2026-09-12 수정). #scrWrap과 동일한 검증된
+     방식(내부 스크롤 + 첫 열 sticky)으로 통일 — 첫 열(기간)이 고정돼 있으니
+     표 밖 내용과 분리되는 느낌 없이 다른 열을 스크롤해서 볼 수 있음. */
+  #flowTrendWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #flowTrendWrap table{font-size:10px}
+  #flowTrendWrap th,#flowTrendWrap td{padding:3px 3px;font-size:10px;white-space:nowrap}
+  #flowTrendWrap th:first-child,#flowTrendWrap td:first-child{position:sticky;left:0;background:var(--surface);z-index:2}
+  /* 전략성과2(상따) 표 — 위 flowTrendWrap과 같은 이유로 2026-09-12 수정.
+     컬럼이 많아 안쪽 스크롤을 두면 표 밖 다른 내용과 분리되어 보기 불편하다는
+     피드백(2026-09-11)은, 첫 열(종목)을 sticky로 고정해 스크롤해도 어떤
+     행인지 계속 보이게 하는 방식으로 해결 — #scrWrap과 동일한 패턴. */
+  #v-perf2 .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #v-perf2 .tw th:first-child,#v-perf2 .tw td:first-child{position:sticky;left:0;background:var(--surface);z-index:2}
   /* 종목후보 표 — 모든 컬럼 표시, 가로 스크롤로 펼쳐 보기
      첫 2열(# · 종목)은 sticky로 고정 */
   #scrWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  #scrWrap th,#scrWrap td{padding:2px 3px;font-size:8px;white-space:nowrap}
-  #scrWrap .dim{font-size:7px}
+  #scrWrap th,#scrWrap td{padding:3px 4px;font-size:10px;white-space:nowrap}
+  #scrWrap .dim{font-size:9px}
   #scrWrap th:nth-child(1),#scrWrap td:nth-child(1){position:sticky;left:0;background:var(--surface);z-index:2}
   #scrWrap th:nth-child(2),#scrWrap td:nth-child(2){position:sticky;left:22px;background:var(--surface);z-index:2;box-shadow:2px 0 4px rgba(0,0,0,.12)}
 
@@ -987,7 +994,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 
   <div class="card"><h3>오늘의 후보 종목 · 단계별 스크리닝 <span class="r" id="candDateNote">기준일 확인 중…</span></h3>
-    <div class="faint" style="font-size:11px;margin:0 0 8px">공통조건: 시가총액 1조원↑ · 일거래대금 500억원↑ · 관리 유니버스 전체 대상(무게순위 캡 없음, 2026-09-10 변경) · 단, 추세추종 1단계는 pick_score 상위 40위 캡 적용(2026-09-11 재도입) · 각 단계는 독립 조건(누적 아님) · 추세추종/종가베팅은 3단계, 종가베팅2는 2단계 통과 종목만 실제 가상매수(종가베팅2는 NXT 마감가에 매수)</div>
+    <div class="faint" style="font-size:11px;margin:0 0 8px">공통조건: 시가총액 1조원↑ · 일거래대금 500억원↑ · 관리 유니버스 전체 대상(무게순위 캡 없음, 2026-09-10 변경) · 추세추종은 전 단계(1~3단계)에 pick_score 상위 40위 캡 적용(2026-09-11 재도입) · 종가베팅은 단계별 독립 조건, 추세추종은 이름과 달리 누적식(상위 단계 조건이 하위 단계에도 그대로 전파), 종가베팅2는 설계상 누적 2단계 · 추세추종/종가베팅은 3단계, 종가베팅2는 2단계 통과 종목만 실제 가상매수(종가베팅2는 NXT 마감가에 매수)</div>
     <div class="grid3" id="candGrid">
       <div>
         <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">추세추종</div>
@@ -1016,14 +1023,14 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   <div class="card"><h3>보유 중 <span class="r" id="openCount"></span></h3>
     <div class="tw"><table><thead><tr>
       <th class="l">종목</th><th>종가</th><th title="한국투자증권 실시간 웹소켓 시세 (relay 서버 연결 시)">시세</th><th class="l">전략</th><th>진입일</th><th class="l">매수사유</th><th>평단</th><th>수익률</th><th title="장중에는 웹소켓 실시간 체결가 기준으로 즉시 갱신, 장마감 후에는 배치가 재계산">고점</th>
-      <th class="opt">고점일</th><th class="opt" title="고점이 기록된 시각(월/일 시:분). 장중 실시간 갱신값은 그날 배치가 돌기 전까지만 분단위로 정확함">고점시각</th><th class="opt">트랜치</th><th>투입금액</th><th>미실현손익</th><th>고점대비</th>
+      <th class="opt">고점일</th><th class="opt" title="고점이 기록된 시각(월/일 시:분). 장중 실시간 갱신값은 그날 배치가 돌기 전까지만 분단위로 정확함">고점시각</th><th class="opt">트랜치</th><th>투입금액(원)</th><th>미실현손익(원)</th><th>고점대비</th>
       <th title="현재 손절선(트레일링 -7% 또는 손익분기 보호선 중 더 높은 값). 종가베팅은 익일 시가에 무조건 청산하므로 가격 목표가 없습니다.">매도목표가</th>
     </tr></thead><tbody id="openBody"><tr><td colspan="16" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
   <div class="card"><h3>청산 이력 <span class="r" id="perfCount"></span></h3>
     <div class="tw"><table><thead><tr>
       <th class="l">종목</th><th class="l">전략</th><th>진입일</th><th class="opt">진입가</th><th class="opt">평단</th><th class="opt">트랜치</th>
-      <th>청산일</th><th>청산가</th><th class="opt">사유</th><th>실현손익</th><th>수익률</th>
+      <th>청산일</th><th>청산가</th><th class="opt">사유</th><th>실현손익(원)</th><th>수익률</th>
     </tr></thead><tbody id="perfBody"><tr><td colspan="11" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 </section>
@@ -1064,7 +1071,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
   <div class="card"><h3>청산 이력 <span class="r" id="i2PerfCount"></span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>진입가</th><th>청산가</th><th>수익률</th><th class="l">매수사유</th><th class="l">매도사유</th><th>실현손익</th>
+      <th class="l">종목</th><th>진입가</th><th>청산가</th><th>수익률</th><th class="l">매수사유</th><th class="l">매도사유</th><th>실현손익(원)</th>
     </tr></thead><tbody id="i2PerfBody"><tr><td colspan="7" class="load">청산 이력 없음</td></tr></tbody></table></div>
   </div>
 </section>
@@ -2738,7 +2745,7 @@ async function loadDetail(code){
     </div>
     <div style="display:flex;flex-direction:column;gap:2px">
       <div class="faint" style="font-size:12px">${sum.sector||"–"}</div>
-      <div class="faint" style="font-size:12px">RS ${sum.sector_rs_rank?sum.sector_rs_rank+"위":"–"}</div>
+      <div class="faint" style="font-size:12px">업종RS ${sum.sector_rs_rank?sum.sector_rs_rank+"위":"–"}</div>
     </div>`;
   const lb=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
   $("#dRange").textContent=`${rows[0].trade_date} ~ ${last.trade_date} (${rows.length}거래일)`;
@@ -3004,7 +3011,7 @@ function renderPairCard(code,sum,rows,flowRow){
     <div class="pc-stat">
       <span>시총 ${sum.market_cap!=null?N(+sum.market_cap/JO,1)+"조":"–"}</span>
       <span>${sum.sector||"–"}</span>
-      <span>RS ${sum.sector_rs_rank?sum.sector_rs_rank+"위":"–"}</span>
+      <span>업종RS ${sum.sector_rs_rank?sum.sector_rs_rank+"위":"–"}</span>
     </div>`;
   headEl.querySelector(".pc-name").onclick=()=>{go("detail");loadDetail(code);};
 
@@ -3210,7 +3217,7 @@ function renderI2Live(wanted,openCodes){
 async function loadPerf2(){
   try{
     const today = S.date;
-    const cl = await q("intraday_positions","select=*&portfolio=eq.INTRADAY_SANGTTA&status=eq.CLOSED&order=exit_time.desc");
+    const cl = await q("intraday_positions","select=*&portfolio=eq.INTRADAY_SANGTTA&status=eq.CLOSED&order=exit_time.desc&limit=500");
     const op = await q("intraday_positions","select=*&portfolio=eq.INTRADAY_SANGTTA&status=eq.OPEN&order=entry_time.asc");
     const cand = await q("intraday_candidates",`select=*&trade_date=eq.${today}&order=source.asc,rank.asc`);
     const sumRows = await q("intraday_daily_summary",`select=*&trade_date=eq.${today}`);
@@ -3303,7 +3310,7 @@ const stratBadge=s=>`<span class="${STRAT_BADGE_CLS[s]||"dim"}" style="font-size
 
 async function loadPerf(){
   try{
-    const cl=await q("positions","select=*&portfolio=eq.VIRTUAL&status=eq.CLOSED&order=exit_date.desc");
+    const cl=await q("positions","select=*&portfolio=eq.VIRTUAL&status=eq.CLOSED&order=exit_date.desc&limit=500");
     const op=await q("positions","select=*&portfolio=eq.VIRTUAL&status=eq.OPEN&order=entry_date.asc");
     const nameOf={};S.codes.forEach(c=>nameOf[c.code]=c.name);
     S.perfClosed=cl; S.perfOpen=op; S.perfNameOf=nameOf;
