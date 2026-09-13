@@ -1076,7 +1076,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   </div>
 
   <div class="card"><h3>실시간 조건 트래킹 <span class="r" id="i2LiveCount"></span></h3>
-    <div class="faint" style="font-size:11px;margin:0 0 8px">지금 추적 중인 후보/보유 종목이 매수 조건을 실시간으로 얼마나 충족하고 있는지 보여줍니다(체결 틱마다 갱신, 등락률 상위권 중 최근 갱신순 상위 12종목만 실시간 추적). 20초마다 후보 목록을 다시 점검해서, 실시간 등락률이 마이너스로 전환된 종목은 즉시 후보에서 제외하고(보유 중인 포지션은 청산 판단을 계속 해야 하므로 예외) 그 자리를 지금 뜨거운 종목으로 채웁니다(2026-09-10 추가). 초록 배지가 붙은 조건은 지금 충족 중이라는 뜻입니다.</div>
+    <div class="faint" style="font-size:11px;margin:0 0 8px">지금 추적 중인 후보/보유 종목이 매수 조건을 실시간으로 얼마나 충족하고 있는지 보여줍니다(체결 틱마다 갱신, 등락률 상위권 중 최근 갱신순 상위 30종목만 실시간 추적). 20초마다 후보 목록을 다시 점검해서, 실시간 등락률이 마이너스로 전환된 종목은 즉시 후보에서 제외하고(보유 중인 포지션은 청산 판단을 계속 해야 하므로 예외) 그 자리를 지금 뜨거운 종목으로 채웁니다(2026-09-10 추가). 초록 배지가 붙은 조건은 지금 충족 중이라는 뜻입니다.</div>
     <div class="tw"><table><thead><tr>
       <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th title="진입조건 아님(참고용 표시) — 일단 매수/청산 판단에서 제외했습니다. 등급 A 보너스(1.5억↑) 산정에만 참고로 씀">프로그램순매수(2분, 참고용)</th><th>충족조건</th>
     </tr></thead><tbody id="i2LiveBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
