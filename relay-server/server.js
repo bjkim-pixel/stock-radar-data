@@ -521,6 +521,12 @@ async function fetchAllKnownCandidateCodes() {
 
 const CANDIDATE_POOL_LIMIT = 40, CANDIDATE_TOP_N = 10, SCAN_TOP_N = 15;
 const SCAN_START_MIN = 9 * 60 + 15, SCAN_END_MIN = 15 * 60 + 20; // 09:15~15:20 KST
+// 2026-09-13: REGULAR 단계 재선별에서 거래대금을 정렬 기준으로 쓰면(과거 방식)
+// 삼성전자·SK하이닉스급 대형주가 등락률과 무관하게 항상 상위를 차지하는 문제가
+// 있음 — SCAN 단계가 거래대금순위→등락률순위로 이미 교체했던 것과 같은 이유.
+// 그래서 거래대금은 "최소 유동성 통과선"으로만 쓰고(이 밑이면 아예 후보 제외),
+// 실제 순위는 등락률로 매긴다(stageRegular() 참고).
+const REGULAR_MIN_ACC_AMT = 500_000_000; // 누적거래대금 5억원↑ (유동성 최소선, 조정 가능)
 
 // ── 1) PRE_MARKET — 순수 DB 기반(전략3단계 신호 + 무게상위), API 불필요 ──────
 async function stagePreMarket() {
@@ -611,10 +617,15 @@ async function stageRegular() {
   }
   if (!scored.length) { console.log('[상따후보] REGULAR: 유효 응답 없음 — 스킵'); return; }
 
-  scored.sort((a, b) => (Number(b.is_new_high) - Number(a.is_new_high)) || (b.acc_amt - a.acc_amt));
-  const top = scored.slice(0, CANDIDATE_TOP_N);
+  // 2026-09-13: 거래대금은 유동성 최소선(REGULAR_MIN_ACC_AMT)만 통과시키는 필터로
+  // 쓰고, 실제 순위는 등락률로 매긴다 — 신고가 돌파 종목을 그중에서도 앞으로 당김.
+  const liquid = scored.filter(r => r.acc_amt >= REGULAR_MIN_ACC_AMT);
+  const dropped = scored.length - liquid.length;
+  if (!liquid.length) { console.log(`[상따후보] REGULAR: 유동성 최소선(${REGULAR_MIN_ACC_AMT.toLocaleString('ko-KR')}원) 통과 종목 없음 — 스킵`); return; }
+  liquid.sort((a, b) => (Number(b.is_new_high) - Number(a.is_new_high)) || (b.change_pct - a.change_pct));
+  const top = liquid.slice(0, CANDIDATE_TOP_N);
   const rows = top.map((r, i) => ({ code: r.code, rank: i + 1, snapshot: { price: r.price, acc_amt: r.acc_amt, change_pct: r.change_pct, is_new_high: r.is_new_high } }));
-  console.log(`[상따후보] REGULAR: 조회 ${pool.length}건 중 유효 ${scored.length}건 → Top${rows.length} 저장 (신고가 ${top.filter(r => r.is_new_high).length}건)`);
+  console.log(`[상따후보] REGULAR: 조회 ${pool.length}건 중 유효 ${scored.length}건(유동성 미달 ${dropped}건 제외) → Top${rows.length} 저장 (등락률 우선, 신고가 ${top.filter(r => r.is_new_high).length}건)`);
   await upsertCandidates(rows, 'REGULAR');
 }
 
@@ -786,7 +797,14 @@ const SANGTTA_MIN_MINUTE_AMT_ENTRY = 30_000_000; // 직전 5분 평균 분당거
 // 40 → 12로 축소해 추적 대상을 좁히고, 아래 refreshSangttaCandidates()의
 // 정렬 로직도 "최신순 + 동률이면 등락률순위 우선"으로 바꿔 진짜 지금 강한
 // 종목이 상위에 남도록 함. 너무 좁아서 매수 기회를 자주 놓친다면 다시 늘릴 것.
-const SANGTTA_MAX_TRACKED           = 12;        // 실시간 추적(=웹소켓 구독) 대상 상위 N개
+// 2026-09-13: 사용자 확인 후 12 → 30으로 재확대. 웹소켓 구독 슬롯은 "전략성과
+// (VIRTUAL) 보유 종목(보통 4~10개 이내)"과 공유되는데 그쪽 보유 종목 수가 적어
+// 슬롯 여유가 있다고 판단해 상향(코드당 시세+프로그램매매 2슬롯 소비 — 30종목이면
+// 상따만으로 최대 60슬롯 + 보유/조회 종목 몫 별도). 구독 로그("[구독 추가/해제]",
+// "[프로그램매매 구독 추가/해제]")에서 실패·재시도가 잦아지면 이 값을 다시
+// 낮추거나, 프로그램매매 구독 대상을 후보 전체가 아니라 보유 종목 위주로
+// 좁히는 것을 고려할 것.
+const SANGTTA_MAX_TRACKED           = 30;        // 실시간 추적(=웹소켓 구독) 대상 상위 N개
 // 2026-09-10 3차 개선: "최신 갱신순" 정렬만으로는 회전이 느렸음 — 등락률 5%+
 // 신규 종목이 드문드문 나오는 날엔 새 후보가 충분히 안 들어와서, 이미
 // 마이너스로 전환된 예전 후보가 며칠이고 화면에 "후보"로 계속 남아있는 문제가
