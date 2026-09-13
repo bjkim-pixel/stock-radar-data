@@ -67,6 +67,12 @@ DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
 CANDIDATE_POOL_LIMIT = 40   # NXT/REGULAR 단계에서 종목별 현재가를 조회할 최대 종목 수
 TOP_N = 10
+# 2026-09-13: REGULAR 단계 재선별에서 거래대금을 정렬 기준으로 쓰면(과거 방식)
+# 삼성전자·SK하이닉스급 대형주가 등락률과 무관하게 항상 상위를 차지하는 문제가
+# 있음 — SCAN 단계가 거래대금순위→등락률순위로 이미 교체했던 것과 같은 이유.
+# 그래서 거래대금은 "최소 유동성 통과선"으로만 쓰고(이 밑이면 아예 후보 제외),
+# 실제 순위는 등락률로 매긴다(stage_regular() 참고). server.js와 1:1 동일 로직.
+REGULAR_MIN_ACC_AMT = 500_000_000  # 누적거래대금 5억원↑ (유동성 최소선, 조정 가능)
 SCAN_TOP_N = 15             # SCAN 단계에서 신규 편입할 최대 종목 수(1회 실행당)
 SCAN_MIN_CHANGE_PCT = 5.0   # 등락률 순위 API에 걸 최소 상승률(%) — 이 밑은 아예 조회 안 함
 SCAN_MIN_PRICE = 1000       # 최소 주가(원) — 동전주 노이즈 제외
@@ -362,9 +368,16 @@ def stage_regular():
         print("  REGULAR: 유효 응답 없음 — 스킵")
         return
 
-    # 거래대금 상위를 우선하되, 신고가 돌파 종목에 가중치를 줘서 앞으로 당김
-    scored.sort(key=lambda r: (r["is_new_high"], r["acc_amt"]), reverse=True)
-    top = scored[:TOP_N]
+    # 2026-09-13: 거래대금은 유동성 최소선(REGULAR_MIN_ACC_AMT)만 통과시키는
+    # 필터로 쓰고, 실제 순위는 등락률로 매긴다 — 신고가 돌파 종목을 그중에서도
+    # 앞으로 당김.
+    liquid = [r for r in scored if r["acc_amt"] >= REGULAR_MIN_ACC_AMT]
+    dropped = len(scored) - len(liquid)
+    if not liquid:
+        print(f"  REGULAR: 유동성 최소선({REGULAR_MIN_ACC_AMT:,}원) 통과 종목 없음 — 스킵")
+        return
+    liquid.sort(key=lambda r: (r["is_new_high"], r["change_pct"]), reverse=True)
+    top = liquid[:TOP_N]
     rows = []
     for i, r in enumerate(top, start=1):
         rows.append({
@@ -377,7 +390,7 @@ def stage_regular():
                 "is_new_high": r["is_new_high"],
             },
         })
-    print(f"  REGULAR: 조회 {len(pool)}건 중 유효 {len(scored)}건 → Top{len(rows)} 저장 (신고가 {sum(1 for r in top if r['is_new_high'])}건)")
+    print(f"  REGULAR: 조회 {len(pool)}건 중 유효 {len(scored)}건(유동성 미달 {dropped}건 제외) → Top{len(rows)} 저장 (등락률 우선, 신고가 {sum(1 for r in top if r['is_new_high'])}건)")
     upsert_candidates(rows, "REGULAR")
 
 
