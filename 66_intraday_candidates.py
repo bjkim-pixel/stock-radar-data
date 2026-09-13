@@ -214,9 +214,14 @@ def fetch_existing_candidate_codes(sources):
 
 
 # ── 1) 장전 (PRE_MARKET) — 순수 DB 기반, API 불필요 ──────────────────────────
+# 2026-09-13: 추세추종(V4_CAND_TREND_3)은 여러 날에 걸친 추세 지속 전략이라
+# "오늘 하루 빠르게 오를 종목"과 무관한 대형 우량주(KB금융·하나금융지주 등)가
+# 자주 섞여 들어와 NXT/REGULAR 단계까지 오염시키는 문제가 있어(사용자가 실제
+# NXT 후보 화면에서 확인) 제외. 종가베팅(V4_CAND_CLOSEBET_3)과 종가베팅2
+# (V4_CAND_CLOSEBET2_2, 기존엔 누락돼 있었음)만 사용. server.js와 1:1 동일 로직.
 def stage_pre_market():
-    """전략성과 3단계 통과 종목(V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3, 가장 최근
-    trade_date) + daily_metrics.weight_rank 당일 Top10 을 합쳐 1차 유니버스로 저장."""
+    """전략성과 3단계 통과 종목(V4_CAND_CLOSEBET_3 / V4_CAND_CLOSEBET2_2, 가장
+    최근 trade_date) + daily_metrics.weight_rank 당일 Top10 을 합쳐 1차 유니버스로 저장."""
     conn = psycopg2.connect(DB_URL)
     try:
         with conn.cursor() as cur:
@@ -233,9 +238,9 @@ def stage_pre_market():
                 FROM signals s
                 JOIN stocks st ON st.code = s.code
                 WHERE s.trade_date = %s
-                  AND s.signal_type IN ('V4_CAND_TREND_3', 'V4_CAND_CLOSEBET_3')
+                  AND s.signal_type IN ('V4_CAND_CLOSEBET_3', 'V4_CAND_CLOSEBET2_2')
             """, (latest,))
-            trend_rows = cur.fetchall()
+            swing_rows = cur.fetchall()
 
             cur.execute("""
                 SELECT m.code, st.name, m.weight_rank, m.pick_score
@@ -250,7 +255,7 @@ def stage_pre_market():
         conn.close()
 
     merged = {}  # code -> snapshot dict
-    for code, name, sig_type, score, reason in trend_rows:
+    for code, name, sig_type, score, reason in swing_rows:
         m = merged.setdefault(code, {"code": code, "name": name, "sources": [], "score": None})
         m["sources"].append(sig_type)
         m["reason"] = reason
@@ -282,7 +287,7 @@ def stage_pre_market():
                 "pick_score": m.get("pick_score"),
             },
         })
-    print(f"  PRE_MARKET: 기준일 {latest}, 전략3단계 {len(trend_rows)}건 + 무게상위 {len(weight_rows)}건 → 유니크 {len(rows)}건")
+    print(f"  PRE_MARKET: 기준일 {latest}, 종가베팅/종가베팅2 {len(swing_rows)}건 + 무게상위 {len(weight_rows)}건 → 유니크 {len(rows)}건")
     upsert_candidates(rows, "PRE_MARKET")
 
 
