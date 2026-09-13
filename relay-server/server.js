@@ -529,17 +529,24 @@ const SCAN_START_MIN = 9 * 60 + 15, SCAN_END_MIN = 15 * 60 + 20; // 09:15~15:20 
 const REGULAR_MIN_ACC_AMT = 500_000_000; // 누적거래대금 5억원↑ (유동성 최소선, 조정 가능)
 
 // ── 1) PRE_MARKET — 순수 DB 기반(전략3단계 신호 + 무게상위), API 불필요 ──────
+// 2026-09-13: 추세추종(V4_CAND_TREND_3)은 여러 날에 걸친 추세 지속 전략이라
+// "오늘 하루 빠르게 오를 종목"과 무관한 대형 우량주(KB금융·하나금융지주 등)가
+// 자주 섞여 들어와 NXT/REGULAR 단계까지 오염시키는 문제가 있어(사용자가 실제
+// NXT 후보 화면에서 확인) 제외. 종가베팅(V4_CAND_CLOSEBET_3)과 종가베팅2
+// (V4_CAND_CLOSEBET2_2, 기존엔 누락돼 있었음)만 사용하고, 어느 전략에서
+// 통과됐는지 프론트에서 구분해 보여줄 수 있도록 signal_type을 그대로
+// snapshot.sources에 남긴다(프론트 I2_SOURCE_LABEL 매핑 참고).
 async function stagePreMarket() {
   const latestRows = await sbGet('signals?select=trade_date&signal_type=like.V4_CAND_*&order=trade_date.desc&limit=1');
   const latest = latestRows[0]?.trade_date;
   if (!latest) { console.log('[상따후보] PRE_MARKET: V4_CAND_* 신호가 없음 — 후보 생성 불가'); return; }
 
-  const [trendRows, weightRows] = await Promise.all([
-    sbGet(`signals?select=code,signal_type,score,reason&trade_date=eq.${latest}&signal_type=in.(V4_CAND_TREND_3,V4_CAND_CLOSEBET_3)`),
+  const [swingRows, weightRows] = await Promise.all([
+    sbGet(`signals?select=code,signal_type,score,reason&trade_date=eq.${latest}&signal_type=in.(V4_CAND_CLOSEBET_3,V4_CAND_CLOSEBET2_2)`),
     sbGet(`daily_metrics?select=code,weight_rank,pick_score&trade_date=eq.${latest}&weight_rank=not.is.null&order=weight_rank.asc&limit=${CANDIDATE_TOP_N}`),
   ]);
 
-  const codes = new Set([...trendRows.map(r => r.code), ...weightRows.map(r => r.code)]);
+  const codes = new Set([...swingRows.map(r => r.code), ...weightRows.map(r => r.code)]);
   const nameOf = new Map();
   if (codes.size) {
     const nameRows = await sbGet(`stocks?select=code,name&code=in.(${[...codes].join(',')})`);
@@ -547,7 +554,7 @@ async function stagePreMarket() {
   }
 
   const merged = new Map();
-  for (const r of trendRows) {
+  for (const r of swingRows) {
     const m = merged.get(r.code) || { code: r.code, name: nameOf.get(r.code) || null, sources: [], score: null };
     m.sources.push(r.signal_type);
     m.reason = r.reason;
@@ -576,7 +583,7 @@ async function stagePreMarket() {
       score: m.score ?? null, weight_rank: m.weight_rank ?? null, pick_score: m.pick_score ?? null,
     },
   }));
-  console.log(`[상따후보] PRE_MARKET: 기준일 ${latest}, 전략3단계 ${trendRows.length}건 + 무게상위 ${weightRows.length}건 → 유니크 ${rows.length}건`);
+  console.log(`[상따후보] PRE_MARKET: 기준일 ${latest}, 종가베팅/종가베팅2 ${swingRows.length}건 + 무게상위 ${weightRows.length}건 → 유니크 ${rows.length}건`);
   await upsertCandidates(rows, 'PRE_MARKET');
 }
 
