@@ -3156,6 +3156,15 @@ function setupPairCarouselNav(pageCount){
 /* ══ 전략 성과2 (상따 가상매매) ══ */
 const I_EXIT_LABEL={HARD_STOP:"하드캡 손절 -2%",TRAILING_STOP:"트레일링 손절",MARKET_CLOSE:"장마감 강제청산",PROGRAM_REVERSAL:"프로그램 매도전환 선제청산"};
 const I_STAGE_LABEL={PRE_MARKET:"장전(전날 배치)",NXT:"NXT(08:00~08:45)",REGULAR:"정규장 초반(09:10~09:15)",NEW_DETECTED:"장중 신규 포착"};
+// 2026-09-13: 장전(PRE_MARKET) 후보가 어느 전략에서 통과됐는지 구분해 보여달라는
+// 요청 반영 — intraday_candidates.snapshot.sources(원본 signal_type 문자열)를
+// 사람이 읽을 라벨로 매핑. NXT/REGULAR/SCAN 후보는 sources가 없어 태그 없이
+// 이름만 표시됨(원래 그대로).
+const I2_SOURCE_LABEL={V4_CAND_TREND_3:"추세추종3",V4_CAND_CLOSEBET_3:"종가베팅3",V4_CAND_CLOSEBET2_2:"종가베팅2·2"};
+function i2SourceTag(sources){
+  if(!sources||!sources.length) return "";
+  return sources.map(s=>s.startsWith("WEIGHT_TOP10")?"무게상위"+s.slice(11):(I2_SOURCE_LABEL[s]||s)).join("·");
+}
 
 // 체결 틱마다 날아오는 sangtta 스냅샷을 저장하고, 너무 잦은 재렌더(초당
 // 수십 회 가능)를 막기 위해 requestAnimationFrame으로 한 프레임에 몰아서 그림.
@@ -3271,7 +3280,10 @@ async function loadPerf2(){
     $("#i2CandWrap").innerHTML = stageOrder.filter(s=>bySource[s]?.length).map(s=>`
       <div style="margin-bottom:10px">
         <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">${I_STAGE_LABEL[s]}</div>
-        <div>${bySource[s].map(c=>`<span class="fchip" style="margin:0 4px 4px 0">${nameOf[c.code]||c.code}</span>`).join("")}</div>
+        <div>${bySource[s].map(c=>{
+          const tag=i2SourceTag(c.snapshot?.sources);
+          return `<span class="fchip" style="margin:0 4px 4px 0">${nameOf[c.code]||c.code}${tag?` <small class="faint">(${tag})</small>`:""}</span>`;
+        }).join("")}</div>
       </div>`).join("") || '<div class="load">아직 후보 없음</div>';
 
     // ── 당일 요약 카드 ────────────────────────────────────────────────
