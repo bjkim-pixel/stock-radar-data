@@ -1224,6 +1224,17 @@ function fmtPeakDateOnly(iso){ // "MM/DD"
   const g=fmtKstParts(iso,{month:"2-digit",day:"2-digit"});
   return g?`${g("month")}/${g("day")}`:"–";
 }
+// 2026-09-15: relay-server가 실시간 후보(PRE_MARKET/NXT/REGULAR 등)를 저장할 때
+// 쓰는 "진짜 오늘(KST 캘린더 날짜)"을 프론트에서도 그대로 재현하기 위한 헬퍼.
+// S.date(마지막으로 확정된 종가 거래일)와는 다른 개념이니 섞어 쓰지 말 것.
+function kstTodayStr(){ // "YYYY-MM-DD"
+  const g=fmtKstParts(new Date().toISOString(),{year:"numeric",month:"2-digit",day:"2-digit"});
+  return g?`${g("year")}-${g("month")}-${g("day")}`:null;
+}
+function fmtKstDateTime(iso){ // "YYYY-MM-DD HH:mm"
+  const g=fmtKstParts(iso,{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+  return g?`${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}`:"–";
+}
 function peakDateLabel(code){
   const ep=effectivePeak(code);
   if(ep.live) return fmtPeakDateOnly(ep.atIso);
@@ -3167,7 +3178,9 @@ const I_STAGE_LABEL={PRE_MARKET:"장전(전날 배치)",NXT:"NXT(08:00~08:45)",R
 const I2_SOURCE_LABEL={V4_CAND_TREND_3:"추세추종3",V4_CAND_CLOSEBET_3:"종가베팅3",V4_CAND_CLOSEBET2_2:"종가베팅2·2"};
 function i2SourceTag(sources){
   if(!sources||!sources.length) return "";
-  return sources.map(s=>s.startsWith("WEIGHT_TOP10")?"무게상위"+s.slice(11):(I2_SOURCE_LABEL[s]||s)).join("·");
+  // "WEIGHT_TOP10(#3)" → "무게상위(#3)". WEIGHT_TOP10은 12글자라 slice(12)가 맞는데
+  // 기존엔 slice(11)이라 "10"의 "0" 한 글자가 안 잘려 "무게상위0(#3)"으로 표시되던 버그.
+  return sources.map(s=>s.startsWith("WEIGHT_TOP10")?"무게상위"+s.slice(12):(I2_SOURCE_LABEL[s]||s)).join("·");
 }
 
 // 체결 틱마다 날아오는 sangtta 스냅샷을 저장하고, 너무 잦은 재렌더(초당
@@ -3271,24 +3284,39 @@ function renderI2Live(wanted,openCodes){
 async function loadPerf2(){
   try{
     const today = S.date;
+    // 2026-09-15: "오늘의 후보"(PRE_MARKET/NXT/REGULAR/NEW_DETECTED)는 relay-server가
+    // 실시간 캘린더 날짜(kstDateStr())로 trade_date를 찍어 저장하는데, 여기서 그동안
+    // 써온 S.date는 v_market_overview의 "마지막으로 확정된 종가 거래일"이라 장 시작
+    // 전~당일 확정 전까지는 하루 전 날짜를 가리킨다. 그 결과 아침에는 "오늘의 후보"에
+    // 실제로는 어제 아침에 만들어진 배치가 그대로 표시되는 문제가 있었음(사용자가
+    // 전략성과2 화면에서 "전날 종목과 다르게 배치돼 있다"고 확인). 이 두 쿼리만은
+    // 실제 달력상 오늘(KST) 날짜로 조회한다.
+    const todayReal = kstTodayStr() || today;
     const cl = await q("intraday_positions","select=*&portfolio=eq.INTRADAY_SANGTTA&status=eq.CLOSED&order=exit_time.desc&limit=500");
     const op = await q("intraday_positions","select=*&portfolio=eq.INTRADAY_SANGTTA&status=eq.OPEN&order=entry_time.asc");
-    const cand = await q("intraday_candidates",`select=*&trade_date=eq.${today}&order=source.asc,rank.asc`);
-    const sumRows = await q("intraday_daily_summary",`select=*&trade_date=eq.${today}`);
+    const cand = await q("intraday_candidates",`select=*&trade_date=eq.${todayReal}&order=source.asc,rank.asc`);
+    const sumRows = await q("intraday_daily_summary",`select=*&trade_date=eq.${todayReal}`);
     const nameOf={}; S.codes.forEach(c=>nameOf[c.code]=c.name);
 
     // ── 오늘의 후보 (단계별) ──────────────────────────────────────────
     const bySource={};
     cand.forEach(c=>{(bySource[c.source]=bySource[c.source]||[]).push(c);});
     const stageOrder=["PRE_MARKET","NXT","REGULAR","NEW_DETECTED"];
-    $("#i2CandWrap").innerHTML = stageOrder.filter(s=>bySource[s]?.length).map(s=>`
+    $("#i2CandWrap").innerHTML = stageOrder.filter(s=>bySource[s]?.length).map(s=>{
+      const rows=bySource[s];
+      const lastTs=rows.reduce((mx,c)=>(c.created_at&&c.created_at>mx)?c.created_at:mx,"");
+      const baseDate=rows.find(c=>c.snapshot?.base_date)?.snapshot?.base_date;
+      const baseNote=(s==="PRE_MARKET"&&baseDate&&baseDate!==todayReal)?` <span class="faint" style="font-weight:400">(전일 종가 ${baseDate} 기준)</span>`:"";
+      const tsNote=lastTs?` <span class="faint" style="font-weight:400">· 갱신 ${fmtKstDateTime(lastTs)}</span>`:"";
+      return `
       <div style="margin-bottom:10px">
-        <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">${I_STAGE_LABEL[s]}</div>
-        <div>${bySource[s].map(c=>{
+        <div class="faint" style="font-size:11.5px;font-weight:700;margin:0 0 6px">${I_STAGE_LABEL[s]}${baseNote}${tsNote}</div>
+        <div>${rows.map(c=>{
           const tag=i2SourceTag(c.snapshot?.sources);
           return `<span class="fchip" style="margin:0 4px 4px 0">${nameOf[c.code]||c.code}${tag?` <small class="faint">(${tag})</small>`:""}</span>`;
         }).join("")}</div>
-      </div>`).join("") || '<div class="load">아직 후보 없음</div>';
+      </div>`;
+    }).join("") || `<div class="load">아직 후보 없음</div>`;
 
     // ── 당일 요약 카드 ────────────────────────────────────────────────
     const s = sumRows[0]||{};
