@@ -3600,22 +3600,51 @@ async function loadStrategyCandidates(){
             조건 보기
           </button>
         </div>
-        ${items.length?`<div style="display:flex;flex-wrap:wrap;gap:6px">${items.map(r=>{
-          const detail=isBuy?(/\d단계\(매수\)\s*·\s*(.*)$/.exec(r.reason_text||"")||[])[1]:"";
-          return isBuy
-            ? `<span class="chip" title="${(r.reason_text||"").replace(/"/g,'&quot;')}"
-                 style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:10px;cursor:pointer;
-                        display:flex;flex-direction:column;align-items:flex-start;gap:2px;max-width:100%"
-                 data-code="${r.code}"><b>${nameOf[r.code]||r.code}</b>${detail?`<span class="faint" style="font-size:10px;font-weight:400;white-space:normal;line-height:1.4">${detail}</span>`:""}</span>`
-            : `<span class="chip" title="${(r.reason_text||"").replace(/"/g,'&quot;')}"
+        ${items.length?(isBuy
+          // 2026-09-14: 마지막 단계(=실제 가상매수 대상) 통과 종목은 다른 단계와
+          // 달리 좁은 칩이 아니라 세로 카드로 쌓고, 종목상세에 있는 것과 같은
+          // "개인 순매수 매물대" 미니 차트를 카드 안에 바로 붙여준다(사용자 요청) —
+          // 클릭해서 종목상세로 넘어가지 않아도 이 종목의 개인 매수세가 어느
+          // 가격대에 쌓여있는지 바로 보임. 차트 자체는 renderCandProfileChart()가
+          // 이 HTML이 DOM에 붙은 뒤 비동기로 채운다(v_stock_chart 조회 필요).
+          ?`<div style="display:flex;flex-direction:column;gap:10px">${items.map(r=>{
+              const detail=(/\d단계\(매수\)\s*·\s*(.*)$/.exec(r.reason_text||"")||[])[1];
+              return `<div class="chip" title="${(r.reason_text||"").replace(/"/g,'&quot;')}"
+                 style="display:flex;flex-direction:column;align-items:stretch;gap:2px;width:100%;
+                        box-sizing:border-box;padding:10px;border:1px solid var(--border);border-radius:10px;cursor:pointer"
+                 data-code="${r.code}">
+                <div><b style="font-size:11.5px">${nameOf[r.code]||r.code}</b>${detail?`<div class="faint" style="font-size:10px;font-weight:400;white-space:normal;line-height:1.4;margin-top:2px">${detail}</div>`:""}</div>
+                <div class="faint" style="font-size:10px;margin:8px 0 2px">개인 순매수 매물대 <span style="font-weight:400">· 종목상세와 같은 기준(현재가 -10%~+90%)</span></div>
+                <div class="chart" id="candProf_${strat}_${r.code}" style="min-height:40px"><div class="faint" style="font-size:10px">불러오는 중…</div></div>
+              </div>`;
+            }).join("")}</div>`
+          : `<div style="display:flex;flex-wrap:wrap;gap:6px">${items.map(r=>
+              `<span class="chip" title="${(r.reason_text||"").replace(/"/g,'&quot;')}"
                  style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:14px;cursor:pointer"
-                 data-code="${r.code}">${nameOf[r.code]||r.code}</span>`;
-        }).join("")}</div>`
+                 data-code="${r.code}">${nameOf[r.code]||r.code}</span>`).join("")}</div>`)
           :'<div class="faint" style="font-size:11px">해당 없음</div>'}
       </div>`;
     }).join("");
-    $$("span.chip",el).forEach(c=>c.onclick=()=>{go("detail");loadDetail(c.dataset.code);});
+    $$("span.chip,div.chip",el).forEach(c=>c.onclick=()=>{go("detail");loadDetail(c.dataset.code);});
     $$("button[data-strat]",el).forEach(btn=>btn.onclick=()=>showCondPopup(btn.dataset.strat,+btn.dataset.stage));
+    byStage[nStages].forEach(r=>renderCandProfileChart(strat,r.code));
+  }
+}
+// 2026-09-14: 오늘의 후보(마지막 단계 통과 종목) 카드에 종목상세 페이지와 동일한
+// buildPriceProfile()/profileChart()를 재사용해 "개인 순매수 매물대" 미니 차트를
+// 그린다. 종목상세와 같은 기본 구간(START_D~오늘)의 v_stock_chart를 그 종목만
+// 조회하므로 이미 열려있는 종목상세 차트 데이터(S.chart)와는 무관하게 동작한다.
+async function renderCandProfileChart(strat,code){
+  const host=$(`#candProf_${strat}_${code}`);
+  if(!host)return;
+  try{
+    const rows=await q("v_stock_chart",
+      `select=trade_date,close,individual_net&code=eq.${code}&trade_date=gte.${START_D}&order=trade_date.asc`);
+    if(!rows.length){host.innerHTML='<div class="faint" style="font-size:10px">가격 데이터 없음</div>';return;}
+    const buckets=buildPriceProfile(rows,12,r=>+r.individual_net||0);
+    profileChart(host,buckets,{h:190,w:300,pr:56,pl:56,fx:v=>N(v,0),hideNeg:true,subj:"개인 순매수"});
+  }catch(err){
+    host.innerHTML='<div class="faint" style="font-size:10px">매물대 조회 실패</div>';
   }
 }
 
