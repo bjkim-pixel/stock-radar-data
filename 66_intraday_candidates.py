@@ -439,7 +439,11 @@ def fetch_change_rate_rank(token, limit=30):
                 "FID_INPUT_PRICE_1": str(SCAN_MIN_PRICE),
                 "FID_INPUT_PRICE_2": "",
                 "FID_VOL_CNT": str(SCAN_MIN_VOL),
-                "FID_TRGT_CLS_CODE": "0",
+                # 2026-09-14: "0"(9자리 대상구분 비트마스크 중 아무 자리도 켜지지
+                # 않음)이면 대상 종목이 전부 걸러져 rt_cd='0'(정상)인데도 output이
+                # 항상 0건이었음(server.js 쪽 동일 버그 확인·수정과 동일 원인).
+                # 공식 샘플 관례대로 9자리 전부 켠 값으로 수정.
+                "FID_TRGT_CLS_CODE": "111111111",
                 "FID_TRGT_EXLS_CLS_CODE": "0000000000",
                 "FID_DIV_CLS_CODE": "0",
                 "FID_RSFL_RATE1": str(SCAN_MIN_CHANGE_PCT),  # 최소 등락률(%) — 이 밑은 API가 아예 제외
@@ -454,7 +458,9 @@ def fetch_change_rate_rank(token, limit=30):
         if d.get("rt_cd") != "0":
             print(f"  ⚠ SCAN: 등락률순위 API rt_cd={d.get('rt_cd')} msg={d.get('msg1')} — 파라미터 재검증 필요, 스킵")
             return []
-        rows = d.get("output", []) or []
+        rows = d.get("output") or d.get("output2") or d.get("output1") or []
+        if not rows:
+            print(f"  ⚠ SCAN: 등락률순위 0건(정상 응답) — 응답 키: {list(d.keys())}")
         return rows[:limit]
     except Exception as e:
         print(f"  ⚠ SCAN: 등락률순위 조회 실패(파라미터 재검증 필요): {e}")
