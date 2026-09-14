@@ -463,7 +463,7 @@ async function fetchChangeRateRank(limit = 30) {
       FID_COND_MRKT_DIV_CODE: 'J', FID_COND_SCR_DIV_CODE: '20170', FID_INPUT_ISCD: '0000',
       FID_RANK_SORT_CLS_CODE: '0', FID_INPUT_CNT_1: '0', FID_PRC_CLS_CODE: '0',
       FID_INPUT_PRICE_1: String(SCAN_MIN_PRICE), FID_INPUT_PRICE_2: '',
-      FID_VOL_CNT: String(SCAN_MIN_VOL), FID_TRGT_CLS_CODE: '0',
+      FID_VOL_CNT: String(SCAN_MIN_VOL), FID_TRGT_CLS_CODE: '111111111',
       FID_TRGT_EXLS_CLS_CODE: '0000000000', FID_DIV_CLS_CODE: '0',
       FID_RSFL_RATE1: String(SCAN_MIN_CHANGE_PCT), FID_RSFL_RATE2: '',
     });
@@ -474,13 +474,26 @@ async function fetchChangeRateRank(limit = 30) {
     // FID_RANK_SORT_CLS_CODE는 공식 샘플 docstring엔 "0000"으로 나오지만 실제 호출해보니
     // "ERROR INVALID INPUT_FILED_SIZE [FID_RANK_SORT_CLS_CODE] [4]"로 거부됨 — 한 자리
     // 코드("0"=등락률상위)가 맞는 것으로 확인되어 원래 값으로 되돌림.
+    // 2026-09-14: 위 두 건을 고친 뒤에도 rt_cd='0'(정상 응답)인 채 output이 하루 종일
+    // 계속 0건이었음(같은 시각 다른 앱에서는 20~30%대 급등주가 다수 확인됨 — 진짜
+    // "조건 만족 종목 없음"일 리가 없음). 원인은 FID_TRGT_CLS_CODE("대상 구분 코드")로
+    // 보임 — 이 필드는 증거금 구간별 대상종목을 뜻하는 9자리 비트마스크인데, 한 자리
+    // "0"을 넣으면 9개 구간 중 어느 것도 켜지지 않아(=대상 없음) 사실상 전체 종목이
+    // 걸러지는 것으로 추정됨. 공식 샘플 관례대로 9자리 전부 켠 값("111111111")으로
+    // 수정. 그래도 0건이 반복되면 아래 진단 로그(raw 응답 키)로 다음 원인을 좁힐 것.
     const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/ranking/fluctuation?${params}`, {
       headers: kisRestHeaders(token, 'FHPST01700000'),
     });
     if (!res.ok) { console.warn(`[상따후보] SCAN 등락률순위 응답코드 ${res.status} — 스킵`); return []; }
     const json = await res.json();
     if (json.rt_cd !== '0') { console.warn(`[상따후보] SCAN 등락률순위 rt_cd=${json.rt_cd} msg=${json.msg1} — 파라미터 재검증 필요, 스킵`); return []; }
-    return (json.output || []).slice(0, limit);
+    const list = json.output || json.output2 || json.output1 || [];
+    if (!list.length) {
+      // 2026-09-14: FID_TRGT_CLS_CODE 수정으로도 여전히 0건이면 응답 자체의 키
+      // 구성이 예상과 다를 가능성이 있어(output1/output2 분리 등) 원본 키를 남김.
+      console.warn(`[상따후보] SCAN 등락률순위 0건(정상 응답) — 응답 키: ${Object.keys(json).join(',')}`);
+    }
+    return list.slice(0, limit);
   } catch (err) {
     console.error('[상따후보] SCAN 등락률순위 조회 실패:', err.message);
     return [];
@@ -736,6 +749,35 @@ async function runCandidateStageOnce(stageKey, minuteThreshold, fn) {
   } catch (err) {
     console.error(`[상따후보] ${stageKey} 실행 실패(다음 하트비트에 재시도):`, err.message);
     _candidateStageDoneFor[stageKey] = null;
+  }
+}
+
+// 2026-09-14: _candidateStageDoneFor는 메모리 상태라 서버가 장중에 재시작되면
+// (Render 메모리 한도 초과 등으로 자주 발생하는 것으로 확인됨) 초기화된다.
+// 그러면 하트비트가 "오늘 아직 실행 안 함"으로 착각해 PRE_MARKET/NXT/REGULAR를
+// 즉시 재실행하는데, 이 세 단계는 "가장 최근 거래일"의 신호를 기준으로 하므로
+// (주말을 낀 월요일이면 지난 금요일 데이터) 재시작마다 며칠 지난 대형주 후보를
+// 새 created_at으로 다시 찍어 refreshSangttaCandidates()의 "최신순" 정렬
+// 맨 위로 되돌려놓는 문제가 있었다 — 사용자가 실시간 조건 트래킹 화면에서
+// 종목이 며칠째 그대로인데 계속 "방금 갱신된 것처럼" 보인다고 확인해준 문제의
+// 핵심 원인. 서버 기동 시 오늘자 DB 행이 이미 있으면 "이미 실행됨"으로 간주해
+// 재실행을 막는다(원인인 재시작 자체를 막는 건 아니지만, 재시작이 일어나도
+// 같은 후보를 반복해서 재주입하는 증상은 사라진다).
+async function primeCandidateStageFlags() {
+  const STAGE_SOURCE = { preMarket: 'PRE_MARKET', nxt: 'NXT', regular: 'REGULAR' };
+  try {
+    const today = kstDateStr();
+    const rows = await sbGet(`intraday_candidates?select=source&trade_date=eq.${today}`);
+    const sources = new Set(rows.map(r => r.source));
+    const restored = [];
+    for (const [stageKey, source] of Object.entries(STAGE_SOURCE)) {
+      if (sources.has(source)) { _candidateStageDoneFor[stageKey] = today; restored.push(source); }
+    }
+    if (restored.length) {
+      console.log(`[상따후보] 재시작 감지 — 오늘 이미 실행된 단계 복원(중복 재실행 방지): ${restored.join(', ')}`);
+    }
+  } catch (err) {
+    console.error('[상따후보] 단계 완료 상태 복원 실패(재시작 시 중복 실행될 수 있음):', err.message);
   }
 }
 
@@ -2281,7 +2323,11 @@ issueApprovalKey()
     primeSangttaOpenPositions();
     loadListedSharesCache(); // SCAN 무게(weight) 재정렬용 상장주식수 캐시
     refreshSangttaCandidates();
-    candidateEngineHeartbeat(); // 서버 재시작이 장중 시간대에 일어나도 그 즉시 해당 단계를 따라잡음
+    // 2026-09-14: primeCandidateStageFlags()가 오늘자 기존 후보를 확인해 완료
+    // 플래그를 복원하기 전에 candidateEngineHeartbeat()가 먼저 돌면 복원이
+    // 늦어 재시작 시 중복 재실행을 못 막으므로, 완료를 기다린 뒤 첫 하트비트를
+    // 실행한다(그 다음부터는 기존처럼 15초 간격 setInterval이 계속 돈다).
+    primeCandidateStageFlags().then(() => candidateEngineHeartbeat()); // 서버 재시작이 장중 시간대에 일어나도 그 즉시 해당 단계를 따라잡음(단, 오늘 이미 실행된 단계는 제외)
     server.listen(PORT, () => {
       console.log(`[server] 릴레이 서버 실행 중 (port ${PORT})`);
     });
