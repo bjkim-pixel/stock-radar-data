@@ -1060,6 +1060,16 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="tiles" id="i2Summary"><div class="load">불러오는 중…</div></div>
   </div>
 
+  <!-- 2026-09-15: "며칠에 걸쳐 얼마를 사고팔았는지"가 어디에도 안 나온다는 요청 반영 —
+       intraday_daily_summary(일자별 정산 결과)를 누적 합계와 함께 표로 보여준다. -->
+  <div class="card"><h3>기간 누적 가상매매 <span class="r" id="i2CumNote"></span></h3>
+    <div class="tiles" id="i2CumTiles"><div class="load">불러오는 중…</div></div>
+    <div class="tw" style="margin-top:10px"><table><thead><tr>
+      <th class="l">일자</th><th>매수금액</th><th>매도금액</th><th>실현손익</th><th>수익률</th><th>거래</th><th>승/패</th><th>승률</th>
+    </tr></thead><tbody id="i2DailyBody"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="faint" style="font-size:11px;margin:8px 0 0">매수금액은 진입가×수량의 합, 매도금액은 청산가×수량의 합입니다. 실현손익에는 왕복 거래비용 0.35%(수수료+증권거래세+슬리피지)가 반영되어 있어 매도금액−매수금액과는 그만큼 차이가 납니다. 장중에는 아직 청산되지 않은 보유분이 빠져 있어 마감 후 확정됩니다.</div>
+  </div>
+
   <div class="card"><h3>오늘의 후보 <span class="r" id="i2StageNote">단계별 갱신</span></h3>
     <div class="faint" style="font-size:11px;margin:0 0 8px">진행 순서: 장전(전날 배치 재활용) → NXT(08:00~08:45) → 정규장 초반(09:10~09:15 관망 후 재선별) → 장중 신규 포착(1분마다 등락률순위 + 거래대금순위 스캔, 2026-09-15 이중화)</div>
     <div id="i2CandWrap"><div class="load">불러오는 중…</div></div>
@@ -1068,7 +1078,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   <div class="card"><h3>매수 조건</h3>
     <div class="cond-common">
       <b>① 매수 진입조건(2026-09-15 점수제로 변경 — 필수 2개 + 보조 3개 중 2개):</b>
-      <b>필수</b> 실제 등락률 3%↑ &nbsp;·&nbsp; 분당 평균거래대금 3천만원↑(유동성) &nbsp;/&nbsp;
+      <b>필수</b> 실제 등락률 3%↑<b>이면서 22% 미만</b>(2026-09-15 추가 — 상한가 +30%까지 여력이 얼마 안 남은 과열 구간은 손익비가 나빠 진입 금지. 당일 실측: 22%↑ 진입 5건 전부 손실 −55만원, 20~22% 구간은 +20만원) &nbsp;·&nbsp; 분당 평균거래대금 3천만원↑(유동성) &nbsp;/&nbsp;
       <b>보조(2개 이상)</b> 체결강도 150%↑ &nbsp;·&nbsp; 1분 내 대량체결 2회↑(건당 문턱은 종목의 분당거래대금 25%, 1천만~3천만원 사이에서 자동 조정) &nbsp;·&nbsp; 분당거래대금 최근5분 평균 대비 150%↑ &nbsp;/&nbsp;
       진입 가능 시각 09:05~(단 09:15 전까지는 보조 3개를 모두 요구하는 엄격 모드)<br>
       <b>② 프로그램 순매수:</b> <u>일단 진입조건에서 제외</u>했습니다 — 진입을 막거나 허용하는 판단에는 더 이상 쓰지 않습니다. 데이터는 계속 받아서 표에 참고용으로만 보여주고, 등급(A등급 보너스) 산정과 보유 중 반전매도 선제청산에는 그대로 씁니다<br>
@@ -3288,6 +3298,9 @@ function renderI2Live(wanted,openCodes){
     const statusLabel=isOpen
       ? `보유중${live.position?` <span class="faint">(${live.position.grade}등급${live.position.partialTaken?" · 절반익절":""})</span>`:""}`
       : (live.entryReady?'<span class="good">매수 임박</span>'
+        // 2026-09-15: 진입 상한(기본 22%)을 넘은 종목은 조건을 다 채워도 매수하지
+        // 않으므로, 왜 안 사는지 표에서 바로 보이도록 따로 표시한다.
+        : live.overheated?`<span class="faint" title="등락률 ${live.maxChangePct}% 이상은 손익비가 나빠 신규 진입하지 않습니다">과열(${live.maxChangePct}%↑) 진입보류</span>`
         : live.optionalMet!=null
           ? `후보(${live.requiredMet?"필수✓":"필수✗"} 보조 ${live.optionalMet}/${live.requiredOptional})`
           : `후보(${live.metConditions??0}/${live.totalConditions??5})`);
@@ -3303,6 +3316,52 @@ function renderI2Live(wanted,openCodes){
       <td class="l">${condBadges(live.conditions)}</td></tr>`;
   }).join("");
   $$("#i2LiveBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
+}
+
+// 2026-09-15 신설 — 전략성과2의 기간 누적 가상매매 현황.
+// intraday_daily_summary는 매일 장마감(15:19) 정산 때 한 행씩 쌓인다.
+async function renderI2Cumulative(){
+  const body=$("#i2DailyBody"), tiles=$("#i2CumTiles"), note=$("#i2CumNote");
+  try{
+    const rows=await q("intraday_daily_summary","select=*&order=trade_date.desc&limit=120");
+    if(!rows.length){
+      tiles.innerHTML='<div class="load">아직 정산된 날이 없습니다</div>';
+      body.innerHTML='<tr><td colspan="8" class="load">데이터 없음</td></tr>';
+      note.textContent="";
+      return;
+    }
+    const sum=k=>rows.reduce((a,r)=>a+(+r[k]||0),0);
+    const buy=sum("total_buy_amt"), sell=sum("total_sell_amt"), pnl=sum("realized_pnl");
+    const trades=sum("trade_count"), wins=sum("win_count");
+    const retPct=buy>0?pnl/buy*100:null;
+    const first=rows.at(-1).trade_date, last=rows[0].trade_date;
+    note.innerHTML=`${first} ~ ${last} · <b>${rows.length}</b>거래일`;
+    tiles.innerHTML=`
+      <div class="tile"><div class="lb">누적 매수금액</div><div class="vl">${N(buy/EOK,2)}억</div></div>
+      <div class="tile"><div class="lb">누적 매도금액</div><div class="vl">${N(sell/EOK,2)}억</div></div>
+      <div class="tile"><div class="lb">누적 실현손익</div><div class="vl ${sgn(pnl)}">${pm(pnl/1e4,0)}만원</div></div>
+      <div class="tile"><div class="lb">누적 수익률</div><div class="vl ${sgn(retPct||0)}">${retPct==null?"–":pm(retPct,2)+"%"}</div></div>
+      <div class="tile"><div class="lb">총 거래</div><div class="vl">${N(trades,0)}건</div></div>
+      <div class="tile"><div class="lb">누적 승률</div><div class="vl">${trades?N(wins/trades*100,1)+"%":"–"}</div></div>`;
+    body.innerHTML=rows.map(r=>{
+      const b=+r.total_buy_amt||0, sl=+r.total_sell_amt||0, p=+r.realized_pnl||0;
+      const tc=+r.trade_count||0, w=+r.win_count||0, l=+r.loss_count||0;
+      const rp=r.return_pct!=null?+r.return_pct:(b>0?p/b*100:null);
+      return `<tr>
+        <td class="l">${r.trade_date}</td>
+        <td>${N(b/1e4,0)}만</td>
+        <td>${N(sl/1e4,0)}만</td>
+        <td class="${sgn(p)}">${pm(p/1e4,0)}만</td>
+        <td class="${sgn(rp||0)}">${rp==null?"–":pm(rp,2)+"%"}</td>
+        <td>${tc}건</td>
+        <td><span class="up">${w}</span>/<span class="down">${l}</span></td>
+        <td>${tc?N(w/tc*100,0)+"%":"–"}</td>
+      </tr>`;
+    }).join("");
+  }catch(e){
+    tiles.innerHTML='<div class="load">불러오기 실패</div>';
+    body.innerHTML='<tr><td colspan="8" class="load">불러오기 실패</td></tr>';
+  }
 }
 
 async function loadPerf2(){
@@ -3349,6 +3408,11 @@ async function loadPerf2(){
       <div class="tile"><div class="lb">청산</div><div class="vl">${cl.length}건</div></div>
       <div class="tile"><div class="lb">당일 실현손익</div><div class="vl ${sgn(+s.realized_pnl||0)}">${pm((+s.realized_pnl||0)/EOK,3)}억</div></div>
       <div class="tile"><div class="lb">승률</div><div class="vl">${s.trade_count?N(s.win_count/s.trade_count*100,1)+"%":"–"}</div></div>`;
+
+    // ── 기간 누적 가상매매 ────────────────────────────────────────────
+    // 2026-09-15: "며칠에 걸쳐 얼마를 사고팔았는지"를 볼 곳이 없다는 요청 반영.
+    // 일자별 정산(intraday_daily_summary)을 최근순으로 받아 누적 합계와 함께 보여준다.
+    renderI2Cumulative().catch(()=>{});
 
     // ── 실시간 조건 트래킹 대상 선정 ────────────────────────────────────
     // 2026-09-10 이전: intraday_candidates를 source.asc,rank.asc로 받아와
