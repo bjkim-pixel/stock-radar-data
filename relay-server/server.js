@@ -2884,8 +2884,16 @@ if (!SUPABASE_SERVICE_KEY) {
 const SELF_PING_URL = (process.env.RENDER_EXTERNAL_URL || 'https://kis-relay-server.onrender.com')
   .replace(/\/+$/, '') + '/health';
 const SELF_PING_INTERVAL_MS = 4 * 60 * 1000;   // 유휴 한도 15분의 1/3 — 한두 번 실패해도 여유
-const SELF_PING_FROM_MIN = 7 * 60 + 30;        // 07:30 KST (PRE_MARKET 07:50 전에 깨어 있도록)
-const SELF_PING_TO_MIN   = 20 * 60 + 30;       // 20:30 KST (NXT 애프터마켓 종료 후까지)
+// 평일에는 하루 종일 깨워 둔다. 시간대를 장중으로 좁히면 매일 아침 "누가 깨워
+// 주느냐"는 문제가 생기는데, 그 역할을 맡길 수 있는 GitHub Actions가 하루 4~5회만
+// 발화하기 때문이다(위 주석). 평일 내내 깨어 있으면 깨우기가 필요한 시점이
+// 주 1회(월요일 새벽)로 줄어든다.
+// 비용: Render 무료는 **워크스페이스당 월 750 인스턴스-시간**이고, 평일 24시간이면
+// 월 약 528시간이라 여유가 있다. 단 이 워크스페이스에 무료 서비스가 이것 하나일
+// 때 얘기다 — 무료 서비스를 더 만들면 합산이 750을 넘어 전부 정지되므로,
+// 그때는 SELF_PING_FROM_MIN/TO_MIN을 장중으로 다시 좁혀야 한다.
+const SELF_PING_FROM_MIN = Number(process.env.SELF_PING_FROM_MIN ?? 0);          // 00:00 KST
+const SELF_PING_TO_MIN   = Number(process.env.SELF_PING_TO_MIN ?? (23 * 60 + 59)); // 23:59 KST
 let _selfPingFailStreak = 0;
 
 function startSelfPing() {
@@ -2893,7 +2901,9 @@ function startSelfPing() {
     console.log('[selfping] SELF_PING_DISABLED=1 — 셀프 핑 비활성화');
     return;
   }
-  console.log(`[selfping] ${SELF_PING_URL} · ${SELF_PING_INTERVAL_MS / 60000}분 간격 (KST 07:30~20:30)`);
+  const hhmm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  console.log(`[selfping] ${SELF_PING_URL} · ${SELF_PING_INTERVAL_MS / 60000}분 간격 `
+    + `(평일 KST ${hhmm(SELF_PING_FROM_MIN)}~${hhmm(SELF_PING_TO_MIN)})`);
   setInterval(async () => {
     const m = kstMinutesNow();
     if (m < SELF_PING_FROM_MIN || m > SELF_PING_TO_MIN) return;
