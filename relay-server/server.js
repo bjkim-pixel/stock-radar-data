@@ -134,7 +134,21 @@ async function issueApprovalKey() {
 }
 
 const APPROVAL_KEY_REFRESH_MS = 12 * 60 * 60 * 1000;
+// 2026-09-15: 이 타이머는 프로세스 시작 시각 기준 12시간마다 도는데, 재발급 후
+// reconnectKisWs()가 소켓을 끊고 다시 붙으면서 등록해 둔 종목 전체를 해제→재등록
+// 한다(현재 최대 36종목 = 프레임 72개). 그 재연결 사이 수 초 동안은 실시간 시세가
+// 끊겨 상따 손절 판정이 멈추고, 재등록 폭주는 승인키 단위 실시간 등록 한도에도
+// 부담이다. 장중(KST 08:30~15:45)에는 건너뛰고 다음 주기로 미룬다 —
+// approval_key는 하루 단위 유효라 반나절 미뤄도 문제없고, 어차피 소켓이 실제로
+// 끊기면 connectKisWs()의 자동 재연결이 따로 처리한다.
+const APPROVAL_REFRESH_SKIP_FROM = 8 * 60 + 30;   // 08:30 KST
+const APPROVAL_REFRESH_SKIP_TO   = 15 * 60 + 45;  // 15:45 KST
 setInterval(() => {
+  const m = kstMinutesNow();
+  if (m >= APPROVAL_REFRESH_SKIP_FROM && m <= APPROVAL_REFRESH_SKIP_TO) {
+    console.log('[approval_key] 장중이라 정기 재발급 보류 — 다음 주기에 재시도');
+    return;
+  }
   console.log('[approval_key] 정기 재발급 + 웹소켓 재연결');
   issueApprovalKey()
     .then(() => reconnectKisWs())
@@ -419,7 +433,13 @@ function handleProgramTradeMessage(countStr, dataStr) {
 // cron의 5분에서 1분으로 단축했습니다(상따는 초단타라 종목 편입/이탈을 더 빠르게
 // 반영해야 한다는 요청). 이 서버는 이미 상시 실행 중인 프로세스라 GitHub Actions
 // 무료 사용량(월 2,000분)과 완전히 무관하게 동작합니다.
-const KIS_REST_RATE_MIN_INTERVAL_MS = 70; // 초당 약 14회 — 04_backfill.py RateLimiter(15)와 동급
+// 2026-09-15: 70ms(≈14건/초) → 200ms(5건/초).
+// KIS의 "초당 20건"은 프로세스가 아니라 **앱키 단위** 한도다. 이 릴레이는 장중
+// 내내 떠 있고, 같은 앱키로 GitHub Actions 수집 워크플로(03_daily_collect.py 등)가
+// 12건/초로 돌기 때문에 둘이 겹치면 합산이 한도를 넘는다. 릴레이가 실제로 쓰는
+// 양은 SCAN 2건/분 + 간헐적 시세조회뿐이라 5건/초로 낮춰도 손해가 없고,
+// 배치(12) + 릴레이(5) = 17건/초로 한도 안에 들어온다.
+const KIS_REST_RATE_MIN_INTERVAL_MS = 200; // 초당 5회
 let _kisRestLastCall = 0;
 async function kisRestThrottle() {
   const wait = KIS_REST_RATE_MIN_INTERVAL_MS - (Date.now() - _kisRestLastCall);
@@ -2847,6 +2867,55 @@ if (!SUPABASE_SERVICE_KEY) {
   console.warn('[목표가] SUPABASE_SERVICE_KEY 미설정 — 목표가가 메모리에만 저장되고 재배포 시 초기화됩니다.');
 }
 
+// ── 셀프 핑 (2026-09-15 신설) ────────────────────────────────────────────────
+// Render 무료 플랜은 "외부 요청이 15분간 없으면" 인스턴스를 재웁니다. 그동안은
+// keep_relay_awake.yml이 10분 간격으로 /health를 때리는 구조였는데, 실측해 보니
+// GitHub Actions의 스케줄 실행이 대부분 버려져 **하루 4~5회밖에 발화하지 않았고**
+// (2026-09-03~09-15 실행 이력 확인: */10 크론인데 하루 5회) 발화 시각도 제멋대로라
+// 10분 간격은 사실상 지켜진 적이 없습니다. 그래서 깨어 있는 동안은 서버가 스스로
+// 자기 공개 URL을 호출해 유휴 타이머를 리셋합니다.
+//
+// 한계 두 가지 — 정직하게 적어둡니다.
+//   ① 이미 잠든 인스턴스는 스스로 깨어날 수 없습니다. 잠에서 깨우는 역할은
+//      여전히 keep_relay_awake.yml(또는 사용자가 웹페이지를 여는 것)이 합니다.
+//   ② 무료 플랜의 "인스턴스 순환(강제 재시작)"은 유휴와 무관하게 일어나므로
+//      셀프 핑으로 막을 수 없습니다. 재시작 자체는 SIGTERM 핸들러 + 시작 시
+//      상태 복원(primeSangttaOpenPositions 등)으로 감당합니다.
+const SELF_PING_URL = (process.env.RENDER_EXTERNAL_URL || 'https://kis-relay-server.onrender.com')
+  .replace(/\/+$/, '') + '/health';
+const SELF_PING_INTERVAL_MS = 4 * 60 * 1000;   // 유휴 한도 15분의 1/3 — 한두 번 실패해도 여유
+const SELF_PING_FROM_MIN = 7 * 60 + 30;        // 07:30 KST (PRE_MARKET 07:50 전에 깨어 있도록)
+const SELF_PING_TO_MIN   = 20 * 60 + 30;       // 20:30 KST (NXT 애프터마켓 종료 후까지)
+let _selfPingFailStreak = 0;
+
+function startSelfPing() {
+  if (process.env.SELF_PING_DISABLED === '1') {
+    console.log('[selfping] SELF_PING_DISABLED=1 — 셀프 핑 비활성화');
+    return;
+  }
+  console.log(`[selfping] ${SELF_PING_URL} · ${SELF_PING_INTERVAL_MS / 60000}분 간격 (KST 07:30~20:30)`);
+  setInterval(async () => {
+    const m = kstMinutesNow();
+    if (m < SELF_PING_FROM_MIN || m > SELF_PING_TO_MIN) return;
+    const day = new Date().toLocaleDateString('en-US', { timeZone: KST_TZ, weekday: 'short' });
+    if (day === 'Sat' || day === 'Sun') return;
+    try {
+      const res = await fetch(SELF_PING_URL, { headers: { 'x-self-ping': '1' } });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      if (_selfPingFailStreak) {
+        console.log(`[selfping] 복구 (직전 ${_selfPingFailStreak}회 실패)`);
+        _selfPingFailStreak = 0;
+      }
+    } catch (err) {
+      _selfPingFailStreak += 1;
+      // 매번 찍으면 로그가 지저분해지므로 연속 실패 3회마다 한 번만 남긴다.
+      if (_selfPingFailStreak % 3 === 1) {
+        console.warn(`[selfping] 실패 ${_selfPingFailStreak}회째: ${err.message}`);
+      }
+    }
+  }, SELF_PING_INTERVAL_MS);
+}
+
 issueApprovalKey()
   .then(() => {
     connectKisWs();
@@ -2864,6 +2933,7 @@ issueApprovalKey()
     primeCandidateStageFlags().then(() => candidateEngineHeartbeat()); // 서버 재시작이 장중 시간대에 일어나도 그 즉시 해당 단계를 따라잡음(단, 오늘 이미 실행된 단계는 제외)
     server.listen(PORT, () => {
       console.log(`[server] 릴레이 서버 실행 중 (port ${PORT})`);
+      startSelfPing();
     });
   })
   .catch(err => {
