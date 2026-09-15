@@ -152,6 +152,19 @@ function wantedCodes() {
   return w;
 }
 
+// KIS 실시간 등록 한도(계정/승인키당 보통 41건)를 넘으면 초과분 등록이 조용히
+// 실패한다. 한도에 근접하면 경고를 남겨 원인을 바로 알 수 있게 함.
+const KIS_SUB_SLOT_LIMIT = 41;
+let _subSlotWarnedAt = 0;
+function warnIfSubSlotsTight() {
+  const used = currentKisSubs.size + currentProgramTradeSubs.size;
+  if (used < KIS_SUB_SLOT_LIMIT - 3) return;
+  const nowMs = Date.now();
+  if (nowMs - _subSlotWarnedAt < 5 * 60 * 1000) return; // 5분에 한 번만
+  _subSlotWarnedAt = nowMs;
+  console.warn(`[구독] 실시간 등록 슬롯 ${used}/${KIS_SUB_SLOT_LIMIT} 사용 중 — 한도 초과분은 등록이 실패할 수 있음(시세 ${currentKisSubs.size} + 프로그램매매 ${currentProgramTradeSubs.size})`);
+}
+
 function reconcileKisSubscriptions() {
   const want = wantedCodes();
   for (const code of want) {
@@ -169,6 +182,7 @@ function reconcileKisSubscriptions() {
       console.log('[구독 해제]', code);
     }
   }
+  warnIfSubSlotsTight();
 }
 
 function connectKisWs() {
@@ -257,9 +271,21 @@ const P_CODE = 0, P_TIME = 1, P_SELN_CNQN = 2, P_SELN_AMT = 3,
 const sangttaProgramStats = new Map();     // code -> { ticks: [{t, ntbyCnqn, ntbyAmt}] }
 const programTradeVerifyLogged = new Map(); // code -> 검증 로그 출력 횟수(종목당 최대 3회)
 
+// 2026-09-15: 예전엔 후보 전원(최대 30종목)에 프로그램매매를 구독했는데, 종목당
+// 시세(H0STCNT0)+프로그램매매(H0STPGM0) 2슬롯을 쓰므로 후보가 30개로 차면 그것만으로
+// 60슬롯이 된다. KIS 실시간 등록 한도는 보통 41건이라, SCAN을 되살려 후보가 실제로
+// 가득 차는 순간 조용히 등록 실패가 나기 시작한다(등락률순위가 0건이라 후보가 2~5개
+// 뿐이던 동안은 드러나지 않았던 문제). 프로그램매매는 (1) 보유 종목 — 반전매도
+// 선제청산 판정에 반드시 필요 — 과 (2) 상위 소수 후보(진입 등급 A 보너스 판정용)
+// 에만 붙여 슬롯을 아낀다.
+const SANGTTA_PROGRAM_SUB_TOP_N = 8;
 function programTradeWantedCodes() {
-  const w = new Set(sangttaCandidates);
-  for (const code of sangttaOpenPositions.keys()) w.add(code);
+  const w = new Set(sangttaOpenPositions.keys()); // 보유 종목은 항상 구독
+  let n = 0;
+  for (const code of sangttaCandidates) {         // 후보는 상위 N개까지만
+    if (n >= SANGTTA_PROGRAM_SUB_TOP_N) break;
+    if (!w.has(code)) { w.add(code); n++; }
+  }
   return w;
 }
 
@@ -281,6 +307,7 @@ function reconcileProgramTradeSubscriptions() {
       console.log('[프로그램매매 구독 해제]', code);
     }
   }
+  warnIfSubSlotsTight();
 }
 
 function getProgramStats(code) {
@@ -455,47 +482,116 @@ async function loadListedSharesCache() {
   }
 }
 
+// 2026-09-15: FID_TRGT_CLS_CODE를 9자리로 고친 뒤에도 하루 종일 rt_cd='0' + output
+// 0건이 반복됐음(Render 로그로 확인 — 같은 시각 다른 앱에서는 +29%대 급등주가
+// 20종목 넘게 있었음). 남은 유력 원인은 "상한값을 빈 문자열로 보내는 것"이다.
+// KIS 공식 샘플(fluctuation())은 등락비율을 rate1="0"(하한)/rate2="100"(상한)으로
+// 넣고 가격·거래량은 아예 공백으로 두며, 대상/제외 구분은 한 자리 "0"을 쓴다.
+// 상한을 ''로 보냈을 때 KIS가 이를 0으로 해석하면 조회구간이 [3, 0] / [1000, 0]이
+// 되어 "정상 응답 + 0건"이 나온다 — 지금 증상과 정확히 일치.
+// 대응: (1) 서버측 필터를 전부 끄고 등락률·가격·거래량 필터는 stageScan()에서
+// 우리가 직접 적용, (2) 조합 하나만 믿지 않고 프리셋을 순서대로 시도해 행이 오는
+// 조합을 찾으면 그 인덱스를 기억해 다음부터 바로 씀, (3) 0건이어도 msg1을 남겨
+// KIS가 뭐라고 답하는지 확인 가능하게 함.
+const RANK_PARAM_PRESETS = [
+  // ① 공식 샘플 그대로 — 필터 없음, 한 자리 대상코드
+  { label: '공식샘플(필터없음)', rate1: '0', rate2: '100', price1: '', price2: '', vol: '', trgt: '0', exls: '0' },
+  // ② 필터 없음 + 9자리 대상코드(기존 방식의 대상코드 유지)
+  { label: '필터없음+9자리대상', rate1: '0', rate2: '100', price1: '', price2: '', vol: '', trgt: '111111111', exls: '0000000000' },
+  // ③ 모든 선택 필드를 공백으로 (상한 자체를 안 보냄)
+  { label: '전필드공백', rate1: '', rate2: '', price1: '', price2: '', vol: '', trgt: '0', exls: '0' },
+  // ④ 기존 방식(하한만 지정) — 혹시 이게 맞았다면 그대로 살아남도록 마지막에 남겨둠
+  { label: '기존(하한만지정)', rate1: String(SCAN_MIN_CHANGE_PCT), rate2: '', price1: String(SCAN_MIN_PRICE), price2: '', vol: String(SCAN_MIN_VOL), trgt: '111111111', exls: '0000000000' },
+];
+let _rankPresetIdx = 0;          // 마지막으로 성공한 프리셋(행이 왔던 조합)
+let _rankPresetProbedAt = 0;     // 프리셋 전수 탐색을 마지막으로 돌린 시각
+
+function buildRankParams(p) {
+  return new URLSearchParams({
+    FID_COND_MRKT_DIV_CODE: 'J', FID_COND_SCR_DIV_CODE: '20170', FID_INPUT_ISCD: '0000',
+    FID_RANK_SORT_CLS_CODE: '0', FID_INPUT_CNT_1: '0', FID_PRC_CLS_CODE: '0',
+    FID_INPUT_PRICE_1: p.price1, FID_INPUT_PRICE_2: p.price2,
+    FID_VOL_CNT: p.vol, FID_TRGT_CLS_CODE: p.trgt,
+    FID_TRGT_EXLS_CLS_CODE: p.exls, FID_DIV_CLS_CODE: '0',
+    FID_RSFL_RATE1: p.rate1, FID_RSFL_RATE2: p.rate2,
+  });
+}
+
+// 한 프리셋으로 1회 호출 — {rows, msg} 반환(실패 시 rows=null).
+async function callChangeRateRank(preset) {
+  await kisRestThrottle();
+  try {
+    const token = await getKisRestToken();
+    const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/ranking/fluctuation?${buildRankParams(preset)}`, {
+      headers: kisRestHeaders(token, 'FHPST01700000'),
+    });
+    if (!res.ok) { console.warn(`[상따후보] SCAN 등락률순위 응답코드 ${res.status} (${preset.label}) — 스킵`); return { rows: null, msg: `HTTP ${res.status}` }; }
+    const json = await res.json();
+    if (json.rt_cd !== '0') { console.warn(`[상따후보] SCAN 등락률순위 rt_cd=${json.rt_cd} msg=${json.msg1} (${preset.label})`); return { rows: null, msg: json.msg1 }; }
+    const list = json.output || json.output2 || json.output1 || [];
+    return { rows: list, msg: json.msg1 || '' };
+  } catch (err) {
+    console.error(`[상따후보] SCAN 등락률순위 조회 실패 (${preset.label}):`, err.message);
+    return { rows: null, msg: err.message };
+  }
+}
+
 async function fetchChangeRateRank(limit = 30) {
+  // 먼저 "지난번에 통했던" 프리셋으로 1회 시도 — 정상 상황에선 여기서 끝난다.
+  const primary = RANK_PARAM_PRESETS[_rankPresetIdx];
+  const first = await callChangeRateRank(primary);
+  if (first.rows && first.rows.length) return first.rows.slice(0, limit);
+
+  // 0건이면 다른 프리셋을 훑어본다. 매분 전수 탐색하면 KIS 호출량이 늘어나므로
+  // 10분에 한 번만 탐색하고, 그 사이에는 기본 프리셋 결과(0건)를 그대로 쓴다.
+  const nowMs = Date.now();
+  if (nowMs - _rankPresetProbedAt < 10 * 60 * 1000) {
+    console.warn(`[상따후보] SCAN 등락률순위 0건 (${primary.label}) msg1="${first.msg}" — 프리셋 재탐색은 10분 간격으로만 수행`);
+    return [];
+  }
+  _rankPresetProbedAt = nowMs;
+  console.warn(`[상따후보] SCAN 등락률순위 0건 (${primary.label}) msg1="${first.msg}" — 파라미터 프리셋 전수 탐색 시작`);
+  for (let i = 0; i < RANK_PARAM_PRESETS.length; i++) {
+    if (i === _rankPresetIdx) continue;
+    const p = RANK_PARAM_PRESETS[i];
+    const r = await callChangeRateRank(p);
+    console.log(`[상따후보] SCAN 프리셋 시도 [${p.label}] → ${r.rows ? r.rows.length + '건' : '실패'} msg1="${r.msg}"`);
+    if (r.rows && r.rows.length) {
+      _rankPresetIdx = i;
+      console.log(`[상따후보] SCAN 파라미터 프리셋 확정: [${p.label}] — 이후 이 조합을 사용`);
+      return r.rows.slice(0, limit);
+    }
+  }
+  console.warn('[상따후보] SCAN: 모든 파라미터 프리셋에서 0건 — 거래대금순위(보조 소스)로 대체 시도');
+  return [];
+}
+
+// ── SCAN 보조 소스: 거래량/거래대금 순위 (FHPST01710000) ─────────────────────
+// 2026-09-15: 신규 종목 유입 경로가 등락률순위 하나뿐이라 그 API가 죽으면 하루
+// 종일 전날 대형주만 남는 단일 장애점이었음(오늘이 그 상태). 거래대금 순위를
+// 병행해 한쪽이 0건이어도 다른 쪽으로 후보가 들어오게 한다.
+async function fetchVolumeRank(limit = 30) {
   await kisRestThrottle();
   try {
     const token = await getKisRestToken();
     const params = new URLSearchParams({
-      FID_COND_MRKT_DIV_CODE: 'J', FID_COND_SCR_DIV_CODE: '20170', FID_INPUT_ISCD: '0000',
-      FID_RANK_SORT_CLS_CODE: '0', FID_INPUT_CNT_1: '0', FID_PRC_CLS_CODE: '0',
-      FID_INPUT_PRICE_1: String(SCAN_MIN_PRICE), FID_INPUT_PRICE_2: '',
-      FID_VOL_CNT: String(SCAN_MIN_VOL), FID_TRGT_CLS_CODE: '111111111',
-      FID_TRGT_EXLS_CLS_CODE: '0000000000', FID_DIV_CLS_CODE: '0',
-      FID_RSFL_RATE1: String(SCAN_MIN_CHANGE_PCT), FID_RSFL_RATE2: '',
+      FID_COND_MRKT_DIV_CODE: 'J', FID_COND_SCR_DIV_CODE: '20171', FID_INPUT_ISCD: '0000',
+      FID_DIV_CLS_CODE: '0',
+      FID_BLNG_CLS_CODE: '3',            // 3: 거래금액순
+      FID_TRGT_CLS_CODE: '0', FID_TRGT_EXLS_CLS_CODE: '0',
+      FID_INPUT_PRICE_1: '', FID_INPUT_PRICE_2: '', FID_VOL_CNT: '', FID_INPUT_DATE_1: '',
     });
-    // KIS 공식 샘플(koreainvestment/open-trading-api examples_user/domestic_stock_functions.py
-    // fluctuation() 함수, [v1_국내주식-088])을 확인해보니 실제 엔드포인트가
-    // /quotations/fluctuation-rank가 아니라 /ranking/fluctuation 이었음 — 이 오타 때문에
-    // 계속 404가 나서 SCAN 단계가 하루종일 스킵되고 있었음(2026-09-08 발견·수정).
-    // FID_RANK_SORT_CLS_CODE는 공식 샘플 docstring엔 "0000"으로 나오지만 실제 호출해보니
-    // "ERROR INVALID INPUT_FILED_SIZE [FID_RANK_SORT_CLS_CODE] [4]"로 거부됨 — 한 자리
-    // 코드("0"=등락률상위)가 맞는 것으로 확인되어 원래 값으로 되돌림.
-    // 2026-09-14: 위 두 건을 고친 뒤에도 rt_cd='0'(정상 응답)인 채 output이 하루 종일
-    // 계속 0건이었음(같은 시각 다른 앱에서는 20~30%대 급등주가 다수 확인됨 — 진짜
-    // "조건 만족 종목 없음"일 리가 없음). 원인은 FID_TRGT_CLS_CODE("대상 구분 코드")로
-    // 보임 — 이 필드는 증거금 구간별 대상종목을 뜻하는 9자리 비트마스크인데, 한 자리
-    // "0"을 넣으면 9개 구간 중 어느 것도 켜지지 않아(=대상 없음) 사실상 전체 종목이
-    // 걸러지는 것으로 추정됨. 공식 샘플 관례대로 9자리 전부 켠 값("111111111")으로
-    // 수정. 그래도 0건이 반복되면 아래 진단 로그(raw 응답 키)로 다음 원인을 좁힐 것.
-    const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/ranking/fluctuation?${params}`, {
-      headers: kisRestHeaders(token, 'FHPST01700000'),
+    const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/quotations/volume-rank?${params}`, {
+      headers: kisRestHeaders(token, 'FHPST01710000'),
     });
-    if (!res.ok) { console.warn(`[상따후보] SCAN 등락률순위 응답코드 ${res.status} — 스킵`); return []; }
+    if (!res.ok) { console.warn(`[상따후보] SCAN 거래대금순위 응답코드 ${res.status} — 스킵`); return []; }
     const json = await res.json();
-    if (json.rt_cd !== '0') { console.warn(`[상따후보] SCAN 등락률순위 rt_cd=${json.rt_cd} msg=${json.msg1} — 파라미터 재검증 필요, 스킵`); return []; }
-    const list = json.output || json.output2 || json.output1 || [];
-    if (!list.length) {
-      // 2026-09-14: FID_TRGT_CLS_CODE 수정으로도 여전히 0건이면 응답 자체의 키
-      // 구성이 예상과 다를 가능성이 있어(output1/output2 분리 등) 원본 키를 남김.
-      console.warn(`[상따후보] SCAN 등락률순위 0건(정상 응답) — 응답 키: ${Object.keys(json).join(',')}`);
-    }
+    if (json.rt_cd !== '0') { console.warn(`[상따후보] SCAN 거래대금순위 rt_cd=${json.rt_cd} msg=${json.msg1}`); return []; }
+    const list = json.output || json.output1 || [];
+    if (!list.length) console.warn(`[상따후보] SCAN 거래대금순위 0건 — msg1="${json.msg1 || ''}"`);
     return list.slice(0, limit);
   } catch (err) {
-    console.error('[상따후보] SCAN 등락률순위 조회 실패:', err.message);
+    console.error('[상따후보] SCAN 거래대금순위 조회 실패:', err.message);
     return [];
   }
 }
@@ -671,19 +767,30 @@ async function stageScan() {
   const minutesNow = kstMinutesNow();
   if (minutesNow < SCAN_START_MIN || minutesNow > SCAN_END_MIN) return;
 
-  const ranked = await fetchChangeRateRank(30);
-  if (!ranked.length) {
-    // fetchChangeRateRank()는 실패 시 반드시 warn/error를 남기므로, 이 로그가
-    // 찍힌다는 건 KIS 응답 자체는 정상(rt_cd='0')인데 조건(등락률≥SCAN_MIN_CHANGE_PCT%,
-    // 가격≥SCAN_MIN_PRICE, 거래량≥SCAN_MIN_VOL) 만족 종목이 0건이라는 뜻.
-    // 2026-09-10 이전엔 이 분기가 완전히 무로그였어서 "진짜 0건"과 "조용한 실패"를
-    // 구분할 수 없었음 — 그 문제를 해결하기 위해 추가.
-    console.log(`[상따후보] SCAN: 등락률순위 0건 응답(조건 등락률≥${SCAN_MIN_CHANGE_PCT}%·가격≥${SCAN_MIN_PRICE}·거래량≥${SCAN_MIN_VOL} 만족 종목 없음) — 스킵`);
+  // 2026-09-15: 등락률순위 하나에만 의존하던 구조를 이중화 — 등락률순위가 0건이면
+  // 거래대금순위로 대체하고, 둘 다 오면 합쳐서 본다(같은 종목은 등락률순위 쪽
+  // 순위를 우선). 서버측 필터를 모두 끈 대신 여기서 우리가 직접 거른다.
+  const [byChange, byAmount] = await Promise.all([fetchChangeRateRank(30), fetchVolumeRank(30)]);
+  const rawMerged = [];
+  const seenRaw = new Set();
+  for (const out of byChange) {
+    const c = out.stck_shrn_iscd || out.mksc_shrn_iscd || out.code;
+    if (!c || seenRaw.has(c)) continue;
+    seenRaw.add(c); rawMerged.push({ out, src: 'CHG' });
+  }
+  for (const out of byAmount) {
+    const c = out.stck_shrn_iscd || out.mksc_shrn_iscd || out.code;
+    if (!c || seenRaw.has(c)) continue;
+    seenRaw.add(c); rawMerged.push({ out, src: 'AMT' });
+  }
+  if (!rawMerged.length) {
+    console.log('[상따후보] SCAN: 등락률순위·거래대금순위 모두 0건 — 스킵(위 진단 로그의 msg1 확인 필요)');
     return;
   }
+  const ranked = rawMerged;
 
   const known = await fetchAllKnownCandidateCodes();
-  let skippedPref = 0;
+  let skippedPref = 0, skippedFilter = 0;
   const nowKstStr = new Intl.DateTimeFormat('en-GB', { timeZone: KST_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
 
   // 2026-09-10: 위 loadListedSharesCache() 주석 참고 — 등락률순위 30건(이미
@@ -693,44 +800,51 @@ async function stageScan() {
   // 거래량/회전율 순위 API가 필요해서 이번엔 범위 밖으로 둠(추후 검토 가능).
   const eligible = [];
   for (let i = 0; i < ranked.length; i++) {
-    const out = ranked[i];
+    const { out, src } = ranked[i];
     const code = out.stck_shrn_iscd || out.mksc_shrn_iscd || out.code;
     const name = out.hts_kor_isnm || '';
     if (!code) continue;
     if (PREFERRED_OR_SPAC_RE.test(name)) { skippedPref++; continue; }
     const price = safeNum(out.stck_prpr);
-    if (price && price < SCAN_MIN_PRICE) continue;
     const changePct = safeNum(out.prdy_ctrt);
     const accVol = safeNum(out.acml_vol);
+    // 서버측(KIS) 필터를 껐으므로 여기서 직접 거른다 — 값이 안 오면(null) 통과시켜
+    // 필드명 변경 때문에 전부 탈락하는 일이 없게 함.
+    if (Number.isFinite(price) && price < SCAN_MIN_PRICE) { skippedFilter++; continue; }
+    if (Number.isFinite(accVol) && accVol < SCAN_MIN_VOL) { skippedFilter++; continue; }
+    if (Number.isFinite(changePct) && changePct < SCAN_MIN_CHANGE_PCT) { skippedFilter++; continue; }
     const listedShares = listedSharesMap.get(code);
     const weight = (Number.isFinite(changePct) && Number.isFinite(accVol) && listedShares > 0)
       ? changePct * accVol / listedShares : null;
-    eligible.push({ code, name, price, changePct, accVol, accAmt: safeNum(out.acml_tr_pbmn), weight, origRank: i + 1 });
+    eligible.push({ code, name, price, changePct, accVol, accAmt: safeNum(out.acml_tr_pbmn), weight, origRank: i + 1, src });
   }
 
   if (!eligible.length) {
-    console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 저장할 종목 없음(우선주/스팩 ${skippedPref}건 제외)`);
+    console.log(`[상따후보] SCAN: 순위 ${ranked.length}건 중 저장할 종목 없음(우선주/스팩 ${skippedPref}건·조건미달 ${skippedFilter}건 제외)`);
     return;
   }
-  // acml_vol 필드명이 실제 응답과 다르거나 상장주식수 캐시가 비어있으면 weight가
-  // 전부 null이 됨 — 이 경우 기존 방식(등락률순위 그대로)으로 조용히 대체하되,
-  // 최초 1회는 반드시 경고를 남겨서 필드명 확인이 필요함을 알 수 있게 함.
-  const haveWeight = eligible.some(e => e.weight != null);
-  if (!haveWeight) console.warn('[상따후보] SCAN: 무게(weight) 계산 불가(acml_vol 필드 또는 상장주식수 캐시 확인 필요) — 등락률순 정렬로 대체');
-  const sorted = haveWeight
-    ? [...eligible].sort((a, b) => (b.weight ?? -Infinity) - (a.weight ?? -Infinity))
-    : [...eligible].sort((a, b) => a.origRank - b.origRank);
-  const top = sorted.slice(0, SCAN_TOP_N);
+  // 2026-09-15: 이전엔 weight가 없는 종목을 -Infinity로 정렬해 맨 뒤로 보냈는데,
+  // 상장주식수 캐시가 유니버스(376종목)만 담고 있어 "진짜 급등한 코스닥 중소형주"가
+  // 대부분 weight=null → 항상 뒤로 밀리는 역차별이 있었음. weight가 있는 종목은
+  // weight로, 없는 종목은 원래 순위(등락률/거래대금 순위)로 각각 줄을 세운 뒤
+  // 번갈아 섞어서 어느 쪽도 일방적으로 밀리지 않게 한다.
+  const withW = eligible.filter(e => e.weight != null).sort((a, b) => b.weight - a.weight);
+  const noW = eligible.filter(e => e.weight == null).sort((a, b) => a.origRank - b.origRank);
+  const top = [];
+  for (let i = 0; top.length < SCAN_TOP_N && (i < withW.length || i < noW.length); i++) {
+    if (i < withW.length && top.length < SCAN_TOP_N) top.push(withW[i]);
+    if (i < noW.length && top.length < SCAN_TOP_N) top.push(noW[i]);
+  }
 
   let newCount = 0, refreshedCount = 0;
   const rows = top.map((e, i) => {
     if (known.has(e.code)) refreshedCount++; else newCount++;
     return {
       code: e.code, rank: i + 1,
-      snapshot: { name: e.name || null, price: e.price, change_pct: e.changePct, acc_amt: e.accAmt, weight: e.weight, detected_at: nowKstStr },
+      snapshot: { name: e.name || null, price: e.price, change_pct: e.changePct, acc_amt: e.accAmt, weight: e.weight, rank_src: e.src, detected_at: nowKstStr },
     };
   });
-  console.log(`[상따후보] SCAN: 등락률순위 ${ranked.length}건 중 신규 ${newCount}건 + 상위권 유지 갱신 ${refreshedCount}건 반영(${haveWeight ? '무게순' : '등락률순'}, 우선주/스팩 ${skippedPref}건 제외)`);
+  console.log(`[상따후보] SCAN: 순위 ${ranked.length}건(등락률 ${byChange.length}·거래대금 ${byAmount.length}) 중 신규 ${newCount}건 + 갱신 ${refreshedCount}건 반영(우선주/스팩 ${skippedPref}·조건미달 ${skippedFilter} 제외)`);
   await upsertCandidates(rows, 'SCAN');
 }
 
@@ -804,7 +918,11 @@ setInterval(candidateEngineHeartbeat, CANDIDATE_HEARTBEAT_MS);
 // 기존 "전략 성과"(VIRTUAL 스윙 포트폴리오)와 완전히 분리된 별도 엔진입니다.
 // intraday_positions(portfolio='INTRADAY_SANGTTA') 테이블만 다루고,
 // positions(portfolio='VIRTUAL') 쪽 로직(위 1~2절)에는 손대지 않습니다.
-const SANGTTA_ENTRY_START_MIN = 9 * 60 + 15;   // 09:15 이전 진입 금지(관망+재선별 구간)
+// 2026-09-15: 09:15 이전 진입 금지는 상따에서 변동이 가장 큰 09:00~09:15를 통째로
+// 포기하는 설정이었음. 09:05로 앞당기되, 09:15 이전에는 보조 조건 3개를 전부
+// 요구하는 엄격 모드로 운영해 관망 취지를 유지한다.
+const SANGTTA_ENTRY_START_MIN = 9 * 60 + 5;    // 09:05부터 진입 허용(단 09:15까진 엄격 모드)
+const SANGTTA_ENTRY_STRICT_UNTIL_MIN = 9 * 60 + 15; // 이 시각 전까지는 보조 조건 3개 모두 요구
 const SANGTTA_FORCE_CLOSE_MIN = 15 * 60 + 19;  // 15:19 이후 보유분 강제 청산(동시호가 직전)
 const SANGTTA_MARKET_END_MIN  = 15 * 60 + 30;  // 이 시각 이후엔 신규 체결 자체가 없다고 보고 정산 트리거
 
@@ -819,11 +937,19 @@ const SANGTTA_MARKET_END_MIN  = 15 * 60 + 30;  // 이 시각 이후엔 신규 �
 //  · 실제 등락률 3%
 //  · 프로그램 순매수 → 일단 제외
 const SANGTTA_CTTR_MIN            = 150;         // 체결강도 150%↑
-const SANGTTA_LARGE_PRINT_KRW     = 30_000_000;  // 순간체결금액 3천만원↑
+const SANGTTA_LARGE_PRINT_KRW     = 30_000_000;  // 순간체결금액 상한 문턱(3천만원) — 이 이상은 요구하지 않음
+const SANGTTA_LARGE_PRINT_COLLECT_KRW = 10_000_000; // 기록 시작 문턱(1천만원) — 동적 판정을 위해 낮게 수집
+const SANGTTA_LARGE_PRINT_RATIO   = 0.25;        // 동적 문턱 = 분당평균거래대금 × 25%
 const SANGTTA_LARGE_PRINT_WINDOW_MS = 60_000;    // "최근 1분 내"
 const SANGTTA_LARGE_PRINT_MIN_COUNT = 2;         // 2회 이상
 const SANGTTA_MINUTE_VOL_RATIO_MIN  = 1.5;       // 분당거래대금 최근5분평균 대비 150%↑
 const SANGTTA_MINUTE_HISTORY_MIN    = 5;         // "최근 5분" 평균에 쓸 과거 분봉 수
+const SANGTTA_MINUTE_HISTORY_MIN_REQUIRED = 3;   // 최소 3분치만 있어도 평균을 냄(장 초반 진입 가능하게)
+// 2026-09-15: 5개 조건 AND라 오늘 하루 진입이 1건뿐이었음. 필수 2개(등락률·유동성)
+// 는 그대로 요구하되, 나머지 3개(체결강도·대량체결·분당거래대금비율)는 그중
+// N개 이상이면 통과시키는 점수제로 바꿔 거래 빈도를 올린다. 단, 변동성이 큰
+// 장 초반(SANGTTA_ENTRY_STRICT_UNTIL_MIN 이전)에는 3개 전부를 요구해 보수적으로 간다.
+const SANGTTA_OPTIONAL_COND_MIN     = 2;         // 보조 조건 3개 중 최소 충족 개수
 // 2026-09-09 6차: 프로그램 순매수는 "일단 제외" — 진입을 막거나 허용하는
 // 판단에 더 이상 쓰지 않음(아래 maybeEnterSangtta()에 있던 차단 로직 제거).
 // 다만 데이터 구독·표시는 계속 유지하고(실시간 조건 트래킹 표의 "프로그램
@@ -875,6 +1001,21 @@ const SANGTTA_PROGRAM_NET_BUY_STRONG = 150_000_000; // 프로그램 순매수(2�
 const SANGTTA_PROGRAM_REVERSAL_MIN_GAIN_PCT = 3;      // 최고수익 3%↑ 구간에서만 반전 신호 체크(노이즈 방지)
 const SANGTTA_PROGRAM_REVERSAL_NET_SELL_KRW = -50_000_000; // 최근 2분 순매도 5천만원↑ 전환 시 선제 청산
 const SANGTTA_MAX_ENTRIES_PER_CODE  = 2;         // 3번째 진입 시도부터는 등급 C(배제)로 간주
+// 2026-09-15: 상따 엔진에는 비용 계산이 전혀 없어서 가상성과가 실제보다 낙관적으로
+// 잡히고 있었음(추세추종은 왕복 0.24%를 이미 반영 중). 회전이 잦은 전략이라 영향이
+// 크므로 왕복 비용을 명시하고 실현손익·수익률에 반영한다.
+//   매수수수료 0.015% + 매도수수료 0.015% + 증권거래세 0.15%(코스닥 기준) ≈ 0.18%
+//   여기에 호가 슬리피지 여유를 더해 0.35%로 보수적으로 잡음.
+const SANGTTA_ROUND_TRIP_COST_PCT   = 0.35;
+const SANGTTA_HARD_STOP_PCT         = 2.0;       // 진입가 대비 하드캡 손절 -2%
+const SANGTTA_BREAKEVEN_RAMP_START_PCT = 1.0;    // 고점수익 1%부터 손절선을 서서히 끌어올림
+const SANGTTA_BREAKEVEN_ARM_PCT     = 2.5;       // 고점수익 2.5%에서 손익분기 보호선 완성
+const SANGTTA_TRAIL_START_PCT       = 5.0;       // 고점수익 5%↑부터 고점 기준 트레일링
+// 부분 익절 — 고점이 아니라 "현재가"가 이 수익률에 처음 닿으면 보유 수량의 절반을
+// 먼저 실현해 이익을 확정하고, 나머지 절반은 트레일링으로 끝까지 끌고 간다.
+// (급등 후 급락형에서 고점 대비 -2%까지 전량 반납하던 문제 대응)
+const SANGTTA_PARTIAL_TP_PCT        = 5.0;
+const SANGTTA_PARTIAL_TP_FRACTION   = 0.5;
 
 // 진입 등급별 가상매수 금액(스펙 4-1절 — 절대금액은 스펙에 없어 임의 기본값,
 // 필요시 조정하세요). A=풀사이즈, B=1/2, C=진입 배제.
@@ -882,12 +1023,61 @@ const SANGTTA_SIZE_KRW = { A: 10_000_000, B: 5_000_000 };
 
 // 6-1절 단계형 트레일링 손절표 — 진입가 대비 "고점 기준" 최고수익률 구간별로
 // 손절선을 좁혀감. 0~5% 구간만 예외적으로 "진입가" 기준 하드캡(-2%).
+// 2026-09-15: 기존 구간표는 고점수익 5% 경계에서 손절선이 "진입가 -2%"에서
+// "고점 -2%(=진입가 +2.9%)"로 순간 점프해, 고점 4.9%면 -2%로 끝나고 5.1%면 +2.9%로
+// 끝나는 절벽이 있었다(0.2%p 차이로 결과가 5%p 갈림). 이를 연속 함수로 바꾸고,
+// 추세추종 전략에 이미 있는 손익분기 보호선 개념을 상따에도 도입한다.
+//  · 기본: 진입가 -2% 하드캡
+//  · 고점수익 2%↑: 왕복 거래비용을 덮는 손익분기 보호선(진입가 +비용+0.1%)
+//  · 고점수익 5%↑: 고점 대비 트레일링, 폭은 5%→2.0%, 20%→1.5%, 그 이상 1.0%로
+//    선형 보간해 구간 경계에서 튀지 않게 함
+// 세 값 중 가장 높은(=가장 보수적인) 선을 택한다.
+// 트레일링 폭(고점 대비 %)을 고점수익률의 연속 함수로 정의한다. 시작점(고점수익
+// 5%)의 폭을 4.3%로 잡은 이유: 그 지점에서 트레일링 손절선이 손익분기 보호선과
+// 거의 같아져(둘 다 진입가 +0.45% 부근) 이어 붙는 순간의 점프가 사라지기 때문.
+// 이후 수익이 쌓일수록 폭을 좁혀 이익을 지킨다.
+// 시작 폭은 상수에서 직접 유도한다 — 고점수익이 SANGTTA_TRAIL_START_PCT일 때
+// 트레일링 손절선이 손익분기 보호선과 "정확히" 같아지는 폭을 계산해서 쓰므로,
+// 나중에 비용(SANGTTA_ROUND_TRIP_COST_PCT)을 바꿔도 이음매에 틈이 생기지 않는다.
+const SANGTTA_TRAIL_START_WIDTH_PCT =
+  (1 - (1 + (SANGTTA_ROUND_TRIP_COST_PCT + 0.1) / 100) / (1 + SANGTTA_TRAIL_START_PCT / 100)) * 100;
+const SANGTTA_TRAIL_ANCHORS = [
+  [SANGTTA_TRAIL_START_PCT, SANGTTA_TRAIL_START_WIDTH_PCT], // 고점 +5% → 손익분기 보호선과 정확히 연속
+  [10, 2.5],  // 고점 +10% → -2.5%
+  [20, 1.5],  // 고점 +20% → -1.5%
+  [30, 1.0],  // 고점 +30% 이상 → -1.0%
+];
+function sangttaTrailPct(peakRet) {
+  const A = SANGTTA_TRAIL_ANCHORS;
+  if (peakRet <= A[0][0]) return A[0][1];
+  for (let i = 1; i < A.length; i++) {
+    const [x0, y0] = A[i - 1], [x1, y1] = A[i];
+    if (peakRet <= x1) return y0 + (peakRet - x0) * (y1 - y0) / (x1 - x0);
+  }
+  return A[A.length - 1][1];
+}
+// 손익분기 보호선도 "특정 수익률에서 갑자기 켜지는" 방식이면 그 지점에 또 절벽이
+// 생긴다(고점 1.99%면 -2%, 2.01%면 +0.45%). 그래서 고점수익 1%까지는 하드캡 -2%를
+// 그대로 두고(그 아래는 노이즈 구간이라 굳이 조이지 않음), 1%→2.5% 구간에서 손절선을
+// 선형으로 끌어올려 비용 커버선(+0.45%)에 자연스럽게 도달시킨다.
+function sangttaBreakevenStopPct(peakRet) {
+  const lo = SANGTTA_BREAKEVEN_RAMP_START_PCT;
+  const hi = SANGTTA_BREAKEVEN_ARM_PCT;
+  const target = SANGTTA_ROUND_TRIP_COST_PCT + 0.1; // 왕복비용 + 여유 0.1%
+  if (peakRet <= lo) return -SANGTTA_HARD_STOP_PCT;
+  if (peakRet >= hi) return target;
+  return -SANGTTA_HARD_STOP_PCT + (peakRet - lo) * (target + SANGTTA_HARD_STOP_PCT) / (hi - lo);
+}
 function sangttaStopLine(entryPrice, peakPrice) {
   const peakRet = (peakPrice - entryPrice) / entryPrice * 100;
-  if (peakRet <= 5)  return { line: entryPrice * (1 - 0.02),  type: 'HARD_STOP' };
-  if (peakRet <= 10) return { line: peakPrice  * (1 - 0.02),  type: 'TRAILING_STOP' };
-  if (peakRet <= 20) return { line: peakPrice  * (1 - 0.015), type: 'TRAILING_STOP' };
-  return                    { line: peakPrice  * (1 - 0.01),  type: 'TRAILING_STOP' };
+  const bePct = sangttaBreakevenStopPct(peakRet);
+  let line = entryPrice * (1 + bePct / 100);
+  let type = bePct < 0 ? 'HARD_STOP' : 'BREAKEVEN_STOP';
+  if (peakRet >= SANGTTA_TRAIL_START_PCT) {
+    const trail = peakPrice * (1 - sangttaTrailPct(peakRet) / 100);
+    if (trail > line) { line = trail; type = 'TRAILING_STOP'; }
+  }
+  return { line, type };
 }
 
 function kstMinutesNow() {
@@ -930,11 +1120,29 @@ function updateSangttaTickStats(code, price, cntgVol, now) {
   const cutoffMinute = minuteKey - (SANGTTA_MINUTE_HISTORY_MIN + 1);
   for (const k of st.minuteBuckets.keys()) if (k < cutoffMinute) st.minuteBuckets.delete(k);
 
-  if (amt >= SANGTTA_LARGE_PRINT_KRW) st.largePrints.push(now);
+  // 2026-09-15: 예전엔 "3천만원 이상 체결"만 시각(now)으로 기록했는데, 고정 금액
+  // 기준이라 중소형주에선 사실상 절대 안 걸리고 대형주에선 너무 쉽게 걸렸다(진입
+  // 조건 5개 AND 중 최대 병목). 이제 수집 문턱을 낮춰(1천만원) 체결금액까지 함께
+  // 저장해두고, 판정 시점에 그 종목의 분당거래대금에 비례한 동적 문턱을 적용한다.
+  if (amt >= SANGTTA_LARGE_PRINT_COLLECT_KRW) st.largePrints.push({ t: now, amt });
   const cutoffMs = now - SANGTTA_LARGE_PRINT_WINDOW_MS;
-  while (st.largePrints.length && st.largePrints[0] < cutoffMs) st.largePrints.shift();
+  while (st.largePrints.length && st.largePrints[0].t < cutoffMs) st.largePrints.shift();
 
   return { minuteKey, st };
+}
+
+// 종목 규모에 비례한 "대량체결" 문턱 — 직전 5분 평균 분당거래대금의 25%를 한 건에
+// 몰아 넣는 체결이면 그 종목 기준으론 확실한 대량체결로 본다. 하한은 노이즈를
+// 거르기 위한 1천만원, 상한은 기존 기준인 3천만원(그 이상은 요구하지 않음).
+function largePrintThreshold(minuteAvgAmt) {
+  if (!Number.isFinite(minuteAvgAmt) || minuteAvgAmt <= 0) return SANGTTA_LARGE_PRINT_KRW;
+  return Math.max(SANGTTA_LARGE_PRINT_COLLECT_KRW, Math.min(SANGTTA_LARGE_PRINT_KRW, minuteAvgAmt * SANGTTA_LARGE_PRINT_RATIO));
+}
+function countLargePrints(st, minuteAvgAmt) {
+  const th = largePrintThreshold(minuteAvgAmt);
+  let n = 0;
+  for (const p of st.largePrints) if (p.amt >= th) n++;
+  return n;
 }
 
 // 현재 진행 중인 분(minuteKey)의 누적거래대금 ÷ 그 직전 완결된 최근 N분 평균,
@@ -947,9 +1155,13 @@ function sangttaMinuteVolumeStats(st, minuteKey) {
   const prevKeys = [];
   for (let k = minuteKey - 1; k >= minuteKey - SANGTTA_MINUTE_HISTORY_MIN; k--) prevKeys.push(k);
   const prevAmts = prevKeys.map(k => st.minuteBuckets.get(k)).filter(v => v != null);
-  if (prevAmts.length < SANGTTA_MINUTE_HISTORY_MIN) return null;
+  // 2026-09-15: 5분치가 전부 모여야만 값을 돌려주던 탓에 장 초반(09:00~09:20)은
+  // 사실상 계속 판정 불가였음 — 진입 시작을 09:05로 앞당기려면 3분치만 있어도
+  // 평균을 낼 수 있어야 한다(표본이 적은 만큼 partial 플래그로 알려줌).
+  if (prevAmts.length < SANGTTA_MINUTE_HISTORY_MIN_REQUIRED) return null;
+  const partial = prevAmts.length < SANGTTA_MINUTE_HISTORY_MIN;
   const avg = prevAmts.reduce((a, b) => a + b, 0) / prevAmts.length;
-  return { ratio: avg > 0 ? cur / avg : null, avg, cur };
+  return { ratio: avg > 0 ? cur / avg : null, avg, cur, partial };
 }
 
 // service_role 키로 쓰기 + INSERT 결과 반환(대기 중인 id를 바로 알아야 해서
@@ -990,22 +1202,39 @@ async function refreshSangttaCandidates() {
       seen.add(r.code);
       allOrdered.push(r.code);
     }
-    // 순번을 자르기(top N) 전에 "지금 실시간으로 마이너스 전환된" 종목을 먼저
-    // 걸러낸다. lastPrice는 H0STCNT0 틱마다 갱신되는 최신 시세 캐시라 DB보다
-    // 훨씬 신선함 — 아직 틱을 한 번도 못 받은 신규 후보(lastPrice 없음)는
-    // 판단할 근거가 없으니 일단 유지하고, 다음 주기에 다시 판단한다.
-    const stillAlive = allOrdered.filter(code => {
-      if (sangttaOpenPositions.has(code)) return true; // 보유 중이면 무조건 유지(청산 판단용)
+    // 2026-09-15: 예전에는 "실시간 등락률이 0% 밑이면 즉시 후보에서 제외"하는
+    // 하드 컷이었는데, 신규 유입(SCAN)이 막힌 상태와 겹치면서 13개 후보 중
+    // 10~11개가 매 20초마다 잘려나가 추적 종목이 2~5개로 고갈됐고, 0% 근처
+    // 종목은 제외·복귀를 반복(플래핑)했다. 또 잠깐 -1% 눌렀다가 +10% 가는
+    // 전형적인 상따 패턴을 영구 배제하는 부작용도 있었음.
+    // → 하드 컷을 없애고 "실시간 모멘텀 순위제"로 바꾼다. 실시간 등락률
+    // 내림차순으로 줄을 세워 상위 N개만 추적하면, 약해진 종목은 자연히 밀려나고
+    // 목록은 항상 가득 차며, 회복하면 스스로 다시 올라온다.
+    // 아직 틱을 못 받은 신규 후보는 판단 근거가 없으므로 "0%"로 간주해 중간
+    // 순위에 두되, DB 최신순(=방금 SCAN에 걸린 순서)을 동점 기준으로 써서
+    // 지금 막 포착된 종목이 오래된 후보보다 앞에 서게 한다.
+    const dbRankOf = new Map(allOrdered.map((c, i) => [c, i]));
+    const momentumOf = code => {
       const live = lastPrice.get(code);
-      if (!live || !Number.isFinite(live.changePct)) return true;
-      return live.changePct >= SANGTTA_CANDIDATE_STALE_FLOOR_PCT;
+      return (live && Number.isFinite(live.changePct)) ? live.changePct : 0;
+    };
+    const ranked = [...allOrdered].sort((a, b) => {
+      const am = momentumOf(a), bm = momentumOf(b);
+      if (am !== bm) return bm - am;
+      return dbRankOf.get(a) - dbRankOf.get(b);
     });
-    const staleDropped = allOrdered.filter(c => !stillAlive.includes(c));
-    const ordered = stillAlive.slice(0, SANGTTA_MAX_TRACKED);
+    // 보유 중인 종목은 청산 판단이 계속 필요하므로 순위와 무관하게 항상 포함.
+    const held = ranked.filter(c => sangttaOpenPositions.has(c));
+    const rest = ranked.filter(c => !sangttaOpenPositions.has(c));
+    const ordered = [...held, ...rest].slice(0, SANGTTA_MAX_TRACKED);
+    const prev = new Set(sangttaCandidates);
     sangttaCandidates.clear();
     ordered.forEach(c => sangttaCandidates.add(c));
-    if (staleDropped.length) {
-      console.log(`[상따후보] 마이너스 전환으로 후보 제외: ${staleDropped.join(', ')}`);
+    const addedIn = ordered.filter(c => !prev.has(c));
+    const droppedOut = [...prev].filter(c => !sangttaCandidates.has(c));
+    if (addedIn.length || droppedOut.length) {
+      const fmt = c => `${c}(${momentumOf(c).toFixed(1)}%)`;
+      console.log(`[상따후보] 추적 ${sangttaCandidates.size}종목 · 편입 ${addedIn.length ? addedIn.map(fmt).join(', ') : '없음'} · 편출 ${droppedOut.length ? droppedOut.map(fmt).join(', ') : '없음'}`);
     }
     const missingNames = [...sangttaCandidates].filter(c => !codeNames.has(c));
     if (missingNames.length) {
@@ -1031,8 +1260,13 @@ setInterval(refreshSangttaCandidates, SANGTTA_CANDIDATE_POLL_MS);
 async function primeSangttaEntryCounts() {
   try {
     const today = kstDateStr();
-    const rows = await sbGet(`intraday_positions?select=code&portfolio=eq.INTRADAY_SANGTTA&trade_date=eq.${today}`);
-    rows.forEach(r => sangttaEntriesToday.set(r.code, (sangttaEntriesToday.get(r.code) || 0) + 1));
+    const rows = await sbGet(`intraday_positions?select=code,entry_reason&portfolio=eq.INTRADAY_SANGTTA&trade_date=eq.${today}`);
+    // 2026-09-15: 부분익절로 생기는 행(entry_reason.partial_of_position_id 보유)은
+    // 별도의 "진입"이 아니라 같은 진입의 절반을 떼어낸 것이므로 횟수에서 제외한다.
+    // 그렇지 않으면 재시작 후 1회 진입이 2회로 집계돼 재진입이 막힌다.
+    rows
+      .filter(r => !(r.entry_reason && r.entry_reason.partial_of_position_id))
+      .forEach(r => sangttaEntriesToday.set(r.code, (sangttaEntriesToday.get(r.code) || 0) + 1));
   } catch (err) {
     console.error('[상따] 진입횟수 초기화 실패:', err.message);
   }
@@ -1050,6 +1284,10 @@ async function primeSangttaOpenPositions() {
         peakTime: p.peak_at ? new Date(p.peak_at).getTime() : Date.now(),
         qty: (p.entry_reason && p.entry_reason.quantity) || 0,
         grade: (p.entry_reason && p.entry_reason.entry_grade) || null,
+        entryReason: p.entry_reason || null,
+        // 이미 절반을 실현한 포지션이면 재시작 후 또 부분익절하지 않도록 복원
+        // (부분익절 시 OPEN 행의 entry_reason에 partial_taken_qty를 남겨둔다)
+        partialTaken: !!(p.entry_reason && p.entry_reason.partial_taken_qty),
       });
     });
     if (rows.length) {
@@ -1078,8 +1316,14 @@ async function enterSangttaPosition(code, price, grade, ctx) {
   const now = new Date();
   const programNetBuyManwon = Number.isFinite(ctx.programNetBuy) ? Math.round(ctx.programNetBuy / 10000) : null;
   const minuteAvgAmtManwon = Number.isFinite(ctx.minuteAvgAmt) ? Math.round(ctx.minuteAvgAmt / 10000) : null;
-  const reasonText = `등락률 ${ctx.changePct.toFixed(1)}% · 체결강도 ${ctx.cttr.toFixed(0)}% · 1분내 대량체결 ${ctx.largePrints}회 · `
-    + `분당거래대금 ${ctx.minuteRatio.toFixed(1)}배(평균 ${minuteAvgAmtManwon != null ? minuteAvgAmtManwon + '만원/분' : '–'}) · `
+  // 2026-09-15: 점수제 도입으로 보조 조건(체결강도·분당비율)이 미충족이어도 진입할
+  // 수 있게 되면서 해당 값이 NaN/null일 수 있음 — toFixed() 직접 호출은 터지므로 가드.
+  const num = (v, d) => (Number.isFinite(v) ? v.toFixed(d) : '–');
+  const largePrintManwon = Number.isFinite(ctx.largePrintThreshold) ? Math.round(ctx.largePrintThreshold / 10000) : null;
+  const reasonText = `등락률 ${num(ctx.changePct, 1)}% · 체결강도 ${num(ctx.cttr, 0)}% · `
+    + `1분내 대량체결 ${ctx.largePrints}회(기준 ${largePrintManwon != null ? largePrintManwon + '만원' : '–'}) · `
+    + `분당거래대금 ${num(ctx.minuteRatio, 1)}배(평균 ${minuteAvgAmtManwon != null ? minuteAvgAmtManwon + '만원/분' : '–'}) · `
+    + `보조조건 ${ctx.optionalMet ?? '–'}/${ctx.requiredOptional ?? '–'} 충족 · `
     + `프로그램순매수 ${programNetBuyManwon != null ? programNetBuyManwon + '만원' : '–'} · 등급${grade} (${ctx.source})`;
   const entry_reason = {
     entry_grade: grade,
@@ -1088,6 +1332,9 @@ async function enterSangttaPosition(code, price, grade, ctx) {
     large_prints_1min: ctx.largePrints,
     minute_volume_ratio: ctx.minuteRatio,
     minute_avg_amt_krw: ctx.minuteAvgAmt != null ? Math.round(ctx.minuteAvgAmt) : null,
+    large_print_threshold_krw: Number.isFinite(ctx.largePrintThreshold) ? Math.round(ctx.largePrintThreshold) : null,
+    optional_conditions_met: ctx.optionalMet ?? null,
+    optional_conditions_required: ctx.requiredOptional ?? null,
     program_net_buy_krw: ctx.programNetBuy != null ? Math.round(ctx.programNetBuy) : null,
     change_pct_at_entry: ctx.changePct,
     entry_amount_krw: sizeKrw,
@@ -1098,7 +1345,7 @@ async function enterSangttaPosition(code, price, grade, ctx) {
   sangttaEntriesToday.set(code, (sangttaEntriesToday.get(code) || 0) + 1);
   // 낙관적으로 먼저 메모리에 반영 — DB insert가 늦게 끝나는 사이 다음 틱이
   // 같은 종목을 중복 진입시키지 않도록 함(placeholder id는 insert 성공 시 교체).
-  sangttaOpenPositions.set(code, { id: null, entryPrice: price, peakPrice: price, entryTime: now.getTime(), peakTime: now.getTime(), qty, grade });
+  sangttaOpenPositions.set(code, { id: null, entryPrice: price, peakPrice: price, entryTime: now.getTime(), peakTime: now.getTime(), qty, grade, entryReason: entry_reason, partialTaken: false });
 
   try {
     const rows = await sbWriteReturning('intraday_positions', 'POST', [{
@@ -1129,19 +1376,29 @@ async function exitSangttaPosition(code, price, exitType, extra = {}) {
 
   const now = new Date();
   const holdMinutes = Math.round((now.getTime() - (pos.entryTime || pos.peakTime)) / 60000);
-  const realized_pnl = Math.round(pos.qty * (price - pos.entryPrice));
-  const return_pct = (price - pos.entryPrice) / pos.entryPrice * 100;
+  // 2026-09-15: 왕복 거래비용(수수료+거래세+슬리피지) 반영 — 이전에는 전혀 반영되지
+  // 않아 가상성과가 실제보다 낙관적이었다. 비용은 "진입금액 기준"으로 차감한다.
+  const grossPnl = pos.qty * (price - pos.entryPrice);
+  const costKrw = pos.qty * pos.entryPrice * (SANGTTA_ROUND_TRIP_COST_PCT / 100);
+  const realized_pnl = Math.round(grossPnl - costKrw);
+  const return_pct = (price - pos.entryPrice) / pos.entryPrice * 100 - SANGTTA_ROUND_TRIP_COST_PCT;
   const peakRet = (pos.peakPrice - pos.entryPrice) / pos.entryPrice * 100;
   const reasonText = exitType === 'MARKET_CLOSE'
     ? `장마감 강제청산 · 최고수익 ${peakRet >= 0 ? '+' : ''}${peakRet.toFixed(1)}%에서 마감`
     : exitType === 'PROGRAM_REVERSAL'
     ? `프로그램 매도 전환 감지 · 최고수익 ${peakRet >= 0 ? '+' : ''}${peakRet.toFixed(1)}%에서 선제청산`
+    : exitType === 'BREAKEVEN_STOP'
+    ? `손익분기 보호선 청산 · 최고수익 ${peakRet >= 0 ? '+' : ''}${peakRet.toFixed(1)}%에서 반락(비용 커버선 유지)`
     : `${exitType === 'HARD_STOP' ? '하드캡' : '트레일링'} 손절 · 최고수익 ${peakRet >= 0 ? '+' : ''}${peakRet.toFixed(1)}%에서 반락`;
   const exit_reason = {
     exit_type: exitType,
     peak_price: Math.round(pos.peakPrice),
     peak_time: new Date(pos.peakTime).toISOString(),
     hold_minutes: holdMinutes,
+    round_trip_cost_pct: SANGTTA_ROUND_TRIP_COST_PCT,
+    round_trip_cost_krw: Math.round(costKrw),
+    gross_return_pct: (price - pos.entryPrice) / pos.entryPrice * 100,
+    partial_taken: !!pos.partialTaken,
     reason_text: reasonText,
   };
 
@@ -1157,6 +1414,65 @@ async function exitSangttaPosition(code, price, exitType, extra = {}) {
   }
   reconcileKisSubscriptions();
   reconcileProgramTradeSubscriptions(); // 더 이상 보유 종목이 아니므로 H0STPGM0 구독 해제
+}
+
+// ── 부분 익절 (2026-09-15 신설) ──────────────────────────────────────────────
+// 기존엔 트레일링 손절 하나뿐이라 "급등 후 급락"형 종목에서 고점 대비 -2%까지
+// 전량을 반납했다. 현재가가 SANGTTA_PARTIAL_TP_PCT에 처음 닿으면 보유 수량의
+// 절반을 먼저 실현해 이익을 확정하고, 나머지는 트레일링으로 끝까지 끌고 간다.
+// intraday_positions에 부분청산 전용 컬럼이 없으므로, 판 절반을 "별도의 CLOSED
+// 행"으로 새로 기록하고 남은 절반은 기존 OPEN 행에 수량만 줄여 유지한다
+// (스키마 변경 없이 일간 집계와도 자연스럽게 맞물림).
+async function takePartialProfitSangtta(code, price, now) {
+  const pos = sangttaOpenPositions.get(code);
+  if (!pos || pos.partialTaken || pos.partialInFlight) return;
+  const soldQty = Math.floor(pos.qty * SANGTTA_PARTIAL_TP_FRACTION);
+  const remainQty = pos.qty - soldQty;
+  if (soldQty < 1 || remainQty < 1) return;
+  pos.partialInFlight = true; // 다음 틱이 중복 실행하지 않도록 즉시 잠금
+
+  const nowDate = new Date(now || Date.now());
+  const grossPnl = soldQty * (price - pos.entryPrice);
+  const costKrw = soldQty * pos.entryPrice * (SANGTTA_ROUND_TRIP_COST_PCT / 100);
+  const realized_pnl = Math.round(grossPnl - costKrw);
+  const return_pct = (price - pos.entryPrice) / pos.entryPrice * 100 - SANGTTA_ROUND_TRIP_COST_PCT;
+  const reasonText = `부분 익절 ${Math.round(SANGTTA_PARTIAL_TP_FRACTION * 100)}% · +${SANGTTA_PARTIAL_TP_PCT}% 도달 시 ${soldQty}주 실현(잔여 ${remainQty}주는 트레일링 유지)`;
+
+  try {
+    await sbWriteReturning('intraday_positions', 'POST', [{
+      portfolio: 'INTRADAY_SANGTTA', code, name: codeNames.get(code) || null,
+      trade_date: kstDateStr(),
+      entry_time: new Date(pos.entryTime).toISOString(), entry_price: Math.round(pos.entryPrice),
+      entry_reason: { ...(pos.entryReason || {}), quantity: soldQty, partial_of_position_id: pos.id },
+      peak_price: Math.round(pos.peakPrice), peak_time: new Date(pos.peakTime).toISOString(),
+      status: 'CLOSED', exit_time: nowDate.toISOString(), exit_price: Math.round(price),
+      exit_reason: {
+        exit_type: 'PARTIAL_TAKE_PROFIT',
+        peak_price: Math.round(pos.peakPrice),
+        hold_minutes: Math.round((nowDate.getTime() - pos.entryTime) / 60000),
+        round_trip_cost_pct: SANGTTA_ROUND_TRIP_COST_PCT,
+        round_trip_cost_krw: Math.round(costKrw),
+        gross_return_pct: (price - pos.entryPrice) / pos.entryPrice * 100,
+        reason_text: reasonText,
+      },
+      realized_pnl, return_pct,
+    }]);
+    // 남은 절반만 계속 보유 — 메모리와 DB(OPEN 행)의 수량을 함께 줄인다.
+    pos.qty = remainQty;
+    pos.partialTaken = true;
+    if (pos.entryReason) pos.entryReason = { ...pos.entryReason, quantity: remainQty, partial_taken_qty: soldQty };
+    if (pos.id) {
+      await sbWrite(`intraday_positions?id=eq.${pos.id}`, 'PATCH', {
+        entry_reason: pos.entryReason || undefined,
+      }).catch(() => {});
+      insertSangttaDecisionEvent(pos.id, 'PARTIAL_EXIT', { price, soldQty, remainQty, realized_pnl, return_pct }).catch(() => {});
+    }
+    console.log(`[상따] 부분익절 ${codeNames.get(code) || code}(${code}) @${price} — ${reasonText}`);
+  } catch (err) {
+    console.error(`[상따] ${code} 부분익절 기록 실패:`, err.message);
+  } finally {
+    pos.partialInFlight = false;
+  }
 }
 
 async function insertSangttaDecisionEvent(positionId, eventType, metrics) {
@@ -1185,15 +1501,12 @@ function maybeEnterSangtta(code, price, rec, now) {
   if (minutesNow < SANGTTA_ENTRY_START_MIN || minutesNow >= SANGTTA_FORCE_CLOSE_MIN) return;
 
   const isCandidate = sangttaCandidates.has(code);
-  const largePrints = st.largePrints.length;
-  const isNewDetected = !isCandidate && largePrints >= SANGTTA_LARGE_PRINT_MIN_COUNT;
+  const isNewDetected = !isCandidate && st.largePrints.length >= SANGTTA_LARGE_PRINT_MIN_COUNT;
   if (!isCandidate && !isNewDetected) return;
 
   const cttr = Number(rec[F_CTTR]);
   const changePct = Number(rec[F_RATE]);
   const high = Number(rec[F_HIGH]);
-  if (!Number.isFinite(cttr) || cttr < SANGTTA_CTTR_MIN) return;
-  if (largePrints < SANGTTA_LARGE_PRINT_MIN_COUNT) return;
   // 2026-09-10: 이전에 이 종목에서 손절/선제청산된 적이 있고, 지금 그 청산
   // 시점의 고점(peakPrice)을 다시 넘어서는 "재돌파" 순간이면 분당거래대금
   // 비율(SANGTTA_MINUTE_VOL_RATIO_MIN) 조건만 면제한다. 최초 급등 이후
@@ -1205,16 +1518,26 @@ function maybeEnterSangtta(code, price, rec, now) {
   const exitPeak = sangttaExitPeaks.get(code);
   const reboundReclaim = exitPeak != null && Number.isFinite(price) && price > exitPeak;
   const mv = sangttaMinuteVolumeStats(st, minuteKey);
-  if (mv == null) return; // 직전 5분 이력 부족 — 재진입이어도 유동성 판단 근거가 없으면 스킵
-  if (!reboundReclaim && (mv.ratio == null || mv.ratio < SANGTTA_MINUTE_VOL_RATIO_MIN)) return;
+  if (mv == null) return; // 직전 이력 부족 — 재진입이어도 유동성 판단 근거가 없으면 스킵
   const minuteRatio = mv.ratio, minuteAvgAmt = mv.avg;
+  const largePrints = countLargePrints(st, minuteAvgAmt);
   // 2026-09-09 3차 개선: "지금 실제로 오늘 뜨는 종목인지"를 직접 확인하되,
   // 상따는 "이미 많이 오른 종목"이 아니라 "오를 기미가 보이는 종목을 초반에"
   // 잡는 전략이므로 등락률 기준은 완전 평평한 노이즈만 거르는 낮은 값(3%)만
   // 씀. 유동성은 "오늘 09:00부터 누적거래대금"이 아니라 "지금 이 순간의
   // 분당 평균 거래대금"으로 봐서 09:15 초반 진입을 불리하게 만들지 않음.
+  // ── 필수 조건 2개 — 이건 어떤 경우에도 면제하지 않는다 ────────────────────
   if (!Number.isFinite(changePct) || changePct < SANGTTA_MIN_CHANGE_PCT_ENTRY) return;
   if (minuteAvgAmt < SANGTTA_MIN_MINUTE_AMT_ENTRY) return;
+  // ── 보조 조건 3개 — 점수제 ────────────────────────────────────────────────
+  // 재돌파(reboundReclaim) 상황에서는 기존처럼 분당거래대금 비율 조건만 면제한다.
+  const okCttr    = Number.isFinite(cttr) && cttr >= SANGTTA_CTTR_MIN;
+  const okPrints  = largePrints >= SANGTTA_LARGE_PRINT_MIN_COUNT;
+  const okRatio   = reboundReclaim || (minuteRatio != null && minuteRatio >= SANGTTA_MINUTE_VOL_RATIO_MIN);
+  const optionalMet = [okCttr, okPrints, okRatio].filter(Boolean).length;
+  const strictWindow = minutesNow < SANGTTA_ENTRY_STRICT_UNTIL_MIN;
+  const requiredOptional = strictWindow ? 3 : SANGTTA_OPTIONAL_COND_MIN;
+  if (optionalMet < requiredOptional) return;
   // 2026-09-09 6차: 프로그램 순매수는 "일단 제외" — 더 이상 진입을 막는
   // 조건으로 쓰지 않음(이전엔 뚜렷한 순매도 전환 시 차단했었음). 데이터는
   // 계속 받아서 아래 등급(A등급 보너스) 판정에만 참고용으로 씀.
@@ -1229,6 +1552,7 @@ function maybeEnterSangtta(code, price, rec, now) {
   enterSangttaPosition(code, price, grade, {
     source: reboundReclaim ? 'REBOUND_RECLAIM' : (isCandidate ? 'CANDIDATE' : 'NEW_DETECTED'),
     cttr, largePrints, minuteRatio, minuteAvgAmt, changePct, programNetBuy: pt ? pt.netBuyAmt : null,
+    optionalMet, requiredOptional, largePrintThreshold: largePrintThreshold(minuteAvgAmt),
   });
 }
 
@@ -1259,6 +1583,15 @@ function checkSangttaExit(code, price, now) {
     }
   }
 
+  // 2026-09-15: 부분 익절 — 손절 판정보다 먼저 본다. 현재가가 +5%에 처음 닿으면
+  // 절반을 실현하고(비동기), 나머지 절반은 아래 트레일링 판정을 계속 받는다.
+  if (!pos.partialTaken && !pos.partialInFlight && pos.id) {
+    const curRet = (price - pos.entryPrice) / pos.entryPrice * 100;
+    if (curRet >= SANGTTA_PARTIAL_TP_PCT && pos.qty >= 2) {
+      takePartialProfitSangtta(code, price, now).catch(() => {});
+    }
+  }
+
   const { line, type } = sangttaStopLine(pos.entryPrice, pos.peakPrice);
   if (price <= line) exitSangttaPosition(code, price, type);
 }
@@ -1281,10 +1614,10 @@ function sangttaLiveSnapshot(code, rec, price, now) {
   const cttr = Number(rec[F_CTTR]);
   const high = Number(rec[F_HIGH]);
   const changePct = Number(rec[F_RATE]);
-  const largePrints = st.largePrints.length;
   const mv = sangttaMinuteVolumeStats(st, minuteKey);
   const minuteRatio = mv ? mv.ratio : null;
   const minuteAvgAmt = mv ? mv.avg : null;
+  const largePrints = countLargePrints(st, minuteAvgAmt); // 종목 규모에 비례한 동적 문턱 적용
   const isNewHigh = Number.isFinite(high) && Number.isFinite(price) && price >= high;
   // 2026-09-09 6차: 프로그램 순매수는 진입 조건에서 "일단 제외"했으므로
   // 아래 conditions(=진입 필수조건 5개)에는 더 이상 포함하지 않음. 다만
@@ -1309,7 +1642,10 @@ function sangttaLiveSnapshot(code, rec, price, now) {
       ok: largePrints >= SANGTTA_LARGE_PRINT_MIN_COUNT,
       value: largePrints,
       threshold: SANGTTA_LARGE_PRINT_MIN_COUNT,
-      label: '순간체결 5천만원+ (1분내)',
+      // 2026-09-15: 라벨이 "5천만원"으로 적혀 있었지만 실제 상수는 3천만원이었음(표시
+      // 오류). 이제 문턱 자체가 종목별로 달라지므로 실제 적용 금액을 함께 내려보낸다.
+      amountThreshold: Math.round(largePrintThreshold(minuteAvgAmt)),
+      label: '순간 대량체결(1분내)',
     },
     minuteRatio: {
       ok: minuteRatio != null && minuteRatio >= SANGTTA_MINUTE_VOL_RATIO_MIN,
@@ -1325,10 +1661,19 @@ function sangttaLiveSnapshot(code, rec, price, now) {
     },
   };
   const metConditions = Object.values(conditions).filter(c => c.ok).length;
+  // 2026-09-15: 진입 판정이 "5개 AND"에서 "필수 2개 + 보조 3개 중 N개"로 바뀌었으므로
+  // 화면에도 그 기준을 그대로 내려보낸다(몇 개를 더 채워야 매수되는지 바로 보이게).
+  const requiredOptional = kstMinutesNow() < SANGTTA_ENTRY_STRICT_UNTIL_MIN ? 3 : SANGTTA_OPTIONAL_COND_MIN;
+  const optionalMet = [conditions.cttr.ok, conditions.largePrints.ok, conditions.minuteRatio.ok].filter(Boolean).length;
+  const requiredMet = conditions.changePctMin.ok && conditions.liquidity.ok;
 
   const snap = {
     isCandidate,
     isOpenPosition,
+    requiredMet,
+    optionalMet,
+    requiredOptional,
+    entryReady: requiredMet && optionalMet >= requiredOptional,
     entriesToday: sangttaEntriesToday.get(code) || 0,
     isNewHigh,
     changePct: Number.isFinite(changePct) ? changePct : null,
@@ -1345,9 +1690,12 @@ function sangttaLiveSnapshot(code, rec, price, now) {
       peakPrice: pos.peakPrice,
       grade: pos.grade,
       returnPct: (price - pos.entryPrice) / pos.entryPrice * 100,
+      netReturnPct: (price - pos.entryPrice) / pos.entryPrice * 100 - SANGTTA_ROUND_TRIP_COST_PCT,
       peakReturnPct: (pos.peakPrice - pos.entryPrice) / pos.entryPrice * 100,
       stopLine: line,
       stopType: type,
+      partialTaken: !!pos.partialTaken,
+      qty: pos.qty,
     };
   }
   return snap;
