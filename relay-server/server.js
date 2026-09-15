@@ -397,20 +397,35 @@ let kisAccessTokenExpiresAt = 0; // ms epoch
 // KIS REST API(tr_id 기반 시세/랭킹 조회)용 access_token. approval_key(웹소켓
 // 전용, /oauth2/Approval)와는 별개 발급 경로(/oauth2/tokenP)라 따로 관리합니다.
 // 앱키당 발급 빈도 제한이 있어 만료 10분 전까지는 재사용합니다(기본 유효기간 24시간).
+// 2026-09-15: KIS 접근토큰 발급은 "1분당 1회" 제한이 있는데, 토큰 캐시가 빈
+// 상태(서버 재시작 직후)에서 두 곳이 동시에 이 함수를 부르면 각자 발급을 시도해
+// 한쪽이 403 EGW00133("접근토큰 발급 잠시 후 다시 시도하세요")으로 실패했다.
+// SCAN이 등락률순위·거래대금순위를 병렬 호출하도록 바뀌면서 실제로 발생
+// (재시작 직후 거래대금순위 조회가 매번 실패). 발급 요청을 하나로 모아
+// 동시 호출자가 같은 Promise를 기다리게 한다.
+let _kisTokenInFlight = null;
 async function getKisRestToken() {
   if (kisAccessToken && Date.now() < kisAccessTokenExpiresAt - 10 * 60 * 1000) return kisAccessToken;
-  const res = await fetch(`${KIS_REST_BASE}/oauth2/tokenP`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json; utf-8' },
-    body: JSON.stringify({ grant_type: 'client_credentials', appkey: KIS_APP_KEY, appsecret: KIS_APP_SECRET }),
-  });
-  if (!res.ok) throw new Error(`KIS REST 토큰 발급 실패: ${res.status} ${await res.text().catch(() => '')}`);
-  const json = await res.json();
-  if (!json.access_token) throw new Error(`KIS REST 토큰 응답에 값 없음: ${JSON.stringify(json)}`);
-  kisAccessToken = json.access_token;
-  kisAccessTokenExpiresAt = Date.now() + (Number(json.expires_in) || 86400) * 1000;
-  console.log('[상따후보] KIS REST 토큰 발급 완료');
-  return kisAccessToken;
+  if (_kisTokenInFlight) return _kisTokenInFlight;
+  _kisTokenInFlight = (async () => {
+    const res = await fetch(`${KIS_REST_BASE}/oauth2/tokenP`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json; utf-8' },
+      body: JSON.stringify({ grant_type: 'client_credentials', appkey: KIS_APP_KEY, appsecret: KIS_APP_SECRET }),
+    });
+    if (!res.ok) throw new Error(`KIS REST 토큰 발급 실패: ${res.status} ${await res.text().catch(() => '')}`);
+    const json = await res.json();
+    if (!json.access_token) throw new Error(`KIS REST 토큰 응답에 값 없음: ${JSON.stringify(json)}`);
+    kisAccessToken = json.access_token;
+    kisAccessTokenExpiresAt = Date.now() + (Number(json.expires_in) || 86400) * 1000;
+    console.log('[상따후보] KIS REST 토큰 발급 완료');
+    return kisAccessToken;
+  })();
+  try {
+    return await _kisTokenInFlight;
+  } finally {
+    _kisTokenInFlight = null; // 실패 시 다음 호출이 다시 시도할 수 있게 항상 해제
+  }
 }
 
 function kisRestHeaders(token, trId) {
