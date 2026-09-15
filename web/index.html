@@ -3373,7 +3373,11 @@ async function loadPerf2(){
     const liveWanted=[...new Set([...opCodes,...candDisplay])];
     setSangttaLiveCodes(liveWanted);
     S.i2NameOf={...nameOf};
-    cand.forEach(c=>{ if(!S.i2NameOf[c.code]) S.i2NameOf[c.code]=c.code; });
+    // 2026-09-15: SCAN이 살아나면서 유니버스(stocks 테이블) 밖의 급등주가 후보로
+    // 들어오기 시작했는데, 그런 종목은 nameOf에 이름이 없어 표에 6자리 코드로만
+    // 표시됐음. SCAN 스냅샷에 KIS가 준 종목명(hts_kor_isnm)이 이미 들어있으므로
+    // 그걸 우선 쓰고, 그것도 없을 때만 코드를 그대로 보여준다.
+    cand.forEach(c=>{ if(!S.i2NameOf[c.code]) S.i2NameOf[c.code]=c.snapshot?.name||c.code; });
     // 더 이상 추적 대상이 아닌 종목은 표에서도 지움
     Object.keys(S.i2Live).forEach(c=>{ if(!liveWanted.includes(c)) delete S.i2Live[c]; });
     renderI2Live(liveWanted, opCodes);
