@@ -12,10 +12,14 @@ name: Intraday KIS Collection (partial)
 #   - investor-trade-by-stock-daily(수급) 엔드포인트는 KIS 쪽에서 장중에는 전일자
 #     확정 값만 내려줄 수 있습니다 — 장중 수급 숫자가 안 바뀌는 것처럼 보이면
 #     이 API 특성 때문일 가능성이 큽니다(가격은 실시간에 가깝게 갱신됨).
-#   - 종목 2,500여 개 × 시세/수급 2개 API를 30분마다 반복 호출하므로 하루 호출량이
-#     기존(장마감 2회) 대비 약 12배로 늘어납니다(1시간 간격 대비로도 2배).
-#     KIS 호출 한도/쿼터가 빠듯해지면 이 워크플로의 cron 간격을 늘리거나
-#     비활성화하세요.
+#   - 2026-09-15: 장중 스냅샷에서 **수급·프로그램매매 API 호출을 제거**했습니다.
+#     위에 적힌 대로 KIS는 장중에 당일 수급 행을 안 내려주는 경우가 많고,
+#     03_daily_collect.py는 TARGET_DATE와 일치하는 행만 채택하므로 받아온 응답을
+#     그대로 버리고 있었습니다(= 순수 낭비). 확정 수급은 16:05~20:05 KST의
+#     daily_collect.yml이 채웁니다.
+#     효과: 종목당 3건 → 1건, 하루 약 17만 건 → 약 5.8만 건.
+#     장중 수급이 실제로 필요하다고 확인되면 아래 스텝 env에 PARTIAL_WITH_FLOW=1을
+#     넣어 예전 동작으로 되돌릴 수 있습니다.
 on:
   schedule:
     # 매 거래일 08:00·08:30 KST = 전날 23:00·23:30 UTC (dow 0-4 = 일~목 UTC → 월~금 KST)
@@ -75,33 +79,26 @@ jobs:
         id: kistoken
         if: steps.market_day.outputs.is_market_day == 'true'
         env:
-          KIS_APP_KEY:    ${{ secrets.KIS_APP_KEY }}
-          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+          KIS_TOKEN_ISSUER: "gha:${{ github.workflow }}"
         run: |
-          # 2026-09-11: GitHub Actions 러너가 전 세계 무작위 리전에 배정되다 보니
-          # 어쩌다 KIS 서버로의 네트워크 경로가 느린/막힌 리전에 걸리면 --max-time
-          # 없는 curl이 2분 넘게 응답 없이 멈췄다가 exit 28로 실패하는 경우가 있어
-          # (GitHub Actions 실패 로그 확인 결과) 타임아웃 + 짧은 재시도를 추가함.
-          TOKEN=""
-          for i in 1 2 3; do
-            RESP=$(curl -s --connect-timeout 8 --max-time 20 -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
-              -H "Content-Type: application/json" \
-              -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
-            TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
-            if [ -n "$TOKEN" ]; then
-              break
-            fi
-            echo "KIS 토큰 발급 재시도 ($i/3) — 5초 후 재시도: $RESP"
-            sleep 5
-          done
+          # 2026-09-15: 실행할 때마다 직접 발급하던 curl을 공유 캐시 방식으로 교체.
+          # KIS는 접근토큰을 앱키당 1분 1회만 발급해 주는데, 워크플로 5개 + 릴레이
+          # 서버가 각자 발급하다 보니 스케줄이 겹치는 순간 한쪽이 403 EGW00133으로
+          # 막혔다. 토큰은 24시간 유효하므로 Supabase kis_token 테이블에 저장해
+          # 모두가 나눠 쓴다(72_kis_token.py). 테이블이 없거나 DB가 막히면 예전처럼
+          # 직접 발급으로 자동 폴백하므로 이 변경만으로 깨지지 않는다.
+          TOKEN=$(python 72_kis_token.py)
           if [ -z "$TOKEN" ]; then
-            echo "::error::KIS 토큰 발급 실패: $RESP"
+            echo "::error::KIS 토큰 획득 실패"
             exit 1
           fi
           echo "::add-mask::$TOKEN"
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
-      - name: Run partial price/flow snapshot
+      - name: Run partial price snapshot (시세만 — 수급은 확정 수집이 담당)
         if: steps.market_day.outputs.is_market_day == 'true'
         env:
           KIS_APP_KEY:     ${{ secrets.KIS_APP_KEY }}

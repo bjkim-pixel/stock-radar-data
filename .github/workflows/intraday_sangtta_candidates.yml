@@ -93,27 +93,20 @@ jobs:
         id: kistoken
         if: steps.market_day.outputs.is_market_day == 'true' && steps.stage.outputs.stage != 'pre_market'
         env:
-          KIS_APP_KEY:    ${{ secrets.KIS_APP_KEY }}
-          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+          KIS_TOKEN_ISSUER: "gha:${{ github.workflow }}"
         run: |
-          # 2026-09-11: GitHub Actions 러너가 전 세계 무작위 리전에 배정되다 보니
-          # 어쩌다 KIS 서버로의 네트워크 경로가 느린/막힌 리전에 걸리면 --max-time
-          # 없는 curl이 2분 넘게 응답 없이 멈췄다가 exit 28로 실패하는 경우가 있어
-          # (GitHub Actions 실패 로그 확인 결과) 타임아웃 + 짧은 재시도를 추가함.
-          TOKEN=""
-          for i in 1 2 3; do
-            RESP=$(curl -s --connect-timeout 8 --max-time 20 -X POST "https://openapi.koreainvestment.com:9443/oauth2/tokenP" \
-              -H "Content-Type: application/json" \
-              -d "{\"grant_type\":\"client_credentials\",\"appkey\":\"$KIS_APP_KEY\",\"appsecret\":\"$KIS_APP_SECRET\"}")
-            TOKEN=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
-            if [ -n "$TOKEN" ]; then
-              break
-            fi
-            echo "KIS 토큰 발급 재시도 ($i/3) — 5초 후 재시도: $RESP"
-            sleep 5
-          done
+          # 2026-09-15: 실행할 때마다 직접 발급하던 curl을 공유 캐시 방식으로 교체.
+          # KIS는 접근토큰을 앱키당 1분 1회만 발급해 주는데, 워크플로 5개 + 릴레이
+          # 서버가 각자 발급하다 보니 스케줄이 겹치는 순간 한쪽이 403 EGW00133으로
+          # 막혔다. 토큰은 24시간 유효하므로 Supabase kis_token 테이블에 저장해
+          # 모두가 나눠 쓴다(72_kis_token.py). 테이블이 없거나 DB가 막히면 예전처럼
+          # 직접 발급으로 자동 폴백하므로 이 변경만으로 깨지지 않는다.
+          TOKEN=$(python 72_kis_token.py)
           if [ -z "$TOKEN" ]; then
-            echo "::error::KIS 토큰 발급 실패: $RESP"
+            echo "::error::KIS 토큰 획득 실패"
             exit 1
           fi
           echo "::add-mask::$TOKEN"
