@@ -766,16 +766,41 @@ async function fetchVolumeRank(limit = 30) {
 // created_at을 매번 명시적으로 채우는 이유: refreshSangttaCandidates()가
 // "최근 갱신순" 정렬에 의존하는데, merge-duplicates UPDATE 경로에는 DB 기본값이
 // 자동 적용되지 않기 때문(INSERT 시에만 default now()가 붙음).
-async function upsertCandidates(rows, source) {
+// 2026-09-16: KRX 휴장일 — .github/workflows/*.yml의 HOLIDAYS 목록과 **같은 값**을
+// 유지해야 합니다(둘 중 하나만 고치면 장전 배치가 휴장일에 잘못 배치됨).
+const KRX_HOLIDAYS = new Set([
+  '2026-01-01', '2026-02-16', '2026-02-17', '2026-02-18', '2026-03-02',
+  '2026-05-01', '2026-05-05', '2026-05-25', '2026-06-03', '2026-07-17',
+  '2026-08-17', '2026-09-24', '2026-09-25', '2026-10-05', '2026-10-09',
+  '2026-12-25', '2026-12-31',
+]);
+
+// 주어진 KST 날짜(기본: 오늘)의 "다음 거래일"을 YYYY-MM-DD로 반환.
+// 주말·휴장일을 건너뛴다. 휴장일 목록이 낡아 실제로는 휴장인 날을 반환하더라도
+// 그날 후보가 그냥 안 쓰이고 끝나므로(다음 거래일 아침 폴백이 다시 생성) 치명적이지 않다.
+function nextTradingDayStr(fromStr = kstDateStr()) {
+  const d = new Date(`${fromStr}T00:00:00Z`);
+  for (let i = 0; i < 14; i++) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const s = d.toISOString().slice(0, 10);
+    const dow = d.getUTCDay();                 // 0=일, 6=토
+    if (dow === 0 || dow === 6) continue;
+    if (KRX_HOLIDAYS.has(s)) continue;
+    return s;
+  }
+  return null;
+}
+
+async function upsertCandidates(rows, source, tradeDate) {
   if (!rows.length) { console.log(`[상따후보] ${source}: 후보 없음 — 저장 생략`); return; }
-  const today = kstDateStr();
+  const today = tradeDate || kstDateStr();
   const nowIso = new Date().toISOString();
   const payload = rows.map(r => ({
     trade_date: today, code: r.code, source, rank: r.rank, snapshot: r.snapshot, created_at: nowIso,
   }));
   try {
     await sbWrite('intraday_candidates?on_conflict=trade_date,code,source', 'POST', payload);
-    console.log(`[상따후보] ${source}: ${rows.length}건 저장 완료`);
+    console.log(`[상따후보] ${source}: ${rows.length}건 저장 완료 (거래일 ${today})`);
   } catch (err) {
     console.error(`[상따후보] ${source} 저장 실패:`, err.message);
   }
@@ -810,7 +835,12 @@ const REGULAR_MIN_ACC_AMT = 500_000_000; // 누적거래대금 5억원↑ (유�
 // (V4_CAND_CLOSEBET2_2, 기존엔 누락돼 있었음)만 사용하고, 어느 전략에서
 // 통과됐는지 프론트에서 구분해 보여줄 수 있도록 signal_type을 그대로
 // snapshot.sources에 남긴다(프론트 I2_SOURCE_LABEL 매핑 참고).
-async function stagePreMarket() {
+// 2026-09-16: targetDate(후보를 배치할 거래일)를 인자로 받는다. 예전에는 항상
+// "오늘"에 배치해서, 장전 배치가 당일 아침 07:50에야 만들어졌다 — 사용자가 전날
+// 저녁에 미리 보고 준비할 수 없다는 문제. 이제 장 마감 후 그날의 신호가 확정되는
+// 즉시 **다음 거래일** 앞으로 만들어 두고, 아침 07:50 실행은 (밤새 서버가 잠들어
+// 있었던 경우를 대비한) 폴백으로만 남긴다. runEveningPreMarket() 참고.
+async function stagePreMarket(targetDate) {
   const latestRows = await sbGet('signals?select=trade_date&signal_type=like.V4_CAND_*&order=trade_date.desc&limit=1');
   const latest = latestRows[0]?.trade_date;
   if (!latest) { console.log('[상따후보] PRE_MARKET: V4_CAND_* 신호가 없음 — 후보 생성 불가'); return; }
@@ -857,8 +887,83 @@ async function stagePreMarket() {
       score: m.score ?? null, weight_rank: m.weight_rank ?? null, pick_score: m.pick_score ?? null,
     },
   }));
-  console.log(`[상따후보] PRE_MARKET: 기준일 ${latest}, 종가베팅/종가베팅2 ${swingRows.length}건 + 무게상위 ${weightRows.length}건 → 유니크 ${rows.length}건`);
-  await upsertCandidates(rows, 'PRE_MARKET');
+  const target = targetDate || kstDateStr();
+  console.log(`[상따후보] PRE_MARKET: 기준일 ${latest} → 배치 거래일 ${target}, `
+    + `종가베팅/종가베팅2 ${swingRows.length}건 + 무게상위 ${weightRows.length}건 → 유니크 ${rows.length}건`);
+  await upsertCandidates(rows, 'PRE_MARKET', target);
+}
+
+// ── 1-b) 장 마감 후 "다음 거래일 장전 배치" 선생성 (2026-09-16 신설) ──────────
+// 사용자 요청: "장전 배치가 당일 아침에야 반영돼서 미리 준비하기 어렵다."
+//
+// 배치의 재료는 두 번에 나눠 확정된다 —
+//   · 종가베팅(V4_CAND_CLOSEBET_3) + 무게상위(daily_metrics.weight_rank)
+//       → compute.yml 16:30 KST 실행에서 확정
+//   · 종가베팅2(V4_CAND_CLOSEBET2_2)
+//       → NXT 애프터마켓이 20:00에 끝난 뒤 nxt_collect(20:20) → compute
+//         workflow_run에서 확정
+// 그래서 저녁에 두 번 돈다. 1차는 마감 직후 볼 수 있게, 2차는 종가베팅2까지 반영된
+// 최종본으로 덮어쓴다.
+//
+// 고정 시각 대신 **데이터가 들어왔는지**로 판정하는 이유: GitHub Actions의 schedule은
+// 20분 이상 밀리는 일이 흔해서(실측 16:35 예정 → 16:57 시작) 시각을 박아두면
+// 아직 안 만들어진 신호를 보고 빈 배치를 만들게 된다. 하트비트(15초)마다
+// "오늘자 해당 신호가 DB에 있는가"를 확인하다가 들어온 순간 1회 실행한다.
+const _eveningPreMarketDone = { stage1: null, stage2: null };
+const EVENING_PREMARKET_FROM_MIN = 16 * 60 + 35;  // 16:35 KST 이후부터 감시 시작
+const EVENING_PREMARKET2_FROM_MIN = 20 * 60 + 20; // 20:20 KST 이후부터 2차 감시
+
+async function runEveningPreMarket() {
+  const minutesNow = kstMinutesNow();
+  if (minutesNow < EVENING_PREMARKET_FROM_MIN) return;
+  const today = kstDateStr();
+  if (KRX_HOLIDAYS.has(today)) return;
+  const dow = new Date(`${today}T00:00:00Z`).getUTCDay();
+  if (dow === 0 || dow === 6) return;
+
+  const stageKey = minutesNow >= EVENING_PREMARKET2_FROM_MIN ? 'stage2' : 'stage1';
+  if (_eveningPreMarketDone[stageKey] === today) return;
+
+  // 필요한 신호가 오늘자로 들어왔는지 확인 — 없으면 다음 하트비트에 다시 본다.
+  const needType = stageKey === 'stage2' ? 'V4_CAND_CLOSEBET2_2' : 'V4_CAND_CLOSEBET_3';
+  let ready = false;
+  try {
+    const probe = await sbGet(`signals?select=code&trade_date=eq.${today}&signal_type=eq.${needType}&limit=1`);
+    ready = probe.length > 0;
+  } catch (err) {
+    console.error('[상따후보] 저녁 장전배치 신호 확인 실패:', err.message);
+    return;
+  }
+  if (!ready) return;
+
+  const target = nextTradingDayStr(today);
+  if (!target) { console.warn('[상따후보] 다음 거래일을 계산하지 못해 저녁 장전배치를 건너뜁니다'); return; }
+
+  _eveningPreMarketDone[stageKey] = today;
+  try {
+    console.log(`[상따후보] 저녁 장전배치 ${stageKey === 'stage2' ? '2차(종가베팅2 반영)' : '1차(종가베팅·무게상위)'}`
+      + ` — ${today} 신호로 ${target} 후보 생성`);
+    await stagePreMarket(target);
+  } catch (err) {
+    console.error('[상따후보] 저녁 장전배치 실패(다음 하트비트에 재시도):', err.message);
+    _eveningPreMarketDone[stageKey] = null;
+  }
+}
+
+// 아침 07:50 폴백 — 저녁에 이미 만들어 뒀으면 건너뛴다. 밤새 서버가 잠들어
+// 저녁 배치를 못 만든 날만 여기서 만들어진다(그때는 예전과 동일한 동작).
+async function stagePreMarketMorningFallback() {
+  const today = kstDateStr();
+  try {
+    const existing = await sbGet(`intraday_candidates?select=code&trade_date=eq.${today}&source=eq.PRE_MARKET&limit=1`);
+    if (existing.length) {
+      console.log('[상따후보] PRE_MARKET: 전날 저녁에 이미 생성됨 — 아침 재생성 건너뜀');
+      return;
+    }
+  } catch (err) {
+    console.error('[상따후보] 기존 장전배치 확인 실패 — 그대로 생성합니다:', err.message);
+  }
+  await stagePreMarket(today);
 }
 
 // ── 2) NXT (08:00~08:45) ────────────────────────────────────────────────────
@@ -1066,7 +1171,10 @@ const SCAN_INTERVAL_MS = 60 * 1000;
 const CANDIDATE_HEARTBEAT_MS = 15 * 1000;
 
 async function candidateEngineHeartbeat() {
-  await runCandidateStageOnce('preMarket', 7 * 60 + 50, stagePreMarket);
+  // 장 마감 후 "다음 거래일" 장전배치 선생성 (2026-09-16 신설)
+  await runEveningPreMarket().catch(err => console.error('[상따후보] 저녁 장전배치 오류:', err.message));
+
+  await runCandidateStageOnce('preMarket', 7 * 60 + 50, stagePreMarketMorningFallback);
   await runCandidateStageOnce('nxt', 8 * 60 + 40, stageNxt);
   await runCandidateStageOnce('regular', 9 * 60 + 12, stageRegular);
 
