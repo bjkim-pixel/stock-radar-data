@@ -153,7 +153,11 @@ setInterval(() => {
 // 시세는 진입·청산 판정의 생명줄이라 프로그램매매보다 항상 우선한다. 특히 보유
 // 종목의 시세가 끊기면 손절 자체가 불가능해지므로, 보유·프론트요청 종목은 한도
 // 계산과 무관하게 먼저 확보하고 후보를 남은 예산만큼 채운다.
-const KIS_SUB_SLOT_LIMIT = 41;
+// 한도는 KIS가 직접 알려준 값으로 확인됐다 — 42건에서 "MAX SUBSCRIBE OVER"가
+// 나고 38건에서는 정상이었다(2026-09-15 실측). 다만 한도는 "승인키 기준"이라
+// ① 재배포 시 구/신 인스턴스가 잠깐 겹치는 구간, ② 사용자가 같은 계정으로 HTS·MTS
+// 실시간 시세를 볼 때 이 몫까지 함께 소모될 수 있어, 41에 딱 맞추지 않고 여유를 둔다.
+const KIS_SUB_SLOT_LIMIT = 36;
 const KIS_PROGRAM_SUB_RESERVE = 8;   // 여유가 있을 때 프로그램매매용으로 남겨두는 슬롯
 let _subTrimLoggedAt = 0;
 function wantedCodes() {
@@ -1025,6 +1029,18 @@ const SANGTTA_OPTIONAL_COND_MIN     = 2;         // 보조 조건 3개 중 최�
 // 않지만, 나중에 다시 켤 수 있도록 남겨둠(현재 미사용).
 const SANGTTA_PROGRAM_NET_SELL_BLOCK_KRW = -50_000_000; // (현재 미사용) 프로그램 순매수(2분) -5천만원 이하 기준값
 const SANGTTA_MIN_CHANGE_PCT_ENTRY = 3;          // 현재 등락률 3%↑
+// 2026-09-15: 진입 등락률 상한. 국내 상한가가 +30%라 이미 많이 오른 종목은 남은
+// 상승 여력이 몇 %p뿐인데 하락 여력은 제한이 없어 손익비가 나쁘고, 상한가에
+// 잠기면 팔지도 못한다. 실제로 오늘(2026-09-15) 진입 19건을 진입 등락률 구간별로
+// 갈라보니 경계가 뚜렷했다:
+//    0~10%  5건 4승 +768,228원 / 10~15% 6건 4승 +220,427원
+//    20~22% 1건 1승 +204,002원 (하이젠알앤엠 20.7% 진입, 당일 2위 성과)
+//    22%↑   5건 0승 -552,900원 (전부 손실)
+// 22% 이상을 막았다면 당일 손익이 +520,497 → +1,073,397원이 됐을 것.
+// 하루치 표본(19건)이라 과최적화 위험은 있으나, "+22%면 상한가까지 8%p 남는데
+// 부분익절 목표가 +5%"라는 구조적 근거와도 맞아떨어져 22%로 잡는다. 표본이
+// 쌓이면 재조정할 것.
+const SANGTTA_MAX_CHANGE_PCT_ENTRY = 22;         // 현재 등락률 22% 이상이면 신규 진입 금지
 // 매수 잔량(실제 체결 가능성) 문제 — 현재 엔진은 체결(H0STCNT0) 틱만 보고
 // 실시간 호가(매도잔량)는 구독하지 않아 진짜 주문가능한 잔량을 보진 못함.
 // 완전한 호가잔량 체크는 별도 KIS 호가 구독(추가 구독 슬롯 필요)이 있어야
@@ -1168,6 +1184,7 @@ const sangttaTickStats     = new Map();               // code -> {minuteBuckets:
 // 장마감 강제청산(MARKET_CLOSE)은 어차피 그날 재진입 여지가 없으므로 기록 안 함.
 const sangttaExitPeaks     = new Map();               // code -> 청산 시점 peakPrice
 const _gradeCLoggedAt      = new Map();               // code -> 등급C 스킵 로그를 마지막으로 남긴 시각(로그 폭주 방지)
+const _overheatLoggedAt    = new Map();               // code -> 진입 상한 초과 로그를 마지막으로 남긴 시각
 // code -> {pct, date} 마지막으로 관측된 실시간 등락률. lastPrice와 달리 구독이
 // 해제돼도 남아 있어야 모멘텀 순위가 안정된다(플래핑 방지 — handleKisMessage 주석 참고).
 const sangttaLastChangePct = new Map();
@@ -1621,6 +1638,17 @@ function maybeEnterSangtta(code, price, rec, now) {
   // ── 필수 조건 2개 — 이건 어떤 경우에도 면제하지 않는다 ────────────────────
   if (!Number.isFinite(changePct) || changePct < SANGTTA_MIN_CHANGE_PCT_ENTRY) return;
   if (minuteAvgAmt < SANGTTA_MIN_MINUTE_AMT_ENTRY) return;
+  // 이미 너무 오른 종목은 진입 금지(위 SANGTTA_MAX_CHANGE_PCT_ENTRY 주석 참고).
+  // 재돌파 재진입(reboundReclaim)도 예외 없이 적용한다 — 상한가 부근에서 재돌파는
+  // 더 위험하기 때문.
+  if (changePct >= SANGTTA_MAX_CHANGE_PCT_ENTRY) {
+    const lastAt = _overheatLoggedAt.get(code) || 0;
+    if (Date.now() - lastAt > 10 * 60 * 1000) {
+      _overheatLoggedAt.set(code, Date.now());
+      console.log(`[상따] ${codeNames.get(code) || code}(${code}) 등락률 ${changePct.toFixed(1)}% — 진입 상한(${SANGTTA_MAX_CHANGE_PCT_ENTRY}%) 초과로 진입 보류`);
+    }
+    return;
+  }
   // ── 보조 조건 3개 — 점수제 ────────────────────────────────────────────────
   // 재돌파(reboundReclaim) 상황에서는 기존처럼 분당거래대금 비율 조건만 면제한다.
   const okCttr    = Number.isFinite(cttr) && cttr >= SANGTTA_CTTR_MIN;
@@ -1763,7 +1791,10 @@ function sangttaLiveSnapshot(code, rec, price, now) {
   // 화면에도 그 기준을 그대로 내려보낸다(몇 개를 더 채워야 매수되는지 바로 보이게).
   const requiredOptional = kstMinutesNow() < SANGTTA_ENTRY_STRICT_UNTIL_MIN ? 3 : SANGTTA_OPTIONAL_COND_MIN;
   const optionalMet = [conditions.cttr.ok, conditions.largePrints.ok, conditions.minuteRatio.ok].filter(Boolean).length;
-  const requiredMet = conditions.changePctMin.ok && conditions.liquidity.ok;
+  // 진입 상한(과열) 초과 여부도 화면에 내려보낸다 — 조건을 다 채웠는데도 매수가
+  // 안 되는 이유가 "이미 너무 올라서"라는 걸 표에서 바로 알 수 있게.
+  const overheated = Number.isFinite(changePct) && changePct >= SANGTTA_MAX_CHANGE_PCT_ENTRY;
+  const requiredMet = conditions.changePctMin.ok && conditions.liquidity.ok && !overheated;
 
   const snap = {
     isCandidate,
@@ -1771,6 +1802,8 @@ function sangttaLiveSnapshot(code, rec, price, now) {
     requiredMet,
     optionalMet,
     requiredOptional,
+    overheated,
+    maxChangePct: SANGTTA_MAX_CHANGE_PCT_ENTRY,
     entryReady: requiredMet && optionalMet >= requiredOptional,
     entriesToday: sangttaEntriesToday.get(code) || 0,
     isNewHigh,
@@ -2788,3 +2821,31 @@ issueApprovalKey()
     console.error('[FATAL] 시작 실패:', err.message);
     process.exit(1);
   });
+
+// ── 종료 처리 (2026-09-15 신설) ──────────────────────────────────────────────
+// 그동안 종료 핸들러가 없어서, Render가 재배포·인스턴스 교체로 프로세스를 죽일 때
+// KIS 웹소켓 세션이 정리되지 않은 채 남았다. KIS의 실시간 등록 한도는 "승인키 기준"
+// 이라, 구 인스턴스가 쥐고 있던 등록분이 아직 살아있는 상태에서 새 인스턴스가
+// 구독을 시작하면 합산 한도를 넘어 MAX SUBSCRIBE OVER가 난다(오늘 배포 때 실제로
+// 확인). SIGTERM을 받으면 등록을 명시적으로 해제하고 소켓을 닫은 뒤 종료한다.
+let _shuttingDown = false;
+function gracefulShutdown(signal) {
+  if (_shuttingDown) return;
+  _shuttingDown = true;
+  console.log(`[server] ${signal} 수신 — KIS 실시간 등록 해제 후 종료합니다(구독 ${currentKisSubs.size} + 프로그램매매 ${currentProgramTradeSubs.size})`);
+  try {
+    for (const code of [...currentKisSubs]) sendKisSubscribe(code, false);
+    for (const code of [...currentProgramTradeSubs]) sendKisSubscribe(code, false, KIS_PROGRAM_TRADE_TR_ID);
+    currentKisSubs.clear();
+    currentProgramTradeSubs.clear();
+  } catch (err) {
+    console.error('[server] 종료 중 구독 해제 실패(무시하고 계속):', err.message);
+  }
+  // 해제 프레임이 KIS로 실제 전송될 시간을 조금 준 뒤 소켓을 닫는다.
+  setTimeout(() => {
+    try { kisWs && kisWs.close(); } catch (_) {}
+    process.exit(0);
+  }, 1200);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
