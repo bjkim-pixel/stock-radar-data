@@ -175,6 +175,22 @@ def kis_hdr(token, tr_id):
 
 
 def get_token():
+    # 2026-09-15: 다른 수집 스크립트와 동일하게 공유 토큰 캐시를 쓴다.
+    #   ① 워크플로가 KIS_ACCESS_TOKEN을 넘겨줬으면 그대로 사용
+    #   ② 아니면 72_kis_token.py의 캐시 로직(Supabase kis_token)을 통해 획득
+    #   ③ 그것도 안 되면 예전처럼 직접 발급
+    # KIS는 접근토큰을 앱키당 1분 1회만 발급해 주므로, 백필을 수동 실행하는
+    # 순간 정기 수집이 토큰을 못 받는 사고를 막기 위함이다.
+    env_token = os.environ.get("KIS_ACCESS_TOKEN", "").strip()
+    if env_token:
+        print("  토큰: 워크플로에서 전달받은 값 사용")
+        return env_token
+    try:
+        import importlib
+        kis_token = importlib.import_module("72_kis_token")
+        return kis_token.get_token_cached()
+    except Exception as ex:                          # noqa: BLE001
+        print(f"  ⚠ 공유 토큰 캐시 사용 실패({str(ex)[:120]}) — 직접 발급합니다")
     r = requests.post(f"{KIS_BASE}/oauth2/tokenP",
                       json={"grant_type": "client_credentials",
                             "appkey": KIS_KEY, "appsecret": KIS_SECRET},

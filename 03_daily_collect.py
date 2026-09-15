@@ -64,6 +64,24 @@ TARGET_DATE = datetime.date.today().strftime("%Y%m%d")
 _args = [a for a in sys.argv[1:] if a != "--partial"]
 if "--partial" in sys.argv[1:]:
     PARTIAL = True
+
+# 2026-09-15: 장중 스냅샷(--partial)에서는 수급·프로그램매매 API를 호출하지 않습니다.
+#
+#   KIS의 investor-trade-by-stock-daily / program-trade-by-stock-daily는 장중에
+#   **당일 행을 내려주지 않는 경우가 많습니다**(전일자 확정분만 반환).
+#   이 스크립트의 pick_row_for_date()는 TARGET_DATE와 일치하는 행만 채택하므로,
+#   당일 행이 없으면 받아온 응답을 그대로 버립니다 = 호출이 순수한 낭비입니다.
+#   수급·프로그램 확정값은 어차피 16:05~20:05 KST의 daily_collect(확정 수집,
+#   PARTIAL=False)가 9회에 걸쳐 채웁니다.
+#
+#   효과: 장중 1회 호출이 종목당 3건 → 1건. intraday_collect.yml이 하루 23회
+#   도는 것을 감안하면 하루 약 17만 건 → 약 5.8만 건으로 줄어듭니다.
+#   (KIS 한도 위반은 아니지만 개인 계정으로는 과한 양이었습니다.)
+#
+#   만약 장중 수급이 실제로 필요하다고 확인되면 PARTIAL_WITH_FLOW=1 환경변수로
+#   예전 동작(3건 호출)을 그대로 되살릴 수 있습니다.
+PARTIAL_WITH_FLOW = os.environ.get("PARTIAL_WITH_FLOW", "") == "1"
+SKIP_FLOW = PARTIAL and not PARTIAL_WITH_FLOW
 if len(_args) >= 1:
     if _args[0] == "--debug":
         DEBUG_MODE = True
@@ -369,8 +387,9 @@ def collect_stock(token, code):
     """반환: (price_row | None, flow_row | None, program_row | None, status)"""
     try:
         pi  = fetch_price(token, code)    # _rate.acquire() 내장
-        inv = fetch_investor(token, code, TARGET_DATE)  # _rate.acquire() 내장
-        prg = fetch_program(token, code, TARGET_DATE)   # _rate.acquire() 내장
+        # 장중 스냅샷에서는 수급·프로그램매매를 건너뜁니다(위 SKIP_FLOW 주석 참고).
+        inv = None if SKIP_FLOW else fetch_investor(token, code, TARGET_DATE)  # _rate.acquire() 내장
+        prg = None if SKIP_FLOW else fetch_program(token, code, TARGET_DATE)   # _rate.acquire() 내장
 
         if pi is None and inv is None and prg is None:
             return None, None, None, "skip"
@@ -481,8 +500,10 @@ def main():
     print("② 종목 목록 조회...")
     stocks = load_stocks()
     n_total = len(stocks)
-    est_min = (n_total * 2 / MAX_RPS) / 60
-    print(f"   {n_total:,}개 종목 → 예상 소요시간 약 {est_min:.0f}분")
+    calls_per_stock = 1 if SKIP_FLOW else 3
+    est_min = (n_total * calls_per_stock / MAX_RPS) / 60
+    print(f"   {n_total:,}개 종목 × API {calls_per_stock}건 → 예상 소요시간 약 {est_min:.0f}분"
+          + ("  (장중 스냅샷: 수급·프로그램매매 생략)" if SKIP_FLOW else ""))
 
     price_rows, flow_rows, program_rows = [], [], []
     ok = skip = err = 0
@@ -538,11 +559,20 @@ def main():
         print(f"\n✅ 완료: 성공 {ok:,} / 스킵 {skip:,} / 오류 {err:,}  ({duration_ms//1000}초)")
 
     log_result("price",   status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
-    log_result("flow",    status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
+    if SKIP_FLOW:
+        # 장중 스냅샷은 수급을 아예 호출하지 않았으므로 0건으로 정직하게 남긴다
+        # (예전처럼 ok를 적으면 "수급도 수집됐다"고 오독하게 됨).
+        log_result("flow", "SKIPPED", 0, duration_ms,
+                   "장중 스냅샷 — 수급·프로그램매매 생략 (PARTIAL_WITH_FLOW=1로 복원 가능)")
+    else:
+        log_result("flow", status_str, ok, duration_ms, f"ok={ok} skip={skip} err={err}")
     if _PROGRAM_DEBUG is not None:
         log_result("program_debug", "INFO", 0, 0,
                     json.dumps(_PROGRAM_DEBUG, ensure_ascii=False))
-    log_result("program", status_str, len(program_rows), duration_ms, f"ok={ok} skip={skip} err={err}")
+    if SKIP_FLOW:
+        log_result("program", "SKIPPED", 0, duration_ms, "장중 스냅샷 — 생략")
+    else:
+        log_result("program", status_str, len(program_rows), duration_ms, f"ok={ok} skip={skip} err={err}")
 
     # PARTIAL(일부 실패)은 정상 완료로 처리 — 소수의 연결 끊김은 KIS 쪽 일시적 문제.
     # FAIL(아무것도 수집 못 함)은 물론 GitHub Action 실패로 처리.
