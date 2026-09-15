@@ -459,23 +459,99 @@ let kisAccessTokenExpiresAt = 0; // ms epoch
 // SCAN이 등락률순위·거래대금순위를 병렬 호출하도록 바뀌면서 실제로 발생
 // (재시작 직후 거래대금순위 조회가 매번 실패). 발급 요청을 하나로 모아
 // 동시 호출자가 같은 Promise를 기다리게 한다.
+// 2026-09-15: 여기에 더해 **Supabase kis_token 테이블 공유 캐시**를 먼저 본다.
+// 이 서버는 Render 무료 플랜이라 인스턴스가 수시로 교체되는데, 그때마다 새로
+// 발급받으면 같은 분에 도는 GitHub Actions 수집 워크플로와 충돌해 한쪽이
+// EGW00133으로 막힌다. 토큰은 24시간 유효하므로 한 곳에 저장해 나눠 쓴다.
+// 테이블이 없거나(마이그레이션 전) service_role 키가 없으면 조용히 기존 방식
+// (직접 발급)으로 폴백한다 — 이 변경만으로 서버가 못 뜨는 일은 없다.
+const KIS_TOKEN_MIN_REMAIN_MS = 30 * 60 * 1000;
+const KIS_TOKEN_CACHE_PATH = 'kis_token?key_name=eq.default';
+
+async function readSharedKisToken() {
+  if (!SUPABASE_SERVICE_KEY) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${KIS_TOKEN_CACHE_PATH}&select=access_token,expires_at`, {
+      headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+    });
+    if (!res.ok) return null;                 // 404(테이블 없음) 포함 — 캐시 없이 진행
+    const rows = await res.json();
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const exp = Date.parse(rows[0].expires_at);
+    if (!Number.isFinite(exp) || exp - Date.now() < KIS_TOKEN_MIN_REMAIN_MS) return null;
+    return { token: rows[0].access_token, expiresAt: exp };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function writeSharedKisToken(token, expiresAt) {
+  if (!SUPABASE_SERVICE_KEY) return;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kis_token`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'content-type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({
+        key_name: 'default',
+        access_token: token,
+        expires_at: new Date(expiresAt).toISOString(),
+        issued_at: new Date().toISOString(),
+        issued_by: 'relay-server',
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    if (!res.ok) console.warn(`[KIS토큰] 공유 캐시 저장 실패: ${res.status}`);
+  } catch (err) {
+    console.warn('[KIS토큰] 공유 캐시 저장 실패:', err.message);
+  }
+}
+
 let _kisTokenInFlight = null;
 async function getKisRestToken() {
   if (kisAccessToken && Date.now() < kisAccessTokenExpiresAt - 10 * 60 * 1000) return kisAccessToken;
   if (_kisTokenInFlight) return _kisTokenInFlight;
   _kisTokenInFlight = (async () => {
-    const res = await fetch(`${KIS_REST_BASE}/oauth2/tokenP`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json; utf-8' },
-      body: JSON.stringify({ grant_type: 'client_credentials', appkey: KIS_APP_KEY, appsecret: KIS_APP_SECRET }),
-    });
-    if (!res.ok) throw new Error(`KIS REST 토큰 발급 실패: ${res.status} ${await res.text().catch(() => '')}`);
-    const json = await res.json();
-    if (!json.access_token) throw new Error(`KIS REST 토큰 응답에 값 없음: ${JSON.stringify(json)}`);
-    kisAccessToken = json.access_token;
-    kisAccessTokenExpiresAt = Date.now() + (Number(json.expires_in) || 86400) * 1000;
-    console.log('[상따후보] KIS REST 토큰 발급 완료');
-    return kisAccessToken;
+    const cached = await readSharedKisToken();
+    if (cached) {
+      kisAccessToken = cached.token;
+      kisAccessTokenExpiresAt = cached.expiresAt;
+      console.log(`[KIS토큰] 공유 캐시 재사용 (남은 ${((cached.expiresAt - Date.now()) / 3600000).toFixed(1)}시간)`);
+      return kisAccessToken;
+    }
+    // 직접 발급. EGW00133("앱키당 1분 1회")에 걸리면 다른 소비자(수집 워크플로)가
+    // 방금 받아간 것이므로, 그쪽이 공유 캐시에 써 줄 때까지 짧게 기다렸다 다시 본다.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const res = await fetch(`${KIS_REST_BASE}/oauth2/tokenP`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json; utf-8' },
+        body: JSON.stringify({ grant_type: 'client_credentials', appkey: KIS_APP_KEY, appsecret: KIS_APP_SECRET }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.access_token) {
+        kisAccessToken = json.access_token;
+        kisAccessTokenExpiresAt = Date.now() + (Number(json.expires_in) || 86400) * 1000;
+        console.log('[KIS토큰] 신규 발급 완료 — 공유 캐시에 저장');
+        await writeSharedKisToken(kisAccessToken, kisAccessTokenExpiresAt);
+        return kisAccessToken;
+      }
+      const detail = `${res.status} ${JSON.stringify(json).slice(0, 200)}`;
+      if (attempt === 3) throw new Error(`KIS REST 토큰 발급 실패: ${detail}`);
+      console.warn(`[KIS토큰] 발급 실패 (${attempt}/3) ${detail} — 공유 캐시를 다시 확인합니다`);
+      await new Promise(r => setTimeout(r, 15000));
+      const retryCached = await readSharedKisToken();
+      if (retryCached) {
+        kisAccessToken = retryCached.token;
+        kisAccessTokenExpiresAt = retryCached.expiresAt;
+        console.log('[KIS토큰] 대기 중 다른 소비자가 저장한 토큰을 받았습니다');
+        return kisAccessToken;
+      }
+    }
+    throw new Error('KIS REST 토큰 발급 실패');
   })();
   try {
     return await _kisTokenInFlight;
