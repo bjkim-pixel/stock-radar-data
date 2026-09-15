@@ -73,6 +73,11 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅 / 
     · 불타기: 최초 매수가 대비 +20%마다 같은 시총 구간 금액만큼 추가매수 (횟수 제한 없음)
     · 매도: 매수 다음날부터 보유 중 최고 "종가"(peak) 대비 단계형 트레일링 손절
             (고점수익 <5% -7% / 5~15% -5% / 15~30% -4% / 30%↑ -3%)
+    · 타임 스톱(2026-09-15 추가): 진입 후 4거래일이 지나도록 고점수익이 +1.5%에
+            못 미치면 그날 종가에 청산(exit_reason = TIME_STOP). 실제 가상매매
+            99건 재시뮬레이션에서 7건이 걸렸고 4건 개선(+2.8~7.8%p), 3건 무변화,
+            손해 0건. 표본이 작아 효과 크기는 미확정이며 "승자를 자르지 않는다"는
+            점만 검증됨. TIME_STOP_DAYS = 0 으로 끌 수 있음.
 
   종가베팅 (CLOSEBET)
     · 매수: 3단계 통과 종목 전부, 시총 구간별 금액(위 참조).
@@ -195,6 +200,12 @@ CRASH_PCT        = -0.10         # 추세추종: 급락 안전장치 (라벨만 
 MAX_BUYS_PER_DAY = 5             # 2026-09-15 복원 — 백테스트 v3~v5가 전제한 "일별 최대 5종목"
 PYRAMID_STEP     = 0.20          # 추세추종 불타기 트리거 간격 (최초 매수가 대비, 반복 무제한)
 COST_ONE_WAY     = 0.0012        # 편도 거래비용 (왕복 0.24%)
+
+# 2026-09-15 타임 스톱 — 진입 후 N거래일이 지나도록 고점수익이 기준에 못 미치면
+# 그날 종가에 청산. 실제 가상매매 99건 재시뮬레이션 근거는 process_day_trend 참고.
+# TIME_STOP_DAYS = 0 으로 두면 규칙이 꺼진다.
+TIME_STOP_DAYS         = 4       # 진입일 다음 거래일을 1일차로 셈
+TIME_STOP_MIN_PEAK_PCT = 1.5     # 이 고점수익(%)에 못 미치면 청산
 
 
 def trail_pct_for(peak_gain):
@@ -373,12 +384,11 @@ class Position:
 
 # ── 추세추종: 하루 처리 (트레일링 손절 + 무제한 불타기 + 신규매수) ────────────
 def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stopped_codes,
-                      sig, suffix, allow_buy, breadth_mult=1.0):
+                      sig, suffix, allow_buy, breadth_mult=1.0, day_seq=None):
     closed = []
 
-    # 1) 매도 판정 — peak는 종가가 아닌 "당일 고가" 기준으로 갱신(장중 급등 후
-    #    되밀리는 날도 고점으로 인정해 트레일링을 더 보수적으로 잡음), 낙폭 확인은
-    #    종가 기준(저가는 사용하지 않음). 매수 당일은 판정 제외.
+    # 1) 매도 판정 — peak도 판정도 모두 "당일 종가" 기준(아래 2026-09-15 주석 참고).
+    #    매수 당일은 판정 제외.
     for code, pos in list(open_pos.items()):
         if pos.entry_date >= day:
             continue
@@ -438,6 +448,48 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
                     f"{dd*100:.1f}% · 실현 {pos.return_pct:.1f}% "
                     f"({pos.realized_pnl:,}원)"
                     + ("  ※급락 안전장치" if crash else ""))
+            continue
+
+        # 1-b) 타임 스톱 — 진입 후 TIME_STOP_DAYS 거래일이 지나도록 고점수익이
+        #      TIME_STOP_MIN_PEAK_PCT에 못 미치면 그날 종가에 청산한다.
+        #      "신고가 돌파 후 즉시 따라붙지 못하는 종목은 결국 -7% 손절로 끝난다"는
+        #      관찰에서 나온 규칙. 2026-06-01~09-15 실제 가상매매 99건으로
+        #      재시뮬레이션한 결과 7건이 조기 청산되고 그중 4건이 +2.8~7.8%p 개선,
+        #      3건은 어차피 같은 날 손절될 자리라 변화 없음, 손해를 본 건은 0건이었다
+        #      (합계 +22.1%p). N=4는 X=1.0~2.0 구간 전체에서 동일한 결과가 나오는
+        #      평탄한 구역이라 파라미터 민감도가 낮아 그 한가운데 값을 택했다.
+        #      표본이 7건뿐이라 효과 크기는 단정할 수 없고, "승자를 자르지 않는다"는
+        #      점만 검증된 규칙이다.
+        if day_seq is not None and TIME_STOP_DAYS:
+            di, ei = day_seq.get(day), day_seq.get(pos.entry_date)
+            if di is not None and ei is not None and di - ei == TIME_STOP_DAYS:
+                if peak_gain * 100 < TIME_STOP_MIN_PEAK_PCT:
+                    pos.close_out(day, close, "TIME_STOP")
+                    closed.append(pos)
+                    del open_pos[code]
+                    stopped_codes.add(code)
+                    sig.add(day, code, "V4_SELL_TREND" + suffix, "SELL", 50.0,
+                            {
+                                "portfolio":     pos.portfolio,
+                                "strategy":      "TREND",
+                                "entry_date":    pos.entry_date.isoformat(),
+                                "entry_price":   pos.entry_price,
+                                "avg_price":     round(pos.avg_price, 2),
+                                "peak_price":    pos.peak_price,
+                                "peak_date":     pos.peak_date.isoformat(),
+                                "close":         close,
+                                "peak_gain_pct": round(peak_gain * 100, 2),
+                                "days_held":     di - ei,
+                                "tranches":      pos.tranches,
+                                "quantity":      pos.quantity,
+                                "invested":      pos.invested,
+                                "realized_pnl":  pos.realized_pnl,
+                                "return_pct":    float(pos.return_pct or 0),
+                                "exit_reason":   "TIME_STOP",
+                            },
+                            f"[추세추종] {pos.name} 전량매도 · 진입 {di-ei}거래일 경과 "
+                            f"고점수익 {peak_gain*100:.1f}% (기준 {TIME_STOP_MIN_PEAK_PCT}% 미달) · "
+                            f"실현 {pos.return_pct:.1f}% ({pos.realized_pnl:,}원)  ※타임 스톱")
 
     # 2) 불타기 — 최초 매수가 대비 +20%마다, 횟수 제한 없음
     for code, pos in open_pos.items():
@@ -756,6 +808,7 @@ def main():
         max_invested = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
 
         regime_counts = {}
+        day_seq = {d: i for i, d in enumerate(sim_days)}   # 타임 스톱용 거래일 순번
         for day in sim_days:
             dc = closes.get(day, {})
             do = opens.get(day, {})
@@ -771,7 +824,8 @@ def main():
 
             newly_t = process_day_trend(
                 day, open_trend, dc, dh, candidates["TREND"].get(day, []),
-                stopped_trend, sig, suffix="", allow_buy=True, breadth_mult=bmult)
+                stopped_trend, sig, suffix="", allow_buy=True, breadth_mult=bmult,
+                day_seq=day_seq)
             closed_trend += newly_t
 
             newly_c = process_day_closebet(
