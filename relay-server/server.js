@@ -565,6 +565,15 @@ async function fetchChangeRateRank(limit = 30) {
   const primary = RANK_PARAM_PRESETS[_rankPresetIdx];
   const first = await callChangeRateRank(primary);
   if (first.rows && first.rows.length) return first.rows.slice(0, limit);
+  // 2026-09-15: rows===null은 "호출 자체가 실패"(토큰 403·HTTP 오류·네트워크)이지
+  // "조건 만족 종목 0건"이 아니다. 둘을 구분하지 않으면 재배포 직후 토큰 분당
+  // 1회 제한에 걸린 순간을 파라미터 문제로 오인해 프리셋 탐색을 돌리고, 심하면
+  // 잘 되던 프리셋을 엉뚱한 것으로 바꿔버릴 수 있다(실제로 오늘 그 로그가 찍힘).
+  // 호출 실패는 그냥 이번 주기를 건너뛰고 다음 1분 뒤에 재시도한다.
+  if (first.rows === null) {
+    console.warn(`[상따후보] SCAN 등락률순위 호출 실패 (${primary.label}) — 파라미터 문제가 아니므로 프리셋 탐색 없이 다음 주기 재시도: ${first.msg}`);
+    return [];
+  }
 
   // 0건이면 다른 프리셋을 훑어본다. 매분 전수 탐색하면 KIS 호출량이 늘어나므로
   // 10분에 한 번만 탐색하고, 그 사이에는 기본 프리셋 결과(0건)를 그대로 쓴다.
@@ -579,7 +588,7 @@ async function fetchChangeRateRank(limit = 30) {
     if (i === _rankPresetIdx) continue;
     const p = RANK_PARAM_PRESETS[i];
     const r = await callChangeRateRank(p);
-    console.log(`[상따후보] SCAN 프리셋 시도 [${p.label}] → ${r.rows ? r.rows.length + '건' : '실패'} msg1="${r.msg}"`);
+    console.log(`[상따후보] SCAN 프리셋 시도 [${p.label}] → ${r.rows ? r.rows.length + '건' : '호출실패(파라미터 무관)'} msg1="${r.msg}"`);
     if (r.rows && r.rows.length) {
       _rankPresetIdx = i;
       console.log(`[상따후보] SCAN 파라미터 프리셋 확정: [${p.label}] — 이후 이 조합을 사용`);
