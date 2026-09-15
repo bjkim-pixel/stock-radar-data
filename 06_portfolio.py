@@ -26,8 +26,14 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅 / 
     -14,926,803원 — 이 규칙이 있었다면 대략 +832,957원으로 바뀌었을 것으로 추정).
     고점이 매수가 대비 BREAKEVEN_TRIGGER_PCT(+5%) 이상 찍은 적이 있으면, 그 뒤로는
     "트레일링선"과 "매수가×(1+0.3%)" 중 더 높은 쪽을 손절선으로 씀 — 즉 한 번
-    +5%를 넘긴 거래는 그 뒤로 손실로 뒤집히지 않도록 보호(왕복거래비용 0.24%는
-    +0.3%가 커버). 이 청산은 새 사유코드 BREAKEVEN_STOP으로 기록됨.
+    +5%를 넘긴 거래는 손절선이 매수가 위로 올라감(왕복거래비용 0.24%는 +0.3%가
+    커버). 이 청산은 새 사유코드 BREAKEVEN_STOP으로 기록됨.
+    ⚠ 2026-09-15 정정 — "손실로 뒤집히지 않도록 보호"는 사실이 아님: 이 엔진은
+      일봉 배치라 청산이 손절선이 아니라 "그날 종가"에 체결된다. 갭하락으로
+      종가가 손절선보다 한참 밑이면 그 차이만큼 손실이 난다(실거래 BREAKEVEN_STOP
+      3건이 전부 손실, 평균 -6.9%·최악 -15.3%였던 이유). 일봉 구조상 배치에서는
+      해결할 수 없어, relay-server가 장중에 같은 손절선을 실시간 감시해 이탈
+      즉시 알림을 보내도록 보완했다(relay-server/server.js virtualStopLine).
 
   ⚠ 2026-09-10 단계형 트레일링(STOP_TIERS) 도입 — 배경: "전략성과2"(상따 실시간
     엔진)가 쓰는 "고점수익이 커질수록 트레일링 폭을 좁혀 이익을 더 단단히
@@ -45,6 +51,16 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅 / 
     (사용자 확인: 상따의 "프로그램 반전 선제청산"은 이번엔 추세추종에 추가하지
     않기로 함 — 일봉 배치라 상따처럼 분 단위로 반전을 잡을 수 없어 실익이 적음)
 
+  ⚠ 2026-09-15 Breadth 국면 레이어 도입 + 백테스트 정렬 — 배경: 2026-06~09
+    실거래에서 추세추종 -4,907만원(승률 33%), 종가베팅 -562만원이 나왔는데,
+    백테스트(v5 +2.72억·승률 42.6%)와 구현이 세 곳에서 어긋나 있었음.
+      ① 일별 매수 한도: 백테스트 5종목 → 구현 "한도 없음"(실제 하루 8종목까지)
+      ② peak 기준: 백테스트 "최고 종가" → 구현 "당일 고가"(더 빨리 손절됨)
+      ③ v5의 Breadth 국면 배수가 아예 미구현 — 파이프라인 어디에도 B20이 없었음
+    ①②는 백테스트 기준으로 되돌리고, ③은 breadth_regime()으로 이식했다.
+    종가베팅도 "중간 국면 매수중단"(백테스트상 MDD율 -15.4%→-1.9%)을 적용.
+    ※ 종가베팅2(CLOSEBET2)는 사용자 요청으로 이번 변경에서 제외 — 기존 규칙 유지.
+
 매수 금액 — 시가총액 구간별 차등 (불타기 포함, ENTRY_AMOUNT_TIERS)
   · 시가총액 5조원 미만          : 1천만원
   · 시가총액 5조원 이상 10조원 미만 : 2천만원
@@ -52,13 +68,15 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅 / 
 
 전략별 규칙
   추세추종 (TREND)
-    · 매수: 3단계 통과 종목 전부(한도 없음), 시총 구간별 금액(위 참조)
+    · 매수: 3단계 통과 종목 중 pick_score 상위 MAX_BUYS_PER_DAY(5)개까지,
+            시총 구간별 금액 × Breadth 국면 배수(아래 2026-09-15 항목 참조)
     · 불타기: 최초 매수가 대비 +20%마다 같은 시총 구간 금액만큼 추가매수 (횟수 제한 없음)
-    · 매도: 매수 다음날부터 보유 중 최고가(peak, 종가가 아닌 당일 고가 기준) 대비
-            -7% 트레일링 손절 (peak는 매수일 고가로 시작, 저가는 판정에 사용 안 함)
+    · 매도: 매수 다음날부터 보유 중 최고 "종가"(peak) 대비 단계형 트레일링 손절
+            (고점수익 <5% -7% / 5~15% -5% / 15~30% -4% / 30%↑ -3%)
 
   종가베팅 (CLOSEBET)
-    · 매수: 3단계 통과 종목 전부(한도 없음), 시총 구간별 금액(위 참조)
+    · 매수: 3단계 통과 종목 전부, 시총 구간별 금액(위 참조).
+            단 Breadth 중간 국면(B20 20~60%)에는 매수하지 않음(2026-09-15 추가)
     · 불타기: 없음
     · 매도: 매수 익일 정규장 시가에 무조건 전량 매도 (보유기간 1거래일 고정)
 
@@ -125,6 +143,43 @@ def entry_amount_for(market_cap):
     return ENTRY_AMOUNT
 
 
+# ── Breadth 국면 레이어 (2026-09-15 신설, 백테스트 v5의 2층 구조를 이식) ─────
+# 전일 B20(시총 2조↑ 종목 중 20일선 위 비율)으로 국면을 나눠,
+#  · 추세추종은 "종목당 매수금액"에 배수를 곱하고,
+#  · 종가베팅은 중간 국면에서 아예 매수하지 않습니다.
+# 근거(백테스트):
+#  · v5 추세추종 — 배수 적용으로 총손익 2.07억 → 2.72억, MDD율 -7.4% → -5.5%
+#  · 종가베팅  — 국면별 건당수익 과매도 +0.89% / 중간 -0.06% / 추세 +1.16%.
+#                중간 국면을 빼면 MDD율 -15.4% → -1.9%, 위험조정 1.53 → 13.09
+# 국면 판정은 "전일" B20을 씁니다(당일 종가로 판단하면 미래 참조가 됨).
+BREADTH_OVERSOLD_MAX = 20.0      # B20 < 20  : 과매도
+BREADTH_TREND_MIN    = 60.0      # B20 >= 60 : 추세
+BREADTH_MULTIPLIER   = {"OVERSOLD": 1.0, "MIDDLE": 0.5, "TREND": 1.5}
+# 종가베팅은 중간 국면에서 매수 중단(위 검증 결과)
+CLOSEBET_SKIP_REGIMES = {"MIDDLE"}
+
+
+def breadth_regime(b20):
+    """B20(%) → 'OVERSOLD' | 'MIDDLE' | 'TREND' | None(데이터 없음)."""
+    if b20 is None:
+        return None
+    if b20 < BREADTH_OVERSOLD_MAX:
+        return "OVERSOLD"
+    if b20 >= BREADTH_TREND_MIN:
+        return "TREND"
+    return "MIDDLE"
+
+
+def prev_breadth_regime(breadth, day):
+    """해당 거래일 직전 거래일의 국면. 전일 데이터가 없으면 None을 돌려주고,
+    호출부는 None일 때 '기존과 동일하게(배수 1.0, 매수 허용)' 동작합니다 —
+    국면 데이터 결측 때문에 매매가 통째로 멈추는 일이 없도록."""
+    prevs = [d for d in breadth if d < day]
+    if not prevs:
+        return None
+    return breadth_regime(breadth[max(prevs)])
+
+
 # 2026-09-10: 고점수익(peak_gain) 구간별 트레일링 폭 — 갈수록 좁혀서 이익을
 # 더 단단히 지킵니다("전략성과2" 상따 실시간 엔진의 단계형 트레일링을 일봉
 # 배치에 맞게 폭을 넓혀 이식 — 위 모듈 docstring 2026-09-10 항목 참고).
@@ -137,6 +192,7 @@ STOP_TIERS = [
     (None,  -0.03),   # 고점수익 ≥30%  : 고점 대비 -3%
 ]
 CRASH_PCT        = -0.10         # 추세추종: 급락 안전장치 (라벨만 다름, 결과 동일 — <5%tier에서만 의미 있음)
+MAX_BUYS_PER_DAY = 5             # 2026-09-15 복원 — 백테스트 v3~v5가 전제한 "일별 최대 5종목"
 PYRAMID_STEP     = 0.20          # 추세추종 불타기 트리거 간격 (최초 매수가 대비, 반복 무제한)
 COST_ONE_WAY     = 0.0012        # 편도 거래비용 (왕복 0.24%)
 
@@ -231,7 +287,25 @@ def load_all(cur):
     cur.execute("SELECT code, name FROM stocks")
     names = dict(cur.fetchall())
 
-    return candidates, closes, opens, highs, names
+    # 2026-09-15: Breadth(B20) 국면 — 시총 2조원 이상 종목 중 20일선 위 비율.
+    # 백테스트 v5의 2층 구조("무엇을 살지"는 1층, "얼마나 살지"는 이 2층)와
+    # 종가베팅 검증의 "중간 국면 매수중단"이 모두 이 지표를 씁니다. 그동안
+    # 파이프라인에 아예 구현돼 있지 않아 두 전략 모두 국면 구분 없이 매매했고,
+    # 이것이 2026-06~09 실거래 손실의 핵심 원인으로 지목됐습니다.
+    cur.execute("""
+        SELECT p.trade_date,
+               count(*) FILTER (WHERE m.above_ma20) * 100.0 / nullif(count(*), 0)
+        FROM daily_price p
+        JOIN daily_metrics m ON m.trade_date = p.trade_date AND m.code = p.code
+        JOIN stocks s        ON s.code = p.code
+        WHERE s.security_type = 'STOCK'
+          AND p.market_cap >= 2000000000000
+          AND m.above_ma20 IS NOT NULL
+        GROUP BY p.trade_date
+    """)
+    breadth = {d: (float(v) if v is not None else None) for d, v in cur.fetchall()}
+
+    return candidates, closes, opens, highs, names, breadth
 
 
 # ── 신호 누적기 ───────────────────────────────────────────────────────────────
@@ -299,7 +373,7 @@ class Position:
 
 # ── 추세추종: 하루 처리 (트레일링 손절 + 무제한 불타기 + 신규매수) ────────────
 def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stopped_codes,
-                      sig, suffix, allow_buy):
+                      sig, suffix, allow_buy, breadth_mult=1.0):
     closed = []
 
     # 1) 매도 판정 — peak는 종가가 아닌 "당일 고가" 기준으로 갱신(장중 급등 후
@@ -311,9 +385,12 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
         close = day_closes.get(code)
         if close is None:
             continue                       # 거래정지 등 — 판정 보류
-        high = day_highs.get(code, close)
-        if high > pos.peak_price:
-            pos.peak_price = high
+        # 2026-09-15: peak 갱신 기준을 "당일 고가"에서 "당일 종가"로 변경.
+        # 고가 기준은 장중 잠깐 찍고 되밀린 가격까지 고점으로 인정해 트레일링선을
+        # 실제보다 높게 잡았고(= 더 빨리 손절), 백테스트(+2.72억)는 줄곧 "보유 중
+        # 최고 종가" 기준이었다. 판정도 종가, 고점도 종가로 기준을 통일한다.
+        if close > pos.peak_price:
+            pos.peak_price = close
             pos.peak_date = day
             pos.peak_at = market_close_ts(day)
         dd = close / pos.peak_price - 1
@@ -371,7 +448,8 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
             continue
         gain = close / pos.entry_price - 1
         target = int(gain // PYRAMID_STEP)     # 무제한 — 상한 없음
-        amount = entry_amount_for(pos.market_cap)
+        # Breadth 국면 배수는 불타기 금액에도 동일하게 적용한다(백테스트 v5 규정).
+        amount = int(round(entry_amount_for(pos.market_cap) * breadth_mult))
         while pos.tranches - 1 < target:
             qty = amount // close
             if qty <= 0:
@@ -396,34 +474,45 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
                         "avg_price":     round(pos.avg_price, 2),
                         "total_qty":     pos.quantity,
                         "total_invested": pos.invested,
+                        "breadth_mult":   breadth_mult,
                     },
                     f"[추세추종] {pos.name} 불타기 {pos.tranches-1}회차 · 최초가 대비 "
                     f"+{gain*100:.1f}% · {close:,}원 {qty:,}주 추가 "
                     f"(평단 {pos.avg_price:,.0f}원)")
 
-    # 3) 신규 매수 — 3단계 통과 후보 전부(기보유 제외), 한도 없음
+    # 3) 신규 매수 — 3단계 통과 후보 중 pick_score 상위 MAX_BUYS_PER_DAY개까지.
+    # 2026-09-15: 예전에는 "후보 전부, 한도 없음"이었는데 백테스트(v3~v5)는 줄곧
+    # "일별 최대 5종목"을 전제로 검증된 값이었다. 실거래에서는 하루 8종목까지
+    # 매수된 날이 있어 백테스트와 노출 규모 자체가 달랐으므로 한도를 복원한다.
     if allow_buy:
         picks = [c for c in day_candidates if c["code"] not in open_pos]
         picks.sort(key=lambda c: c["pick_score"])
+        bought_today = 0
         for cand in picks:
+            if bought_today >= MAX_BUYS_PER_DAY:
+                break
             close = day_closes.get(cand["code"]) or cand["close"]
             if not close:
                 continue
             mcap = cand["reason"].get("market_cap")
-            amount = entry_amount_for(mcap)
+            # Breadth 국면 배수 — 백테스트 v5의 2층 구조(위 breadth_regime 주석 참고)
+            amount = int(round(entry_amount_for(mcap) * breadth_mult))
             qty = amount // close
             if qty <= 0:
                 continue                   # 주당 매수금액 초과 — 매수 불가
             invested = qty * close
-            # peak 시작점도 매수 당일 고가 기준 — 이미 당일 크게 튄 상태로 매수한
-            # 종목은 그 고가부터 트레일링(더 보수적으로 시작)
-            entry_high = day_highs.get(cand["code"], close)
+            # 2026-09-15: peak 시작점을 "매수 당일 고가"에서 "매수 종가"로 되돌림.
+            # 고가 기준은 장중 급등 후 되밀린 날 종가에 매수하면 고점이 이미 위에
+            # 찍힌 채로 시작해 다음날 조금만 밀려도 손절되는 문제가 있었고(실거래
+            # TRAIL_STOP_7 31건 전패의 일부가 이 경우), 무엇보다 백테스트는 줄곧
+            # "보유 중 최고 종가" 기준이었다. 기준을 백테스트와 일치시킨다.
             pos = Position("VIRTUAL", "TREND", cand["code"], cand["name"], day, close,
                            qty, invested,
                            pyramid_blocked=cand["code"] in stopped_codes,
-                           peak_price=max(entry_high, close),
+                           peak_price=close,
                            peak_at=market_close_ts(day),
                            market_cap=mcap)
+            bought_today += 1
             open_pos[cand["code"]] = pos
             # 2026-09-12 수정: stopped_codes는 이전엔 여기서 한 번도 안 지워져서,
             # 한 번 손절된 종목은 이 시뮬레이션 전체 기간(수개월) 동안 재진입할
@@ -445,16 +534,18 @@ def process_day_trend(day, open_pos, day_closes, day_highs, day_candidates, stop
                         "entry_price":     close,                  "quantity":        qty,
                         "invested":        invested,
                         "pyramid_blocked": pos.pyramid_blocked,
+                        "breadth_mult":    breadth_mult,
                     },
                     f"[추세추종] {cand['name']} 3단계 신규매수(개별RS+정배열) · {close:,}원 {qty:,}주 "
                     f"({invested:,}원) · 개별RS "
-                    f"{r.get('rs20_vs_mkt')}%p · 우선순위 {cand['pick_score']:.1f}")
+                    f"{r.get('rs20_vs_mkt')}%p · 우선순위 {cand['pick_score']:.1f}"
+                    + (f" · 국면배수 x{breadth_mult:g}" if breadth_mult != 1.0 else ""))
 
     return closed
 
 
 # ── 종가베팅: 하루 처리 (매수 익일 시가 전량 매도 · 불타기 없음) ─────────────
-def process_day_closebet(day, open_pos, day_closes, day_opens, day_candidates, sig, allow_buy):
+def process_day_closebet(day, open_pos, day_closes, day_opens, day_candidates, sig, allow_buy, regime=None):
     closed = []
 
     # 1) 매도 판정 — 매수 다음 거래일 시가에 무조건 전량 매도
@@ -615,7 +706,7 @@ def main():
 
     with conn.cursor() as cur:
         cur.execute("SET statement_timeout = '10min'")
-        candidates, closes, opens, highs, names = load_all(cur)
+        candidates, closes, opens, highs, names, breadth = load_all(cur)
 
         if not candidates["TREND"] and not candidates["CLOSEBET"] and not candidates["CLOSEBET2"]:
             print("⚠ V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3 / V4_CAND_CLOSEBET2_2 후보가 없습니다. 06_signals.sql을 먼저 실행하세요.")
@@ -664,19 +755,28 @@ def main():
         mdd_amount = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
         max_invested = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
 
+        regime_counts = {}
         for day in sim_days:
             dc = closes.get(day, {})
             do = opens.get(day, {})
             dh = highs.get(day, {})
 
+            # 2026-09-15: 전일 Breadth(B20) 국면 — 추세추종은 매수금액 배수로,
+            # 종가베팅은 매수 허용 여부로 반영. 국면 데이터가 없으면(초기 구간 등)
+            # 기존과 동일하게 배수 1.0 · 매수 허용으로 동작한다.
+            regime = prev_breadth_regime(breadth, day)
+            regime_counts[regime or "NO_DATA"] = regime_counts.get(regime or "NO_DATA", 0) + 1
+            bmult = BREADTH_MULTIPLIER.get(regime, 1.0)
+            closebet_ok = regime not in CLOSEBET_SKIP_REGIMES
+
             newly_t = process_day_trend(
                 day, open_trend, dc, dh, candidates["TREND"].get(day, []),
-                stopped_trend, sig, suffix="", allow_buy=True)
+                stopped_trend, sig, suffix="", allow_buy=True, breadth_mult=bmult)
             closed_trend += newly_t
 
             newly_c = process_day_closebet(
                 day, open_closebet, dc, do, candidates["CLOSEBET"].get(day, []),
-                sig, allow_buy=True)
+                sig, allow_buy=closebet_ok, regime=regime)
             closed_closebet += newly_c
 
             newly_c2 = process_day_closebet2(
@@ -788,6 +888,18 @@ def main():
             conn.commit()
 
     # ── 요약 ─────────────────────────────────────────────────────────────
+    # 2026-09-15: Breadth 국면 분포를 먼저 찍는다 — 배수/매수중단이 실제로 어느
+    # 국면에 얼마나 적용됐는지 모르면 성과 변화를 해석할 수 없기 때문.
+    if regime_counts:
+        parts = []
+        for key in ("OVERSOLD", "MIDDLE", "TREND", "NO_DATA"):
+            if regime_counts.get(key):
+                mult = BREADTH_MULTIPLIER.get(key)
+                tag = f"x{mult:g}" if mult else "기본"
+                skip = " · 종가베팅 매수중단" if key in CLOSEBET_SKIP_REGIMES else ""
+                parts.append(f"{key} {regime_counts[key]}일({tag}{skip})")
+        print(f"\n[Breadth 국면] " + " / ".join(parts))
+
     day_idx = {d: i for i, d in enumerate(sim_days)}
 
     def summarize(label, closed_all, open_pos, cand_dict):
