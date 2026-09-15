@@ -3403,7 +3403,7 @@ async function loadPerf2(){
       const ret=(close-+p.entry_price)/+p.entry_price*100;
       const reason=(p.entry_reason&&p.entry_reason.reason_text)||"–";
       return `<tr>
-        <td class="l"><a class="lk nm" data-code="${p.code}">${p.name||nameOf[p.code]||p.code}</a></td>
+        <td class="l"><a class="lk nm" data-code="${p.code}">${p.name||nameOf[p.code]||S.i2NameOf[p.code]||p.code}</a></td>
         <td>${N(+p.entry_price)}</td><td>${N(close)}${isLive?"":' <small class="faint" title="아직 실시간 체결 없음 — 전일 종가로 대체 표시">(전일종가)</small>'}</td>
         <td class="${sgn(ret)}">${pm(ret)}%</td>
         <td class="l faint">${reason}</td>
@@ -3415,7 +3415,7 @@ async function loadPerf2(){
     $("#i2PerfBody").innerHTML = cl.length ? cl.map(p=>{
       const er=p.exit_reason||{};
       return `<tr>
-      <td class="l"><a class="lk nm" data-code="${p.code}">${p.name||nameOf[p.code]||p.code}</a></td>
+      <td class="l"><a class="lk nm" data-code="${p.code}">${p.name||nameOf[p.code]||S.i2NameOf[p.code]||p.code}</a></td>
       <td>${N(+p.entry_price)}</td><td>${N(+p.exit_price)}</td>
       <td class="${sgn(+p.return_pct)}">${pm(+p.return_pct)}%</td>
       <td class="l faint">${(p.entry_reason&&p.entry_reason.reason_text)||"–"}</td>
