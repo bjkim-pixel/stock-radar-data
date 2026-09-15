@@ -144,17 +144,42 @@ setInterval(() => {
 // ----------------------------------------------------------------------------
 // 2) KIS 웹소켓 연결 + 구독 관리 (구독 대상 = 보유 종목 ∪ 프론트엔드 요청 종목)
 // ----------------------------------------------------------------------------
+// 2026-09-15: KIS 실시간 등록 한도(승인키당 41건)를 코드로 강제한다. 오늘 장중
+// 로그에 "MAX SUBSCRIBE OVER"가 실제로 찍혔음 — 시세(H0STCNT0)와 프로그램매매
+// (H0STPGM0)가 같은 슬롯을 나눠 쓰는데, 상따 후보 30 + 프로그램매매 + 전략성과
+// 보유분을 합치면 한도를 넘는다. 넘으면 초과분이 조용히 등록 실패하므로(= 그
+// 종목은 시세가 안 와서 진입·청산 판정 자체가 안 됨) 예산을 정해 잘라야 한다.
+// 우선순위: 상따 보유(청산 판단 필수) → 전략성과 보유 → 프론트 요청 → 상따 후보.
+// 시세는 진입·청산 판정의 생명줄이라 프로그램매매보다 항상 우선한다. 특히 보유
+// 종목의 시세가 끊기면 손절 자체가 불가능해지므로, 보유·프론트요청 종목은 한도
+// 계산과 무관하게 먼저 확보하고 후보를 남은 예산만큼 채운다.
+const KIS_SUB_SLOT_LIMIT = 41;
+const KIS_PROGRAM_SUB_RESERVE = 8;   // 여유가 있을 때 프로그램매매용으로 남겨두는 슬롯
+let _subTrimLoggedAt = 0;
 function wantedCodes() {
-  const w = new Set(heldCodes);
-  for (const code of subscribers.keys()) w.add(code);
-  for (const code of sangttaCandidates) w.add(code);
-  for (const code of sangttaOpenPositions.keys()) w.add(code);
+  const w = new Set();
+  for (const code of sangttaOpenPositions.keys()) w.add(code); // 청산 판단 — 절대 양보 불가
+  for (const code of heldCodes) w.add(code);                   // 전략성과(VIRTUAL) 보유분
+  for (const code of subscribers.keys()) w.add(code);          // 프론트가 보고 있는 종목
+  const mandatory = w.size;
+  const budget = Math.max(mandatory, KIS_SUB_SLOT_LIMIT - KIS_PROGRAM_SUB_RESERVE);
+  let trimmed = 0;
+  for (const code of sangttaCandidates) {                      // 모멘텀 순위 순서대로 들어있음
+    if (w.size >= budget) { trimmed++; continue; }
+    w.add(code);
+  }
+  if (trimmed) {
+    const nowMs = Date.now();
+    if (nowMs - _subTrimLoggedAt > 5 * 60 * 1000) {
+      _subTrimLoggedAt = nowMs;
+      console.warn(`[구독] 슬롯 예산으로 후순위 후보 ${trimmed}종목 제외 — 시세 ${w.size}(필수 ${mandatory}) / 한도 ${KIS_SUB_SLOT_LIMIT}`);
+    }
+  }
   return w;
 }
 
-// KIS 실시간 등록 한도(계정/승인키당 보통 41건)를 넘으면 초과분 등록이 조용히
-// 실패한다. 한도에 근접하면 경고를 남겨 원인을 바로 알 수 있게 함.
-const KIS_SUB_SLOT_LIMIT = 41;
+// 실제 사용 중인 슬롯을 주기적으로 확인 — wantedCodes()의 예산이 제대로
+// 동작하는지(그리고 한도가 41이 맞는지) 로그로 검증할 수 있게 남겨둔다.
 let _subSlotWarnedAt = 0;
 function warnIfSubSlotsTight() {
   const used = currentKisSubs.size + currentProgramTradeSubs.size;
@@ -162,7 +187,7 @@ function warnIfSubSlotsTight() {
   const nowMs = Date.now();
   if (nowMs - _subSlotWarnedAt < 5 * 60 * 1000) return; // 5분에 한 번만
   _subSlotWarnedAt = nowMs;
-  console.warn(`[구독] 실시간 등록 슬롯 ${used}/${KIS_SUB_SLOT_LIMIT} 사용 중 — 한도 초과분은 등록이 실패할 수 있음(시세 ${currentKisSubs.size} + 프로그램매매 ${currentProgramTradeSubs.size})`);
+  console.warn(`[구독] 실시간 등록 슬롯 ${used}/${KIS_SUB_SLOT_LIMIT} 사용 중(시세 ${currentKisSubs.size} + 프로그램매매 ${currentProgramTradeSubs.size})`);
 }
 
 function reconcileKisSubscriptions() {
@@ -280,10 +305,17 @@ const programTradeVerifyLogged = new Map(); // code -> 검증 로그 출력 횟�
 // 에만 붙여 슬롯을 아낀다.
 const SANGTTA_PROGRAM_SUB_TOP_N = 8;
 function programTradeWantedCodes() {
-  const w = new Set(sangttaOpenPositions.keys()); // 보유 종목은 항상 구독
+  // 시세 구독을 먼저 확정하고 "남은 슬롯"만 쓴다 — 프로그램매매는 등급 보너스와
+  // 반전 선제청산에만 쓰이므로, 없으면 아쉬운 정도지 판정이 불가능해지진 않는다.
+  const budget = Math.max(0, KIS_SUB_SLOT_LIMIT - wantedCodes().size);
+  const w = new Set();
+  for (const code of sangttaOpenPositions.keys()) { // 보유 종목 우선
+    if (w.size >= budget) break;
+    w.add(code);
+  }
   let n = 0;
-  for (const code of sangttaCandidates) {         // 후보는 상위 N개까지만
-    if (n >= SANGTTA_PROGRAM_SUB_TOP_N) break;
+  for (const code of sangttaCandidates) {           // 그다음 상위 후보
+    if (w.size >= budget || n >= SANGTTA_PROGRAM_SUB_TOP_N) break;
     if (!w.has(code)) { w.add(code); n++; }
   }
   return w;
@@ -1136,6 +1168,9 @@ const sangttaTickStats     = new Map();               // code -> {minuteBuckets:
 // 장마감 강제청산(MARKET_CLOSE)은 어차피 그날 재진입 여지가 없으므로 기록 안 함.
 const sangttaExitPeaks     = new Map();               // code -> 청산 시점 peakPrice
 const _gradeCLoggedAt      = new Map();               // code -> 등급C 스킵 로그를 마지막으로 남긴 시각(로그 폭주 방지)
+// code -> {pct, date} 마지막으로 관측된 실시간 등락률. lastPrice와 달리 구독이
+// 해제돼도 남아 있어야 모멘텀 순위가 안정된다(플래핑 방지 — handleKisMessage 주석 참고).
+const sangttaLastChangePct = new Map();
 let sangttaDailySummaryDoneFor = null;                // 오늘 이미 정산했으면 날짜 문자열
 
 function getSangttaStats(code) {
@@ -1257,9 +1292,14 @@ async function refreshSangttaCandidates() {
     // 순위에 두되, DB 최신순(=방금 SCAN에 걸린 순서)을 동점 기준으로 써서
     // 지금 막 포착된 종목이 오래된 후보보다 앞에 서게 한다.
     const dbRankOf = new Map(allOrdered.map((c, i) => [c, i]));
+    // 실시간 시세가 있으면 그 값을, 구독이 끊겨 사라졌으면 "오늘 마지막으로 본 값"을,
+    // 그것도 없으면(오늘 한 번도 틱을 못 받은 신규 후보) 0%를 중립값으로 쓴다.
     const momentumOf = code => {
       const live = lastPrice.get(code);
-      return (live && Number.isFinite(live.changePct)) ? live.changePct : 0;
+      if (live && Number.isFinite(live.changePct)) return live.changePct;
+      const cached = sangttaLastChangePct.get(code);
+      if (cached && cached.date === today && Number.isFinite(cached.pct)) return cached.pct;
+      return 0;
     };
     // 2026-09-15: 상한가에 잠긴 종목은 매도 물량이 없어 애초에 살 수 없는데,
     // 등락률이 +29.9%라 모멘텀 순위에서는 항상 최상위를 차지해 추적 슬롯
@@ -1876,6 +1916,12 @@ function handleKisMessage(text) {
     const sangttaSnap = sangttaLiveSnapshot(code, rec, price, tickNow); // 전략성과2 "실시간 조건 트래킹" 표용 — 후보/보유 종목이 아니면 null
     if (sangttaSnap) payload.sangtta = sangttaSnap;
     lastPrice.set(code, payload);
+    // 2026-09-15: lastPrice는 구독이 해제되면 삭제되는데(reconcileKisSubscriptions),
+    // refreshSangttaCandidates의 모멘텀 순위가 그 값을 쓰기 때문에 "추적에서 빠진
+    // 종목 = 등락률 0%"로 읽혀 중간 순위로 되살아나는 플래핑이 생겼다(오늘 로그에서
+    // 상한가 종목이 20초마다 편입·편출을 반복하고 KIS에 UNSUBSCRIBE ERROR까지 남김).
+    // 구독 해제와 무관하게 "마지막으로 본 등락률"을 당일 기준으로 따로 기억해둔다.
+    if (Number.isFinite(rate)) sangttaLastChangePct.set(code, { pct: rate, date: kstDateStr() });
     broadcastToSubscribers(code, payload);
     checkAlerts(code, price);
     if (dayHigh) maybePersistPeak(code, dayHigh); // Supabase에 스로틀 저장(재시작/재접속 대비 영속화)
