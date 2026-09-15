@@ -436,18 +436,22 @@ def fetch_change_rate_rank(token, limit=30):
                 "FID_RANK_SORT_CLS_CODE": "0",        # 0=등락률상위 (실제 호출 시 "0000"은 필드 길이 오류로 거부됨)
                 "FID_INPUT_CNT_1": "0",
                 "FID_PRC_CLS_CODE": "0",
-                "FID_INPUT_PRICE_1": str(SCAN_MIN_PRICE),
+                # 2026-09-15: FID_TRGT_CLS_CODE를 9자리로 고친 뒤에도 하루 종일
+                # rt_cd='0' + output 0건이 이어졌음(Render 로그로 확인). 남은 유력
+                # 원인은 "상한값을 빈 문자열로 보내는 것" — 공식 샘플은 등락비율을
+                # rate1="0"/rate2="100"으로 주고 가격·거래량은 아예 공백으로 둔다.
+                # 상한이 0으로 해석되면 조회구간이 [3, 0] / [1000, 0]이 되어
+                # "정상 응답 + 0건"이 나온다. 그래서 서버측 필터를 전부 끄고
+                # 가격·거래량·등락률 필터는 아래 파이썬 코드에서 직접 적용한다.
+                # (server.js도 동일하게 수정 — 그쪽은 프리셋 자동 탐색까지 추가)
+                "FID_INPUT_PRICE_1": "",
                 "FID_INPUT_PRICE_2": "",
-                "FID_VOL_CNT": str(SCAN_MIN_VOL),
-                # 2026-09-14: "0"(9자리 대상구분 비트마스크 중 아무 자리도 켜지지
-                # 않음)이면 대상 종목이 전부 걸러져 rt_cd='0'(정상)인데도 output이
-                # 항상 0건이었음(server.js 쪽 동일 버그 확인·수정과 동일 원인).
-                # 공식 샘플 관례대로 9자리 전부 켠 값으로 수정.
-                "FID_TRGT_CLS_CODE": "111111111",
-                "FID_TRGT_EXLS_CLS_CODE": "0000000000",
+                "FID_VOL_CNT": "",
+                "FID_TRGT_CLS_CODE": "0",
+                "FID_TRGT_EXLS_CLS_CODE": "0",
                 "FID_DIV_CLS_CODE": "0",
-                "FID_RSFL_RATE1": str(SCAN_MIN_CHANGE_PCT),  # 최소 등락률(%) — 이 밑은 API가 아예 제외
-                "FID_RSFL_RATE2": "",
+                "FID_RSFL_RATE1": "0",
+                "FID_RSFL_RATE2": "100",
             },
             timeout=10,
         )
@@ -507,8 +511,15 @@ def stage_scan():
             continue
         change_pct = safe_num(out.get("prdy_ctrt"))
         price = safe_num(out.get("stck_prpr"))
+        acc_vol = safe_num(out.get("acml_vol"))
         acc_amt = safe_num(out.get("acml_tr_pbmn"))
-        if price and price < SCAN_MIN_PRICE:
+        # 2026-09-15: 서버측(KIS) 필터를 모두 껐으므로 여기서 직접 거른다.
+        # 값이 안 오면(None) 통과시켜 필드명 변경 때문에 전부 탈락하는 일이 없게 함.
+        if price is not None and price < SCAN_MIN_PRICE:
+            continue
+        if acc_vol is not None and acc_vol < SCAN_MIN_VOL:
+            continue
+        if change_pct is not None and change_pct < SCAN_MIN_CHANGE_PCT:
             continue
         new_rows.append({
             "code": code,
