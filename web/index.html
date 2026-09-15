@@ -3585,7 +3585,7 @@ async function loadPerf(){
       <td class="l">${stratBadge(p.strategy)}</td>
       <td>${p.entry_date}</td><td class="opt">${N(+p.entry_price)}</td><td class="opt">${N(+p.avg_price)}</td>
       <td class="opt">${p.tranches}</td><td>${p.exit_date}</td><td>${N(+p.exit_price)}</td>
-      <td class="opt faint">${p.exit_reason==="CRASH_STOP_10"?"급락 -10%":p.exit_reason==="NEXT_OPEN_EXIT"?"익일시가":p.exit_reason==="BREAKEVEN_STOP"?"손익분기 보호":/^TRAIL_STOP_\d+$/.test(p.exit_reason||"")?`트레일링 -${p.exit_reason.match(/\d+/)[0]}%`:"트레일링"}</td>
+      <td class="opt faint">${p.exit_reason==="CRASH_STOP_10"?"급락 -10%":p.exit_reason==="NEXT_OPEN_EXIT"?"익일시가":p.exit_reason==="BREAKEVEN_STOP"?"손익분기 보호":p.exit_reason==="TIME_STOP"?"타임 스톱(4일)":/^TRAIL_STOP_\d+$/.test(p.exit_reason||"")?`트레일링 -${p.exit_reason.match(/\d+/)[0]}%`:"트레일링"}</td>
       <td class="${sgn(+p.realized_pnl)}">${pm(+p.realized_pnl,0)}</td>
       <td class="${sgn(+p.return_pct)}">${pm(+p.return_pct)}%</td></tr>`).join("")
       :'<tr><td colspan="11" class="load">청산 이력 없음</td></tr>';
