@@ -474,6 +474,15 @@ async function fetchKisPrice(code, marketDiv = 'J') {
 // 로그(바로 아래 ranked.length===0 분기)로 이후에도 0건이 반복되는지
 // 계속 관찰 가능.
 const SCAN_MIN_CHANGE_PCT = 3.0, SCAN_MIN_PRICE = 1000, SCAN_MIN_VOL = 10000;
+// 2026-09-15: 거래대금순위를 보조 소스로 붙이면서, 등락률은 3%대인데 시가총액이
+// 커서 거래대금만 항상 최상위인 대형주가 다시 후보로 들어오는 문제가 생겼다
+// (오늘 삼성SDI가 +3%대에 진입 — 사용자가 계속 지적해온 대형주 편향의 재발).
+// 등락률순위로 들어온 종목은 이미 "오늘 가장 많이 오른 30개"라 그대로 두고,
+// 거래대금순위로 들어온 종목에만 더 높은 등락률 기준을 요구한다.
+const SCAN_MIN_CHANGE_PCT_AMT = 6.0;
+// 상한가(±30%) 근처에 잠긴 종목 판정 기준 — 매도 물량이 없어 매수가 불가능하므로
+// 추적 슬롯을 점유하지 않도록 순위를 뒤로 미룬다(refreshSangttaCandidates 참고).
+const SANGTTA_LIMIT_UP_PCT = 29.0;
 const PREFERRED_OR_SPAC_RE = /(\d?우[A-Z]?$|스팩|기업인수목적)/;
 
 // 2026-09-10: SCAN이 상위 15개를 고를 때 "등락률 단순 내림차순" 대신 "무게
@@ -827,7 +836,8 @@ async function stageScan() {
     // 필드명 변경 때문에 전부 탈락하는 일이 없게 함.
     if (Number.isFinite(price) && price < SCAN_MIN_PRICE) { skippedFilter++; continue; }
     if (Number.isFinite(accVol) && accVol < SCAN_MIN_VOL) { skippedFilter++; continue; }
-    if (Number.isFinite(changePct) && changePct < SCAN_MIN_CHANGE_PCT) { skippedFilter++; continue; }
+    const minChange = src === 'AMT' ? SCAN_MIN_CHANGE_PCT_AMT : SCAN_MIN_CHANGE_PCT;
+    if (Number.isFinite(changePct) && changePct < minChange) { skippedFilter++; continue; }
     const listedShares = listedSharesMap.get(code);
     const weight = (Number.isFinite(changePct) && Number.isFinite(accVol) && listedShares > 0)
       ? changePct * accVol / listedShares : null;
@@ -1116,6 +1126,7 @@ const sangttaTickStats     = new Map();               // code -> {minuteBuckets:
 // "평균 대비 150% 폭증"이 다시는 안 나와 재진입 기회가 원천봉쇄됐던 문제 대응.)
 // 장마감 강제청산(MARKET_CLOSE)은 어차피 그날 재진입 여지가 없으므로 기록 안 함.
 const sangttaExitPeaks     = new Map();               // code -> 청산 시점 peakPrice
+const _gradeCLoggedAt      = new Map();               // code -> 등급C 스킵 로그를 마지막으로 남긴 시각(로그 폭주 방지)
 let sangttaDailySummaryDoneFor = null;                // 오늘 이미 정산했으면 날짜 문자열
 
 function getSangttaStats(code) {
@@ -1207,9 +1218,17 @@ async function refreshSangttaCandidates() {
     // 지금 진짜 더 강하게 오르는 종목"이 앞자리를 차지하도록 함. 이렇게 뽑은
     // 상위 SANGTTA_MAX_TRACKED개만 실시간 추적 대상으로 남긴다. 오래 갱신되지
     // 않은(=더 이상 조건에 안 걸리는) 후보는 자연스럽게 밀려나 제외된다.
+    // 2026-09-15: snapshot도 함께 읽는다 — 유니버스(stocks 테이블 376종목) 밖의
+    // 급등주는 codeNames에 이름이 없어 진입 기록·로그·화면에 6자리 코드로만
+    // 남았는데(오늘 071200·160190 진입 건에서 확인), SCAN 스냅샷에는 KIS가 준
+    // 종목명(hts_kor_isnm)이 이미 들어있으므로 그걸 이름 캐시에 채워 넣는다.
     const rows = await sbGet(
-      `intraday_candidates?select=code,rank,created_at&trade_date=eq.${today}&order=created_at.desc,rank.asc`
+      `intraday_candidates?select=code,rank,created_at,snapshot&trade_date=eq.${today}&order=created_at.desc,rank.asc`
     );
+    for (const r of rows) {
+      const snapName = r.snapshot && r.snapshot.name;
+      if (snapName && !codeNames.has(r.code)) codeNames.set(r.code, snapName);
+    }
     const seen = new Set();
     const allOrdered = [];
     for (const r of rows) {
@@ -1233,7 +1252,16 @@ async function refreshSangttaCandidates() {
       const live = lastPrice.get(code);
       return (live && Number.isFinite(live.changePct)) ? live.changePct : 0;
     };
+    // 2026-09-15: 상한가에 잠긴 종목은 매도 물량이 없어 애초에 살 수 없는데,
+    // 등락률이 +29.9%라 모멘텀 순위에서는 항상 최상위를 차지해 추적 슬롯
+    // (SANGTTA_MAX_TRACKED, KIS 실시간 등록 한도와도 직결)을 계속 점유했다.
+    // 오늘 28종목 중 5~6개가 상한가 잠김 상태였음. 하드 제외 대신 순위 맨
+    // 뒤로 미뤄서, 다른 후보가 부족할 때만 슬롯을 쓰게 한다(상한가가 풀려
+    // 등락률이 내려오면 다음 주기에 스스로 제자리를 찾아 올라온다).
+    const isLimitUp = code => momentumOf(code) >= SANGTTA_LIMIT_UP_PCT;
     const ranked = [...allOrdered].sort((a, b) => {
+      const al = isLimitUp(a), bl = isLimitUp(b);
+      if (al !== bl) return al ? 1 : -1;  // 상한가 잠김은 뒤로
       const am = momentumOf(a), bm = momentumOf(b);
       if (am !== bm) return bm - am;
       return dbRankOf.get(a) - dbRankOf.get(b);
@@ -1561,7 +1589,13 @@ function maybeEnterSangtta(code, price, rec, now) {
   const isNewHigh = Number.isFinite(high) && price >= high;
   const grade = sangttaGradeFor(code, isNewHigh, pt ? pt.netBuyAmt : null);
   if (grade === 'C') {
-    console.log(`[상따] ${code} 조건 충족했으나 등급C(배제) — 진입 스킵`);
+    // 2026-09-15: 이미 2회 진입한 종목은 조건을 충족할 때마다 매 틱 이 로그를
+    // 남겨서(오늘 036540이 1초에 수 건씩) 로그가 묻혔음 — 종목당 5분에 한 번만.
+    const lastAt = _gradeCLoggedAt.get(code) || 0;
+    if (Date.now() - lastAt > 5 * 60 * 1000) {
+      _gradeCLoggedAt.set(code, Date.now());
+      console.log(`[상따] ${codeNames.get(code) || code}(${code}) 조건 충족했으나 등급C(오늘 ${SANGTTA_MAX_ENTRIES_PER_CODE}회 진입 한도 초과) — 진입 스킵`);
+    }
     return;
   }
   enterSangttaPosition(code, price, grade, {
