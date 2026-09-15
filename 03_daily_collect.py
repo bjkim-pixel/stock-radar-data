@@ -26,7 +26,13 @@ KIS_BASE   = "https://openapi.koreainvestment.com:9443"
 DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
 WORKERS  = 10   # 동시 처리 워커 수
-MAX_RPS  = 18   # 전역 최대 API 호출 속도 (KIS 한도 20/초의 90%)
+MAX_RPS  = 12   # 전역 최대 API 호출 속도
+# 2026-09-15: 18 → 12. KIS "초당 20건"은 앱키 단위 한도라 이 스크립트 혼자
+# 지키는 것만으로는 부족하다 — 릴레이 서버(server.js)가 장중 내내 같은 앱키로
+# 호출하고 있어 합산이 한도를 넘는다. 워크플로 쪽은 concurrency group
+# "kis-rest-batch"로 배치끼리의 동시 실행을 막았고, 남는 상시 소비자인
+# 릴레이(최대 5건/초)와 합쳐도 17건/초로 한도 안에 들도록 12로 낮춘다.
+# 전 종목 1회 수집 소요는 약 7분 → 10분으로 늘어난다.
 BATCH    = 500
 FLOW_UNIT = 1_000_000   # KIS 수급 금액은 '백만원' 단위 → 원으로 변환
 

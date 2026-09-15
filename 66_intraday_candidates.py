@@ -115,7 +115,7 @@ class RateLimiter:
                 time.sleep(wait)
             self.last_call = time.time()
 
-_rate = RateLimiter(15)
+_rate = RateLimiter(12)   # 2026-09-15: 15 → 12 (03_daily_collect.py 주석의 앱키 단위 한도 참고)
 
 
 def get_token():

@@ -49,7 +49,7 @@ KIS_BASE   = "https://openapi.koreainvestment.com:9443"
 DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
 WORKERS   = 10
-MAX_RPS   = 18
+MAX_RPS   = 12   # 2026-09-15: 18 → 12 (03_daily_collect.py 주석의 앱키 단위 한도 참고)
 BATCH     = 500
 
 # 한 번 호출에 30거래일 반환. 30거래일은 최소 42일(휴일 없을 때 6주)이므로

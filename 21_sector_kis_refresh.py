@@ -46,7 +46,7 @@ KIS_BASE   = "https://openapi.koreainvestment.com:9443"
 DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
 WORKERS  = 8
-MAX_RPS  = 15
+MAX_RPS  = 12   # 2026-09-15: 15 → 12 (03_daily_collect.py 주석의 앱키 단위 한도 참고)
 BATCH    = 500
 
 # 2026-08-20 003920(남양유업) --debug 실측으로 갱신한 후보 목록.

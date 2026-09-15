@@ -55,7 +55,7 @@ KIS_SECRET = os.environ.get("KIS_APP_SECRET", "")
 KIS_BASE   = "https://openapi.koreainvestment.com:9443"
 DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 
-MAX_RPS = 14   # relay-server(server.js) KIS_REST_RATE_MIN_INTERVAL_MS=70ms와 동급
+MAX_RPS = 12   # 2026-09-15: 14 → 12 (03_daily_collect.py와 동일 근거 — 주석 참고)
 BATCH   = 500
 
 DEBUG_MODE  = False
