@@ -3360,13 +3360,23 @@ async function loadPerf2(){
     }
 
     $("#i2OpenCount").innerHTML=`<b>${op.length}</b>건`;
+    // 2026-09-15: 표 헤더는 "실시간 웹소켓 시세"라고 되어 있는데 실제로는
+    // S.i2Live(체결 틱마다 갱신되는 실시간가)를 전혀 안 쓰고 항상 S.i2LastClose
+    // (v_screener의 전일 확정 종가, today=S.date 기준이라 장중엔 하루 전 값)로만
+    // 수익률을 계산하고 있었음 — 그 결과 실시간으로는 손절선(-2%)에 한참 못
+    // 미치는 종목이 "보유 중" 표에는 전일 종가 대비로 계산된 엉뚱한 마이너스
+    // 수익률로 표시되는 문제가 있었다(사용자가 실시간 조건 트래킹표에선 +7.84%인
+    // 종목이 보유중 표에는 -3.99%로 뜬다고 확인). 실시간가가 있으면 그걸 우선
+    // 쓰고, 아직 틱이 없을 때만 전일 종가→진입가 순으로 대체한다.
     $("#i2OpenBody").innerHTML = op.length ? op.map(p=>{
-      const close=S.i2LastClose[p.code]||+p.entry_price;
+      const live=S.i2Live[p.code];
+      const isLive=live&&live.price!=null;
+      const close=isLive?live.price:(S.i2LastClose[p.code]||+p.entry_price);
       const ret=(close-+p.entry_price)/+p.entry_price*100;
       const reason=(p.entry_reason&&p.entry_reason.reason_text)||"–";
       return `<tr>
         <td class="l"><a class="lk nm" data-code="${p.code}">${p.name||nameOf[p.code]||p.code}</a></td>
-        <td>${N(+p.entry_price)}</td><td>${N(close)}</td>
+        <td>${N(+p.entry_price)}</td><td>${N(close)}${isLive?"":' <small class="faint" title="아직 실시간 체결 없음 — 전일 종가로 대체 표시">(전일종가)</small>'}</td>
         <td class="${sgn(ret)}">${pm(ret)}%</td>
         <td class="l faint">${reason}</td>
         <td>${p.entry_time?p.entry_time.slice(11,16):"–"}</td>
