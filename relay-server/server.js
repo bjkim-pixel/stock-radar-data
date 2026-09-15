@@ -2117,7 +2117,9 @@ async function notifyAll(text, opts = {}) {
 
 async function refreshHoldings() {
   try {
-    const positions = await sbGet('positions?select=code,avg_price,peak_price,quantity,invested&portfolio=eq.VIRTUAL&status=eq.OPEN');
+    // entry_price는 2026-09-15 추가 — 손절선 계산(고점수익 구간별 트레일링 폭 +
+    // 손익분기 보호선)이 "최초 매수가" 기준이라 반드시 필요함(checkAlerts 참고).
+    const positions = await sbGet('positions?select=code,entry_price,avg_price,peak_price,quantity,invested,strategy&portfolio=eq.VIRTUAL&status=eq.OPEN');
     const newHeld = new Set(positions.map(p => p.code));
 
     positionsByCode.clear();
@@ -2203,13 +2205,41 @@ async function maybePersistPeak(code, dayHigh) {
 
 // 매수가/수익률/수익금을 알림 문구에 덧붙이기 위한 요약 문자열
 // (수익률은 사이트 "보유 중" 표와 동일하게 현재가 기준으로 계산: (현재가-매수가)/현재가)
+// ── 추세추종(VIRTUAL) 손절선 — 06_portfolio.py와 같은 규칙을 실시간용으로 이식 ──
+// 두 곳이 어긋나면 알림이 거짓말을 하게 되므로, 값을 바꿀 때는 반드시 양쪽을
+// 함께 고칠 것(06_portfolio.py의 STOP_TIERS / BREAKEVEN_TRIGGER_PCT / BREAKEVEN_FLOOR_PCT).
+const VIRTUAL_STOP_TIERS = [
+  [0.05, -7], // 고점수익 <5%   → 고점 대비 -7%
+  [0.15, -5], // 5~15%          → -5%
+  [0.30, -4], // 15~30%         → -4%
+  [null, -3], // 30%↑           → -3%
+];
+const BREAKEVEN_TRIGGER_PCT = 0.05;  // 고점이 매수가 +5%를 넘긴 적 있으면 보호선 가동
+const BREAKEVEN_FLOOR_PCT   = 0.003; // 매수가 +0.3% (왕복비용 0.24% 커버)
+
+function virtualStopLine(entryPrice, peakPrice) {
+  const peakGain = peakPrice / entryPrice - 1;
+  let trailPct = VIRTUAL_STOP_TIERS[VIRTUAL_STOP_TIERS.length - 1][1];
+  for (const [ceiling, pct] of VIRTUAL_STOP_TIERS) {
+    if (ceiling === null || peakGain < ceiling) { trailPct = pct; break; }
+  }
+  const trail = peakPrice * (1 + trailPct / 100);
+  if (peakGain >= BREAKEVEN_TRIGGER_PCT) {
+    const floor = entryPrice * (1 + BREAKEVEN_FLOOR_PCT);
+    if (floor > trail) return { line: floor, type: 'BREAKEVEN', trailPct };
+  }
+  return { line: trail, type: 'TRAIL', trailPct };
+}
+
 function posInfo(code, price) {
   const pos = positionsByCode.get(code);
   if (!pos) return null;
   const avg = +pos.avg_price;
   if (!Number.isFinite(avg) || avg <= 0) return null;
   const qty = +pos.quantity, invested = +pos.invested;
-  const retPct = (price - avg) / price * 100;
+  // 2026-09-15 버그 수정: 수익률 분모가 매수가가 아니라 현재가였음
+  // (매수가 10,000 → 현재가 11,000이면 +10%인데 +9.09%로 표시됐음).
+  const retPct = (price - avg) / avg * 100;
   const pnl = (Number.isFinite(qty) && Number.isFinite(invested)) ? Math.round(qty * price - invested) : null;
   const sign = v => (v >= 0 ? '+' : '');
   const bits = [`매수가 ${fmt(avg)}원`, `수익률 ${sign(retPct)}${retPct.toFixed(2)}%`];
@@ -2238,18 +2268,37 @@ function checkAlerts(code, price) {
     notifyAll(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📉 ${name} 신저가`, tag: `low-${code}` });
   }
 
-  // ── 트레일링 손절(-7%) 근접/도달 ───────────────────────────────────
+  // ── 추세추종 손절선 이탈 알림 (2026-09-15 전면 수정) ────────────────
+  // 기존에는 "고점 대비 -7%" 고정이었는데, 실제 배치(06_portfolio.py) 규칙은
+  // ① 고점수익 구간별로 트레일링 폭이 -7/-5/-4/-3%로 좁아지고
+  // ② 고점이 매수가 +5%를 넘긴 뒤에는 손익분기 보호선(매수가 +0.3%)이 적용된다.
+  // 그래서 실제로는 이미 손절 조건인데 알림은 안 오거나(폭이 좁아진 구간),
+  // 반대로 아직 아닌데 알림이 오는(보호선 구간) 불일치가 있었다.
+  //
+  // 더 중요한 배경: 배치는 일봉이라 "그날 종가"로만 청산할 수 있어, 장중에
+  // 손절선을 깨고 종가까지 더 밀리면 그 하락분을 고스란히 떠안는다(실거래에서
+  // BREAKEVEN_STOP 3건이 전부 손실, 평균 -6.9%였던 이유). 가상매매 회계 자체는
+  // 배치가 결정론적으로 재계산하므로 바꾸지 않되, 장중에 손절선을 이탈하는
+  // 순간을 실시간으로 알려 사용자가 그날 안에 대응할 수 있게 한다.
   const pos = positionsByCode.get(code);
   if (pos) {
     const effPeak = Math.max(+pos.peak_price || 0, st.high || 0);
-    if (effPeak > 0) {
+    const entry = +pos.entry_price || +pos.avg_price || 0;
+    if (effPeak > 0 && entry > 0) {
+      const stop = virtualStopLine(entry, effPeak);
       const drawdown = (price / effPeak - 1) * 100;
-      if (drawdown <= -7 && !st.trailHit && !alertsPaused) {
+      const gapPct = (price / stop.line - 1) * 100;   // 손절선 대비 여유(%)
+      const label = stop.type === 'BREAKEVEN'
+        ? `손익분기 보호선(매수가 +${(BREAKEVEN_FLOOR_PCT * 100).toFixed(1)}%)`
+        : `트레일링 손절선(고점 대비 ${stop.trailPct.toFixed(0)}%)`;
+      if (price <= stop.line && !st.trailHit && !alertsPaused) {
         st.trailHit = true;
-        notifyAll(`🚨 ${name}(${code}) 트레일링 손절선(-7%) 도달! 고점 대비 ${drawdown.toFixed(1)}% · 현재가 ${fmt(price)}원${infoSuffix}`, { title: `🚨 ${name} 손절선 도달`, tag: `trail-hit-${code}` });
-      } else if (drawdown <= -5 && !st.trailNear && !st.trailHit && !alertsPaused) {
+        notifyAll(`🚨 ${name}(${code}) ${label} 이탈! 현재가 ${fmt(price)}원 · 손절선 ${fmt(Math.round(stop.line))}원 · 고점 대비 ${drawdown.toFixed(1)}%${infoSuffix}`,
+          { title: `🚨 ${name} 손절선 이탈`, tag: `trail-hit-${code}` });
+      } else if (gapPct <= 1.5 && !st.trailNear && !st.trailHit && !alertsPaused) {
         st.trailNear = true;
-        notifyAll(`⚠️ ${name}(${code}) 트레일링 손절(-7%) 근접: 고점 대비 ${drawdown.toFixed(1)}% · 현재가 ${fmt(price)}원${infoSuffix}`, { title: `⚠️ ${name} 손절 근접`, tag: `trail-near-${code}` });
+        notifyAll(`⚠️ ${name}(${code}) ${label} 근접: 현재가 ${fmt(price)}원 · 손절선까지 ${gapPct.toFixed(1)}%${infoSuffix}`,
+          { title: `⚠️ ${name} 손절 근접`, tag: `trail-near-${code}` });
       }
     }
   }
