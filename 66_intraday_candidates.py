@@ -91,9 +91,17 @@ KST = timezone(timedelta(hours=9))
 if not DB_URL:
     sys.exit("❌ SUPABASE_DB_URL 환경변수를 설정하세요.")
 
-STAGE = sys.argv[1] if len(sys.argv) > 1 else ""
+_argv = [a for a in sys.argv[1:] if not a.startswith("--")]
+STAGE = _argv[0] if _argv else ""
 if STAGE not in ("pre_market", "nxt", "regular", "scan"):
-    sys.exit("사용법: python 66_intraday_candidates.py [pre_market|nxt|regular|scan]")
+    sys.exit("사용법: python 66_intraday_candidates.py [pre_market|nxt|regular|scan] [--only-if-missing]")
+
+# 2026-09-16: --only-if-missing — 해당 단계 후보가 오늘자로 이미 있으면 아무것도
+# 하지 않고 종료한다. 평소엔 relay-server가 이 단계들을 전담하므로, 이 스크립트는
+# "릴레이가 죽었거나 잠들어서 후보가 아예 안 생긴 날"만 대신 생성하는 백업이다.
+# 이 가드가 없으면 백업 스케줄이 매일 중복 생성해 created_at을 덮어쓰고
+# (릴레이의 "최신순" 추적 대상 선정이 흔들림) KIS 호출도 그만큼 낭비된다.
+ONLY_IF_MISSING = "--only-if-missing" in sys.argv[1:]
 
 _now_kst = datetime.datetime.now(KST)
 TODAY = _now_kst.date().isoformat()
@@ -543,8 +551,26 @@ def stage_scan():
     upsert_candidates(new_rows, "SCAN")
 
 
+def _already_generated(source):
+    """오늘자 해당 source 후보가 이미 있으면 True."""
+    with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM intraday_candidates WHERE trade_date=%s AND source=%s",
+            (TODAY, source))
+        return cur.fetchone()[0] > 0
+
+
 def main():
     print(f"▶ 전략성과2 후보 생성 — stage={STAGE}, date={TODAY} (KST {_now_kst.strftime('%H:%M')})")
+    if ONLY_IF_MISSING:
+        source = STAGE.upper() if STAGE != "pre_market" else "PRE_MARKET"
+        try:
+            if _already_generated(source):
+                print(f"✅ {source} 후보가 오늘자로 이미 존재 — 릴레이가 정상 동작 중으로 보고 종료합니다(백업 불필요)")
+                return
+            print(f"⚠ {source} 후보가 오늘자로 없음 — 릴레이가 처리하지 못한 것으로 보고 백업 생성합니다")
+        except Exception as ex:                       # noqa: BLE001
+            print(f"⚠ 기존 후보 확인 실패({str(ex)[:120]}) — 그대로 생성합니다")
     if STAGE == "pre_market":
         stage_pre_market()
     elif STAGE == "nxt":
