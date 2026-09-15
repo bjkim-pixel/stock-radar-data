@@ -16,6 +16,16 @@ on:
         required: false
         default: '161890'
 
+concurrency:
+  # 2026-09-15: KIS REST는 "초당 20건"이 앱키 단위 한도라서, 종목 전체를 도는
+  # 수집 워크플로가 둘 이상 동시에 돌면 각자 한도 안이어도 합산에서 초과한다
+  # (실제로 daily_collect :05/:35 와 intraday_collect :00/:30 는 각 실행이
+  # 7~10분 걸려 매 30분마다 2분가량 겹쳤다). 같은 group을 쓰면 GitHub이
+  # 뒤에 온 실행을 앞 실행이 끝날 때까지 대기시켜 겹침 자체가 사라진다.
+  # cancel-in-progress: false — 진행 중인 수집을 죽이지 않고 줄을 세운다.
+  group: kis-rest-batch
+  cancel-in-progress: false
+
 jobs:
   refresh:
     runs-on: ubuntu-latest

@@ -1,20 +1,26 @@
 name: Keep KIS Relay Server Awake
 
-# Render 무료 플랜은 15분간 요청이 없으면 서비스가 슬립 모드로 들어갑니다.
-# 슬립 상태에서 처음 요청이 오면 다시 깨어나는 데 30~50초 정도 걸려서,
-# 장중에 실시간 시세 웹소켓이 붙는 순간 지연이 생길 수 있습니다.
-# 이를 막기 위해 국내 정규장 시간에 10분 간격으로 /health 엔드포인트에 핑을 보내
-# 서비스를 계속 깨어있는 상태로 유지합니다.
+# 이 워크플로의 역할은 2026-09-15부터 "10분마다 깨어있게 유지"가 아니라
+# **잠든 인스턴스를 깨우는 예비 수단**입니다. 이유:
 #
-# ⚠ 2026-09 전략성과2(상따) 후보 엔진 추가 이후 시작 시각을 08:50 → 07:40으로
-#   앞당김: server.js의 candidateEngineHeartbeat()가 PRE_MARKET(07:50)·NXT(08:40)
-#   단계를 서버 프로세스 내부 setInterval로 실행하는데, 기존 08:50 시작 스케줄은
-#   이 두 단계가 이미 지난 뒤에야 첫 핑을 보내는 셈이라 그 사이 서버가 슬립하면
-#   두 단계가 늦게(다음 핑에야 재시도) 실행될 위험이 있었습니다. 07:40부터 10분
-#   간격으로 깨워두면 PRE_MARKET·NXT 실행 시점에 항상 깨어있는 상태가 보장됩니다.
+#   실측(2026-09-03~09-15 실행 이력): 아래 크론은 하루 약 49회 발화하도록
+#   적혀 있지만 실제로는 **하루 4~5회만** 발화했습니다. GitHub Actions의
+#   schedule은 러너 부하에 따라 지연·유실되며, 특히 */10 같은 고빈도 크론은
+#   대부분 버려집니다. 발화 시각도 00:53 / 01:17 / 03:18 / 08:48 / 10:43(UTC)
+#   처럼 제멋대로라 "10분 간격"은 한 번도 지켜진 적이 없습니다.
+#   → 따라서 간격을 5분으로 줄여도 효과가 없습니다. 크론을 촘촘하게 적는 것과
+#     실제 발화 횟수는 무관합니다.
+#
+#   대신 상시 유지는 server.js의 셀프 핑(startSelfPing, 4분 간격)이 맡습니다.
+#   Render 무료 플랜은 "외부 요청 15분 공백"에 잠들므로, 깨어 있는 동안
+#   스스로 공개 URL을 호출하면 유휴 타이머가 계속 리셋됩니다.
+#   다만 **이미 잠든 인스턴스는 스스로 깨어날 수 없으므로**, 그 경우를 위해
+#   이 워크플로가 남아 있습니다. 콜드 스타트에 30~50초가 걸리므로 한 번의
+#   실행에서 최대 3번(30초 간격) 재시도해 확실히 깨웁니다.
 #
 # ⚠ KST → UTC 변환 주의: KST는 UTC+9라서 "월~금 KST 07:40~15:40"은
 #   UTC 기준으로는 "일~목 22:40~23:50" + "월~금 00:00~06:40" 두 구간으로 쪼개집니다.
+
 on:
   schedule:
     - cron: "40,50 22 * * 0-4"     # KST 월~금 07:40, 07:50 (전날 UTC 22:40/22:50)
@@ -26,7 +32,7 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 6   # 최대 3회 × (60초 타임아웃 + 30초 대기)
     steps:
       - name: 거래일 확인 (공휴일 스킵)
         id: market_day
@@ -44,13 +50,23 @@ jobs:
             echo "is_market_day=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Ping relay server health endpoint
+      - name: Ping relay server health endpoint (최대 3회 — 콜드 스타트 대비)
         if: steps.market_day.outputs.is_market_day == 'true'
         run: |
-          STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" --max-time 30 \
-            https://kis-relay-server.onrender.com/health || echo "000")
-          echo "HTTP status: $STATUS"
+          # Render 무료 인스턴스가 잠들어 있으면 첫 요청은 30~50초 걸리거나
+          # 타임아웃납니다. 깨우는 것이 목적이므로 실패해도 30초 뒤 재시도합니다.
+          STATUS="000"
+          for i in 1 2 3; do
+            STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" --max-time 60 \
+              https://kis-relay-server.onrender.com/health || echo "000")
+            echo "시도 $i/3 — HTTP status: $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              break
+            fi
+            sleep 30
+          done
           cat /tmp/health.json 2>/dev/null || true
+          echo
           if [ "$STATUS" != "200" ]; then
-            echo "::warning::릴레이 서버 health 체크 실패 (status=$STATUS) — 슬립에서 깨어나는 중일 수 있음"
+            echo "::warning::릴레이 서버 health 체크 3회 모두 실패 (마지막 status=$STATUS)"
           fi

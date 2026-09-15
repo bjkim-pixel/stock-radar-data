@@ -12,6 +12,12 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  # 21_sector_kis_refresh.py가 KIS REST를 전 종목 순회하므로 다른 수집
+  # 워크플로와 같은 그룹으로 묶는다(daily_collect.yml 주석 참고).
+  group: kis-rest-batch
+  cancel-in-progress: false
+
 jobs:
   snapshot:
     runs-on: ubuntu-latest

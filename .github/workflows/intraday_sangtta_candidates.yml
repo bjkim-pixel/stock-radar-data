@@ -33,7 +33,9 @@ on:
         default: 'pre_market'
 
 concurrency:
-  group: intraday-sangtta-candidates
+  # 2026-09-15: KIS 초당 20건 한도는 앱키 단위 — 다른 수집 워크플로와
+  # 같은 그룹으로 묶어 동시 실행을 막는다(위 daily_collect.yml 주석 참고).
+  group: kis-rest-batch
   cancel-in-progress: false
 
 jobs:
