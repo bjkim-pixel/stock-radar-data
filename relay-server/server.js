@@ -909,6 +909,19 @@ async function stagePreMarket(targetDate) {
 // 20분 이상 밀리는 일이 흔해서(실측 16:35 예정 → 16:57 시작) 시각을 박아두면
 // 아직 안 만들어진 신호를 보고 빈 배치를 만들게 된다. 하트비트(15초)마다
 // "오늘자 해당 신호가 DB에 있는가"를 확인하다가 들어온 순간 1회 실행한다.
+//
+// ⚠ 2026-09-17 수정: 1차 판정 신호를 V4_CAND_CLOSEBET_3 → (V4_CAND_TREND_1 또는
+// V4_CAND_CLOSEBET_1) 존재 여부로 교체. CLOSEBET_3은 rs_rank<=8 AND 전고점 근접
+// AND 외국인+기관+프로그램 동시 순매수를 모두 만족해야 하는 가장 까다로운
+// 마지막 단계라 "그날 통과 종목이 0건"인 날이 드물지 않다(06_signals.sql 주석 참고
+// — 실제로 조건 완화 전엔 15거래일 연속 0건이었음). 이 신호를 판정 기준으로 쓰면
+// compute.yml이 정상적으로 끝났어도 "신호가 없다"고 오판해 매일 밤 폴백(아침
+// 07:50)으로 새는 게 실측 확인됨(배포 첫날 2026-09-15 저녁, CLOSEBET_3 0건으로
+// 1차가 끝내 못 돎). TREND_1/CLOSEBET_1은 진입 문턱이 훨씬 낮아 사실상 매 거래일
+// 채워지므로 "compute.yml 16:30 실행이 끝났다"는 신호로 이 둘을 대신 쓴다.
+// 실제 후보 내용(stagePreMarket 안의 candidateQuery)은 여전히 CLOSEBET_3 /
+// CLOSEBET2_2만 사용 — 이 부분은 그대로 둔다(그날 후보가 적어지는 것과 "언제
+// 실행할지 판정"은 별개 문제).
 const _eveningPreMarketDone = { stage1: null, stage2: null };
 const EVENING_PREMARKET_FROM_MIN = 16 * 60 + 35;  // 16:35 KST 이후부터 감시 시작
 const EVENING_PREMARKET2_FROM_MIN = 20 * 60 + 20; // 20:20 KST 이후부터 2차 감시
@@ -925,10 +938,14 @@ async function runEveningPreMarket() {
   if (_eveningPreMarketDone[stageKey] === today) return;
 
   // 필요한 신호가 오늘자로 들어왔는지 확인 — 없으면 다음 하트비트에 다시 본다.
-  const needType = stageKey === 'stage2' ? 'V4_CAND_CLOSEBET2_2' : 'V4_CAND_CLOSEBET_3';
+  // stage1은 까다로운 최종 단계(CLOSEBET_3) 대신 훨씬 덜 까다로운 1단계 신호로
+  // "compute.yml이 오늘자를 끝냈는지"만 확인한다(둘 중 하나라도 있으면 충분).
+  const needTypes = stageKey === 'stage2'
+    ? ['V4_CAND_CLOSEBET2_2']
+    : ['V4_CAND_TREND_1', 'V4_CAND_CLOSEBET_1'];
   let ready = false;
   try {
-    const probe = await sbGet(`signals?select=code&trade_date=eq.${today}&signal_type=eq.${needType}&limit=1`);
+    const probe = await sbGet(`signals?select=code&trade_date=eq.${today}&signal_type=in.(${needTypes.join(',')})&limit=1`);
     ready = probe.length > 0;
   } catch (err) {
     console.error('[상따후보] 저녁 장전배치 신호 확인 실패:', err.message);
