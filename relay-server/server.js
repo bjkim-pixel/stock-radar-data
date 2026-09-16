@@ -924,7 +924,28 @@ async function stagePreMarket(targetDate) {
 // 실행할지 판정"은 별개 문제).
 const _eveningPreMarketDone = { stage1: null, stage2: null };
 const EVENING_PREMARKET_FROM_MIN = 16 * 60 + 35;  // 16:35 KST 이후부터 감시 시작
-const EVENING_PREMARKET2_FROM_MIN = 20 * 60 + 20; // 20:20 KST 이후부터 2차 감시
+// ⚠ 2026-09-17(2) 수정: 20:20 → 18:00. 사용자 요청 — NXT 애프터마켓(20:00 마감)이
+// 끝나기 전에 참고용 2차를 미리 보고 그날 실전 매매(NXT 매수)에 활용하고 싶다는
+// 목적. 20:20(공식 nxt_collect 마감수집)까지 기다리면 이미 NXT가 닫힌 뒤라 그날은
+// 손쓸 수 없음. 06_signals.sql 138~145행 주석에 따르면 compute.yml이 18:05~19:55
+// KST 사이 5회 더 돌면서(--no-portfolio) nxt_collect의 "장중" 수집값(18:00~19:50
+// KST)으로 V4_CAND_CLOSEBET2_2를 미리 채워준다 — 확정본은 아니지만("참고용,
+// 아직 확정 아님") 18:00 이후엔 실제로 데이터가 존재하므로 임계값을 당겨도 빈
+// 배치가 아니라 진짜 참고용 결과가 나온다.
+const EVENING_PREMARKET2_FROM_MIN = 18 * 60;      // 18:00 KST 이후부터 2차 감시
+
+// ⚠ 2026-09-17(2) 수정: 예전엔 "현재 시각이 2차 임계값을 넘었는가"로 stage1/stage2
+// 중 딱 하나만 골라 그 신호만 확인했다 — 2차 임계값을 지나면 그날 1차가 아직
+// 준비 안 됐어도 다시는 확인하지 않는 구조였다. 20:20이었을 때는 1차가 그 전에
+// 끝날 시간이 충분해(16:35~20:20, 약 3시간45분) 문제가 거의 없었지만, 2차를
+// 18:00으로 당기면서 창이 16:35~18:00(약 1시간25분)로 좁아져 컴퓨트가 밀리는
+// 날엔 1차를 통째로 건너뛸 위험이 커졌다. 그래서 stage1/stage2를 서로 독립적으로
+// 매 하트비트마다 각자 확인하도록 바꾼다(순서상 1차 먼저 확인) — 어느 한쪽이
+// 임계값을 넘었다고 다른 쪽 확인을 막지 않는다.
+const EVENING_PREMARKET_STAGES = [
+  { key: 'stage1', fromMin: EVENING_PREMARKET_FROM_MIN, needTypes: ['V4_CAND_TREND_1', 'V4_CAND_CLOSEBET_1'], label: '1차(종가베팅·무게상위)' },
+  { key: 'stage2', fromMin: EVENING_PREMARKET2_FROM_MIN, needTypes: ['V4_CAND_CLOSEBET2_2'], label: '2차(종가베팅2 참고 반영)' },
+];
 
 async function runEveningPreMarket() {
   const minutesNow = kstMinutesNow();
@@ -934,36 +955,34 @@ async function runEveningPreMarket() {
   const dow = new Date(`${today}T00:00:00Z`).getUTCDay();
   if (dow === 0 || dow === 6) return;
 
-  const stageKey = minutesNow >= EVENING_PREMARKET2_FROM_MIN ? 'stage2' : 'stage1';
-  if (_eveningPreMarketDone[stageKey] === today) return;
+  for (const stage of EVENING_PREMARKET_STAGES) {
+    if (minutesNow < stage.fromMin) continue;
+    if (_eveningPreMarketDone[stage.key] === today) continue;
 
-  // 필요한 신호가 오늘자로 들어왔는지 확인 — 없으면 다음 하트비트에 다시 본다.
-  // stage1은 까다로운 최종 단계(CLOSEBET_3) 대신 훨씬 덜 까다로운 1단계 신호로
-  // "compute.yml이 오늘자를 끝냈는지"만 확인한다(둘 중 하나라도 있으면 충분).
-  const needTypes = stageKey === 'stage2'
-    ? ['V4_CAND_CLOSEBET2_2']
-    : ['V4_CAND_TREND_1', 'V4_CAND_CLOSEBET_1'];
-  let ready = false;
-  try {
-    const probe = await sbGet(`signals?select=code&trade_date=eq.${today}&signal_type=in.(${needTypes.join(',')})&limit=1`);
-    ready = probe.length > 0;
-  } catch (err) {
-    console.error('[상따후보] 저녁 장전배치 신호 확인 실패:', err.message);
-    return;
-  }
-  if (!ready) return;
+    // 필요한 신호가 오늘자로 들어왔는지 확인 — 없으면 다음 하트비트에 다시 본다.
+    // stage1은 까다로운 최종 단계(CLOSEBET_3) 대신 훨씬 덜 까다로운 1단계 신호로
+    // "compute.yml이 오늘자를 끝냈는지"만 확인한다(둘 중 하나라도 있으면 충분).
+    let ready = false;
+    try {
+      const probe = await sbGet(`signals?select=code&trade_date=eq.${today}&signal_type=in.(${stage.needTypes.join(',')})&limit=1`);
+      ready = probe.length > 0;
+    } catch (err) {
+      console.error(`[상따후보] 저녁 장전배치 신호 확인 실패(${stage.key}):`, err.message);
+      continue;
+    }
+    if (!ready) continue;
 
-  const target = nextTradingDayStr(today);
-  if (!target) { console.warn('[상따후보] 다음 거래일을 계산하지 못해 저녁 장전배치를 건너뜁니다'); return; }
+    const target = nextTradingDayStr(today);
+    if (!target) { console.warn('[상따후보] 다음 거래일을 계산하지 못해 저녁 장전배치를 건너뜁니다'); continue; }
 
-  _eveningPreMarketDone[stageKey] = today;
-  try {
-    console.log(`[상따후보] 저녁 장전배치 ${stageKey === 'stage2' ? '2차(종가베팅2 반영)' : '1차(종가베팅·무게상위)'}`
-      + ` — ${today} 신호로 ${target} 후보 생성`);
-    await stagePreMarket(target);
-  } catch (err) {
-    console.error('[상따후보] 저녁 장전배치 실패(다음 하트비트에 재시도):', err.message);
-    _eveningPreMarketDone[stageKey] = null;
+    _eveningPreMarketDone[stage.key] = today;
+    try {
+      console.log(`[상따후보] 저녁 장전배치 ${stage.label} — ${today} 신호로 ${target} 후보 생성`);
+      await stagePreMarket(target);
+    } catch (err) {
+      console.error(`[상따후보] 저녁 장전배치 실패(${stage.key}, 다음 하트비트에 재시도):`, err.message);
+      _eveningPreMarketDone[stage.key] = null;
+    }
   }
 }
 
