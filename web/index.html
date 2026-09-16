@@ -134,7 +134,19 @@ th.l,td.l{text-align:left}
 /* 전략성과2 — 매수/매도 사유는 한 줄이 아주 길어 가로 스크롤의 주범이었다.
    스크롤을 없애는 대신(모바일 규칙 참고) 데스크톱에서도 줄바꿈시켜 표가
    카드 밖으로 삐져나가지 않게 한다. */
-#v-perf2 td.l.faint{white-space:normal;word-break:break-word;line-height:1.45}
+/* 2026-09-17: min-width을 안 주면 좁은 화면에서 table-layout:auto가 이 칸을
+   nowrap 칸들에게 공간을 다 내주고 남는 부스러기 폭까지 짜부라뜨려서 칸이
+   지나치게 좁아지는 문제가 있어 최소 폭을 보장한다. 그런데 min-width을 줘도
+   "체결강도"가 "체결강"+"도"로 쪼개지는 문제는 안 없어졌는데, 원인은 min-width가
+   아니라 word-break:break-word였다 — 한글/한자/일어 같은 CJK 텍스트는
+   word-break:normal(그리고 그 별칭인 break-word)에서 유니코드 줄바꿈 규칙상
+   글자 사이 어디서나 줄바꿈 후보가 생긴다(공백 유무와 무관, 서양 언어의
+   "단어 하나가 폭보다 길 때만 쪼갠다"는 동작과 다름). word-break:keep-all이
+   CJK 글자 사이 줄바꿈을 막고 공백/문장부호에서만 줄바꾸게 한다 — 그래서
+   "체결강도 82%"가 "체결강도"와 "82%" 경계에서만 줄바뀌게 된다.
+   overflow-wrap:break-word는 혹시 공백 없는 토큰(숫자 등)이 칸보다 길 때를
+   대비한 안전장치로 남겨둔다. */
+#v-perf2 td.l.faint{white-space:normal;word-break:keep-all;overflow-wrap:break-word;line-height:1.45;min-width:112px}
 th.sortable{cursor:pointer;user-select:none} th.sortable:hover{color:var(--ink)}
 th.sortable.active{color:var(--ink);font-weight:750}
 th.grp{border-left:1px solid var(--border)} td.grp{border-left:1px solid var(--grid)}
@@ -342,9 +354,14 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   #v-perf2 table{width:auto;min-width:100%;table-layout:auto}
   #v-perf2 th,#v-perf2 td{padding:4px 5px;font-size:10px}
   #v-perf2 th{font-size:9.5px}
-  /* 매수/매도사유(td.l.faint)는 137행 규칙이 항상 적용됨. 충족조건 배지 목록처럼
-     내용이 원래 긴 칸만 여기서 줄바꿈 예외로 추가한다. */
-  #v-perf2 th.wrapcell,#v-perf2 td.wrapcell{white-space:normal;word-break:normal}
+  /* 매수/매도사유(td.l.faint)는 137행 규칙이 항상 적용됨(word-break:keep-all
+     포함). 충족조건 배지 목록처럼 내용이 원래 긴 칸만 여기서 줄바꿈 예외로
+     추가한다. 여기도 keep-all을 줘서 배지 라벨(한글) 자체가 글자 단위로
+     쪼개지는 걸 막는다. */
+  #v-perf2 th.wrapcell,#v-perf2 td.wrapcell{white-space:normal;word-break:keep-all;min-width:100px}
+  /* 배지 사이 join(" ")만으론 부족한 경우(제목이 긴 배지 하나가 통째로 안 잘림)를
+     대비해 모바일에서는 배지 하나당 한 줄로 강제 — 원래 기대했던 모습과 같다. */
+  #v-perf2 td.wrapcell span{display:block !important;margin:2px 0 !important}
   #v-perf2 .nw{white-space:nowrap}
   /* 종목후보 표 — 모든 컬럼 표시, 가로 스크롤로 펼쳐 보기
      첫 2열(# · 종목)은 sticky로 고정 */
@@ -3282,6 +3299,10 @@ function condValueText(k,c){
 }
 function condBadges(conds){
   if(!conds) return '<span class="faint">–</span>';
+  // 2026-09-17: 배지 사이를 공백 없이 join("")하면 브라우저가 배지 경계에서
+  // 줄바꿈할 지점을 못 찾아(공백/개행이 있어야 줄바꿈 후보가 생김) 배지 4~6개가
+  // 통째로 한 줄로 이어붙어버림 — 좁은 화면에서 표가 크게 옆으로 삐져나온 원인.
+  // join(" ")로 배지 사이에 공백을 넣어 줄바꿈 지점을 만든다.
   return Object.entries(conds).map(([k,c])=>{
     const label=I2_COND_LABEL[k]||k;
     const req=I2_REQUIRED_CONDS.has(k);
@@ -3289,7 +3310,7 @@ function condBadges(conds){
     const vt=condValueText(k,c);
     const mark=req?"필수":"보조";
     return `<span class="${cls}" style="margin-right:8px;font-size:10.5px;white-space:nowrap" title="${mark} 조건 · ${label}: 현재 ${vt}">${c.ok?"●":"○"} ${label}${req?"*":""} ${vt}</span>`;
-  }).join("");
+  }).join(" ");
 }
 // 2026-09-09: 프로그램매매 구독을 후보 단계까지 확장 — "후보"든 "보유중"이든
 // 값이 없으면 구독은 됐지만 아직 체결 틱이 없었다는 뜻(프로그램매매 자체가
