@@ -328,18 +328,23 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   #flowTrendWrap table{font-size:10px}
   #flowTrendWrap th,#flowTrendWrap td{padding:3px 3px;font-size:10px;white-space:nowrap}
   #flowTrendWrap th:first-child,#flowTrendWrap td:first-child{position:sticky;left:0;background:var(--surface);z-index:2}
-  /* 전략성과2(상따) 표 — 2026-09-16: 가로 스크롤을 **전부 제거**.
+  /* 전략성과2(상따) 표 — 2026-09-16 신설, 09-17 수정.
      사용자 요청: "표에 스크롤은 모두 없애줘. 모바일에서도 확대해서 전체를 볼 수
-     있도록." 스크롤 컨테이너를 두면 한 번에 보이는 건 화면 폭만큼뿐이라 핀치줌으로
-     전체를 훑을 수가 없다. 그래서 표를 화면 폭에 맞춰 넣고(width:100%), 긴 텍스트는
-     줄바꿈시켜 세로로 늘어나게 한 뒤, 읽을 때는 브라우저 확대를 쓰도록 한다
-     (viewport 메타에 user-scalable 제한이 없어 핀치줌이 그대로 동작함).
-     글자는 작아지지만 열이 잘리지 않아 "전체가 한 화면에" 들어온다. */
+     있도록." 처음엔 모든 셀에 word-break:break-word + width:100%를 걸었는데,
+     종목/상태/시세/등락률처럼 원래 짧은 라벨·숫자 칸까지 강제로 줄바꿈 대상이 되면서
+     칸이 좁아지는 순간 "종목" 같은 두 글자 단어도 한 글자씩 세로로 쪼개져 표 헤더
+     전체가 세로 줄무늬처럼 되어버리는 문제가 있었다(2026-09-17 실사용 스크린샷으로
+     확인). 원래 줄바꿈이 필요한 건 내용이 원래 긴 두 칸(매수/매도사유 — td.l.faint,
+     충족조건 배지 목록 — td.wrapcell)뿐이므로, 기본값은 desktop과 동일한 nowrap으로
+     되돌리고 이 두 종류만 줄바꿈 예외로 남긴다. 표 너비도 100% 강제 대신 auto로 둬서
+     nowrap 칸들이 필요한 만큼만 차지하고, 남는 공간을 긴 칸이 흡수한다. */
   #v-perf2 .tw{overflow:visible}
-  #v-perf2 table{width:100%;table-layout:auto}
-  #v-perf2 th,#v-perf2 td{white-space:normal;word-break:break-word;padding:4px 3px;font-size:9.5px}
-  #v-perf2 th{font-size:9px}
-  /* 시각·수치처럼 줄바꿈되면 오히려 읽기 나쁜 칸만 예외로 붙여 쓴다 */
+  #v-perf2 table{width:auto;min-width:100%;table-layout:auto}
+  #v-perf2 th,#v-perf2 td{padding:4px 5px;font-size:10px}
+  #v-perf2 th{font-size:9.5px}
+  /* 매수/매도사유(td.l.faint)는 137행 규칙이 항상 적용됨. 충족조건 배지 목록처럼
+     내용이 원래 긴 칸만 여기서 줄바꿈 예외로 추가한다. */
+  #v-perf2 th.wrapcell,#v-perf2 td.wrapcell{white-space:normal;word-break:normal}
   #v-perf2 .nw{white-space:nowrap}
   /* 종목후보 표 — 모든 컬럼 표시, 가로 스크롤로 펼쳐 보기
      첫 2열(# · 종목)은 sticky로 고정 */
@@ -1105,7 +1110,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   <div class="card"><h3>실시간 조건 트래킹 <span class="r" id="i2LiveCount"></span></h3>
     <div class="faint" style="font-size:11px;margin:0 0 8px">지금 추적 중인 후보/보유 종목이 매수 조건을 실시간으로 얼마나 충족하고 있는지 보여줍니다(체결 틱마다 갱신, 최대 30종목). 20초마다 후보를 <b>실시간 등락률 순으로 다시 줄 세워</b> 상위 30종목만 남깁니다 — 약해진 종목은 순위에서 밀려 자연스럽게 빠지고, 회복하면 다시 올라옵니다(보유 중인 포지션은 청산 판단을 위해 순위와 무관하게 항상 유지). 2026-09-15 이전에는 "마이너스로 전환되면 즉시 제외"하는 방식이었는데, 0% 근처 종목이 제외·복귀를 반복하고 신규 유입이 막히면 추적 종목이 몇 개로 고갈되는 문제가 있어 순위제로 바꿨습니다. 조건 배지의 <b>*</b>는 필수 조건, 나머지는 보조 조건이며 초록 배지가 지금 충족 중이라는 뜻입니다.</div>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th title="진입조건 아님(참고용 표시) — 일단 매수/청산 판단에서 제외했습니다. 등급 A 보너스(1.5억↑) 산정에만 참고로 씀">프로그램순매수(2분, 참고용)</th><th>충족조건</th>
+      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th title="진입조건 아님(참고용 표시) — 일단 매수/청산 판단에서 제외했습니다. 등급 A 보너스(1.5억↑) 산정에만 참고로 씀">프로그램순매수(2분, 참고용)</th><th class="l wrapcell">충족조건</th>
     </tr></thead><tbody id="i2LiveBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
@@ -3350,7 +3355,7 @@ function renderI2Live(wanted,openCodes){
       <td class="${mr?.ok?"good":""}">${mr&&mr.value!=null?N(mr.value,1)+"x":"–"}</td>
       <td class="${live.isNewHigh?"good":"faint"}">${live.isNewHigh?"신고가":"–"}</td>
       <td>${programTradeCell(live)}</td>
-      <td class="l">${condBadges(live.conditions)}</td></tr>`;
+      <td class="l wrapcell">${condBadges(live.conditions)}</td></tr>`;
   }).join("");
   $$("#i2LiveBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
 }
