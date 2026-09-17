@@ -3293,6 +3293,9 @@ function renderI2LiveFromState(){
   renderI2Live(S.i2LiveWanted||[], S.i2LiveOpenCodes||[]);
 }
 const I2_COND_LABEL={changePctMin:"실제 등락률",cttr:"체결강도",largePrints:"대량체결",minuteRatio:"분당거래대금",liquidity:"분당유동성"};
+// 2026-09-17: 위 라벨은 title 툴팁용 전체 문구. 배지 자체엔 이 짧은 라벨을 써서
+// 한 줄에 여러 배지가 들어가게 한다(아래 condValueTextShort와 세트).
+const I2_COND_LABEL_SHORT={changePctMin:"등락률",cttr:"체결강도",largePrints:"대량체결",minuteRatio:"거래대금",liquidity:"유동성"};
 // 2026-09-15: 진입 판정이 "5개 전부 AND"에서 "필수 2개(등락률·분당유동성) +
 // 보조 3개 중 N개"로 바뀌었음 — 어느 쪽인지 화면에서 구분되게 표시한다.
 const I2_REQUIRED_CONDS=new Set(["changePctMin","liquidity"]);
@@ -3311,6 +3314,23 @@ function condValueText(k,c){
     default:              return `${c.value}`;
   }
 }
+// 2026-09-17: 위 condValueText(기준값까지 포함한 전체 표기)는 title 툴팁으로만
+// 쓰고, 배지에는 현재값만 짧게 보여준다 — 모바일 좁은 칸에서 배지 하나가
+// "실제 등락률* 14.9%(3%↑)"처럼 길면 칸 폭을 거의 다 차지해 한 줄에 하나씩만
+// 들어가고, 결과적으로 flex-wrap을 걸어놔도 사용자 눈엔 "여전히 세로"로 보임
+// (2026-09-17 재현 스크린샷). 기준값(괄호 안)을 빼면 배지가 짧아져 한 줄에
+// 2개 이상 들어갈 여지가 생긴다. 전체 정보는 title 속성으로 그대로 유지.
+function condValueTextShort(k,c){
+  if(c.value==null) return "–";
+  switch(k){
+    case "changePctMin": return `${N(c.value,1)}%`;
+    case "cttr":         return `${N(c.value,0)}`;
+    case "largePrints":  return `${c.value}회`;
+    case "minuteRatio":  return `${N(c.value,1)}x`;
+    case "liquidity":    return `${N(c.value/10000,0)}만`;
+    default:              return `${c.value}`;
+  }
+}
 function condBadges(conds){
   if(!conds) return '<span class="faint">–</span>';
   // 2026-09-17: 배지를 개별 span으로 텍스트 join하던 방식(공백으로 줄바꿈
@@ -3318,12 +3338,14 @@ function condBadges(conds){
   // 담아 진짜 가로 배치 + 자동 줄바꿈이 되도록 함 — 배지 하나당 한 줄로
   // 세로로 쌓이던 문제(2026-09-17 실사용 스크린샷)의 근본 수정.
   const items=Object.entries(conds).map(([k,c])=>{
-    const label=I2_COND_LABEL[k]||k;
+    const shortLabel=I2_COND_LABEL_SHORT[k]||I2_COND_LABEL[k]||k;
+    const fullLabel=I2_COND_LABEL[k]||k;
     const req=I2_REQUIRED_CONDS.has(k);
     const cls=c.ok?"good":"faint";
-    const vt=condValueText(k,c);
+    const vtFull=condValueText(k,c);
+    const vtShort=condValueTextShort(k,c);
     const mark=req?"필수":"보조";
-    return `<span class="${cls}" style="font-size:10.5px" title="${mark} 조건 · ${label}: 현재 ${vt}">${c.ok?"●":"○"} ${label}${req?"*":""} ${vt}</span>`;
+    return `<span class="${cls}" style="font-size:10px" title="${mark} 조건 · ${fullLabel}: 현재 ${vtFull}">${c.ok?"●":"○"} ${shortLabel}${req?"*":""} ${vtShort}</span>`;
   }).join("");
   return `<div class="badges">${items}</div>`;
 }
@@ -3335,7 +3357,14 @@ function reasonBadges(text){
   if(!text) return '<span class="faint">–</span>';
   const parts=text.split(/\s*·\s*/).map(s=>s.trim()).filter(Boolean);
   if(parts.length<=1) return `<span class="faint">${text}</span>`;
-  return `<div class="badges">${parts.map(p=>`<span class="faint" style="font-size:10.5px">${p}</span>`).join("")}</div>`;
+  // 2026-09-17: 괄호 안 부연설명("(기준 3000만원)", "(평균 17162만원/분)" 등)이
+  // 배지를 길게 만들어 좁은 모바일 칸에서 한 줄에 하나씩만 들어가는 원인이었다
+  // (condBadges와 동일한 문제 — 2026-09-17 재현 스크린샷). 화면엔 핵심 문구만
+  // 남기고, 괄호 안 내용을 포함한 원문 전체는 title 툴팁으로 유지한다.
+  return `<div class="badges">${parts.map(p=>{
+    const short=p.replace(/\s*\([^)]*\)\s*/g," ").trim();
+    return `<span class="faint" style="font-size:10px" title="${p}">${short||p}</span>`;
+  }).join("")}</div>`;
 }
 // 2026-09-09: 프로그램매매 구독을 후보 단계까지 확장 — "후보"든 "보유중"이든
 // 값이 없으면 구독은 됐지만 아직 체결 틱이 없었다는 뜻(프로그램매매 자체가
