@@ -147,6 +147,13 @@ th.l,td.l{text-align:left}
    overflow-wrap:break-word는 혹시 공백 없는 토큰(숫자 등)이 칸보다 길 때를
    대비한 안전장치로 남겨둔다. */
 #v-perf2 td.l.faint{white-space:normal;word-break:keep-all;overflow-wrap:break-word;line-height:1.45;min-width:112px}
+/* 2026-09-17: 충족조건·매수사유를 세로로 쌓인 배지 목록 대신 가로로 흐르게
+   표시 — 배지를 flex-wrap 컨테이너에 담아 필요한 만큼만 줄바꿈되게 한다.
+   전역 td 규칙(white-space:nowrap)이 상속돼도 flex-wrap 자체는 영향받지
+   않지만, 안전하게 wrapcell 칸은 normal로 되돌려둔다. */
+#v-perf2 td.wrapcell,#v-perf2 th.wrapcell{white-space:normal}
+#v-perf2 .badges{display:flex;flex-wrap:wrap;gap:4px 8px}
+#v-perf2 .badges>span{white-space:nowrap}
 th.sortable{cursor:pointer;user-select:none} th.sortable:hover{color:var(--ink)}
 th.sortable.active{color:var(--ink);font-weight:750}
 th.grp{border-left:1px solid var(--border)} td.grp{border-left:1px solid var(--grid)}
@@ -346,22 +353,22 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
      종목/상태/시세/등락률처럼 원래 짧은 라벨·숫자 칸까지 강제로 줄바꿈 대상이 되면서
      칸이 좁아지는 순간 "종목" 같은 두 글자 단어도 한 글자씩 세로로 쪼개져 표 헤더
      전체가 세로 줄무늬처럼 되어버리는 문제가 있었다(2026-09-17 실사용 스크린샷으로
-     확인). 원래 줄바꿈이 필요한 건 내용이 원래 긴 두 칸(매수/매도사유 — td.l.faint,
-     충족조건 배지 목록 — td.wrapcell)뿐이므로, 기본값은 desktop과 동일한 nowrap으로
-     되돌리고 이 두 종류만 줄바꿈 예외로 남긴다. 표 너비도 100% 강제 대신 auto로 둬서
-     nowrap 칸들이 필요한 만큼만 차지하고, 남는 공간을 긴 칸이 흡수한다. */
+     확인). 원래 줄바꿈이 필요한 건 내용이 원래 긴 칸(매수/매도사유 — td.l.faint,
+     충족조건·매수사유 배지 목록 — td.wrapcell)뿐이므로, 기본값은 desktop과 동일한
+     nowrap으로 되돌리고 이 칸들만 줄바꿈 예외로 남긴다. 표 너비도 100% 강제 대신
+     auto로 둬서 nowrap 칸들이 필요한 만큼만 차지하고, 남는 공간을 긴 칸이 흡수한다. */
   #v-perf2 .tw{overflow:visible}
   #v-perf2 table{width:auto;min-width:100%;table-layout:auto}
   #v-perf2 th,#v-perf2 td{padding:4px 5px;font-size:10px}
   #v-perf2 th{font-size:9.5px}
   /* 매수/매도사유(td.l.faint)는 137행 규칙이 항상 적용됨(word-break:keep-all
-     포함). 충족조건 배지 목록처럼 내용이 원래 긴 칸만 여기서 줄바꿈 예외로
-     추가한다. 여기도 keep-all을 줘서 배지 라벨(한글) 자체가 글자 단위로
-     쪼개지는 걸 막는다. */
-  #v-perf2 th.wrapcell,#v-perf2 td.wrapcell{white-space:normal;word-break:keep-all;min-width:100px}
-  /* 배지 사이 join(" ")만으론 부족한 경우(제목이 긴 배지 하나가 통째로 안 잘림)를
-     대비해 모바일에서는 배지 하나당 한 줄로 강제 — 원래 기대했던 모습과 같다. */
-  #v-perf2 td.wrapcell span{display:block !important;margin:2px 0 !important}
+     포함). 충족조건·매수사유 배지 목록도 keep-all을 줘서 배지 라벨(한글)
+     자체가 글자 단위로 쪼개지는 걸 막는다.
+     2026-09-17: 예전엔 배지 하나당 한 줄로 강제(display:block)해서 5~6개
+     배지가 세로로 길게 쌓여 한 종목이 화면을 다 차지하는 문제가 있었음 —
+     사용자 피드백으로 flex-wrap 가로 배치로 교체(위 149행 근처 .badges
+     규칙). 모바일에서는 폭이 좁으니 최소폭만 보장하고 나머지는 자동 줄바꿈. */
+  #v-perf2 th.wrapcell,#v-perf2 td.wrapcell{word-break:keep-all;min-width:100px}
   #v-perf2 .nw{white-space:nowrap}
   /* 종목후보 표 — 모든 컬럼 표시, 가로 스크롤로 펼쳐 보기
      첫 2열(# · 종목)은 sticky로 고정 */
@@ -1124,22 +1131,29 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     </div>
   </div>
 
-  <div class="card"><h3>실시간 조건 트래킹 <span class="r" id="i2LiveCount"></span></h3>
-    <div class="faint" style="font-size:11px;margin:0 0 8px">지금 추적 중인 후보/보유 종목이 매수 조건을 실시간으로 얼마나 충족하고 있는지 보여줍니다(체결 틱마다 갱신, 최대 30종목). 20초마다 후보를 <b>실시간 등락률 순으로 다시 줄 세워</b> 상위 30종목만 남깁니다 — 약해진 종목은 순위에서 밀려 자연스럽게 빠지고, 회복하면 다시 올라옵니다(보유 중인 포지션은 청산 판단을 위해 순위와 무관하게 항상 유지). 2026-09-15 이전에는 "마이너스로 전환되면 즉시 제외"하는 방식이었는데, 0% 근처 종목이 제외·복귀를 반복하고 신규 유입이 막히면 추적 종목이 몇 개로 고갈되는 문제가 있어 순위제로 바꿨습니다. 조건 배지의 <b>*</b>는 필수 조건, 나머지는 보조 조건이며 초록 배지가 지금 충족 중이라는 뜻입니다.</div>
-    <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th>체결강도</th><th>대량체결(1분)</th><th>분당거래대금비율</th><th>신고가</th><th title="진입조건 아님(참고용 표시) — 일단 매수/청산 판단에서 제외했습니다. 등급 A 보너스(1.5억↑) 산정에만 참고로 씀">프로그램순매수(2분, 참고용)</th><th class="l wrapcell">충족조건</th>
-    </tr></thead><tbody id="i2LiveBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
-  </div>
-
+  <!-- 2026-09-17: 사용자 요청으로 화면 배치를 보유중 → 실시간 종목 트래킹 →
+       청산이력 순으로 조정(원래는 실시간 트래킹이 맨 위였음). -->
   <div class="card"><h3>보유 중 <span class="r" id="i2OpenCount"></span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>진입가</th><th title="한국투자증권 실시간 웹소켓 시세">시세</th><th>수익률</th><th class="l">매수사유</th><th>진입시각</th>
+      <th class="l">종목</th><th>진입가</th><th title="한국투자증권 실시간 웹소켓 시세">시세</th><th>수익률</th><th class="l wrapcell">매수사유</th><th>진입시각</th>
     </tr></thead><tbody id="i2OpenBody"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
+  </div>
+
+  <div class="card"><h3>실시간 조건 트래킹 <span class="r" id="i2LiveCount"></span></h3>
+    <div class="faint" style="font-size:11px;margin:0 0 8px">지금 추적 중인 후보/보유 종목이 매수 조건을 실시간으로 얼마나 충족하고 있는지 보여줍니다(체결 틱마다 갱신, 최대 30종목). 20초마다 후보를 <b>실시간 등락률 순으로 다시 줄 세워</b> 상위 30종목만 남깁니다 — 약해진 종목은 순위에서 밀려 자연스럽게 빠지고, 회복하면 다시 올라옵니다(보유 중인 포지션은 청산 판단을 위해 순위와 무관하게 항상 유지). 2026-09-15 이전에는 "마이너스로 전환되면 즉시 제외"하는 방식이었는데, 0% 근처 종목이 제외·복귀를 반복하고 신규 유입이 막히면 추적 종목이 몇 개로 고갈되는 문제가 있어 순위제로 바꿨습니다. 조건 배지의 <b>*</b>는 필수 조건, 나머지는 보조 조건이며 초록 배지가 지금 충족 중이라는 뜻입니다.
+    </div>
+    <!-- 2026-09-17: 체결강도·대량체결·분당거래대금비율은 충족조건 배지에 이미
+         같은 값이 나오므로(각각 라벨 "체결강도"·"대량체결"·"분당거래대금") 중복
+         컬럼을 없애고, 충족조건을 등락률 바로 오른쪽으로 옮겼습니다. 신고가·
+         프로그램순매수는 배지에 없는 정보라 그대로 남겨둡니다. -->
+    <div class="tw"><table><thead><tr>
+      <th class="l">종목</th><th>상태</th><th>시세</th><th>등락률</th><th class="l wrapcell">충족조건</th><th>신고가</th><th title="진입조건 아님(참고용 표시) — 일단 매수/청산 판단에서 제외했습니다. 등급 A 보너스(1.5억↑) 산정에만 참고로 씀">프로그램순매수(2분, 참고용)</th>
+    </tr></thead><tbody id="i2LiveBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
   <div class="card"><h3>청산 이력 <span class="r" id="i2PerfCount"></span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th>매수시각</th><th>매도시각</th><th>보유</th><th>진입가</th><th>청산가</th><th>수익률</th><th class="l">매수사유</th><th class="l">매도사유</th><th>실현손익(원)</th>
+      <th class="l">종목</th><th>매수시각</th><th>매도시각</th><th>보유</th><th>진입가</th><th>청산가</th><th>수익률</th><th class="l wrapcell">매수사유</th><th class="l">매도사유</th><th>실현손익(원)</th>
     </tr></thead><tbody id="i2PerfBody"><tr><td colspan="10" class="load">청산 이력 없음</td></tr></tbody></table></div>
   </div>
 </section>
@@ -3299,18 +3313,29 @@ function condValueText(k,c){
 }
 function condBadges(conds){
   if(!conds) return '<span class="faint">–</span>';
-  // 2026-09-17: 배지 사이를 공백 없이 join("")하면 브라우저가 배지 경계에서
-  // 줄바꿈할 지점을 못 찾아(공백/개행이 있어야 줄바꿈 후보가 생김) 배지 4~6개가
-  // 통째로 한 줄로 이어붙어버림 — 좁은 화면에서 표가 크게 옆으로 삐져나온 원인.
-  // join(" ")로 배지 사이에 공백을 넣어 줄바꿈 지점을 만든다.
-  return Object.entries(conds).map(([k,c])=>{
+  // 2026-09-17: 배지를 개별 span으로 텍스트 join하던 방식(공백으로 줄바꿈
+  // 지점을 만들던 편법 포함)을 버리고, flex-wrap 컨테이너(.badges, CSS 참고)에
+  // 담아 진짜 가로 배치 + 자동 줄바꿈이 되도록 함 — 배지 하나당 한 줄로
+  // 세로로 쌓이던 문제(2026-09-17 실사용 스크린샷)의 근본 수정.
+  const items=Object.entries(conds).map(([k,c])=>{
     const label=I2_COND_LABEL[k]||k;
     const req=I2_REQUIRED_CONDS.has(k);
     const cls=c.ok?"good":"faint";
     const vt=condValueText(k,c);
     const mark=req?"필수":"보조";
-    return `<span class="${cls}" style="margin-right:8px;font-size:10.5px;white-space:nowrap" title="${mark} 조건 · ${label}: 현재 ${vt}">${c.ok?"●":"○"} ${label}${req?"*":""} ${vt}</span>`;
-  }).join(" ");
+    return `<span class="${cls}" style="font-size:10.5px" title="${mark} 조건 · ${label}: 현재 ${vt}">${c.ok?"●":"○"} ${label}${req?"*":""} ${vt}</span>`;
+  }).join("");
+  return `<div class="badges">${items}</div>`;
+}
+// 2026-09-17: 청산 이력·보유 중 표의 "매수사유"는 reason_text 한 줄 문자열에
+// " · "로 여러 조건이 이어붙어 있어, 충족조건 배지와 같은 이유(세로로 길게
+// 쌓여 한 종목이 화면을 다 차지)로 가독성이 나빴다. condBadges와 같은
+// .badges flex-wrap 컨테이너를 재사용해 조건별로 칩처럼 가로 배치한다.
+function reasonBadges(text){
+  if(!text) return '<span class="faint">–</span>';
+  const parts=text.split(/\s*·\s*/).map(s=>s.trim()).filter(Boolean);
+  if(parts.length<=1) return `<span class="faint">${text}</span>`;
+  return `<div class="badges">${parts.map(p=>`<span class="faint" style="font-size:10.5px">${p}</span>`).join("")}</div>`;
 }
 // 2026-09-09: 프로그램매매 구독을 후보 단계까지 확장 — "후보"든 "보유중"이든
 // 값이 없으면 구독은 됐지만 아직 체결 틱이 없었다는 뜻(프로그램매매 자체가
@@ -3331,7 +3356,7 @@ function renderI2Live(wanted,openCodes){
   const openSet=new Set(openCodes||[]);
   $("#i2LiveCount").innerHTML = wanted.length?`<b>${wanted.length}</b>종목 추적 중`:"";
   if(!wanted.length){
-    $("#i2LiveBody").innerHTML='<tr><td colspan="10" class="load">추적 중인 종목 없음</td></tr>';
+    $("#i2LiveBody").innerHTML='<tr><td colspan="7" class="load">추적 중인 종목 없음</td></tr>';
     return;
   }
   const rows=wanted.map(code=>{
@@ -3350,12 +3375,10 @@ function renderI2Live(wanted,openCodes){
     if(!live){
       return `<tr><td class="l"><a class="lk nm" data-code="${code}">${name}</a></td>
         <td class="faint">${isOpen?"보유중":"후보"}</td>
-        <td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td><td class="dim">–</td>
-        <td class="faint">체결 대기 중…</td></tr>`;
+        <td class="dim">–</td><td class="dim">–</td>
+        <td class="l faint">체결 대기 중…</td>
+        <td class="dim">–</td><td class="dim">–</td></tr>`;
     }
-    const cttr=live.conditions?.cttr;
-    const lp=live.conditions?.largePrints;
-    const mr=live.conditions?.minuteRatio;
     // 2026-09-15: 진입 기준이 점수제로 바뀜 — "5개 중 몇 개"가 아니라 "필수 충족
     // 여부 + 보조 N개 중 몇 개"로 표시해야 실제로 매수까지 뭐가 남았는지 보인다.
     const statusLabel=isOpen
@@ -3367,16 +3390,16 @@ function renderI2Live(wanted,openCodes){
         : live.optionalMet!=null
           ? `후보(${live.requiredMet?"필수✓":"필수✗"} 보조 ${live.optionalMet}/${live.requiredOptional})`
           : `후보(${live.metConditions??0}/${live.totalConditions??5})`);
+    // 2026-09-17: 체결강도·대량체결·분당거래대금비율 컬럼은 충족조건 배지에
+    // 이미 같은 값이 나오므로(condBadges) 중복 제거. 충족조건은 등락률
+    // 바로 오른쪽으로 옮김(사용자 요청).
     return `<tr><td class="l"><a class="lk nm" data-code="${code}">${name}</a></td>
       <td class="l">${statusLabel}</td>
       <td class="num">${N(live.price)}</td>
       <td class="${sgn(live.changePct)}">${live.changePct==null?"–":pm(live.changePct,2)+"%"}</td>
-      <td class="${cttr?.ok?"good":""}">${cttr&&cttr.value!=null?N(cttr.value,0):"–"}</td>
-      <td class="${lp?.ok?"good":""}">${lp?lp.value:"–"}</td>
-      <td class="${mr?.ok?"good":""}">${mr&&mr.value!=null?N(mr.value,1)+"x":"–"}</td>
+      <td class="l wrapcell">${condBadges(live.conditions)}</td>
       <td class="${live.isNewHigh?"good":"faint"}">${live.isNewHigh?"신고가":"–"}</td>
-      <td>${programTradeCell(live)}</td>
-      <td class="l wrapcell">${condBadges(live.conditions)}</td></tr>`;
+      <td>${programTradeCell(live)}</td></tr>`;
   }).join("");
   $$("#i2LiveBody a.lk").forEach(a=>a.onclick=()=>{go("detail");loadDetail(a.dataset.code);});
 }
@@ -3533,7 +3556,7 @@ async function loadPerf2(){
         <td class="l"><a class="lk nm" data-code="${p.code}">${p.name||nameOf[p.code]||S.i2NameOf[p.code]||p.code}</a></td>
         <td>${N(+p.entry_price)}</td><td>${N(close)}${isLive?"":' <small class="faint" title="아직 실시간 체결 없음 — 전일 종가로 대체 표시">(전일종가)</small>'}</td>
         <td class="${sgn(ret)}">${pm(ret)}%</td>
-        <td class="l faint">${reason}</td>
+        <td class="l wrapcell">${reasonBadges(reason)}</td>
         <td>${fmtKstHm(p.entry_time)}</td>
       </tr>`;
     }).join("") : '<tr><td colspan="6" class="load">보유중 없음</td></tr>';
@@ -3547,7 +3570,7 @@ async function loadPerf2(){
       <td class="nw faint">${holdLabel(p.entry_time,p.exit_time)}</td>
       <td>${N(+p.entry_price)}</td><td>${N(+p.exit_price)}</td>
       <td class="${sgn(+p.return_pct)}">${pm(+p.return_pct)}%</td>
-      <td class="l faint">${(p.entry_reason&&p.entry_reason.reason_text)||"–"}</td>
+      <td class="l wrapcell">${reasonBadges((p.entry_reason&&p.entry_reason.reason_text)||"")}</td>
       <td class="l faint">${I_EXIT_LABEL[er.exit_type]||er.reason_text||"–"}</td>
       <td class="${sgn(+p.realized_pnl)}">${pm(+p.realized_pnl,0)}</td>
     </tr>`;
