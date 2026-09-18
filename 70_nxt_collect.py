@@ -58,11 +58,14 @@ DB_URL     = os.environ.get("SUPABASE_DB_URL", "")
 MAX_RPS = 12   # 2026-09-15: 14 → 12 (03_daily_collect.py와 동일 근거 — 주석 참고)
 BATCH   = 500
 
-DEBUG_MODE  = False
-DEBUG_CODES = []
-TARGET_DATE = datetime.date.today().strftime("%Y%m%d")
+DEBUG_MODE   = False
+DEBUG_CODES  = []
+SNAPSHOT_MODE = False   # 2026-09-18: --snapshot 플래그 — 18시 첫 실행에서만 전달
+TARGET_DATE  = datetime.date.today().strftime("%Y%m%d")
 
-_args = sys.argv[1:]
+_args = [a for a in sys.argv[1:] if a != "--snapshot"]
+if "--snapshot" in sys.argv:
+    SNAPSHOT_MODE = True
 if _args:
     if _args[0] == "--debug":
         DEBUG_MODE = True
@@ -150,7 +153,32 @@ def load_stocks():
         return [r[0] for r in cur.fetchall()]
 
 
-NXT_SQL = """
+# 2026-09-18: 종가베팅2 기준가를 "NXT 20시 확정 마감가"에서 "NXT 18시 스냅샷"으로
+# 변경 (사용자가 20시 이전에 실제 매수에 활용하려면 18시경 결과가 나와야 함).
+#
+# 두 가지 UPSERT SQL을 모드에 따라 선택합니다:
+#   SNAPSHOT_SQL — 그날 첫 실행(18시경). 4개 컬럼 전부 씁니다. 단 nxt_price_1800/
+#                  nxt_change_pct_1800은 이미 값이 있으면 절대 덮어쓰지 않습니다
+#                  (COALESCE로 기존값 우선). 이렇게 해야 재실행·재배포로 인한 이중
+#                  실행에도 18시 스냅샷이 오염되지 않습니다.
+#   UPDATE_SQL  — 18시 이후 재실행(18:30~20:10). nxt_close/nxt_change_pct(20시
+#                  확정가 컬럼)만 갱신. 18시 스냅샷 컬럼은 건드리지 않습니다.
+#
+# 어느 모드인지는 메인에서 --snapshot 플래그(nxt_collect.yml 18:12 KST 실행에서만
+# 전달)로 판단합니다. 플래그가 없으면 UPDATE_SQL(기존 동작과 동일).
+
+NXT_SNAPSHOT_SQL = """
+INSERT INTO daily_price (trade_date, code, nxt_close, nxt_change_pct,
+                          nxt_price_1800, nxt_change_pct_1800)
+VALUES %s
+ON CONFLICT (trade_date, code) DO UPDATE SET
+  nxt_close            = EXCLUDED.nxt_close,
+  nxt_change_pct       = EXCLUDED.nxt_change_pct,
+  nxt_price_1800       = COALESCE(daily_price.nxt_price_1800,       EXCLUDED.nxt_price_1800),
+  nxt_change_pct_1800  = COALESCE(daily_price.nxt_change_pct_1800,  EXCLUDED.nxt_change_pct_1800)
+"""
+
+NXT_UPDATE_SQL = """
 INSERT INTO daily_price (trade_date, code, nxt_close, nxt_change_pct)
 VALUES %s
 ON CONFLICT (trade_date, code) DO UPDATE SET
@@ -158,11 +186,12 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
 """
 
 
-def upsert_batch(rows):
+def upsert_batch(rows, snapshot_mode=False):
     if not rows:
         return
+    sql = NXT_SNAPSHOT_SQL if snapshot_mode else NXT_UPDATE_SQL
     with psycopg2.connect(DB_URL) as c, c.cursor() as cur:
-        execute_values(cur, NXT_SQL, rows, page_size=BATCH)
+        execute_values(cur, sql, rows, page_size=BATCH)
         c.commit()
 
 
@@ -178,6 +207,9 @@ def main():
 
     codes = load_stocks()
     print(f"▶ 대상 {len(codes):,}종목, 최대 {MAX_RPS}건/초")
+
+    if SNAPSHOT_MODE:
+        print("📸 스냅샷 모드(--snapshot) — nxt_price_1800/nxt_change_pct_1800에 최초 1회만 저장")
 
     rows, ok, skip = [], 0, 0
     for i, code in enumerate(codes, 1):
@@ -195,12 +227,19 @@ def main():
         if close is None or close <= 0:
             skip += 1
             continue
-        rows.append((TARGET_DATE_ISO, code, int(close), chg))
+        # 2026-09-18: 스냅샷 모드에서는 (trade_date, code, nxt_close, nxt_change_pct,
+        # nxt_price_1800, nxt_change_pct_1800) 6-tuple로 저장. NXT_SNAPSHOT_SQL의
+        # COALESCE가 DB에 이미 값이 있으면 유지하므로, 같은 날 재실행해도 18시 스냅샷이
+        # 덮어쓰이지 않는다.
+        if SNAPSHOT_MODE:
+            rows.append((TARGET_DATE_ISO, code, int(close), chg, int(close), chg))
+        else:
+            rows.append((TARGET_DATE_ISO, code, int(close), chg))
         ok += 1
         if i % 50 == 0:
             print(f"  진행 {i}/{len(codes)} (성공 {ok}, 스킵 {skip})")
 
-    upsert_batch(rows)
+    upsert_batch(rows, snapshot_mode=SNAPSHOT_MODE)
     print(f"✅ 완료 — 성공 {ok}건, 스킵 {skip}건, 저장 {len(rows)}건 ({time.time()-t0:.0f}초)")
 
 

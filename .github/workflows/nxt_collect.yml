@@ -3,19 +3,22 @@ name: NXT After-market Collection
 # 2026-09-11 신설 — "종가베팅2" 전략(정규장 등락률 vs NXT 등락률 괴리 top10 →
 # 시가총액 상위 3개)이 쓰는 daily_price.nxt_close/nxt_change_pct를 채웁니다.
 #
-# 이 워크플로는 두 가지 용도로 씁니다.
-#   ① 18:00~19:50 KST 주기 실행 — NXT 애프터마켓 장중(20:00 마감 전) 괴리율을
-#      실시간에 가깝게 확인해 실제 매수 판단에 쓰기 위한 용도(2026-09-11 추가,
-#      사용자가 이 시간대에 직접 종목을 매수할 때 참고). 30분 간격이 기본이되,
-#      마감 임박 구간(19:30 이후)만 20분 간격으로 좁혀 19:50에 한 번 더 수집.
-#   ② 20:10 KST(마감 10분 후) — Daily KIS Collection의 마지막 실행(20:05 KST)이
-#      그날 정규장 확정 데이터를 다 채운 뒤, "그날의 공식 NXT 마감가"를 확정
-#      수집. compute.yml의 20:15 KST 3차 실행(종가베팅2 배치 매수)이 이 값을
-#      기준으로 신호를 만듭니다 — ①의 장중 수집값은 매번 덮어써지므로, 배치
-#      매수가는 반드시 이 마지막 20:10 실행값이어야 함.
+# 2026-09-18: 종가베팅2 기준가를 NXT 20시 확정 마감가 → NXT 18시 스냅샷으로 변경.
+# 이유: 20시 확정가 기준이면 결과가 20:10경에야 나와 사용자가 NXT 장중(~20:00)
+# 실제 매수에 쓸 수 없었음. 18시 스냅샷 기준이면 18:12 수집 → 18:15 compute 실행
+# → 18시 결과 확정, 사용자가 18:15~19:59에 실제 매수 판단 가능.
 #
-# ⚠ 사전 준비: 69_nxt_price_columns.sql을 Supabase SQL Editor에서 먼저
-#   실행해야 합니다 — 컬럼이 없으면 이 워크플로는 매번 실패합니다.
+# 이 워크플로는 두 가지 용도로 씁니다.
+#   ① 18:12 KST 첫 실행 (--snapshot 플래그) — nxt_price_1800/nxt_change_pct_1800
+#      컬럼에 그날 최초 1회만 저장(이후 재실행에서 절대 덮어쓰지 않음). 동시에
+#      nxt_close/nxt_change_pct도 같은 값으로 채움. compute.yml이 이 직후
+#      18:15 KST에 실행돼 종가베팅2 결과를 확정합니다.
+#   ② 18:42~20:20 KST 후속 실행 — nxt_close/nxt_change_pct만 갱신(최신 장중가
+#      또는 20:20 KST 확정가로 계속 덮어씀). 18시 스냅샷 컬럼은 건드리지 않음.
+#      나머지 장중 수집(18:42~20:02)은 화면 참고용, 20:20은 공식 마감가 기록용.
+#
+# ⚠ 사전 준비: 69_nxt_price_columns.sql 그리고 71_nxt_1800_columns.sql을
+#   Supabase SQL Editor에서 먼저 실행해야 합니다.
 on:
   schedule:
     # ── ① 장중 실시간 확인용 (18:00~19:50 KST, 월~금) ──────────────────────
@@ -123,15 +126,32 @@ jobs:
         run: |
           DATE="${{ github.event.inputs.target_date }}"
           CODE="${{ github.event.inputs.debug_code }}"
+
+          # 2026-09-18: 18:12 KST 실행(cron "12 9 * * 1-5")에서만 --snapshot 플래그를
+          # 전달해 nxt_price_1800/nxt_change_pct_1800에 최초 1회 저장을 수행합니다.
+          # 이후 실행(18:42 이후)은 플래그 없이 nxt_close만 갱신합니다.
+          # GitHub Actions는 정확한 실행 시각을 환경변수로 주지 않으므로, UTC 분(MM)으로
+          # 18:12 KST(= 09:12 UTC)를 탐지합니다. 지연이 얹혀 09:19분까지 실행되더라도
+          # --snapshot이 적용되도록 09:09~09:19 UTC(=18:09~18:19 KST) 범위로 잡습니다.
+          SNAPSHOT_FLAG=""
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            UTC_H=$(date -u +%H)
+            UTC_M=$(date -u +%M)
+            if [ "$UTC_H" = "09" ] && [ "$UTC_M" -ge 9 ] && [ "$UTC_M" -le 19 ]; then
+              SNAPSHOT_FLAG="--snapshot"
+              echo "📸 18:12 KST 실행 감지 → --snapshot 모드 활성화"
+            fi
+          fi
+
           if [ -n "$CODE" ]; then
             echo "### 🔍 NXT API 디버그: $CODE" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             python 70_nxt_collect.py --debug $CODE 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           elif [ -z "$DATE" ]; then
-            python 70_nxt_collect.py
+            python 70_nxt_collect.py $SNAPSHOT_FLAG
           else
-            python 70_nxt_collect.py "$DATE"
+            python 70_nxt_collect.py "$DATE" $SNAPSHOT_FLAG
           fi
 
       - name: Notify on failure

@@ -248,30 +248,38 @@ scored AS (
          count(rs20_vs_mkt) OVER (PARTITION BY trade_date) AS rs20_universe_n
   FROM base
 ),
--- ── 종가베팅2 전용 풀 (2026-09-11 신설) ────────────────────────────────────
--- NXT 시세가 있는 종목만 대상으로 괴리율(gap_pct)을 계산하고, 그날 괴리율
--- 상위 10위(gap_rank)까지만 남깁니다 — 이게 1단계 통과 종목 전체입니다.
--- ⚠ 2026-09-12: nxt_close > 0 조건 추가. KIS API는 해당 종목이 그날 NXT에서
---   실제 체결이 전혀 없었을 때도 에러 없이 rt_cd='0'(성공) + 전 필드 0인
---   "빈 응답"을 돌려준다(70_nxt_collect.py --debug로 직접 확인, 대덕전자
---   353200 등). nxt_change_pct만으로는 이 빈 응답(0.00%)과 "정말 NXT에서
---   등락률이 0%로 마감"인 진짜 데이터를 구분할 수 없으므로, NXT 마감가가
---   0원(=체결 없음의 신호)인 종목은 애초에 괴리율 계산 대상에서 제외한다.
--- ⚠ 2026-09-12: nxt_change_pct > 0 조건 추가. 괴리율(gap_pct)이 커도 NXT
---   등락률 자체가 마이너스면 "정규장보다 덜 빠진 것"일 뿐 실제 매수세가
---   붙은 게 아니므로 제외 — 1단계는 NXT에서 실제로 플러스(+) 전환된
---   종목만 대상으로 한다.
--- ⚠ 2026-09-12: gap_rank/cap_rank_top10 둘 다 "상위 N개만" 캡으로 쓰이므로
--- (아래 gap_rank<=10, cap_rank_top10<=3), rank() 대신 row_number()+code
--- 타이브레이크를 써서 동점 시 N개보다 더 많이 통과하는 걸 방지합니다.
+-- ── 종가베팅2 전용 풀 (2026-09-11 신설, 2026-09-18 18시 스냅샷 기준으로 변경) ──
+-- 2026-09-18: 종가베팅2 기준가를 NXT 20시 확정 마감가(nxt_close)에서
+-- NXT 18시 스냅샷가(nxt_price_1800)로 변경합니다. 이유:
+--   · 20시 확정가 기준이면 결과가 20:10경에나 나와서 사용자가 NXT 장중(~20:00)에
+--     실제 매수 주문을 넣을 수 없었음(2026-09-18 피드백).
+--   · 18시 스냅샷 기준이면 18:12 KST 수집 → 18:15경 compute.yml 실행 → 18시
+--     결과 확정. 사용자가 18:15~19:59 동안 실제 매수 판단에 활용 가능.
+--
+-- 기준가 컬럼:
+--   eff_nxt_price   = COALESCE(nxt_price_1800, nxt_close)
+--     → 2026-09-18 이후: nxt_price_1800(18시 스냅샷)
+--     → 2026-09-18 이전 과거 데이터: nxt_price_1800이 NULL이므로 nxt_close(20시 확정가)로 자동 폴백
+--       ∴ 과거 종가베팅2 거래 이력·성과 통계가 이 변경으로 달라지지 않음.
+--   eff_nxt_chg_pct = COALESCE(nxt_change_pct_1800, nxt_change_pct)  (동일 원칙)
+--
+-- 나머지 조건(nxt_change_pct > 0, nxt_close > 0, gap_rank 상위 10 등)은 기존과 동일.
+-- ⚠ gap_rank/cap_rank_top10 둘 다 row_number()+code 타이브레이크(2026-09-12).
 closebet2_pool AS (
   SELECT scored.*,
-         (nxt_change_pct - change_pct) AS gap_pct,
-         row_number() OVER (PARTITION BY trade_date ORDER BY (nxt_change_pct - change_pct) DESC, code ASC) AS gap_rank
+         COALESCE(p.nxt_price_1800,      p.nxt_close)        AS eff_nxt_price,
+         COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct)   AS eff_nxt_chg_pct,
+         (COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) - change_pct) AS gap_pct,
+         row_number() OVER (
+           PARTITION BY scored.trade_date
+           ORDER BY (COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) - change_pct) DESC, scored.code ASC
+         ) AS gap_rank
   FROM scored
-  WHERE nxt_change_pct IS NOT NULL
-    AND nxt_close IS NOT NULL AND nxt_close > 0
-    AND nxt_change_pct > 0
+  JOIN daily_price p ON p.trade_date = scored.trade_date AND p.code = scored.code
+  WHERE COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) IS NOT NULL
+    AND COALESCE(p.nxt_price_1800,      p.nxt_close)      IS NOT NULL
+    AND COALESCE(p.nxt_price_1800,      p.nxt_close)      > 0
+    AND COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) > 0
 ),
 -- 1단계(gap_rank<=10) 통과 종목 안에서만 시가총액 순위를 다시 매깁니다 —
 -- 전체 유니버스 기준 시총 순위가 아니라 "그 10종목 중" 순위여야 하므로
@@ -388,25 +396,27 @@ WHERE rs_rank IS NOT NULL AND rs_rank <= 8       -- 2026-09-10: 5위→8위 완�
 
 UNION ALL
 -- ── 종가베팅2 1단계 (NXT 괴리율 상위 10) ─────────────────────────────────────
+-- 2026-09-18: nxt_close → eff_nxt_price(18시 스냅샷 우선, 폴백 20시 확정가)
 SELECT trade_date, code, 'V4_CAND_CLOSEBET2_1', 'WATCH', score,
   jsonb_build_object('strategy','CLOSEBET2','stage',1,
-    'change_pct',change_pct,'nxt_change_pct',nxt_change_pct,'gap_pct',gap_pct,'gap_rank',gap_rank,
-    'nxt_close',nxt_close,'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
-  name || ' 종가베팅2 1단계 · 정규장 ' || round(change_pct, 1) || '% → NXT '
-       || round(nxt_change_pct, 1) || '% (괴리 ' || round(gap_pct, 1) || '%p, 상위' || gap_rank || '위)'
+    'change_pct',change_pct,'nxt_change_pct',eff_nxt_chg_pct,'gap_pct',gap_pct,'gap_rank',gap_rank,
+    'nxt_close',eff_nxt_price,'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
+  name || ' 종가베팅2 1단계 · 정규장 ' || round(change_pct, 1) || '% → NXT(18시) '
+       || round(eff_nxt_chg_pct, 1) || '% (괴리 ' || round(gap_pct, 1) || '%p, 상위' || gap_rank || '위)'
 FROM closebet2_stage1
 
 UNION ALL
 -- ── 종가베팅2 2단계 (1단계 10종목 중 시가총액 상위 3, 가상매수 대상) ────────
+-- 2026-09-18: nxt_close → eff_nxt_price(18시 스냅샷 우선, 폴백 20시 확정가)
 SELECT trade_date, code, 'V4_CAND_CLOSEBET2_2', 'WATCH', score,
   jsonb_build_object('strategy','CLOSEBET2','stage',2,
-    'change_pct',change_pct,'nxt_change_pct',nxt_change_pct,'gap_pct',gap_pct,'gap_rank',gap_rank,
+    'change_pct',change_pct,'nxt_change_pct',eff_nxt_chg_pct,'gap_pct',gap_pct,'gap_rank',gap_rank,
     'cap_rank_top10',cap_rank_top10,
-    'nxt_close',nxt_close,'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
-  name || ' 종가베팅2 2단계(매수) · 정규장 ' || round(change_pct, 1) || '% → NXT '
-       || round(nxt_change_pct, 1) || '% (괴리 ' || round(gap_pct, 1) || '%p)'
+    'nxt_close',eff_nxt_price,'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
+  name || ' 종가베팅2 2단계(매수) · 정규장 ' || round(change_pct, 1) || '% → NXT(18시) '
+       || round(eff_nxt_chg_pct, 1) || '% (괴리 ' || round(gap_pct, 1) || '%p)'
        || ' · 시가총액 상위' || cap_rank_top10 || '위(10종목 중)'
-       || ' · NXT 마감가 ' || nxt_close || '원 매수'
+       || ' · NXT 18시가 ' || eff_nxt_price || '원 기준 매수'
 FROM closebet2_stage1
 WHERE cap_rank_top10 <= 3
 

@@ -96,19 +96,28 @@ jobs:
             # 16:30 KST 하나뿐 — 지표·신호 계산 + 실제 가상매수/매도 실행.
             python 05_compute.py "$(date +%Y%m%d)"
           elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-            # nxt_collect.yml 스케줄 실행이 성공적으로 끝난 직후 실행됨
-            # (2026-09-12, 레이스컨디션 수정 — 예전엔 20:10/20:15처럼 고정
-            # 5분 buffer로 "그때쯤이면 끝났겠지"하고 추측했으나, 이제 실제
-            # 완료 이벤트를 직접 기다립니다). 시각으로 장중 반복수집인지
-            # 20:10 공식마감 수집인지 구분 — 장중은 후보만 재조회
-            # (--no-portfolio, 마감 전 값이라 미확정), 20:00 KST 이후 완료는
-            # 공식마감으로 보고 종가베팅2 매수를 확정합니다.
+            # nxt_collect.yml 스케줄 실행이 성공적으로 끝난 직후 실행됩니다.
+            # 2026-09-18: 종가베팅2 기준을 "NXT 20시 확정가" → "NXT 18시 스냅샷"으로
+            # 변경하면서 종가베팅2 가상매수 확정 시점도 달라집니다.
+            #
+            #  18:12 KST 수집 완료 (→ 18시 스냅샷 저장, --snapshot 모드)
+            #    → compute도 portfolio 실행(종가베팅2 가상매수 확정).
+            #      사용자가 18:15~19:59에 결과를 보고 실제 매수할 수 있어야 하므로.
+            #
+            #  18:42~20:02 KST 수집 완료 (→ nxt_close 갱신만, 스냅샷 컬럼은 불변)
+            #    → --no-portfolio (후보 화면 참고용 재조회만, 포트폴리오 재확정 없음)
+            #      이미 18:15에 확정된 가상매수가 다시 실행되지 않도록.
+            #
+            #  20:20 KST 수집 완료 (→ nxt_close에 20시 공식 마감가 기록)
+            #    → --no-portfolio (공식 마감가는 화면 표시용 기록만, 포트폴리오 불변)
+            #      이미 18:15에 확정된 가상매수 기준(18시 스냅샷)이 바뀌지 않도록.
             HOUR=$(TZ=Asia/Seoul date +%H%M)
-            if [ "$((10#$HOUR))" -ge 2000 ]; then
-              echo "▶ NXT 공식마감 수집 완료 감지(${HOUR} KST) — 종가베팅2 매수 확정"
+            HOUR_INT=$((10#$HOUR))
+            if [ "$HOUR_INT" -ge 1809 ] && [ "$HOUR_INT" -le 1830 ]; then
+              echo "▶ NXT 18시 스냅샷 수집 완료 감지(${HOUR} KST) — 종가베팅2 매수 확정"
               python 05_compute.py "$(date +%Y%m%d)"
             else
-              echo "▶ NXT 장중 수집 완료 감지(${HOUR} KST) — 후보만 재계산 (가상매수 없음)"
+              echo "▶ NXT 후속/마감 수집 완료 감지(${HOUR} KST) — 후보 재계산만 (포트폴리오 불변)"
               python 05_compute.py "$(date +%Y%m%d)" --no-portfolio
             fi
           else
