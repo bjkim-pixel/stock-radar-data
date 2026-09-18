@@ -269,10 +269,15 @@ closebet2_pool AS (
   SELECT scored.*,
          COALESCE(p.nxt_price_1800,      p.nxt_close)        AS eff_nxt_price,
          COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct)   AS eff_nxt_chg_pct,
-         (COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) - change_pct) AS gap_pct,
+         -- 2026-09-18 배포 직후 발견된 버그(2026-09-19 수정): daily_price를 p로
+         -- 다시 조인하면서 p.change_pct와 scored.change_pct가 둘 다 스코프에
+         -- 들어와 "column reference change_pct is ambiguous"로 이 INSERT 전체
+         -- (TREND/CLOSEBET 포함, UNION ALL로 한 문장)가 실패했음 — scored.로
+         -- 명시해 해결. (psycopg2.errors.AmbiguousColumn, 실행 로그로 확인)
+         (COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) - scored.change_pct) AS gap_pct,
          row_number() OVER (
            PARTITION BY scored.trade_date
-           ORDER BY (COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) - change_pct) DESC, scored.code ASC
+           ORDER BY (COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) - scored.change_pct) DESC, scored.code ASC
          ) AS gap_rank
   FROM scored
   JOIN daily_price p ON p.trade_date = scored.trade_date AND p.code = scored.code
