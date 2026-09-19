@@ -952,7 +952,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   <div class="card">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <select id="dSel" style="width:auto;min-width:220px"></select>
-      <button class="btn ghost" id="dNext" style="padding:5px 12px;font-size:11.5px" title="시가총액 내림차순 리스트 기준 다음 종목으로 이동">다음 종목 →</button>
+      <button class="btn ghost" id="dNext" style="padding:5px 12px;font-size:11.5px" title="이름(가나다)순 리스트 기준 다음 종목으로 이동">다음 종목 →</button>
       <div id="dHead" style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap"></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px">
@@ -3984,18 +3984,10 @@ async function boot(){
   }
   try{
     status("demo","데이터 불러오는 중…");
-    // 2026-09-19: 종목상세 드롭다운 정렬을 이름순 → 시가총액 내림차순으로 변경
-    // (사용자 요청, 디폴트 노출 종목은 SK하이닉스 그대로 유지 — 아래 v===\"detail\"
-    // 분기의 000660 기본값은 안 건드림). market_cap은 stocks(고정 메타) 테이블엔
-    // 없고 daily_price/daily_metrics 쪽 값(매일 바뀜)이라, v_screener에서 최신
-    // 거래일 걸로 조인해 정렬해야 함 — 그러려면 최신 거래일을 먼저 알아야 해서,
-    // 원래 아래에 있던 loadMarket() 호출보다 이 조회를 앞으로 당겼다.
-    // ⚠ v_screener는 stocks/daily_price/v_stock_sector가 전부 조인돼야 나오는
-    // 뷰라, 그날 daily_price가 아직 없는 종목(수집 누락 등)은 목록에서 빠질 수
-    // 있음 — 예전의 단순 stocks 테이블 조회보다 살짝 더 엄격한 조건.
-    const latestRow=await q("daily_price","select=trade_date&order=trade_date.desc&limit=1");
-    const latestDate=latestRow[0]?.trade_date;
-    const stk=await q("v_screener",`select=code,name,market_cap&trade_date=eq.${latestDate}&order=market_cap.desc.nullslast,name.asc`);
+    // 2026-09-19: 시가총액 내림차순 정렬은 원하는 종목을 시총을 모르면 못 찾는다는
+    // 피드백으로 원래 이름순(가나다) 정렬로 되돌림. "다음 종목" 버튼은 그대로
+    // 유지 — 이제 이름순 리스트 기준으로 다음 종목으로 넘어감.
+    const stk=await q("stocks","select=code,name&security_type=eq.STOCK&order=name.asc");
     S.codes=stk;
     $("#dSel").innerHTML=stk.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join("");
     $("#chipUniv").textContent=stk.length;
