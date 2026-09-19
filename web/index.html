@@ -1724,15 +1724,25 @@ function profileChart(host,buckets,opt={}){
   // 미니 매물대 차트에서 발견 — 종목상세의 기존 차트에도 동일하게 있던 버그).
   // ">="로 바꿔 현재가 바로 위 구간부터 전부 포함시킴.
   const curB=buckets.find(b=>b.cur);
+  let sumEl=null;
   if(curB){
     const above=buckets.filter(b=>b.lo>=curB.hi&&b.v>0).reduce((s,b)=>s+b.v,0);
     const sumLbl=`매물대 총합계 ${N(Math.round(above),0)}억원 (${N(Math.round(above/10000),0)}조원)`;
-    // 2026-09-19: 9.5px는 너무 작아 안 보인다는 피드백 — 카드 제목(.card>h3,
-    // font-size:11px/font-weight:650)과 동일하게 키움.
-    const st=el("text",{x:W-P.r,y:P.t+2,"text-anchor":"end","font-size":11,"font-weight":650,fill:css("--ink-3")});
-    st.textContent=sumLbl;svg.appendChild(st);
+    // 2026-09-19(2차): font-size 숫자를 카드 제목과 똑같이 11로 맞춰도 이 텍스트가
+    // <svg viewBox="0 0 W H">의 좌표계 안에 있는 한, 화면에 실제로 그려지는 크기는
+    // "뷰포트 폭 ÷ W" 축소비율만큼 작아짐 — 모바일처럼 SVG가 많이 축소 렌더링되는
+    // 화면에서는 여전히 title보다 훨씬 작게 보임(사용자가 스크린샷으로 재확인).
+    // 근본 해결: 이 텍스트를 SVG 밖으로 빼서 host(.chart, position:relative — 위
+    // 229행) 위에 절대위치 HTML <div>로 얹는다. 일반 HTML은 SVG의 viewBox
+    // 스케일링을 안 받으므로 화면 크기와 무관하게 항상 진짜 11px/650로 렌더링되고,
+    // .card>h3(85행)와 정확히 같은 크기로 보인다.
+    sumEl=document.createElement("div");
+    sumEl.style.cssText="position:absolute;top:2px;right:8px;font-size:11px;font-weight:650;"+
+      "color:var(--ink-3);letter-spacing:.02em;white-space:nowrap";
+    sumEl.textContent=sumLbl;
   }
   host.appendChild(svg);
+  if(sumEl)host.appendChild(sumEl);
 }
 // 매물대 가격 범위: 전체 기간 최저~최고가 아니라 "현재가 기준" 아래/위 비율로
 // 잡음(2026-09-08 결정) — 주가가 상승하며 만날 수 있는 매물대를 더 세분화해서
