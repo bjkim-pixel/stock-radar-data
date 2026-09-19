@@ -1834,9 +1834,27 @@ function go(v,detailCode){
   // 나온다"는 버그가 있었다(로딩도 두 배로 걸림). go()가 detailCode 인자를
   // 받아 이 판단을 전담하도록 일원화 — 클릭 핸들러들은 항상 go("detail",code)
   // 하나만 부르고, 두 번째 loadDetail() 호출을 더 이상 하지 않는다.
+  let detailJustLoaded=false;
   if(v==="detail"){
     const code=detailCode||S.chart.code||(S.codes.find(c=>c.code==="000660")||S.codes[0])?.code;
-    if(code&&code!==S.chart.code)loadDetail(code);
+    if(code&&code!==S.chart.code){
+      // 2026-09-19(2차): go() 맨 끝의 redraw()가 "지금 보고 있는 화면을 최신으로
+      // 새로고침"하려고 detail 뷰일 때 loadDetail(S.chart.code)를 한 번 더 부르는데
+      // (아래 3970행대 redraw() 참고), 이때 S.chart.code는 아직 옛날 종목 코드
+      // 그대로다(방금 시작한 loadDetail()이 비동기라 아직 반영 전) — 그래서
+      // redraw()가 옛 종목을 또 불러오면서 방금 요청한 새 종목과 경쟁하고, 하필
+      // redraw() 쪽이 나중에 시작돼 요청번호가 더 커서 항상 그쪽이 이겨버려
+      // "헤더는 새 종목인데 차트는 옛 종목"처럼 화면 일부만 안 바뀌는 문제가
+      // 있었다(loadDetail()의 요청 세대 가드만으론 못 막음 — 애초에 두 번 도는게
+      // 문제라서). S.chart.code를 여기서 동기적으로 먼저 새 코드로 맞춰두면
+      // redraw()가 "새로고침"해도 같은 종목을 다시 부르는 것뿐이라 경쟁은
+      // 사라지지만, 그래도 네트워크 요청이 중복(같은 종목 2번 조회)되니
+      // detailJustLoaded 플래그로 redraw()의 재조회 자체를 건너뛰게 한다
+      // (로딩 시간 최적화 — 요청이 1번으로 줄어듦).
+      S.chart.code=code;
+      loadDetail(code);
+      detailJustLoaded=true;
+    }
   }
   if(v==="perf")loadPerf();
   if(v==="perf2")loadPerf2();
@@ -1845,7 +1863,7 @@ function go(v,detailCode){
     Promise.all([loadFlowTrends(),loadFlowLists()]).catch(()=>{});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
   if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadSectorTrend().catch(()=>{});}
-  redraw();
+  redraw(detailJustLoaded);
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
 $("#dBackTop").onclick=()=>go(S.prevView||"proc");
@@ -3946,12 +3964,15 @@ async function renderCandProfileChart(strat,code){
   }
 }
 
-function redraw(){
+function redraw(skipDetailReload){
   loadMarketAmount().catch(()=>{});
   if(S.market.length)loadMarket().catch(()=>{});
   if(S.sector)selectSector(S.sector).catch(()=>{});
   if(S.sectorTrendSel)selectSectorTrend(S.sectorTrendSel).catch(()=>{});
-  if(S.chart.code)loadDetail(S.chart.code).catch(()=>{});
+  // 2026-09-19(2차): go()가 detail 뷰 전환 시 이미 loadDetail()을 호출했으면
+  // (detailJustLoaded→skipDetailReload) 같은 종목을 또 조회하지 않는다 — 위
+  // go() 주석 참고.
+  if(S.chart.code&&!skipDetailReload)loadDetail(S.chart.code).catch(()=>{});
 }
 
 /* ══ 부트 ══ */
