@@ -1727,7 +1727,9 @@ function profileChart(host,buckets,opt={}){
   if(curB){
     const above=buckets.filter(b=>b.lo>=curB.hi&&b.v>0).reduce((s,b)=>s+b.v,0);
     const sumLbl=`매물대 총합계 ${N(Math.round(above),0)}억원 (${N(Math.round(above/10000),0)}조원)`;
-    const st=el("text",{x:W-P.r,y:P.t+2,"text-anchor":"end","font-size":9.5,fill:css("--ink-3")});
+    // 2026-09-19: 9.5px는 너무 작아 안 보인다는 피드백 — 카드 제목(.card>h3,
+    // font-size:11px/font-weight:650)과 동일하게 키움.
+    const st=el("text",{x:W-P.r,y:P.t+2,"text-anchor":"end","font-size":11,"font-weight":650,fill:css("--ink-3")});
     st.textContent=sumLbl;svg.appendChild(st);
   }
   host.appendChild(svg);
