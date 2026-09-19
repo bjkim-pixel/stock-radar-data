@@ -148,8 +148,11 @@ def fetch_listed_shares(token, code):
     sh = safe_int(d.get("output", {}).get("lstn_stcn"))
     return sh if sh > 0 else None
 
+_last_fetch_diag = ""  # 2026-09-19: raw가 끝내 비면 왜 비었는지 로그에 남기기 위한 진단 메시지
+
 def fetch_daily(token, code, anchor, retries=2):
     """기준일 기준 과거 30거래일 시세+수급 조회"""
+    global _last_fetch_diag
     for attempt in range(retries + 1):
         _rate.acquire()
         try:
@@ -161,6 +164,7 @@ def fetch_daily(token, code, anchor, retries=2):
                         "FID_ETC_CLS_CODE": "0"},
                 timeout=15)
         except Exception as ex:
+            _last_fetch_diag = f"요청 예외: {ex}"
             if attempt < retries:
                 time.sleep(0.5 * (attempt + 1))
                 continue
@@ -168,8 +172,13 @@ def fetch_daily(token, code, anchor, retries=2):
         if r.status_code == 200:
             d = r.json()
             if d.get("rt_cd") == "0":
-                return [x for x in (d.get("output2") or []) if x]
+                out = [x for x in (d.get("output2") or []) if x]
+                if not out:
+                    _last_fetch_diag = f"HTTP 200 · rt_cd=0(정상) 이지만 output2 빈 배열(기준일 {anchor} 근방 데이터 없음)"
+                return out
+            _last_fetch_diag = f"HTTP 200 · rt_cd={d.get('rt_cd')} · msg1={d.get('msg1','')}"
             return []
+        _last_fetch_diag = f"HTTP {r.status_code} · body={r.text[:200]}"
         if attempt < retries and r.status_code >= 500:
             time.sleep(0.5 * (attempt + 1))
             continue
@@ -347,8 +356,18 @@ def main():
         print(f"   [{i+1}/{len(ANCHORS)}] 기준일 {anchor} → 시세 {len(raw)}일 / 프로그램 {len(raw_prog)}일")
 
     if not raw:
-        print("   ⚠ 수집된 데이터 없음 — 종목코드를 확인하세요")
-        return
+        # 2026-09-19: 이전엔 여기서 그냥 return해서 프로세스가 exit code 0으로
+        # 끝났다 — stocks 테이블엔 STEP 1에서 이미 종목이 등록돼 있으니 GitHub
+        # Actions는 "성공"으로 표시하고 실패 알림(텔레그램)도 안 갔다. 실제로는
+        # daily_price가 하나도 안 쌓여서 v_screener 등 화면에 쓰는 뷰(daily_price
+        # INNER JOIN)에 전혀 안 잡히니, 사용자 입장에선 "종목이 추가가 안 된다"
+        # 였는데 원인을 알 방법이 없었다(2026-09-19 실사용 사례로 확인 — 005935
+        # 삼성전자우). sys.exit(1)로 바꿔 GitHub Actions가 진짜 실패로 표시하고
+        # Notify on failure(텔레그램) 단계가 뜨도록 하고, 마지막 KIS 응답 진단
+        # 메시지(_last_fetch_diag)도 같이 남겨 왜 비었는지 로그에서 바로 보이게 함.
+        print(f"   ⚠ 수집된 데이터 없음 — 종목코드를 확인하세요")
+        print(f"   진단: {_last_fetch_diag or '(fetch_daily가 한 번도 실패 진단을 안 남김 — ANCHORS가 비어있었을 가능성)'}")
+        sys.exit(f"❌ {CODE} {NAME}: 과거 데이터 수집 실패 — stocks 테이블엔 등록됐지만 daily_price가 비어 있어 화면에 표시되지 않습니다. 위 진단 메시지를 확인하세요.")
 
     # ── STEP 4: 파싱 ──────────────────────────────────────────────────────────
     price_rows, flow_rows, program_rows = [], [], []
