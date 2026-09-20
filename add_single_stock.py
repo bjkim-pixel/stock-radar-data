@@ -316,12 +316,21 @@ def main():
             INSERT INTO stocks (code, name, market, security_type, sector_krx, is_active, first_seen, last_seen)
             VALUES (%s, %s, %s, 'STOCK', %s, true, CURRENT_DATE, CURRENT_DATE)
             ON CONFLICT (code) DO UPDATE SET
-              name        = EXCLUDED.name,
-              market      = EXCLUDED.market,
-              sector_krx  = COALESCE(EXCLUDED.sector_krx, stocks.sector_krx),
-              is_active   = true,
-              last_seen   = CURRENT_DATE,
-              updated_at  = now()
+              name          = EXCLUDED.name,
+              market        = EXCLUDED.market,
+              -- 2026-09-19: security_type을 여기 추가 — 예전엔 이게 빠져 있어서,
+              -- 이미 DB에 다른 분류(PREF 등)로 존재하던 종목을 이 기능으로
+              -- "추가"해도 그 분류가 그대로 남아 daily_collect.yml 등 STOCK만
+              -- 도는 일일 파이프라인/화면에 영원히 안 잡혔다(005935 삼성전자우
+              -- 실사례로 확인 — 최초 대량이전 때 PREF로 정확히 분류돼 있었는데,
+              -- 이 기능으로 명시적으로 "추가"했는데도 PREF로 남아있었음). 사용자가
+              -- 이 기능으로 종목을 명시적으로 추가한다는 건 "앞으로 추적 대상에
+              -- 넣겠다"는 의도이므로, STOCK으로 강제 승격시킨다.
+              security_type = 'STOCK',
+              sector_krx    = COALESCE(EXCLUDED.sector_krx, stocks.sector_krx),
+              is_active     = true,
+              last_seen     = CURRENT_DATE,
+              updated_at    = now()
         """, (CODE, NAME, MARKET, SECTOR_KRX))
         c.commit()
     print(f"   ✅ stocks 등록 완료")
