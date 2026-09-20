@@ -2920,14 +2920,19 @@ let S_detailReqId=0;
 async function loadDetail(code){
   if(!code)return;
   const myReqId=++S_detailReqId;
-  const rows=await q("v_stock_chart",
-    `select=*&code=eq.${code}&order=trade_date.asc`);
+  // 2026-09-20: v_stock_chart(시세·수급 전체 이력)와 v_stock_summary(현재가·
+  // 시총 등 요약)는 서로 의존 관계가 없는데 예전엔 순차로 await해서 네트워크
+  // 왕복이 2번 직렬로 걸렸다 — Promise.all로 병렬 조회해 왕복 1번만큼 단축
+  // (종목 전환 로딩 체감 속도 개선 요청 대응).
+  const [rows,sumRows]=await Promise.all([
+    q("v_stock_chart",`select=*&code=eq.${code}&order=trade_date.asc`),
+    q("v_stock_summary",`select=*&code=eq.${code}`)
+  ]);
   if(myReqId!==S_detailReqId)return; // 이 요청보다 나중에 시작된 loadDetail()이 있으면 결과 버림
   if(!rows.length)return;
   S.chart={code,rows};
   $("#dSel").value=code;
-  const sum=(await q("v_stock_summary",`select=*&code=eq.${code}`))[0]||{};
-  if(myReqId!==S_detailReqId)return;
+  const sum=sumRows[0]||{};
   const last=rows.at(-1);
   $("#dHead").innerHTML=`
     <div><div style="font-size:18px;font-weight:680">${sum.name||code}
@@ -2976,9 +2981,18 @@ async function loadDetail(code){
   $("#dMinis").innerHTML=minis.map(([n,,lastV],i)=>
     `<div class="mini"><h4>${n}<span class="${sgn(lastV)}">${pm(lastV,0)}억</span></h4>
       <div class="chart" id="mini_${i}"></div></div>`).join("");
-  minis.forEach(([n,arr],i)=>lineChart($("#mini_"+i),
-    [{n,v:arr,c:"--s1"}],lb,{h:110,w:300,pr:8,pl:38,zero:true,labelEnds:false,
-      fy:v=>N(v,0),ft:v=>pm(v,0)+"억"}));
+  // 2026-09-20: 미니 차트 9개를 SVG로 그리는 건 CPU 작업이라(각 250여개 포인트),
+  // 메인 가격차트·매물대차트(renderRangeCharts, 이미 위에서 완료) 페인트를 한 박자
+  // 늦춘다 — requestAnimationFrame으로 다음 프레임에 그려서, 사용자가 핵심 내용
+  // (헤더·가격차트)을 먼저 보고 미니 차트는 살짝 뒤이어 채워지게 함(체감 로딩
+  // 속도 개선). 종목을 빠르게 연달아 바꾸면(예: 다음 종목 연타) reqId 가드로
+  // 낡은 프레임의 그리기는 건너뛴다.
+  requestAnimationFrame(()=>{
+    if(myReqId!==S_detailReqId)return;
+    minis.forEach(([n,arr],i)=>lineChart($("#mini_"+i),
+      [{n,v:arr,c:"--s1"}],lb,{h:110,w:300,pr:8,pl:38,zero:true,labelEnds:false,
+        fy:v=>N(v,0),ft:v=>pm(v,0)+"억"}));
+  });
 }
 // 가격·거래량·투자자별 누적 순매수 — #dStart~#dEnd로 고른 기간만 다시 그립니다
 // (전체 데이터는 이미 S.chart.rows에 있으니 네트워크 재조회 없이 즉시 갱신됩니다).
