@@ -344,9 +344,12 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   /* 수급동향 기간별 표 — 예전엔 overflow-x:visible로 "펼쳐서 핀치줌으로 보기"
      방식이었으나(표 밖 다른 내용과 분리되는 게 불편하다는 2026-09-11 피드백
      대응), 상위 컨테이너에 clip이 없어 표 하나 때문에 페이지 전체가 옆으로
-     스크롤되는 문제가 있었음(2026-09-12 수정). #scrWrap과 동일한 검증된
-     방식(내부 스크롤 + 첫 열 sticky)으로 통일 — 첫 열(기간)이 고정돼 있으니
-     표 밖 내용과 분리되는 느낌 없이 다른 열을 스크롤해서 볼 수 있음. */
+     스크롤되는 문제가 있었음(2026-09-12 수정). 내부 스크롤 + 첫 열 sticky
+     방식으로 통일 — 첫 열(기간)이 고정돼 있으니 표 밖 내용과 분리되는 느낌
+     없이 다른 열을 스크롤해서 볼 수 있음.
+     ⚠ 2026-09-20: #scrWrap(종목후보 표)은 이후 "스크롤 없이 확대해서 보기"
+     방식으로 다시 바뀌었습니다(아래 #scrWrap 규칙 참고) — 여기 flowTrendWrap은
+     그와 무관하게 스크롤+sticky 방식을 그대로 유지합니다. */
   #flowTrendWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   #flowTrendWrap table{font-size:10px}
   #flowTrendWrap th,#flowTrendWrap td{padding:3px 3px;font-size:10px;white-space:nowrap}
@@ -374,18 +377,22 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
      규칙). 모바일에서는 폭이 좁으니 최소폭만 보장하고 나머지는 자동 줄바꿈. */
   #v-perf2 th.wrapcell,#v-perf2 td.wrapcell{word-break:keep-all;min-width:100px}
   #v-perf2 .nw{white-space:nowrap}
-  /* 종목후보 표 — 모든 컬럼 표시, 가로 스크롤로 펼쳐 보기
-     첫 2열(# · 종목)은 sticky로 고정 */
-  #scrWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  /* 종목후보 표 — 2026-09-20: 가로 스크롤 + 첫 2열 sticky 방식에서, v-perf2와
+     동일한 "스크롤 없이 화면을 확대해서 전체 보기" 방식으로 전환(사용자 요청 —
+     "스크롤 걸지 말고 화면 확대하면 다 볼 수 있도록 틀고정 풀어줘"). overflow:visible +
+     table-layout:auto로 표가 필요한 만큼 옆으로 펼쳐지고, 페이지 자체를 핀치줌해서
+     보게 함. 모든 셀이 숫자·짧은 라벨이라(긴 텍스트 칸 없음) v-perf2처럼 wrapcell
+     예외를 둘 필요 없이 nowrap 그대로 유지. */
+  #scrWrap{overflow:visible}
+  #scrWrap table{width:auto;min-width:100%;table-layout:auto}
   #scrWrap th,#scrWrap td{padding:3px 4px;font-size:10px;white-space:nowrap}
   #scrWrap .dim{font-size:9px}
-  #scrWrap th:nth-child(1),#scrWrap td:nth-child(1){position:sticky;left:0;background:var(--surface);z-index:2}
-  #scrWrap th:nth-child(2),#scrWrap td:nth-child(2){position:sticky;left:22px;background:var(--surface);z-index:2;box-shadow:2px 0 4px rgba(0,0,0,.12)}
 
-  /* 2026-09-12(2): 위 3개(#flowTrendWrap·#v-perf2 .tw·#scrWrap)와 같은 원칙을
-     "오늘의 종목" 등 나머지 폭 넓은 표에도 확대 적용 — 표마다 새 id 규칙을 또
-     만드는 대신 재사용 가능한 .tw-scroll(/.tw-rank) 클래스로 통일해서 해당
-     표의 wrapper div에 클래스만 붙이면 됩니다.
+  /* 2026-09-12(2): 위(#flowTrendWrap·#v-perf2 .tw)와 같은 원칙을 "오늘의 종목"
+     등 나머지 폭 넓은 표에도 확대 적용 — 표마다 새 id 규칙을 또 만드는 대신
+     재사용 가능한 .tw-scroll(/.tw-rank) 클래스로 통일해서 해당 표의 wrapper
+     div에 클래스만 붙이면 됩니다(2026-09-20: #scrWrap은 이 원칙에서 빠지고
+     "스크롤 없이 확대해서 보기" 방식으로 전환됨 — 위 #scrWrap 규칙 참고).
      .tw 기본값(위 127행)을 전역으로 바꾸지 않는 이유: 표 전체를 overflow-x:auto로
      만들면 세로 스크롤 시 표 헤더가 화면에 붙어 따라오는 sticky-top 동작이
      깨지므로(overflow-x를 지정하면 overflow-y도 자동으로 auto가 돼 표 자신이
