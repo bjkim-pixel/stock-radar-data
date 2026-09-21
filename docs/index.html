@@ -861,10 +861,11 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th>
       <th class="grp opt">개별RS5</th><th class="opt">개별RS20</th>
       <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th class="opt">외+기(2m)</th><th class="opt">2m주도</th>
-      <th class="grp">외국인</th><th>기관합계</th><th class="opt">금융투자</th>
+      <th class="grp opt" title="현재가~조회기간 내 최고 종가 구간을 24등분한 개인 누적 순매수 합계(양수 구간만)">위쪽매물대</th>
+      <th>외국인</th><th>기관합계</th><th class="opt">금융투자</th>
       <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th>
       <th class="grp opt">프로그램</th>
-    </tr></thead><tbody id="scrBody"><tr><td colspan="26" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
+    </tr></thead><tbody id="scrBody"><tr><td colspan="27" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
 
@@ -2630,6 +2631,12 @@ function renderTodaySectors(sflow){
     loadFlowRawData().then(raw=>renderTodayMomentum(raw.filter(todayLiqOk)));
   };
 }
+// 2026-09-20: 매물대 금액 표시 포맷 — 억원이 기본, 1조원(=10000억) 이상이면 조원.
+function fmtEokJo(eok){
+  if(eok==null)return "–";
+  const v=+eok;
+  return Math.abs(v)>=10000 ? N(Math.round(v/10000),0)+"조원" : N(Math.round(v),0)+"억원";
+}
 function todayAligned(r){return r.ma5!=null&&r.ma20!=null&&r.ma60!=null&&r.ma120!=null&&+r.close>+r.ma5&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60&&+r.ma60>+r.ma120;}
 function renderTodayMomentum(universe){
   let rows=universe;
@@ -2817,7 +2824,7 @@ function topBuyer(row, sfx){
   return`<span class="${sgn(bestAmt)}">${best.lb} ${pm(bestAmt/EOK,0)}억</span>`;
 }
 async function runScreener(){
-  $("#scrBody").innerHTML='<tr><td colspan="26" class="load">조회 중…</td></tr>';
+  $("#scrBody").innerHTML='<tr><td colspan="27" class="load">조회 중…</td></tr>';
   const date=$("#fDate").value||S.date;
   let [rows,rk,per,d20Rows]=await Promise.all([
     q("v_screener",`select=*&trade_date=eq.${date}`),
@@ -2870,7 +2877,8 @@ async function runScreener(){
       <td class="opt">${topBuyer(r,"1m")}</td>
       <td class="opt ${sgn((+r.foreign_2m||0)+(+r.inst_2m||0))}">${(r.foreign_2m==null&&r.inst_2m==null)?"–":pm(((+r.foreign_2m||0)+(+r.inst_2m||0))/EOK,0)+"억"}</td>
       <td class="opt">${topBuyer(r,"2m")}</td>
-      <td class="grp ${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
+      <td class="grp opt">${fmtEokJo(r.above_high_supply_eok)}</td>
+      <td class="${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
       <td class="${sgn(+r.inst_net)}">${flowAmtRankCell(r.inst_net,r.inst_rank,r.inst_total)}</td>
       <td class="opt ${sgn(+r.fin_inv_net)}">${flowAmtRankCell(r.fin_inv_net,r.fin_inv_rank,r.fin_inv_total)}</td>
       <td class="opt ${sgn(+r.inv_trust_net)}">${flowAmtRankCell(r.inv_trust_net,r.inv_trust_rank,r.inv_trust_total)}</td>
@@ -2879,7 +2887,7 @@ async function runScreener(){
       <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
       <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
       <td class="grp opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td></tr>`).join("")
-    :'<tr><td colspan="26" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+    :'<tr><td colspan="27" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
   makeSortable('scrBody');
 }

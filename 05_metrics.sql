@@ -241,6 +241,7 @@ INSERT INTO daily_metrics (
   vol_avg20_prev, vol_ratio20_prev, high_all_prev, is_new_high_all,
   nonpersonal_net, weight_rank, cap_rank, pick_score,
   rs20_vs_mkt, rs5_vs_mkt, rs20_pctl, rs5_pctl,
+  above_high_supply_eok,
   computed_at
 )
 WITH src AS (
@@ -336,6 +337,34 @@ w AS (
     w20p AS (PARTITION BY code ORDER BY trade_date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING),
     wprev AS (PARTITION BY code ORDER BY trade_date
               ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
+),
+-- ── 위쪽 매물대 (현재가~조회기간 내 최고 종가를 24등분) ─────────────────────
+-- 2026-09-20 신설(종목후보 결과 표 전용). 종목상세의 "매물대 총합계"(-10%~+90%
+-- 24구간)와는 범위 정의가 다름 — 여기는 아래쪽은 안 보고 "현재가~최고가" 구간
+-- 전체를 24등분해서 위쪽 해상도를 전부 씀:
+--   · lo=그날 종가, hi=그 종목 이력(w, lookback~end_date) 중 최고 종가
+--   · 그 사이를 24등분, 구간별 individual_net 합산 → 양수 구간만 다시 합산
+--   · hi<=lo(현재가가 이미 최고가)면 0
+-- width_bucket(op,lo,hi,count)은 1..count(또는 범위 밖 0/count+1)를 반환하므로
+-- -1 후 [0,23]로 clamp. end_date(오늘) 행에 대해서만 계산(72_above_high_supply
+-- _column.sql 주석 참고 — 과거값 불필요, 계산량 O(종목수×이력일수)로 억제).
+overhead_high AS (
+  SELECT cur.code, cur.trade_date,
+         round(coalesce(sum(bkt.net) FILTER (WHERE bkt.net > 0), 0)::numeric, 2) AS above_high_supply_eok
+  FROM w cur
+  JOIN LATERAL (SELECT max(h2.close) AS hi FROM w h2
+                WHERE h2.code = cur.code AND h2.trade_date <= cur.trade_date) hib ON true
+  JOIN LATERAL (
+    SELECT least(23, greatest(0,
+             width_bucket(h.close, cur.close, hib.hi, 24) - 1
+           )) AS idx,
+           sum(h.individual_net) / 1e8 AS net
+    FROM w h
+    WHERE h.code = cur.code AND h.trade_date <= cur.trade_date AND h.close > cur.close
+    GROUP BY idx
+  ) bkt ON hib.hi > cur.close
+  WHERE cur.trade_date = %(end_date)s
+  GROUP BY cur.code, cur.trade_date
 ),
 fin AS (
   SELECT w.*,
@@ -457,8 +486,10 @@ SELECT
   rs5_vs_mkt,
   rs20_pctl,
   rs5_pctl,
+  oh.above_high_supply_eok,
   now()
 FROM pr
+LEFT JOIN overhead_high oh ON oh.code = pr.code AND oh.trade_date = pr.trade_date
 WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
 ON CONFLICT (trade_date, code) DO UPDATE SET
   ma5                 = EXCLUDED.ma5,
@@ -509,6 +540,7 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
   rs5_vs_mkt          = EXCLUDED.rs5_vs_mkt,
   rs20_pctl           = EXCLUDED.rs20_pctl,
   rs5_pctl            = EXCLUDED.rs5_pctl,
+  above_high_supply_eok = EXCLUDED.above_high_supply_eok,
   computed_at         = now();
 
 
