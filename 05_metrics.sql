@@ -415,8 +415,8 @@ pr AS (
   FROM rs
 )
 SELECT
-  trade_date,
-  code,
+  pr.trade_date,
+  pr.code,
   CASE WHEN c5  >= 5  THEN round(a5::numeric,  2) END,
   CASE WHEN c10 >= 10 THEN round(a10::numeric, 2) END,
   CASE WHEN c20 >= 20 THEN round(a20::numeric, 2) END,
@@ -490,7 +490,11 @@ SELECT
   now()
 FROM pr
 LEFT JOIN overhead_high oh ON oh.code = pr.code AND oh.trade_date = pr.trade_date
-WHERE trade_date BETWEEN %(start_date)s AND %(end_date)s
+-- 2026-09-21 수정: overhead_high(oh)도 trade_date 컬럼을 갖고 있어서, 이 JOIN을
+-- 추가한 뒤로 아래 bare "trade_date"가 pr.trade_date/oh.trade_date 중 어느 쪽인지
+-- 모호해져 psycopg2.errors.AmbiguousColumn으로 daily_metrics 스텝 전체가 실패했음
+-- (실행 로그로 확인, 종가베팅2 때와 같은 유형의 실수). pr.로 명시.
+WHERE pr.trade_date BETWEEN %(start_date)s AND %(end_date)s
 ON CONFLICT (trade_date, code) DO UPDATE SET
   ma5                 = EXCLUDED.ma5,
   ma10                = EXCLUDED.ma10,
