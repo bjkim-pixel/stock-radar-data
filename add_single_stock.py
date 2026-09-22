@@ -236,16 +236,20 @@ def amt(r, key):
     return safe_int(r.get(key)) * FLOW_UNIT
 
 def parse_flow(r, date_str, code):
+    # 2026-09-21 수정: 아래 필드명이 04_backfill.py가 2026-08-19에 실제 응답으로
+    # 검증해둔 것과 달라, 투신/사모/연기금이 항상 0으로 저장되고 금융투자는
+    # 실제로는 투신 값이 들어가는 버그가 있었습니다(005935 추가 후 발견).
+    # 04_backfill.py 상단 주석의 검증 내용과 반드시 맞춰서 씁니다.
     return (
         iso(date_str), code,
-        amt(r, "frgn_reg_ntby_tr_pbmn"),  # 외국인(등록)
-        amt(r, "orgn_ntby_tr_pbmn"),        # 기관합계
-        amt(r, "ivtr_ntby_tr_pbmn"),        # 금융투자
-        amt(r, "trus_ntby_tr_pbmn"),        # 투신
-        amt(r, "priv_fnd_ntby_tr_pbmn"),    # 사모
-        amt(r, "pnsn_ntby_tr_pbmn"),        # 연기금
-        amt(r, "prsn_ntby_tr_pbmn"),        # 개인
-        amt(r, "etc_corp_ntby_tr_pbmn"),    # 기타법인
+        amt(r, "frgn_reg_ntby_pbmn"),   # 외국인(등록) — KRX '외국인'과 동일
+        amt(r, "orgn_ntby_tr_pbmn"),    # 기관합계
+        amt(r, "scrt_ntby_tr_pbmn"),    # 금융투자
+        amt(r, "ivtr_ntby_tr_pbmn"),    # 투신
+        amt(r, "pe_fund_ntby_tr_pbmn"), # 사모
+        amt(r, "fund_ntby_tr_pbmn"),    # 연기금·기금
+        amt(r, "prsn_ntby_tr_pbmn"),    # 개인
+        amt(r, "etc_corp_ntby_tr_pbmn"),# 기타법인
         "KIS", False,
     )
 
