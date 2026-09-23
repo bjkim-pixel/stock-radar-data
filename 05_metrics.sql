@@ -548,29 +548,8 @@ ON CONFLICT (trade_date, code) DO UPDATE SET
   computed_at         = now();
 
 
--- @@STEP: 키움 보유계좌수 20일 증감률
--- ----------------------------------------------------------------------------
--- 키움 데이터는 업로드가 불규칙(233일 중 113일)해서 정확히 20거래일 전 행이
--- 없을 수 있습니다. 26~60일 전 구간에서 "가장 최근" 기록을 찾아 비교합니다.
--- ----------------------------------------------------------------------------
-UPDATE daily_metrics m
-SET accounts_chg_20d_pct = sub.chg
-FROM (
-  SELECT k.trade_date,
-         k.code,
-         round((k.accounts - prev.accounts)::numeric
-               / nullif(prev.accounts, 0) * 100, 2) AS chg
-  FROM kiwoom_holder_stats k
-  CROSS JOIN LATERAL (
-    SELECT k2.accounts
-    FROM kiwoom_holder_stats k2
-    WHERE k2.code = k.code
-      AND k2.trade_date <= k.trade_date - 26
-      AND k2.trade_date >= k.trade_date - 60
-    ORDER BY k2.trade_date DESC
-    LIMIT 1
-  ) prev
-  WHERE k.trade_date BETWEEN %(start_date)s AND %(end_date)s
-) sub
-WHERE m.trade_date = sub.trade_date
-  AND m.code       = sub.code;
+-- 2026-09-23: 키움 보유계좌수 증감률(accounts_chg_20d_pct) 계산 블록 제거.
+-- kiwoom_holder_stats가 현재 0행(수집 파이프라인 없음)이라 이 UPDATE는 항상
+-- 0행에 적용되는 공회전 쿼리였음 — 프론트엔드에서도 이 컬럼을 전혀 쓰지
+-- 않아(0회 참조) 제거. 75_drop_kiwoom_holder_stats.sql에서 테이블·컬럼도
+-- 함께 정리. 다시 필요해지면 git 이력에서 복구 가능.

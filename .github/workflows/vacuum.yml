@@ -1,6 +1,12 @@
-name: Vacuum DB (disk full recovery)
+name: Vacuum DB (정기 유지보수 + 디스크 풀 대응 수동 실행)
 
 on:
+  # 2026-09-23: 지금까지 수동 실행(disk full 대응)만 있었음 — daily_metrics가
+  # 매일 과거 이력을 재계산하며 UPDATE되는 구조라 dead tuple이 꾸준히
+  # 쌓이는데(56MB/64K행으로 확인됨) 정기적으로 치워주는 스케줄이 없었음.
+  # 주말(장 없음, 다른 워크플로와 안 겹침)에 가볍게 1회 실행.
+  schedule:
+    - cron: "0 20 * * 5"   # 토요일 05:00 KST = 금요일 20:00 UTC (dow: 0=일 ~ 6=토, 5=금)
   workflow_dispatch:
 
 jobs:
