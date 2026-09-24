@@ -1967,8 +1967,18 @@ function renderSectors(){
   $$("#secBodyTop tr[data-sec],#secBodyBot tr[data-sec]").forEach(tr=>
     tr.onclick=()=>selectSector(tr.dataset.sec));
 }
+// 2026-09-23: 시장매크로(STEP2)·짝꿍매매·업종동향 세 화면이 각자 따로
+// v_sector_rank 전체를 fetch하고 있었음(짝꿍매매는 별도 변수 S.pairSectorRows로
+// 완전히 중복 요청, 시장매크로는 캐시 확인 없이 매번 재요청) — 오늘 하루치
+// 고정 데이터라 화면 이동할 때마다 다시 받을 필요가 없어 하나로 합침.
+// 화면·동작은 그대로, 데이터 소스만 캐시 공유로 바뀜(짝꿍매매 렌더링 코드는
+// 안 건드림 — 자주 보는 화면이라 영향 없게).
+async function getSectorRank(){
+  if(!S.sectors||!S.sectors.length){S.sectors=await q("v_sector_rank","select=*");}
+  return S.sectors;
+}
 async function loadSectors(){
-  S.sectors=await q("v_sector_rank","select=*");
+  S.sectors=await getSectorRank();
   renderSectors();
   const lead=S.sectors.filter(s=>s.rs_rank&&s.rs_rank<=5).length;
   $("#secOut").innerHTML=`RS 상위 <b>${lead}개</b> / 전체 ${S.sectors.length}업종`;
@@ -2075,7 +2085,7 @@ function renderSectorTrendTable(){
     tr.onclick=()=>selectSectorTrend(tr.dataset.sec).catch(()=>{}));
 }
 async function loadSectorTrend(){
-  if(!S.sectors||!S.sectors.length){S.sectors=await q("v_sector_rank","select=*");}
+  S.sectors=await getSectorRank();
   renderSectorTrendTable();
   if(S.sectors.length){
     const keep=S.sectorTrendSel&&S.sectors.some(s=>s.sector===S.sectorTrendSel);
@@ -3095,7 +3105,7 @@ function renderPairSectors(){
     tr.onclick=()=>selectPairSector(tr.dataset.sec));
 }
 async function loadPairSectors(){
-  S.pairSectorRows=await q("v_sector_rank","select=*");
+  S.pairSectorRows=await getSectorRank();
   renderPairSectors();
   // 종목 정렬 기준 셀렉트 이벤트 — 최초 1회만 등록
   const pss=$("#pairStockSort");
