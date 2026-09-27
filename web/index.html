@@ -1011,8 +1011,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 <section id="v-perf" class="hide">
   <div class="card" style="margin-top:16px"><h3>전략별 요약 <span class="r">추세추종 · 종가베팅 · 종가베팅2 — 완전 독립 운용</span></h3>
     <div class="tw"><table><thead><tr>
-      <th class="l">전략</th><th>총매수</th><th>총매도</th><th>실현손익</th><th>청산건수</th><th>보유중</th>
-    </tr></thead><tbody id="perfSummaryA"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
+      <th class="l">전략</th><th>총매수</th><th>총매도</th><th>실현손익</th><th>청산건수</th><th>보유중</th><th title="이 전략의 포지션이 마지막으로 계산·기록된 시각(KST)">업데이트</th>
+    </tr></thead><tbody id="perfSummaryA"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
     <div class="tw" style="margin-top:8px"><table><thead><tr>
       <th class="l">전략</th><th>승률</th><th>손익비</th><th>평균 수익률</th>
     </tr></thead><tbody id="perfSummaryB"><tr><td colspan="4" class="load">불러오는 중…</td></tr></tbody></table></div>
@@ -1198,6 +1198,19 @@ async function q(view,params=""){
     {headers:{apikey:CFG.key,Authorization:`Bearer ${CFG.key}`}});
   if(!r.ok) throw new Error(`${view} ${r.status} ${await r.text()}`);
   return r.json();
+}
+// 2026-09-27: 전략성과 "전략별 요약"에 마지막 계산 시각 표시용. positions는
+// 06_portfolio.py가 매 실행마다 VIRTUAL 전부 삭제 후 재생성하므로, updated_at
+// 최댓값이 곧 "이 전략의 화면이 마지막으로 언제 계산됐는지"가 된다. 오늘 하루
+// 종일 겪은 "계산이 실패/지연됐는데 화면은 오래된 숫자를 보여주고 있었다"는
+// 상황을 바로 알아챌 수 있게 하기 위함.
+function fmtUpdTime(iso){
+  if(!iso)return "–";
+  const d=new Date(iso);
+  if(isNaN(d))return "–";
+  const p=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(d);
+  const g=t=>(p.find(x=>x.type===t)||{}).value||"";
+  return `${g("month")}-${g("day")} ${g("hour")}:${g("minute")}`;
 }
 function status(cls,html){const b=$("#statusBar");b.className="bar-top "+cls;b.innerHTML=html;}
 async function loadDataStatus(){
@@ -3740,9 +3753,11 @@ async function loadPerf(){
       const avgL=ls.length?Math.abs(ls.reduce((a,b)=>a+ +b.realized_pnl,0)/ls.length):0;
       const totalBuy=c.reduce((a,b)=>a+ +b.invested,0)+o.reduce((a,b)=>a+ +b.invested,0);
       const totalSell=c.reduce((a,b)=>a+ +b.invested+ +b.realized_pnl,0);
+      const lastUpdMs=Math.max(0,...c.map(p=>+new Date(p.updated_at||0)),...o.map(p=>+new Date(p.updated_at||0)));
       rowsA.push(`<tr><td class="l">${stratBadge(strat)}</td>
         <td>${N(totalBuy/EOK,1)}억</td><td>${N(totalSell/EOK,1)}억</td>
-        <td class="${sgn(pnl)}">${pm(pnl/EOK,2)}억</td><td>${c.length}건</td><td>${o.length}건</td></tr>`);
+        <td class="${sgn(pnl)}">${pm(pnl/EOK,2)}억</td><td>${c.length}건</td><td>${o.length}건</td>
+        <td class="opt faint">${lastUpdMs?fmtUpdTime(new Date(lastUpdMs).toISOString()):"–"}</td></tr>`);
       rowsB.push(`<tr><td class="l">${stratBadge(strat)}</td>
         <td>${c.length?N(win.length/c.length*100,1)+"%":"–"}</td>
         <td>${avgL?N(avgW/avgL,1)+"배":"–"}</td>
