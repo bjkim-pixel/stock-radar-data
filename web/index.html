@@ -596,6 +596,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <div class="tile"><div class="lb">KOSDAQ</div><div class="vl" id="tdKosdaq">–</div><div class="sub" id="tdKosdaqSub"></div></div>
       <div class="tile"><div class="lb">시장 거래대금</div><div class="vl" id="tdAmt">–</div><div class="sub" id="tdAmtSub"></div></div>
       <div class="tile"><div class="lb">오늘 최다 순매수 주체</div><div class="vl" id="tdTopSubj">–</div><div class="sub" id="tdTopSubjSub"></div></div>
+      <div class="tile"><div class="lb">외국인 순매수</div><div class="vl" id="tdForeign">–</div></div>
+      <div class="tile"><div class="lb">기관합계 순매수</div><div class="vl" id="tdInst">–</div></div>
+      <div class="tile"><div class="lb">기타법인 순매수</div><div class="vl" id="tdCorpOther">–</div></div>
+      <div class="tile"><div class="lb">개인 순매수</div><div class="vl" id="tdIndividual">–</div></div>
     </div>
   </div>
 
@@ -2588,6 +2592,13 @@ async function loadToday(){
         $("#tdTopSubj").innerHTML=`<span class="${sgn(topV)}">${FLOW_SUBJ_SHORT[top]}</span>`;
         $("#tdTopSubjSub").innerHTML=`${pm(topV/EOK,0)}억`;
       }
+      // 2026-09-30: 외국인/기관합계/기타법인/개인 순매수 대금 타일 — flowRow에
+      // 이미 있는 값이라 추가 조회 없이 바로 씀.
+      [["tdForeign","foreign"],["tdInst","inst"],["tdCorpOther","corp_other"],["tdIndividual","individual"]]
+        .forEach(([id,key])=>{
+          const v=flowVal(flowRow,key,"1d");
+          $("#"+id).innerHTML=`<span class="${sgn(v)}">${pm(v/EOK,0)}억</span>`;
+        });
     }
     $("#todayMktNote").textContent=S.date?`${S.date} 기준`:"";
 
