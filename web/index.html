@@ -914,7 +914,12 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
 <!-- ═══════════ 업종동향 ═══════════ -->
 <section id="v-sector" class="hide">
-  <div class="card" style="margin-top:16px"><h3>업종별 수급 현황
+  <div class="card" style="margin-top:16px"><h3>오늘의 클러스터
+    <span class="r">같은 업종 4종목↑ 동시 +5%↑ 급등 · 같은 수급주체(외국인/기관) 순매수</span></h3>
+    <div id="sectorClusterBody"><div class="note">불러오는 중…</div></div>
+  </div>
+
+  <div class="card"><h3>업종별 수급 현황
     <span class="r">전체 업종 · 헤더 클릭 = 그 기준 정렬(다시 클릭하면 오름차순↔내림차순 전환) · 기본 거래대금 내림차순</span></h3>
     <div class="tw"><table><thead><tr id="sectorTrendHead"></tr></thead>
       <tbody id="sectorTrendBody"><tr><td colspan="10" class="load">불러오는 중…</td></tr></tbody></table></div>
@@ -1864,7 +1869,7 @@ function go(v,detailCode){
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
     Promise.all([loadFlowTrends(),loadFlowLists()]).catch(()=>{});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
-  if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadSectorTrend().catch(()=>{});}
+  if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
   redraw(detailJustLoaded);
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
@@ -2107,6 +2112,22 @@ function renderSectorTrendTable(){
     });
   $$("#sectorTrendBody tr[data-sec]").forEach(tr=>
     tr.onclick=()=>selectSectorTrend(tr.dataset.sec).catch(()=>{}));
+}
+// 2026-09-30: 짝꿍매매 백테스트에서 검증된 "업종 클러스터"(같은 업종 4종목↑
+// 동시 +5%↑ 급등 + 같은 수급주체 순매수) 감지 카드. v_sector_cluster는 날짜
+// 필터 없이 전 기간을 담고 있어 여기서 S.date(최신 거래일)만 걸러서 씀.
+async function loadSectorCluster(){
+  const el=$("#sectorClusterBody");
+  try{
+    const rows=await q("v_sector_cluster",`select=*&trade_date=eq.${S.date}`);
+    if(!rows.length){el.innerHTML='<div class="note">오늘 감지된 클러스터가 없습니다.</div>';return;}
+    el.innerHTML=rows.map(r=>{
+      const parts=[];
+      if(r.foreign_cnt>=4)parts.push(`<div><span class="up">외국인 동반 ${r.foreign_cnt}종목</span>: ${r.foreign_names.join(", ")}</div>`);
+      if(r.inst_cnt>=4)parts.push(`<div><span class="up">기관 동반 ${r.inst_cnt}종목</span>: ${r.inst_names.join(", ")}</div>`);
+      return `<div class="tile" style="margin-bottom:8px"><div class="lb">${r.sector_krx}</div>${parts.join("")}</div>`;
+    }).join("");
+  }catch(e){el.innerHTML='<div class="note">불러오기 실패</div>';}
 }
 async function loadSectorTrend(){
   S.sectors=await getSectorRank();
