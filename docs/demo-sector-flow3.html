@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>목업: 업종별 자금흐름</title>
+<style>
+  :root{
+    --bg:#f7f7f8; --card:#fff; --line:#eceef0; --txt:#111; --dim:#8a8f98;
+    --up:#d64545; --down:#2f6fd6; --accent:#1e40af; --hl:rgba(214,69,69,.12);
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f1012; --card:#1a1b1e; --line:#2a2c30; --txt:#eee; --dim:#9aa0a8;
+      --up:#ff6b6b; --down:#5b9bff; --accent:#7ea2ff; --hl:rgba(255,107,107,.16);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1012; --card:#1a1b1e; --line:#2a2c30; --txt:#eee; --dim:#9aa0a8;
+    --up:#ff6b6b; --down:#5b9bff; --accent:#7ea2ff; --hl:rgba(255,107,107,.16);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Pretendard","Noto Sans KR",sans-serif;font-size:14px}
+  .wrap{max-width:720px;margin:0 auto;padding:12px 10px 32px}
+  h1{font-size:16px;margin:4px 0 2px}
+  .note{color:var(--dim);font-size:12px;margin:0 0 12px}
+  .badge{display:inline-block;background:#ffefc2;color:#8a6500;font-size:11px;
+    padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:1px}
+  @media (prefers-color-scheme: dark){ .badge{background:#473c15;color:#ffd880} }
+
+  .daycard{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:12px 10px;margin-bottom:12px}
+  .dh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+  .dh .dt{font-size:15px;font-weight:700}
+  .dh .dt small{font-size:11px;color:var(--dim);font-weight:400;margin-left:4px}
+  .dh .tot{font-size:13px}
+  .dh .tot b{font-size:15px}
+  .dh .tot .u{color:var(--dim);font-size:11px}
+
+  .mkt{margin-top:10px}
+  .mkt:first-of-type{margin-top:0}
+  .mh{display:flex;justify-content:space-between;align-items:baseline;
+    border-bottom:2px solid var(--accent);padding-bottom:4px;margin-bottom:2px}
+  .mh .nm{font-size:12.5px;font-weight:700;color:var(--accent)}
+  .mh .amt{font-size:12.5px;font-weight:700}
+  .mh .amt .u{color:var(--dim);font-size:11px;font-weight:400}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:7px 3px;text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left;padding-left:2px}
+  th{color:var(--dim);font-weight:600;font-size:10.5px;border-bottom:1px solid var(--line)}
+  tbody tr:not(:last-child) td{border-bottom:1px solid var(--line)}
+  td.sec a{color:var(--txt);text-decoration:none;font-weight:600;
+    border-bottom:1px dotted var(--dim)}
+  td.sec .amt{display:block;color:var(--dim);font-size:10.5px;font-weight:400;margin-top:1px}
+  td.n.up{color:var(--up)} td.n.down{color:var(--down)}
+  td.n.top{background:var(--hl);font-weight:700;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>업종별 자금흐름 (목업)<span class="badge">샘플 데이터</span></h1>
+  <p class="note">최근 5거래일 · 시장별 주요 업종을 어느 주체가 많이 샀는지 한눈에 · 강조 표시 = 그 업종에서 가장 많이 순매수한 주체 · 업종명 터치 시 구성종목(종목후보 화면)으로 이동 · 실제 수치 아님</p>
+  <div id="dayList"></div>
+</div>
+
+<script>
+// ── 샘플 데이터 (실제 DB 조회 아님) ──────────────────────────────────────
+const SECTORS_KOSPI  = ["전기·전자","화학","운수장비","금융업","철강·금속","의약품","유통업","건설업"];
+const SECTORS_KOSDAQ = ["기계·장비","제약","IT부품","일반서비스","반도체","소프트웨어","오락·문화","의료·정밀기기"];
+const SUBJ = [["foreign","외국인"],["inst","기관합계"],["etc","기타기관"],["indiv","개인"]];
+
+function seedRandom(seed){ let s=seed; return () => { s=(s*9301+49297)%233280; return s/233280; }; }
+
+function makeMarket(name, sectors, seed, scale){
+  const rnd = seedRandom(seed);
+  const rows = sectors.map(sec=>{
+    const amt = Math.round((3000+rnd()*20000)*scale);
+    const foreign = Math.round((rnd()-0.45)*amt*0.22);
+    const inst    = Math.round((rnd()-0.45)*amt*0.18);
+    const etc     = Math.round((rnd()-0.5)*amt*0.05);
+    const indiv   = -Math.round((foreign+inst+etc)*(0.7+rnd()*0.5));
+    return {sec, amt, foreign, inst, etc, indiv};
+  }).sort((a,b)=>b.amt-a.amt).slice(0,5);
+  const total = Math.round(rows.reduce((a,r)=>a+r.amt,0) * (name==="코스피"?3.2:2.6));
+  return {name, total, rows};
+}
+
+function makeDay(date, wd, seed){
+  const kospi  = makeMarket("코스피",  SECTORS_KOSPI,  seed,      1.0);
+  const kosdaq = makeMarket("코스닥",  SECTORS_KOSDAQ, seed+500,  0.7);
+  return {date, wd, kospi, kosdaq, total: kospi.total + kosdaq.total};
+}
+
+const DAYS = [
+  makeDay("10/08","목", 55),
+  makeDay("10/07","수", 44),
+  makeDay("10/06","화", 33),
+  makeDay("10/05","월", 22),
+  makeDay("10/02","목", 11),
+];
+
+const N  = v => Math.abs(Math.round(v)).toLocaleString("ko-KR");
+const pm = v => (v>0?"+":v<0?"-":"") + N(v);
+const sgn = v => v>0?"up":v<0?"down":"";
+
+function marketBlock(m){
+  const body = m.rows.map(r=>{
+    // 순매수 가장 큰(양수) 주체 하나를 강조
+    const nets = SUBJ.map(([k])=>r[k]);
+    const maxV = Math.max(...nets);
+    const cells = SUBJ.map(([k])=>{
+      const v = r[k];
+      const top = (v===maxV && v>0) ? " top" : "";
+      return `<td class="n ${sgn(v)}${top}">${pm(v)}</td>`;
+    }).join("");
+    return `<tr>
+      <td class="sec"><a href="index.html?sector=${encodeURIComponent(r.sec)}">${r.sec}</a>
+        <span class="amt">${N(r.amt)}억</span></td>
+      ${cells}
+    </tr>`;
+  }).join("");
+  return `<div class="mkt">
+    <div class="mh"><span class="nm">${m.name}</span>
+      <span class="amt">${N(m.total)}<span class="u">억원</span></span></div>
+    <table>
+      <thead><tr><th>업종/거래대금</th>${SUBJ.map(([,n])=>`<th>${n}</th>`).join("")}</tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+  </div>`;
+}
+
+document.getElementById("dayList").innerHTML = DAYS.map(d=>`
+  <div class="daycard">
+    <div class="dh">
+      <span class="dt">${d.date}<small>${d.wd}</small></span>
+      <span class="tot">전체 <b>${N(d.total)}</b><span class="u">억원</span></span>
+    </div>
+    ${marketBlock(d.kospi)}
+    ${marketBlock(d.kosdaq)}
+  </div>`).join("");
+</script>
+</body>
+</html>

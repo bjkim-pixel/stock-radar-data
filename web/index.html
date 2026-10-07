@@ -4085,6 +4085,15 @@ async function boot(){
     await loadFlowStep();
     await loadMarketAmount();
     status("live",`<b>실데이터 연결됨</b> — ${S.date} 기준 · ${stk.length}종목`);
+    // 2026-10-08: 업종 딥링크 — ?sector=업종명 으로 들어오면 종목후보 탭으로
+    // 이동해 그 업종으로 자동 필터링. 업종별 자금흐름 데모(및 추후 수급동향
+    // 페이지)에서 "업종 클릭 시 구성 종목 보기"용으로 이 페이지를 그대로 링크.
+    const deepSector=new URLSearchParams(location.search).get("sector");
+    if(deepSector){
+      go("scr");
+      $("#fSector").value=deepSector;
+      runScreener();
+    }
   }catch(e){
     status("err",`연결 실패: ${e.message}<br><span style="font-size:11px">anon 키가 맞는지, 19_web_views.sql을 적용했는지 확인해주세요.</span>`);
     console.error(e);
