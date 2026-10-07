@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>데모2: 업종별 자금흐름</title>
+<style>
+  :root{
+    --bg:#f7f7f8; --card:#fff; --line:#eceef0; --txt:#111; --dim:#8a8f98;
+    --up:#d64545; --down:#2f6fd6; --accent:#1e40af;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f1012; --card:#1a1b1e; --line:#2a2c30; --txt:#eee; --dim:#9aa0a8;
+      --up:#ff6b6b; --down:#5b9bff; --accent:#5b86e8;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1012; --card:#1a1b1e; --line:#2a2c30; --txt:#eee; --dim:#9aa0a8;
+    --up:#ff6b6b; --down:#5b9bff; --accent:#5b86e8;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Pretendard","Noto Sans KR",sans-serif;
+    font-size:14px;}
+  .wrap{max-width:720px;margin:0 auto;padding:12px 12px 32px}
+  h1{font-size:16px;margin:4px 0 2px}
+  .note{color:var(--dim);font-size:12px;margin:0 0 12px}
+  .badge{display:inline-block;background:#ffefc2;color:#8a6500;font-size:11px;
+    padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:1px}
+  @media (prefers-color-scheme: dark){ .badge{background:#473c15;color:#ffd880} }
+
+  /* 상단 설정 탭: 시장 / 보기기준(업종·거래주체) */
+  .settings{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:10px 10px 12px;margin-bottom:14px}
+  .setrow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .setrow:last-child{margin-bottom:0}
+  .setrow .lb{font-size:11px;color:var(--dim);width:48px;flex:0 0 auto}
+  .seg{display:flex;gap:4px;flex:1}
+  .seg button{flex:1;padding:7px 4px;border-radius:8px;border:1px solid var(--line);
+    background:var(--bg);color:var(--dim);font-size:12.5px}
+  .seg button.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+
+  /* 날짜 세로 리스트 */
+  .daycard{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:12px;margin-bottom:10px}
+  .daycard .dh{display:flex;justify-content:space-between;align-items:baseline;
+    margin-bottom:8px}
+  .daycard .dh .dt{font-size:14px;font-weight:700}
+  .daycard .dh .wd{font-size:11px;color:var(--dim)}
+
+  .mkt{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
+  .mkt:first-of-type{border-top:none;padding-top:0;margin-top:0}
+  .mkt .mh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .mkt .mh .nm{font-size:12.5px;font-weight:700;color:var(--accent)}
+  .mkt .mh .amt{font-size:13px;font-weight:700}
+  .mkt .mh .amt .u{font-size:11px;color:var(--dim);font-weight:400;margin-left:2px}
+
+  .chiprow{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{display:flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--line);
+    border-radius:8px;padding:5px 8px;font-size:11.5px}
+  .chip .nm{font-weight:600}
+  .chip .v{color:var(--dim)}
+  .chip .v.up{color:var(--up)}
+  .chip .v.down{color:var(--down)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>업종별 자금흐름 (데모2)<span class="badge">샘플 데이터</span></h1>
+  <p class="note">날짜를 세로로, 일별 코스피/코스닥 거래대금과 상위 업종(또는 거래주체)을 중첩 표시 · 실제 수치 아님</p>
+
+  <div class="settings">
+    <div class="setrow">
+      <div class="lb">시장</div>
+      <div class="seg" id="segMarket">
+        <button data-v="all" class="active">전체</button>
+        <button data-v="KOSPI">코스피</button>
+        <button data-v="KOSDAQ">코스닥</button>
+      </div>
+    </div>
+    <div class="setrow">
+      <div class="lb">기준</div>
+      <div class="seg" id="segMode">
+        <button data-v="sector" class="active">업종별 거래대금</button>
+        <button data-v="subject">거래주체별 순매수</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dayList"></div>
+
+  <p class="note" style="margin-top:14px">
+    이 구성이 생각하신 방향 맞는지 확인 부탁드립니다 — 맞으면 실제 데이터로 연결해서 수급동향 페이지에 반영하겠습니다.
+  </p>
+</div>
+
+<script>
+// ── 샘플 데이터 (실제 DB 조회 아님) ──────────────────────────────────────
+const SECTORS = ["전기·전자","기계·장비","화학","제약","일반서비스","금속","운수장비·부품",
+  "유통","건설·건축관련","음식료·담배","섬유·의류","종이·목재","철강금속"];
+const SUBJECTS = [["foreign","외국인"],["inst","기관"],["indiv","개인"],["pe","사모"],["pension","연기금"]];
+
+function seedRandom(seed){ let s=seed; return () => { s=(s*9301+49297)%233280; return s/233280; }; }
+
+function makeMarketDay(market, seed){
+  const rnd = seedRandom(seed);
+  const totalAmt = market==="KOSPI" ? Math.round(180000+rnd()*120000) : Math.round(70000+rnd()*60000); // 억원
+  const sectorRows = SECTORS.map(name=>({
+    name, amt: Math.round(2000+rnd()*22000)
+  })).sort((a,b)=>b.amt-a.amt).slice(0,5);
+  const subjRows = SUBJECTS.map(([k,name])=>({
+    key:k, name, net: Math.round((rnd()-0.5)*18000)
+  })).sort((a,b)=>Math.abs(b.net)-Math.abs(a.net));
+  return {market, totalAmt, sectorRows, subjRows};
+}
+
+function makeDay(dateLabel, wd, seed){
+  return {
+    date:dateLabel, wd,
+    KOSPI:  makeMarketDay("KOSPI",  seed),
+    KOSDAQ: makeMarketDay("KOSDAQ", seed+1000),
+  };
+}
+
+const DAYS = [
+  makeDay("10/08","목", 55),
+  makeDay("10/07","수", 44),
+  makeDay("10/06","화", 33),
+  makeDay("10/05","월", 22),
+  makeDay("10/02","목", 11),
+];
+
+const N = v => Math.abs(Math.round(v)).toLocaleString("ko-KR");
+const pm = v => (v>0?"+":v<0?"-":"") + N(v);
+const sgn = v => v>0?"up":v<0?"down":"";
+
+let curMarket = "all";
+let curMode = "sector";
+
+function wireSeg(id, onChange){
+  const el = document.getElementById(id);
+  el.querySelectorAll("button").forEach(b=>{
+    b.onclick = ()=>{
+      el.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+      b.classList.add("active");
+      onChange(b.dataset.v);
+      render();
+    };
+  });
+}
+wireSeg("segMarket", v=>curMarket=v);
+wireSeg("segMode", v=>curMode=v);
+
+function marketBlock(md){
+  const list = curMode==="sector"
+    ? md.sectorRows.map(r=>`<div class="chip"><span class="nm">${r.name}</span><span class="v">${N(r.amt)}억</span></div>`).join("")
+    : md.subjRows.map(r=>`<div class="chip"><span class="nm">${r.name}</span><span class="v ${sgn(r.net)}">${pm(r.net)}억</span></div>`).join("");
+  return `
+    <div class="mkt">
+      <div class="mh"><span class="nm">${md.market}</span>
+        <span class="amt">${N(md.totalAmt)}<span class="u">억원</span></span></div>
+      <div class="chiprow">${list}</div>
+    </div>`;
+}
+
+function render(){
+  document.getElementById("dayList").innerHTML = DAYS.map(d=>{
+    const blocks = [];
+    if(curMarket==="all" || curMarket==="KOSPI")  blocks.push(marketBlock(d.KOSPI));
+    if(curMarket==="all" || curMarket==="KOSDAQ") blocks.push(marketBlock(d.KOSDAQ));
+    return `<div class="daycard">
+      <div class="dh"><span class="dt">${d.date}</span><span class="wd">${d.wd}요일</span></div>
+      ${blocks.join("")}
+    </div>`;
+  }).join("");
+}
+render();
+</script>
+</body>
+</html>
