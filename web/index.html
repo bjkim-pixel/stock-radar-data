@@ -113,6 +113,23 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 .tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
 .tile .lb{font-size:10.5px;color:var(--ink-3);margin-bottom:4px}
 .tile .vl{font-size:20px;font-weight:680;letter-spacing:-.02em;line-height:1.15}
+
+/* 업종별 자금흐름 (수급동향 상단) */
+.fsm-day{border:1px solid var(--border);border-radius:var(--r);padding:10px 10px 8px;margin-bottom:10px}
+.fsm-dh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.fsm-dh .dt{font-size:14px;font-weight:700}
+.fsm-dh .dt small{font-size:11px;color:var(--ink-3);font-weight:400;margin-left:4px}
+.fsm-dh .tot{font-size:12px;color:var(--ink-3)}.fsm-dh .tot b{font-size:14px;color:var(--ink)}
+.fsm-mh{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--ink-3);padding-bottom:3px;margin-top:8px}
+.fsm-mh .nm{font-size:12px;font-weight:700}.fsm-mh .amt{font-size:12px;font-weight:700}
+.fsm-day table{width:100%;border-collapse:collapse;font-size:12px}
+.fsm-day th,.fsm-day td{padding:6px 3px;text-align:right;white-space:nowrap}
+.fsm-day th:first-child,.fsm-day td:first-child{text-align:left}
+.fsm-day th{font-size:10.5px;font-weight:600;color:var(--ink-3);border-bottom:1px solid var(--border)}
+.fsm-day tbody tr:not(:last-child) td{border-bottom:1px solid var(--border)}
+.fsm-day td.sec a{font-weight:600;cursor:pointer;border-bottom:1px dotted var(--ink-3)}
+.fsm-day td.sec .a2{display:block;font-size:10.5px;color:var(--ink-3);font-weight:400}
+.fsm-day td.hl{background:rgba(214,69,69,.13);font-weight:700;border-radius:4px}
 .tile .sub{font-size:10.5px;color:var(--ink-3);margin-top:2px}
 
 /* 표는 안쪽 세로 스크롤을 두지 않습니다 — 내용은 페이지 스크롤에 맡기고
@@ -662,7 +679,13 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
 <!-- ═══════════ 수급 동향 ═══════════ -->
 <section id="v-flow" class="hide">
-  <div class="card" style="margin-top:16px"><h3>오늘의 수급주체별 순매수 거래대금
+  <div class="card" style="margin-top:16px"><h3>업종별 자금흐름
+    <span class="r">최근 5거래일 · 시장별 주요 업종을 어느 주체가 샀는지 · 업종 터치 = 구성종목</span></h3>
+    <div id="fsmBody"><div class="load">불러오는 중…</div></div>
+    <div class="note" style="margin-top:8px">시장 거래대금은 시장 전체(KIS), 업종 표는 추적 종목 기준 · 억원 · 색칠 칸 = 그 업종 최대 순매수 주체</div>
+  </div>
+
+  <div class="card"><h3>오늘의 수급주체별 순매수 거래대금
     <span class="r">시장 전체 · 억원 · 헤더 클릭 = 그 주체 기준 정렬(다시 클릭하면 오름차순↔내림차순 전환)</span></h3>
     <div class="tw" id="flowTrendWrap"><table><thead><tr id="flowTrendHead"></tr></thead>
       <tbody id="flowTrendBody"><tr><td colspan="9" class="load">불러오는 중…</td></tr></tbody></table></div>
@@ -1867,7 +1890,7 @@ function go(v,detailCode){
   if(v==="perf2")loadPerf2();
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);})}
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
-    Promise.all([loadFlowTrends(),loadFlowLists()]).catch(()=>{});}
+    Promise.all([loadFlowTrends(),loadFlowLists(),loadFlowSectorMap()]).catch(()=>{});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
   if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
   redraw(detailJustLoaded);
@@ -2112,6 +2135,53 @@ function renderSectorTrendTable(){
     });
   $$("#sectorTrendBody tr[data-sec]").forEach(tr=>
     tr.onclick=()=>selectSectorTrend(tr.dataset.sec).catch(()=>{}));
+}
+// 2026-10-08: 업종 터치 → 종목후보 화면에서 그 업종 구성종목 보기. 등락률 등 기본
+// 조건이 걸려 있으면 구성종목이 가려지므로 조건은 모두 비우고 업종만 지정한다.
+function goSectorStocks(sec){
+  go("scr");
+  Object.keys(SCR_DEFAULTS).forEach(i=>$(i).value="");
+  $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));
+  $("#fSector").value=sec;
+  $("#fLimit").value="300";
+  runScreener().catch(e=>status("err","조회 실패: "+e.message));
+}
+/* 업종별 자금흐름(수급동향 상단): 최근 5거래일 × 시장(코스피/코스닥) × 주요 업종 × 4개 주체 */
+async function loadFlowSectorMap(){
+  const host=$("#fsmBody");
+  try{
+    const [rows,mk]=await Promise.all([
+      q("v_sector_flow_market","select=*"),
+      q("market_daily","select=trade_date,market,index_amount&market=in.(KOSPI,KOSDAQ)&order=trade_date.desc&limit=14")
+    ]);
+    const dates=[...new Set(rows.map(r=>r.trade_date))].sort().reverse().slice(0,5);
+    if(!dates.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
+    const mAmt={};mk.forEach(m=>{(mAmt[m.trade_date]||(mAmt[m.trade_date]={}))[m.market]=+m.index_amount;});
+    const SUBJ=[["foreign_net","외국인"],["inst_net","기관합계"],["corp_other_net","기타기관"],["individual_net","개인"]];
+    const WD=["일","월","화","수","목","금","토"];
+    const fAmt=v=>v==null||isNaN(v)?"–":N(v/EOK,0);
+    const mBlock=(date,mkt,label)=>{
+      const top=rows.filter(r=>r.trade_date===date&&r.market===mkt)
+        .sort((a,b)=>+b.trade_amount-+a.trade_amount).slice(0,5);
+      if(!top.length)return"";
+      const body=top.map(r=>{
+        const nets=SUBJ.map(([k])=>+r[k]||0), mx=Math.max(...nets);
+        const cells=SUBJ.map(([k],i)=>`<td class="${sgn(nets[i])}${nets[i]===mx&&mx>0?" hl":""}">${pm(nets[i]/EOK,0)}</td>`).join("");
+        return `<tr><td class="sec"><a data-sec="${r.sector}">${r.sector}</a><span class="a2">${fAmt(+r.trade_amount)}억</span></td>${cells}</tr>`;
+      }).join("");
+      const ma=(mAmt[date]||{})[mkt];
+      return `<div class="fsm-mh"><span class="nm">${label}</span><span class="amt">${ma?N(ma/EOK,0)+"억":"–"}</span></div>
+        <table><thead><tr><th>업종/거래대금</th>${SUBJ.map(([,n])=>`<th>${n}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
+    };
+    host.innerHTML=dates.map(d=>{
+      const m=mAmt[d]||{}, tot=(m.KOSPI!=null&&m.KOSDAQ!=null)?m.KOSPI+m.KOSDAQ:null;
+      const wd=WD[new Date(d+"T00:00:00+09:00").getDay()];
+      return `<div class="fsm-day"><div class="fsm-dh"><span class="dt">${d.slice(5).replace("-","/")}<small>${wd}</small></span>
+        <span class="tot">전체 <b>${tot!=null?N(tot/EOK,0):"–"}</b>억</span></div>
+        ${mBlock(d,"KOSPI","코스피")}${mBlock(d,"KOSDAQ","코스닥")}</div>`;
+    }).join("");
+    $$("#fsmBody a[data-sec]").forEach(a=>a.onclick=()=>goSectorStocks(a.dataset.sec));
+  }catch(e){host.innerHTML='<div class="load">불러오기 실패</div>';}
 }
 // 2026-09-30: 짝꿍매매 백테스트에서 검증된 "업종 클러스터"(같은 업종 4종목↑
 // 동시 +5%↑ 급등 + 같은 수급주체 순매수) 감지 카드. v_sector_cluster는 날짜
@@ -2957,7 +3027,7 @@ $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e
 const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":"","#fRsMin":"","#fRs5Min":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
-  $("#fLimit").value="10";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
+  $("#fLimit").value="50";$("#fSort").value="rs5_vs_mkt";$("#fDir").value="desc";
   $("#fSector").value="";
   $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
 $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
@@ -4089,11 +4159,7 @@ async function boot(){
     // 이동해 그 업종으로 자동 필터링. 업종별 자금흐름 데모(및 추후 수급동향
     // 페이지)에서 "업종 클릭 시 구성 종목 보기"용으로 이 페이지를 그대로 링크.
     const deepSector=new URLSearchParams(location.search).get("sector");
-    if(deepSector){
-      go("scr");
-      $("#fSector").value=deepSector;
-      runScreener();
-    }
+    if(deepSector)goSectorStocks(deepSector);
   }catch(e){
     status("err",`연결 실패: ${e.message}<br><span style="font-size:11px">anon 키가 맞는지, 19_web_views.sql을 적용했는지 확인해주세요.</span>`);
     console.error(e);
