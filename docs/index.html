@@ -2172,7 +2172,10 @@ async function loadFlowSectorMap(){
       q("v_sector_flow_market","select=*"),
       q("market_daily","select=trade_date,market,index_amount&market=in.(KOSPI,KOSDAQ)&order=trade_date.desc&limit=14")
     ]);
-    const dates=[...new Set(rows.map(r=>r.trade_date))].sort().reverse().slice(0,5);
+    // 휴장일(공휴일·주말) 제외 — 뷰가 KOSPI 지수 데이터가 있는 평일만 주지만, 화면에서도 한 번 더 걸러 5영업일로 구성
+    const dates=[...new Set(rows.map(r=>r.trade_date))]
+      .filter(d=>{const w=new Date(d+"T00:00:00+09:00").getDay();return w>=1&&w<=5;})
+      .sort().reverse().slice(0,5);
     if(!dates.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
     const mAmt={};mk.forEach(m=>{(mAmt[m.trade_date]||(mAmt[m.trade_date]={}))[m.market]=+m.index_amount;});
     const SUBJ=[["foreign_net","외국인"],["inst_net","기관합계"],["corp_other_net","기타기관"],["individual_net","개인"]];
