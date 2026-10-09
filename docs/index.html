@@ -2136,15 +2136,14 @@ function renderSectorTrendTable(){
   $$("#sectorTrendBody tr[data-sec]").forEach(tr=>
     tr.onclick=()=>selectSectorTrend(tr.dataset.sec).catch(()=>{}));
 }
-// 2026-10-08: 업종 터치 → 종목후보 화면에서 그 업종 구성종목 보기. 등락률 등 기본
-// 조건이 걸려 있으면 구성종목이 가려지므로 조건은 모두 비우고 업종만 지정한다.
-function goSectorStocks(sec){
-  go("scr");
-  Object.keys(SCR_DEFAULTS).forEach(i=>$(i).value="");
-  $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));
-  $("#fSector").value=sec;
-  $("#fLimit").value="300";
-  runScreener().catch(e=>status("err","조회 실패: "+e.message));
+// 2026-10-08: 업종 터치 → 시장매크로 STEP2의 "업종 클릭 → 아래에 구성종목(+주체별
+// 누적 차트)" 기능(selectSector)을 그대로 재사용. 처음엔 종목후보 화면으로 보냈는데
+// 조건 검색 방식이라 복잡하다는 피드백으로 변경. ?sector= 딥링크도 같은 함수 사용.
+async function goSectorStocks(sec){
+  go("proc");
+  try{await selectSector(sec);}
+  catch(e){status("err","업종 조회 실패: "+e.message);return;}
+  $("#s3").scrollIntoView({behavior:"smooth",block:"start"});
 }
 /* 업종별 자금흐름(수급동향 상단): 최근 5거래일 × 시장(코스피/코스닥) × 주요 업종 × 4개 주체 */
 async function loadFlowSectorMap(){
