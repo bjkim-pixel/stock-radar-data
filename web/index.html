@@ -560,10 +560,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
         RS5가 당장 5위 밖으로 밀린 업종(꺾이기 시작 — 진입은 2일 연속으로 신중히, 이탈은 하루만으로
         빠르게 표시합니다).
       </div>
-      <div class="faint" style="font-size:11px;margin:10px 0 4px">상위 5</div>
+      <div class="faint" id="secLblTop" style="font-size:11px;margin:10px 0 4px">상위 5</div>
       <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadTop"></tr></thead>
         <tbody id="secBodyTop"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
-      <div class="faint" style="font-size:11px;margin:14px 0 4px">하위 5</div>
+      <div class="faint" id="secLblBot" style="font-size:11px;margin:14px 0 4px">하위 5</div>
       <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadBot"></tr></thead>
         <tbody id="secBodyBot"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
       <div class="note">행을 누르면 오른쪽 수급과 STEP 3 종목 목록이 그 업종으로 바뀝니다.</div>
@@ -1976,9 +1976,10 @@ const SEC_COLS=[
   {k:"stock_count",  l:"종목수", opt:true, fmt:s=>s.stock_count, cls:()=>"faint"},
 ];
 S.secSort=S.secSort||"total_amount";
+S.secDir=S.secDir||"desc";   // 2026-10-09: 같은 헤더를 다시 누르면 asc/desc 토글(짝꿍매매와 동일)
 function secHeadRow(){
   return `<th class="l">#</th><th class="l">업종</th>`+SEC_COLS.map(c=>
-    `<th class="${c.opt?"opt ":""}sortable${c.k===S.secSort?" active":""}" data-key="${c.k}">${c.l}${c.k===S.secSort?" ▾":""}</th>`).join("");
+    `<th class="${c.opt?"opt ":""}sortable${c.k===S.secSort?" active":""}" data-key="${c.k}">${c.l}${c.k===S.secSort?(S.secDir==="asc"?" ▴":" ▾"):""}</th>`).join("");
 }
 function secBodyRows(list){
   return list.length?list.map((s,i)=>`
@@ -1988,18 +1989,25 @@ function secBodyRows(list){
     </tr>`).join(""):`<tr><td colspan="10" class="load">데이터 없음</td></tr>`;
 }
 function renderSectors(){
+  // 내림차순: 첫 표=상위 5·둘째 표=하위 5 / 오름차순: 첫 표=값이 가장 작은 5개(하위 5)·둘째 표=가장 큰 5개(상위 5)
+  const sign=S.secDir==="asc"?-1:1, asc=S.secDir==="asc";
   const sorted=[...S.sectors].sort((a,b)=>{
     const av=a[S.secSort],bv=b[S.secSort];
     if(av==null&&bv==null)return 0; if(av==null)return 1; if(bv==null)return -1;
-    return +bv-+av;
+    return sign*(+bv-+av);
   });
+  $("#secLblTop").textContent=asc?"하위 5 (오름차순)":"상위 5";
+  $("#secLblBot").textContent=asc?"상위 5":"하위 5";
   const top=sorted.slice(0,5), bot=sorted.length>5?sorted.slice(-5).reverse():[];
   $("#secHeadTop").innerHTML=secHeadRow();
   $("#secHeadBot").innerHTML=secHeadRow();
   $("#secBodyTop").innerHTML=secBodyRows(top);
   $("#secBodyBot").innerHTML=secBodyRows(bot);
   $$("#secHeadTop th.sortable,#secHeadBot th.sortable").forEach(th=>
-    th.onclick=()=>{S.secSort=th.dataset.key;renderSectors();});
+    th.onclick=()=>{
+      if(th.dataset.key===S.secSort)S.secDir=S.secDir==="asc"?"desc":"asc";
+      else{S.secSort=th.dataset.key;S.secDir="desc";}
+      renderSectors();});
   $$("#secBodyTop tr[data-sec],#secBodyBot tr[data-sec]").forEach(tr=>
     tr.onclick=()=>selectSector(tr.dataset.sec));
 }
