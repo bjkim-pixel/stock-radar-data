@@ -35,6 +35,11 @@ on:
         description: '종료일 (YYYYMMDD, 비우면 start_date와 동일)'
         required: false
         default: ''
+      portfolio_only:
+        description: '포트폴리오(가상매매)만 다시 계산 — 지표·신호 계산 생략(가볍다). 넓은 기간 신호 기록용'
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   compute:
@@ -108,12 +113,14 @@ jobs:
           else
             START="${{ github.event.inputs.start_date }}"
             END="${{ github.event.inputs.end_date }}"
+            FLAG=""
+            if [ "${{ github.event.inputs.portfolio_only }}" = "true" ]; then FLAG="--portfolio-only"; fi
             if [ -z "$START" ]; then
-              python 05_compute.py
+              python 05_compute.py $FLAG
             elif [ -z "$END" ]; then
-              python 05_compute.py "$START"
+              python 05_compute.py "$START" $FLAG
             else
-              python 05_compute.py "$START" "$END"
+              python 05_compute.py "$START" "$END" $FLAG
             fi
           fi
 

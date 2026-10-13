@@ -35,6 +35,7 @@ LOOKBACK_SIGNAL = 20
 
 METRICS_ONLY = "--metrics-only" in sys.argv
 SIGNALS_ONLY = "--signals-only" in sys.argv
+PORTFOLIO_ONLY = "--portfolio-only" in sys.argv   # 2026-10-09: 지표·신호 계산 없이 포트폴리오(06_portfolio.py)만 — 넓은 기간의 신호 기록(예: 박스권 과거 이력)용
 NO_PORTFOLIO = "--no-portfolio" in sys.argv or METRICS_ONLY or SIGNALS_ONLY
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 
@@ -269,9 +270,9 @@ def run_portfolio():
 
 def main():
     t0 = time.time()
-    if not SIGNALS_ONLY:
+    if not SIGNALS_ONLY and not PORTFOLIO_ONLY:
         run_file(METRICS_SQL, "metrics")
-    if not METRICS_ONLY:
+    if not METRICS_ONLY and not PORTFOLIO_ONLY:
         run_file(SIGNALS_SQL, "signals")
     if not NO_PORTFOLIO:
         run_portfolio()
