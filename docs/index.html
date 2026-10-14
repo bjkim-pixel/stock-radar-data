@@ -2642,7 +2642,9 @@ function computeTodayScore(r,ctx){
 // 25% 이하=하단권, 75% 이상=상단권. 매매 전략이 아니라 시장 위치를 보는 참고 지표.
 function fillBoxTile(prefix,rows){
   const vl=$("#"+prefix),bar=$("#"+prefix+"Bar"),sub=$("#"+prefix+"Sub");
-  const cl=rows.map(r=>+r.index_close).filter(v=>v>0);
+  // 휴장일(공휴일·주말)은 market_daily에 지수 종가 없이 행만 있을 수 있어 제외 → 지수 종가가 있는 평일 최근 10거래일
+  const cl=rows.filter(r=>{const w=new Date(r.trade_date+"T00:00:00+09:00").getDay();return w>=1&&w<=5&&+r.index_close>0;})
+    .map(r=>+r.index_close).slice(0,10);
   if(cl.length<10){vl.textContent="–";bar.innerHTML="";sub.textContent="지수 데이터 부족";return;}
   const cur=cl[0],lo=Math.min(...cl),hi=Math.max(...cl);
   const pos=hi===lo?50:(cur-lo)/(hi-lo)*100;
@@ -2656,8 +2658,8 @@ async function loadToday(){
     $("#todayMktNote").textContent="불러오는 중…";
     // ── 1) 시장 요약 타일 ──
     const [mdKospi,mdKosdaq,amtRows,flowRow]=await Promise.all([
-      q("market_daily",`select=trade_date,index_close,regime&market=eq.KOSPI&order=trade_date.desc&limit=10`),
-      q("market_daily",`select=trade_date,index_close&market=eq.KOSDAQ&order=trade_date.desc&limit=10`),
+      q("market_daily",`select=trade_date,index_close,regime&market=eq.KOSPI&order=trade_date.desc&limit=20`),
+      q("market_daily",`select=trade_date,index_close&market=eq.KOSDAQ&order=trade_date.desc&limit=20`),
       q("v_market_amount_real","select=*&order=trade_date.desc&limit=1"),
       S.flowTrendRow?Promise.resolve(S.flowTrendRow):q("v_market_flow_periods","select=*").then(r=>r[0])
     ]);
