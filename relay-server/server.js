@@ -2360,10 +2360,7 @@ async function refreshHoldings() {
   try {
     // entry_price는 2026-09-15 추가 — 손절선 계산(고점수익 구간별 트레일링 폭 +
     // 손익분기 보호선)이 "최초 매수가" 기준이라 반드시 필요함(checkAlerts 참고).
-    // 2026-10-09: 박스권(BOX) 포지션은 제외 — 코스피 지수 박스위치로만 사고파는 10종목 바스켓이라
-    // 종목별 트레일링 손절선 알림이 의미 없고, 10개가 KIS 실시간 구독 슬롯을 차지하지 않게 한다.
-    // (strategy가 NULL인 예전 행은 그대로 포함)
-    const positions = await sbGet('positions?select=code,entry_price,avg_price,peak_price,quantity,invested,strategy&portfolio=eq.VIRTUAL&status=eq.OPEN&or=(strategy.is.null,strategy.neq.BOX)');
+    const positions = await sbGet('positions?select=code,entry_price,avg_price,peak_price,quantity,invested,strategy&portfolio=eq.VIRTUAL&status=eq.OPEN');
     const newHeld = new Set(positions.map(p => p.code));
 
     positionsByCode.clear();
@@ -2438,7 +2435,7 @@ async function maybePersistPeak(code, dayHigh) {
   pos.peak_price = dayHigh.high;                  // 로컬 캐시도 즉시 갱신 → effPeak 계산에 바로 반영
   try {
     await sbWrite(
-      `positions?portfolio=eq.VIRTUAL&status=eq.OPEN&code=eq.${code}&or=(strategy.is.null,strategy.neq.BOX)`,
+      `positions?portfolio=eq.VIRTUAL&status=eq.OPEN&code=eq.${code}`,
       'PATCH',
       { peak_price: dayHigh.high, peak_at: new Date(dayHigh.highAt).toISOString() }
     );

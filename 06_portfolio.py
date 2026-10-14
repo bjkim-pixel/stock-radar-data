@@ -139,25 +139,6 @@ ENTRY_AMOUNT_TIERS = [
 ]
 
 
-# ── 박스권매매(BOX) — 2026-10-09 신설 ─────────────────────────────────────
-# 코스피 지수 최근 BOX_WINDOW거래일 종가의 최저~최고를 "박스"로 보고, 박스위치%가
-#   · BOX_BUY_POS 이하(하단)면  → 코스피 시총 상위 BOX_BASKET_N종목 바스켓을 동일금액 매수
-#   · BOX_SELL_POS 이상(상단)이면 → 바스켓 전량 매도
-# 안전장치: 진입일 지수 대비 BOX_STOP_PCT 하락하면 손절, 손절 후엔 박스위치가
-#   BOX_REARM_POS 이상으로 회복(중간권)한 뒤에야 다시 진입 — 급락장에서 하단 신호가
-#   연속으로 뜰 때 떨어지는 칼날을 반복 매수하지 않도록. 신호는 그날 종가(지수·종목) 기준.
-# 근거: 2026-07~09 코스피 종가 백테스트(10일 박스·25/75). 9월 진짜 박스권 구간에서
-#   2회 모두 수익(+6.6%/+4.8%), 7월 급락 구간은 손실 가능 — 표본이 작아 참고용.
-BOX_WINDOW = 10
-BOX_BUY_POS = 25.0
-BOX_SELL_POS = 75.0
-BOX_REARM_POS = 50.0
-BOX_STOP_PCT = 0.10
-BOX_BASKET_N = 10
-BOX_AMOUNT = 20_000_000       # 종목당 매수금액(원) — 사이클당 BOX_BASKET_N × 이 금액
-BOX_MARKET = "KOSPI"
-
-
 def entry_amount_for(market_cap):
     """시가총액 구간에 따른 1회 매수/불타기 금액."""
     mc = float(market_cap) if market_cap else 0
@@ -250,9 +231,7 @@ VIRTUAL_SIGNAL_TYPES = [
     "V4_BUY_TREND", "V4_PYRAMID_TREND", "V4_SELL_TREND", "V4_CRASH_SELL_TREND",
     "V4_BUY_CLOSEBET", "V4_SELL_CLOSEBET",
     "V4_BUY_CLOSEBET2", "V4_SELL_CLOSEBET2",
-    "V4_BUY_BOX", "V4_SELL_BOX",
 ]
-BOX_SIGNAL_TYPES = ("V4_BUY_BOX", "V4_SELL_BOX")
 
 # REAL 신호는 다릅니다. 한 번 청산된 REAL 포지션은 다음 실행 때 OPEN이 아니라서
 # 다시 계산되지 않는데, VIRTUAL과 똑같이 "이번에 안 나왔으니 stale"로 지워버리면
@@ -772,122 +751,6 @@ def process_day_real(day, open_pos, day_closes, day_highs, sig):
 
 
 # ── 메인 ──────────────────────────────────────────────────────────────────────
-# ── 박스권매매: 지수 박스위치 계산 + 하루 처리 ─────────────────────────────────
-def load_box_data(cur):
-    """코스피 지수 종가 시계열 + 시뮬레이션 기간 코스피 종목 시가총액. 실패하면 호출쪽에서 BOX만 건너뜀."""
-    cur.execute("""
-        SELECT trade_date, index_close FROM market_daily
-        WHERE market = %s AND index_close IS NOT NULL
-        ORDER BY trade_date
-    """, (BOX_MARKET,))
-    index_rows = [(d, float(c)) for d, c in cur.fetchall()]
-    cur.execute("""
-        SELECT p.trade_date, p.code, p.market_cap
-        FROM daily_price p
-        JOIN stocks s ON s.code = p.code
-        WHERE s.security_type = 'STOCK' AND s.market = %s
-          AND p.close > 0 AND p.market_cap > 0 AND p.trade_date >= %s
-    """, (BOX_MARKET, SIM_START))
-    mcaps = {}
-    for d, code, mc in cur.fetchall():
-        mcaps.setdefault(d, {})[code] = float(mc)
-    return index_rows, mcaps
-
-
-def build_box_info(index_rows):
-    """{거래일: (박스위치%, 박스하단, 박스상단, 지수종가)} — 당일 포함 최근 BOX_WINDOW일 종가 기준."""
-    out = {}
-    closes = [c for _, c in index_rows]
-    for i, (d, c) in enumerate(index_rows):
-        if i < BOX_WINDOW - 1:
-            continue
-        w = closes[i - BOX_WINDOW + 1:i + 1]
-        lo, hi = min(w), max(w)
-        pos = 50.0 if hi == lo else (c - lo) / (hi - lo) * 100.0
-        out[d] = (pos, lo, hi, c)
-    return out
-
-
-def process_day_box(day, open_pos, state, box_info, dc, dh, mcap_day, names, sig):
-    """박스권매매 하루 처리. state = {"armed": bool, "entry_index": float|None, "exiting": str|None}"""
-    closed = []
-    info = box_info.get(day)
-    if not info:
-        return closed
-    pos_pct, lo, hi, idx_close = info
-
-    # 보유 중 — 고점 갱신 + 청산 판정
-    if open_pos:
-        for code, p in open_pos.items():
-            h = dh.get(code)
-            if h and h > p.peak_price:
-                p.peak_price, p.peak_date, p.peak_at = h, day, market_close_ts(day)
-        reason = state.get("exiting")          # 일부 종목이 거래정지 등으로 못 팔렸으면 다음날 이어서 청산
-        if not reason:
-            ei = state.get("entry_index")
-            if ei and idx_close <= ei * (1 - BOX_STOP_PCT):
-                reason = "BOX_STOP"
-            elif pos_pct >= BOX_SELL_POS:
-                reason = "BOX_TOP"
-        if reason:
-            label = (f"지수 박스 상단 {pos_pct:.0f}%" if reason == "BOX_TOP"
-                     else f"지수 손절 -{BOX_STOP_PCT*100:.0f}%")
-            for code, p in list(open_pos.items()):
-                price = dc.get(code)
-                if price is None:
-                    continue
-                p.close_out(day, price, reason)
-                closed.append(p)
-                del open_pos[code]
-                sig.add(day, code, "V4_SELL_BOX", "SELL",
-                        min(100.0, max(0.0, 50 + float(p.return_pct or 0))),
-                        {"portfolio": p.portfolio, "strategy": "BOX",
-                         "entry_date": p.entry_date.isoformat(), "entry_price": p.entry_price,
-                         "exit_price": price, "quantity": p.quantity, "invested": p.invested,
-                         "realized_pnl": p.realized_pnl, "return_pct": float(p.return_pct or 0),
-                         "exit_reason": reason, "box_pos": round(pos_pct, 1),
-                         "index_close": idx_close},
-                        f"[박스권] {p.name} 전량매도({label}) · {price:,}원 · "
-                        f"실현 {p.return_pct:.1f}% ({p.realized_pnl:,}원)")
-            if open_pos:
-                state["exiting"] = reason
-            else:
-                state["exiting"] = None
-                state["entry_index"] = None
-                state["armed"] = (reason == "BOX_TOP")   # 손절이면 중간권 회복 전까지 재진입 대기
-        return closed                                    # 청산한 날 재진입은 하지 않음
-
-    # 대기 중 — 재무장 + 하단 진입
-    if not state["armed"] and pos_pct >= BOX_REARM_POS:
-        state["armed"] = True
-    if state["armed"] and pos_pct <= BOX_BUY_POS:
-        ranked = sorted(((c, m) for c, m in mcap_day.items() if dc.get(c)), key=lambda x: -x[1])
-        bought = 0
-        for code, mcap in ranked[:BOX_BASKET_N]:
-            close = dc[code]
-            qty = int(BOX_AMOUNT // close)
-            if qty <= 0:
-                continue
-            invested = qty * close
-            nm = names.get(code, code)
-            open_pos[code] = Position("VIRTUAL", "BOX", code, nm, day, close, qty, invested,
-                                      market_cap=mcap)
-            bought += 1
-            sig.add(day, code, "V4_BUY_BOX", "BUY",
-                    min(100.0, max(0.0, 100.0 - pos_pct)),
-                    {"portfolio": "VIRTUAL", "strategy": "BOX", "box_pos": round(pos_pct, 1),
-                     "box_low": lo, "box_high": hi, "index_close": idx_close,
-                     "market_cap": mcap, "entry_price": close, "quantity": qty,
-                     "invested": invested},
-                    f"[박스권] {nm} 신규매수(코스피 박스 하단 {pos_pct:.0f}%) · {close:,}원 {qty:,}주 "
-                    f"({invested:,}원) · {BOX_WINDOW}일 박스 {lo:,.0f}~{hi:,.0f} · "
-                    f"상단 {BOX_SELL_POS:.0f}% 도달 시 전량매도")
-        if bought:
-            state["entry_index"] = idx_close
-            state["armed"] = False
-    return closed
-
-
 def main():
     t0 = time.time()
     conn = psycopg2.connect(DB_URL)
@@ -901,18 +764,6 @@ def main():
             print("⚠ V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3 / V4_CAND_CLOSEBET2_2 후보가 없습니다. 06_signals.sql을 먼저 실행하세요.")
             conn.rollback()
             return
-
-        # 박스권매매 데이터 — SAVEPOINT로 격리해 실패해도 나머지 전략 계산은 그대로 진행
-        box_ok, box_info, box_mcaps = True, {}, {}
-        cur.execute("SAVEPOINT box_load")
-        try:
-            _index_rows, box_mcaps = load_box_data(cur)
-            box_info = build_box_info(_index_rows)
-            cur.execute("RELEASE SAVEPOINT box_load")
-        except Exception as e:
-            cur.execute("ROLLBACK TO SAVEPOINT box_load")
-            box_ok = False
-            print(f"   ⚠ 박스권 데이터 로드 실패 — 박스권매매는 건너뜁니다: {e}")
 
         all_days = sorted(closes.keys())
         first_cand_days = [min(candidates[s].keys()) for s in ("TREND", "CLOSEBET", "CLOSEBET2") if candidates[s]]
@@ -950,13 +801,11 @@ def main():
 
         open_trend, open_closebet, open_closebet2 = {}, {}, {}
         closed_trend, closed_closebet, closed_closebet2 = [], [], []
-        open_box, closed_box = {}, []
-        box_state = {"armed": True, "entry_index": None, "exiting": None}
         stopped_trend = set()
-        cum_realized = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0, "BOX": 0}
-        peak_equity = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0, "BOX": 0}
-        mdd_amount = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0, "BOX": 0}
-        max_invested = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0, "BOX": 0}
+        cum_realized = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
+        peak_equity = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
+        mdd_amount = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
+        max_invested = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
 
         regime_counts = {}
         day_seq = {d: i for i, d in enumerate(sim_days)}   # 타임 스톱용 거래일 순번
@@ -989,20 +838,9 @@ def main():
                 sig, allow_buy=True)
             closed_closebet2 += newly_c2
 
-            newly_b = []
-            if box_ok:
-                try:
-                    newly_b = process_day_box(day, open_box, box_state, box_info, dc, dh,
-                                              box_mcaps.get(day, {}), names, sig)
-                    closed_box += newly_b
-                except Exception as e:      # 박스권 오류가 다른 전략 계산을 막지 않도록 격리
-                    box_ok = False
-                    print(f"   ⚠ 박스권매매 처리 오류({day}) — 박스권 결과를 버리고 계속합니다: {e}")
-
             for label, newly, open_pos in (("TREND", newly_t, open_trend),
                                             ("CLOSEBET", newly_c, open_closebet),
-                                            ("CLOSEBET2", newly_c2, open_closebet2),
-                                            ("BOX", newly_b, open_box)):
+                                            ("CLOSEBET2", newly_c2, open_closebet2)):
                 cum_realized[label] += sum(p.realized_pnl or 0 for p in newly)
                 invested_open = sum(p.invested for p in open_pos.values())
                 unrealized = sum(p.quantity * dc[p.code] - p.invested
@@ -1012,16 +850,9 @@ def main():
                 mdd_amount[label] = min(mdd_amount[label], equity - peak_equity[label])
                 max_invested[label] = max(max_invested[label], invested_open)
 
-        if not box_ok:      # 오류로 중간에 멈췄다면 일부만 계산된 박스권 결과는 저장하지 않는다
-            open_box.clear()
-            closed_box.clear()
-            sig.rows = [r for r in sig.rows if r[2] not in BOX_SIGNAL_TYPES]
-            sig.keys = {k for k in sig.keys if k[2] not in BOX_SIGNAL_TYPES}
-
         v_rows = ([p.as_row() for p in closed_trend] + [p.as_row() for p in open_trend.values()] +
                   [p.as_row() for p in closed_closebet] + [p.as_row() for p in open_closebet.values()] +
-                  [p.as_row() for p in closed_closebet2] + [p.as_row() for p in open_closebet2.values()] +
-                  [p.as_row() for p in closed_box] + [p.as_row() for p in open_box.values()])
+                  [p.as_row() for p in closed_closebet2] + [p.as_row() for p in open_closebet2.values()])
 
         # ── REAL: 사용자 보유분 — peak 갱신·신호만, 신규매수 없음 ──────────
         cur.execute("""
@@ -1128,8 +959,8 @@ def main():
     def summarize(label, closed_all, open_pos, cand_dict):
         wins = [p for p in closed_all if (p.realized_pnl or 0) > 0]
         total_pnl = sum(p.realized_pnl or 0 for p in closed_all)
-        n_cand = sum(len(v) for v in cand_dict.values()) if cand_dict else 0
-        cand_days = [d for d in sim_days if cand_dict and cand_dict.get(d)]
+        n_cand = sum(len(v) for v in cand_dict.values())
+        cand_days = [d for d in sim_days if cand_dict.get(d)]
         print(f"\n{'='*64}\n[{label}] VIRTUAL 포트폴리오 결과  "
               f"({sim_days[0]} ~ {sim_days[-1]}, {len(sim_days)}거래일)\n{'='*64}")
         print(f"  총 포지션      : {len(closed_all) + len(open_pos):,}건 "
@@ -1142,9 +973,8 @@ def main():
             if max_invested[label]:
                 print(f"  자금대비 수익률: {total_pnl/max_invested[label]*100:+.1f}%")
                 print(f"  MDD            : {mdd_amount[label]/max_invested[label]*100:.1f}%")
-        if cand_dict is not None:
-            print(f"  후보 발생      : {len(cand_days)}/{len(sim_days)}일 · "
-                  f"일평균 {n_cand/len(sim_days):.2f}종목(3단계)")
+        print(f"  후보 발생      : {len(cand_days)}/{len(sim_days)}일 · "
+              f"일평균 {n_cand/len(sim_days):.2f}종목(3단계)")
 
     def detail_report(label, closed_all):
         """월별 실현손익 + 상/하위 5건 — --dry-run이어도 메모리 데이터만으로 출력."""
@@ -1179,12 +1009,6 @@ def main():
     detail_report("CLOSEBET", closed_closebet)
     summarize("CLOSEBET2", closed_closebet2, open_closebet2, candidates["CLOSEBET2"])
     detail_report("CLOSEBET2", closed_closebet2)
-    if box_ok:
-        summarize("BOX", closed_box, open_box, None)
-        detail_report("BOX", closed_box)
-        cycles = len({p.entry_date for p in closed_box} | {p.entry_date for p in open_box.values()})
-        print(f"  박스권 매수 사이클 : {cycles}회 · 현재 {'보유중' if open_box else '대기'} "
-              f"(재진입 {'가능' if box_state['armed'] else '대기(중간권 회복 필요)'})")
 
     by_type = {}
     for r in sig.rows:

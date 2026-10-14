@@ -115,6 +115,10 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 .tile .vl{font-size:20px;font-weight:680;letter-spacing:-.02em;line-height:1.15}
 
 /* 업종별 자금흐름 (수급동향 상단) */
+/* 오늘의 시장 — 지수 박스위치 게이지: 왼쪽 25% 하단권(파랑) · 오른쪽 25% 상단권(빨강) */
+.boxbar{position:relative;height:6px;border-radius:3px;margin:7px 0 2px;
+  background:linear-gradient(90deg,var(--down) 0 25%,var(--border) 25% 75%,var(--up) 75% 100%);opacity:.9}
+.boxbar i{position:absolute;top:-4px;width:3px;height:14px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
 .fsm-day{border:1px solid var(--border);border-radius:var(--r);padding:10px 10px 8px;margin-bottom:10px}
 .fsm-dh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
 .fsm-dh .dt{font-size:14px;font-weight:700}
@@ -621,6 +625,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <div class="tile"><div class="lb">KOSPI</div><div class="vl" id="tdKospi">–</div><div class="sub" id="tdKospiSub"></div></div>
       <div class="tile"><div class="lb">KOSDAQ</div><div class="vl" id="tdKosdaq">–</div><div class="sub" id="tdKosdaqSub"></div></div>
       <div class="tile"><div class="lb">시장 거래대금</div><div class="vl" id="tdAmt">–</div><div class="sub" id="tdAmtSub"></div></div>
+      <div class="tile"><div class="lb">KOSPI 10일 박스</div><div class="vl" id="tdBoxKospi">–</div><div class="boxbar" id="tdBoxKospiBar"></div><div class="sub" id="tdBoxKospiSub"></div></div>
+      <div class="tile"><div class="lb">KOSDAQ 10일 박스</div><div class="vl" id="tdBoxKosdaq">–</div><div class="boxbar" id="tdBoxKosdaqBar"></div><div class="sub" id="tdBoxKosdaqSub"></div></div>
       <div class="tile"><div class="lb">오늘 최다 순매수 주체</div><div class="vl" id="tdTopSubj">–</div><div class="sub" id="tdTopSubjSub"></div></div>
       <div class="tile"><div class="lb">외국인 순매수</div><div class="vl" id="tdForeign">–</div></div>
       <div class="tile"><div class="lb">기관합계 순매수</div><div class="vl" id="tdInst">–</div></div>
@@ -1027,13 +1033,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
 <!-- ═══════════ 전략 성과 ═══════════ -->
 <section id="v-perf" class="hide">
-  <div class="card" style="margin-top:16px"><h3>박스권매매 현황
-    <span class="r">코스피 10일 박스 · 하단 25%↓ 매수 · 상단 75%↑ 전량매도 · 진입지수 -10% 손절</span></h3>
-    <div class="tiles" id="boxTiles"><div class="load">불러오는 중…</div></div>
-    <div class="note" style="margin-top:8px">매수: 코스피 시총 상위 10종목 바스켓 · 종목당 2천만원 · 지수 종가 기준 신호(실제 주문은 종가 부근) · 손절 후엔 박스위치 50% 회복 전까지 재진입 대기</div>
-  </div>
-
-  <div class="card"><h3>전략별 요약 <span class="r">추세추종 · 종가베팅 · 종가베팅2 · 박스권 — 완전 독립 운용</span></h3>
+  <div class="card" style="margin-top:16px"><h3>전략별 요약 <span class="r">추세추종 · 종가베팅 · 종가베팅2 — 완전 독립 운용</span></h3>
     <div class="tw"><table><thead><tr>
       <th class="l">전략</th><th>총매수</th><th>총매도</th><th>실현손익</th><th>청산건수</th><th>보유중</th><th title="이 전략의 포지션이 마지막으로 계산·기록된 시각(KST)">업데이트</th>
     </tr></thead><tbody id="perfSummaryA"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
@@ -1081,7 +1081,6 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip strat" data-strat="TREND">추세추종</button>
       <button class="fchip strat" data-strat="CLOSEBET">종가베팅</button>
       <button class="fchip strat" data-strat="CLOSEBET2">종가베팅2</button>
-      <button class="fchip strat" data-strat="BOX">박스권</button>
     </div>
     <div class="chart" id="cPerfPnl"></div>
   </div>
@@ -1275,7 +1274,6 @@ function liveCellHtml(code){
 // 그 값을 우선 사용. 아직 해당 종목의 실시간 틱을 못 받았거나 DB 값이 더
 // 높으면(장 시작 직후 등) DB 값을 그대로 씀 — 절대 DB 값보다 낮게 보이지 않음.
 function sellTargetHtml(p,ep){
-  if(p.strategy==="BOX") return `<span class="faint">지수 박스 상단(≥75%) 매도 · 진입지수 -10% 손절</span>`;
   if(p.strategy!=="TREND") return `<span class="faint">익일시가 매도</span>`;
   const entry=+p.entry_price;
   const peak=ep.price||entry;
@@ -2640,13 +2638,26 @@ function computeTodayScore(r,ctx){
   if(cb>=3)reasons.push("연속양매수 3일+(신선도 낮음)");
   return {total,momentum,flow,sector,reasons:reasons.slice(0,3)};
 }
+// 2026-10-09: 지수 박스위치(오늘 종가가 최근 10거래일 종가 최저~최고 구간의 몇 % 위치인지).
+// 25% 이하=하단권, 75% 이상=상단권. 매매 전략이 아니라 시장 위치를 보는 참고 지표.
+function fillBoxTile(prefix,rows){
+  const vl=$("#"+prefix),bar=$("#"+prefix+"Bar"),sub=$("#"+prefix+"Sub");
+  const cl=rows.map(r=>+r.index_close).filter(v=>v>0);
+  if(cl.length<10){vl.textContent="–";bar.innerHTML="";sub.textContent="지수 데이터 부족";return;}
+  const cur=cl[0],lo=Math.min(...cl),hi=Math.max(...cl);
+  const pos=hi===lo?50:(cur-lo)/(hi-lo)*100;
+  const [lb,cls]=pos<=25?["하단권","down"]:pos>=75?["상단권","up"]:["중간","dim"];
+  vl.innerHTML=`<span class="${cls}">${lb}</span> ${N(pos,0)}%`;
+  bar.innerHTML=`<i style="left:${Math.min(100,Math.max(0,pos))}%"></i>`;
+  sub.textContent=`${N(lo,0)} ~ ${N(hi,0)}`;
+}
 async function loadToday(){
   try{
     $("#todayMktNote").textContent="불러오는 중…";
     // ── 1) 시장 요약 타일 ──
     const [mdKospi,mdKosdaq,amtRows,flowRow]=await Promise.all([
-      q("market_daily",`select=trade_date,index_close,regime&market=eq.KOSPI&order=trade_date.desc&limit=2`),
-      q("market_daily",`select=trade_date,index_close&market=eq.KOSDAQ&order=trade_date.desc&limit=2`),
+      q("market_daily",`select=trade_date,index_close,regime&market=eq.KOSPI&order=trade_date.desc&limit=10`),
+      q("market_daily",`select=trade_date,index_close&market=eq.KOSDAQ&order=trade_date.desc&limit=10`),
       q("v_market_amount_real","select=*&order=trade_date.desc&limit=1"),
       S.flowTrendRow?Promise.resolve(S.flowTrendRow):q("v_market_flow_periods","select=*").then(r=>r[0])
     ]);
@@ -2658,6 +2669,7 @@ async function loadToday(){
     $("#tdRegimeSub").textContent=S.date||"";
     const idxChg=(rows)=>rows.length>=2&&rows[1].index_close?((+rows[0].index_close/+rows[1].index_close-1)*100):null;
     const kospiChg=idxChg(mdKospi), kosdaqChg=idxChg(mdKosdaq);
+    fillBoxTile("tdBoxKospi",mdKospi); fillBoxTile("tdBoxKosdaq",mdKosdaq);
     $("#tdKospi").innerHTML=mdKospi[0]?.index_close?N(+mdKospi[0].index_close,2):"–";
     $("#tdKospiSub").innerHTML=kospiChg!=null?`<span class="${sgn(kospiChg)}">${pm(kospiChg,2)}%</span>`:"";
     $("#tdKosdaq").innerHTML=mdKosdaq[0]?.index_close?N(+mdKosdaq[0].index_close,2):"–";
@@ -3818,39 +3830,20 @@ async function loadPerf2(){
 }
 
 /* ══ 전략 성과 ══ */
-const STRAT_LABEL={TREND:"추세추종",CLOSEBET:"종가베팅",CLOSEBET2:"종가베팅2",BOX:"박스권",null:"–"};
-const STRAT_BADGE_CLS={TREND:"up",CLOSEBET:"down",CLOSEBET2:"warn",BOX:"good"};
+const STRAT_LABEL={TREND:"추세추종",CLOSEBET:"종가베팅",CLOSEBET2:"종가베팅2",null:"–"};
+const STRAT_BADGE_CLS={TREND:"up",CLOSEBET:"down",CLOSEBET2:"warn"};
 const stratBadge=s=>`<span class="${STRAT_BADGE_CLS[s]||"dim"}" style="font-size:10.5px;font-weight:700">${STRAT_LABEL[s]||"–"}</span>`;
 
-// 2026-10-09: 박스권매매 현황 — 코스피 최근 10거래일 종가로 박스위치 계산(엔진 06_portfolio.py와 같은 정의)
-async function loadBoxCard(op){
-  const host=$("#boxTiles");
-  try{
-    const rows=await q("market_daily","select=trade_date,index_close&market=eq.KOSPI&index_close=not.is.null&order=trade_date.desc&limit=10");
-    if(rows.length<10){host.innerHTML='<div class="load">지수 데이터 부족</div>';return;}
-    const cl=rows.map(r=>+r.index_close), cur=cl[0], lo=Math.min(...cl), hi=Math.max(...cl);
-    const pos=hi===lo?50:(cur-lo)/(hi-lo)*100;
-    const zone=pos<=25?["매수권","down"]:pos>=75?["매도권","up"]:["중립",""];
-    const held=(op||[]).filter(p=>p.strategy==="BOX");
-    const hd=held.length?`${held.length}종목 보유<div class="sub">진입 ${held[0].entry_date}</div>`:`대기<div class="sub">포지션 없음</div>`;
-    host.innerHTML=`
-      <div class="tile"><div class="lb">코스피 (${rows[0].trade_date.slice(5)})</div><div class="vl">${N(cur,2)}</div></div>
-      <div class="tile"><div class="lb">10일 박스</div><div class="vl" style="font-size:15px">${N(lo,0)} ~ ${N(hi,0)}</div></div>
-      <div class="tile"><div class="lb">박스위치</div><div class="vl ${zone[1]}">${N(pos,0)}%</div><div class="sub ${zone[1]}">${zone[0]}</div></div>
-      <div class="tile"><div class="lb">보유 상태</div><div class="vl" style="font-size:15px">${hd}</div></div>`;
-  }catch(e){host.innerHTML='<div class="load">불러오기 실패</div>';}
-}
 async function loadPerf(){
   try{
     const cl=await q("positions","select=*&portfolio=eq.VIRTUAL&status=eq.CLOSED&order=exit_date.desc&limit=500");
     const op=await q("positions","select=*&portfolio=eq.VIRTUAL&status=eq.OPEN&order=entry_date.asc");
     const nameOf={};S.codes.forEach(c=>nameOf[c.code]=c.name);
     S.perfClosed=cl; S.perfOpen=op; S.perfNameOf=nameOf;
-    loadBoxCard(op);
 
     // 보유 중 종목의 당일 종가 (미실현손익·수익률 계산용)
     const opCodes=[...new Set(op.map(p=>p.code))];
-    setSwingLiveCodes([...new Set(op.filter(p=>p.strategy!=="BOX").map(p=>p.code))]); // 박스권은 지수 타이밍이라 실시간 구독 제외; // KIS 실시간 시세 구독을 보유 종목에 맞춰 갱신
+    setSwingLiveCodes(opCodes); // KIS 실시간 시세 구독을 보유 종목에 맞춰 갱신
     S.lastClose={};
     if(opCodes.length){
       const cRows=await q("v_screener",
@@ -3860,13 +3853,13 @@ async function loadPerf(){
     const uPnl=p=>{const c=S.lastClose[p.code];return c?Math.round(+p.quantity*c-+p.invested):null;};
 
     // 보유 중 종목의 매수 사유 (진입일 신규매수 신호의 reason_text에서 간략 추출)
-    const BUY_SIGTYPE={TREND:"V4_BUY_TREND",CLOSEBET:"V4_BUY_CLOSEBET",CLOSEBET2:"V4_BUY_CLOSEBET2",BOX:"V4_BUY_BOX"};
+    const BUY_SIGTYPE={TREND:"V4_BUY_TREND",CLOSEBET:"V4_BUY_CLOSEBET",CLOSEBET2:"V4_BUY_CLOSEBET2"};
     S.openReason={};
     if(op.length){
       const opDates=[...new Set(op.map(p=>p.entry_date))];
       const rRows=await q("signals",
         `select=code,trade_date,signal_type,reason_text&trade_date=in.(${opDates.join(",")})`+
-        `&code=in.(${opCodes.join(",")})&signal_type=in.(V4_BUY_TREND,V4_BUY_CLOSEBET,V4_BUY_CLOSEBET2,V4_BUY_BOX)`);
+        `&code=in.(${opCodes.join(",")})&signal_type=in.(V4_BUY_TREND,V4_BUY_CLOSEBET,V4_BUY_CLOSEBET2)`);
       rRows.forEach(r=>{S.openReason[`${r.code}_${r.trade_date}_${r.signal_type}`]=r.reason_text||"";});
     }
     const buyReasonShort=p=>{
@@ -3880,7 +3873,7 @@ async function loadPerf(){
       cl: cl.filter(p=>p.strategy===strat), op: op.filter(p=>p.strategy===strat)
     });
     const rowsA=[], rowsB=[];
-    for(const strat of ["TREND","CLOSEBET","CLOSEBET2","BOX"]){
+    for(const strat of ["TREND","CLOSEBET","CLOSEBET2"]){
       const {cl:c,op:o}=bystrat(strat);
       const pnl=c.reduce((a,b)=>a+ +b.realized_pnl,0);
       const win=c.filter(p=>+p.realized_pnl>0);
@@ -3904,7 +3897,7 @@ async function loadPerf(){
 
     // ── 전략별 미실현손익 요약 ──────────────────────────────────────────
     const rowsC=[];
-    for(const strat of ["TREND","CLOSEBET","CLOSEBET2","BOX"]){
+    for(const strat of ["TREND","CLOSEBET","CLOSEBET2"]){
       const o=op.filter(p=>p.strategy===strat);
       const priced=o.filter(p=>S.lastClose[p.code]);
       const invested=o.reduce((a,b)=>a+ +b.invested,0);
@@ -3933,7 +3926,7 @@ async function loadPerf(){
       <td class="l">${stratBadge(p.strategy)}</td>
       <td>${p.entry_date}</td><td class="opt">${N(+p.entry_price)}</td><td class="opt">${N(+p.avg_price)}</td>
       <td class="opt">${p.tranches}</td><td>${p.exit_date}</td><td>${N(+p.exit_price)}</td>
-      <td class="opt faint">${p.exit_reason==="CRASH_STOP_10"?"급락 -10%":p.exit_reason==="NEXT_OPEN_EXIT"?"익일시가":p.exit_reason==="BOX_TOP"?"지수 박스 상단":p.exit_reason==="BOX_STOP"?"지수 -10% 손절":p.exit_reason==="BREAKEVEN_STOP"?"손익분기 보호":p.exit_reason==="TIME_STOP"?"타임 스톱(4일)":/^TRAIL_STOP_\d+$/.test(p.exit_reason||"")?`트레일링 -${p.exit_reason.match(/\d+/)[0]}%`:"트레일링"}</td>
+      <td class="opt faint">${p.exit_reason==="CRASH_STOP_10"?"급락 -10%":p.exit_reason==="NEXT_OPEN_EXIT"?"익일시가":p.exit_reason==="BREAKEVEN_STOP"?"손익분기 보호":p.exit_reason==="TIME_STOP"?"타임 스톱(4일)":/^TRAIL_STOP_\d+$/.test(p.exit_reason||"")?`트레일링 -${p.exit_reason.match(/\d+/)[0]}%`:"트레일링"}</td>
       <td class="${sgn(+p.realized_pnl)}">${pm(+p.realized_pnl,0)}</td>
       <td class="${sgn(+p.return_pct)}">${pm(+p.return_pct)}%</td></tr>`).join("")
       :'<tr><td colspan="11" class="load">청산 이력 없음</td></tr>';
