@@ -119,6 +119,25 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 .boxbar{position:relative;height:6px;border-radius:3px;margin:7px 0 2px;
   background:linear-gradient(90deg,var(--down) 0 25%,var(--border) 25% 75%,var(--up) 75% 100%);opacity:.9}
 .boxbar i{position:absolute;top:-4px;width:3px;height:14px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
+/* 자금 이동 타임라인 (수급동향 최상단) */
+.tl-tabs{display:flex;gap:6px;margin:2px 0 8px}
+.tl-tabs button{flex:1;padding:7px 4px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--ink-3);font-size:12.5px;cursor:pointer}
+.tl-tabs button.on{background:var(--ink);color:var(--surface);border-color:var(--ink);font-weight:600}
+.tl-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--ink-3);margin:0 2px 4px}
+.tl-legend span{display:inline-flex;align-items:center;gap:4px}
+.tl-legend i{display:inline-block}
+.tl-sub{font-size:12.5px;font-weight:700;margin:12px 0 6px}
+.tl-chart{position:relative}
+.tl-grid{display:grid;grid-template-columns:82px repeat(5,1fr);gap:3px}
+.tl-hd{font-size:11px;text-align:center;color:var(--ink-3);padding:2px 0 4px;line-height:1.35}
+.tl-hd b{display:block;color:var(--ink);font-size:12px}
+.tl-rl{display:flex;flex-direction:column;justify-content:center;font-size:12px;font-weight:600;padding-right:4px;min-height:42px;line-height:1.25}
+.tl-rl small{font-size:10px;color:var(--ink-3);font-weight:400}
+.tl-cell{position:relative;min-height:42px;border-radius:6px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;font-size:11px;font-weight:600}
+.tl-v{position:relative;z-index:2;text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 2px var(--surface)}
+.tl-cell.tb{box-shadow:inset 0 0 0 2px var(--up)}
+.tl-cell.ts{box-shadow:inset 0 0 0 2px var(--down)}
+svg.tl-paths{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 .fsm-day{border:1px solid var(--border);border-radius:var(--r);padding:10px 10px 8px;margin-bottom:10px}
 .fsm-dh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
 .fsm-dh .dt{font-size:14px;font-weight:700}
@@ -694,7 +713,20 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
 <!-- ═══════════ 수급 동향 ═══════════ -->
 <section id="v-flow" class="hide">
-  <div class="card" style="margin-top:16px"><h3>업종별 자금흐름
+  <div class="card" style="margin-top:16px"><h3>자금 이동 타임라인
+    <span class="r">최근 5거래일 · 거래대금 상위 10개 업종 · 칸 = 순매수(억원)</span></h3>
+    <div class="tl-tabs" id="tlTabs"><button data-m="all" class="on">전체</button><button data-m="KOSPI">코스피</button><button data-m="KOSDAQ">코스닥</button></div>
+    <div class="tl-legend">
+      <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--up) 45%,transparent)"></i> 순매수</span>
+      <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--down) 45%,transparent)"></i> 순매도</span>
+      <span><i style="width:18px;border-top:3px solid var(--up)"></i> 매수1위 업종 이동(테두리 칸)</span>
+      <span><i style="width:18px;border-top:3px dashed var(--down)"></i> 매도1위 업종 이동(테두리 칸)</span>
+    </div>
+    <div id="tlBody"><div class="load">불러오는 중…</div></div>
+    <div class="note" style="margin-top:8px">추적 종목 기준 · 업종 아래 숫자 = 5일 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
+  </div>
+
+  <div class="card"><h3>업종별 자금흐름
     <span class="r">최근 5거래일 · 시장별 주요 업종을 어느 주체가 샀는지 · 업종 터치 = 그날 종목별 순매수(등락률 순)</span></h3>
     <div id="fsmBody"><div class="load">불러오는 중…</div></div>
     <div class="note" style="margin-top:8px">시장 거래대금은 시장 전체(KIS), 업종 표는 추적 종목 기준 · 억원 · 색칠 칸 = 그 업종 최대 순매수 주체</div>
@@ -1882,7 +1914,7 @@ function go(v,detailCode){
   if(v==="perf2")loadPerf2();
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);})}
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
-    Promise.all([loadFlowTrends(),loadFlowLists(),loadFlowSectorMap()]).catch(()=>{});}
+    Promise.all([loadFlowTrends(),loadFlowLists(),loadFlowSectorMap(),loadFlowTimeline()]).catch(()=>{});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
   if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
   redraw(detailJustLoaded);
@@ -2180,12 +2212,74 @@ async function toggleFsmSector(tr){
     });
   }catch(e){ph.innerHTML='<td colspan="5" class="load">불러오기 실패</td>';}
 }
+/* ── 자금 이동 타임라인 (수급동향 최상단) ─────────────────────────────────
+   최근 5거래일 × 거래대금 상위 10개 업종 × 주체(외국인/기관합계) 순매수. 시장 탭(전체/코스피/코스닥).
+   데이터는 업종별 자금흐름 카드와 같은 v_sector_flow_market(최근 10 실거래일) — 한 번만 조회해 공유. */
+function getFsmRows(){
+  return S._fsmRowsP||(S._fsmRowsP=q("v_sector_flow_market","select=*").catch(e=>{S._fsmRowsP=null;throw e;}));
+}
+const TL_SUBJ=[["foreign_net","외국인","tlForeign"],["inst_net","기관합계","tlInst"]];
+async function loadFlowTimeline(){
+  try{S.tlRows=await getFsmRows();renderFlowTimeline();}
+  catch(e){$("#tlBody").innerHTML='<div class="load">불러오기 실패</div>';}
+}
+function renderFlowTimeline(){
+  const host=$("#tlBody"),mk=S.tlMkt||"all",rows=S.tlRows||[],WD=["일","월","화","수","목","금","토"];
+  const wd=d=>new Date(d+"T00:00:00+09:00").getDay();
+  const dates=[...new Set(rows.map(r=>r.trade_date))].filter(d=>wd(d)>=1&&wd(d)<=5).sort().slice(-5);
+  if(!dates.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
+  const sc=rows.filter(r=>dates.includes(r.trade_date)&&(mk==="all"||r.market===mk));
+  const amtBy={};sc.forEach(r=>{amtBy[r.sector]=(amtBy[r.sector]||0)+(+r.trade_amount||0);});
+  const secs=Object.keys(amtBy).sort((a,b)=>amtBy[b]-amtBy[a]).slice(0,10);
+  const parts=TL_SUBJ.map(([key,label,id])=>{
+    const cell={},dayTot={};
+    sc.forEach(r=>{const v=+r[key]||0,k=r.sector+"|"+r.trade_date;cell[k]=(cell[k]||0)+v;dayTot[r.trade_date]=(dayTot[r.trade_date]||0)+v;});
+    const val=(s,d)=>cell[s+"|"+d]||0;
+    const maxAbs=Math.max(1,...secs.flatMap(s=>dates.map(d=>Math.abs(val(s,d)))));
+    const topBuy=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)>val(secs[b],d))b=i;});return b;});
+    const topSell=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)<val(secs[b],d))b=i;});return b;});
+    let h=`<div class="tl-sub">${label} 순매수</div><div class="tl-chart" id="${id}"><div class="tl-grid"><div></div>`
+      +dates.map(d=>`<div class="tl-hd"><b>${d.slice(5).replace("-","/")}(${WD[wd(d)]})</b><span class="${sgn(dayTot[d]||0)}">${pm((dayTot[d]||0)/EOK,0)}</span></div>`).join("");
+    secs.forEach((s,i)=>{
+      h+=`<div class="tl-rl">${s}<small>5일 ${N(amtBy[s]/EOK,0)}억</small></div>`;
+      dates.forEach((d,c)=>{
+        const v=val(s,d),pct=Math.round(10+55*Math.abs(v)/maxAbs);
+        const cls=topBuy[c]===i?" tb":topSell[c]===i?" ts":"";
+        h+=`<div class="tl-cell${cls}" data-r="${i}" data-c="${c}" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${pm(v/EOK,0)}</span></div>`;
+      });
+    });
+    return {html:h+'</div><svg class="tl-paths"></svg></div>',tops:{topBuy,topSell,id}};
+  });
+  host.innerHTML=parts.map(x=>x.html).join("");
+  S.tlTops=parts.map(x=>x.tops);
+  requestAnimationFrame(drawTimelinePaths);
+}
+function drawTimelinePaths(){
+  (S.tlTops||[]).forEach(({topBuy,topSell,id})=>{
+    const chart=document.getElementById(id);
+    if(!chart||!chart.offsetParent)return;            // 숨겨진 탭이면 그리지 않음(보일 때 다시 그려짐)
+    const svg=chart.querySelector("svg.tl-paths"),ca=chart.getBoundingClientRect();
+    const ctr=(r,c)=>{const el=chart.querySelector(`.tl-cell[data-r="${r}"][data-c="${c}"]`);
+      if(!el)return null;const b=el.getBoundingClientRect();return [b.left-ca.left+b.width/2,b.top-ca.top+11];};
+    const poly=(rows,col,dash)=>{
+      const pts=rows.map((r,c)=>ctr(r,c)).filter(Boolean);if(pts.length<2)return"";
+      const d=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1)).join(" ");
+      return `<path d="${d}" fill="none" stroke="var(${col})" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"${dash?' stroke-dasharray="6 5"':""} opacity=".9"/>`
+        +pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4" fill="var(${col})" stroke="var(--surface)" stroke-width="1.5"/>`).join("");
+    };
+    svg.innerHTML=poly(topSell,"--down",true)+poly(topBuy,"--up",false);
+  });
+}
+$$("#tlTabs button").forEach(b=>b.onclick=()=>{
+  S.tlMkt=b.dataset.m;$$("#tlTabs button").forEach(x=>x.classList.toggle("on",x===b));renderFlowTimeline();
+});
+addEventListener("resize",()=>{drawTimelinePaths();});
 /* 업종별 자금흐름(수급동향 상단): 최근 5거래일 × 시장(코스피/코스닥) × 주요 업종 × 4개 주체 */
 async function loadFlowSectorMap(){
   const host=$("#fsmBody");
   try{
     const [rows,mk]=await Promise.all([
-      q("v_sector_flow_market","select=*"),
+      getFsmRows(),
       q("market_daily","select=trade_date,market,index_amount&market=in.(KOSPI,KOSDAQ)&order=trade_date.desc&limit=14")
     ]);
     // 휴장일(공휴일·주말) 제외 — 뷰가 KOSPI 지수 데이터가 있는 평일만 주지만, 화면에서도 한 번 더 걸러 5영업일로 구성
