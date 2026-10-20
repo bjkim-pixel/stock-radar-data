@@ -135,6 +135,11 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 .tl-rl small{font-size:10px;color:var(--ink-3);font-weight:400}
 .tl-cell{position:relative;min-height:42px;border-radius:6px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;font-size:11px;font-weight:600}
 .tl-v{position:relative;z-index:2;text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 2px var(--surface)}
+.tl-cell{cursor:pointer}
+.tl-cell.sel{outline:2px solid var(--ink);outline-offset:-2px}
+.tl-detail{margin:8px 0 0}
+.tl-detail .fsm-dh .dt{font-size:13px}
+.tl-detail .fsm-dh a{font-size:11px;color:var(--ink-3);cursor:pointer}
 .tl-cell.tb{box-shadow:inset 0 0 0 2px var(--up)}
 .tl-cell.ts{box-shadow:inset 0 0 0 2px var(--down)}
 svg.tl-paths{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;overflow:visible}
@@ -723,7 +728,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <span><i style="width:18px;border-top:3px dashed var(--down)"></i> 매도1위 업종 이동(테두리 칸)</span>
     </div>
     <div id="tlBody"><div class="load">불러오는 중…</div></div>
-    <div class="note" style="margin-top:8px">추적 종목 기준 · 업종 아래 숫자 = 5일 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
+    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 5일 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
   </div>
 
   <div class="card"><h3>업종별 자금흐름
@@ -2252,6 +2257,7 @@ function renderFlowTimeline(){
   });
   host.innerHTML=parts.map(x=>x.html).join("");
   S.tlTops=parts.map(x=>x.tops);
+  S.tlMeta={secs,dates,mk};
   requestAnimationFrame(drawTimelinePaths);
 }
 function drawTimelinePaths(){
@@ -2274,6 +2280,59 @@ $$("#tlTabs button").forEach(b=>b.onclick=()=>{
   S.tlMkt=b.dataset.m;$$("#tlTabs button").forEach(x=>x.classList.toggle("on",x===b));renderFlowTimeline();
 });
 addEventListener("resize",()=>{drawTimelinePaths();});
+/* 칸(업종×날짜) 터치 → 차트 바로 아래에 그날·그 업종 종목별 거래대금·등락률·4개 주체 순매수(등락률 순).
+   업종별 자금흐름 카드의 펼침과 같은 형태. 맨 위 '업종 합계'는 누른 칸 숫자와 같은 값(종목 합). */
+async function tlOpenDetail(chartId,r,c){
+  const meta=S.tlMeta;if(!meta)return;
+  const sec=meta.secs[r],date=meta.dates[c],mk=meta.mk,key=`${chartId}|${r}|${c}`;
+  const old=$(".tl-detail");
+  const same=old&&old.dataset.key===key;
+  if(old)old.remove();
+  $$("#tlBody .tl-cell.sel").forEach(x=>x.classList.remove("sel"));
+  if(same)return;                                        // 같은 칸을 다시 누르면 닫기
+  const cellEl=$(`#${chartId} .tl-cell[data-r="${r}"][data-c="${c}"]`);if(cellEl)cellEl.classList.add("sel");
+  const panel=document.createElement("div");
+  panel.className="fsm-day tl-detail";panel.dataset.key=key;
+  panel.innerHTML='<div class="load">불러오는 중…</div>';
+  $("#"+chartId).after(panel);
+  try{
+    S._tlFlow=S._tlFlow||{};
+    const flowP=S._tlFlow[date]||(S._tlFlow[date]=q("daily_flow",`select=code,foreign_net,inst_net,corp_other_net,individual_net&trade_date=eq.${date}`));
+    const mq=mk==="all"?"&market=in.(KOSPI,KOSDAQ)":`&market=eq.${mk}`;
+    const [stk,fl]=await Promise.all([
+      q("v_sector_stocks",`select=code,name,market,change_pct,trade_amount&trade_date=eq.${date}${mq}&sector=eq.${encodeURIComponent(sec)}&order=change_pct.desc.nullslast`),
+      flowP.catch(e=>{delete S._tlFlow[date];throw e;})
+    ]);
+    if(!panel.isConnected)return;                          // 그 사이 닫혔거나 탭이 바뀐 경우
+    const fm={};fl.forEach(f=>fm[f.code]=f);
+    const KEYS=["foreign_net","inst_net","corp_other_net","individual_net"];
+    const nets=code=>KEYS.map(k=>+((fm[code]||{})[k])||0);
+    const cells=v=>{const mx=Math.max(...v);return v.map(x=>`<td class="${sgn(x)}${x===mx&&mx>0?" hl":""}">${pm(x/EOK,0)}</td>`).join("");};
+    const WD=["일","월","화","수","목","금","토"],dt=new Date(date+"T00:00:00+09:00");
+    const mkLb=mk==="all"?"전체":mk==="KOSPI"?"코스피":"코스닥";
+    const tot=KEYS.map((_,i)=>stk.reduce((a,x)=>a+nets(x.code)[i],0));
+    const SHOW=10,top=stk.slice(0,SHOW),rest=stk.slice(SHOW);
+    let body=top.map(x=>`<tr class="fsm-st"><td class="sec"><a class="lk nm" data-code="${x.code}">${mk==="all"?`<span class="cd">${x.market==="KOSPI"?"피":"닥"}</span> `:""}${x.name}</a>
+      <span class="a2">${N(+x.trade_amount/EOK,0)}억 · <span class="${sgn(+x.change_pct)}">${pm(+x.change_pct,1)}%</span></span></td>${cells(nets(x.code))}</tr>`).join("");
+    if(rest.length){
+      const rs=KEYS.map((_,i)=>rest.reduce((a,x)=>a+nets(x.code)[i],0));
+      body+=`<tr class="fsm-st"><td class="sec"><span class="a2" style="margin:0">외 ${rest.length}종목 합계</span></td>${cells(rs)}</tr>`;
+    }
+    if(!stk.length)body='<tr class="fsm-st"><td colspan="5" class="load">구성 종목 없음</td></tr>';
+    panel.innerHTML=`<div class="fsm-dh"><span class="dt">${date.slice(5).replace("-","/")}(${WD[dt.getDay()]}) ${sec}<small>${mkLb} · 등락률 순</small></span><a data-close="1">닫기 ✕</a></div>
+      <table><thead><tr><th>종목</th><th>외국인</th><th>기관합계</th><th>기타기관</th><th>개인</th></tr>
+      <tr class="fsm-tot"><td class="sec">업종 합계<span class="a2">${stk.length}종목</span></td>${cells(tot)}</tr></thead><tbody>${body}</tbody></table>
+      <div class="fsm-more" style="padding:6px 2px 0"><a data-all="1" style="font-size:11px;color:var(--ink-3);cursor:pointer">${sec} 업종 전체 흐름·주체별 누적 차트 보기 →</a></div>`;
+    panel.querySelectorAll("a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+    panel.querySelector("a[data-all]").onclick=()=>goSectorStocks(sec);
+    panel.querySelector("a[data-close]").onclick=()=>{panel.remove();$$("#tlBody .tl-cell.sel").forEach(x=>x.classList.remove("sel"));};
+  }catch(e){panel.innerHTML='<div class="load">불러오기 실패</div>';}
+}
+$("#tlBody").addEventListener("click",e=>{
+  const cell=e.target.closest(".tl-cell");if(!cell)return;
+  const chart=cell.closest(".tl-chart");if(!chart)return;
+  tlOpenDetail(chart.id,+cell.dataset.r,+cell.dataset.c);
+});
 /* 업종별 자금흐름(수급동향 상단): 최근 5거래일 × 시장(코스피/코스닥) × 주요 업종 × 4개 주체 */
 async function loadFlowSectorMap(){
   const host=$("#fsmBody");
