@@ -1459,7 +1459,12 @@ function setSwingLiveCodes(codes){ S.swingWanted=new Set(codes); reconcileLiveSu
 function setSangttaLiveCodes(codes){ S.sangttaWanted=new Set(codes); reconcileLiveSubscription(); }
 
 /* ══ 테이블 정렬 ═══════════════════════════════════════════════════ */
-function sortVal(txt){
+function sortVal(txt,el){
+  // data-sort-val 속성이 있으면 텍스트 파싱 없이 그 숫자값을 바로 씀
+  // (fmtEokJo처럼 단위가 바뀌는 컬럼: "1억원"과 "1조원"이 둘 다 parseFloat→1 이 되는 문제 방지)
+  if(el&&el.dataset&&el.dataset.sortVal!=null&&el.dataset.sortVal!==""){
+    const v=parseFloat(el.dataset.sortVal);if(!isNaN(v))return v;
+  }
   const s=txt.trim().replace(/\s*\([^)]*\)/g,'').replace(/,/g,'').trim();
   if(!s||s==='–'||s==='-')return null;
   const n=parseFloat(s);return isNaN(n)?s.toLowerCase():n;
@@ -1486,8 +1491,8 @@ function makeSortable(tbodyId){
       const rows=[...tbody.querySelectorAll('tr')];
       if(rows.length===1&&rows[0].querySelector('td[colspan]'))return;
       rows.sort((a,b)=>{
-        const av=sortVal(a.querySelectorAll('td')[ci]?.textContent||'');
-        const bv=sortVal(b.querySelectorAll('td')[ci]?.textContent||'');
+        const av=sortVal(a.querySelectorAll('td')[ci]?.textContent||'',a.querySelectorAll('td')[ci]);
+        const bv=sortVal(b.querySelectorAll('td')[ci]?.textContent||'',b.querySelectorAll('td')[ci]);
         if(av===null&&bv===null)return 0;if(av===null)return 1;if(bv===null)return -1;
         if(typeof av==='number'&&typeof bv==='number')return asc?bv-av:av-bv;
         return asc?String(bv).localeCompare(String(av),'ko'):String(av).localeCompare(String(bv),'ko');
@@ -3175,7 +3180,7 @@ async function runScreener(){
       <td class="opt">${topBuyer(r,"1m")}</td>
       <td class="opt ${sgn((+r.foreign_2m||0)+(+r.inst_2m||0))}">${(r.foreign_2m==null&&r.inst_2m==null)?"–":pm(((+r.foreign_2m||0)+(+r.inst_2m||0))/EOK,0)+"억"}</td>
       <td class="opt">${topBuyer(r,"2m")}</td>
-      <td class="grp opt">${fmtEokJo(r.above_high_supply_eok)}</td>
+      <td class="grp opt" data-sort-val="${r.above_high_supply_eok??''}">${fmtEokJo(r.above_high_supply_eok)}</td>
       <td class="${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
       <td class="${sgn(+r.inst_net)}">${flowAmtRankCell(r.inst_net,r.inst_rank,r.inst_total)}</td>
       <td class="opt ${sgn(+r.fin_inv_net)}">${flowAmtRankCell(r.fin_inv_net,r.fin_inv_rank,r.fin_inv_total)}</td>
