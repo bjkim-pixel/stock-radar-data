@@ -709,6 +709,29 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
   </div>
 
+  <div class="card" style="margin-top:12px"><h3>기준별 강한 종목 Top 10
+    <span class="r">오늘 이 기준으로 가장 강했던 종목 · 칩 선택으로 기준 전환</span></h3>
+    <div id="tdTopChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px">
+      <button class="fchip on" data-crit="rs_accel">RS 가속</button>
+      <button class="fchip" data-crit="rs5">RS5 상위</button>
+      <button class="fchip" data-crit="rs20">RS20 상위</button>
+      <button class="fchip" data-crit="newhigh">52주 신고가</button>
+      <button class="fchip" data-crit="nearhigh">신고가 근접</button>
+      <button class="fchip" data-crit="aligned">정배열 강세</button>
+      <button class="fchip" data-crit="vol_surge">거래대금 급증</button>
+      <button class="fchip" data-crit="fg_inst_ratio">외+기 시총비율</button>
+      <button class="fchip" data-crit="overhead_light">위쪽 매물대 가벼운</button>
+      <button class="fchip" data-crit="close_top">고가 마감</button>
+      <button class="fchip" data-crit="cluster">클러스터 업종</button>
+    </div>
+    <div id="tdTopCritNote" style="font-size:11px;color:var(--ink-3);margin-bottom:6px"></div>
+    <div class="tw tw-rank" id="tdTopWrap"><table><thead><tr>
+      <th class="l">#</th><th class="l">종목</th><th class="l opt">업종</th>
+      <th>등락률</th><th class="opt">거래대금</th><th id="tdTopKeyHd">기준값</th>
+    </tr></thead><tbody id="tdTopBody"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세</div>
+  </div>
+
   <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 35(당일 등락률·무게/주식수·개별RS) · 수급 35(당일 실측 외국인+기관·프로그램·공통매수) · 섹터 20(섹터RS 1위 최고점) · 단발성 급등·거래량 과열 감점 (백테스트 미검증 참고용 휴리스틱, 투자 조언 아님)</span></h3>
     <div class="tw tw-scroll tw-rank"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>스코어</th><th class="opt">모멘텀</th><th class="opt">수급</th><th class="opt">섹터</th>
@@ -2876,6 +2899,9 @@ async function loadToday(){
 
     // ── 3) 오늘 강했던 종목 ──
     renderTodayMomentum(universe);
+    S.tdUniverse=universe; S.tdTopCrit=S.tdTopCrit||"rs_accel";
+    loadTodayClusterSectors().then(()=>renderTodayTop(universe));
+    renderTodayTop(universe);
 
     // ── 4) 수급 주체별 매수 상위 종목 ──
     S.tdFlowSort=S.tdFlowSort||"amt";
@@ -3004,6 +3030,56 @@ function renderTodayFlow(raw){
   $$("#tdFlowBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
   makeSortable("tdFlowBody");
 }
+/* ── 기준별 강한 종목 Top 10 ─────────────────────────────────────────────
+   오늘의 종목 페이지에서 특정 기준으로 가장 강한 종목 10개를 보여줍니다.
+   universe는 loadFlowRawData() + todayLiqOk 필터를 이미 통과한 동일한 데이터라
+   추가 조회 없이 사용할 수 있습니다.
+   · RS 가속: RS5 백분위 − RS20 백분위가 큰 순(이번 주에 막 강해지기 시작한 종목)
+   · 외+기 시총비율: (외국인+기관합계 당일 순매수) ÷ 시총 × 100
+   · 클러스터 업종: 오늘 감지된 클러스터 업종(4종목↑ +5%↑ 동반) 소속 종목 등락률 순 */
+const TD_TOP_CRITERIA={
+  rs_accel:  {lbl:"RS 가속",        note:"RS5 백분위 − RS20 백분위 (이번 주에 막 강해진 종목)",            keyFn:r=>(r.rs5_pctl!=null&&r.rs20_pctl!=null)?(100-+r.rs5_pctl)-(100-+r.rs20_pctl):null, keyFmt:v=>pm(v,0)+"p",    dir:1},
+  rs5:       {lbl:"RS5 상위",       note:"최근 5일 시장 대비 초과 강도 백분위 (상위일수록 강함)",           keyFn:r=>r.rs5_pctl!=null?+r.rs5_pctl:null,   keyFmt:(v)=>pctlLabel(v),                dir:-1},
+  rs20:      {lbl:"RS20 상위",      note:"최근 20일 시장 대비 초과 강도 백분위 (상위일수록 강함)",          keyFn:r=>r.rs20_pctl!=null?+r.rs20_pctl:null, keyFmt:(v)=>pctlLabel(v),                dir:-1},
+  newhigh:   {lbl:"52주 신고가",    note:"오늘 52주 신고가 갱신 종목 — 거래대금 순",                        keyFn:r=>(r.is_new_high_all||r.is_new_high)?+r.trade_amount:null, keyFmt:v=>N(v/EOK,0)+"억", dir:1},
+  nearhigh:  {lbl:"신고가 근접",    note:"신고가 −3% 이내 + 종가위치 80% 이상 (돌파 직전 대기)",           keyFn:r=>r.pct_from_high!=null&&+r.pct_from_high>=-3&&+r.close_pos_pct>=80?+r.close_pos_pct:null, keyFmt:v=>N(v,0)+"%", dir:1},
+  aligned:   {lbl:"정배열 강세",    note:"정배열(종가>MA5>MA20>MA60>MA120) 종목 중 RS20 상위",            keyFn:r=>todayAligned(r)&&r.rs20_vs_mkt!=null?+r.rs20_vs_mkt:null, keyFmt:v=>pm(v,1)+"%p", dir:1},
+  vol_surge: {lbl:"거래대금 급증",  note:"오늘 거래대금 ÷ 20일 평균 % (대금이 갑자기 몰린 종목 순)",       keyFn:r=>r.vol_ratio20_prev!=null?+r.vol_ratio20_prev:null, keyFmt:v=>N(v,0)+"%", dir:1},
+  fg_inst_ratio:{lbl:"외+기 시총비율", note:"(외국인+기관합계 순매수) ÷ 시총 × 100 — 대형주 편향 없애기", keyFn:r=>+r.market_cap>0&&(+r.foreign_net||0)+(+r.inst_net||0)>0?(((+r.foreign_net||0)+(+r.inst_net||0))/(+r.market_cap)*100):null, keyFmt:v=>pm(v,3)+"%", dir:1},
+  overhead_light:{lbl:"위쪽 매물대 가벼운", note:"+2% 이상 강세 중 위쪽 매물대 ÷ 시총 % 가장 작은 순 (저항 적음)", keyFn:r=>+r.change_pct>=2&&r.above_high_supply_eok!=null&&+r.market_cap>0?(+r.above_high_supply_eok*EOK/(+r.market_cap)*100):null, keyFmt:v=>N(v,2)+"%", dir:-1},
+  close_top: {lbl:"고가 마감",      note:"당일 고저 범위에서 종가 위치 90% 이상 — 장중 안 밀리고 강하게 마감", keyFn:r=>r.close_pos_pct!=null&&+r.close_pos_pct>=90?+r.change_pct:null, keyFmt:v=>pm(v,1)+"%", dir:1},
+  cluster:   {lbl:"클러스터 업종",  note:"오늘 감지된 클러스터 업종(같은 업종 4종목↑ +5%↑ 동반) 소속 종목", keyFn:r=>S.tdClusterSectors&&S.tdClusterSectors.has(r.sector)?+r.change_pct:null, keyFmt:v=>pm(v,1)+"%", dir:1},
+};
+function renderTodayTop(universe){
+  const crit=S.tdTopCrit||"rs_accel", def=TD_TOP_CRITERIA[crit];
+  if(!def)return;
+  $("#tdTopKeyHd").textContent=def.lbl;
+  $("#tdTopCritNote").textContent=def.note;
+  $$("#tdTopChips .fchip").forEach(b=>b.classList.toggle("on",b.dataset.crit===crit));
+  const sorted=[...universe].filter(r=>def.keyFn(r)!=null)
+    .sort((a,b)=>def.dir===1?def.keyFn(b)-def.keyFn(a):def.keyFn(a)-def.keyFn(b)).slice(0,10);
+  const mk=r=>r.market==="KOSPI"?'<span class="cd">피</span> ':'<span class="cd">닥</span> ';
+  $("#tdTopBody").innerHTML=sorted.length?sorted.map((r,i)=>`
+    <tr><td class="l rank">${i+1}</td>
+      <td class="l"><a class="lk nm" data-code="${r.code}">${mk(r)}${r.name}</a></td>
+      <td class="l opt faint" style="font-size:11px">${r.sector||"–"}</td>
+      <td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
+      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
+      <td><b>${def.keyFmt(def.keyFn(r),r)}</b></td></tr>`).join("")
+  :`<tr><td colspan="6" class="load">해당 종목 없음</td></tr>`;
+  $$("#tdTopBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+  makeSortable("tdTopBody");
+}
+async function loadTodayClusterSectors(){
+  try{
+    const rows=await q("v_sector_cluster",`select=sector_krx&trade_date=eq.${S.date}`);
+    S.tdClusterSectors=new Set(rows.map(r=>r.sector_krx));
+  }catch(e){ S.tdClusterSectors=new Set(); }
+}
+$$("#tdTopChips .fchip").forEach(b=>b.onclick=()=>{
+  S.tdTopCrit=b.dataset.crit;
+  if(S.tdUniverse)renderTodayTop(S.tdUniverse);
+});
 function renderTodayScoreTable(scored){
   $("#tdScoreBody").innerHTML=scored.length?scored.map(({r,s},i)=>`
     <tr><td class="l rank">${i+1}</td>
