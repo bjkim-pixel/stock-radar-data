@@ -437,17 +437,12 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
      table-layout:auto로 표가 필요한 만큼 옆으로 펼쳐지고, 페이지 자체를 핀치줌해서
      보게 함. 모든 셀이 숫자·짧은 라벨이라(긴 텍스트 칸 없음) v-perf2처럼 wrapcell
      예외를 둘 필요 없이 nowrap 그대로 유지. */
-  /* 기준별 강한 종목 Top 10 — 표 안 스크롤 없이 오른쪽으로 쭉 펼침(글자·셀 크기는 다른 표와 동일).
-     페이지 자체를 핀치줌 아웃하면 전체가 보임. */
-  #tdTopWrap{overflow:visible}
-  #tdTopWrap table{width:auto;min-width:100%;table-layout:auto}
-  #tdTopWrap th,#tdTopWrap td{white-space:nowrap}
-  #scrWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  #scrWrap table{width:auto;min-width:100%;table-layout:auto}
-  #scrWrap th,#scrWrap td{padding:3px 4px;font-size:10px;white-space:nowrap}
-  #scrWrap .dim{font-size:9px}
-  #scrWrap th:nth-child(1),#scrWrap td:nth-child(1){position:sticky;left:0;background:var(--surface);z-index:3}
-  #scrWrap th:nth-child(2),#scrWrap td:nth-child(2){position:sticky;left:24px;background:var(--surface);z-index:3}
+  #scrWrap,.scrlike{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #scrWrap table,.scrlike table{width:auto;min-width:100%;table-layout:auto}
+  #scrWrap th,#scrWrap td,.scrlike th,.scrlike td{padding:3px 4px;font-size:10px;white-space:nowrap}
+  #scrWrap .dim,.scrlike .dim{font-size:9px}
+  #scrWrap th:nth-child(1),#scrWrap td:nth-child(1),.scrlike th:nth-child(1),.scrlike td:nth-child(1){position:sticky;left:0;background:var(--surface);z-index:3}
+  #scrWrap th:nth-child(2),#scrWrap td:nth-child(2),.scrlike th:nth-child(2),.scrlike td:nth-child(2){position:sticky;left:24px;background:var(--surface);z-index:3}
 
   /* 2026-09-12(2): 위(#flowTrendWrap·#v-perf2 .tw)와 같은 원칙을 "오늘의 종목"
      등 나머지 폭 넓은 표에도 확대 적용 — 표마다 새 id 규칙을 또 만드는 대신
@@ -681,12 +676,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div class="note">무게/주식수는 "등락률 × 거래량 ÷ 상장주식수"로, 단순 상승률보다 실제 매수세(회전율)가 실린 종목을 가려냅니다.
       개별RS5/개별RS20은 각각 종목의 5일/20일 수익률에서 그날 유니버스 평균 수익률을 뺀 값(시장 대비 초과강도)을
       그날 유니버스 내 백분위(0~100, "상위 N%")로 환산해 보여줍니다. 값이 작을수록(=상위 %가 작을수록) 더 강한 종목입니다.</div>
-    <div class="tw tw-scroll tw-rank"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>무게/주식수</th><th>개별RS5</th><th>개별RS20</th>
-      <th class="opt">업종RS순위</th><th class="grp opt">정배열</th><th class="opt">시총</th><th class="opt">거래대금</th>
-      <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">프로그램</th>
-      <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th>
-    </tr></thead><tbody id="tdMomBody"><tr><td colspan="15" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="tw scrlike"><table><thead></thead><tbody id="tdMomBody"><tr><td colspan="27" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
   <div class="card"><h3>수급 주체별 매수 상위 종목 <span class="r">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
@@ -704,13 +694,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip" data-v="pension">연기금</button>
       <button class="fchip" data-v="pe">사모</button>
     </div></div>
-    <div class="tw tw-scroll tw-rank" style="margin-top:10px"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>순매수(억)</th><th>시총대비</th>
-      <th class="opt">무게/주식수</th><th class="opt">개별RS5</th><th class="opt">개별RS20</th><th class="opt">업종RS순위</th><th class="grp opt">정배열</th>
-      <th class="opt">시총</th><th class="opt">거래대금</th>
-      <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">프로그램</th>
-      <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th>공통매수</th>
-    </tr></thead><tbody id="tdFlowBody"><tr><td colspan="18" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFlowBody"><tr><td colspan="27" class="load">불러오는 중…</td></tr></tbody></table></div>
     <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
   </div>
 
@@ -735,15 +719,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip" data-crit="cluster">클러스터 업종</button>
     </div>
     <div id="tdTopCritNote" style="font-size:11px;color:var(--ink-3);margin-bottom:6px"></div>
-    <div class="tw" id="tdTopWrap"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th id="tdTopKeyHd">기준값</th><th>등락률</th><th>순매수(억)</th><th>시총대비</th>
-      <th class="opt">무게/주식수</th><th class="opt">개별RS5</th><th class="opt">개별RS20</th><th class="opt">업종RS순위</th><th class="grp opt">정배열</th>
-      <th class="opt">시총</th><th class="opt">거래대금</th>
-      <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">프로그램</th>
-      <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th>공통매수</th>
-    </tr></thead><tbody id="tdTopBody"><tr><td colspan="19" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="tw scrlike" id="tdTopWrap"><table><thead></thead><tbody id="tdTopBody"><tr><td colspan="27" class="load">불러오는 중…</td></tr></tbody></table></div>
     <div id="tdTopDupNote" class="note" style="margin-top:6px;display:none"></div>
-    <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표는 오른쪽으로 펼쳐지며 화면을 축소(핀치)하면 전체가 보임 · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순 · 순매수/시총대비는 외국인+기관합계 기준</div>
+    <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 보기, #·종목명 고정) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순</div>
   </div>
 
   <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 35(당일 등락률·무게/주식수·개별RS) · 수급 35(당일 실측 외국인+기관·프로그램·공통매수) · 섹터 20(섹터RS 1위 최고점) · 단발성 급등·거래량 과열 감점 (백테스트 미검증 참고용 휴리스틱, 투자 조언 아님)</span></h3>
@@ -2989,25 +2967,8 @@ function renderTodayMomentum(universe){
   if(S.tdSectorFilter)rows=rows.filter(r=>r.sector===S.tdSectorFilter);
   rows=[...rows].sort((a,b)=>(+b.weight_per_share||0)-(+a.weight_per_share||0)
     ||(+(b.rs20_vs_mkt||-999)-+(a.rs20_vs_mkt||-999))).slice(0,10);
-  $("#tdMomBody").innerHTML=rows.length?rows.map((r,i)=>`
-    <tr><td class="l rank">${i+1}</td>
-      <td class="l"><a class="lk nm" data-code="${r.code}">
-        ${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>
-      <td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
-      <td>${N(+r.weight_per_share,2)}</td>
-      <td class="${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
-      <td class="${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
-      <td class="opt">${r.sector_rs_rank?r.sector_rs_rank+"위":"–"}</td>
-      <td class="grp opt">${todayAligned(r)?'<span class="up">✓</span>':'<span class="dim">–</span>'}</td>
-      <td class="opt">${N(+r.market_cap/JO,1)}조</td>
-      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
-      <td class="grp opt ${sgn(+r.foreign_net)}">${r.foreign_net==null?"–":pm(+r.foreign_net/EOK,0)+"억"}</td>
-      <td class="opt ${sgn(+r.inst_net)}">${r.inst_net==null?"–":pm(+r.inst_net/EOK,0)+"억"}</td>
-      <td class="opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td>
-      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
-      <td class="opt">${topBuyer(r,"1m")}</td>
-    </tr>`).join("")
-    :`<tr><td colspan="15" class="load">데이터 없음</td></tr>`;
+  $("#tdMomBody").innerHTML=rows.length?rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}${scrCells(r)}</tr>`).join("")
+    :`<tr><td colspan="27" class="load">데이터 없음</td></tr>`;
   $$("#tdMomBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
   makeSortable("tdMomBody");
 }
@@ -3020,28 +2981,10 @@ function renderTodayFlow(raw){
     return {...r,v,ratio};
   }).filter(r=>r.v>0);
   const sorted=[...rows].sort((a,b)=>S.tdFlowSort==="ratio"?(b.ratio-a.ratio):(b.v-a.v)).slice(0,10);
-  $("#tdFlowBody").innerHTML=sorted.length?sorted.map((r,i)=>`
-    <tr><td class="l rank">${i+1}</td>
-      <td class="l"><a class="lk nm" data-code="${r.code}">
-        ${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>
-      <td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
+  $("#tdFlowBody").innerHTML=sorted.length?sorted.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
       <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td>
-      <td class="${sgn(r.ratio)}">${r.ratio!=null?pm(r.ratio,2)+"%":"–"}</td>
-      <td class="opt">${r.weight_per_share==null?"–":N(+r.weight_per_share,2)}</td>
-      <td class="opt ${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
-      <td class="opt ${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
-      <td class="opt">${r.sector_rs_rank?r.sector_rs_rank+"위":"–"}</td>
-      <td class="grp opt">${todayAligned(r)?'<span class="up">✓</span>':'<span class="dim">–</span>'}</td>
-      <td class="opt">${N(+r.market_cap/JO,1)}조</td>
-      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
-      <td class="grp opt ${sgn(+r.foreign_net)}">${r.foreign_net==null?"–":pm(+r.foreign_net/EOK,0)+"억"}</td>
-      <td class="opt ${sgn(+r.inst_net)}">${r.inst_net==null?"–":pm(+r.inst_net/EOK,0)+"억"}</td>
-      <td class="opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td>
-      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
-      <td class="opt">${topBuyer(r,"1m")}</td>
-      <td>${stockCommonBuyN(r)}/7</td>
-    </tr>`).join("")
-    :`<tr><td colspan="18" class="load">해당 없음</td></tr>`;
+      <td class="${sgn(r.ratio)}">${r.ratio!=null?pm(r.ratio,2)+"%":"–"}</td>${scrCells(r)}</tr>`).join("")
+    :`<tr><td colspan="27" class="load">해당 없음</td></tr>`;
   $$("#tdFlowBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
   makeSortable("tdFlowBody");
 }
@@ -3099,29 +3042,9 @@ function renderTodayTop(universe){
     dn.style.display="";
     dn.innerHTML=sorted.length?sorted.map((r,i)=>`${i+1}. <b>${r.name}</b> — ${[...(topMap[r.code]||[])].join(", ")}`).join("<br>"):"";
   }else{dn.style.display="none";dn.innerHTML="";}
-  const rowsHtml=sorted.map((r,i)=>{
-    const v=flowVal(r,"combo","1d"), ratio=+r.market_cap>0?v/(+r.market_cap)*100:null;
-    return `<tr><td class="l rank">${i+1}</td>
-      <td class="l"><a class="lk nm" data-code="${r.code}">
-        ${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${mk(r)}${r.name}</a>${badge(r)}</td>
-      <td><b>${def.keyFmt(def.keyFn(r),r)}</b></td>
-      <td class="${sgn(+r.change_pct)}">${pm(+r.change_pct)}%</td>
-      <td class="${sgn(v)}">${pm(v/EOK,0)}</td>
-      <td class="${sgn(ratio)}">${ratio!=null?pm(ratio,2)+"%":"–"}</td>
-      <td class="opt">${r.weight_per_share==null?"–":N(+r.weight_per_share,2)}</td>
-      <td class="opt ${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
-      <td class="opt ${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
-      <td class="opt">${r.sector_rs_rank?r.sector_rs_rank+"위":"–"}</td>
-      <td class="grp opt">${todayAligned(r)?'<span class="up">✓</span>':'<span class="dim">–</span>'}</td>
-      <td class="opt">${N(+r.market_cap/JO,1)}조</td>
-      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
-      <td class="grp opt ${sgn(+r.foreign_net)}">${r.foreign_net==null?"–":pm(+r.foreign_net/EOK,0)+"억"}</td>
-      <td class="opt ${sgn(+r.inst_net)}">${r.inst_net==null?"–":pm(+r.inst_net/EOK,0)+"억"}</td>
-      <td class="opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td>
-      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
-      <td class="opt">${topBuyer(r,"1m")}</td>
-      <td>${stockCommonBuyN(r)}/7</td></tr>`;}).join("");
-  $("#tdTopBody").innerHTML=sorted.length?rowsHtml:`<tr><td colspan="19" class="load">해당 종목 없음</td></tr>`;
+  const rowsHtml=sorted.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
+      <td><b>${def.keyFmt(def.keyFn(r),r)}</b></td>${scrCells(r)}</tr>`).join("");
+  $("#tdTopBody").innerHTML=sorted.length?rowsHtml:`<tr><td colspan="27" class="load">해당 종목 없음</td></tr>`;
   $$("#tdTopBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   makeSortable("tdTopBody");
 }
@@ -3260,6 +3183,40 @@ function topBuyer(row, sfx){
   if(!best)return"–";
   return`<span class="${sgn(bestAmt)}">${best.lb} ${pm(bestAmt/EOK,0)}억</span>`;
 }
+/* 종목후보 표의 종목 셀·지표 셀(종가~프로그램, 25칸) — 오늘의 종목 표들도 같이 쓰도록 공용화 */
+function scrNameCell(r){return `<td class="l"><a class="lk nm" data-code="${r.code}">
+        ${r.market?`<span class="cd" title="${r.market}">${r.market==="KOSPI"?"피":r.market==="KOSDAQ"?"닥":r.market}</span> `:""}${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>`;}
+function scrCells(r){return `
+      <td>${N(+r.close,0)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
+      <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
+      <td class="grp">${N(+r.market_cap/JO,1)}조</td>
+      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
+      <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,0)+"%"}</td>
+      <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,0)}</td>
+      <td class="opt dim">${shortDate(r.high_period_date)}</td>
+      <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
+      <td class="grp opt ${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
+      <td class="opt ${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
+      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
+      <td class="opt">${topBuyer(r,"1m")}</td>
+      <td class="opt ${sgn((+r.foreign_2m||0)+(+r.inst_2m||0))}">${(r.foreign_2m==null&&r.inst_2m==null)?"–":pm(((+r.foreign_2m||0)+(+r.inst_2m||0))/EOK,0)+"억"}</td>
+      <td class="opt">${topBuyer(r,"2m")}</td>
+      <td class="grp opt" data-sort-val="${r.above_high_supply_eok??''}">${fmtEokJo(r.above_high_supply_eok)}</td>
+      <td class="${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
+      <td class="${sgn(+r.inst_net)}">${flowAmtRankCell(r.inst_net,r.inst_rank,r.inst_total)}</td>
+      <td class="opt ${sgn(+r.fin_inv_net)}">${flowAmtRankCell(r.fin_inv_net,r.fin_inv_rank,r.fin_inv_total)}</td>
+      <td class="opt ${sgn(+r.inv_trust_net)}">${flowAmtRankCell(r.inv_trust_net,r.inv_trust_rank,r.inv_trust_total)}</td>
+      <td class="opt ${sgn(+r.pension_net)}">${flowAmtRankCell(r.pension_net,r.pension_rank,r.pension_total)}</td>
+      <td class="opt ${sgn(+r.pe_net)}">${flowAmtRankCell(r.pe_net,r.pe_rank,r.pe_total)}</td>
+      <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
+      <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
+      <td class="grp opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td>`;}
+const SCR_TH_REST=`<th>종가</th><th>등락률</th><th>무게/주식수</th><th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th><th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th><th class="grp opt">개별RS5</th><th class="opt">개별RS20</th><th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th class="opt">외+기(2m)</th><th class="opt">2m주도</th><th class="grp opt" title="현재가~조회기간 내 최고 종가 구간을 24등분한 개인 누적 순매수 합계(양수 구간만)">위쪽매물대</th><th>외국인</th><th>기관합계</th><th class="opt">금융투자</th><th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th><th class="grp opt">프로그램</th>`;
+function scrThead(extra){return `<tr><th class="l">#</th><th class="l">종목</th>${extra||""}${SCR_TH_REST}</tr>`;}
+
+$("#tdMomBody").closest("table").querySelector("thead").innerHTML=scrThead();
+$("#tdFlowBody").closest("table").querySelector("thead").innerHTML=scrThead('<th>순매수(억)</th><th>시총대비</th>');
+$("#tdTopBody").closest("table").querySelector("thead").innerHTML=scrThead('<th id="tdTopKeyHd">기준값</th>');
 async function runScreener(){
   $("#scrBody").innerHTML='<tr><td colspan="27" class="load">조회 중…</td></tr>';
   const date=$("#fDate").value||S.date;
@@ -3296,34 +3253,7 @@ async function runScreener(){
   rows.sort((a,b)=>((+a[key]||-Infinity)-(+b[key]||-Infinity))*dir);
   rows=rows.slice(0,+$("#fLimit").value);
   $("#scrCount").innerHTML=`조건 통과 <b>${rows.length}</b>종목`;
-  $("#scrBody").innerHTML=rows.length?rows.map((r,i)=>`
-    <tr><td class="l rank">${i+1}</td>
-      <td class="l"><a class="lk nm" data-code="${r.code}">
-        ${r.market?`<span class="cd" title="${r.market}">${r.market==="KOSPI"?"피":r.market==="KOSDAQ"?"닥":r.market}</span> `:""}${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>
-      <td>${N(+r.close,0)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
-      <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
-      <td class="grp">${N(+r.market_cap/JO,1)}조</td>
-      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
-      <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,0)+"%"}</td>
-      <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,0)}</td>
-      <td class="opt dim">${shortDate(r.high_period_date)}</td>
-      <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
-      <td class="grp opt ${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
-      <td class="opt ${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
-      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
-      <td class="opt">${topBuyer(r,"1m")}</td>
-      <td class="opt ${sgn((+r.foreign_2m||0)+(+r.inst_2m||0))}">${(r.foreign_2m==null&&r.inst_2m==null)?"–":pm(((+r.foreign_2m||0)+(+r.inst_2m||0))/EOK,0)+"억"}</td>
-      <td class="opt">${topBuyer(r,"2m")}</td>
-      <td class="grp opt" data-sort-val="${r.above_high_supply_eok??''}">${fmtEokJo(r.above_high_supply_eok)}</td>
-      <td class="${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
-      <td class="${sgn(+r.inst_net)}">${flowAmtRankCell(r.inst_net,r.inst_rank,r.inst_total)}</td>
-      <td class="opt ${sgn(+r.fin_inv_net)}">${flowAmtRankCell(r.fin_inv_net,r.fin_inv_rank,r.fin_inv_total)}</td>
-      <td class="opt ${sgn(+r.inv_trust_net)}">${flowAmtRankCell(r.inv_trust_net,r.inv_trust_rank,r.inv_trust_total)}</td>
-      <td class="opt ${sgn(+r.pension_net)}">${flowAmtRankCell(r.pension_net,r.pension_rank,r.pension_total)}</td>
-      <td class="opt ${sgn(+r.pe_net)}">${flowAmtRankCell(r.pe_net,r.pe_rank,r.pe_total)}</td>
-      <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
-      <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
-      <td class="grp opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td></tr>`).join("")
+  $("#scrBody").innerHTML=rows.length?rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}${scrCells(r)}</tr>`).join("")
     :'<tr><td colspan="27" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
   makeSortable('scrBody');
