@@ -3053,9 +3053,9 @@ function renderTodayFlow(raw){
    · 외+기 시총비율: (외국인+기관합계 당일 순매수) ÷ 시총 × 100
    · 클러스터 업종: 오늘 감지된 클러스터 업종(4종목↑ +5%↑ 동반) 소속 종목 등락률 순 */
 const TD_TOP_CRITERIA={
-  rs_accel:  {lbl:"RS 가속",        note:"RS5 백분위 − RS20 백분위 (이번 주에 막 강해진 종목)",            keyFn:r=>(r.rs5_pctl!=null&&r.rs20_pctl!=null)?(100-+r.rs5_pctl)-(100-+r.rs20_pctl):null, keyFmt:v=>pm(v,0)+"p",    dir:1},
-  rs5:       {lbl:"RS5 상위",       note:"최근 5일 시장 대비 초과 강도 백분위 (상위일수록 강함)",           keyFn:r=>r.rs5_pctl!=null?+r.rs5_pctl:null,   keyFmt:(v)=>pctlLabel(v),                dir:-1},
-  rs20:      {lbl:"RS20 상위",      note:"최근 20일 시장 대비 초과 강도 백분위 (상위일수록 강함)",          keyFn:r=>r.rs20_pctl!=null?+r.rs20_pctl:null, keyFmt:(v)=>pctlLabel(v),                dir:-1},
+  rs_accel:  {lbl:"RS 가속",        note:"RS5 상위% − RS20 상위% (RS는 작을수록 강함 → 가장 많이 마이너스인 순 = 이번 주에 막 강해진 종목)", keyFn:r=>(r.rs5_pctl!=null&&r.rs20_pctl!=null)?(100-+r.rs5_pctl)-(100-+r.rs20_pctl):null, keyFmt:v=>pm(v,0)+"p",    dir:-1},
+  rs5:       {lbl:"RS5 상위",       note:"최근 5일 시장 대비 초과 강도 — 상위 % 작은 순 (작을수록 강함)", keyFn:r=>r.rs5_pctl!=null?100-+r.rs5_pctl:null,   keyFmt:v=>pctlLabel(100-v),                dir:-1},
+  rs20:      {lbl:"RS20 상위",      note:"최근 20일 시장 대비 초과 강도 — 상위 % 작은 순 (작을수록 강함)", keyFn:r=>r.rs20_pctl!=null?100-+r.rs20_pctl:null, keyFmt:v=>pctlLabel(100-v),                dir:-1},
   newhigh:   {lbl:"52주 신고가",    note:"오늘 52주 신고가 갱신 종목 — 거래대금 순",                        keyFn:r=>(r.is_new_high_all||r.is_new_high)?+r.trade_amount:null, keyFmt:v=>N(v/EOK,0)+"억", dir:1},
   nearhigh:  {lbl:"신고가 근접",    note:"신고가 −3% 이내 + 종가위치 80% 이상 (돌파 직전 대기)",           keyFn:r=>r.pct_from_high!=null&&+r.pct_from_high>=-3&&+r.close_pos_pct>=80?+r.close_pos_pct:null, keyFmt:v=>N(v,0)+"%", dir:1},
   aligned:   {lbl:"정배열 강세",    note:"정배열(종가>MA5>MA20>MA60>MA120) 종목 중 RS20 상위",            keyFn:r=>todayAligned(r)&&r.rs20_vs_mkt!=null?+r.rs20_vs_mkt:null, keyFmt:v=>pm(v,1)+"%p", dir:1},
