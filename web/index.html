@@ -437,6 +437,11 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
      table-layout:auto로 표가 필요한 만큼 옆으로 펼쳐지고, 페이지 자체를 핀치줌해서
      보게 함. 모든 셀이 숫자·짧은 라벨이라(긴 텍스트 칸 없음) v-perf2처럼 wrapcell
      예외를 둘 필요 없이 nowrap 그대로 유지. */
+  /* 기준별 강한 종목 Top 10 — 스크롤 없이 화면 폭에 자동 맞춤(JS가 table.style.zoom 지정), 핀치줌으로 확대 */
+  #tdTopWrap{overflow-x:auto}
+  #tdTopWrap table{width:auto;table-layout:auto}
+  #tdTopWrap th,#tdTopWrap td{padding:3px 4px;font-size:10px;white-space:nowrap;position:static}
+  #tdTopWrap th{position:sticky;top:0}
   #scrWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   #scrWrap table{width:auto;min-width:100%;table-layout:auto}
   #scrWrap th,#scrWrap td{padding:3px 4px;font-size:10px;white-space:nowrap}
@@ -723,19 +728,22 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
       <button class="fchip" data-crit="fg_ratio">외국인 시총비율</button>
       <button class="fchip" data-crit="inst_ratio">기관합계 시총비율</button>
       <button class="fchip" data-crit="chg_top">등락률 상위</button>
+      <button class="fchip" data-crit="weight">무게/주식수</button>
+      <button class="fchip" data-crit="dup">중복 많은 순</button>
       <button class="fchip" data-crit="overhead_light">위쪽 매물대 가벼운</button>
       <button class="fchip" data-crit="close_top">고가 마감</button>
       <button class="fchip" data-crit="cluster">클러스터 업종</button>
     </div>
     <div id="tdTopCritNote" style="font-size:11px;color:var(--ink-3);margin-bottom:6px"></div>
-    <div class="tw tw-scroll tw-rank" id="tdTopWrap"><table><thead><tr>
+    <div class="tw" id="tdTopWrap"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th id="tdTopKeyHd">기준값</th><th>등락률</th><th>순매수(억)</th><th>시총대비</th>
       <th class="opt">무게/주식수</th><th class="opt">개별RS5</th><th class="opt">개별RS20</th><th class="opt">업종RS순위</th><th class="grp opt">정배열</th>
       <th class="opt">시총</th><th class="opt">거래대금</th>
       <th class="grp opt">외국인</th><th class="opt">기관합계</th><th class="opt">프로그램</th>
       <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th>공통매수</th>
     </tr></thead><tbody id="tdTopBody"><tr><td colspan="19" class="load">불러오는 중…</td></tr></tbody></table></div>
-    <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · "N개 기준" 배지 = 여러 기준에서 동시에 Top 10 등장 · 순매수/시총대비는 외국인+기관합계 기준</div>
+    <div id="tdTopDupNote" class="note" style="margin-top:6px;display:none"></div>
+    <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표는 화면 폭에 맞춰 자동 축소됨(핀치줌으로 확대) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순 · 순매수/시총대비는 외국인+기관합계 기준</div>
   </div>
 
   <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 35(당일 등락률·무게/주식수·개별RS) · 수급 35(당일 실측 외국인+기관·프로그램·공통매수) · 섹터 20(섹터RS 1위 최고점) · 단발성 급등·거래량 과열 감점 (백테스트 미검증 참고용 휴리스틱, 투자 조언 아님)</span></h3>
@@ -3056,6 +3064,8 @@ const TD_TOP_CRITERIA={
   fg_ratio:  {lbl:"외국인 시총비율", note:"외국인 순매수 ÷ 시총 × 100 — 시총 대비 외국인이 많이 산 종목", keyFn:r=>+r.market_cap>0&&(+r.foreign_net||0)>0?((+r.foreign_net)/(+r.market_cap)*100):null, keyFmt:v=>pm(v,3)+"%", dir:1},
   inst_ratio:{lbl:"기관합계 시총비율", note:"기관합계 순매수 ÷ 시총 × 100 — 시총 대비 기관이 많이 산 종목", keyFn:r=>+r.market_cap>0&&(+r.inst_net||0)>0?((+r.inst_net)/(+r.market_cap)*100):null, keyFmt:v=>pm(v,3)+"%", dir:1},
   chg_top:   {lbl:"등락률 상위", note:"오늘 등락률이 가장 큰 종목 (유동성 필터 통과 종목 중)", keyFn:r=>r.change_pct!=null?+r.change_pct:null, keyFmt:v=>pm(v,2)+"%", dir:1},
+  weight:    {lbl:"무게/주식수", note:"무게/주식수가 큰 순 — 거래대금·시총 대비 움직임 강도", keyFn:r=>r.weight_per_share!=null?+r.weight_per_share:null, keyFmt:v=>N(v,2), dir:1},
+  dup:       {lbl:"중복 횟수", meta:true, note:"위 기준들 중 몇 개에서 동시에 Top 10에 들었는지 — 많은 순 (2개 이상, 동률은 등락률 순)", keyFn:r=>{const m=S._topCodeMap&&S._topCodeMap[r.code];return m&&m.size>=2?m.size:null;}, keyFmt:v=>v+"개", dir:1},
   overhead_light:{lbl:"위쪽 매물대 가벼운", note:"+2% 이상 강세 중 위쪽 매물대 ÷ 시총 % 가장 작은 순 (저항 적음)", keyFn:r=>+r.change_pct>=2&&r.above_high_supply_eok!=null&&+r.market_cap>0?(+r.above_high_supply_eok*EOK/(+r.market_cap)*100):null, keyFmt:v=>N(v,2)+"%", dir:-1},
   close_top: {lbl:"고가 마감",      note:"당일 고저 범위에서 종가 위치 90% 이상 — 장중 안 밀리고 강하게 마감", keyFn:r=>r.close_pos_pct!=null&&+r.close_pos_pct>=90?+r.change_pct:null, keyFmt:v=>pm(v,1)+"%", dir:1},
   cluster:   {lbl:"클러스터 업종",  note:"오늘 감지된 클러스터 업종(같은 업종 4종목↑ +5%↑ 동반) 소속 종목", keyFn:r=>S.tdClusterSectors&&S.tdClusterSectors.has(r.sector)?+r.change_pct:null, keyFmt:v=>pm(v,1)+"%", dir:1},
@@ -3064,7 +3074,7 @@ function buildTopCodes(universe){
   // 모든 기준별 Top 10 코드를 한 번에 계산 — 중복 등장 배지용
   if(S._topCodeMap&&S._topCodeDate===S.date)return S._topCodeMap;
   const map={};
-  Object.entries(TD_TOP_CRITERIA).forEach(([k,def])=>{
+  Object.entries(TD_TOP_CRITERIA).filter(([k,d])=>!d.meta).forEach(([k,def])=>{
     const top=[...universe].filter(r=>def.keyFn(r)!=null)
       .sort((a,b)=>def.dir===1?def.keyFn(b)-def.keyFn(a):def.keyFn(a)-def.keyFn(b)).slice(0,10);
     top.forEach(r=>{(map[r.code]||(map[r.code]=new Set())).add(def.lbl);});
@@ -3072,6 +3082,19 @@ function buildTopCodes(universe){
   S._topCodeMap=map; S._topCodeDate=S.date;
   return map;
 }
+function fitTopTable(){
+  // 표를 화면 폭에 맞게 축소(스크롤 없이 전체 보기) — 핀치줌으로 확대해서 읽는 방식
+  const wrap=$("#tdTopWrap"), t=wrap&&wrap.querySelector("table");
+  if(!t||!wrap.clientWidth)return;
+  t.style.zoom=1;
+  const need=t.scrollWidth, have=wrap.clientWidth;
+  t.style.zoom=need>have?Math.max(0.25,have/need*0.98):1;
+}
+(function(){ // 폭이 바뀌거나(회전·탭 전환으로 표시됨) 처음 보일 때 다시 맞춤
+  let lastW=-1;
+  const w=document.getElementById("tdTopWrap");
+  if(w&&window.ResizeObserver)new ResizeObserver(()=>{if(w.clientWidth!==lastW){lastW=w.clientWidth;try{fitTopTable();}catch(e){}}}).observe(w);
+})();
 function renderTodayTop(universe){
   const crit=S.tdTopCrit||"rs_accel", def=TD_TOP_CRITERIA[crit];
   if(!def)return;
@@ -3080,9 +3103,15 @@ function renderTodayTop(universe){
   $$("#tdTopChips .fchip").forEach(b=>b.classList.toggle("on",b.dataset.crit===crit));
   const topMap=buildTopCodes(universe);
   const sorted=[...universe].filter(r=>def.keyFn(r)!=null)
-    .sort((a,b)=>def.dir===1?def.keyFn(b)-def.keyFn(a):def.keyFn(a)-def.keyFn(b)).slice(0,10);
+    .sort((a,b)=>(def.dir===1?def.keyFn(b)-def.keyFn(a):def.keyFn(a)-def.keyFn(b))
+      ||(def.meta?(+b.change_pct||0)-(+a.change_pct||0):0)).slice(0,10);
   const mk=r=>r.market==="KOSPI"?'<span class="cd">피</span> ':'<span class="cd">닥</span> ';
-  const badge=r=>{const n=(topMap[r.code]||new Set()).size;return n>=2?`<span class="tag-d" style="font-size:10px;padding:1px 4px;margin-left:4px" title="${[...(topMap[r.code]||[])].join(', ')}">${n}개 기준</span>`:""};
+  const badge=()=>"";
+  const dn=$("#tdTopDupNote");
+  if(def.meta){
+    dn.style.display="";
+    dn.innerHTML=sorted.length?sorted.map((r,i)=>`${i+1}. <b>${r.name}</b> — ${[...(topMap[r.code]||[])].join(", ")}`).join("<br>"):"";
+  }else{dn.style.display="none";dn.innerHTML="";}
   const rowsHtml=sorted.map((r,i)=>{
     const v=flowVal(r,"combo","1d"), ratio=+r.market_cap>0?v/(+r.market_cap)*100:null;
     return `<tr><td class="l rank">${i+1}</td>
@@ -3106,6 +3135,7 @@ function renderTodayTop(universe){
       <td class="opt">${topBuyer(r,"1m")}</td>
       <td>${stockCommonBuyN(r)}/7</td></tr>`;}).join("");
   $("#tdTopBody").innerHTML=sorted.length?rowsHtml:`<tr><td colspan="19" class="load">해당 종목 없음</td></tr>`;
+  fitTopTable();
   $$("#tdTopBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   makeSortable("tdTopBody");
 }
