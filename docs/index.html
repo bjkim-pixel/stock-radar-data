@@ -727,9 +727,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
     <div id="tdTopCritNote" style="font-size:11px;color:var(--ink-3);margin-bottom:6px"></div>
     <div class="tw tw-rank" id="tdTopWrap"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th class="l opt">업종</th>
-      <th>등락률</th><th class="opt">거래대금</th><th id="tdTopKeyHd">기준값</th>
-    </tr></thead><tbody id="tdTopBody"><tr><td colspan="6" class="load">불러오는 중…</td></tr></tbody></table></div>
-    <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세</div>
+      <th>등락률</th><th class="opt">거래대금</th><th class="opt">외국인</th><th class="opt">기관합계</th><th id="tdTopKeyHd">기준값</th>
+    </tr></thead><tbody id="tdTopBody"><tr><td colspan="8" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · "N개 기준" 배지 = 여러 기준에서 동시에 Top 10 등장</div>
   </div>
 
   <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 35(당일 등락률·무게/주식수·개별RS) · 수급 35(당일 실측 외국인+기관·프로그램·공통매수) · 섹터 20(섹터RS 1위 최고점) · 단발성 급등·거래량 과열 감점 (백테스트 미검증 참고용 휴리스틱, 투자 조언 아님)</span></h3>
@@ -3051,23 +3051,39 @@ const TD_TOP_CRITERIA={
   close_top: {lbl:"고가 마감",      note:"당일 고저 범위에서 종가 위치 90% 이상 — 장중 안 밀리고 강하게 마감", keyFn:r=>r.close_pos_pct!=null&&+r.close_pos_pct>=90?+r.change_pct:null, keyFmt:v=>pm(v,1)+"%", dir:1},
   cluster:   {lbl:"클러스터 업종",  note:"오늘 감지된 클러스터 업종(같은 업종 4종목↑ +5%↑ 동반) 소속 종목", keyFn:r=>S.tdClusterSectors&&S.tdClusterSectors.has(r.sector)?+r.change_pct:null, keyFmt:v=>pm(v,1)+"%", dir:1},
 };
+function buildTopCodes(universe){
+  // 모든 기준별 Top 10 코드를 한 번에 계산 — 중복 등장 배지용
+  if(S._topCodeMap&&S._topCodeDate===S.date)return S._topCodeMap;
+  const map={};
+  Object.entries(TD_TOP_CRITERIA).forEach(([k,def])=>{
+    const top=[...universe].filter(r=>def.keyFn(r)!=null)
+      .sort((a,b)=>def.dir===1?def.keyFn(b)-def.keyFn(a):def.keyFn(a)-def.keyFn(b)).slice(0,10);
+    top.forEach(r=>{(map[r.code]||(map[r.code]=new Set())).add(def.lbl);});
+  });
+  S._topCodeMap=map; S._topCodeDate=S.date;
+  return map;
+}
 function renderTodayTop(universe){
   const crit=S.tdTopCrit||"rs_accel", def=TD_TOP_CRITERIA[crit];
   if(!def)return;
   $("#tdTopKeyHd").textContent=def.lbl;
   $("#tdTopCritNote").textContent=def.note;
   $$("#tdTopChips .fchip").forEach(b=>b.classList.toggle("on",b.dataset.crit===crit));
+  const topMap=buildTopCodes(universe);
   const sorted=[...universe].filter(r=>def.keyFn(r)!=null)
     .sort((a,b)=>def.dir===1?def.keyFn(b)-def.keyFn(a):def.keyFn(a)-def.keyFn(b)).slice(0,10);
   const mk=r=>r.market==="KOSPI"?'<span class="cd">피</span> ':'<span class="cd">닥</span> ';
+  const badge=r=>{const n=(topMap[r.code]||new Set()).size;return n>=2?`<span class="tag-d" style="font-size:10px;padding:1px 4px;margin-left:4px" title="${[...(topMap[r.code]||[])].join(', ')}">${n}개 기준</span>`:""};
+  const fmtNet=v=>{const a=+v||0;return`<td class="opt ${sgn(a)}">${pm(a/EOK,0)}억</td>`;};
   $("#tdTopBody").innerHTML=sorted.length?sorted.map((r,i)=>`
     <tr><td class="l rank">${i+1}</td>
-      <td class="l"><a class="lk nm" data-code="${r.code}">${mk(r)}${r.name}</a></td>
+      <td class="l"><a class="lk nm" data-code="${r.code}">${mk(r)}${r.name}</a>${badge(r)}</td>
       <td class="l opt faint" style="font-size:11px">${r.sector||"–"}</td>
       <td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
       <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
+      ${fmtNet(r.foreign_net)}${fmtNet(r.inst_net)}
       <td><b>${def.keyFmt(def.keyFn(r),r)}</b></td></tr>`).join("")
-  :`<tr><td colspan="6" class="load">해당 종목 없음</td></tr>`;
+  :`<tr><td colspan="8" class="load">해당 종목 없음</td></tr>`;
   $$("#tdTopBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   makeSortable("tdTopBody");
 }
@@ -3075,6 +3091,7 @@ async function loadTodayClusterSectors(){
   try{
     const rows=await q("v_sector_cluster",`select=sector_krx&trade_date=eq.${S.date}`);
     S.tdClusterSectors=new Set(rows.map(r=>r.sector_krx));
+    S._topCodeMap=null; // 클러스터 업종 갱신 시 캐시 재계산
   }catch(e){ S.tdClusterSectors=new Set(); }
 }
 $$("#tdTopChips .fchip").forEach(b=>b.onclick=()=>{
