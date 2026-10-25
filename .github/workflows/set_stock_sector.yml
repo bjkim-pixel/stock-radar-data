@@ -1,0 +1,36 @@
+name: Set Stock Sectors (업종 일괄 지정)
+
+# 미분류 종목(예: Add Single Stock으로 새로 넣은 종목)에 업종을 한 번에 지정합니다 — sector_override 테이블에 저장(89_set_sectors.py).
+# 사용법:
+#   1) entries를 비운 채 실행(목록 모드) → 로그/요약에 '지금 미분류인 종목'과 '쓸 수 있는 업종 이름'이 나옵니다.
+#   2) entries에 "종목=업종; 종목=업종" 형식으로 입력하고 dry_run=true로 실행 → 검증 결과만 확인(저장 안 함).
+#   3) 문제가 없으면 같은 입력으로 dry_run=false로 실행 → 저장.
+on:
+  workflow_dispatch:
+    inputs:
+      entries:
+        description: '종목=업종; 종목=업종 … (종목은 이름 또는 6자리 코드, 예: 엑시콘=반도체; 지투지바이오=제약). 비우면 미분류 목록만 표시'
+        required: false
+        default: ''
+      dry_run:
+        description: '미리보기만(저장 안 함) — 확인 후 false로 다시 실행하면 저장'
+        type: boolean
+        required: false
+        default: true
+
+jobs:
+  set-sectors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Set sectors
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          ENTRIES: ${{ inputs.entries }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: python 89_set_sectors.py
