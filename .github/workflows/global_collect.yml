@@ -14,12 +14,7 @@ on:
         description: '수집 없이 묶음만 다시 생성 (true/false)'
         required: false
         default: 'false'
-  push:
-    branches: [main]
-    paths:
-      - "21_collect_global.py"
-      - "85_global_market.sql"
-      - ".github/workflows/global_collect.yml"
+  # push 트리거 제거(2026-10-25): 코드를 올릴 때마다 자동으로 돌지 않고, 예약·연결·수동 실행(Run workflow)만 씁니다.
 
 concurrency:
   group: kis-rest-batch

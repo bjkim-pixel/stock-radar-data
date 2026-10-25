@@ -7,12 +7,7 @@ on:
     workflows: ["Compute Metrics & Signals", "Daily Collect + Compute (수집·계산 통합)"]
     types: [completed]
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "86_flow_cap_ratio.py"
-      - "86_flow_cap_ratio.sql"
-      - ".github/workflows/flow_cap_ratio.yml"
+  # push 트리거 제거(2026-10-25): 코드를 올릴 때마다 자동으로 돌지 않고, 예약·연결·수동 실행(Run workflow)만 씁니다.
 
 concurrency:
   group: flow-cap-ratio

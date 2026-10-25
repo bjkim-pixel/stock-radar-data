@@ -8,11 +8,7 @@ on:
     workflows: ["Flow/MarketCap Ratio", "Sector Flow Daily"]
     types: [completed]
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "88_export_snapshot.py"
-      - ".github/workflows/export_snapshot.yml"
+  # push 트리거 제거(2026-10-25): 코드를 올릴 때마다 자동으로 돌지 않고, 예약·연결·수동 실행(Run workflow)만 씁니다.
 
 concurrency:
   group: export-snapshot
