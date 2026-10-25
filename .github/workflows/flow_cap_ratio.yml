@@ -4,7 +4,7 @@ name: Flow/MarketCap Ratio
 # 일별 수급 수집과 지표 계산(Compute Metrics & Signals)이 끝난 직후 실행합니다.
 on:
   workflow_run:
-    workflows: ["Compute Metrics & Signals"]
+    workflows: ["Compute Metrics & Signals", "Daily KIS Collection"]
     types: [completed]
   workflow_dispatch:
   push:

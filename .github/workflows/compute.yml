@@ -1,22 +1,21 @@
 name: Compute Metrics & Signals
 
 on:
-  schedule:
-    # daily_collect.yml(16:05/20:05 KST) 수집이 끝난 뒤 지표·신호를 갱신합니다.
-    # 스케줄 실행에서는 05_compute.py에 오늘 날짜 하루만 넘겨 매번 전체 기간을
-    # 재계산하지 않게 합니다(하루치만 계산하는 용도로 스크립트가 이미 지원).
-    #
-    # 16:30 KST — 지표·신호 계산 + 실제 가상매수/매도 실행(포지션 확정)
-    #             · TREND/CLOSEBET 신규매수, 전 전략 매도 판정
-    #
-    # NXT 관련 실행(장중 후보 재조회 5회 + 20:10 공식마감 확정 1회)은 원래
-    # "nxt_collect.yml 수집 후 5분 뒤"로 고정된 cron 6개였으나, 2026-09-12
-    # workflow_run 트리거로 교체했습니다 — nxt_collect.py가 API 지연으로 5분
-    # 안에 못 끝나면(순차 수집이라 가능) 이 5분 buffer로는 부족해서, 아직 일부만
-    # 채워진 daily_price.nxt_close로 종가베팅2 매수가 확정될 위험이 있었습니다
-    # (레이스컨디션). workflow_run은 nxt_collect.yml이 실제로 끝난 뒤에만
-    # 발화하므로 고정 시간 추측이 필요 없어집니다. 아래 workflow_run: 참고.
-    - cron: "30 7 * * 1-5"   # 16:30 KST = 07:30 UTC (매수·매도 실행)
+  # 2026-10-25: 16:30 KST 단독 스케줄을 없앴습니다. 이제 "Daily KIS Collection"이 수집을 끝내면 이 워크플로를
+  # 같은 실행 안에서 이어서 호출합니다(workflow_call, daily=true) — 수집→계산을 한 번에 실행.
+  # 아래 workflow_run(NXT 18시 스냅샷 직후 종가베팅2 매수 확정)과 수동 실행(기간 지정·포트폴리오만)은 그대로입니다.
+  workflow_call:
+    inputs:
+      daily:
+        description: '일일 파이프라인에서 호출됨 — 오늘(또는 date) 하루치만 계산'
+        type: boolean
+        required: false
+        default: false
+      date:
+        description: '계산할 날짜 (YYYYMMDD, 비우면 오늘)'
+        type: string
+        required: false
+        default: ''
   workflow_run:
     # nxt_collect.yml("NXT After-market Collection")의 6개 스케줄 실행
     # (18:00~19:50 KST 장중 5회 + 20:10 KST 공식마감 1회)이 끝날 때마다 발화.
@@ -97,8 +96,12 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            # 16:30 KST 하나뿐 — 지표·신호 계산 + 실제 가상매수/매도 실행.
+          if [ "${{ inputs.daily }}" = "true" ]; then
+            # 일일 파이프라인(수집 직후): 오늘 또는 지정한 날짜 하루치 지표·신호 계산 + 가상매수/매도 실행
+            D="${{ inputs.date }}"; [ -z "$D" ] && D="$(date +%Y%m%d)"
+            python 05_compute.py "$D"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            # (예전) 16:30 KST 하나뿐 — 지표·신호 계산 + 실제 가상매수/매도 실행.
             python 05_compute.py "$(date +%Y%m%d)"
           elif [ "${{ github.event_name }}" = "workflow_run" ]; then
             # nxt_collect.yml 스케줄 실행이 성공적으로 끝난 직후 실행됩니다.

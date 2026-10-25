@@ -23,8 +23,15 @@ on:
     # 돌려주며, NXT는 KRX와 별개 대체거래소라 이 값에는 반영되지 않습니다. 즉 16:05 이후
     # 반복 실행은 'NXT 마감가'가 아니라 16:05 실행과 같은 정규장 마감 데이터를 다시 확인하는
     # 안전판(KIS 장마감 배치가 드물게 늦게 확정/정정되는 경우 대비) 성격입니다.
-    - cron: "5 7 * * 1-5"
-    - cron: "5 9 * * 1-5"
+    #
+    # 2026-10-25: 수집 → 지표·신호 계산을 한 워크플로로 합쳤습니다(아래 compute 잡). 시각은 16:05·17:05·18:05·19:05 KST
+    # (= 07/08/09/10:05 UTC, 월~금)로 한 시간 간격 4회. 같은 날 여러 번 돌아도 upsert라 안전하고, 매 회 끝에 계산이 이어집니다.
+    # ⚠ GitHub 예약 실행은 큐가 밀리면 몇 시간씩 늦게 시작될 수 있습니다(실측: 16시 예약이 밤 11시경 실행).
+    #   정각에 확실히 돌리려면 이미 쓰는 cron-job.org에 작업 4개(월~금 16:05·17:05·18:05·19:05 KST)를 만들어
+    #   POST https://api.github.com/repos/bjkim-pixel/stock-radar-data/actions/workflows/daily_collect.yml/dispatches
+    #   헤더 Authorization: Bearer <이 저장소 전용 fine-grained 토큰(Actions: Read and write)>, Accept: application/vnd.github+json
+    #   본문 {"ref":"main"} 으로 호출하게 하세요. (예약 실행과 겹쳐도 upsert라 안전하고, 겹치면 줄을 서서 차례로 실행됩니다.)
+    - cron: "5 7,8,9,10 * * 1-5"
   workflow_dispatch:
     # 수동 실행 (GitHub 웹에서 "Run workflow" 버튼)
     inputs:
@@ -32,6 +39,11 @@ on:
         description: '수집 날짜 (YYYYMMDD, 비우면 오늘)'
         required: false
         default: ''
+      skip_compute:
+        description: '수집만 하고 지표·신호 계산은 건너뜀'
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   # 2026-09-15: KIS REST는 "초당 20건"이 앱키 단위 한도라서, 종목 전체를 도는
@@ -148,3 +160,14 @@ jobs:
             curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
               -d "chat_id=$TELEGRAM_CHAT_ID" --data-urlencode "text=$MSG" >/dev/null || true
           fi
+
+  # 수집이 끝나면 같은 실행 안에서 지표·신호 계산(05_compute.py)을 이어서 실행 — 두 워크플로를 따로 누르던 번거로움 제거.
+  # 수집이 실패하면 계산은 건너뜁니다. 휴장일이면 수집 잡이 스킵되고 계산 잡도 스스로 휴장일을 감지해 건너뜁니다.
+  compute:
+    needs: collect
+    if: needs.collect.result == 'success' && github.event.inputs.skip_compute != 'true'
+    uses: ./.github/workflows/compute.yml
+    secrets: inherit
+    with:
+      daily: true
+      date: ${{ github.event.inputs.target_date }}
