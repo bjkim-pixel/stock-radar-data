@@ -1,0 +1,51 @@
+name: Flow/MarketCap Ratio
+
+# 종목후보·오늘의 종목 표의 "외+기 순매수/시총(3M·1M·1W)" 사전 계산 (86_flow_cap_ratio.sql 의 refresh_flow_cap_ratio()).
+# 일별 수급 수집과 지표 계산(Compute Metrics & Signals)이 끝난 직후 실행합니다.
+on:
+  workflow_run:
+    workflows: ["Compute Metrics & Signals"]
+    types: [completed]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "86_flow_cap_ratio.py"
+      - "86_flow_cap_ratio.sql"
+      - ".github/workflows/flow_cap_ratio.yml"
+
+concurrency:
+  group: flow-cap-ratio
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Refresh flow_cap_ratio
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 86_flow_cap_ratio.py --report flowcap_report.md
+      - name: Publish report (branch flowcap-report)
+        if: always()
+        run: |
+          [ -f flowcap_report.md ] || echo "리포트 없음 — 계산 실패. Actions 로그 확인" > flowcap_report.md
+          cp flowcap_report.md /tmp/flowcap_report.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan flowcap-report
+          git rm -rq --cached . || true
+          cp /tmp/flowcap_report.md flowcap_report.md
+          git add -f flowcap_report.md
+          git commit -qm "flowcap report ${{ github.run_id }}"
+          git push -f origin flowcap-report

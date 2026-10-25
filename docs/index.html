@@ -720,7 +720,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note">무게/주식수는 "등락률 × 거래량 ÷ 상장주식수"로, 단순 상승률보다 실제 매수세(회전율)가 실린 종목을 가려냅니다.
       개별RS5/개별RS20은 각각 종목의 5일/20일 수익률에서 그날 유니버스 평균 수익률을 뺀 값(시장 대비 초과강도)을
       그날 유니버스 내 백분위(0~100, "상위 N%")로 환산해 보여줍니다. 값이 작을수록(=상위 %가 작을수록) 더 강한 종목입니다.</div>
-    <div class="tw scrlike"><table><thead></thead><tbody id="tdMomBody"><tr><td colspan="27" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="tw scrlike"><table><thead></thead><tbody id="tdMomBody"><tr><td colspan="30" class="load">불러오는 중…</td></tr></tbody></table></div>
   </div>
 
   <div class="card"><h3>수급 주체별 매수 상위 종목 <span class="r">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
@@ -738,7 +738,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <button class="fchip" data-v="pension">연기금</button>
       <button class="fchip" data-v="pe">사모</button>
     </div></div>
-    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFlowBody"><tr><td colspan="27" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFlowBody"><tr><td colspan="30" class="load">불러오는 중…</td></tr></tbody></table></div>
     <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
   </div>
 
@@ -763,7 +763,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <button class="fchip" data-crit="cluster">클러스터 업종</button>
     </div>
     <div id="tdTopCritNote" style="font-size:11px;color:var(--ink-3);margin-bottom:6px"></div>
-    <div class="tw scrlike" id="tdTopWrap"><table><thead></thead><tbody id="tdTopBody"><tr><td colspan="27" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div class="tw scrlike" id="tdTopWrap"><table><thead></thead><tbody id="tdTopBody"><tr><td colspan="30" class="load">불러오는 중…</td></tr></tbody></table></div>
     <div id="tdTopDupNote" class="note" style="margin-top:6px;display:none"></div>
     <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 보기, #·종목명 고정) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순</div>
   </div>
@@ -974,15 +974,16 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="tw" id="scrWrap"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th>
       <th>종가</th><th>등락률</th><th>무게/주식수</th>
-      <th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th>
-      <th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th>
       <th class="grp opt">개별RS5</th><th class="opt">개별RS20</th>
       <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th class="opt">외+기(2m)</th><th class="opt">2m주도</th>
       <th class="grp opt" title="현재가~조회기간 내 최고 종가 구간을 24등분한 개인 누적 순매수 합계(양수 구간만)">위쪽매물대</th>
+      <th class="grp opt" title="외+기 누적 순매수 ÷ 그날 시가총액 — 3개월 전(60거래일) 시점. 종목상세 수급표의 순매수/시총과 같은 값">외+기 순매수/시총 3M</th><th class="opt" title="1개월 전(20거래일) 시점">1M</th><th class="opt" title="1주 전(5거래일) 시점">1W</th>
+      <th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th>
+      <th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th>
       <th>외국인</th><th>기관합계</th><th class="opt">금융투자</th>
       <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th>
       <th class="grp opt">프로그램</th>
-    </tr></thead><tbody id="scrBody"><tr><td colspan="27" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
+    </tr></thead><tbody id="scrBody"><tr><td colspan="30" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
 
@@ -2701,15 +2702,24 @@ function flowRankRow(r,i){
     <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td>
     <td class="dim">${rk}</td></tr>`;
 }
+/* 외+기 누적 순매수/시총(3M·1M·1W) — 86_flow_cap_ratio.sql 사전 계산 테이블(종목당 1행). 없거나 실패하면 빈 값("–") */
+async function loadFlowCapRatio(){
+  if(S.fcrCache)return S.fcrCache;
+  const rows=await q("flow_cap_ratio","select=code,a_3m,a_1m,a_1w,r_3m,r_1m,r_1w").catch(()=>[]);
+  const m={}; rows.forEach(r=>m[r.code]=r);
+  if(rows.length)S.fcrCache=m;
+  return m;
+}
 async function loadFlowRawData(){
   if(!S.flowRaw){
-    const [scr,per,rk]=await Promise.all([
+    const [scr,per,rk,fcr]=await Promise.all([
       q("v_screener",`select=*&trade_date=eq.${S.date}`),
       q("v_stock_flow_periods","select=*"),
-      q("v_flow_rank_today",`select=*&trade_date=eq.${S.date}`).catch(()=>[])]);
+      q("v_flow_rank_today",`select=*&trade_date=eq.${S.date}`).catch(()=>[]),
+      loadFlowCapRatio()]);
     const byCode={};per.forEach(p=>byCode[p.code]=p);
     const rkByCode={};rk.forEach(p=>rkByCode[p.code]=p);
-    S.flowRaw=scr.map(r=>({...r,...(byCode[r.code]||{}),...(rkByCode[r.code]||{})}));
+    S.flowRaw=scr.map(r=>({...r,...(byCode[r.code]||{}),...(rkByCode[r.code]||{}),...(fcr[r.code]||{})}));
   }
   return S.flowRaw;
 }
@@ -3059,7 +3069,7 @@ function renderTodayMomentum(universe){
   rows=[...rows].sort((a,b)=>(+b.weight_per_share||0)-(+a.weight_per_share||0)
     ||(+(b.rs20_vs_mkt||-999)-+(a.rs20_vs_mkt||-999))).slice(0,10);
   $("#tdMomBody").innerHTML=rows.length?rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}${scrCells(r)}</tr>`).join("")
-    :`<tr><td colspan="27" class="load">데이터 없음</td></tr>`;
+    :`<tr><td colspan="30" class="load">데이터 없음</td></tr>`;
   $$("#tdMomBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
   makeSortable("tdMomBody");
 }
@@ -3075,7 +3085,7 @@ function renderTodayFlow(raw){
   $("#tdFlowBody").innerHTML=sorted.length?sorted.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
       <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td>
       <td class="${sgn(r.ratio)}">${r.ratio!=null?pm(r.ratio,2)+"%":"–"}</td>${scrCells(r)}</tr>`).join("")
-    :`<tr><td colspan="27" class="load">해당 없음</td></tr>`;
+    :`<tr><td colspan="30" class="load">해당 없음</td></tr>`;
   $$("#tdFlowBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
   makeSortable("tdFlowBody");
 }
@@ -3299,7 +3309,7 @@ function renderTodayTop(universe){
   }else{dn.style.display="none";dn.innerHTML="";}
   const rowsHtml=sorted.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
       <td><b>${def.keyFmt(def.keyFn(r),r)}</b></td>${scrCells(r)}</tr>`).join("");
-  $("#tdTopBody").innerHTML=sorted.length?rowsHtml:`<tr><td colspan="27" class="load">해당 종목 없음</td></tr>`;
+  $("#tdTopBody").innerHTML=sorted.length?rowsHtml:`<tr><td colspan="30" class="load">해당 종목 없음</td></tr>`;
   $$("#tdTopBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   makeSortable("tdTopBody");
 }
@@ -3444,12 +3454,6 @@ function scrNameCell(r){return `<td class="l"><a class="lk nm" data-code="${r.co
 function scrCells(r){return `
       <td>${N(+r.close,0)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
       <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
-      <td class="grp">${N(+r.market_cap/JO,1)}조</td>
-      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
-      <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,0)+"%"}</td>
-      <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,0)}</td>
-      <td class="opt dim">${shortDate(r.high_period_date)}</td>
-      <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
       <td class="grp opt ${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
       <td class="opt ${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
       <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
@@ -3457,6 +3461,15 @@ function scrCells(r){return `
       <td class="opt ${sgn((+r.foreign_2m||0)+(+r.inst_2m||0))}">${(r.foreign_2m==null&&r.inst_2m==null)?"–":pm(((+r.foreign_2m||0)+(+r.inst_2m||0))/EOK,0)+"억"}</td>
       <td class="opt">${topBuyer(r,"2m")}</td>
       <td class="grp opt" data-sort-val="${r.above_high_supply_eok??''}">${fmtEokJo(r.above_high_supply_eok)}</td>
+      <td class="grp opt ${sgn(+r.r_3m)}" title="외+기 누적 순매수 ÷ 3개월 전(60거래일 전) 시가총액${r.a_3m==null?"":" · 누적 "+pm(+r.a_3m/EOK,0)+"억"}">${r.r_3m==null?"–":pm(+r.r_3m,2)+"%"}</td>
+      <td class="opt ${sgn(+r.r_1m)}" title="외+기 누적 순매수 ÷ 1개월 전(20거래일 전) 시가총액${r.a_1m==null?"":" · 누적 "+pm(+r.a_1m/EOK,0)+"억"}">${r.r_1m==null?"–":pm(+r.r_1m,2)+"%"}</td>
+      <td class="opt ${sgn(+r.r_1w)}" title="외+기 누적 순매수 ÷ 1주 전(5거래일 전) 시가총액${r.a_1w==null?"":" · 누적 "+pm(+r.a_1w/EOK,0)+"억"}">${r.r_1w==null?"–":pm(+r.r_1w,2)+"%"}</td>
+      <td class="grp">${N(+r.market_cap/JO,1)}조</td>
+      <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
+      <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,0)+"%"}</td>
+      <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,0)}</td>
+      <td class="opt dim">${shortDate(r.high_period_date)}</td>
+      <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
       <td class="${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
       <td class="${sgn(+r.inst_net)}">${flowAmtRankCell(r.inst_net,r.inst_rank,r.inst_total)}</td>
       <td class="opt ${sgn(+r.fin_inv_net)}">${flowAmtRankCell(r.fin_inv_net,r.fin_inv_rank,r.fin_inv_total)}</td>
@@ -3466,20 +3479,21 @@ function scrCells(r){return `
       <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
       <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
       <td class="grp opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td>`;}
-const SCR_TH_REST=`<th>종가</th><th>등락률</th><th>무게/주식수</th><th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th><th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th><th class="grp opt">개별RS5</th><th class="opt">개별RS20</th><th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th class="opt">외+기(2m)</th><th class="opt">2m주도</th><th class="grp opt" title="현재가~조회기간 내 최고 종가 구간을 24등분한 개인 누적 순매수 합계(양수 구간만)">위쪽매물대</th><th>외국인</th><th>기관합계</th><th class="opt">금융투자</th><th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th><th class="grp opt">프로그램</th>`;
+const SCR_TH_REST=`<th>종가</th><th>등락률</th><th>무게/주식수</th><th class="grp opt">개별RS5</th><th class="opt">개별RS20</th><th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th class="opt">외+기(2m)</th><th class="opt">2m주도</th><th class="grp opt" title="현재가~조회기간 내 최고 종가 구간을 24등분한 개인 누적 순매수 합계(양수 구간만)">위쪽매물대</th><th class="grp opt" title="외+기 누적 순매수 ÷ 그날 시가총액 — 3개월 전(60거래일) 시점. 종목상세 수급표의 순매수/시총과 같은 값">외+기 순매수/시총 3M</th><th class="opt" title="1개월 전(20거래일) 시점">1M</th><th class="opt" title="1주 전(5거래일) 시점">1W</th><th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th><th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th><th>외국인</th><th>기관합계</th><th class="opt">금융투자</th><th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th><th class="grp opt">프로그램</th>`;
 function scrThead(extra){return `<tr><th class="l">#</th><th class="l">종목</th>${extra||""}${SCR_TH_REST}</tr>`;}
 
 $("#tdMomBody").closest("table").querySelector("thead").innerHTML=scrThead();
 $("#tdFlowBody").closest("table").querySelector("thead").innerHTML=scrThead('<th>순매수(억)</th><th>시총대비</th>');
 $("#tdTopBody").closest("table").querySelector("thead").innerHTML=scrThead('<th id="tdTopKeyHd">기준값</th>');
 async function runScreener(){
-  $("#scrBody").innerHTML='<tr><td colspan="27" class="load">조회 중…</td></tr>';
+  $("#scrBody").innerHTML='<tr><td colspan="30" class="load">조회 중…</td></tr>';
   const date=$("#fDate").value||S.date;
-  let [rows,rk,per,d20Rows]=await Promise.all([
+  let [rows,rk,per,d20Rows,fcr]=await Promise.all([
     q("v_screener",`select=*&trade_date=eq.${date}`),
     q("v_flow_rank_today",`select=*&trade_date=eq.${date}`).catch(()=>[]),
     q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_2m,inst_2m,fin_inv_1m,inv_trust_1m,pension_1m,pe_1m,fin_inv_2m,inv_trust_2m,pension_2m,pe_2m,individual_1m,corp_other_1m,individual_2m,corp_other_2m").catch(()=>[]),
-    q("daily_price",`select=trade_date&trade_date=lt.${date}&order=trade_date.desc&limit=1&offset=19`).catch(()=>[])]);
+    q("daily_price",`select=trade_date&trade_date=lt.${date}&order=trade_date.desc&limit=1&offset=19`).catch(()=>[]),
+    loadFlowCapRatio()]);
   // ── 시장평균 20일 수익률 계산 ─────────────────────────────────────────
   (async()=>{
     try{
@@ -3502,14 +3516,14 @@ async function runScreener(){
   })();
   const rkByCode={};rk.forEach(p=>rkByCode[p.code]=p);
   const perByCode={};per.forEach(p=>perByCode[p.code]=p);
-  rows=rows.map(r=>({...r,...(rkByCode[r.code]||{}),...(perByCode[r.code]||{})}));
+  rows=rows.map(r=>({...r,...(rkByCode[r.code]||{}),...(perByCode[r.code]||{}),...(fcr[r.code]||{})}));
   rows=rows.filter(screenerFilterPass);
   const key=$("#fSort").value, dir=$("#fDir").value==="desc"?-1:1;
   rows.sort((a,b)=>((+a[key]||-Infinity)-(+b[key]||-Infinity))*dir);
   rows=rows.slice(0,+$("#fLimit").value);
   $("#scrCount").innerHTML=`조건 통과 <b>${rows.length}</b>종목`;
   $("#scrBody").innerHTML=rows.length?rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}${scrCells(r)}</tr>`).join("")
-    :'<tr><td colspan="27" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+    :'<tr><td colspan="30" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#scrBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
   makeSortable('scrBody');
 }
