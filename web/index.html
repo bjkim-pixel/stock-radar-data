@@ -135,6 +135,7 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 .tl-nav{display:flex;gap:6px;align-items:center;margin:0 0 6px;font-size:11.5px;color:var(--ink-3)}
 .tl-nav button{padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--ink);font-size:11.5px;cursor:pointer}
 .tl-nav .rng{margin-left:auto}
+@media (hover:none) and (pointer:coarse){.tl-nav button{display:none}}   /* 모바일은 손으로 밀어서 이동 */
 .tl-hd{font-size:9px;text-align:center;color:var(--ink-3);padding:1px 0 3px;line-height:1.2}
 .tl-hd b{display:block;color:var(--ink);font-size:9.5px}
 .tl-rl{display:flex;flex-direction:column;justify-content:center;font-size:11px;font-weight:600;padding-right:2px;min-height:34px;line-height:1.2;overflow:hidden}
@@ -781,7 +782,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <span><i style="width:18px;border-top:3px solid var(--up)"></i> 매수1위 업종 이동(테두리 칸)</span>
       <span><i style="width:18px;border-top:3px dashed var(--down)"></i> 매도1위 업종 이동(테두리 칸)</span>
     </div>
-    <div class="tl-nav"><button id="tlPrev">◀ 10일</button><button id="tlNext">10일 ▶</button><button id="tlLast">최근</button><span class="rng" id="tlRng"></span></div>
+    <div class="tl-nav"><button id="tlPrev">◀ 5일</button><button id="tlNext">5일 ▶</button><button id="tlLast">최근</button><span class="rng" id="tlRng"></span></div>
     <div id="tlBody"><div class="load">불러오는 중…</div></div>
     <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
   </div>
@@ -2375,12 +2376,13 @@ function updTlRange(){
 }
 function tlStep(dir){
   const m=S.tlMeta,scs=$$("#tlBody .tl-scroll");if(!m||!scs.length)return;
-  const x=scs[0].scrollLeft+dir*10*m.cw;
-  scs.forEach(e=>e.scrollTo({left:Math.max(0,x),behavior:"smooth"}));
+  // 5거래일씩. 두 차트가 서로 스크롤을 맞추는 중이라 smooth 애니메이션은 서로 끊어 미세하게만 움직이므로 즉시 이동
+  const x=Math.max(0,scs[0].scrollLeft+dir*5*m.cw);
+  scs.forEach(e=>{e.scrollLeft=x;});S.tlScroll=scs[0].scrollLeft;
 }
 $("#tlPrev").onclick=()=>tlStep(-1);
 $("#tlNext").onclick=()=>tlStep(1);
-$("#tlLast").onclick=()=>{S.tlScroll=1e9;$$("#tlBody .tl-scroll").forEach(e=>e.scrollTo({left:1e9,behavior:"smooth"}));};
+$("#tlLast").onclick=()=>{S.tlScroll=1e9;$$("#tlBody .tl-scroll").forEach(e=>{e.scrollLeft=1e9;});};
 function drawTimelinePaths(){
   (S.tlTops||[]).forEach(({topBuy,topSell,id})=>{
     const chart=document.getElementById(id);
