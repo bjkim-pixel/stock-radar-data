@@ -244,6 +244,37 @@ def collect_yahoo(conn, stats):
     if bad:
         log(f"  - ⚠ 실패: {', '.join(bad)}")
 
+def holdings_stockanalysis(t, diag=False):
+    """Yahoo가 막힐 때(429) 대체: stockanalysis.com ETF 보유종목 페이지(표/내장 JSON) 파싱."""
+    try:
+        r = requests.get(f"https://stockanalysis.com/etf/{t.lower()}/holdings/", timeout=20,
+                         headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+                                  "Accept-Language": "en-US,en;q=0.9"})
+    except Exception as ex:
+        if diag: log(f"  - [대체소스 진단] {t} 예외 {str(ex)[:80]}")
+        return None
+    html = r.text if r.status_code == 200 else ""
+    rows = []
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S):
+        cells = [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", c)).strip() for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)]
+        pct = next((c for c in cells if re.fullmatch(r"\d+(\.\d+)?%", c)), None)
+        if len(cells) >= 4 and pct:
+            sym = cells[1] if re.fullmatch(r"\d+", cells[0]) else cells[0]
+            nm = cells[2] if re.fullmatch(r"\d+", cells[0]) else cells[1]
+            sym = sym.replace("$", "").strip()
+            if re.fullmatch(r"[A-Za-z0-9.\-]{1,12}", sym):
+                rows.append((sym, nm, float(pct[:-1])))
+    if not rows:  # 내장 JSON 형태
+        for m in re.finditer(r'"s":"\$?([A-Za-z0-9.\-]{1,12})","n":"([^"]*)","as":"([\d.]+)%?"', html):
+            rows.append((m.group(1), m.group(2), float(m.group(3))))
+    if diag:
+        log(f"  - [대체소스 진단] {t}: HTTP {r.status_code} · 길이 {len(html)} · 파싱 {len(rows)}행 · 앞 3행 {rows[:3]}")
+        if not rows and html:
+            i = html.find("<tbody")
+            log(f"    스니펫: {re.sub(chr(10), ' ', html[i:i+300] if i >= 0 else html[:300])}")
+    rows.sort(key=lambda x: -x[2])
+    return rows[:5] or None
+
 def collect_us_holdings(conn):
     """미국 섹터·테마 ETF 상위 5개 보유종목 + 전일 등락률 → etf_holdings(US:티커). Yahoo topHoldings(crumb 필요)."""
     etfs = []
@@ -263,13 +294,10 @@ def collect_us_holdings(conn):
             log(f"- ⚠ Yahoo crumb 실패: HTTP {r.status_code}")
     except Exception as ex:
         log(f"- ⚠ Yahoo crumb 예외: {str(ex)[:80]}")
-    if not crumb:
-        log("- 미국 ETF 보유종목: crumb 없음 — 생략(기존 저장분 유지)")
-        return
     found, bad = {}, []
     for t in etfs:
         got = None
-        for host in ("query2", "query1"):
+        for host in (("query2", "query1") if crumb else ()):
             try:
                 r = ses.get(f"https://{host}.finance.yahoo.com/v10/finance/quoteSummary/{t}",
                             params={"modules": "topHoldings", "crumb": crumb}, timeout=15)
@@ -286,6 +314,11 @@ def collect_us_holdings(conn):
                 got = rows[:5]; break
             except Exception as ex:
                 got = f"예외 {str(ex)[:50]}"
+        if not (isinstance(got, list) and got):
+            alt = holdings_stockanalysis(t, diag=(t == etfs[0]))
+            if alt:
+                got = alt
+            time.sleep(0.4)
         if isinstance(got, list) and got:
             found[t] = got
         else:
