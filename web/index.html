@@ -498,6 +498,31 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   .hmeta{gap:5px}
   .chip{font-size:10.5px;padding:3px 7px}
 }
+/* ══ 글로벌 시황 (업종동향 맨 위) ══ */
+.gm-sec{margin:16px 0 6px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.gm-sec .r{font-size:10.5px;font-weight:400;color:var(--ink-3)}
+.gm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.gm-grid.etf{grid-template-columns:repeat(auto-fill,minmax(155px,1fr))}
+.gm-c{border:1px solid var(--border);border-radius:8px;padding:6px 8px 4px;background:var(--surface);cursor:pointer;min-width:0}
+.gm-c.hot-up{background:color-mix(in srgb,var(--up) 10%,var(--surface))}
+.gm-c.hot-dn{background:color-mix(in srgb,var(--down) 10%,var(--surface))}
+.gm-c.big{grid-column:1/-1;cursor:default}
+.gm-h{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:11.5px;font-weight:650}
+.gm-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.gm-v{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.gm-sub{font-size:9.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-c svg{display:block;width:100%;height:46px;margin-top:2px}
+.gm-c.big svg{height:150px}
+.gm-hold{margin-top:4px;border-top:1px dashed var(--grid);padding-top:3px}
+.gm-hl{display:flex;justify-content:space-between;gap:6px;font-size:10.5px;line-height:1.55}
+.gm-hl .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--ink-2)}
+.gm-per{display:flex;gap:4px;margin:4px 0 0}
+.gm-per .fchip{font-size:10.5px;padding:2px 8px;min-height:0}
+.gm-ax{display:flex;justify-content:space-between;font-size:9.5px;color:var(--ink-3)}
+#gmBody td.gm-hi{background:color-mix(in srgb,var(--up) 12%,transparent)}
+#gmBody td.gm-lo{background:color-mix(in srgb,var(--down) 12%,transparent)}
+.gm-ph{font-size:10px;font-weight:700;white-space:nowrap}
+.gm-ph.lead{color:var(--up)} .gm-ph.impr{color:var(--s1)} .gm-ph.weak{color:var(--ink-3)} .gm-ph.lag{color:var(--down)}
 </style>
 </head>
 <body>
@@ -983,6 +1008,15 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
 <!-- ═══════════ 업종동향 ═══════════ -->
 <section id="v-sector" class="hide">
+  <div class="card" id="gmCard" style="margin-top:16px"><h3>글로벌 시황
+    <span class="r" id="gmAsOf">추세가 오르는 시장·업종·테마 찾기</span></h3>
+    <div class="qf seg" id="gmTabSel" style="margin:4px 0 10px">
+      <button class="fchip" data-v="US" aria-pressed="true">미국 주식</button>
+      <button class="fchip" data-v="KR" aria-pressed="false">한국 주식</button>
+    </div>
+    <div id="gmBody"><div class="note">불러오는 중…</div></div>
+  </div>
+
   <div class="card" style="margin-top:16px"><h3>오늘의 클러스터
     <span class="r">같은 업종 4종목↑ 동시 +5%↑ 급등 · 같은 수급주체(외국인/기관) 순매수</span></h3>
     <div id="sectorClusterBody"><div class="note">불러오는 중…</div></div>
@@ -1943,7 +1977,7 @@ function go(v,detailCode){
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
     Promise.all([loadFlowTrends(),loadFlowLists(),loadFlowSectorMap(),loadFlowTimeline()]).catch(()=>{});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
-  if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
+  if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadGlobal().catch(console.error);loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
   redraw(detailJustLoaded);
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
@@ -2987,6 +3021,121 @@ function renderTodayFlow(raw){
     :`<tr><td colspan="27" class="load">해당 없음</td></tr>`;
   $$("#tdFlowBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
   makeSortable("tdFlowBody");
+}
+/* ══ 글로벌 시황 (업종동향 맨 위) ═════════════════════════════════════════
+   21_collect_global.py가 매일 만드는 global_pack(US/KR) 한 행만 읽어 그립니다.
+   요약표: D·W·M·3M·YTD·고점대비 + 3M 초과(기준지수 대비) · 추세(50일선) · 국면.
+   국면 = 1M·3M 초과수익 부호: 주도(+,+) · 개선(1M+, 3M−) · 약화(1M−, 3M+) · 소외(−,−).
+   카드: 기간 시작가 점선, 기간 최고가 빨간 점, 숫자 = 당일 등락률(마이너스는 괄호).
+   당일 상승 상위 3개는 붉은 배경, 하락 상위 3개는 푸른 배경. 카드를 누르면 크게 보기. */
+S.gm={tab:"US",packs:{},big:null,bigN:126};
+const GM_PER_LBL={252:"1년",126:"6개월",63:"3개월",21:"1개월",ytd:"연초 이후"};
+const GM_PH={lead:"주도",impr:"개선",weak:"약화",lag:"소외"};
+const gmF=v=>v==null?"–":(v<0?`(${Math.abs(v).toFixed(2)})`:v.toFixed(2));
+const gmC=v=>v==null?"dim":v>0?"up":v<0?"down":"dim";
+async function loadGlobal(tab){
+  tab=tab||S.gm.tab; S.gm.tab=tab;
+  if(!S.gm.packs[tab]){
+    $("#gmBody").innerHTML='<div class="note">불러오는 중…</div>';
+    const r=await q("global_pack",`select=as_of,updated_at,payload&tab=eq.${tab}`).catch(()=>[]);
+    if(!r.length){$("#gmBody").innerHTML='<div class="note">데이터 준비 중입니다 (매일 16:20 수집).</div>';return;}
+    S.gm.packs[tab]=r[0];
+  }
+  if(S.gm.tab===tab)renderGlobal(S.gm.packs[tab]);
+}
+$("#gmTabSel").addEventListener("seg-change",e=>{S.gm.big=null;loadGlobal(e.detail).catch(console.error);});
+function gmWin(p,period){
+  if(period==="ytd"){const y=p.as_of.slice(0,4);const i=p.dates.findIndex(d=>d.slice(0,4)===y);return i<0?p.dates.length:p.dates.length-i;}
+  return Math.min(+period||126,p.dates.length);
+}
+function gmSpark(c,n,big){
+  const a=c.slice(-n), W=big?600:160, H=big?150:46, P=3;
+  const v=a.map((x,i)=>[i,x]).filter(x=>x[1]!=null);
+  if(v.length<2)return `<svg viewBox="0 0 ${W} ${H}"></svg>`;
+  let lo=Math.min(...v.map(x=>x[1])),hi=Math.max(...v.map(x=>x[1]));if(hi===lo){hi+=1;lo-=1;}
+  const X=i=>P+i/(a.length-1)*(W-2*P), Y=y=>P+(hi-y)/(hi-lo)*(H-2*P);
+  const d=v.map((x,k)=>(k?"L":"M")+X(x[0]).toFixed(1)+" "+Y(x[1]).toFixed(1)).join("");
+  const b=Y(v[0][1]).toFixed(1), mx=v.reduce((m,x)=>x[1]>m[1]?x:m,v[0]), last=v[v.length-1];
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <line x1="${P}" y1="${b}" x2="${W-P}" y2="${b}" stroke="var(--axis)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>
+    <path d="${d}" fill="none" stroke="var(--ink-2)" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+    <circle cx="${X(mx[0]).toFixed(1)}" cy="${Y(mx[1]).toFixed(1)}" r="${big?3.5:2.6}" fill="var(--up)"/>
+    ${mx===last?"":`<circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="${big?2.5:1.8}" fill="var(--ink-2)"/>`}
+  </svg>`;
+}
+function gmCardVal(it){
+  const last=[...it.c].reverse().find(x=>x!=null);
+  if(it.days!=null&&it.days<20)return `<span class="gm-v dim">수집 ${it.days}/20일</span>`;
+  if(it.k==="lvlpct")return `<span class="gm-v ${gmC(last)}">${gmF(last)}%</span>`;
+  if(it.k==="lvl")return `<span class="gm-v">${last==null?"–":N(last,1)}</span>`;
+  const v=it.m&&it.m.d;return `<span class="gm-v ${gmC(v)}">${gmF(v)}</span>`;
+}
+function gmCard(p,key,it,period,hot){
+  const big=S.gm.big===key, n=big?gmWin(p,S.gm.bigN):gmWin(p,period);
+  const sub=it.etf?`<div class="gm-sub">${it.etf}</div>`:(it.s&&!/^\d/.test(it.s)&&p.tab==="US"?`<div class="gm-sub">${it.s}</div>`:"");
+  const hold=(it.h&&it.h.length)?`<div class="gm-hold">${it.h.map(h=>`<div class="gm-hl"><span class="nm">${
+      S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:h.n}</span><span class="${gmC(h.ch)}">${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
+  let extra="";
+  if(big){
+    const ds=p.dates.slice(-n);
+    extra=`<div class="gm-ax"><span>${ds[0]||""}</span><span>${ds[ds.length-1]||""}</span></div>
+      <div class="gm-per">${[[21,"1M"],[63,"3M"],[126,"6M"],[252,"1Y"]].map(([v,l])=>`<button class="fchip" data-gmn="${v}" aria-pressed="${S.gm.bigN==v}">${l}</button>`).join("")}</div>`;
+  }
+  return `<div class="gm-c${hot?" "+hot:""}${big?" big":""}" data-gmk="${key}">
+    <div class="gm-h"><span class="gm-n">${it.n}</span>${gmCardVal(it)}</div>${sub}
+    ${gmSpark(it.c,n,big)}${extra}${hold}</div>`;
+}
+function gmGrid(p,g){
+  const its=g.keys.map(k=>[k,p.items[k]]).filter(x=>x[1]);
+  const hot={};
+  if(g.id!=="index"){
+    const byD=its.filter(x=>x[1].m&&x[1].m.d!=null).sort((a,b)=>b[1].m.d-a[1].m.d);
+    byD.slice(0,3).forEach(x=>{if(x[1].m.d>0)hot[x[0]]="hot-up";});
+    byD.slice(-3).forEach(x=>{if(x[1].m.d<0)hot[x[0]]="hot-dn";});
+  }
+  return `<div class="gm-sec">${g.title}<span class="r">${GM_PER_LBL[g.period]||""} 차트 · 숫자 = 당일 등락률</span></div>
+    <div class="gm-grid${g.id==="etf"?" etf":""}">${its.map(([k,it])=>gmCard(p,k,it,g.period,hot[k])).join("")}</div>`;
+}
+const GM_COLS=[["d","D"],["w","W"],["m","M"],["m3","3M"],["ytd","YTD"],["hi","고점대비"],["rs3","3M 초과"]];
+function gmTable(p,g){
+  const its=g.keys.map(k=>[k,p.items[k]]).filter(x=>x[1]&&x[1].m);
+  const rank={};
+  GM_COLS.forEach(([f])=>{
+    const s=its.map(x=>x[1].m[f]).filter(v=>v!=null).sort((a,b)=>b-a);
+    rank[f]={hi:s[Math.min(2,s.length-1)],lo:s[Math.max(0,s.length-3)]};
+  });
+  its.sort((a,b)=>(b[1].m.rs3??-1e9)-(a[1].m.rs3??-1e9));
+  const tid="gmT_"+p.tab+"_"+g.id;
+  const rows=its.map(([k,it])=>{const m=it.m;
+    const lab=p.tab==="US"?`<b>${it.s}</b> <span class="faint">${it.n}</span>`:`${it.n}`;
+    return `<tr><td class="l">${lab}</td>${GM_COLS.map(([f])=>{const v=m[f];
+        const hl=v==null||its.length<6?"":v>=rank[f].hi&&v>0?" gm-hi":(v<=rank[f].lo&&v<0?" gm-lo":"");
+        return `<td class="${gmC(v)}${hl}" data-sort-val="${v??""}">${gmF(v)}</td>`;}).join("")}
+      <td data-sort-val="${m.tr??""}">${m.tr==null?"–":m.tr===2?'<span class="up">▲▲</span>':m.tr===1?'<span class="up">▲</span>':'<span class="down">▼</span>'}</td>
+      <td><span class="gm-ph ${m.ph||""}">${GM_PH[m.ph]||"–"}</span></td></tr>`;}).join("");
+  return `<div class="gm-sec">${g.title} 요약<span class="r">3M 초과(${p.bench} 대비) 큰 순 · 열 머리 = 정렬</span></div>
+    <div class="tw tw-scroll"><table><thead><tr><th class="l">${p.tab==="US"?"티커":"이름"}</th>${GM_COLS.map(c=>`<th>${c[1]}</th>`).join("")}<th>추세</th><th class="l">국면</th></tr></thead>
+    <tbody id="${tid}">${rows||'<tr><td colspan="10" class="load">데이터 없음</td></tr>'}</tbody></table></div>`;
+}
+function renderGlobal(row){
+  const p=row.payload; if(!p)return;
+  $("#gmAsOf").textContent=`기준 ${p.as_of}${p.tab==="US"?" (미국 종가)":""} · 기준지수 ${p.bench}`;
+  const G=Object.fromEntries(p.groups.map(g=>[g.id,g]));
+  let h="";
+  (p.summary||[]).forEach(id=>{if(G[id])h+=gmTable(p,G[id]);});
+  p.groups.forEach(g=>{h+=gmGrid(p,g);});
+  h+=`<div class="note" style="margin-top:8px">추세 ▲▲ = 50일선 위 + 50일선 상승 · ▲ = 50일선 위 · ▼ = 50일선 아래. 국면 = ${p.bench} 대비 1M·3M 초과수익 부호(주도 +/+ · 개선 1M+ 3M− · 약화 1M− 3M+ · 소외 −/−). 고점대비 = 최근 1년 최고 종가 대비.${p.tab==="KR"?" 테마 차트는 대표 ETF 종가, ADR은 상승종목수÷하락종목수 20일 합 ×100(2026-10-26부터 수집).":""}</div>`;
+  $("#gmBody").innerHTML=h;
+  (p.summary||[]).forEach(id=>makeSortable("gmT_"+p.tab+"_"+id));
+  $$("#gmBody .gm-c").forEach(el=>el.onclick=e=>{
+    if(e.target.closest("a.lk")){go("detail",e.target.closest("a.lk").dataset.code);return;}
+    const nb=e.target.closest("[data-gmn]");
+    if(nb){S.gm.bigN=+nb.dataset.gmn;renderGlobal(row);return;}
+    const k=el.dataset.gmk;
+    if(S.gm.big===k&&el.classList.contains("big")&&!e.target.closest("svg"))return;
+    S.gm.big=S.gm.big===k?null:k; S.gm.bigN=126; renderGlobal(row);
+    const nel=document.querySelector(`#gmBody [data-gmk="${CSS.escape(k)}"]`); if(nel)nel.scrollIntoView({block:"nearest"});
+  });
 }
 /* ── 기준별 강한 종목 Top 10 ─────────────────────────────────────────────
    오늘의 종목 페이지에서 특정 기준으로 가장 강한 종목 10개를 보여줍니다.
