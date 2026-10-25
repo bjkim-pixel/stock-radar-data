@@ -721,11 +721,30 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
   </div>
 
-  <div class="card"><h3>오늘 강했던 종목 <span class="r">무게/주식수(등락률×거래량회전율) 우선 · 개별RS 보조 정렬 · 상위 10종목</span></h3>
-    <div class="note">무게/주식수는 "등락률 × 거래량 ÷ 상장주식수"로, 단순 상승률보다 실제 매수세(회전율)가 실린 종목을 가려냅니다.
-      개별RS5/개별RS20은 각각 종목의 5일/20일 수익률에서 그날 유니버스 평균 수익률을 뺀 값(시장 대비 초과강도)을
-      그날 유니버스 내 백분위(0~100, "상위 N%")로 환산해 보여줍니다. 값이 작을수록(=상위 %가 작을수록) 더 강한 종목입니다.</div>
-    <div class="tw scrlike"><table><thead></thead><tbody id="tdMomBody"><tr><td colspan="30" class="load">불러오는 중…</td></tr></tbody></table></div>
+  <div class="card" style="margin-top:12px"><h3>기준별 강한 종목 Top 10
+    <span class="r">오늘 이 기준으로 가장 강했던 종목 · 칩 선택으로 기준 전환</span></h3>
+    <div id="tdTopChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px">
+      <button class="fchip on" data-crit="weight">무게/주식수</button>
+      <button class="fchip" data-crit="rs_accel">RS 가속</button>
+      <button class="fchip" data-crit="rs5">RS5 상위</button>
+      <button class="fchip" data-crit="rs20">RS20 상위</button>
+      <button class="fchip" data-crit="newhigh">52주 신고가</button>
+      <button class="fchip" data-crit="nearhigh">신고가 근접</button>
+      <button class="fchip" data-crit="aligned">정배열 강세</button>
+      <button class="fchip" data-crit="vol_surge">거래대금 급증</button>
+      <button class="fchip" data-crit="fg_inst_ratio">외+기 시총비율</button>
+      <button class="fchip" data-crit="fg_ratio">외국인 시총비율</button>
+      <button class="fchip" data-crit="inst_ratio">기관합계 시총비율</button>
+      <button class="fchip" data-crit="chg_top">등락률 상위</button>
+      <button class="fchip" data-crit="dup">중복 많은 순</button>
+      <button class="fchip" data-crit="overhead_light">위쪽 매물대 가벼운</button>
+      <button class="fchip" data-crit="close_top">고가 마감</button>
+      <button class="fchip" data-crit="cluster">클러스터 업종</button>
+    </div>
+    <div id="tdTopCritNote" style="font-size:11px;color:var(--ink-3);margin-bottom:6px"></div>
+    <div class="tw scrlike" id="tdTopWrap"><table><thead></thead><tbody id="tdTopBody"><tr><td colspan="30" class="load">불러오는 중…</td></tr></tbody></table></div>
+    <div id="tdTopDupNote" class="note" style="margin-top:6px;display:none"></div>
+    <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 보기, #·종목명 고정) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순</div>
   </div>
 
   <div class="card"><h3>수급 주체별 매수 상위 종목 <span class="r">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
@@ -745,32 +764,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div></div>
     <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFlowBody"><tr><td colspan="30" class="load">불러오는 중…</td></tr></tbody></table></div>
     <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
-  </div>
-
-  <div class="card" style="margin-top:12px"><h3>기준별 강한 종목 Top 10
-    <span class="r">오늘 이 기준으로 가장 강했던 종목 · 칩 선택으로 기준 전환</span></h3>
-    <div id="tdTopChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px">
-      <button class="fchip on" data-crit="rs_accel">RS 가속</button>
-      <button class="fchip" data-crit="rs5">RS5 상위</button>
-      <button class="fchip" data-crit="rs20">RS20 상위</button>
-      <button class="fchip" data-crit="newhigh">52주 신고가</button>
-      <button class="fchip" data-crit="nearhigh">신고가 근접</button>
-      <button class="fchip" data-crit="aligned">정배열 강세</button>
-      <button class="fchip" data-crit="vol_surge">거래대금 급증</button>
-      <button class="fchip" data-crit="fg_inst_ratio">외+기 시총비율</button>
-      <button class="fchip" data-crit="fg_ratio">외국인 시총비율</button>
-      <button class="fchip" data-crit="inst_ratio">기관합계 시총비율</button>
-      <button class="fchip" data-crit="chg_top">등락률 상위</button>
-      <button class="fchip" data-crit="weight">무게/주식수</button>
-      <button class="fchip" data-crit="dup">중복 많은 순</button>
-      <button class="fchip" data-crit="overhead_light">위쪽 매물대 가벼운</button>
-      <button class="fchip" data-crit="close_top">고가 마감</button>
-      <button class="fchip" data-crit="cluster">클러스터 업종</button>
-    </div>
-    <div id="tdTopCritNote" style="font-size:11px;color:var(--ink-3);margin-bottom:6px"></div>
-    <div class="tw scrlike" id="tdTopWrap"><table><thead></thead><tbody id="tdTopBody"><tr><td colspan="30" class="load">불러오는 중…</td></tr></tbody></table></div>
-    <div id="tdTopDupNote" class="note" style="margin-top:6px;display:none"></div>
-    <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 보기, #·종목명 고정) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순</div>
   </div>
 
   <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 35(당일 등락률·무게/주식수·개별RS) · 수급 35(당일 실측 외국인+기관·프로그램·공통매수) · 섹터 20(섹터RS 1위 최고점) · 단발성 급등·거래량 과열 감점 (백테스트 미검증 참고용 휴리스틱, 투자 조언 아님)</span></h3>
@@ -3006,8 +2999,7 @@ async function loadToday(){
     renderTodaySectors(sflow);
 
     // ── 3) 오늘 강했던 종목 ──
-    renderTodayMomentum(universe);
-    S.tdUniverse=universe; S.tdTopCrit=S.tdTopCrit||"rs_accel";
+    S.tdUniverse=universe; S.tdTopCrit=S.tdTopCrit||"weight";
     loadTodayClusterSectors().then(()=>renderTodayTop(universe));
     renderTodayTop(universe);
 
@@ -3061,13 +3053,13 @@ function renderTodaySectors(sflow){
     S.tdSectorFilter=tr.dataset.sec;
     $("#tdSectorFilterText").textContent=`"${tr.dataset.sec}" 업종`;
     $("#tdSectorClearWrap").style.display="";
-    loadFlowRawData().then(raw=>renderTodayMomentum(raw.filter(todayLiqOk)));
+    if(S.tdUniverse)renderTodayTop(S.tdUniverse);
   });
   $("#tdSectorClear").onclick=()=>{
     S.tdSectorFilter=null;
     $("#tdSectorFilterText").textContent="전체";
     $("#tdSectorClearWrap").style.display="none";
-    loadFlowRawData().then(raw=>renderTodayMomentum(raw.filter(todayLiqOk)));
+    if(S.tdUniverse)renderTodayTop(S.tdUniverse);
   };
 }
 // 2026-09-20: 매물대 금액 표시 포맷 — 억원이 기본, 1조원(=10000억) 이상이면 조원.
@@ -3077,16 +3069,6 @@ function fmtEokJo(eok){
   return Math.abs(v)>=10000 ? N(Math.round(v/10000),0)+"조원" : N(Math.round(v),0)+"억원";
 }
 function todayAligned(r){return r.ma5!=null&&r.ma20!=null&&r.ma60!=null&&r.ma120!=null&&+r.close>+r.ma5&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60&&+r.ma60>+r.ma120;}
-function renderTodayMomentum(universe){
-  let rows=universe;
-  if(S.tdSectorFilter)rows=rows.filter(r=>r.sector===S.tdSectorFilter);
-  rows=[...rows].sort((a,b)=>(+b.weight_per_share||0)-(+a.weight_per_share||0)
-    ||(+(b.rs20_vs_mkt||-999)-+(a.rs20_vs_mkt||-999))).slice(0,10);
-  $("#tdMomBody").innerHTML=rows.length?rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}${scrCells(r)}</tr>`).join("")
-    :`<tr><td colspan="30" class="load">데이터 없음</td></tr>`;
-  $$("#tdMomBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
-  makeSortable("tdMomBody");
-}
 const TODAY_FLOW_KEY_MAP={pgtr:"program"};
 function renderTodayFlow(raw){
   const key=TODAY_FLOW_KEY_MAP[S.tdFlowSubj]||S.tdFlowSubj;
@@ -3305,13 +3287,13 @@ function buildTopCodes(universe){
   return map;
 }
 function renderTodayTop(universe){
-  const crit=S.tdTopCrit||"rs_accel", def=TD_TOP_CRITERIA[crit];
+  const crit=S.tdTopCrit||"weight", def=TD_TOP_CRITERIA[crit];
   if(!def)return;
   $("#tdTopKeyHd").textContent=def.lbl;
   $("#tdTopCritNote").textContent=def.note;
   $$("#tdTopChips .fchip").forEach(b=>b.classList.toggle("on",b.dataset.crit===crit));
   const topMap=buildTopCodes(universe);
-  const sorted=[...universe].filter(r=>def.keyFn(r)!=null)
+  const sorted=[...universe].filter(r=>(!S.tdSectorFilter||r.sector===S.tdSectorFilter)&&def.keyFn(r)!=null)
     .sort((a,b)=>(def.dir===1?def.keyFn(b)-def.keyFn(a):def.keyFn(a)-def.keyFn(b))
       ||((def.meta||def.tie)?(+b.change_pct||0)-(+a.change_pct||0):0)).slice(0,10);
   const mk=r=>r.market==="KOSPI"?'<span class="cd">피</span> ':'<span class="cd">닥</span> ';
@@ -3496,7 +3478,6 @@ function scrCells(r){return `
 const SCR_TH_REST=`<th>종가</th><th>등락률</th><th>무게/주식수</th><th class="grp opt">개별RS5</th><th class="opt">개별RS20</th><th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th class="opt">외+기(2m)</th><th class="opt">2m주도</th><th class="grp opt" title="현재가~조회기간 내 최고 종가 구간을 24등분한 개인 누적 순매수 합계(양수 구간만)">위쪽매물대</th><th class="grp opt" title="외+기 순매수 주식수 ÷ 상장주식수의 누적(지분 변화율) — 3개월 전(60거래일) 시점. 종목상세 수급표의 순매수/시총과 같은 값">외+기 순매수/시총 3M</th><th class="opt" title="1개월 전(20거래일) 시점">1M</th><th class="opt" title="1주 전(5거래일) 시점">1W</th><th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th><th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th><th>외국인</th><th>기관합계</th><th class="opt">금융투자</th><th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th><th class="grp opt">프로그램</th>`;
 function scrThead(extra){return `<tr><th class="l">#</th><th class="l">종목</th>${extra||""}${SCR_TH_REST}</tr>`;}
 
-$("#tdMomBody").closest("table").querySelector("thead").innerHTML=scrThead();
 $("#tdFlowBody").closest("table").querySelector("thead").innerHTML=scrThead('<th>순매수(억)</th><th>시총대비</th>');
 $("#tdTopBody").closest("table").querySelector("thead").innerHTML=scrThead('<th id="tdTopKeyHd">기준값</th>');
 async function runScreener(){
