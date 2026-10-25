@@ -587,6 +587,8 @@ def save_pack(conn, pack):
     conn.commit()
     n_ok = sum(len(g["keys"]) for g in pack["groups"])
     log(f"- pack {pack['tab']}: 기준일 {pack['as_of']} · 항목 {n_ok}개 · {len(js)/1024:.0f}KB")
+    if REPORT_PATH:  # 검증용 사본 (리포트 브랜치에 같이 게시)
+        open(f"pack_{pack['tab']}.json", "w", encoding="utf-8").write(js)
 
 # ═════════════════════════════════════════════════════════════════════════
 def main():

@@ -66,11 +66,13 @@ jobs:
         run: |
           [ -f global_report.md ] || echo "리포트 없음 — 수집 단계 실패. Actions 로그 확인" > global_report.md
           cp global_report.md /tmp/global_report.md
+          cp pack_*.json /tmp/ 2>/dev/null || true
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
           git checkout --orphan global-report
           git rm -rq --cached . || true
           cp /tmp/global_report.md global_report.md
-          git add global_report.md
+          cp /tmp/pack_*.json . 2>/dev/null || true
+          git add -f global_report.md; git add -f pack_*.json 2>/dev/null || true
           git commit -qm "global report ${{ github.run_id }}"
           git push -f origin global-report
