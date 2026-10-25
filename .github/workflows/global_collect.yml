@@ -8,6 +8,11 @@ on:
     - cron: "20 7 * * 1-5"
     # 토 08:00 KST (금 23:00 UTC) — 금요일 미국 종가 반영
     - cron: "0 23 * * 5"
+  # 2026-10-25: 수집·계산 통합 워크플로가 성공으로 끝나면 이어서 실행(하루 첫 성공 실행 뒤에만, 평일·거래일에만).
+  # GitHub 예약 실행이 몇 시간씩 늦어지는 문제를 피하려는 것 — 위 예약은 보조 수단으로 남겨 둡니다.
+  workflow_run:
+    workflows: ["Daily Collect + Compute (수집·계산 통합)"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       pack_only:
@@ -22,6 +27,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read     # 오늘 이미 성공한 실행이 있는지 조회(연결 실행 판단용)
 
 jobs:
   collect:
@@ -29,12 +35,37 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: 실행 여부 판단 (연결 실행은 하루 첫 성공 실행에만)
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "workflow_run" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "⏸️ 앞 단계(수집·계산)가 성공하지 않아 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          TODAY=$(TZ=Asia/Seoul date +%F); DOW=$(TZ=Asia/Seoul date +%u)
+          HOLIDAYS="$(bash .github/scripts/holidays.sh)"
+          if [ "$DOW" -ge 6 ] || echo " $HOLIDAYS " | grep -q " $TODAY "; then
+            echo "⏸️ $TODAY 은 주말/휴장일 — 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          SINCE=$(date -u -d "TZ=\"Asia/Seoul\" $TODAY 00:00" +%Y-%m-%dT%H:%M:%SZ)   # 오늘 00:00 KST를 UTC로
+          N=$(gh run list -R "$GITHUB_REPOSITORY" --workflow global_collect.yml --status success --created ">=$SINCE" --json databaseId --jq 'length' || echo 0)
+          if [ "${N:-0}" -gt 0 ]; then
+            echo "⏸️ 오늘 이미 글로벌 시황 수집이 ${N}번 성공했습니다 — 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
         with:
           python-version: "3.11"
-      - run: pip install psycopg2-binary requests
+      - if: steps.gate.outputs.run == 'true'
+        run: pip install psycopg2-binary requests
       - name: KIS token
         id: kistoken
+        if: steps.gate.outputs.run == 'true'
         env:
           KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
@@ -45,6 +76,7 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
       - name: Collect + pack
+        if: steps.gate.outputs.run == 'true'
         env:
           KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
@@ -57,7 +89,7 @@ jobs:
             python 21_collect_global.py --report global_report.md
           fi
       - name: Publish report (branch global-report)
-        if: always()
+        if: always() && steps.gate.outputs.run == 'true'
         run: |
           [ -f global_report.md ] || echo "리포트 없음 — 수집 단계 실패. Actions 로그 확인" > global_report.md
           cp global_report.md /tmp/global_report.md
