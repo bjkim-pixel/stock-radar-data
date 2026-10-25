@@ -144,6 +144,7 @@ US_DESC = {
     "^VIX": "변동성 지수 · 20↑ 불안, 30↑ 공포",
 }
 KR_DESC = {
+    "VKOSPI": "코스피200 변동성지수 · 20↑ 불안, 30↑ 공포(한국판 VIX)",
     "KOSPI": "코스피 · 한국 대형주 시장 전체", "KOSPI_DD": "1년 고점 대비 낙폭(%) · 조정의 깊이",
     "KOSPI_DISP": "코스피÷20일선 · 100 위 과열, 아래 침체", "KOSDAQ": "코스닥 · 중소형·성장주 시장",
     "KQKS": "코스닥÷코스피 · 오르면 중소형 강세", "KRW": "원/달러 · 오르면 원화 약세(외국인 매도 압력)",
@@ -523,6 +524,69 @@ def fetch_kr_daily(token, code, d1, d2):
 def kr_session_closed(now_kst):
     return now_kst.weekday() >= 5 or now_kst.time() >= datetime.time(15, 40) or now_kst.time() < datetime.time(9, 0)
 
+def fetch_kr_index_series(token, iscd, d1, d2):
+    """KIS 업종 기간별 시세(FHKUP03500100) — 지수 종가 {날짜: 값}. 130일씩 거꾸로 이어서 조회."""
+    out, end, err = {}, d2, None
+    while end >= d1:
+        start = max(d1, end - datetime.timedelta(days=130))
+        d = kis_get(token, "/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice", "FHKUP03500100", {
+            "FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": iscd,
+            "FID_INPUT_DATE_1": start.strftime("%Y%m%d"), "FID_INPUT_DATE_2": end.strftime("%Y%m%d"),
+            "FID_PERIOD_DIV_CODE": "D"})
+        if "_err" in d:
+            err = d["_err"]; break
+        rows = [x for x in (d.get("output2") or []) if x and x.get("stck_bsop_date")]
+        for x in rows:
+            c = fnum(x.get("bstp_nmix_prpr"))
+            if c:
+                out[datetime.datetime.strptime(x["stck_bsop_date"], "%Y%m%d").date()] = c
+        if not rows:
+            break
+        oldest = min(datetime.datetime.strptime(x["stck_bsop_date"], "%Y%m%d").date() for x in rows)
+        end = min(start, oldest) - datetime.timedelta(days=1)
+    return out, err
+
+def collect_vkospi(conn, stats, token):
+    """VKOSPI(코스피200 변동성지수) — ① KIS 업종 마스터(idxcode.mst)에서 '변동성' 코드 탐색 → KIS 조회, ② 실패 시 Yahoo 후보 티커."""
+    sym = "KRB:VKOSPI"
+    bf = needs_backfill(stats, sym)
+    today = datetime.datetime.now(KST)
+    d1 = BACKFILL_FROM - datetime.timedelta(days=10) if bf else today.date() - datetime.timedelta(days=20)
+    data, how = {}, None
+    cands = []
+    try:
+        import io, zipfile
+        r = requests.get("https://new.real.download.dws.co.kr/common/master/idxcode.mst.zip", timeout=30)
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        raw = z.read(z.namelist()[0]).decode("cp949", "ignore")
+        for line in raw.splitlines():
+            if "변동성" in line:
+                log(f"  - [VKOSPI 진단] 마스터 행: {line.strip()[:70]}")
+                for m in re.findall(r"\d{4,5}", line[:14]):
+                    if m not in cands:
+                        cands.append(m)
+        if not cands:
+            log(f"  - [VKOSPI 진단] 마스터에 '변동성' 행 없음 (행 {len(raw.splitlines())}개)")
+    except Exception as ex:
+        log(f"  - [VKOSPI 진단] 업종 마스터 실패: {str(ex)[:80]}")
+    for c in cands:
+        d, err = fetch_kr_index_series(token, c, d1, today.date())
+        log(f"  - [VKOSPI 진단] KIS 업종코드 {c}: {len(d)}행 {err or ''}")
+        if d:
+            data, how = d, f"KIS {c}"; break
+    if not data:
+        for ys in ("^KSVKOSPI", "^VKOSPI", "VKOSPI.KS"):
+            d, err = fetch_yahoo(ys, bf)
+            log(f"  - [VKOSPI 진단] Yahoo {ys}: {len(d or {})}행 {err or ''}")
+            if d:
+                data, how = d, f"Yahoo {ys}"; break
+    if not data:
+        log("- VKOSPI: 수집 실패(카드 생략)"); return
+    if not kr_session_closed(today):
+        data.pop(today.date(), None)
+    upsert_series(conn, [(sym, d, v) for d, v in sorted(data.items())])
+    log(f"- VKOSPI: {how} · {len(data)}행 · 최근 {max(data)} = {data[max(data)]}")
+
 def collect_kr(conn, stats, token, etf_codes):
     today = datetime.datetime.now(KST)
     codes = sorted({c for _, c in etf_codes})
@@ -752,6 +816,7 @@ def build_kr(S, H, etf_codes, theme_of):
             ds[d] = ksl[i] / (sum(w20) / 20) * 100
     put("index:KOSPI_DD", item(cal, dd, "KOSPI 고점대비", None, "lvlpct"))
     put("index:KOSPI_DISP", item(cal, ds, "KOSPI 이격도(20일)", None, "lvl"))
+    put("index:VKOSPI", item(cal, S.get("KRB:VKOSPI") or {}, "VKOSPI 변동성", None, "lvl"))
     put("index:KOSDAQ", item(cal, kq, "KOSDAQ", None))
     put("index:KQKS", item(cal, {d: kq[d] / ks[d] for d in kq if d in ks and ks[d]}, "KOSDAQ / KOSPI", None, "ratio"))
     put("index:KRW", item(cal, S.get("FX:KRW") or {}, "원/달러", None))
@@ -825,7 +890,12 @@ def main():
         except Exception as ex:
             log(f"- ⚠ 미국 ETF 보유종목 수집 예외: {str(ex)[:100]}")
         if KIS_KEY:
-            collect_kr(conn, stats, get_token(), etf_codes)
+            tk = get_token()
+            collect_kr(conn, stats, tk, etf_codes)
+            try:
+                collect_vkospi(conn, stats, tk)
+            except Exception as ex:
+                log(f"- ⚠ VKOSPI 수집 예외: {str(ex)[:100]}")
         else:
             log("- ⚠ KIS 키 없음 — 한국 ETF 수집 생략")
     S, H = load_all(conn)
