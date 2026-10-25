@@ -501,6 +501,14 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 /* ══ 글로벌 시황 (업종동향 맨 위) ══ */
 .gm-sec{margin:16px 0 6px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .gm-sec .r{font-size:10.5px;font-weight:400;color:var(--ink-3)}
+.gm-th{margin:14px 0 6px;font-size:12.5px;font-weight:700;display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  padding:5px 8px;background:var(--surface-2);border-left:3px solid var(--accent,#2563eb);border-radius:4px;scroll-margin-top:84px}
+.gm-th .r{font-size:10.5px;font-weight:400;color:var(--ink-3)}
+.gm-th.flash{animation:gmflash 1.4s ease-out}
+@keyframes gmflash{0%{background:color-mix(in srgb,var(--accent,#2563eb) 28%,var(--surface-2))}100%{background:var(--surface-2)}}
+.gm-grid.etf .gm-n{white-space:normal;overflow:visible;line-height:1.25}
+.gm-cap{white-space:nowrap;font-size:9.5px;font-weight:400;color:var(--ink-3)}
+a.gm-tl{cursor:pointer;color:var(--accent,#2563eb);font-weight:650;text-decoration:underline dotted}
 .gm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .gm-grid.etf{grid-template-columns:repeat(auto-fill,minmax(155px,1fr))}
 .gm-c{border:1px solid var(--border);border-radius:8px;padding:6px 8px 4px;background:var(--surface);cursor:pointer;min-width:0}
@@ -3082,7 +3090,7 @@ function gmCard(p,key,it,period,hot){
       <div class="gm-per">${[[21,"1M"],[63,"3M"],[126,"6M"],[252,"1Y"]].map(([v,l])=>`<button class="fchip" data-gmn="${v}" aria-pressed="${S.gm.bigN==v}">${l}</button>`).join("")}</div>`;
   }
   return `<div class="gm-c${hot?" "+hot:""}${big?" big":""}" data-gmk="${key}">
-    <div class="gm-h"><span class="gm-n">${it.n}</span>${gmCardVal(it)}</div>${sub}
+    <div class="gm-h"><span class="gm-n">${it.n}${it.cap!=null?` <span class="gm-cap">${N(it.cap,0)}억</span>`:""}</span>${gmCardVal(it)}</div>${sub}
     ${gmSpark(it.c,n,big)}${extra}${hold}</div>`;
 }
 function gmGrid(p,g){
@@ -3093,8 +3101,12 @@ function gmGrid(p,g){
     byD.slice(0,3).forEach(x=>{if(x[1].m.d>0)hot[x[0]]="hot-up";});
     byD.slice(-3).forEach(x=>{if(x[1].m.d<0)hot[x[0]]="hot-dn";});
   }
-  return `<div class="gm-sec">${g.title}<span class="r">${GM_PER_LBL[g.period]||""} 차트 · 숫자 = 당일 등락률</span></div>
-    <div class="gm-grid${g.id==="etf"?" etf":""}">${its.map(([k,it])=>gmCard(p,k,it,g.period,hot[k])).join("")}</div>`;
+  const head=`<div class="gm-sec">${g.title}<span class="r">${GM_PER_LBL[g.period]||""} 차트 · 숫자 = 당일 등락률${g.sections?" · ETF 시총(억원) 큰 순":""}</span></div>`;
+  const cards=ks=>ks.map(k=>p.items[k]?gmCard(p,k,p.items[k],g.period,hot[k]):"").join("");
+  if(g.sections)   /* 테마별 헤더 + 그 테마 ETF 카드(시총 큰 순) */
+    return head+g.sections.map((sc,i)=>`<div class="gm-th" id="gmth_${p.tab}_${i}"><span>${sc.n}</span><span class="r">ETF ${sc.keys.length}개 · 시총 합계 ${N(sc.cap,0)}억원</span></div>
+      <div class="gm-grid etf">${cards(sc.keys)}</div>`).join("");
+  return head+`<div class="gm-grid${g.id==="etf"?" etf":""}">${cards(g.keys)}</div>`;
 }
 const GM_COLS=[["d","D"],["w","W"],["m","M"],["m3","3M"],["ytd","YTD"],["hi","고점대비"],["rs3","3M 초과"]];
 function gmTable(p,g){
@@ -3106,16 +3118,19 @@ function gmTable(p,g){
   });
   its.sort((a,b)=>(b[1].m.rs3??-1e9)-(a[1].m.rs3??-1e9));
   const tid="gmT_"+p.tab+"_"+g.id;
+  const hasTh=its.some(x=>x[1].th);
+  const secIdx={}; ((p.groups.find(x=>x.sections)||{}).sections||[]).forEach((sc,i)=>secIdx[sc.n]=i);
   const rows=its.map(([k,it])=>{const m=it.m;
     const lab=p.tab==="US"?`<b>${it.s}</b> <span class="faint">${it.n}</span>`:`${it.n}`;
-    return `<tr><td class="l">${lab}</td>${GM_COLS.map(([f])=>{const v=m[f];
+    const first=hasTh?`<td class="l"><a class="gm-tl" data-gmth="${secIdx[it.th]??""}">${it.th}</a></td><td class="l">${it.n}</td><td data-sort-val="${it.cap??""}">${it.cap==null?"–":N(it.cap,0)}</td>`:`<td class="l">${lab}</td>`;
+    return `<tr>${first}${GM_COLS.map(([f])=>{const v=m[f];
         const hl=v==null||its.length<6?"":v>=rank[f].hi&&v>0?" gm-hi":(v<=rank[f].lo&&v<0?" gm-lo":"");
         return `<td class="${gmC(v)}${hl}" data-sort-val="${v??""}">${gmF(v)}</td>`;}).join("")}
       <td data-sort-val="${m.tr??""}">${m.tr==null?"–":m.tr===2?'<span class="up">▲▲</span>':m.tr===1?'<span class="up">▲</span>':'<span class="down">▼</span>'}</td>
       <td><span class="gm-ph ${m.ph||""}">${GM_PH[m.ph]||"–"}</span></td></tr>`;}).join("");
-  return `<div class="gm-sec">${g.title} 요약<span class="r">3M 초과(${p.bench} 대비) 큰 순 · 열 머리 = 정렬</span></div>
-    <div class="tw tw-scroll"><table><thead><tr><th class="l">${p.tab==="US"?"티커":"이름"}</th>${GM_COLS.map(c=>`<th>${c[1]}</th>`).join("")}<th>추세</th><th class="l">국면</th></tr></thead>
-    <tbody id="${tid}">${rows||'<tr><td colspan="10" class="load">데이터 없음</td></tr>'}</tbody></table></div>`;
+  return `<div class="gm-sec">${g.title} 요약<span class="r">3M 초과(${p.bench} 대비) 큰 순 · 열 머리 = 정렬${hasTh?" · 테마명 클릭 = 차트로 이동":""}</span></div>
+    <div class="tw tw-scroll"><table><thead><tr>${hasTh?'<th class="l">테마</th><th class="l">ETF</th><th>시총(억)</th>':`<th class="l">${p.tab==="US"?"티커":"이름"}</th>`}${GM_COLS.map(c=>`<th>${c[1]}</th>`).join("")}<th>추세</th><th class="l">국면</th></tr></thead>
+    <tbody id="${tid}">${rows||'<tr><td colspan="13" class="load">데이터 없음</td></tr>'}</tbody></table></div>`;
 }
 function renderGlobal(row){
   const p=row.payload; if(!p)return;
@@ -3125,9 +3140,15 @@ function renderGlobal(row){
   if(G.index)h+=gmGrid(p,G.index);   /* 인덱스 차트를 맨 위로 */
   (p.summary||[]).forEach(id=>{if(G[id])h+=gmTable(p,G[id]);});
   p.groups.forEach(g=>{if(g.id!=="index")h+=gmGrid(p,g);});
-  h+=`<div class="note" style="margin-top:8px">추세 ▲▲ = 50일선 위 + 50일선 상승 · ▲ = 50일선 위 · ▼ = 50일선 아래. 국면 = ${p.bench} 대비 1M·3M 초과수익 부호(주도 +/+ · 개선 1M+ 3M− · 약화 1M− 3M+ · 소외 −/−). 고점대비 = 최근 1년 최고 종가 대비.${p.tab==="KR"?" 테마 차트는 대표 ETF 종가, ADR은 상승종목수÷하락종목수 20일 합 ×100(2026-10-23부터 수집).":""}</div>`;
+  h+=`<div class="note" style="margin-top:8px">추세 ▲▲ = 50일선 위 + 50일선 상승 · ▲ = 50일선 위 · ▼ = 50일선 아래. 국면 = ${p.bench} 대비 1M·3M 초과수익 부호(주도 +/+ · 개선 1M+ 3M− · 약화 1M− 3M+ · 소외 −/−). 고점대비 = 최근 1년 최고 종가 대비.${p.tab==="KR"?" 차트는 ETF 종가(테마별로 묶고 ETF 시총 큰 순), 시총은 한국투자증권 현재가 기준 ETF 시가총액(억원), ADR은 상승종목수÷하락종목수 20일 합 ×100(2026-10-23부터 수집).":""}</div>`;
   $("#gmBody").innerHTML=h;
   (p.summary||[]).forEach(id=>makeSortable("gmT_"+p.tab+"_"+id));
+  $$("#gmBody [data-gmth]").forEach(a=>a.onclick=e=>{
+    e.preventDefault(); e.stopPropagation();
+    const t=document.getElementById("gmth_"+p.tab+"_"+a.dataset.gmth); if(!t)return;
+    t.scrollIntoView({behavior:"smooth",block:"start"});
+    t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash");
+  });
   $$("#gmBody .gm-c").forEach(el=>el.onclick=e=>{
     if(e.target.closest("a.lk")){go("detail",e.target.closest("a.lk").dataset.code);return;}
     const nb=e.target.closest("[data-gmn]");

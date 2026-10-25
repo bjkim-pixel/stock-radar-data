@@ -69,35 +69,28 @@ US_THEME = [
 US_YAHOO_EXTRA = {"FX:KRW": "KRW=X"}   # 한국 탭 원/달러
 
 # 한국 테마 ETF 카드 — (표시명, 고정코드 또는 None). 코드가 None이면 stocks 테이블에서 이름으로 찾음.
-KR_ETF = [
-    ("RISE 네트워크인프라", None), ("SOL 반도체전공정", None), ("SOL 반도체후공정", None),
-    ("KODEX AI전력핵심설비", None), ("HANARO 원자력iSelect", None), ("PLUS K방산", None),
-    ("PLUS K방산소부장", None), ("KODEX 2차전지핵심소재10", None), ("ACE KPOP포커스", None),
-    ("TIGER 화장품", None), ("TIGER 여행레저", None), ("TIGER 미디어컨텐츠", None),
-    ("KODEX 로봇액티브", None), ("TIGER 코리아휴머노이드로봇산업", None), ("SOL 조선TOP3플러스", None),
-    ("TIME K신재생에너지액티브", None), ("TIGER 증권", None), ("TIGER 은행", None),
-    ("TIGER 200 금융", None), ("KODEX 건설", None), ("TIGER 게임TOP10", None),
-    ("TIGER 바이오TOP10", None), ("TIGER 기술이전바이오액티브", None),
-    ("KoAct 광통신&위성네트워크액티브", None), ("PLUS 태양광&ESS", None),
-    ("KODEX 전고체배터리ESS TOP2플러스", None), ("PLUS 우주항공", None),
-    ("SOL 우주항공밸류체인", None), ("PLUS AI반도체소부장액티브", "0239Z0"),
+# 한국 테마 — (테마명, [(ETF 이름, 고정코드 or None), ...]) · 같은 테마끼리 묶고 ETF 시총 큰 순으로 표시
+KR_THEMES = [
+    ("반도체", [("KODEX 반도체", "091160"), ("SOL 반도체전공정", None), ("SOL 반도체후공정", None),
+               ("PLUS AI반도체소부장액티브", "0239Z0")]),
+    ("AI전력·네트워크", [("KODEX AI전력핵심설비", None), ("RISE 네트워크인프라", None)]),
+    ("우주항공·위성", [("PLUS 우주항공", None), ("SOL 우주항공밸류체인", None),
+                    ("KoAct 광통신&위성네트워크액티브", None)]),
+    ("K방산", [("PLUS K방산", None), ("PLUS K방산소부장", None)]),
+    ("조선", [("SOL 조선TOP3플러스", None)]),
+    ("원자력", [("HANARO 원자력iSelect", None)]),
+    ("신재생에너지", [("TIME K신재생에너지액티브", None), ("PLUS 태양광&ESS", None)]),
+    ("2차전지", [("KODEX 2차전지핵심소재10", None), ("KODEX 전고체배터리ESS TOP2플러스", None)]),
+    ("로봇", [("KODEX 로봇액티브", None), ("TIGER 코리아휴머노이드로봇산업", None)]),
+    ("바이오", [("TIGER 바이오TOP10", None), ("TIGER 기술이전바이오액티브", None)]),
+    ("금융", [("TIGER 증권", None), ("TIGER 은행", None), ("TIGER 200 금융", None)]),
+    ("건설", [("KODEX 건설", None)]),
+    ("K-컬처·콘텐츠", [("ACE KPOP포커스", None), ("KODEX 웹툰&드라마", "395150"),
+                    ("TIGER 미디어컨텐츠", None), ("TIGER 게임TOP10", None)]),
+    ("K-소비", [("TIGER 화장품", None), ("HANARO Fn K-푸드", "438900"), ("TIGER 여행레저", None)]),
+    ("코스닥150", [("KODEX 코스닥150", "229200")]),
 ]
-# 한국 테마 차트 — (테마명, 대표 ETF 이름 or 키워드 목록, 고정코드)
-KR_THEME = [
-    ("반도체", "KODEX 반도체", "091160"), ("전공정", "SOL 반도체전공정", None),
-    ("후공정", "SOL 반도체후공정", None), ("AI전력기기", "KODEX AI전력핵심설비", None),
-    ("화장품", "TIGER 화장품", None), ("K-푸드", "HANARO Fn K-푸드", "438900"),
-    ("K-Pop", "ACE KPOP포커스", None), ("웹툰&드라마", "KODEX 웹툰&드라마", "395150"),
-    ("원자력", "HANARO 원자력iSelect", None), ("신재생", "TIME K신재생에너지액티브", None),
-    ("우주항공", "PLUS 우주항공", None), ("K방산", "PLUS K방산", None),
-    ("2차전지", "KODEX 2차전지핵심소재10", None), ("로봇", "KODEX 로봇액티브", None),
-    ("휴머노이드", "TIGER 코리아휴머노이드로봇산업", None), ("게임", "TIGER 게임TOP10", None),
-    ("코스닥150", "KODEX 코스닥150", "229200"), ("기술이전", "TIGER 기술이전바이오액티브", None),
-    ("조선", "SOL 조선TOP3플러스", None), ("광통신", "KoAct 광통신&위성네트워크액티브", None),
-    ("증권", "TIGER 증권", None), ("은행", "TIGER 은행", None),
-    ("태양광&ESS", "PLUS 태양광&ESS", None), ("여행레저", "TIGER 여행레저", None),
-]
-KR_THEME_FALLBACK = {"웹툰&드라마": "TIGER 미디어컨텐츠"}
+KR_ETF = [e for _, lst in KR_THEMES for e in lst]
 
 # ═════════════════════════════════════════════════════════════════════════
 # 공통
@@ -308,25 +301,17 @@ def build_kr_map(conn):
         add = [(c, n) for c, n in mst if c not in known]
         log(f"  - stocks에 없는 {len(need)}개 → KIS 종목 마스터 {len(mst)}개로 보완")
         etfs = etfs + add
-    etf_codes, miss = [], []
-    for nm, fixed in KR_ETF:
-        c, matched = resolve(nm, fixed, etfs)
-        if c:
-            etf_codes.append((nm, c))
-        else:
-            miss.append(nm)
-    theme_codes = []
-    for th, key, fixed in KR_THEME:
-        c, matched = resolve(key, fixed, etfs)
-        if not c and th in KR_THEME_FALLBACK:
-            c, matched = resolve(KR_THEME_FALLBACK[th], None, etfs)
-        if c:
-            theme_codes.append((th, c, matched or (key if isinstance(key, str) else "")))
-        else:
-            miss.append(f"[테마]{th}")
+    etf_codes, miss, theme_of = [], [], {}
+    for th, lst in KR_THEMES:
+        for nm, fixed in lst:
+            c, matched = resolve(nm, fixed, etfs)
+            if c:
+                etf_codes.append((nm, c)); theme_of[c] = th
+            else:
+                miss.append(nm)
     if miss:
         log(f"  - ⚠ 코드 못 찾음: {', '.join(miss)}")
-    return etf_codes, theme_codes
+    return etf_codes, theme_of
 
 def fetch_kr_daily(token, code, d1, d2):
     out, end, errs = {}, d2, None
@@ -352,9 +337,9 @@ def fetch_kr_daily(token, code, d1, d2):
 def kr_session_closed(now_kst):
     return now_kst.weekday() >= 5 or now_kst.time() >= datetime.time(15, 40) or now_kst.time() < datetime.time(9, 0)
 
-def collect_kr(conn, stats, token, etf_codes, theme_codes):
+def collect_kr(conn, stats, token, etf_codes):
     today = datetime.datetime.now(KST)
-    codes = sorted({c for _, c in etf_codes} | {c for _, c, _ in theme_codes})
+    codes = sorted({c for _, c in etf_codes})
     ok, bad, total = 0, [], 0
     for c in codes:
         sym = "KR:" + c
@@ -370,6 +355,24 @@ def collect_kr(conn, stats, token, etf_codes, theme_codes):
     log(f"- 한국 ETF 시세: 성공 {ok}/{len(codes)} · upsert {total}행")
     if bad:
         log(f"  - ⚠ 실패: {', '.join(bad)}")
+
+    # ETF 시가총액(억원) — 현재가 API의 hts_avls. KRM:코드 로 하루 1행 저장(최신값만 화면에 사용)
+    cap_ok, cap_bad = 0, []
+    for c in codes:
+        d = kis_get(token, "/uapi/domestic-stock/v1/quotations/inquire-price", "FHKST01010100",
+                    {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": c})
+        o = d.get("output") or {}
+        cap = fnum(o.get("hts_avls"))
+        if not cap:
+            sh, px = fnum(o.get("lstn_stcn")), fnum(o.get("stck_prpr"))
+            cap = sh * px / 1e8 if sh and px else None
+        if cap and cap > 0:
+            upsert_series(conn, [("KRM:" + c, today.date(), round(cap, 1))]); cap_ok += 1
+        else:
+            cap_bad.append(f"{c}({d.get('_err', '값 없음')[:40]})")
+    log(f"- 한국 ETF 시가총액: 성공 {cap_ok}/{len(codes)}")
+    if cap_bad:
+        log(f"  - ⚠ 실패: {', '.join(cap_bad)}")
 
     # 보유종목 (ETF 카드용)
     hold_ok, hold_bad = 0, []
@@ -527,7 +530,7 @@ def build_us(S):
             "dates": [d.isoformat() for d in cal[-CHART_N:]],
             "summary": ["sector", "theme"], "groups": groups, "items": items}
 
-def build_kr(S, H, etf_codes, theme_codes):
+def build_kr(S, H, etf_codes, theme_of):
     ks = S.get("IDX:KOSPI") or {}
     cal = sorted(ks)
     if len(cal) < 30:
@@ -570,24 +573,32 @@ def build_kr(S, H, etf_codes, theme_codes):
             it["days"] = len(days)
         put(f"index:ADR_{mk}", it)
     groups.append({"id": "index", "title": "인덱스", "period": "ytd", "keys": idx})
-    # 테마
-    keys = []
-    for th, c, matched in theme_codes:
-        it = item(cal, S.get("KR:" + c) or {}, th, bench, "px", c)
-        if it:
-            it["etf"] = matched
-            items["theme:" + th] = it; keys.append("theme:" + th)
-    groups.append({"id": "theme", "title": "테마", "period": 63, "keys": keys})
-    keys = []
+    # 테마 — 같은 테마끼리 묶고, 테마 안은 ETF 시총 큰 순, 테마는 시총 합계 큰 순
+    def last_cap(c):
+        sr = S.get("KRM:" + c) or {}
+        return float(sr[max(sr)]) if sr else None
+    by_th = {}
     for nm, c in etf_codes:
         it = item(cal, S.get("KR:" + c) or {}, nm, bench, "px", c)
-        if it:
-            it["h"] = H.get("KR:" + c, [])
-            items["etf:" + c] = it; keys.append("etf:" + c)
-    groups.append({"id": "etf", "title": "테마 ETF", "period": 63, "keys": keys})
+        if not it:
+            continue
+        th = theme_of.get(c, "기타")
+        cap = last_cap(c)
+        it["th"] = th
+        it["cap"] = round(cap) if cap else None
+        it["h"] = H.get("KR:" + c, [])
+        items["etf:" + c] = it
+        by_th.setdefault(th, []).append((cap or 0, "etf:" + c))
+    secs = []
+    for th, lst in by_th.items():
+        lst.sort(key=lambda x: -x[0])
+        secs.append({"n": th, "cap": round(sum(x[0] for x in lst)), "keys": [k for _, k in lst]})
+    secs.sort(key=lambda x: -x["cap"])
+    groups.append({"id": "theme", "title": "테마", "period": 63,
+                   "keys": [k for sc in secs for k in sc["keys"]], "sections": secs})
     return {"tab": "KR", "as_of": cal[-1].isoformat(), "bench": "KOSPI",
             "dates": [d.isoformat() for d in cal[-CHART_N:]],
-            "summary": ["theme", "etf"], "groups": groups, "items": items}
+            "summary": ["theme"], "groups": groups, "items": items}
 
 def save_pack(conn, pack):
     js = json.dumps(pack, ensure_ascii=False, separators=(",", ":"), default=str)
@@ -609,18 +620,18 @@ def main():
     log(f"# 글로벌 시황 수집 리포트 ({datetime.datetime.now(KST):%Y-%m-%d %H:%M} KST)")
     conn = db()
     ensure_schema(conn)
-    etf_codes, theme_codes = build_kr_map(conn)
+    etf_codes, theme_of = build_kr_map(conn)
     if not PACK_ONLY:
         stats = row_stats(conn)
         collect_yahoo(conn, stats)
         if KIS_KEY:
-            collect_kr(conn, stats, get_token(), etf_codes, theme_codes)
+            collect_kr(conn, stats, get_token(), etf_codes)
         else:
             log("- ⚠ KIS 키 없음 — 한국 ETF 수집 생략")
     S, H = load_all(conn)
     us = build_us(S)
     if us: save_pack(conn, us)
-    kr = build_kr(S, H, etf_codes, theme_codes)
+    kr = build_kr(S, H, etf_codes, theme_of)
     if kr: save_pack(conn, kr)
     # 검증용: 티커별 행 수·기간, Yahoo 이름
     st = row_stats(conn)
@@ -631,11 +642,10 @@ def main():
         n, a, b = st[s]
         nm = YAHOO_META.get(s.split(":", 1)[1], "") if s.startswith("US:") else ""
         log(f"| {s} | {n} | {a} | {b} | {nm} |")
-    log("\n## 한국 매핑")
+    log("\n## 한국 매핑 (테마 · ETF → 코드 · 시총 억원)")
     for nm, c in etf_codes:
-        log(f"- ETF {nm} → {c}")
-    for th, c, m in theme_codes:
-        log(f"- 테마 {th} → {c} {m}")
+        sr = S.get("KRM:" + c) or {}
+        log(f"- [{theme_of.get(c)}] {nm} → {c} · 시총 {sr[max(sr)] if sr else '–'}")
     conn.close()
     log(f"\n완료 ({time.time()-t0:.0f}초)")
     if REPORT_PATH:
