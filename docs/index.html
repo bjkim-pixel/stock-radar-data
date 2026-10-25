@@ -379,6 +379,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .bar-top.live{background:color-mix(in srgb,var(--good) 12%,var(--page))}
 .bar-top.err{background:color-mix(in srgb,var(--crit) 14%,var(--page));color:var(--crit)}
 .hide{display:none!important}
+.asof{margin:10px 0 -4px;font-size:11px;color:var(--ink-3);line-height:1.6}
+.asof b{color:var(--ink-2);font-weight:600}
 .load{text-align:center;padding:26px;color:var(--ink-3);font-size:12px}
 /* 불러오는 중: 글자 대신 표 모양 회색 자리표시(반짝임) */
 .load.sk{position:relative;overflow:hidden;min-height:96px;padding:0;font-size:0;color:transparent}
@@ -609,6 +611,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 </header>
 
 <div class="wrap">
+<div class="asof" id="asofBar"></div>
 
 <!-- ═══════════ 오늘의 프로세스 ═══════════ -->
 <section id="v-proc">
@@ -1480,6 +1483,7 @@ async function loadDataStatus(){
   if(!r||!r.as_of){$("#chipAsOf").textContent="";return;}
   const t=new Date(r.as_of).toLocaleTimeString("ko-KR",
     {hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"});
+  S.asOf=r.as_of;S.asOfPartial=!!r.is_partial;renderAsOf();
   const tag=r.is_partial
     ? `<span style="color:var(--warn)">${t} · 잠정</span>`
     : `<span style="color:var(--good)">${t} · 확정</span>`;
@@ -2116,6 +2120,7 @@ function go(v,detailCode){
     }
   }
   if(v==="fav")loadFav();
+  renderAsOf();
   if(!_hashNav)setHash(v,v==="detail"?S.chart.code:null);
   if(v==="perf")loadPerf();
   if(v==="perf2")loadPerf2();
@@ -4357,6 +4362,7 @@ async function loadPerf2(){
     const todayReal = kstTodayStr() || today;
     const cl = await q("intraday_positions","select=*&portfolio=eq.INTRADAY_SANGTTA&status=eq.CLOSED&order=exit_time.desc&limit=500");
     const op = await q("intraday_positions","select=*&portfolio=eq.INTRADAY_SANGTTA&status=eq.OPEN&order=entry_time.asc");
+    S.perf2Upd=Date.now();
     const cand = await q("intraday_candidates",`select=*&trade_date=eq.${todayReal}&order=source.asc,rank.asc`);
     const sumRows = await q("intraday_daily_summary",`select=*&trade_date=eq.${todayReal}`);
     const nameOf={}; S.codes.forEach(c=>nameOf[c.code]=c.name);
@@ -4526,6 +4532,7 @@ async function loadPerf(){
       const totalBuy=c.reduce((a,b)=>a+ +b.invested,0)+o.reduce((a,b)=>a+ +b.invested,0);
       const totalSell=c.reduce((a,b)=>a+ +b.invested+ +b.realized_pnl,0);
       const lastUpdMs=Math.max(0,...c.map(p=>+new Date(p.updated_at||0)),...o.map(p=>+new Date(p.updated_at||0)));
+      if(lastUpdMs)S.perfUpd=Math.max(S.perfUpd||0,lastUpdMs);
       rowsA.push(`<tr><td class="l">${stratBadge(strat)}</td>
         <td>${N(totalBuy/EOK,1)}억</td><td>${N(totalSell/EOK,1)}억</td>
         <td class="${sgn(pnl)}">${pm(pnl/EOK,2)}억</td><td>${c.length}건</td><td>${o.length}건</td>
@@ -4899,6 +4906,36 @@ function retryCurrent(){
   new MutationObserver(ms=>ms.forEach(m=>{m.addedNodes.forEach(addRetry);if(m.type==="characterData"&&m.target.parentNode)addRetry(m.target.parentNode);}))
     .observe(document.body,{childList:true,subtree:true,characterData:true});
 })();
+
+/* ── 페이지별 데이터 업데이트 일시 (맨 위 한 줄, 화면을 옮길 때마다 그 화면 기준으로 바뀜) ── */
+function fmtKst(x,withSec){
+  const d=x instanceof Date?x:new Date(x);if(isNaN(d))return "–";
+  const o={month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"};
+  if(withSec)o.second="2-digit";
+  const m={};new Intl.DateTimeFormat("en-GB",o).formatToParts(d).forEach(p=>m[p.type]=p.value);
+  return `${m.month}/${m.day} ${m.hour==="24"?"00":m.hour}:${m.minute}${withSec?":"+m.second:""}`;
+}
+let _asofLast="";
+function renderAsOf(){
+  const el=$("#asofBar");if(!el)return;
+  const v=S.curTab||"proc",parts=[];
+  let date=S.date;
+  if(v==="detail"&&S.chart&&S.chart.rows&&S.chart.rows.length)date=S.chart.rows.at(-1).trade_date;
+  if(v==="perf"){
+    parts.push(S.perfUpd?`전략 계산 <b>${fmtKst(S.perfUpd)}</b>`:"전략 계산 시각 확인 중");
+  }else if(v==="perf2"){
+    parts.push(S.perf2Upd?`실시간 목록 조회 <b>${fmtKst(S.perf2Upd,true)}</b> (30초마다 자동 갱신)`:"조회 중");
+  }else{
+    if(date)parts.push(`데이터 기준일 <b>${date}</b>`);
+    if(S.asOf)parts.push(`수집 <b>${fmtKst(S.asOf)}</b> ${S.asOfPartial?'<span style="color:var(--warn)">잠정</span>':'<span style="color:var(--good)">확정</span>'}`);
+    if(_snap&&_snap.generated_at&&["proc","today","flow","scr","fav"].includes(v))parts.push(`화면 데이터 생성 <b>${fmtKst(_snap.generated_at)}</b>`);
+    const gp=S.gm&&S.gm.packs&&S.gm.packs[S.gm.tab];
+    if(v==="sector"&&gp&&gp.updated_at)parts.push(`글로벌 시황 <b>${fmtKst(gp.updated_at)}</b>`);
+  }
+  const h=parts.join(" · ");
+  if(h!==_asofLast){_asofLast=h;el.innerHTML=h;}
+}
+setInterval(renderAsOf,2000);
 
 /* ══ 부트 ══ */
 async function boot(){
