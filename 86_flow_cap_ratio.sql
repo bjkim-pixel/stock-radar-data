@@ -5,7 +5,9 @@
 -- 종목후보 표(전 종목)에서 쓰기 위한 사전 계산 테이블입니다.
 --   · 누적 순매수 = 종목의 첫 시세일 이후 ~ 기준일까지 (외국인+기관합계 순매수) 합계 — "수급 주체별 누적" 차트와 동일(첫 행 기준 0)
 --   · 기준일 = 오늘 기준 N거래일 전: 3개월 60, 1개월 20, 1주 5   (표의 기간 정의와 동일)
---   · 순매수/시총 = 그 기준일의 누적 순매수 ÷ 그 기준일의 시가총액 × 100 (%)
+--   · 순매수/시총 (2026-10-25 방식 변경) = 일별 (순매수 주식수 ÷ 그날 상장주식수)의 누적합 × 100 (%)
+--       순매수 주식수 = 외+기 순매수대금 × 거래량 ÷ 거래대금 (= 대금 ÷ 당일 평균가), 상장주식수 = 시가총액 ÷ 종가
+--       → 누적 '원'을 그날 시총으로 나누던 옛 방식은 주가가 급락한 종목이 비율이 부풀려 보였음(가격 효과 제거)
 -- 화면은 이 테이블(종목당 1행)만 읽으므로 v_screener 쪽 부하가 늘지 않습니다.
 -- 86_flow_cap_ratio.py가 매 거래일 계산 후(Compute 워크플로 완료 직후) refresh_flow_cap_ratio()를 호출합니다.
 -- ============================================================================
@@ -29,24 +31,28 @@ begin
   truncate flow_cap_ratio;
   insert into flow_cap_ratio (code, as_of, a_3m, a_1m, a_1w, r_3m, r_1m, r_1w)
   with fst as (select code, min(trade_date) as f from daily_price where close > 0 group by code),
+  d as (
+    select fl.code, fl.trade_date,
+           coalesce(fl.foreign_net,0) + coalesce(fl.inst_net,0) as amt,
+           case when p.trade_amount > 0 and p.market_cap > 0 and p.close > 0 and p.volume > 0
+                then (coalesce(fl.foreign_net,0) + coalesce(fl.inst_net,0))::numeric * p.volume / p.trade_amount
+                     / (p.market_cap::numeric / p.close)
+                else 0 end as frac
+    from daily_flow fl
+    join fst on fst.code = fl.code and fl.trade_date > fst.f
+    join daily_price p on p.code = fl.code and p.trade_date = fl.trade_date),
   cum as (
-    select fl.code,
-      sum(coalesce(fl.foreign_net,0) + coalesce(fl.inst_net,0)) filter (where fl.trade_date > fst.f and fl.trade_date <= d60) as c60,
-      sum(coalesce(fl.foreign_net,0) + coalesce(fl.inst_net,0)) filter (where fl.trade_date > fst.f and fl.trade_date <= d20) as c20,
-      sum(coalesce(fl.foreign_net,0) + coalesce(fl.inst_net,0)) filter (where fl.trade_date > fst.f and fl.trade_date <= d5)  as c5
-    from daily_flow fl join fst on fst.code = fl.code
-    group by fl.code),
-  cap as (
     select code,
-      max(market_cap) filter (where trade_date = d60) as m60,
-      max(market_cap) filter (where trade_date = d20) as m20,
-      max(market_cap) filter (where trade_date = d5)  as m5
-    from daily_price where trade_date in (d5, d20, d60) group by code)
-  select cum.code, d0, cum.c60, cum.c20, cum.c5,
-         round(cum.c60::numeric / nullif(cap.m60,0) * 100, 4),
-         round(cum.c20::numeric / nullif(cap.m20,0) * 100, 4),
-         round(cum.c5::numeric  / nullif(cap.m5, 0) * 100, 4)
-  from cum join cap on cap.code = cum.code;
+      sum(amt)  filter (where trade_date <= d60) as c60,
+      sum(amt)  filter (where trade_date <= d20) as c20,
+      sum(amt)  filter (where trade_date <= d5)  as c5,
+      sum(frac) filter (where trade_date <= d60) as f60,
+      sum(frac) filter (where trade_date <= d20) as f20,
+      sum(frac) filter (where trade_date <= d5)  as f5
+    from d group by code)
+  select code, d0, c60, c20, c5,
+         round(f60 * 100, 4), round(f20 * 100, 4), round(f5 * 100, 4)
+  from cum;
   get diagnostics n = row_count;
   return n;
 end $fn$;

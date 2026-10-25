@@ -45,24 +45,23 @@ def main():
                        from daily_price where market_cap > 0 and listed_shares > 0""")
         bad, tot = cur.fetchone()
         log(f"- 시총 ≠ 종가×상장주식수(오차 2%↑)인 행: {bad:,} / {tot:,}")
-        log("\n## 방식 비교 (3개월 전=60거래일 전 시점, 순매수/시총 %)\n| 종목 | 현재 방식(누적금액÷그날시총) | 제안 방식(Σ 일별 순매수÷그날시총) | 시총 3M전(억) | 시총 오늘(억) | 주식수 최소~최대 |\n|---|---|---|---|---|---|")
+        log("\n## 방식 비교 (3개월 전=60거래일 전 시점, 순매수/시총 %)\n| 종목 | 옛 방식(누적금액÷그날시총) | 새 방식(Σ 일별 순매수주식수÷상장주식수) | 누적 순매수(억) | 시총 3M전(억) | 시총 오늘(억) |\n|---|---|---|---|---|---|")
         cur.execute("select trade_date from (select trade_date, row_number() over (order by trade_date desc)-1 as ago from (select distinct trade_date from daily_price) t) x where ago in (0,60) order by ago")
         d0, d60 = [r[0] for r in cur.fetchall()]
         cur.execute("""
-            with fst as (select code, min(trade_date) f from daily_price where close>0 group by code),
-            s as (select s.code, s.name from stocks s where s.name in ('오름테라퓨틱','달바글로벌','자이에스앤디','삼성전자','SK하이닉스','LG에너지솔루션')),
-            agg as (select p.code,
-                      sum((coalesce(fl.foreign_net,0)+coalesce(fl.inst_net,0))::numeric / nullif(p.market_cap,0)) filter (where p.trade_date > fst.f and p.trade_date <= %s) * 100 as new_r,
-                      min(p.listed_shares) as sh_min, max(p.listed_shares) as sh_max,
-                      max(p.market_cap) filter (where p.trade_date = %s) as cap60, max(p.market_cap) filter (where p.trade_date = %s) as cap0
-                    from daily_price p join fst on fst.code = p.code
-                    left join daily_flow fl on fl.code = p.code and fl.trade_date = p.trade_date
-                    where p.code in (select code from s) group by p.code)
-            select s.name, f.r_3m, agg.new_r, agg.cap60/1e8, agg.cap0/1e8, agg.sh_min, agg.sh_max
-            from s join agg on agg.code = s.code left join flow_cap_ratio f on f.code = s.code order by s.name""", (d60, d60, d0))
-        for nm, old_r, new_r, c60, c0, smin, smax in cur.fetchall():
-            fm = lambda v, d=2: "–" if v is None else f"{float(v):,.{d}f}"
-            log(f"| {nm} | {fm(old_r)} | {fm(new_r)} | {fm(c60,0)} | {fm(c0,0)} | {smin:,}~{smax:,} |")
+            select s.name, f.a_3m::numeric / nullif(p60.market_cap,0) * 100, f.r_3m, f.a_3m/1e8, p60.market_cap/1e8, p0.market_cap/1e8
+            from stocks s join flow_cap_ratio f on f.code = s.code
+            left join daily_price p60 on p60.code = s.code and p60.trade_date = %s
+            left join daily_price p0 on p0.code = s.code and p0.trade_date = %s
+            where s.name in ('오름테라퓨틱','달바글로벌','자이에스앤디','삼성전자','SK하이닉스','LG에너지솔루션') order by s.name""", (d60, d0))
+        fm = lambda v, d=2: "–" if v is None else f"{float(v):,.{d}f}"
+        for nm, old_r, new_r, a3, c60, c0 in cur.fetchall():
+            log(f"| {nm} | {fm(old_r)} | {fm(new_r)} | {fm(a3,0)} | {fm(c60,0)} | {fm(c0,0)} |")
+        log("\n## 새 방식 상/하위 10 (3M)")
+        cur.execute("select s.name, f.r_3m from flow_cap_ratio f join stocks s on s.code=f.code where f.r_3m is not null order by f.r_3m desc limit 10")
+        log("상위: " + ", ".join(f"{n}({fm(v)})" for n, v in cur.fetchall()))
+        cur.execute("select s.name, f.r_3m from flow_cap_ratio f join stocks s on s.code=f.code where f.r_3m is not null order by f.r_3m limit 10")
+        log("하위: " + ", ".join(f"{n}({fm(v)})" for n, v in cur.fetchall()))
     conn.close()
     if REPORT:
         open(REPORT, "w", encoding="utf-8").write("\n".join(lines))
