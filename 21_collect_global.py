@@ -244,6 +244,73 @@ def collect_yahoo(conn, stats):
     if bad:
         log(f"  - ⚠ 실패: {', '.join(bad)}")
 
+def collect_us_holdings(conn):
+    """미국 섹터·테마 ETF 상위 5개 보유종목 + 전일 등락률 → etf_holdings(US:티커). Yahoo topHoldings(crumb 필요)."""
+    etfs = []
+    for lst in (US_SECTOR, US_THEME):
+        for t, _ in lst:
+            if t not in etfs:
+                etfs.append(t)
+    ses = requests.Session()
+    ses.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36"})
+    crumb = None
+    try:
+        ses.get("https://fc.yahoo.com", timeout=15)
+        r = ses.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=15)
+        if r.status_code == 200 and r.text and "<" not in r.text and len(r.text) < 40:
+            crumb = r.text.strip()
+        else:
+            log(f"- ⚠ Yahoo crumb 실패: HTTP {r.status_code}")
+    except Exception as ex:
+        log(f"- ⚠ Yahoo crumb 예외: {str(ex)[:80]}")
+    if not crumb:
+        log("- 미국 ETF 보유종목: crumb 없음 — 생략(기존 저장분 유지)")
+        return
+    found, bad = {}, []
+    for t in etfs:
+        got = None
+        for host in ("query2", "query1"):
+            try:
+                r = ses.get(f"https://{host}.finance.yahoo.com/v10/finance/quoteSummary/{t}",
+                            params={"modules": "topHoldings", "crumb": crumb}, timeout=15)
+                if r.status_code != 200:
+                    got = f"HTTP {r.status_code}"; continue
+                hs = r.json()["quoteSummary"]["result"][0]["topHoldings"]["holdings"]
+                rows = []
+                for h in hs:
+                    sym = str(h.get("symbol") or "").strip()
+                    w = (h.get("holdingPercent") or {}).get("raw")
+                    if re.fullmatch(r"[A-Za-z0-9.\-]{1,12}", sym) and w:
+                        rows.append((sym, (h.get("holdingName") or "").strip(), float(w) * 100))
+                rows.sort(key=lambda x: -x[2])
+                got = rows[:5]; break
+            except Exception as ex:
+                got = f"예외 {str(ex)[:50]}"
+        if isinstance(got, list) and got:
+            found[t] = got
+        else:
+            bad.append(f"{t}({got if isinstance(got, str) else '보유종목 없음'})")
+        time.sleep(0.15)
+    # 보유종목 전일 등락률 (마지막 확정 봉 2개)
+    chg = {}
+    for sym in sorted({h[0] for v in found.values() for h in v}):
+        data, _ = fetch_yahoo(sym, False)
+        if data and len(data) >= 2:
+            ks = sorted(data)
+            chg[sym] = round((data[ks[-1]] / data[ks[-2]] - 1) * 100, 2)
+        time.sleep(0.12)
+    today = datetime.datetime.now(KST).date()
+    with conn.cursor() as cur:
+        for t, rows in found.items():
+            cur.execute("delete from etf_holdings where etf_symbol = %s", ("US:" + t,))
+            for i, (sym, nm, w) in enumerate(rows, 1):
+                cur.execute("""insert into etf_holdings (etf_symbol, rank, stock_code, stock_name, weight, change_pct, as_of)
+                               values (%s,%s,%s,%s,%s,%s,%s)""", ("US:" + t, i, sym, nm, round(w, 4), chg.get(sym), today))
+    conn.commit()
+    log(f"- 미국 ETF 보유종목: 성공 {len(found)}/{len(etfs)} · 종목 등락률 {len(chg)}개")
+    if bad:
+        log(f"  - ⚠ 실패/없음: {', '.join(bad)}")
+
 # ═════════════════════════════════════════════════════════════════════════
 # 2) KR ETF 코드 매핑 + 일별 종가 + 보유종목
 # ═════════════════════════════════════════════════════════════════════════
@@ -502,7 +569,7 @@ def item(cal, series, name, bench_al, kind="px", sym=None):
         it["s"] = sym
     return it
 
-def build_us(S):
+def build_us(S, H):
     spy = S.get("US:SPY") or {}
     cal = sorted(spy)
     if len(cal) < 30:
@@ -520,6 +587,9 @@ def build_us(S):
             else:
                 it = item(cal, S.get("US:" + t) or {}, nm, None if t == "SPY" else bench, "px", t)
             if it:
+                if grp_id in ("sector", "theme") and not t.startswith("RATIO:"):
+                    it["h"] = [{"c": x["c"], "n": x["c"], "f": x["n"], "w": x["w"], "ch": x["ch"]}
+                               for x in H.get("US:" + t, [])]
                 items[f"{grp_id}:{t}"] = it
                 keys.append(f"{grp_id}:{t}")
         groups.append({"id": grp_id, "title": title, "period": period, "keys": keys})
@@ -624,12 +694,16 @@ def main():
     if not PACK_ONLY:
         stats = row_stats(conn)
         collect_yahoo(conn, stats)
+        try:
+            collect_us_holdings(conn)
+        except Exception as ex:
+            log(f"- ⚠ 미국 ETF 보유종목 수집 예외: {str(ex)[:100]}")
         if KIS_KEY:
             collect_kr(conn, stats, get_token(), etf_codes)
         else:
             log("- ⚠ KIS 키 없음 — 한국 ETF 수집 생략")
     S, H = load_all(conn)
-    us = build_us(S)
+    us = build_us(S, H)
     if us: save_pack(conn, us)
     kr = build_kr(S, H, etf_codes, theme_of)
     if kr: save_pack(conn, kr)

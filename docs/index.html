@@ -3085,7 +3085,7 @@ function gmCard(p,key,it,period,hot){
   const big=S.gm.big===key, n=big?gmWin(p,S.gm.bigN):gmWin(p,period);
   const sub=it.etf?`<div class="gm-sub">${it.etf}</div>`:(it.s&&!/^\d/.test(it.s)&&p.tab==="US"?`<div class="gm-sub">${it.s}</div>`:"");
   const hold=(it.h&&it.h.length)?`<div class="gm-hold">${it.h.map(h=>`<div class="gm-hl"><span class="nm">${
-      S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:h.n}</span><span class="${gmC(h.ch)}">${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
+      S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:(h.f?`<span title="${h.f.replace(/"/g,"&quot;")}">${h.n}</span>`:h.n)}</span><span class="${gmC(h.ch)}">${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
   let extra="";
   if(big){
     const ds=p.dates.slice(-n);
@@ -3109,7 +3109,7 @@ function gmGrid(p,g){
   if(g.sections)   /* 테마별 헤더 + 그 테마 ETF 카드(시총 큰 순) */
     return head+g.sections.map((sc,i)=>`<div class="gm-th" id="gmth_${p.tab}_${i}"><span>${sc.n}</span><span class="r">ETF ${sc.keys.length}개 · 시총 합계 ${N(sc.cap,0)}억원</span></div>
       <div class="gm-grid etf">${cards(sc.keys)}</div>`).join("");
-  return head+`<div class="gm-grid${g.id==="etf"?" etf":""}">${cards(g.keys)}</div>`;
+  return head+`<div class="gm-grid${its.some(x=>x[1].h&&x[1].h.length)?" etf":""}">${cards(g.keys)}</div>`;
 }
 const GM_COLS=[["d","D"],["w","W"],["m","M"],["m3","3M"],["ytd","YTD"],["hi","고점대비"],["rs3","3M 초과"]];
 function gmTable(p,g){
@@ -3124,7 +3124,7 @@ function gmTable(p,g){
   const hasTh=its.some(x=>x[1].th);
   const secIdx={}; ((p.groups.find(x=>x.sections)||{}).sections||[]).forEach((sc,i)=>secIdx[sc.n]=i);
   const rows=its.map(([k,it])=>{const m=it.m;
-    const lab=p.tab==="US"?`<b>${it.s}</b> <span class="faint">${it.n}</span>`:`${it.n}`;
+    const lab=p.tab==="US"?`<a class="gm-tl" data-gmk2="${k}"><b>${it.s}</b></a> <span class="faint">${it.n}</span>`:`${it.n}`;
     const first=hasTh?`<td class="l"><a class="gm-tl" data-gmth="${secIdx[it.th]??""}">${it.th}</a></td><td class="l"><a class="gm-tl gm-el" data-gmk2="${k}">${it.n}</a></td><td data-sort-val="${it.cap??""}">${it.cap==null?"–":N(it.cap,0)}</td>`:`<td class="l">${lab}</td>`;
     return `<tr>${first}${GM_COLS.map(([f])=>{const v=m[f];
         const hl=v==null||its.length<6?"":v>=rank[f].hi&&v>0?" gm-hi":(v<=rank[f].lo&&v<0?" gm-lo":"");
