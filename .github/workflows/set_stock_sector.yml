@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   set-sectors:
@@ -55,3 +56,8 @@ jobs:
           git add -f sector_report.md
           git commit -qm "sector report ${{ github.run_id }}"
           git push -f origin sector-report
+      - name: Refresh snapshot (저장했을 때만)
+        if: ${{ inputs.dry_run == false && inputs.entries != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run export_snapshot.yml --ref main || true
