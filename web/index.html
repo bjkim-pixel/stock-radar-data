@@ -1029,9 +1029,18 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 <section id="v-sector" class="hide">
   <div class="card" id="gmCard" style="margin-top:16px"><h3>글로벌 시황
     <span class="r" id="gmAsOf">추세가 오르는 시장·업종·테마 찾기</span></h3>
-    <div class="qf seg" id="gmTabSel" style="margin:4px 0 10px">
+    <div style="display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;margin:4px 0 10px">
+    <div class="qf seg" id="gmTabSel" style="margin:0">
       <button class="fchip" data-v="US" aria-pressed="true">미국 주식</button>
       <button class="fchip" data-v="KR" aria-pressed="false">한국 주식</button>
+    </div>
+    <div class="qf seg" id="gmPerSel" style="margin:0" title="모든 차트의 기간을 한 번에 변경">
+      <button class="fchip" data-v="def" aria-pressed="true">기본</button>
+      <button class="fchip" data-v="21" aria-pressed="false">1M</button>
+      <button class="fchip" data-v="63" aria-pressed="false">3M</button>
+      <button class="fchip" data-v="126" aria-pressed="false">6M</button>
+      <button class="fchip" data-v="252" aria-pressed="false">1Y</button>
+    </div>
     </div>
     <div id="gmBody"><div class="note">불러오는 중…</div></div>
   </div>
@@ -3047,7 +3056,7 @@ function renderTodayFlow(raw){
    국면 = 1M·3M 초과수익 부호: 주도(+,+) · 개선(1M+, 3M−) · 약화(1M−, 3M+) · 소외(−,−).
    카드: 기간 시작가 점선, 기간 최고가 빨간 점, 숫자 = 당일 등락률(마이너스는 괄호).
    당일 상승 상위 3개는 붉은 배경, 하락 상위 3개는 푸른 배경. 카드를 누르면 크게 보기. */
-S.gm={tab:"US",packs:{},big:null,bigN:126};
+S.gm={tab:"US",packs:{},big:null,bigN:126,allN:null};
 const GM_PER_LBL={252:"1년",126:"6개월",63:"3개월",21:"1개월",ytd:"연초 이후"};
 const GM_PH={lead:"주도",impr:"개선",weak:"약화",lag:"소외"};
 const gmF=v=>v==null?"–":(v<0?`(${Math.abs(v).toFixed(2)})`:v.toFixed(2));
@@ -3063,6 +3072,12 @@ async function loadGlobal(tab){
   if(S.gm.tab===tab)renderGlobal(S.gm.packs[tab]);
 }
 $("#gmTabSel").addEventListener("seg-change",e=>{S.gm.big=null;loadGlobal(e.detail).catch(console.error);});
+/* 모든 차트 기간 일괄 변경 (미국·한국 공통, "기본"은 묶음별 기본 기간) */
+$("#gmPerSel").addEventListener("seg-change",e=>{
+  S.gm.allN=e.detail==="def"?null:+e.detail;
+  if(S.gm.allN)S.gm.bigN=S.gm.allN;
+  const pk=S.gm.packs[S.gm.tab]; if(pk)renderGlobal(pk);
+});
 function gmWin(p,period){
   if(period==="ytd"){const y=p.as_of.slice(0,4);const i=p.dates.findIndex(d=>d.slice(0,4)===y);return i<0?p.dates.length:p.dates.length-i;}
   return Math.min(+period||126,p.dates.length);
@@ -3112,7 +3127,7 @@ function gmCardVal(it){
   const v=it.m&&it.m.d;return `<span class="gm-v ${gmC(v)}">${gmF(v)}</span>`;
 }
 function gmCard(p,key,it,period,hot){
-  const big=S.gm.big===key, n=big?gmWin(p,S.gm.bigN):gmWin(p,period);
+  const big=S.gm.big===key, n=big?gmWin(p,S.gm.bigN):gmWin(p,S.gm.allN||period);
   const sub=it.etf?`<div class="gm-sub">${it.etf}</div>`:(it.s&&!/^\d/.test(it.s)&&p.tab==="US"?`<div class="gm-sub">${it.s}</div>`:"");
   const hold=(it.h&&it.h.length)?`<div class="gm-hold">${it.h.map(h=>`<div class="gm-hl"><span class="nm">${
       S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:(h.f?`<span title="${h.f.replace(/"/g,"&quot;")}"><b>${h.n}</b> <span class="ko">${h.k||""}</span></span>${h.x?`<span class="mk">${h.x}</span>`:""}`:h.n)}</span><span class="${gmC(h.ch)}">${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
@@ -3134,7 +3149,7 @@ function gmGrid(p,g){
     byD.slice(0,3).forEach(x=>{if(x[1].m.d>0)hot[x[0]]="hot-up";});
     byD.slice(-3).forEach(x=>{if(x[1].m.d<0)hot[x[0]]="hot-dn";});
   }
-  const head=`<div class="gm-sec">${g.title}<span class="r">${GM_PER_LBL[g.period]||""} 차트 · 숫자 = 당일 등락률${g.id==="macro"?"(금리·VIX는 현재 수준)":""}${g.sections?" · ETF 시총(억원) 큰 순":""}</span></div>`;
+  const head=`<div class="gm-sec">${g.title}<span class="r">${GM_PER_LBL[S.gm.allN||g.period]||""} 차트 · 숫자 = 당일 등락률${g.id==="macro"?"(금리·VIX는 현재 수준)":""}${g.sections?" · ETF 시총(억원) 큰 순":""}</span></div>`;
   const cards=ks=>ks.map(k=>p.items[k]?gmCard(p,k,p.items[k],g.period,hot[k]):"").join("");
   if(g.sections)   /* 테마별 헤더 + 그 테마 ETF 카드(시총 큰 순) */
     return head+g.sections.map((sc,i)=>`<div class="gm-th" id="gmth_${p.tab}_${i}"><span>${sc.n}</span><span class="r">ETF ${sc.keys.length}개 · 시총 합계 ${N(sc.cap,0)}억원</span></div>
