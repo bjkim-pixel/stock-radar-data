@@ -1,4 +1,4 @@
-name: Daily KIS Collection
+name: Daily Collect + Compute (수집·계산 통합)
 
 on:
   schedule:

@@ -1,7 +1,7 @@
 name: Compute Metrics & Signals
 
 on:
-  # 2026-10-25: 16:30 KST 단독 스케줄을 없앴습니다. 이제 "Daily KIS Collection"이 수집을 끝내면 이 워크플로를
+  # 2026-10-25: 16:30 KST 단독 스케줄을 없앴습니다. 이제 "Daily Collect + Compute (수집·계산 통합)"이 수집을 끝내면 이 워크플로를
   # 같은 실행 안에서 이어서 호출합니다(workflow_call, daily=true) — 수집→계산을 한 번에 실행.
   # 아래 workflow_run(NXT 18시 스냅샷 직후 종가베팅2 매수 확정)과 수동 실행(기간 지정·포트폴리오만)은 그대로입니다.
   workflow_call:
