@@ -179,6 +179,13 @@ svg.tl-paths{position:absolute;left:0;top:0;width:100%;height:100%;pointer-event
    stickiness (headers stop clamping and just scroll away mid-table). Tables must
    fit via responsive sizing instead, never via an internal scrollbar. */
 .tw{overflow:visible;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
+/* 종목후보 결과표·오늘의 종목 표: 스크롤 없이 표 전체를 옆으로 쭉 펼침(열이 많아 화면보다 넓어짐 → 모바일은 확대해서 보기).
+   go()가 해당 화면에서만 html.wide를 붙여 body의 가로 숨김을 풀어, 페이지 자체가 넓어질 수 있게 합니다. */
+html.wide,html.wide body{overflow-x:visible}
+#scrWrap,.scrlike{overflow:visible}
+#scrWrap table,.scrlike table{width:max-content;min-width:100%;table-layout:auto}
+#scrWrap th,#scrWrap td,.scrlike th,.scrlike td{white-space:nowrap}
+.card:has(#scrWrap),.card:has(.scrlike){width:max-content;min-width:100%}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 th{position:sticky;top:var(--stick-top,0px);z-index:2;background:var(--surface-2);color:var(--ink-3);font-size:10.5px;
   font-weight:650;padding:8px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border)}
@@ -437,12 +444,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
      table-layout:auto로 표가 필요한 만큼 옆으로 펼쳐지고, 페이지 자체를 핀치줌해서
      보게 함. 모든 셀이 숫자·짧은 라벨이라(긴 텍스트 칸 없음) v-perf2처럼 wrapcell
      예외를 둘 필요 없이 nowrap 그대로 유지. */
-  #scrWrap,.scrlike{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  #scrWrap table,.scrlike table{width:auto;min-width:100%;table-layout:auto}
+  /* 2026-10-25: 종목후보·오늘의 종목 표는 내부 스크롤 없이 옆으로 쭉 펼치고(아래 전역 규칙),
+     모바일에서는 화면을 확대/이동해서 봅니다 — 틀고정(sticky left)도 해제 */
   #scrWrap th,#scrWrap td,.scrlike th,.scrlike td{padding:3px 4px;font-size:10px;white-space:nowrap}
   #scrWrap .dim,.scrlike .dim{font-size:9px}
-  #scrWrap th:nth-child(1),#scrWrap td:nth-child(1),.scrlike th:nth-child(1),.scrlike td:nth-child(1){position:sticky;left:0;background:var(--surface);z-index:3}
-  #scrWrap th:nth-child(2),#scrWrap td:nth-child(2),.scrlike th:nth-child(2),.scrlike td:nth-child(2){position:sticky;left:24px;background:var(--surface);z-index:3}
 
   /* 2026-09-12(2): 위(#flowTrendWrap·#v-perf2 .tw)와 같은 원칙을 "오늘의 종목"
      등 나머지 폭 넓은 표에도 확대 적용 — 표마다 새 id 규칙을 또 만드는 대신
@@ -1970,6 +1975,7 @@ function go(v,detailCode){
   S.curTab=v;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
   ["proc","today","flow","scr","pair","sector","detail","perf","perf2"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  document.documentElement.classList.toggle("wide",v==="scr"||v==="today");   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
   // "아직 종목상세를 한 번도 안 봤으면(S.chart.code 없음) 디폴트 SK하이닉스를
