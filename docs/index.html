@@ -2429,7 +2429,10 @@ async function tlOpenDetail(chartId,r,c){
     const fm={};fl.forEach(f=>fm[f.code]=f);
     const KEYS=["foreign_net","inst_net","corp_other_net","individual_net"];
     // 그 차트 주체(외국인/기관합계) 순매수 내림차순, 같으면 등락률 내림차순
-    stk.sort((a,b)=>(+((fm[b.code]||{})[sortKey])||0)-(+((fm[a.code]||{})[sortKey])||0)||(+b.change_pct||0)-(+a.change_pct||0));
+    // 칸이 순매수(+)면 순매수 큰 순, 순매도(−)면 순매도 큰 순(오름차순)으로 — 많이 판 종목이 위에 보이게
+    const cellSum=stk.reduce((t,x)=>t+(+((fm[x.code]||{})[sortKey])||0),0), asc=cellSum<0;
+    stk.sort((a,b)=>{const va=+((fm[a.code]||{})[sortKey])||0,vb=+((fm[b.code]||{})[sortKey])||0;
+      return (asc?va-vb:vb-va)||(+b.change_pct||0)-(+a.change_pct||0);});
     const nets=code=>KEYS.map(k=>+((fm[code]||{})[k])||0);
     const cells=v=>{const mx=Math.max(...v);return v.map(x=>`<td class="${sgn(x)}${x===mx&&mx>0?" hl":""}">${pm(x/EOK,0)}</td>`).join("");};
     const WD=["일","월","화","수","목","금","토"],dt=new Date(date+"T00:00:00+09:00");
@@ -2443,7 +2446,7 @@ async function tlOpenDetail(chartId,r,c){
       body+=`<tr class="fsm-st"><td class="sec"><span class="a2" style="margin:0">외 ${rest.length}종목 합계</span></td>${cells(rs)}</tr>`;
     }
     if(!stk.length)body='<tr class="fsm-st"><td colspan="5" class="load">구성 종목 없음</td></tr>';
-    panel.innerHTML=`<div class="fsm-dh"><span class="dt">${date.slice(5).replace("-","/")}(${WD[dt.getDay()]}) ${sec}<small>${mkLb} · ${sortKey==="foreign_net"?"외국인":"기관합계"} 순매수 순</small></span><a data-close="1">닫기 ✕</a></div>
+    panel.innerHTML=`<div class="fsm-dh"><span class="dt">${date.slice(5).replace("-","/")}(${WD[dt.getDay()]}) ${sec}<small>${mkLb} · ${sortKey==="foreign_net"?"외국인":"기관합계"} ${asc?"순매도 큰 순":"순매수 큰 순"}</small></span><a data-close="1">닫기 ✕</a></div>
       <table><thead><tr><th>종목</th><th>외국인</th><th>기관합계</th><th>기타기관</th><th>개인</th></tr>
       <tr class="fsm-tot"><td class="sec">업종 합계<span class="a2">${stk.length}종목</span></td>${cells(tot)}</tr></thead><tbody>${body}</tbody></table>
       <div class="fsm-more" style="padding:6px 2px 0"><a data-all="1" style="font-size:11px;color:var(--ink-3);cursor:pointer">${sec} 업종 전체 흐름·주체별 누적 차트 보기 →</a></div>`;
