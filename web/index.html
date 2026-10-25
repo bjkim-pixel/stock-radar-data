@@ -1,9 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko" data-theme="light">
 <head>
-<link rel="preconnect" href="https://frurnmrwuopvttoqdvgj.supabase.co" crossorigin>
-<link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
-<link rel="preload" href="https://raw.githubusercontent.com/bjkim-pixel/stock-radar-data/data-snapshot/snapshot.json" as="fetch" crossorigin>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>STOCK RADAR</title>
@@ -1372,97 +1369,11 @@ function niceTicks(min,max,n){
 
 /* ── 데이터 접근 ─────────────────────────────────────────────────────── */
 let LIVE=false;
-/* ── 로딩 최적화 (2026-10-25) ─────────────────────────────────────────────
-   1) 정적 스냅샷: Actions(88_export_snapshot.py)가 하루 한두 번 큰 뷰(v_screener 등)를 JSON 한 파일로 내려
-      data-snapshot 브랜치에 올림 → 화면은 이 파일을 먼저 읽고(CDN 캐시), 그 안에 답이 있는 조회는 DB에 가지 않음.
-      파일이 없거나(실패/오래됨) 조건이 안 맞으면 예전처럼 Supabase를 직접 조회. ?live=1 이면 스냅샷을 쓰지 않음.
-   2) 같은 조회 5분 캐시 + 진행 중인 같은 조회는 한 번만 보냄(탭을 오갈 때마다 같은 뷰를 또 받던 것 제거).
-   3) ?perf=1 이면 화면 오른쪽 아래에 조회별 소요시간 표시(어디가 느린지 측정용). */
-const _qs=new URLSearchParams(location.search);
-const SNAP_URL="https://raw.githubusercontent.com/bjkim-pixel/stock-radar-data/data-snapshot/snapshot.json";
-const PERF=_qs.get("perf")==="1", SNAP_OFF=_qs.get("live")==="1";
-const Q_CACHE_VIEWS=new Set(["v_market_overview","market_daily","v_market_amount_real","v_sector_rank","v_screener",
-  "v_stock_flow_periods","v_flow_rank_today","flow_cap_ratio","stocks","v_stock_chart","v_stock_summary",
-  "sector_flow_daily","v_sector_flow_market","v_sector_stocks","v_sector_cluster","v_market_flow_periods","v_sector_flow_daily"]);
-const Q_TTL=5*60*1000, _qCache=new Map(), _perfLog=[];
-let _snap=null, _snapP=null, _snapObj={};
-function loadSnapshot(){
-  if(SNAP_OFF)return Promise.resolve(null);
-  if(!_snapP){
-    const t0=performance.now();
-    _snapP=(async()=>{
-      try{
-        const ac=new AbortController(),to=setTimeout(()=>ac.abort(),6000);
-        const r=await fetch(SNAP_URL,{signal:ac.signal});clearTimeout(to);
-        if(!r.ok)throw new Error(r.status);
-        _snap=await r.json();
-        perfNote("snapshot "+(_snap.date||""),performance.now()-t0,"snap");
-      }catch(e){_snap=null;perfNote("snapshot 실패",performance.now()-t0,"err");}
-      return _snap;
-    })();
-  }
-  return _snapP;
-}
-function snapRows(view){
-  if(_snapObj[view])return _snapObj[view];
-  const t=_snap.tables[view];if(!t)return null;
-  return _snapObj[view]=t.rows.map(r=>{const o={};for(let i=0;i<t.cols.length;i++)o[t.cols[i]]=r[i];return o;});
-}
-// PostgREST 조회 중 스냅샷으로 답할 수 있는 단순한 형태(select·eq 필터·order·limit·offset)만 흉내 — 모르는 형태면 null(=DB로)
-function snapQuery(view,params){
-  if(!_snap||!_snap.tables||!_snap.tables[view])return null;
-  const t=_snap.tables[view],cols=new Set(t.cols);
-  let sel="*",order=null,limit=null,offset=0;const eqs=[];
-  for(const [k,v] of new URLSearchParams(params)){
-    if(k==="select")sel=v;else if(k==="order")order=v;
-    else if(k==="limit")limit=+v;else if(k==="offset")offset=+v;
-    else if(v.startsWith("eq.")&&cols.has(k))eqs.push([k,v.slice(3)]);
-    else return null;
-  }
-  const dated=view==="v_screener"||view==="v_flow_rank_today";
-  if(dated){const e=eqs.find(x=>x[0]==="trade_date");if(!e||e[1]!==_snap.date)return null;}
-  let pick=null;
-  if(sel!=="*"){pick=sel.split(",");if(pick.some(c=>!cols.has(c)))return null;}
-  let ord=null;
-  if(order){ord=order.split(",").map(x=>{const a=x.split(".");return {c:a[0],d:a[1]==="desc"?-1:1};});
-    if(ord.some(o=>!cols.has(o.c)))return null;}
-  let rows=snapRows(view);if(!rows)return null;
-  eqs.forEach(([k,v])=>{rows=rows.filter(r=>String(r[k])===v);});
-  if(ord)rows=[...rows].sort((a,b)=>{for(const o of ord){
-      const x=a[o.c],y=b[o.c];if(x===y)continue;
-      if(x==null)return o.d===-1?-1:1;if(y==null)return o.d===-1?1:-1;      // PostgREST: desc는 NULL 먼저, asc는 NULL 나중
-      return (x<y?-1:1)*o.d;}return 0;});
-  else rows=[...rows];
-  if(offset)rows=rows.slice(offset);
-  if(limit!=null)rows=rows.slice(0,limit);
-  if(pick)rows=rows.map(r=>{const o={};pick.forEach(c=>o[c]=r[c]);return o;});
-  return rows;
-}
-function perfNote(label,ms,kind){
-  if(!PERF)return;
-  _perfLog.push({label,ms,kind});
-  let box=document.getElementById("perfBox");
-  if(!box){box=document.createElement("div");box.id="perfBox";
-    box.style.cssText="position:fixed;right:6px;bottom:6px;z-index:99999;max-width:92vw;max-height:50vh;overflow:auto;background:rgba(0,0,0,.85);color:#fff;font:10.5px/1.35 monospace;padding:6px 8px;border-radius:6px";
-    document.body.appendChild(box);}
-  const top=[..._perfLog].sort((a,b)=>b.ms-a.ms).slice(0,14);
-  box.innerHTML=`<b>조회 ${_perfLog.length}건 · 합 ${Math.round(_perfLog.reduce((t,x)=>t+x.ms,0))}ms</b><br>`+
-    top.map(x=>`${x.kind==="snap"?"📦":x.kind==="cache"?"♻️":x.kind==="err"?"⚠️":"🌐"} ${Math.round(x.ms)}ms ${x.label.slice(0,60)}`).join("<br>");
-}
 async function q(view,params=""){
-  if(_snapP)await _snapP;
-  const t0=performance.now();
-  if(_snap){const h=snapQuery(view,params);if(h){perfNote(view+"?"+params,performance.now()-t0,"snap");return h;}}
-  const key=view+"?"+params,cacheable=Q_CACHE_VIEWS.has(view),now=Date.now();
-  if(cacheable){const c=_qCache.get(key);if(c&&now-c.t<Q_TTL){perfNote(key,performance.now()-t0,"cache");return c.p.then(x=>x);}}
-  const p=(async()=>{
-    const r=await fetch(`${CFG.url}/rest/v1/${view}?${params}`,
-      {headers:{apikey:CFG.key,Authorization:`Bearer ${CFG.key}`}});
-    if(!r.ok) throw new Error(`${view} ${r.status} ${await r.text()}`);
-    const j=await r.json();perfNote(key,performance.now()-t0,"live");return j;
-  })();
-  if(cacheable){_qCache.set(key,{t:now,p});p.catch(()=>{if(_qCache.get(key)&&_qCache.get(key).p===p)_qCache.delete(key);});}
-  return p;
+  const r=await fetch(`${CFG.url}/rest/v1/${view}?${params}`,
+    {headers:{apikey:CFG.key,Authorization:`Bearer ${CFG.key}`}});
+  if(!r.ok) throw new Error(`${view} ${r.status} ${await r.text()}`);
+  return r.json();
 }
 // 2026-09-27: 전략성과 "전략별 요약"에 마지막 계산 시각 표시용. positions는
 // 06_portfolio.py가 매 실행마다 VIRTUAL 전부 삭제 후 재생성하므로, updated_at
@@ -2196,22 +2107,22 @@ async function loadMarketAmount(){
   }catch(e){$("#cAmt").innerHTML='<div class="load">불러오기 실패</div>';}
 }
 async function loadIndex(){
-  // market_daily의 합성지수(시총가중)를 우선 사용하고, 없으면 표시하지 않습니다. (코스피·코스닥 동시 조회)
-  await Promise.all([["KOSPI","#cKospi"],["KOSDAQ","#cKosdaq"]].map(async ([mk,host])=>{
+  // market_daily의 합성지수(시총가중)를 우선 사용하고, 없으면 표시하지 않습니다.
+  for(const [mk,host] of [["KOSPI","#cKospi"],["KOSDAQ","#cKosdaq"]]){
     try{
       const raw=await q("market_daily",
         `select=trade_date,index_close,index_ma20,regime&market=eq.${mk}&order=trade_date.asc`);
       // index_close가 아직 미수집(null)인 행은 제외 — null을 그대로 숫자로 캐스팅하면
       // 0으로 꺾여 "최저/오늘 0.0"처럼 잘못된 최저점·오늘값이 잡힙니다.
       const r=raw.filter(x=>x.index_close!=null);
-      if(!r.length){$(host).innerHTML='<div class="load">데이터 없음</div>';return;}
+      if(!r.length){$(host).innerHTML='<div class="load">데이터 없음</div>';continue;}
       lineChart($(host),[
         {n:mk,v:r.map(x=>+x.index_close),c:"--up"},
         {n:"MA20",v:r.map(x=>x.index_ma20?+x.index_ma20:null),c:"--ma3",o:.9}],
         r.map(x=>x.trade_date.slice(5).replace("-","/")),
         {h:170,pr:58,pl:46,marks:true,fy:v=>N(v,0),ft:v=>N(v,1),fm:v=>N(v,1)});
     }catch(e){$(host).innerHTML='<div class="load">데이터 없음</div>';}
-  }));
+  }
 }
 
 /* ══ STEP2 섹터 ══ */
@@ -2437,11 +2348,6 @@ async function getTlRows(){
   S._tlRowsP=(async()=>{
     // 사전 집계 테이블(sector_flow_daily, 2026-06-01~). 한 번에 1000행 제한이 있어 나눠서 받음. 아직 없으면 최근 10일 뷰로 대체.
     try{
-      await loadSnapshot();
-      if(_snap&&_snap.tables&&_snap.tables.sector_flow_daily){
-        const sr=snapRows("sector_flow_daily").filter(r=>r.trade_date>=TL_START);
-        if(sr.length)return sr;
-      }
       const all=[];
       for(let off=0;;off+=1000){
         const part=await q("sector_flow_daily",`select=*&trade_date=gte.${TL_START}&order=trade_date.asc,market.asc,sector.asc&limit=1000&offset=${off}`);
@@ -2700,12 +2606,6 @@ async function selectSectorTrend(sec){
 
 /* ══ STEP4 수급 / STEP5 타점 ══ */
 async function loadFlowStep(){
-  // 오늘 신호(STEP5) 조회는 후보 조회와 상관없으므로 먼저 시작해서 함께 기다린다(순차 대기 제거)
-  const sigP=q("signals",
-    `select=code,signal_type,grade,score,reason_text,trade_date&trade_date=eq.${S.date}`+
-    `&or=(signal_type.like.V4_BUY*,signal_type.like.V4_SELL*,signal_type.like.V4_CRASH*,signal_type.like.V4_PYRAMID*)`+
-    `&order=score.desc`);
-  sigP.catch(()=>{});
   const [cand,allHigh]=await Promise.all([
     q("v_screener",
       "select=code,name,smart_cum5,smart_cum20,consec_both_buy,vol_ratio20_prev,is_new_high_all,"+
@@ -2718,12 +2618,11 @@ async function loadFlowStep(){
     const pct=Math.round(near/allHigh.length*100);
     $("#chipHighPos").innerHTML=`신고가근처 <b>${pct}%</b><span class="faint" style="font-size:10px"> (${near}/${allHigh.length})</span>`;
   }
-  // 후보 종목별로 따로 5건씩 조회하던 것(종목 수만큼 요청) → 한 번에 최근 5거래일치를 받아 나눔
-  const d5=(S.market.at(-5)||S.market[0]||{}).trade_date;
-  const fl=cand.length&&d5?await q("daily_flow",
-      `select=code,trade_date,individual_net&code=in.(${cand.map(c=>c.code).join(",")})&trade_date=gte.${d5}&order=trade_date.asc`).catch(()=>[]):[];
-  const flBy={};fl.forEach(x=>(flBy[x.code]||(flBy[x.code]=[])).push(x));
-  const rows=cand.map(c=>({...c,series:(flBy[c.code]||[]).slice(-5).map(x=>-(+x.individual_net)/EOK)}));
+  const rows=await Promise.all(cand.map(async c=>{
+    const f=await q("daily_flow",
+      `select=trade_date,individual_net&code=eq.${c.code}&order=trade_date.desc&limit=5`);
+    return {...c,series:f.reverse().map(x=>-(+x.individual_net)/EOK)};
+  }));
   $("#flowBody").innerHTML=rows.map(r=>{
     const s=r.series,dir=s.length<2?"–":
       (s.at(-1)>s.at(-2)&&s.at(-1)>0?"증가":s.at(-1)<0?"이탈":"불규칙");
@@ -2741,7 +2640,10 @@ async function loadFlowStep(){
   $("#fn4").innerHTML=`${rows.length}<small>종목</small>`;
 
   // STEP5 — 오늘 실제 생성된 신호 (매수/매도/불타기 확정분만 — 단계별 후보(WATCH)는 제외)
-  const sig=await sigP;
+  const sig=await q("signals",
+    `select=code,signal_type,grade,score,reason_text,trade_date&trade_date=eq.${S.date}`+
+    `&or=(signal_type.like.V4_BUY*,signal_type.like.V4_SELL*,signal_type.like.V4_CRASH*,signal_type.like.V4_PYRAMID*)`+
+    `&order=score.desc`);
   const nameOf={};S.codes.forEach(c=>nameOf[c.code]=c.name);
   $("#finalWrap").innerHTML = sig.length
     ? `<div class="grid2">`+sig.map(s=>`
@@ -4883,9 +4785,8 @@ $$(".card>h3>span.r:not([id])").forEach(sp=>{
   h.appendChild(b);
 });
 
-// ── 불러오기 실패 시 "다시 시도" 버튼(해당 화면의 데이터를 캐시 없이 다시 불러옴)
+// ── 불러오기 실패 시 "다시 시도" 버튼(해당 화면의 데이터를 다시 불러옴)
 function retryCurrent(){
-  _qCache.clear();_snapObj={};
   S.flowRaw=null;S.fcrCache=null;S._fsmRowsP=null;S._tlRowsP=null;S._tlFlow=null;
   const v=S.curTab||"proc";
   if(v==="proc"){location.reload();return;}
@@ -4928,7 +4829,6 @@ function renderAsOf(){
   }else{
     if(date)parts.push(`데이터 기준일 <b>${date}</b>`);
     if(S.asOf)parts.push(`수집 <b>${fmtKst(S.asOf)}</b> ${S.asOfPartial?'<span style="color:var(--warn)">잠정</span>':'<span style="color:var(--good)">확정</span>'}`);
-    if(_snap&&_snap.generated_at&&["proc","today","flow","scr","fav"].includes(v))parts.push(`화면 데이터 생성 <b>${fmtKst(_snap.generated_at)}</b>`);
     const gp=S.gm&&S.gm.packs&&S.gm.packs[S.gm.tab];
     if(v==="sector"&&gp&&gp.updated_at)parts.push(`글로벌 시황 <b>${fmtKst(gp.updated_at)}</b>`);
   }
@@ -4949,29 +4849,29 @@ async function boot(){
     // 2026-09-19: 시가총액 내림차순 정렬은 원하는 종목을 시총을 모르면 못 찾는다는
     // 피드백으로 원래 이름순(가나다) 정렬로 되돌림. "다음 종목" 버튼은 그대로
     // 유지 — 이제 이름순 리스트 기준으로 다음 종목으로 넘어감.
-    await loadSnapshot();    // 스냅샷(있으면)을 먼저 받아 이후 조회를 DB 없이 처리 — 없으면 null로 넘어가 예전과 동일
-    const [stk,last]=await Promise.all([
-      q("stocks","select=code,name&security_type=eq.STOCK&order=name.asc"),
-      loadMarket()]);
+    const stk=await q("stocks","select=code,name&security_type=eq.STOCK&order=name.asc");
     S.codes=stk;
     $("#dSel").innerHTML=stk.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join("");
     $("#chipUniv").textContent=stk.length;
+    const last=await loadMarket();
     S.date=last.trade_date;
     $("#chipDate").textContent=S.date;
     $("#fDate").value=S.date;
     loadDataStatus().catch(()=>{});
     setInterval(()=>loadDataStatus().catch(()=>{}),5*60*1000); // 5분마다 "기준 시각" 갱신
-    const rgP=q("market_daily",`select=regime&trade_date=eq.${S.date}&limit=1`);
-    const amtOk=+last.total_amount>=+last.amt_ma20;
-    // 아래 4개는 서로 상관없어 동시에 조회(예전엔 하나씩 차례로 기다려 전체가 합산 시간만큼 걸렸음)
-    const [md]=await Promise.all([rgP,loadIndex(),loadSectors(),loadFlowStep(),loadMarketAmount()]);
+    const md=await q("market_daily",`select=regime&trade_date=eq.${S.date}&limit=1`);
     const rg=md[0]?.regime||"–";
     const col=rg==="RISK_ON"?"var(--up)":rg==="RISK_OFF"?"var(--down)":"var(--warn)";
     const kr={RISK_ON:"양호",RISK_OFF:"위험",NEUTRAL:"중립"}[rg]||rg;
     $("#chipRegime").innerHTML=`<span class="dot" style="background:${col}"></span>시장 <b>${kr}</b>`;
+    const amtOk=+last.total_amount>=+last.amt_ma20;
     $("#mktVerdict").innerHTML=`레짐 <b>${kr}</b> · 거래대금 20일평균 ${amtOk?"상회":"하회"}`;
     $("#fn1").innerHTML=`${kr}<small>레짐</small>`;
+    await loadIndex();
+    await loadSectors();
     $("#fn3").innerHTML=`${S.stocks.length}<small>/${stk.length}</small>`;
+    await loadFlowStep();
+    await loadMarketAmount();
     status("live",`<b>실데이터 연결됨</b> — ${S.date} 기준 · ${stk.length}종목`);
     // 2026-10-08: 업종 딥링크 — ?sector=업종명 으로 들어오면 종목후보 탭으로
     // 이동해 그 업종으로 자동 필터링. 업종별 자금흐름 데모(및 추후 수급동향
