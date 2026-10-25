@@ -38,6 +38,25 @@ def main():
     unclassified = cur.fetchall()
     entries = parse_entries(ENTRIES)
 
+    # 진단: 최근 추가된 종목과 입력한 종목의 업종 관련 값 전부(왜 미분류로 안 잡히는지/어느 값이 비었는지 확인용)
+    log("\n## 최근 추가된 종목 20개 (first_seen 최신순)\n| 코드 | 이름 | 시장 | 종류 | 활성 | sector_krx | override | sector_kis | 화면 업종 |\n|---|---|---|---|---|---|---|---|---|")
+    cur.execute("""select s.code, s.name, s.market, s.security_type, s.is_active, s.sector_krx, so.sector_override, s.sector_kis, v.sector
+                   from stocks s left join sector_override so on so.code = s.code left join v_stock_sector v on v.code = s.code
+                   order by s.first_seen desc nulls last, s.code desc limit 20""")
+    for r in cur.fetchall():
+        log("| " + " | ".join("–" if x is None else str(x) for x in r) + " |")
+    names = [e[0] for e in entries if not re.fullmatch(r"\d{6}", e[0])] + [x for x in os.environ.get("LOOKUP", "").replace(",", ";").split(";") if x.strip()]
+    for nm in dict.fromkeys(n.strip() for n in names):
+        cur.execute("""select s.code, s.name, s.market, s.security_type, s.is_active, s.sector_krx, so.sector_override, s.sector_kis, v.sector
+                       from stocks s left join sector_override so on so.code = s.code left join v_stock_sector v on v.code = s.code
+                       where s.name ilike %s order by s.name limit 10""", (f"%{nm}%",))
+        rows = cur.fetchall()
+        log(f"\n## '{nm}' 포함 종목 {len(rows)}건")
+        for r in rows:
+            log("- " + " | ".join(f"{c}={'–' if x is None else x}" for c, x in zip(["코드","이름","시장","종류","활성","krx","override","kis","화면업종"], r)))
+        if not rows:
+            log("- stocks 테이블에 없음 (Add Single Stock이 안 끝났거나 이름이 다름)")
+
     log(f"# 업종 일괄 지정 ({datetime.datetime.now():%Y-%m-%d %H:%M} UTC) — {'미리보기(저장 안 함)' if DRY else '저장 모드'}")
     log(f"\n## 지금 미분류 종목 {len(unclassified)}개")
     for c, n, m in unclassified:
@@ -87,6 +106,9 @@ def main():
 
 def finish(conn):
     conn.close()
+    if "--report" in sys.argv:
+        i = sys.argv.index("--report")
+        open(sys.argv[i + 1] if i + 1 < len(sys.argv) else "sector_report.md", "w", encoding="utf-8").write("\n".join(lines))
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path:
         open(path, "a", encoding="utf-8").write("\n".join(lines) + "\n")
