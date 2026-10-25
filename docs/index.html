@@ -710,17 +710,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
   </div>
 
-  <div class="card"><h3>오늘의 주도업종 Top 5 <span class="r">업종 RS순위(20일 복리수익률 자체산출) 기준 · 클릭하면 아래 표가 그 업종으로 필터링됩니다</span></h3>
-    <div class="tw tw-scroll tw-rank"><table><thead><tr>
-      <th class="l">#</th><th class="l">업종</th><th>RS순위</th><th>평균등락률</th><th class="opt">거래대금</th>
-      <th class="opt">주간증감</th><th>업종수급</th>
-    </tr></thead><tbody id="tdSectorBody"><tr><td colspan="7" class="load">불러오는 중…</td></tr></tbody></table></div>
-    <div class="note" id="tdSectorFilterNote">
-      표시 기준: <b id="tdSectorFilterText">전체</b>
-      <span id="tdSectorClearWrap" style="display:none"> · <a href="javascript:void(0)" id="tdSectorClear">전체 보기</a></span>
-    </div>
-  </div>
-
   <div class="card" style="margin-top:12px"><h3>기준별 강한 종목 Top 10
     <span class="r">오늘 이 기준으로 가장 강했던 종목 · 칩 선택으로 기준 전환</span></h3>
     <div id="tdTopChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px">
@@ -2996,7 +2985,6 @@ async function loadToday(){
     const sflow=sectorFlowMap(raw);
 
     // ── 2) 오늘의 주도업종 Top5 ──
-    renderTodaySectors(sflow);
 
     // ── 3) 오늘 강했던 종목 ──
     S.tdUniverse=universe; S.tdTopCrit=S.tdTopCrit||"weight";
@@ -3042,25 +3030,6 @@ function todaySectorRow(s,i,sflow){
     <td class="opt ${sgn(s.amt_chg_1w_pct==null?0:+s.amt_chg_1w_pct)}">${s.amt_chg_1w_pct==null?"–":pm(+s.amt_chg_1w_pct,1)+"%"}</td>
     <td>${flowHtml}</td>
   </tr>`;
-}
-function renderTodaySectors(sflow){
-  const top5=[...S.sectors].filter(s=>s.rs_rank).sort((a,b)=>a.rs_rank-b.rs_rank).slice(0,5);
-  $("#tdSectorBody").innerHTML=top5.length
-    ? top5.map((s,i)=>todaySectorRow(s,i,sflow)).join("")
-    : `<tr><td colspan="7" class="load">데이터 없음</td></tr>`;
-  makeSortable("tdSectorBody");
-  $$("#tdSectorBody tr.clk").forEach(tr=>tr.onclick=()=>{
-    S.tdSectorFilter=tr.dataset.sec;
-    $("#tdSectorFilterText").textContent=`"${tr.dataset.sec}" 업종`;
-    $("#tdSectorClearWrap").style.display="";
-    if(S.tdUniverse)renderTodayTop(S.tdUniverse);
-  });
-  $("#tdSectorClear").onclick=()=>{
-    S.tdSectorFilter=null;
-    $("#tdSectorFilterText").textContent="전체";
-    $("#tdSectorClearWrap").style.display="none";
-    if(S.tdUniverse)renderTodayTop(S.tdUniverse);
-  };
 }
 // 2026-09-20: 매물대 금액 표시 포맷 — 억원이 기본, 1조원(=10000억) 이상이면 조원.
 function fmtEokJo(eok){
@@ -3293,7 +3262,7 @@ function renderTodayTop(universe){
   $("#tdTopCritNote").textContent=def.note;
   $$("#tdTopChips .fchip").forEach(b=>b.classList.toggle("on",b.dataset.crit===crit));
   const topMap=buildTopCodes(universe);
-  const sorted=[...universe].filter(r=>(!S.tdSectorFilter||r.sector===S.tdSectorFilter)&&def.keyFn(r)!=null)
+  const sorted=[...universe].filter(r=>def.keyFn(r)!=null)
     .sort((a,b)=>(def.dir===1?def.keyFn(b)-def.keyFn(a):def.keyFn(a)-def.keyFn(b))
       ||((def.meta||def.tie)?(+b.change_pct||0)-(+a.change_pct||0):0)).slice(0,10);
   const mk=r=>r.market==="KOSPI"?'<span class="cd">피</span> ':'<span class="cd">닥</span> ';
