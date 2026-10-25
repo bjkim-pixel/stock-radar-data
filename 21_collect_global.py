@@ -57,14 +57,14 @@ US_INDEX = [
     ("UUP", "달러"), ("FXY", "엔화"), ("TBX", "미 국채 인버스(7-10년)"),
 ]
 US_THEME = [
-    ("AIS", "AI 인프라"), ("SOXX", "반도체"), ("BOAT", "해운"), ("HYDR", "수소"),
-    ("BUG", "사이버보안"), ("VOLT", "전력화"), ("ARKG", "유전체"), ("SKYY", "클라우드"),
-    ("LIT", "리튬·배터리"), ("ZAP", "전력 인프라"), ("HUMN", "휴머노이드"), ("DRNZ", "드론"),
-    ("SHLD", "방산"), ("NUKZ", "원자력"), ("TAN", "태양광"), ("MAGS", "매그니피센트 7"),
-    ("PHO", "수자원"), ("NCLD", "NCLD"), ("LYTE", "광통신"), ("GASZ", "천연가스"),
-    ("RACK", "데이터센터"), ("QTUP", "양자컴퓨팅"), ("DRAM", "메모리"), ("NASA", "우주"),
+    ("AIS", "AI 슈퍼사이클"), ("SOXX", "반도체"), ("BOAT", "글로벌 해운"), ("HYDR", "수소"),
+    ("BUG", "사이버보안"), ("VOLT", "전력화(Tema)"), ("ARKG", "유전체"), ("SKYY", "클라우드"),
+    ("LIT", "리튬·배터리"), ("ZAP", "미국 전력화"), ("HUMN", "휴머노이드"), ("DRNZ", "드론"),
+    ("SHLD", "방산 테크"), ("NUKZ", "원자력"), ("TAN", "태양광"), ("MAGS", "매그니피센트 7"),
+    ("PHO", "수자원"), ("NCLD", "네오클라우드"), ("LYTE", "광학·포토닉스"), ("GASZ", "가스발전·터빈"),
+    ("RACK", "데이터센터 공급망"), ("QTUP", "양자컴퓨팅"), ("DRAM", "메모리"), ("NASA", "우주 혁신"),
     ("IGV", "소프트웨어"), ("OZEM", "비만치료제"), ("BIZD", "BDC·사모대출"), ("STBQ", "스테이블코인"),
-    ("KWEB", "중국 인터넷"), ("CAPA", "CAPA"),
+    ("KWEB", "중국 인터넷"), ("CAPA", "AI 커패시터·MLCC"),
 ]
 US_YAHOO_EXTRA = {"FX:KRW": "KRW=X"}   # 한국 탭 원/달러
 
@@ -266,9 +266,37 @@ def resolve(name_or_kw, fixed, etfs):
         return hits[0]
     return None, None
 
+def load_kis_master():
+    """KIS 공개 종목 마스터(kospi_code.mst) — stocks 테이블에 없는 신규 상장 ETF 이름→코드 보완용."""
+    import io, zipfile
+    try:
+        r = requests.get("https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip", timeout=30)
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        raw = z.read(z.namelist()[0])
+    except Exception as ex:
+        log(f"  - ⚠ KIS 종목 마스터 다운로드 실패: {str(ex)[:80]}")
+        return []
+    out = []
+    for line in raw.split(b"\n"):
+        line = line.rstrip(b"\r")
+        if len(line) < 250:
+            continue
+        code = line[0:9].decode("cp949", "ignore").strip()
+        name = line[21:len(line) - 228].decode("cp949", "ignore").strip()
+        if code and name:
+            out.append((code[-6:] if len(code) > 6 else code, name))
+    return out
+
 def build_kr_map(conn):
     etfs = load_etf_names(conn)
     log(f"- stocks 테이블 ETF {len(etfs)}개에서 이름 매핑")
+    need = [nm for nm, fx in KR_ETF if not fx and not resolve(nm, None, etfs)[0]]
+    if need:
+        mst = load_kis_master()
+        known = {c for c, _ in etfs}
+        add = [(c, n) for c, n in mst if c not in known]
+        log(f"  - stocks에 없는 {len(need)}개 → KIS 종목 마스터 {len(mst)}개로 보완")
+        etfs = etfs + add
     etf_codes, miss = [], []
     for nm, fixed in KR_ETF:
         c, matched = resolve(nm, fixed, etfs)
