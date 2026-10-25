@@ -45,8 +45,8 @@ def main():
                        from daily_price where market_cap > 0 and listed_shares > 0""")
         bad, tot = cur.fetchone()
         log(f"- 시총 ≠ 종가×상장주식수(오차 2%↑)인 행: {bad:,} / {tot:,}")
-        log("\n## 방식 비교 (3개월 전 시점, 순매수/시총 %)\n| 종목 | 현재 방식(누적금액÷그날시총) | 제안 방식(Σ 일별 순매수÷그날시총) | 시총 3M전(억) | 시총 오늘(억) | 주식수 최소~최대 |\n|---|---|---|---|---|---|")
-        cur.execute("select trade_date from (select distinct trade_date, row_number() over (order by trade_date desc)-1 as ago from daily_price) x where ago in (0,60) order by ago")
+        log("\n## 방식 비교 (3개월 전=60거래일 전 시점, 순매수/시총 %)\n| 종목 | 현재 방식(누적금액÷그날시총) | 제안 방식(Σ 일별 순매수÷그날시총) | 시총 3M전(억) | 시총 오늘(억) | 주식수 최소~최대 |\n|---|---|---|---|---|---|")
+        cur.execute("select trade_date from (select trade_date, row_number() over (order by trade_date desc)-1 as ago from (select distinct trade_date from daily_price) t) x where ago in (0,60) order by ago")
         d0, d60 = [r[0] for r in cur.fetchall()]
         cur.execute("""
             with fst as (select code, min(trade_date) f from daily_price where close>0 group by code),
