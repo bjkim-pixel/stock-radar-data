@@ -3122,8 +3122,9 @@ function renderGlobal(row){
   $("#gmAsOf").textContent=`기준 ${p.as_of}${p.tab==="US"?" (미국 종가)":""} · 기준지수 ${p.bench}`;
   const G=Object.fromEntries(p.groups.map(g=>[g.id,g]));
   let h="";
+  if(G.index)h+=gmGrid(p,G.index);   /* 인덱스 차트를 맨 위로 */
   (p.summary||[]).forEach(id=>{if(G[id])h+=gmTable(p,G[id]);});
-  p.groups.forEach(g=>{h+=gmGrid(p,g);});
+  p.groups.forEach(g=>{if(g.id!=="index")h+=gmGrid(p,g);});
   h+=`<div class="note" style="margin-top:8px">추세 ▲▲ = 50일선 위 + 50일선 상승 · ▲ = 50일선 위 · ▼ = 50일선 아래. 국면 = ${p.bench} 대비 1M·3M 초과수익 부호(주도 +/+ · 개선 1M+ 3M− · 약화 1M− 3M+ · 소외 −/−). 고점대비 = 최근 1년 최고 종가 대비.${p.tab==="KR"?" 테마 차트는 대표 ETF 종가, ADR은 상승종목수÷하락종목수 20일 합 ×100(2026-10-23부터 수집).":""}</div>`;
   $("#gmBody").innerHTML=h;
   (p.summary||[]).forEach(id=>makeSortable("gmT_"+p.tab+"_"+id));
