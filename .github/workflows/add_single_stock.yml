@@ -46,6 +46,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: 먼저 시작한 NXT 수집이 끝날 때까지 기다리기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/wait_kis_turn.sh "nxt_collect.yml" 20
+
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:

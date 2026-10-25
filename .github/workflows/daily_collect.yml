@@ -58,11 +58,16 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50     # 수집 ~30분 + 앞선 NXT 대기 최대 20분
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: 먼저 시작한 NXT 수집이 끝날 때까지 기다리기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/wait_kis_turn.sh "nxt_collect.yml" 20
 
       - name: 거래일 확인 (공휴일 스킵)
         id: market_day

@@ -44,6 +44,13 @@ jobs:
   compute:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # 2026-10-25: 계산은 한 번에 하나만 — 통합 파이프라인 안의 계산(workflow_call)과 NXT 직후 계산(workflow_run),
+    # 수동 실행이 같은 날짜·같은 테이블에 동시에 쓰지 않도록 줄 세움. (job 단위라 통합 파이프라인에서 호출될 때도 적용)
+    # 대기가 여러 개 쌓이면 GitHub이 오래된 대기를 취소하지만, 계산은 '오늘 하루치'를 처음부터 다시 만드는 작업이라
+    # 뒤에 온 계산이 앞의 것을 대신하므로 결과에는 영향 없음.
+    concurrency:
+      group: compute-db-write
+      cancel-in-progress: false
 
     steps:
       - name: Checkout

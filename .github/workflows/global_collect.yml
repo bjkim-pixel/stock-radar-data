@@ -27,36 +27,45 @@ concurrency:
 
 permissions:
   contents: write
-  actions: read     # 오늘 이미 성공한 실행이 있는지 조회(연결 실행 판단용)
+  actions: read     # 오늘 이미 수집한 실행이 있는지·NXT가 돌고 있는지 조회
 
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40     # 수집 ~20분 + NXT 대기 최대 20분
     steps:
       - uses: actions/checkout@v4
-      - name: 실행 여부 판단 (연결 실행은 하루 첫 성공 실행에만)
+      - name: 실행 여부 판단 (자동 실행은 하루 한 번만)
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" != "workflow_run" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          EV="${{ github.event_name }}"
+          if [ "$EV" = "workflow_dispatch" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          DOW=$(TZ=Asia/Seoul date +%u)
+          # 토요일 08:00 예약(금요일 미국 종가 반영)은 항상 실행
+          if [ "$EV" = "schedule" ] && [ "$DOW" -ge 6 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$EV" = "workflow_run" ]; then
+            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+              echo "⏸️ 앞 단계(수집·계산)가 성공하지 않아 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            TODAY=$(TZ=Asia/Seoul date +%F)
+            HOLIDAYS="$(bash .github/scripts/holidays.sh)"
+            if [ "$DOW" -ge 6 ] || echo " $HOLIDAYS " | grep -q " $TODAY "; then
+              echo "⏸️ $TODAY 은 주말/휴장일 — 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
           fi
-          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-            echo "⏸️ 앞 단계(수집·계산)가 성공하지 않아 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          TODAY=$(TZ=Asia/Seoul date +%F); DOW=$(TZ=Asia/Seoul date +%u)
-          HOLIDAYS="$(bash .github/scripts/holidays.sh)"
-          if [ "$DOW" -ge 6 ] || echo " $HOLIDAYS " | grep -q " $TODAY "; then
-            echo "⏸️ $TODAY 은 주말/휴장일 — 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          SINCE=$(date -u -d "TZ=\"Asia/Seoul\" $TODAY 00:00" +%Y-%m-%dT%H:%M:%SZ)   # 오늘 00:00 KST를 UTC로
-          N=$(gh run list -R "$GITHUB_REPOSITORY" --workflow global_collect.yml --status success --created ">=$SINCE" --json databaseId --jq 'length' || echo 0)
+          # 평일 예약(16:20 보조)과 연결 실행: 오늘 이미 '실제로' 수집한 실행이 있으면 건너뜀(건너뛴 실행은 세지 않음)
+          N=$(bash .github/scripts/done_today.sh global_collect.yml "Collect + pack")
           if [ "${N:-0}" -gt 0 ]; then
-            echo "⏸️ 오늘 이미 글로벌 시황 수집이 ${N}번 성공했습니다 — 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            echo "⏸️ 오늘 이미 글로벌 시황 수집을 ${N}번 했습니다 — 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "run=true" >> "$GITHUB_OUTPUT"
+      - name: 먼저 시작한 NXT 수집이 끝날 때까지 기다리기
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/wait_kis_turn.sh "nxt_collect.yml" 20
       - uses: actions/setup-python@v5
         if: steps.gate.outputs.run == 'true'
         with:
