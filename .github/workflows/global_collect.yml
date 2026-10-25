@@ -1,0 +1,76 @@
+name: Global Market Collection
+
+# 업종동향 맨 위 "글로벌 시황"(미국·한국 탭) 데이터 수집 + 화면용 묶음(global_pack) 생성.
+# 21_collect_global.py가 테이블 생성(85_global_market.sql)까지 직접 하므로 SQL 수동 실행 불필요.
+on:
+  schedule:
+    # 월~금 16:20 KST (07:20 UTC) — 한국 장마감 확정 + 전날 밤 미국 종가 확정 이후
+    - cron: "20 7 * * 1-5"
+    # 토 08:00 KST (금 23:00 UTC) — 금요일 미국 종가 반영
+    - cron: "0 23 * * 5"
+  workflow_dispatch:
+    inputs:
+      pack_only:
+        description: '수집 없이 묶음만 다시 생성 (true/false)'
+        required: false
+        default: 'false'
+  push:
+    branches: [main]
+    paths:
+      - "21_collect_global.py"
+      - "85_global_market.sql"
+      - ".github/workflows/global_collect.yml"
+
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary requests
+      - name: KIS token
+        id: kistoken
+        env:
+          KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+          KIS_TOKEN_ISSUER: "gha:${{ github.workflow }}"
+        run: |
+          TOKEN=$(python 72_kis_token.py || true)
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+      - name: Collect + pack
+        env:
+          KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+          KIS_ACCESS_TOKEN: ${{ steps.kistoken.outputs.token }}
+        run: |
+          if [ "${{ github.event.inputs.pack_only }}" = "true" ]; then
+            python 21_collect_global.py --pack --report global_report.md
+          else
+            python 21_collect_global.py --report global_report.md
+          fi
+      - name: Publish report (branch global-report)
+        if: always()
+        run: |
+          [ -f global_report.md ] || echo "리포트 없음 — 수집 단계 실패. Actions 로그 확인" > global_report.md
+          cp global_report.md /tmp/global_report.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan global-report
+          git rm -rq --cached . || true
+          cp /tmp/global_report.md global_report.md
+          git add global_report.md
+          git commit -qm "global report ${{ github.run_id }}"
+          git push -f origin global-report
