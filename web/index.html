@@ -521,6 +521,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .gm-h{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:11.5px;font-weight:650}
 .gm-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .gm-v{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.gm-desc{font-size:9.5px;line-height:1.3;color:var(--ink-3);margin-top:1px}
 .gm-sub{font-size:9.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gm-c svg{display:block;width:100%;height:46px;margin-top:2px}
 .gm-c.big svg{height:150px}
@@ -3106,6 +3107,7 @@ function gmCardVal(it){
   const last=[...it.c].reverse().find(x=>x!=null);
   if(it.days!=null&&it.days<20)return `<span class="gm-v dim">수집 ${it.days}/20일</span>`;
   if(it.k==="lvlpct")return `<span class="gm-v ${gmC(last)}">${gmF(last)}%</span>`;
+  if(it.k==="yld")return `<span class="gm-v">${last==null?"–":N(last,2)+"%"}</span>`;
   if(it.k==="lvl")return `<span class="gm-v">${last==null?"–":N(last,1)}</span>`;
   const v=it.m&&it.m.d;return `<span class="gm-v ${gmC(v)}">${gmF(v)}</span>`;
 }
@@ -3121,18 +3123,18 @@ function gmCard(p,key,it,period,hot){
       <div class="gm-per">${[[21,"1M"],[63,"3M"],[126,"6M"],[252,"1Y"]].map(([v,l])=>`<button class="fchip" data-gmn="${v}" aria-pressed="${S.gm.bigN==v}">${l}</button>`).join("")}</div>`;
   }
   return `<div class="gm-c${hot?" "+hot:""}${big?" big":""}" data-gmk="${key}">
-    <div class="gm-h"><span class="gm-n">${it.n}${it.cap!=null?` <span class="gm-cap">${N(it.cap,0)}억</span>`:""}</span>${gmCardVal(it)}</div>${sub}
+    <div class="gm-h"><span class="gm-n">${it.n}${it.cap!=null?` <span class="gm-cap">${N(it.cap,0)}억</span>`:""}</span>${gmCardVal(it)}</div>${sub}${it.d_?`<div class="gm-desc">${it.d_}</div>`:""}
     ${gmSpark(it.c,n,big)}${gmAxis(p,n,big)}${extra}${hold}</div>`;
 }
 function gmGrid(p,g){
   const its=g.keys.map(k=>[k,p.items[k]]).filter(x=>x[1]);
   const hot={};
-  if(g.id!=="index"){
+  if(g.id!=="index"&&g.id!=="macro"){
     const byD=its.filter(x=>x[1].m&&x[1].m.d!=null).sort((a,b)=>b[1].m.d-a[1].m.d);
     byD.slice(0,3).forEach(x=>{if(x[1].m.d>0)hot[x[0]]="hot-up";});
     byD.slice(-3).forEach(x=>{if(x[1].m.d<0)hot[x[0]]="hot-dn";});
   }
-  const head=`<div class="gm-sec">${g.title}<span class="r">${GM_PER_LBL[g.period]||""} 차트 · 숫자 = 당일 등락률${g.sections?" · ETF 시총(억원) 큰 순":""}</span></div>`;
+  const head=`<div class="gm-sec">${g.title}<span class="r">${GM_PER_LBL[g.period]||""} 차트 · 숫자 = 당일 등락률${g.id==="macro"?"(금리·VIX는 현재 수준)":""}${g.sections?" · ETF 시총(억원) 큰 순":""}</span></div>`;
   const cards=ks=>ks.map(k=>p.items[k]?gmCard(p,k,p.items[k],g.period,hot[k]):"").join("");
   if(g.sections)   /* 테마별 헤더 + 그 테마 ETF 카드(시총 큰 순) */
     return head+g.sections.map((sc,i)=>`<div class="gm-th" id="gmth_${p.tab}_${i}"><span>${sc.n}</span><span class="r">ETF ${sc.keys.length}개 · 시총 합계 ${N(sc.cap,0)}억원</span></div>
@@ -3169,8 +3171,9 @@ function renderGlobal(row){
   const G=Object.fromEntries(p.groups.map(g=>[g.id,g]));
   let h="";
   if(G.index)h+=gmGrid(p,G.index);   /* 인덱스 차트를 맨 위로 */
+  if(G.macro)h+=gmGrid(p,G.macro);   /* 금리·원자재·심리 */
   (p.summary||[]).forEach(id=>{if(G[id])h+=gmTable(p,G[id]);});
-  p.groups.forEach(g=>{if(g.id!=="index")h+=gmGrid(p,g);});
+  p.groups.forEach(g=>{if(g.id!=="index"&&g.id!=="macro")h+=gmGrid(p,g);});
   h+=`<div class="note" style="margin-top:8px">추세 ▲▲ = 50일선 위 + 50일선 상승 · ▲ = 50일선 위 · ▼ = 50일선 아래. 국면 = ${p.bench} 대비 1M·3M 초과수익 부호(주도 +/+ · 개선 1M+ 3M− · 약화 1M− 3M+ · 소외 −/−). 고점대비 = 최근 1년 최고 종가 대비.${p.tab==="KR"?" 차트는 ETF 종가(테마별로 묶고 ETF 시총 큰 순), 시총은 한국투자증권 현재가 기준 ETF 시가총액(억원), ADR은 상승종목수÷하락종목수 20일 합 ×100(2026-10-23부터 수집).":""}</div>`;
   $("#gmBody").innerHTML=h;
   (p.summary||[]).forEach(id=>makeSortable("gmT_"+p.tab+"_"+id));

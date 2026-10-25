@@ -127,7 +127,29 @@ def short_en(n):
     n = re.sub(r"\b(Inc|Corp|Corporation|Ltd|Limited|Holdings?|Company|Co|plc|PLC|N\.V|S\.A|Group)\b\.?,?", "", n or "")
     return re.sub(r"\s+", " ", n).strip(" ,.")
 
-US_YAHOO_EXTRA = {"FX:KRW": "KRW=X"}   # 한국 탭 원/달러
+US_MACRO = [
+    ("^TNX", "미 10년물 금리"), ("GLD", "금"), ("RATIO:CPER/GLD", "구리/금"),
+    ("USO", "WTI 원유"), ("^VIX", "VIX 변동성"),
+]
+# 인덱스·매크로 차트 제목 오른쪽(아래)에 표시할 한 줄 설명
+US_DESC = {
+    "SPY": "미국 대형주 500 · 시장 전체 흐름", "QQQ": "나스닥100 · 대형 기술·성장주",
+    "MAGS": "빅테크 7종목 · 주도주 온도", "IWM": "러셀2000 · 중소형주(경기·금리 민감)",
+    "IWC": "마이크로캡 · 초소형주, 위험선호 지표", "SOXX": "반도체 ETF · AI 사이클 선행",
+    "RATIO:IWM/SPY": "중소형÷대형 · 오르면 시장 확산·위험선호", "IBIT": "비트코인 현물 ETF · 유동성·위험선호",
+    "DRAM": "메모리 반도체 ETF · DRAM·HBM 사이클", "UUP": "달러 인덱스 ETF · 오르면 신흥국·원화 약세 압력",
+    "FXY": "엔화 ETF · 오르면 안전자산 선호·캐리 청산", "TBX": "미 국채 7-10년 인버스 · 오르면 금리 상승",
+    "^TNX": "미 10년물 국채금리(%) · 오르면 성장주·밸류에이션 부담", "GLD": "금 현물 ETF · 안전자산·실질금리",
+    "RATIO:CPER/GLD": "구리÷금 · 오르면 경기 기대, 내리면 안전선호", "USO": "WTI 원유 ETF · 인플레·에너지 업종",
+    "^VIX": "변동성 지수 · 20↑ 불안, 30↑ 공포",
+}
+KR_DESC = {
+    "KOSPI": "코스피 · 한국 대형주 시장 전체", "KOSPI_DD": "1년 고점 대비 낙폭(%) · 조정의 깊이",
+    "KOSPI_DISP": "코스피÷20일선 · 100 위 과열, 아래 침체", "KOSDAQ": "코스닥 · 중소형·성장주 시장",
+    "KQKS": "코스닥÷코스피 · 오르면 중소형 강세", "KRW": "원/달러 · 오르면 원화 약세(외국인 매도 압력)",
+    "ADR_KOSPI": "상승÷하락종목수 20일 · 120↑ 과열, 75↓ 침체", "ADR_KOSDAQ": "상승÷하락종목수 20일 · 120↑ 과열, 75↓ 침체",
+}
+US_YAHOO_EXTRA = {"FX:KRW": "KRW=X", "US:CPER": "CPER"}   # CPER: 구리/금 비율 계산용(카드 없음)   # 한국 탭 원/달러
 
 # 한국 테마 ETF 카드 — (표시명, 고정코드 또는 None). 코드가 None이면 stocks 테이블에서 이름으로 찾음.
 # 한국 테마 — (테마명, [(ETF 이름, 고정코드 or None), ...]) · 같은 테마끼리 묶고 ETF 시총 큰 순으로 표시
@@ -288,7 +310,7 @@ def collect_yahoo(conn, stats):
     if bad_fx:
         log(f"- FX 날짜 정정: {', '.join(bad_fx)} 전체 재수집")
     syms = {}
-    for lst in (US_SECTOR, US_INDEX, US_THEME):
+    for lst in (US_SECTOR, US_INDEX, US_THEME, US_MACRO):
         for t, _ in lst:
             if not t.startswith("RATIO:"):
                 syms["US:" + t] = t
@@ -682,8 +704,11 @@ def build_us(S, H):
                 ser = {d: sa[d] / sb[d] for d in sa if d in sb and sb[d]}
                 it = item(cal, ser, nm, None, "ratio", t[6:])
             else:
-                it = item(cal, S.get("US:" + t) or {}, nm, None if t == "SPY" else bench, "px", t)
+                it = item(cal, S.get("US:" + t) or {}, nm, None if t == "SPY" else bench,
+                          "yld" if t == "^TNX" else "lvl" if t == "^VIX" else "px", t)
             if it:
+                if t in US_DESC and grp_id in ("index", "macro"):
+                    it["d_"] = US_DESC[t]
                 if grp_id in ("sector", "theme") and not t.startswith("RATIO:"):
                     it["h"] = [{"c": x["c"], "n": x["c"], "f": x["n"], "k": US_KO.get(x["c"]) or short_en(x["n"]),
                                 "x": exch_label(x["c"], x.get("x")), "w": x["w"], "ch": x["ch"]}
@@ -693,6 +718,7 @@ def build_us(S, H):
         groups.append({"id": grp_id, "title": title, "period": period, "keys": keys})
     add("sector", "섹터", US_SECTOR, 126)
     add("index", "인덱스", US_INDEX, 252)
+    add("macro", "금리·원자재·심리", US_MACRO, 252)
     add("theme", "테마", US_THEME, 126)
     return {"tab": "US", "as_of": cal[-1].isoformat(), "bench": "SPY",
             "dates": [d.isoformat() for d in cal[-CHART_N:]],
@@ -710,6 +736,8 @@ def build_kr(S, H, etf_codes, theme_of):
     idx = []
     def put(key, it):
         if it:
+            if key.split(":", 1)[1] in KR_DESC:
+                it["d_"] = KR_DESC[key.split(":", 1)[1]]
             items[key] = it; idx.append(key)
     put("index:KOSPI", item(cal, ks, "KOSPI", None))
     # 고점대비 (252일 최고 대비 %)
