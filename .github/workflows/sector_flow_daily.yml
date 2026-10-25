@@ -1,0 +1,51 @@
+name: Sector Flow Daily
+
+# 수급동향 "자금 이동 타임라인"용 sector_flow_daily 사전 집계 (87_sector_flow_daily.sql 의 refresh_sector_flow_daily()).
+# 일별 수급 수집과 지표 계산(Compute Metrics & Signals)이 끝난 직후 실행합니다.
+on:
+  workflow_run:
+    workflows: ["Compute Metrics & Signals"]
+    types: [completed]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "87_sector_flow_daily.py"
+      - "87_sector_flow_daily.sql"
+      - ".github/workflows/sector_flow_daily.yml"
+
+concurrency:
+  group: sector-flow-daily
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Refresh sector_flow_daily
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 87_sector_flow_daily.py --report sectorflow_report.md
+      - name: Publish report (branch sectorflow-report)
+        if: always()
+        run: |
+          [ -f sectorflow_report.md ] || echo "리포트 없음 — 계산 실패. Actions 로그 확인" > sectorflow_report.md
+          cp sectorflow_report.md /tmp/sectorflow_report.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan sectorflow-report
+          git rm -rq --cached . || true
+          cp /tmp/sectorflow_report.md sectorflow_report.md
+          git add -f sectorflow_report.md
+          git commit -qm "sectorflow report ${{ github.run_id }}"
+          git push -f origin sectorflow-report

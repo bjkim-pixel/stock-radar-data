@@ -128,7 +128,13 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 .tl-legend i{display:inline-block}
 .tl-sub{font-size:12.5px;font-weight:700;margin:12px 0 6px}
 .tl-chart{position:relative}
-.tl-grid{display:grid;grid-template-columns:60px repeat(10,1fr);gap:2px}
+.tl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin}
+.tl-inner{position:relative;width:max-content}
+.tl-grid{display:grid;grid-template-columns:var(--lw,60px) repeat(var(--nc,10),var(--cw,34px));gap:2px}
+.tl-grid>.tl-rl,.tl-grid>.tl-corner{position:sticky;left:0;z-index:4;background:var(--surface)}
+.tl-nav{display:flex;gap:6px;align-items:center;margin:0 0 6px;font-size:11.5px;color:var(--ink-3)}
+.tl-nav button{padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--ink);font-size:11.5px;cursor:pointer}
+.tl-nav .rng{margin-left:auto}
 .tl-hd{font-size:9px;text-align:center;color:var(--ink-3);padding:1px 0 3px;line-height:1.2}
 .tl-hd b{display:block;color:var(--ink);font-size:9.5px}
 .tl-rl{display:flex;flex-direction:column;justify-content:center;font-size:11px;font-weight:600;padding-right:2px;min-height:34px;line-height:1.2;overflow:hidden}
@@ -142,7 +148,7 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 .tl-detail .fsm-dh a{font-size:11px;color:var(--ink-3);cursor:pointer}
 .tl-cell.tb{box-shadow:inset 0 0 0 2px var(--up)}
 .tl-cell.ts{box-shadow:inset 0 0 0 2px var(--down)}
-svg.tl-paths{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+svg.tl-paths{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:1}
 .fsm-day{border:1px solid var(--border);border-radius:var(--r);padding:10px 10px 8px;margin-bottom:10px}
 .fsm-dh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
 .fsm-dh .dt{font-size:14px;font-weight:700}
@@ -767,7 +773,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 <!-- ═══════════ 수급 동향 ═══════════ -->
 <section id="v-flow" class="hide">
   <div class="card" style="margin-top:16px"><h3>자금 이동 타임라인
-    <span class="r">최근 10거래일(2주) · 거래대금 상위 10개 업종 · 칸 = 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
+    <span class="r">2026-06-01~ 전 기간 · 거래대금 상위 10개 업종 · 좌우로 밀어서 10거래일씩 보기(업종 열 고정) · 칸 = 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
     <div class="tl-tabs" id="tlTabs"><button data-m="all" class="on">전체</button><button data-m="KOSPI">코스피</button><button data-m="KOSDAQ">코스닥</button></div>
     <div class="tl-legend">
       <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--up) 45%,transparent)"></i> 순매수</span>
@@ -775,8 +781,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <span><i style="width:18px;border-top:3px solid var(--up)"></i> 매수1위 업종 이동(테두리 칸)</span>
       <span><i style="width:18px;border-top:3px dashed var(--down)"></i> 매도1위 업종 이동(테두리 칸)</span>
     </div>
+    <div class="tl-nav"><button id="tlPrev">◀ 10일</button><button id="tlNext">10일 ▶</button><button id="tlLast">최근</button><span class="rng" id="tlRng"></span></div>
     <div id="tlBody"><div class="load">불러오는 중…</div></div>
-    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 10일 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
+    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
   </div>
 
   <div class="card"><h3>업종별 자금흐름
@@ -2298,18 +2305,36 @@ function getFsmRows(){
   return S._fsmRowsP||(S._fsmRowsP=q("v_sector_flow_market","select=*").catch(e=>{S._fsmRowsP=null;throw e;}));
 }
 const TL_SUBJ=[["foreign_net","외국인","tlForeign"],["inst_net","기관합계","tlInst"]];
+const TL_START="2026-06-01";
+async function getTlRows(){
+  if(S._tlRowsP)return S._tlRowsP;
+  S._tlRowsP=(async()=>{
+    // 사전 집계 테이블(sector_flow_daily, 2026-06-01~). 한 번에 1000행 제한이 있어 나눠서 받음. 아직 없으면 최근 10일 뷰로 대체.
+    try{
+      const all=[];
+      for(let off=0;;off+=1000){
+        const part=await q("sector_flow_daily",`select=*&trade_date=gte.${TL_START}&order=trade_date.asc,market.asc,sector.asc&limit=1000&offset=${off}`);
+        all.push(...part);if(part.length<1000)break;
+      }
+      if(all.length)return all;
+    }catch(e){}
+    return getFsmRows();
+  })().catch(e=>{S._tlRowsP=null;throw e;});
+  return S._tlRowsP;
+}
 async function loadFlowTimeline(){
-  try{S.tlRows=await getFsmRows();renderFlowTimeline();}
+  try{S.tlRows=await getTlRows();renderFlowTimeline();}
   catch(e){$("#tlBody").innerHTML='<div class="load">불러오기 실패</div>';}
 }
 function renderFlowTimeline(){
   const host=$("#tlBody"),mk=S.tlMkt||"all",rows=S.tlRows||[],WD=["일","월","화","수","목","금","토"];
   const wd=d=>new Date(d+"T00:00:00+09:00").getDay();
-  const dates=[...new Set(rows.map(r=>r.trade_date))].filter(d=>wd(d)>=1&&wd(d)<=5).sort().slice(-10);
+  const dates=[...new Set(rows.map(r=>r.trade_date))].filter(d=>wd(d)>=1&&wd(d)<=5).sort();
   if(!dates.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
   const sc=rows.filter(r=>dates.includes(r.trade_date)&&(mk==="all"||r.market===mk));
   const amtBy={};sc.forEach(r=>{amtBy[r.sector]=(amtBy[r.sector]||0)+(+r.trade_amount||0);});
   const secs=Object.keys(amtBy).sort((a,b)=>amtBy[b]-amtBy[a]).slice(0,10);
+  const W=host.clientWidth||360, lw=60, cw=Math.max(28,Math.floor((W-lw-2*10)/10));   // 화면에 정확히 10거래일이 보이도록
   const parts=TL_SUBJ.map(([key,label,id])=>{
     const cell={},dayTot={};
     sc.forEach(r=>{const v=+r[key]||0,k=r.sector+"|"+r.trade_date;cell[k]=(cell[k]||0)+v;dayTot[r.trade_date]=(dayTot[r.trade_date]||0)+v;});
@@ -2318,7 +2343,7 @@ function renderFlowTimeline(){
     const maxAbs=Math.max(1,...secs.flatMap(s=>dates.map(d=>Math.abs(val(s,d)))));
     const topBuy=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)>val(secs[b],d))b=i;});return b;});
     const topSell=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)<val(secs[b],d))b=i;});return b;});
-    let h=`<div class="tl-sub">${label} 순매수</div><div class="tl-chart" id="${id}"><div class="tl-grid"><div></div>`
+    let h=`<div class="tl-sub">${label} 순매수</div><div class="tl-chart" id="${id}"><div class="tl-scroll"><div class="tl-inner"><div class="tl-grid" style="--nc:${dates.length};--cw:${cw}px;--lw:${lw}px"><div class="tl-corner"></div>`
       +dates.map(d=>`<div class="tl-hd" style="${wd(d)===1?"border-left:1px solid var(--grid);padding-left:2px":""}"><b>${d.slice(5).replace("-","/")}</b>${WD[wd(d)]}</div>`).join("");
     secs.forEach((s,i)=>{
       h+=`<div class="tl-rl">${s}<small>${N(amtBy[s]/EOK,0)}억</small></div>`;
@@ -2328,18 +2353,39 @@ function renderFlowTimeline(){
         h+=`<div class="tl-cell${cls}" data-r="${i}" data-c="${c}" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;
       });
     });
-    return {html:h+'</div><svg class="tl-paths"></svg></div>',tops:{topBuy,topSell,id}};
+    return {html:h+'</div><svg class="tl-paths"></svg></div></div></div>',tops:{topBuy,topSell,id}};
   });
   host.innerHTML=parts.map(x=>x.html).join("");
   S.tlTops=parts.map(x=>x.tops);
-  S.tlMeta={secs,dates,mk};
-  requestAnimationFrame(drawTimelinePaths);
+  S.tlMeta={secs,dates,mk,cw:cw+2};
+  const scs=$$("#tlBody .tl-scroll");
+  const setPos=x=>scs.forEach(e=>{e.scrollLeft=x;});
+  // 처음엔 가장 최근 10일, 시장 탭을 바꿔도 보던 위치 유지
+  requestAnimationFrame(()=>{setPos(S.tlScroll==null?1e9:S.tlScroll);updTlRange();drawTimelinePaths();});
+  let lock=false;
+  scs.forEach(e=>e.addEventListener("scroll",()=>{
+    if(lock)return;lock=true;S.tlScroll=e.scrollLeft;scs.forEach(o=>{if(o!==e)o.scrollLeft=e.scrollLeft;});updTlRange();lock=false;
+  },{passive:true}));
 }
+function updTlRange(){
+  const m=S.tlMeta,sc=$("#tlBody .tl-scroll");if(!m||!sc)return;
+  const i0=Math.min(m.dates.length-1,Math.round(sc.scrollLeft/m.cw)),i1=Math.min(m.dates.length-1,i0+9);
+  const f=d=>d.slice(2).replace(/-/g,".");
+  $("#tlRng").textContent=`${f(m.dates[i0])} ~ ${f(m.dates[i1])} · 전체 ${m.dates.length}거래일`;
+}
+function tlStep(dir){
+  const m=S.tlMeta,scs=$$("#tlBody .tl-scroll");if(!m||!scs.length)return;
+  const x=scs[0].scrollLeft+dir*10*m.cw;
+  scs.forEach(e=>e.scrollTo({left:Math.max(0,x),behavior:"smooth"}));
+}
+$("#tlPrev").onclick=()=>tlStep(-1);
+$("#tlNext").onclick=()=>tlStep(1);
+$("#tlLast").onclick=()=>{S.tlScroll=1e9;$$("#tlBody .tl-scroll").forEach(e=>e.scrollTo({left:1e9,behavior:"smooth"}));};
 function drawTimelinePaths(){
   (S.tlTops||[]).forEach(({topBuy,topSell,id})=>{
     const chart=document.getElementById(id);
     if(!chart||!chart.offsetParent)return;            // 숨겨진 탭이면 그리지 않음(보일 때 다시 그려짐)
-    const svg=chart.querySelector("svg.tl-paths"),ca=chart.getBoundingClientRect();
+    const svg=chart.querySelector("svg.tl-paths"),ca=svg.parentElement.getBoundingClientRect();
     const ctr=(r,c)=>{const el=chart.querySelector(`.tl-cell[data-r="${r}"][data-c="${c}"]`);
       if(!el)return null;const b=el.getBoundingClientRect();return [b.left-ca.left+b.width/2,b.top-ca.top+7];};
     const poly=(rows,col,dash)=>{
@@ -2354,7 +2400,7 @@ function drawTimelinePaths(){
 $$("#tlTabs button").forEach(b=>b.onclick=()=>{
   S.tlMkt=b.dataset.m;$$("#tlTabs button").forEach(x=>x.classList.toggle("on",x===b));renderFlowTimeline();
 });
-addEventListener("resize",()=>{drawTimelinePaths();});
+let _tlRz;addEventListener("resize",()=>{clearTimeout(_tlRz);_tlRz=setTimeout(()=>{if(S.tlRows&&$("#tlBody .tl-scroll"))renderFlowTimeline();else drawTimelinePaths();},150);});
 /* 칸(업종×날짜) 터치 → 차트 바로 아래에 그날·그 업종 종목별 거래대금·등락률·4개 주체 순매수(등락률 순).
    업종별 자금흐름 카드의 펼침과 같은 형태. 맨 위 '업종 합계'는 누른 칸 숫자와 같은 값(종목 합). */
 async function tlOpenDetail(chartId,r,c){

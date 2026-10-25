@@ -2,3 +2,4 @@ __pycache__/
 pack_*.json
 global_report.md
 flowcap_report.md
+sectorflow_report.md
