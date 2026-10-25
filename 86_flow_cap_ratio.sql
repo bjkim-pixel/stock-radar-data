@@ -30,7 +30,9 @@ begin
             from (select distinct trade_date from daily_price) t) x;
   truncate flow_cap_ratio;
   insert into flow_cap_ratio (code, as_of, a_3m, a_1m, a_1w, r_3m, r_1m, r_1w)
-  with fst as (select code, min(trade_date) as f from daily_price where close > 0 group by code),
+  with fst as (select p.code, min(p.trade_date) as f from daily_price p
+                join stocks st on st.code = p.code and st.security_type = 'STOCK'   -- ETF·ETN 제외(화면에는 일반 종목만 나옴)
+                where p.close > 0 group by p.code),
   d as (
     select fl.code, fl.trade_date,
            coalesce(fl.foreign_net,0) + coalesce(fl.inst_net,0) as amt,
