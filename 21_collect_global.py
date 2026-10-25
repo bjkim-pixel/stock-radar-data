@@ -144,7 +144,6 @@ US_DESC = {
     "^VIX": "변동성 지수 · 20↑ 불안, 30↑ 공포",
 }
 KR_DESC = {
-    "VKOSPI": "코스피200 변동성지수 · 20↑ 불안, 30↑ 공포(한국판 VIX)",
     "KOSPI": "코스피 · 한국 대형주 시장 전체", "KOSPI_DD": "1년 고점 대비 낙폭(%) · 조정의 깊이",
     "KOSPI_DISP": "코스피÷20일선 · 100 위 과열, 아래 침체", "KOSDAQ": "코스닥 · 중소형·성장주 시장",
     "KQKS": "코스닥÷코스피 · 오르면 중소형 강세", "KRW": "원/달러 · 오르면 원화 약세(외국인 매도 압력)",
@@ -524,126 +523,6 @@ def fetch_kr_daily(token, code, d1, d2):
 def kr_session_closed(now_kst):
     return now_kst.weekday() >= 5 or now_kst.time() >= datetime.time(15, 40) or now_kst.time() < datetime.time(9, 0)
 
-def fetch_kr_index_series(token, iscd, d1, d2):
-    """KIS 업종 기간별 시세(FHKUP03500100) — 지수 종가 {날짜: 값}. 130일씩 거꾸로 이어서 조회."""
-    out, end, err = {}, d2, None
-    while end >= d1:
-        start = max(d1, end - datetime.timedelta(days=130))
-        d = kis_get(token, "/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice", "FHKUP03500100", {
-            "FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": iscd,
-            "FID_INPUT_DATE_1": start.strftime("%Y%m%d"), "FID_INPUT_DATE_2": end.strftime("%Y%m%d"),
-            "FID_PERIOD_DIV_CODE": "D"})
-        if "_err" in d:
-            err = d["_err"]; break
-        rows = [x for x in (d.get("output2") or []) if x and x.get("stck_bsop_date")]
-        for x in rows:
-            c = fnum(x.get("bstp_nmix_prpr"))
-            if c:
-                out[datetime.datetime.strptime(x["stck_bsop_date"], "%Y%m%d").date()] = c
-        if not rows:
-            break
-        oldest = min(datetime.datetime.strptime(x["stck_bsop_date"], "%Y%m%d").date() for x in rows)
-        end = min(start, oldest) - datetime.timedelta(days=1)
-    return out, err
-
-UA_BROWSER = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
-
-def vkospi_naver(d1):
-    """네이버 모바일 금융 지수 시세 API 후보(VKOSPI). 성공 시 {date: close}."""
-    out = {}
-    for page in range(1, 15):
-        try:
-            r = requests.get("https://m.stock.naver.com/api/index/VKOSPI/price", timeout=15,
-                             params={"pageSize": 60, "page": page}, headers={"User-Agent": UA_BROWSER})
-        except Exception as ex:
-            log(f"  - [VKOSPI 진단] 네이버 예외 {str(ex)[:70]}"); break
-        if page == 1:
-            log(f"  - [VKOSPI 진단] 네이버 HTTP {r.status_code} · {r.text[:100]!r}")
-        if r.status_code != 200:
-            break
-        try:
-            rows = r.json()
-        except Exception:
-            break
-        if not isinstance(rows, list) or not rows:
-            break
-        for x in rows:
-            c = fnum(x.get("closePrice")); dt = str(x.get("localTradedAt") or "")[:10]
-            if c and dt:
-                out[datetime.date.fromisoformat(dt)] = c
-        if min(out) <= d1:
-            break
-        time.sleep(0.3)
-    return out
-
-def vkospi_investing(d1, d2):
-    """Investing.com KSVKOSPI — 과거 데이터 페이지에서 pairId를 찾아 내부 API 조회, 실패 시 표 파싱. {date: close}."""
-    out = {}
-    ses = requests.Session()
-    ses.headers.update({"User-Agent": UA_BROWSER, "Accept-Language": "en-US,en;q=0.9",
-                        "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8"})
-    page = "https://uk.investing.com/indices/kospi-volatility-historical-data"
-    try:
-        r = ses.get(page, timeout=25)
-    except Exception as ex:
-        log(f"  - [VKOSPI 진단] Investing 예외 {str(ex)[:70]}"); return out
-    html = r.text if r.status_code == 200 else ""
-    log(f"  - [VKOSPI 진단] Investing 페이지 HTTP {r.status_code} · 길이 {len(html)}")
-    if not html:
-        return out
-    m = re.search(r'"pairId"\s*:\s*"?(\d+)', html) or re.search(r'pair_id["\']?\s*[:=]\s*["\']?(\d+)', html)
-    pid = m.group(1) if m else None
-    log(f"  - [VKOSPI 진단] Investing pairId={pid}")
-    if pid:
-        try:
-            ar = ses.get(f"https://api.investing.com/api/financialdata/historical/{pid}", timeout=25, params={
-                "start-date": d1.isoformat(), "end-date": d2.isoformat(), "time-frame": "Daily",
-                "add-missing-rows": "false"}, headers={"domain-id": "uk", "Referer": page, "Origin": "https://uk.investing.com"})
-            log(f"  - [VKOSPI 진단] Investing API HTTP {ar.status_code} · {ar.text[:100]!r}")
-            if ar.status_code == 200:
-                for x in ar.json().get("data", []):
-                    c = fnum(x.get("last_closeRaw") or x.get("last_close"))
-                    ts = x.get("rowDateTimestamp") or ""
-                    if c and ts:
-                        out[datetime.date.fromisoformat(ts[:10])] = c
-        except Exception as ex:
-            log(f"  - [VKOSPI 진단] Investing API 예외 {str(ex)[:70]}")
-    if not out:  # 페이지 표 파싱(최근 구간만)
-        for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S):
-            cells = [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", c)).strip() for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", tr, re.S)]
-            if len(cells) >= 2:
-                try:
-                    dt = datetime.datetime.strptime(cells[0], "%b %d, %Y").date()
-                except Exception:
-                    continue
-                c = fnum(cells[1])
-                if c:
-                    out[dt] = c
-        log(f"  - [VKOSPI 진단] Investing 표 파싱 {len(out)}행")
-    return out
-
-def collect_vkospi(conn, stats, token):
-    """VKOSPI(코스피200 변동성지수). KIS·Yahoo에는 없어 Investing.com → 네이버 순으로 시도."""
-    sym = "KRB:VKOSPI"
-    bf = needs_backfill(stats, sym)
-    today = datetime.datetime.now(KST)
-    d1 = BACKFILL_FROM - datetime.timedelta(days=10) if bf else today.date() - datetime.timedelta(days=20)
-    data, how = {}, None
-    for nm, fn in (("Investing", lambda: vkospi_investing(d1, today.date())), ("네이버", lambda: vkospi_naver(d1))):
-        try:
-            d = fn()
-        except Exception as ex:
-            log(f"  - [VKOSPI 진단] {nm} 예외 {str(ex)[:80]}"); d = {}
-        if d:
-            data, how = d, nm; break
-    if not data:
-        log("- VKOSPI: 수집 실패(카드 생략)"); return
-    if not kr_session_closed(today):
-        data.pop(today.date(), None)
-    data = {d: v for d, v in data.items() if d.weekday() < 5}
-    upsert_series(conn, [(sym, d, v) for d, v in sorted(data.items())])
-    log(f"- VKOSPI: {how} · {len(data)}행 · 최근 {max(data)} = {data[max(data)]}")
-
 def collect_kr(conn, stats, token, etf_codes):
     today = datetime.datetime.now(KST)
     codes = sorted({c for _, c in etf_codes})
@@ -873,7 +752,6 @@ def build_kr(S, H, etf_codes, theme_of):
             ds[d] = ksl[i] / (sum(w20) / 20) * 100
     put("index:KOSPI_DD", item(cal, dd, "KOSPI 고점대비", None, "lvlpct"))
     put("index:KOSPI_DISP", item(cal, ds, "KOSPI 이격도(20일)", None, "lvl"))
-    put("index:VKOSPI", item(cal, S.get("KRB:VKOSPI") or {}, "VKOSPI 변동성", None, "lvl"))
     put("index:KOSDAQ", item(cal, kq, "KOSDAQ", None))
     put("index:KQKS", item(cal, {d: kq[d] / ks[d] for d in kq if d in ks and ks[d]}, "KOSDAQ / KOSPI", None, "ratio"))
     put("index:KRW", item(cal, S.get("FX:KRW") or {}, "원/달러", None))
@@ -947,12 +825,7 @@ def main():
         except Exception as ex:
             log(f"- ⚠ 미국 ETF 보유종목 수집 예외: {str(ex)[:100]}")
         if KIS_KEY:
-            tk = get_token()
-            collect_kr(conn, stats, tk, etf_codes)
-            try:
-                collect_vkospi(conn, stats, tk)
-            except Exception as ex:
-                log(f"- ⚠ VKOSPI 수집 예외: {str(ex)[:100]}")
+            collect_kr(conn, stats, get_token(), etf_codes)
         else:
             log("- ⚠ KIS 키 없음 — 한국 ETF 수집 생략")
     S, H = load_all(conn)
