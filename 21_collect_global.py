@@ -113,7 +113,16 @@ US_KO = {
 }
 US_EXCH = {"NMS": "나스닥", "NGM": "나스닥", "NCM": "나스닥", "NYQ": "NYSE", "PCX": "NYSE Arca", "ASE": "NYSE American",
            "BTS": "Cboe", "PNK": "OTC", "OQB": "OTC", "OQX": "OTC", "LSE": "런던", "IOB": "런던", "TOR": "토론토", "VAN": "토론토",
-           "JPX": "도쿄", "TYO": "도쿄", "HKG": "홍콩", "KSC": "코스피", "KOE": "코스닥", "TAI": "대만", "TWO": "대만", "SHH": "상하이", "SHZ": "선전"}
+           "JPX": "도쿄", "TYO": "도쿄", "HKG": "홍콩", "KSC": "코스피", "KOE": "코스닥", "TAI": "대만", "TWO": "대만", "SHH": "상하이", "SHZ": "선전",
+           "NAS": "나스닥", "TEX": "도쿄", "NasdaqGS": "나스닥", "NasdaqGM": "나스닥", "NasdaqCM": "나스닥"}
+US_SUFFIX = {".KS": "코스피", ".KQ": "코스닥", ".JP": "도쿄", ".T": "도쿄", ".TT": "대만", ".TW": "대만", ".C1": "중국 A주", ".L": "런던", ".HK": "홍콩"}
+def exch_label(code, ex):
+    if ex and US_EXCH.get(ex, ex):
+        return US_EXCH.get(ex, ex)
+    for sfx, lb in US_SUFFIX.items():
+        if code.upper().endswith(sfx):
+            return lb
+    return ""
 def short_en(n):
     n = re.sub(r"\b(Inc|Corp|Corporation|Ltd|Limited|Holdings?|Company|Co|plc|PLC|N\.V|S\.A|Group)\b\.?,?", "", n or "")
     return re.sub(r"\s+", " ", n).strip(" ,.")
@@ -677,7 +686,7 @@ def build_us(S, H):
             if it:
                 if grp_id in ("sector", "theme") and not t.startswith("RATIO:"):
                     it["h"] = [{"c": x["c"], "n": x["c"], "f": x["n"], "k": US_KO.get(x["c"]) or short_en(x["n"]),
-                                "x": US_EXCH.get(x.get("x"), x.get("x") or ""), "w": x["w"], "ch": x["ch"]}
+                                "x": exch_label(x["c"], x.get("x")), "w": x["w"], "ch": x["ch"]}
                                for x in H.get("US:" + t, [])]
                 items[f"{grp_id}:{t}"] = it
                 keys.append(f"{grp_id}:{t}")
