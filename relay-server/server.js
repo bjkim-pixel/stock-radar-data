@@ -766,14 +766,33 @@ async function fetchVolumeRank(limit = 30) {
 // created_at을 매번 명시적으로 채우는 이유: refreshSangttaCandidates()가
 // "최근 갱신순" 정렬에 의존하는데, merge-duplicates UPDATE 경로에는 DB 기본값이
 // 자동 적용되지 않기 때문(INSERT 시에만 default now()가 붙음).
-// 2026-09-16: KRX 휴장일 — .github/workflows/*.yml의 HOLIDAYS 목록과 **같은 값**을
-// 유지해야 합니다(둘 중 하나만 고치면 장전 배치가 휴장일에 잘못 배치됨).
+// 2026-09-16: KRX 휴장일. 2026-10-25부터 단일 출처는 저장소의 .github/holidays.txt 입니다 — 서버가 시작할 때와
+// 6시간마다 GitHub raw에서 읽어 아래 Set을 갱신하고, 읽기에 실패하면 이 안에 적어 둔 값(폴백)을 그대로 씁니다.
+// (폴백도 holidays.txt와 같게 맞춰 두세요. 2027 값은 예상치라 KRX 공지와 대조 필요)
 const KRX_HOLIDAYS = new Set([
   '2026-01-01', '2026-02-16', '2026-02-17', '2026-02-18', '2026-03-02',
   '2026-05-01', '2026-05-05', '2026-05-25', '2026-06-03', '2026-07-17',
   '2026-08-17', '2026-09-24', '2026-09-25', '2026-10-05', '2026-10-09',
   '2026-12-25', '2026-12-31',
+  '2027-01-01', '2027-02-05', '2027-02-08', '2027-03-01', '2027-05-05', '2027-05-13',
+  '2027-08-16', '2027-09-14', '2027-09-15', '2027-09-16', '2027-10-04', '2027-10-11',
+  '2027-12-27', '2027-12-31',
 ]);
+const KRX_HOLIDAYS_URL = 'https://raw.githubusercontent.com/bjkim-pixel/stock-radar-data/main/.github/holidays.txt';
+async function refreshKrxHolidays() {
+  try {
+    const r = await fetch(KRX_HOLIDAYS_URL);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const found = (await r.text()).split('\n').map(l => l.replace(/#.*/, '').trim()).filter(l => /^\d{4}-\d{2}-\d{2}$/.test(l));
+    if (found.length < 10) throw new Error('목록이 비정상적으로 짧음(' + found.length + ')');
+    KRX_HOLIDAYS.clear(); found.forEach(d => KRX_HOLIDAYS.add(d));
+    console.log(`[휴장일] holidays.txt에서 ${found.length}일 갱신`);
+  } catch (e) {
+    console.warn('[휴장일] 갱신 실패 — 기존 값 유지:', e.message);
+  }
+}
+refreshKrxHolidays();
+setInterval(refreshKrxHolidays, 6 * 3600 * 1000);
 
 // 주어진 KST 날짜(기본: 오늘)의 "다음 거래일"을 YYYY-MM-DD로 반환.
 // 주말·휴장일을 건너뛴다. 휴장일 목록이 낡아 실제로는 휴장인 날을 반환하더라도

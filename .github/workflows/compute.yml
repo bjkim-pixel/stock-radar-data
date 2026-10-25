@@ -73,7 +73,7 @@ jobs:
             exit 0
           fi
           TODAY=$(TZ=Asia/Seoul date +%F)
-          HOLIDAYS="2026-01-01 2026-02-16 2026-02-17 2026-02-18 2026-03-02 2026-05-01 2026-05-05 2026-05-25 2026-06-03 2026-07-17 2026-08-17 2026-09-24 2026-09-25 2026-10-05 2026-10-09 2026-12-25 2026-12-31"
+          HOLIDAYS="$(bash .github/scripts/holidays.sh)"   # 휴장일은 .github/holidays.txt 한 곳에서 관리
           if echo " $HOLIDAYS " | grep -q " $TODAY "; then
             echo "is_market_day=false" >> "$GITHUB_OUTPUT"
             echo "⏸️ $TODAY 은 KRX 휴장일 — 이후 단계를 건너뜁니다"
