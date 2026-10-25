@@ -529,6 +529,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .gm-hl .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--ink-2)}
 .gm-per{display:flex;gap:4px;margin:4px 0 0}
 .gm-per .fchip{font-size:10.5px;padding:2px 8px;min-height:0}
+.gm-xa{position:relative;height:11px;margin-top:1px;font-size:9px;line-height:11px;color:var(--ink-3);white-space:nowrap}
+.gm-xa span{position:absolute;top:0;transform:translateX(-50%)}
+.gm-xa span.l{transform:none}.gm-xa span.r{transform:translateX(-100%)}
 .gm-ax{display:flex;justify-content:space-between;font-size:9.5px;color:var(--ink-3)}
 #gmBody td.gm-hi{background:color-mix(in srgb,var(--up) 12%,transparent)}
 #gmBody td.gm-lo{background:color-mix(in srgb,var(--down) 12%,transparent)}
@@ -3074,6 +3077,27 @@ function gmSpark(c,n,big){
     ${mx===last?"":`<circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="${big?2.5:1.8}" fill="var(--ink-2)"/>`}
   </svg>`;
 }
+/* 가로축 눈금: 짧은 기간(≤30일)은 주 시작 M/D, 그 외는 월 시작 M월. 라벨 간격이 좁으면 N개 건너뛰어 겹치지 않게 */
+function gmAxis(p,n,big){
+  const ds=p.dates.slice(-n); if(ds.length<5)return "";
+  const W=big?560:140, gap=big?44:30, N1=ds.length-1, weekly=ds.length<=30;
+  let t=[];
+  for(let i=1;i<ds.length;i++){
+    const a=ds[i-1], b=ds[i];
+    if(weekly){
+      if(new Date(b).getUTCDay()<new Date(a).getUTCDay())t.push([i,`${+b.slice(5,7)}/${+b.slice(8,10)}`]);
+    }else if(b.slice(5,7)!==a.slice(5,7)){
+      t.push([i,+b.slice(5,7)===1?`'${b.slice(2,4)}.1`:`${+b.slice(5,7)}월`]);
+    }
+  }
+  if(!t.length)return "";
+  const k=Math.max(1,Math.ceil(gap/Math.max(1,W/t.length)));   // 라벨 간격 확보용 건너뛰기(최근 눈금 우선)
+  const pick=[]; for(let j=t.length-1;j>=0;j-=k)pick.unshift(t[j]);
+  const out=[]; let last=-1e9;
+  pick.forEach(([i,l])=>{const px=i/N1*W; if(px-last>=gap){out.push([i,l]);last=px;}});
+  return `<div class="gm-xa">${out.map(([i,l])=>{const pc=i/N1*100;
+    return `<span class="${pc<12?"l":pc>88?"r":""}" style="left:${pc.toFixed(1)}%">${l}</span>`;}).join("")}</div>`;
+}
 function gmCardVal(it){
   const last=[...it.c].reverse().find(x=>x!=null);
   if(it.days!=null&&it.days<20)return `<span class="gm-v dim">수집 ${it.days}/20일</span>`;
@@ -3094,7 +3118,7 @@ function gmCard(p,key,it,period,hot){
   }
   return `<div class="gm-c${hot?" "+hot:""}${big?" big":""}" data-gmk="${key}">
     <div class="gm-h"><span class="gm-n">${it.n}${it.cap!=null?` <span class="gm-cap">${N(it.cap,0)}억</span>`:""}</span>${gmCardVal(it)}</div>${sub}
-    ${gmSpark(it.c,n,big)}${extra}${hold}</div>`;
+    ${gmSpark(it.c,n,big)}${gmAxis(p,n,big)}${extra}${hold}</div>`;
 }
 function gmGrid(p,g){
   const its=g.keys.map(k=>[k,p.items[k]]).filter(x=>x[1]);
