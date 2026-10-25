@@ -507,6 +507,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .gm-th.flash{animation:gmflash 1.4s ease-out}
 @keyframes gmflash{0%{background:color-mix(in srgb,var(--accent,#2563eb) 28%,var(--surface-2))}100%{background:var(--surface-2)}}
 .gm-grid.etf .gm-n{white-space:normal;overflow:visible;line-height:1.25}
+.gm-c.flash{animation:gmcflash 1.6s ease-out}
+@keyframes gmcflash{0%,40%{box-shadow:0 0 0 2px var(--accent,#2563eb)}100%{box-shadow:0 0 0 0 transparent}}
+a.gm-el{font-weight:500;color:var(--ink)}
 .gm-cap{white-space:nowrap;font-size:9.5px;font-weight:400;color:var(--ink-3)}
 a.gm-tl{cursor:pointer;color:var(--accent,#2563eb);font-weight:650;text-decoration:underline dotted}
 .gm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
@@ -3122,7 +3125,7 @@ function gmTable(p,g){
   const secIdx={}; ((p.groups.find(x=>x.sections)||{}).sections||[]).forEach((sc,i)=>secIdx[sc.n]=i);
   const rows=its.map(([k,it])=>{const m=it.m;
     const lab=p.tab==="US"?`<b>${it.s}</b> <span class="faint">${it.n}</span>`:`${it.n}`;
-    const first=hasTh?`<td class="l"><a class="gm-tl" data-gmth="${secIdx[it.th]??""}">${it.th}</a></td><td class="l">${it.n}</td><td data-sort-val="${it.cap??""}">${it.cap==null?"–":N(it.cap,0)}</td>`:`<td class="l">${lab}</td>`;
+    const first=hasTh?`<td class="l"><a class="gm-tl" data-gmth="${secIdx[it.th]??""}">${it.th}</a></td><td class="l"><a class="gm-tl gm-el" data-gmk2="${k}">${it.n}</a></td><td data-sort-val="${it.cap??""}">${it.cap==null?"–":N(it.cap,0)}</td>`:`<td class="l">${lab}</td>`;
     return `<tr>${first}${GM_COLS.map(([f])=>{const v=m[f];
         const hl=v==null||its.length<6?"":v>=rank[f].hi&&v>0?" gm-hi":(v<=rank[f].lo&&v<0?" gm-lo":"");
         return `<td class="${gmC(v)}${hl}" data-sort-val="${v??""}">${gmF(v)}</td>`;}).join("")}
@@ -3143,6 +3146,12 @@ function renderGlobal(row){
   h+=`<div class="note" style="margin-top:8px">추세 ▲▲ = 50일선 위 + 50일선 상승 · ▲ = 50일선 위 · ▼ = 50일선 아래. 국면 = ${p.bench} 대비 1M·3M 초과수익 부호(주도 +/+ · 개선 1M+ 3M− · 약화 1M− 3M+ · 소외 −/−). 고점대비 = 최근 1년 최고 종가 대비.${p.tab==="KR"?" 차트는 ETF 종가(테마별로 묶고 ETF 시총 큰 순), 시총은 한국투자증권 현재가 기준 ETF 시가총액(억원), ADR은 상승종목수÷하락종목수 20일 합 ×100(2026-10-23부터 수집).":""}</div>`;
   $("#gmBody").innerHTML=h;
   (p.summary||[]).forEach(id=>makeSortable("gmT_"+p.tab+"_"+id));
+  $$("#gmBody [data-gmk2]").forEach(a=>a.onclick=e=>{   /* ETF명 클릭 → 그 ETF 차트 카드로 */
+    e.preventDefault(); e.stopPropagation();
+    const t=document.querySelector(`#gmBody .gm-c[data-gmk="${CSS.escape(a.dataset.gmk2)}"]`); if(!t)return;
+    t.scrollIntoView({behavior:"smooth",block:"center"});
+    t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash");
+  });
   $$("#gmBody [data-gmth]").forEach(a=>a.onclick=e=>{
     e.preventDefault(); e.stopPropagation();
     const t=document.getElementById("gmth_"+p.tab+"_"+a.dataset.gmth); if(!t)return;
