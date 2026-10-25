@@ -526,6 +526,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .gm-c.big svg{height:150px}
 .gm-hold{margin-top:4px;border-top:1px dashed var(--grid);padding-top:3px}
 .gm-hl{display:flex;justify-content:space-between;gap:6px;font-size:10.5px;line-height:1.55}
+.gm-hl .nm:has(.ko){display:flex;gap:4px;align-items:baseline;flex:1}
+.gm-hl .nm .ko{overflow:hidden;text-overflow:ellipsis;min-width:0;color:var(--ink-3)}
+.gm-hl .nm>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.gm-hl .mk{font-size:8.5px;color:var(--ink-3);white-space:nowrap;margin-left:auto;padding-left:4px}
 .gm-hl .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--ink-2)}
 .gm-per{display:flex;gap:4px;margin:4px 0 0}
 .gm-per .fchip{font-size:10.5px;padding:2px 8px;min-height:0}
@@ -3109,7 +3113,7 @@ function gmCard(p,key,it,period,hot){
   const big=S.gm.big===key, n=big?gmWin(p,S.gm.bigN):gmWin(p,period);
   const sub=it.etf?`<div class="gm-sub">${it.etf}</div>`:(it.s&&!/^\d/.test(it.s)&&p.tab==="US"?`<div class="gm-sub">${it.s}</div>`:"");
   const hold=(it.h&&it.h.length)?`<div class="gm-hold">${it.h.map(h=>`<div class="gm-hl"><span class="nm">${
-      S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:(h.f?`<span title="${h.f.replace(/"/g,"&quot;")}">${h.n}</span>`:h.n)}</span><span class="${gmC(h.ch)}">${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
+      S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:(h.f?`<span title="${h.f.replace(/"/g,"&quot;")}"><b>${h.n}</b> <span class="ko">${h.k||""}</span></span>${h.x?`<span class="mk">${h.x}</span>`:""}`:h.n)}</span><span class="${gmC(h.ch)}">${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
   let extra="";
   if(big){
     const ds=p.dates.slice(-n);

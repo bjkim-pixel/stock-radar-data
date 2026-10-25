@@ -66,6 +66,58 @@ US_THEME = [
     ("IGV", "소프트웨어"), ("OZEM", "비만치료제"), ("BIZD", "BDC·사모대출"), ("STBQ", "스테이블코인"),
     ("KWEB", "중국 인터넷"), ("CAPA", "AI 커패시터·MLCC"),
 ]
+# 미국 ETF 보유종목 한글 종목명 (없으면 영문명을 줄여 표시)
+US_KO = {
+    "277810.KS": "레인보우로보틱스", "285A.JP": "키옥시아", "3081.TT": "랜드마크 옵토일렉트로닉스", "4519.JP": "주가이제약",
+    "6324.JP": "하모닉 드라이브 시스템즈", "688017.C1": "리더 하모닉 드라이브", "AAPL": "애플", "ABBV": "애브비",
+    "AEP": "아메리칸 일렉트릭 파워", "ALB": "앨버말", "AMD": "AMD", "AME": "애메텍",
+    "AMT": "아메리칸 타워", "AMZN": "아마존", "APD": "에어 프로덕츠", "APH": "암페놀",
+    "ARCC": "아레스 캐피탈", "ASTS": "AST 스페이스모바일", "AVAV": "에어로바이런먼트", "AVEX": "에이벡스",
+    "AVGO": "브로드컴", "BABAF": "알리바바", "BAC": "뱅크오브아메리카", "BAIDF": "바이두",
+    "BE": "블룸에너지", "BELFB": "벨 퓨즈", "BRK.B": "버크셔 해서웨이", "BSOL": "비트와이즈 솔라나 ETF",
+    "BXSL": "블랙스톤 시큐어드 렌딩", "CAT": "캐터필러", "CCJ": "카메코", "CCXI": "처칠 캐피탈 XI",
+    "CEG": "컨스텔레이션 에너지", "CIEN": "시에나", "COHR": "코히런트", "COP": "코노코필립스",
+    "COST": "코스트코", "CRSP": "크리스퍼 테라퓨틱스", "CRWD": "크라우드스트라이크", "CRWV": "코어위브",
+    "CVX": "셰브론", "CWEN": "클리어웨이 에너지", "D": "도미니언 에너지", "DHT": "DHT 홀딩스",
+    "DIS": "디즈니", "DUK": "듀크 에너지", "ECL": "에코랩", "ED": "콘솔리데이티드 에디슨",
+    "ENPH": "엔페이즈 에너지", "ENS": "에너시스", "EQIX": "에퀴닉스", "ET": "에너지 트랜스퍼",
+    "ETHA": "아이쉐어즈 이더리움 ETF", "ETN": "이튼", "FCEL": "퓨얼셀 에너지", "FCX": "프리포트 맥모란",
+    "FERG": "퍼거슨", "FGXXX": "머니마켓펀드", "FN": "파브리넷", "FRO": "프런트라인",
+    "FSLR": "퍼스트솔라", "FTC.L": "필트로닉", "FTNT": "포티넷", "GBDC": "골럽 캐피탈 BDC",
+    "GD": "제너럴 다이내믹스", "GE": "GE 에어로스페이스", "GEV": "GE 버노바", "GLNK": "그레이스케일 체인링크 ETF",
+    "GLXY": "갤럭시 디지털", "GOOG": "알파벳 C", "GOOGL": "알파벳 A", "HASI": "HA 서스테이너블 인프라",
+    "HD": "홈디포", "HQ": "호라이즌 퀀텀", "HUT": "헛 8", "IBM": "IBM",
+    "IDXX": "아이덱스 래버러토리스", "ILMN": "일루미나", "INFQ": "인플렉션", "INSW": "인터내셔널 시웨이즈",
+    "INTC": "인텔", "IONQ": "아이온큐", "IREN": "아이렌", "ITM.L": "ITM 파워",
+    "JNJ": "존슨앤드존슨", "JPM": "JP모건 체이스", "KLRA": "카일레라 테라퓨틱스", "KMI": "킨더 모건",
+    "KO": "코카콜라", "LIN": "린데", "LITE": "루멘텀", "LLY": "일라이 릴리",
+    "LMT": "록히드마틴", "LNG": "셰니에르 에너지", "MA": "마스터카드", "MAIN": "메인 스트리트 캐피탈",
+    "MATX": "맷슨", "MCD": "맥도날드", "META": "메타 플랫폼스", "MPC": "마라톤 페트롤리엄",
+    "MRK": "머크", "MRVL": "마벨 테크놀로지", "MSFT": "마이크로소프트", "MU": "마이크론",
+    "NBIS": "네비우스", "NEE": "넥스트에라 에너지", "NEM": "뉴몬트", "NETTF": "넷이즈",
+    "NOC": "노스럽 그러먼", "NTNX": "뉴타닉스", "NVDA": "엔비디아", "NVO": "노보 노디스크",
+    "NXT": "넥스트파워", "OBDC": "블루 아울 캐피탈", "OKE": "원오크", "OKTA": "옥타",
+    "ONDS": "온다스", "ORCL": "오라클", "P": "에버퓨어", "PANW": "팔로알토 네트웍스",
+    "PDD": "핀둬둬", "PEG": "퍼블릭 서비스 엔터프라이즈", "PFE": "화이자", "PG": "P&G",
+    "PLD": "프롤로지스", "PLTR": "팔란티어 테크놀로지스", "PLUG": "플러그 파워", "PM": "필립모리스",
+    "PSA": "퍼블릭 스토리지", "PSQL": "파스칼", "RIO": "리오 틴토", "RKLB": "로켓랩",
+    "ROP": "로퍼 테크놀로지스", "RTX": "RTX", "SHW": "셔윈-윌리엄스", "SMTC": "셈텍",
+    "SNDK": "샌디스크", "SO": "서던 컴퍼니", "SOLS": "솔스티스 어드밴스드 머티리얼즈", "SPCX": "스페이스X",
+    "STNG": "스콜피오 탱커스", "STX": "씨게이트", "TEM": "템퍼스 AI", "TJX": "TJX 컴퍼니스",
+    "TLN": "탈렌 에너지", "TSLA": "테슬라", "TSM": "TSMC", "TTWO": "테이크투 인터랙티브",
+    "TWST": "트위스트 바이오사이언스", "TXG": "10x 지노믹스", "UMAC": "언유주얼 머신스", "UNH": "유나이티드헬스",
+    "UNP": "유니온 퍼시픽", "USDE": "스테이블코인X", "V": "비자", "VLO": "발레로 에너지",
+    "VMC": "벌컨 머티리얼즈", "VSAT": "비아샛", "WAT": "워터스", "WDC": "웨스턴 디지털",
+    "WELL": "웰타워", "WMT": "월마트", "XBOX": "라운드힐 박스 스프레드 ETF", "XOM": "엑슨모빌",
+    "XRP": "비트와이즈 XRP ETF", "YMM": "풀트럭 얼라이언스", "ZS": "지스케일러",
+}
+US_EXCH = {"NMS": "나스닥", "NGM": "나스닥", "NCM": "나스닥", "NYQ": "NYSE", "PCX": "NYSE Arca", "ASE": "NYSE American",
+           "BTS": "Cboe", "PNK": "OTC", "OQB": "OTC", "OQX": "OTC", "LSE": "런던", "IOB": "런던", "TOR": "토론토", "VAN": "토론토",
+           "JPX": "도쿄", "TYO": "도쿄", "HKG": "홍콩", "KSC": "코스피", "KOE": "코스닥", "TAI": "대만", "TWO": "대만", "SHH": "상하이", "SHZ": "선전"}
+def short_en(n):
+    n = re.sub(r"\b(Inc|Corp|Corporation|Ltd|Limited|Holdings?|Company|Co|plc|PLC|N\.V|S\.A|Group)\b\.?,?", "", n or "")
+    return re.sub(r"\s+", " ", n).strip(" ,.")
+
 US_YAHOO_EXTRA = {"FX:KRW": "KRW=X"}   # 한국 탭 원/달러
 
 # 한국 테마 ETF 카드 — (표시명, 고정코드 또는 None). 코드가 None이면 stocks 테이블에서 이름으로 찾음.
@@ -172,6 +224,7 @@ def needs_backfill(stats, sym):
 # 1) Yahoo
 # ═════════════════════════════════════════════════════════════════════════
 YAHOO_META = {}
+YAHOO_EXCH = {}
 def fetch_yahoo(ysym, backfill):
     params = {"interval": "1d"}
     if backfill:
@@ -191,6 +244,7 @@ def fetch_yahoo(ysym, backfill):
             res = r.json()["chart"]["result"][0]
             meta = res.get("meta", {})
             YAHOO_META[ysym] = meta.get("longName") or meta.get("shortName") or ""
+            YAHOO_EXCH[ysym] = meta.get("exchangeName") or meta.get("exchange") or ""
             off = int(meta.get("gmtoffset") or 0)
             ts = res.get("timestamp") or []
             closes = res["indicators"]["quote"][0]["close"]
@@ -253,7 +307,8 @@ def holdings_stockanalysis(t, diag=False):
     except Exception as ex:
         if diag: log(f"  - [대체소스 진단] {t} 예외 {str(ex)[:80]}")
         return None
-    html = r.text if r.status_code == 200 else ""
+    html = r.content.decode("utf-8", "ignore") if r.status_code == 200 else ""
+    import html as _h
     rows = []
     for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S):
         cells = [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", c)).strip() for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)]
@@ -263,10 +318,10 @@ def holdings_stockanalysis(t, diag=False):
             nm = cells[2] if re.fullmatch(r"\d+", cells[0]) else cells[1]
             sym = sym.replace("$", "").strip()
             if re.fullmatch(r"[A-Za-z0-9.\-]{1,12}", sym):
-                rows.append((sym, nm, float(pct[:-1])))
+                rows.append((sym, _h.unescape(nm), float(pct[:-1])))
     if not rows:  # 내장 JSON 형태
         for m in re.finditer(r'"s":"\$?([A-Za-z0-9.\-]{1,12})","n":"([^"]*)","as":"([\d.]+)%?"', html):
-            rows.append((m.group(1), m.group(2), float(m.group(3))))
+            rows.append((m.group(1), _h.unescape(m.group(2)), float(m.group(3))))
     if diag:
         log(f"  - [대체소스 진단] {t}: HTTP {r.status_code} · 길이 {len(html)} · 파싱 {len(rows)}행 · 앞 3행 {rows[:3]}")
         if not rows and html:
@@ -337,8 +392,8 @@ def collect_us_holdings(conn):
         for t, rows in found.items():
             cur.execute("delete from etf_holdings where etf_symbol = %s", ("US:" + t,))
             for i, (sym, nm, w) in enumerate(rows, 1):
-                cur.execute("""insert into etf_holdings (etf_symbol, rank, stock_code, stock_name, weight, change_pct, as_of)
-                               values (%s,%s,%s,%s,%s,%s,%s)""", ("US:" + t, i, sym, nm, round(w, 4), chg.get(sym), today))
+                cur.execute("""insert into etf_holdings (etf_symbol, rank, stock_code, stock_name, weight, change_pct, as_of, exch)
+                               values (%s,%s,%s,%s,%s,%s,%s,%s)""", ("US:" + t, i, sym, nm, round(w, 4), chg.get(sym), today, YAHOO_EXCH.get(sym) or None))
     conn.commit()
     log(f"- 미국 ETF 보유종목: 성공 {len(found)}/{len(etfs)} · 종목 등락률 {len(chg)}개")
     if bad:
@@ -586,11 +641,11 @@ def load_all(conn):
                        order by trade_date""", (BACKFILL_FROM - datetime.timedelta(days=15),))
         for mk, d, c in cur.fetchall():
             S.setdefault("IDX:" + mk, {})[d] = float(c)
-        cur.execute("select etf_symbol, rank, stock_code, stock_name, weight, change_pct from etf_holdings order by etf_symbol, rank")
+        cur.execute("select etf_symbol, rank, stock_code, stock_name, weight, change_pct, exch from etf_holdings order by etf_symbol, rank")
         H = {}
-        for e, r, sc, sn, w, ch in cur.fetchall():
+        for e, r, sc, sn, w, ch, ex in cur.fetchall():
             H.setdefault(e, []).append({"c": sc, "n": sn, "w": float(w) if w is not None else None,
-                                        "ch": float(ch) if ch is not None else None})
+                                        "ch": float(ch) if ch is not None else None, "x": ex})
     return S, H
 
 def item(cal, series, name, bench_al, kind="px", sym=None):
@@ -621,7 +676,8 @@ def build_us(S, H):
                 it = item(cal, S.get("US:" + t) or {}, nm, None if t == "SPY" else bench, "px", t)
             if it:
                 if grp_id in ("sector", "theme") and not t.startswith("RATIO:"):
-                    it["h"] = [{"c": x["c"], "n": x["c"], "f": x["n"], "w": x["w"], "ch": x["ch"]}
+                    it["h"] = [{"c": x["c"], "n": x["c"], "f": x["n"], "k": US_KO.get(x["c"]) or short_en(x["n"]),
+                                "x": US_EXCH.get(x.get("x"), x.get("x") or ""), "w": x["w"], "ch": x["ch"]}
                                for x in H.get("US:" + t, [])]
                 items[f"{grp_id}:{t}"] = it
                 keys.append(f"{grp_id}:{t}")

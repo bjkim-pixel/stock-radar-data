@@ -30,6 +30,8 @@ create table if not exists etf_holdings (
   primary key (etf_symbol, rank)
 );
 
+alter table etf_holdings add column if not exists exch text;   -- 2026-10-25: 미국 보유종목 거래소
+
 create table if not exists global_pack (
   tab         text primary key,       -- US | KR
   as_of       date,
