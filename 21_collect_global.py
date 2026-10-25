@@ -86,8 +86,8 @@ KR_ETF = [
 KR_THEME = [
     ("반도체", "KODEX 반도체", "091160"), ("전공정", "SOL 반도체전공정", None),
     ("후공정", "SOL 반도체후공정", None), ("AI전력기기", "KODEX AI전력핵심설비", None),
-    ("화장품", "TIGER 화장품", None), ("K-푸드", ["푸드"], None),
-    ("K-Pop", "ACE KPOP포커스", None), ("웹툰&드라마", ["웹툰", "드라마"], None),
+    ("화장품", "TIGER 화장품", None), ("K-푸드", "HANARO Fn K-푸드", "438900"),
+    ("K-Pop", "ACE KPOP포커스", None), ("웹툰&드라마", "KODEX 웹툰&드라마", "395150"),
     ("원자력", "HANARO 원자력iSelect", None), ("신재생", "TIME K신재생에너지액티브", None),
     ("우주항공", "PLUS 우주항공", None), ("K방산", "PLUS K방산", None),
     ("2차전지", "KODEX 2차전지핵심소재10", None), ("로봇", "KODEX 로봇액티브", None),
@@ -207,8 +207,9 @@ def fetch_yahoo(ysym, backfill):
         for t, c in zip(ts, closes):
             if c is None:
                 continue
-            d = datetime.datetime.fromtimestamp(t + off, datetime.timezone.utc).date()
-            out[d] = float(c)
+            d = datetime.datetime.fromtimestamp(t + off + 6 * 3600, datetime.timezone.utc).date()
+            if d.weekday() < 5:
+                out[d] = float(c)
         # 장중 실행 시 오늘 미확정 봉 제외 (미국은 KST 기준 다음날 아침 확정 → 마지막 봉이 오늘(현지)이고 장중이면 제외)
         reg = meta.get("currentTradingPeriod", {}).get("regular", {})
         if reg and out:
@@ -220,6 +221,16 @@ def fetch_yahoo(ysym, backfill):
     return None, err
 
 def collect_yahoo(conn, stats):
+    with conn.cursor() as cur:  # 2026-10-25: FX 날짜가 하루 밀려 저장됐던 행 정리(주말 날짜가 있으면 전체 재수집)
+        cur.execute("""select distinct symbol from global_series_daily
+                       where symbol like 'FX:%%' and extract(isodow from trade_date) in (6,7)""")
+        bad_fx = [r[0] for r in cur.fetchall()]
+        for sym in bad_fx:
+            cur.execute("delete from global_series_daily where symbol = %s", (sym,))
+            stats.pop(sym, None)
+    conn.commit()
+    if bad_fx:
+        log(f"- FX 날짜 정정: {', '.join(bad_fx)} 전체 재수집")
     syms = {}
     for lst in (US_SECTOR, US_INDEX, US_THEME):
         for t, _ in lst:
@@ -504,7 +515,7 @@ def build_us(S):
                 ser = {d: sa[d] / sb[d] for d in sa if d in sb and sb[d]}
                 it = item(cal, ser, nm, None, "ratio", t[6:])
             else:
-                it = item(cal, S.get("US:" + t) or {}, nm, bench, "px", t)
+                it = item(cal, S.get("US:" + t) or {}, nm, None if t == "SPY" else bench, "px", t)
             if it:
                 items[f"{grp_id}:{t}"] = it
                 keys.append(f"{grp_id}:{t}")
