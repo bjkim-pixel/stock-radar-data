@@ -1899,8 +1899,11 @@ function profileChart(host,buckets,opt={}){
   const curB=buckets.find(b=>b.cur);
   let sumEl=null;
   if(curB){
-    const above=buckets.filter(b=>b.lo>=curB.hi&&b.v>0).reduce((s,b)=>s+b.v,0);
-    const sumLbl=`매물대 총합계 ${N(Math.round(above),0)}억원 (${N(Math.round(above/10000),0)}조원)`;
+    // 2026-10-26: opt.aboveSum(aboveSupply 결과)가 있으면 종목후보 "위쪽매물대"와 같은 정의로 표시 —
+    // 현재가~이력 최고 종가를 24등분한 구간별 순매수 중 양수 구간만 합산(현재가보다 높은 종가만).
+    // 없으면(전략성과 미니 차트 등) 예전처럼 차트 구간 중 현재가 구간 위쪽만 합산.
+    const above=opt.aboveSum!=null?opt.aboveSum:buckets.filter(b=>b.lo>=curB.hi&&b.v>0).reduce((s,b)=>s+b.v,0);
+    const sumLbl=`${opt.aboveSum!=null?"위쪽 매물대(현재가~최고가)":"매물대 총합계"} ${N(Math.round(above),0)}억원 (${N(Math.round(above/10000),0)}조원)`;
     // 2026-09-19(2차): font-size 숫자를 카드 제목과 똑같이 11로 맞춰도 이 텍스트가
     // <svg viewBox="0 0 W H">의 좌표계 안에 있는 한, 화면에 실제로 그려지는 크기는
     // "뷰포트 폭 ÷ W" 축소비율만큼 작아짐 — 모바일처럼 SVG가 많이 축소 렌더링되는
@@ -1942,6 +1945,20 @@ function buildPriceProfile(rows,bucketCount=24,valueFn=r=>+r.individual_net||0){
     const bLo=lo+i*size,bHi=lo+(i+1)*size;
     return {lo:bLo,hi:bHi,label:`${N(bLo,0)}~${N(bHi,0)}`,v,cur:i===curIdx};
   }).reverse();
+}
+// 종목후보의 "위쪽매물대"(05_metrics.sql overhead_high)와 같은 계산: 현재가보다 높은 종가일의 valueFn 합계를
+// 현재가~최근 400일 최고 종가 구간 24등분 후 양수 구간만 더함(억원). 최고가가 현재가 이하면 0.
+function aboveSupply(rows,valueFn=r=>+r.individual_net||0,days=400){
+  if(!rows.length)return 0;
+  const last=rows.at(-1),cur=+last.close;
+  const t0=new Date(last.trade_date);t0.setDate(t0.getDate()-days);
+  const cut=t0.toISOString().slice(0,10);
+  const rs=rows.filter(r=>String(r.trade_date).slice(0,10)>=cut);
+  const hi=Math.max(...rs.map(r=>+r.close));
+  if(!(hi>cur))return 0;
+  const bk=Array.from({length:24},()=>0);
+  rs.forEach(r=>{const c=+r.close;if(c>cur)bk[Math.min(23,Math.max(0,Math.floor((c-cur)/(hi-cur)*24)))]+=valueFn(r);});
+  return bk.filter(v=>v>0).reduce((a,v)=>a+v,0)/EOK;
 }
 // 순매수 상위 n개 가격대 + 현재가 구간(상위 n에 없으면 별도 추가)을 표로 렌더링합니다.
 // 표는 가격대 기준 내림차순(높은 가격대가 위)으로 정렬 — 위 매물대 차트와 같은 순서.
@@ -3709,11 +3726,11 @@ function renderRangeCharts(){
       refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
   const profIndiv=buildPriceProfile(rp,24,r=>+r.individual_net||0);
   profileChart($("#dProfile"),profIndiv,
-    {h:480,w:1180,pr:150,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"개인 순매수"});
+    {h:480,w:1180,pr:150,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"개인 순매수",aboveSum:aboveSupply(rows,r=>+r.individual_net||0)});
   $("#dProfileTop").innerHTML=topBucketsHtml(profIndiv,5,"개인");
   const profInst=buildPriceProfile(rp,24,r=>(+r.foreign_net||0)+(+r.inst_net||0));
   profileChart($("#dProfileInst"),profInst,
-    {h:480,w:1180,pr:150,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"외국인+기관 순매수"});
+    {h:480,w:1180,pr:150,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"외국인+기관 순매수",aboveSum:aboveSupply(rows,r=>(+r.foreign_net||0)+(+r.inst_net||0))});
   $("#dProfileInstTop").innerHTML=topBucketsHtml(profInst,5,"외국인+기관");
   const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
   volumeBars($("#dWeight"),wps,rlb,
@@ -3954,11 +3971,11 @@ function renderPairCard(code,sum,rows,flowRow){
       fy:v=>N(v,0),fm:v=>pm(v,0)+"억",ft:v=>pm(v,0)+"억"});
   const profIndiv=buildPriceProfile(rpUse,24,r=>+r.individual_net||0);
   profileChart($("#pcProfile_"+code),profIndiv,
-    {h:300,w:700,pr:88,pl:60,fx:v=>N(v,0)+"억",hideNeg:true,subj:"개인 순매수"});
+    {h:300,w:700,pr:88,pl:60,fx:v=>N(v,0)+"억",hideNeg:true,subj:"개인 순매수",aboveSum:aboveSupply(rows,r=>+r.individual_net||0)});
   $("#pcProfileTop_"+code).innerHTML=topBucketsHtml(profIndiv,5,"개인");
   const profInst=buildPriceProfile(rpUse,24,r=>(+r.foreign_net||0)+(+r.inst_net||0));
   profileChart($("#pcProfileInst_"+code),profInst,
-    {h:300,w:700,pr:88,pl:60,fx:v=>N(v,0)+"억",hideNeg:true,subj:"외국인+기관 순매수"});
+    {h:300,w:700,pr:88,pl:60,fx:v=>N(v,0)+"억",hideNeg:true,subj:"외국인+기관 순매수",aboveSum:aboveSupply(rows,r=>(+r.foreign_net||0)+(+r.inst_net||0))});
   $("#pcProfileInstTop_"+code).innerHTML=topBucketsHtml(profInst,5,"외국인+기관");
   const rcum=k=>rpUse.map(r=>(+r[k]-+rb[k])/EOK);
   lineChart($("#pcFlow4_"+code),[
