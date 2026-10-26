@@ -1,0 +1,28 @@
+name: Probe Credit Data (신용융자·반대매매 출처 탐색)
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python 90_probe_credit.py
+      - name: Publish report (branch credit-report)
+        if: always()
+        run: |
+          [ -f credit_report.md ] || echo "리포트 없음 — 실패" > credit_report.md
+          cp credit_report.md /tmp/credit_report.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan credit-report
+          git rm -rq --cached . || true
+          cp /tmp/credit_report.md credit_report.md
+          git add -f credit_report.md
+          git commit -qm "credit report ${{ github.run_id }}"
+          git push -f origin credit-report
