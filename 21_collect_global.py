@@ -147,6 +147,11 @@ KR_DESC = {
     "KOSPI": "코스피 · 한국 대형주 시장 전체", "KOSPI_DD": "1년 고점 대비 낙폭(%) · 조정의 깊이",
     "KOSPI_DISP": "코스피÷20일선 · 100 위 과열, 아래 침체", "KOSDAQ": "코스닥 · 중소형·성장주 시장",
     "KQKS": "코스닥÷코스피 · 오르면 중소형 강세", "KRW": "원/달러 · 오르면 원화 약세(외국인 매도 압력)",
+    "CR_CREDIT_TOTAL": "빚내서 주식 산 돈(신용거래융자) 전체 · 급증 = 과열, 급감 = 강제청산·투매",
+    "CR_CREDIT_KOSPI": "유가증권시장 신용융자 잔고", "CR_CREDIT_KOSDAQ": "코스닥 신용융자 잔고 · 개인 비중 높아 변동 큼",
+    "CR_UNPAID": "돈 없이 산 주식 대금(미수금) · 3거래일 안에 못 메우면 반대매매",
+    "CR_FORCED_AMT": "증권사가 미수금 대신 강제 처분한 금액 · 급락장에 폭증",
+    "CR_FORCED_PCT": "반대매매금액 ÷ 전일 미수금 · 높을수록 투매 압력",
     "ADR_KOSPI": "상승÷하락종목수 20일 · 120↑ 과열, 75↓ 침체", "ADR_KOSDAQ": "상승÷하락종목수 20일 · 120↑ 과열, 75↓ 침체",
 }
 US_YAHOO_EXTRA = {"FX:KRW": "KRW=X"}   # 한국 탭 원/달러
@@ -610,6 +615,53 @@ def collect_kr(conn, stats, token, etf_codes):
 # ═════════════════════════════════════════════════════════════════════════
 # 3) 묶음(pack) 생성
 # ═════════════════════════════════════════════════════════════════════════
+
+# ── 신용융자 잔고·반대매매 (금융투자협회 FreeSIS) ─────────────────────────────────
+# 조회: POST https://freesis.kofia.or.kr/meta/getMetaDataList.do — 응답에 열 이름이 없어 뉴스 수치와 대조해 의미를 확인함(2026-10-26).
+#  STATSCU0100000070BO: TMPV2=신용거래융자 합계, V3=유가증권(코스피), V4=코스닥, V5=신용거래대주 (단위 백만원)
+#  STATSCU0100000060BO: TMPV5=위탁매매 미수금, V6=미수금 중 반대매매 금액(백만원), V7=반대매매 비중(%) (V2=투자자예탁금)
+# 협회 공시는 하루 늦게 나옵니다(오늘 값은 다음 거래일 아침). 저장 단위: 잔고 조(兆)원, 금액 억원.
+FREESIS_URL = "https://freesis.kofia.or.kr/meta/getMetaDataList.do"
+def freesis(obj, d1, d2):
+    body = {"dmSearch": {"tmpV40": "1000000", "tmpV41": "1", "tmpV1": "D",
+                         "tmpV45": d1.strftime("%Y%m%d"), "tmpV46": d2.strftime("%Y%m%d"), "OBJ_NM": obj}}
+    r = requests.post(FREESIS_URL, json=body, timeout=40, headers={
+        "Referer": "https://freesis.kofia.or.kr/stat/FreeSIS.do?parentDivId=MSIS10000000000000&serviceId=STATSCU0100000070",
+        "Origin": "https://freesis.kofia.or.kr", "User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    return r.json().get("ds1") or []
+
+def collect_credit(conn, stats):
+    today = datetime.datetime.now(KST).date()
+    have = stats.get("CR:CREDIT_TOTAL")
+    start = BACKFILL_FROM if (not have or have[0] < 200) else today - datetime.timedelta(days=45)
+    out, n_rows = [], 0
+    # 응답이 커지면 중간에 잘려 JSON이 깨지므로 6개월씩 나눠 받음
+    cur = start
+    while cur <= today:
+        end = min(cur + datetime.timedelta(days=180), today)
+        for obj, cols in (("STATSCU0100000070BO", {"CR:CREDIT_TOTAL": ("TMPV2", 1e6), "CR:CREDIT_KOSPI": ("TMPV3", 1e6),
+                                                    "CR:CREDIT_KOSDAQ": ("TMPV4", 1e6), "CR:SHORT_LOAN": ("TMPV5", 1e2)}),
+                          ("STATSCU0100000060BO", {"CR:UNPAID": ("TMPV5", 1e2), "CR:FORCED_AMT": ("TMPV6", 1e2),
+                                                    "CR:FORCED_PCT": ("TMPV7", 1.0)})):
+            rows = freesis(obj, cur, end)
+            for r in rows:
+                try:
+                    dd = datetime.datetime.strptime(str(r["TMPV1"]), "%Y%m%d").date()
+                except Exception:
+                    continue
+                for sym, (col, div) in cols.items():
+                    v = r.get(col)
+                    if v is None:
+                        continue
+                    out.append((sym, dd, round(float(v) / div, 4)))
+            n_rows += len(rows)
+            time.sleep(0.4)
+        cur = end + datetime.timedelta(days=1)
+    n = upsert_series(conn, out)
+    last = max((x[1] for x in out), default=None)
+    log(f"- 신용융자·반대매매: 조회 {n_rows}행 → 저장 {n}값 · 최신일 {last}")
+
 CHART_N = 260
 
 def pct(a, b):
@@ -769,6 +821,19 @@ def build_kr(S, H, etf_codes, theme_of):
             it["days"] = len(days)
         put(f"index:ADR_{mk}", it)
     groups.append({"id": "index", "title": "인덱스", "period": "ytd", "keys": idx})
+    # 신용융자·반대매매 (금융투자협회, 하루 늦게 공시) — 조원/억원 단위 일별 값
+    ckeys = []
+    for sym, nm in (("CREDIT_TOTAL", "신용융자 잔고 합계(조원)"), ("CREDIT_KOSPI", "신용융자 잔고 코스피(조원)"),
+                    ("CREDIT_KOSDAQ", "신용융자 잔고 코스닥(조원)"), ("UNPAID", "위탁매매 미수금(억원)"),
+                    ("FORCED_AMT", "반대매매 금액(억원)"), ("FORCED_PCT", "반대매매 비중(%)")):
+        sr = S.get("CR:" + sym) or {}
+        it = item(cal, sr, nm, None, "lvl")
+        if it:
+            it["d_"] = KR_DESC.get("CR_" + sym, "")
+            it["k"] = "lvl2" if sym.startswith("CREDIT") else "lvl0" if sym in ("UNPAID", "FORCED_AMT") else "lvl"
+            items["credit:" + sym] = it; ckeys.append("credit:" + sym)
+    if ckeys:
+        groups.append({"id": "credit", "title": "신용융자·반대매매", "period": 126, "keys": ckeys})
     # 테마 — 같은 테마끼리 묶고, 테마 안은 ETF 시총 큰 순, 테마는 시총 합계 큰 순
     def last_cap(c):
         sr = S.get("KRM:" + c) or {}
@@ -824,6 +889,10 @@ def main():
             collect_us_holdings(conn)
         except Exception as ex:
             log(f"- ⚠ 미국 ETF 보유종목 수집 예외: {str(ex)[:100]}")
+        try:
+            collect_credit(conn, stats)
+        except Exception as ex:
+            log(f"- ⚠ 신용융자·반대매매 수집 예외: {str(ex)[:150]}")
         if KIS_KEY:
             collect_kr(conn, stats, get_token(), etf_codes)
         else:
