@@ -154,7 +154,8 @@ KR_DESC = {
     "CR_FORCED_PCT": "반대매매금액 ÷ 전일 미수금 · 높을수록 투매 압력",
     "ADR_KOSPI": "상승÷하락종목수 20일 · 120↑ 과열, 75↓ 침체", "ADR_KOSDAQ": "상승÷하락종목수 20일 · 120↑ 과열, 75↓ 침체",
 }
-US_YAHOO_EXTRA = {"FX:KRW": "KRW=X"}   # 한국 탭 원/달러
+US_YAHOO_EXTRA = {"FX:KRW": "KRW=X",   # 한국 탭 원/달러
+                  "US:^GSPC": "^GSPC", "US:^IXIC": "^IXIC"}   # 미국 탭 상단 지수 타일(S&P 500 · 나스닥 종합)
 
 # 한국 테마 ETF 카드 — (표시명, 고정코드 또는 None). 코드가 None이면 stocks 테이블에서 이름으로 찾음.
 # 한국 테마 — (테마명, [(ETF 이름, 고정코드 or None), ...]) · 같은 테마끼리 묶고 ETF 시총 큰 순으로 표시
@@ -742,6 +743,23 @@ def item(cal, series, name, bench_al, kind="px", sym=None):
         it["s"] = sym
     return it
 
+def head_tiles(series_pairs):
+    """탭 맨 위 타일: 지수 2개(종가·등락률) + 10일 박스 2개(최근 10거래일 종가 최저~최고 구간에서 오늘 종가 위치 %).
+    series_pairs: [(이름, {날짜: 종가})]"""
+    idx, box = [], []
+    for nm, ser in series_pairs:
+        ds = sorted(ser)
+        if len(ds) < 2:
+            continue
+        cur, prev = ser[ds[-1]], ser[ds[-2]]
+        idx.append({"k": "idx", "n": nm, "v": round(cur, 2), "chg": round((cur / prev - 1) * 100, 2) if prev else None, "d": ds[-1].isoformat()})
+        w = [ser[d] for d in ds[-10:]]
+        if len(w) >= 10:
+            lo, hi = min(w), max(w)
+            box.append({"k": "box", "n": f"{nm} 10일 박스", "pos": round(50 if hi == lo else (cur - lo) / (hi - lo) * 100, 1),
+                        "lo": round(lo, 2), "hi": round(hi, 2)})
+    return idx + box
+
 def build_us(S, H):
     spy = S.get("US:SPY") or {}
     cal = sorted(spy)
@@ -776,6 +794,7 @@ def build_us(S, H):
     add("theme", "테마", US_THEME, 126)
     return {"tab": "US", "as_of": cal[-1].isoformat(), "bench": "SPY",
             "dates": [d.isoformat() for d in cal[-CHART_N:]],
+            "tiles": head_tiles([("S&P 500", S.get("US:^GSPC") or {}), ("나스닥", S.get("US:^IXIC") or {})]),
             "summary": ["sector", "theme"], "groups": groups, "items": items}
 
 def build_kr(S, H, etf_codes, theme_of):
@@ -861,6 +880,7 @@ def build_kr(S, H, etf_codes, theme_of):
                    "keys": [k for sc in secs for k in sc["keys"]], "sections": secs})
     return {"tab": "KR", "as_of": cal[-1].isoformat(), "bench": "KOSPI",
             "dates": [d.isoformat() for d in cal[-CHART_N:]],
+            "tiles": head_tiles([("KOSPI", ks), ("KOSDAQ", kq)]),
             "summary": ["theme"], "groups": groups, "items": items}
 
 def save_pack(conn, pack):

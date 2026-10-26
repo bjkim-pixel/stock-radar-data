@@ -3290,11 +3290,23 @@ function gmTable(p,g){
     <div class="tw tw-scroll"><table><thead><tr>${hasTh?'<th class="l">테마</th><th class="l">ETF</th><th>시총(억)</th>':`<th class="l">${p.tab==="US"?"티커":"이름"}</th>`}${GM_COLS.map(c=>`<th>${c[1]}</th>`).join("")}<th>추세</th><th class="l">국면</th></tr></thead>
     <tbody id="${tid}">${rows||'<tr><td colspan="13" class="load">데이터 없음</td></tr>'}</tbody></table></div>`;
 }
+/* 탭 맨 위 타일: 지수 2개(종가·등락률) + 10일 박스 2개 — 오늘의 종목 "오늘의 시장"과 같은 모양 */
+function gmTiles(p){
+  const t=p.tiles.map(x=>{
+    if(x.k==="idx")return `<div class="tile"><div class="lb">${x.n}</div><div class="vl">${N(x.v,2)}</div>
+      <div class="sub">${x.chg!=null?`<span class="${sgn(x.chg)}">${pm(x.chg,2)}%</span>`:""}</div></div>`;
+    const pos=x.pos,[lb,cls]=pos<=25?["하단권","down"]:pos>=75?["상단권","up"]:["중간","dim"];
+    return `<div class="tile"><div class="lb">${x.n}</div><div class="vl"><span class="${cls}">${lb}</span> ${N(pos,0)}%</div>
+      <div class="boxbar"><i style="left:${Math.min(100,Math.max(0,pos))}%"></i></div><div class="sub">${N(x.lo,0)} ~ ${N(x.hi,0)}</div></div>`;
+  }).join("");
+  return `<div class="tiles" style="margin:2px 0 14px">${t}</div>`;
+}
 function renderGlobal(row){
   const p=row.payload; if(!p)return;
   $("#gmAsOf").textContent=`기준 ${p.as_of}${p.tab==="US"?" (미국 종가)":""} · 기준지수 ${p.bench}`;
   const G=Object.fromEntries(p.groups.map(g=>[g.id,g]));
   let h="";
+  if(p.tiles&&p.tiles.length)h+=gmTiles(p);   /* 지수 2개 + 10일 박스 2개 타일 */
   if(G.index)h+=gmGrid(p,G.index);   /* 인덱스 차트를 맨 위로 */
   if(G.macro)h+=gmGrid(p,G.macro);   /* 금리·원자재·심리 */
   (p.summary||[]).forEach(id=>{if(G[id])h+=gmTable(p,G[id]);});
