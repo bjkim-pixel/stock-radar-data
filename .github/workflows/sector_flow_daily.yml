@@ -4,7 +4,7 @@ name: Sector Flow Daily
 # 일별 수급 수집과 지표 계산(Compute Metrics & Signals)이 끝난 직후 실행합니다.
 on:
   workflow_run:
-    workflows: ["Compute Metrics & Signals", "Daily Collect + Compute (수집·계산 통합)"]
+    workflows: ["Compute Metrics & Signals"]   # 통합 파이프라인 뒤는 daily_collect.yml의 after 잡이 직접 실행
     types: [completed]
   workflow_dispatch:
   # push 트리거 제거(2026-10-25): 코드를 올릴 때마다 자동으로 돌지 않고, 예약·연결·수동 실행(Run workflow)만 씁니다.

@@ -4,13 +4,10 @@ name: Daily Stock Summary to Telegram
 # 같은 로직으로 계산한 요약(시장 요약·섹터RS 상위·수급 상위 종목·종합스코어 Top10)을 텔레그램으로 보냅니다.
 # HTTP 요청 자체가 슬립 중인 Render 서버를 깨우는 역할도 합니다(콜드스타트 30~50초 감안해 넉넉히 대기).
 #
-# 2026-10-25: 16:10 고정 예약 → "수집·계산 통합 워크플로가 계산까지 성공한 직후" 하루 1번으로 변경.
+# 2026-10-26: 16:10 고정 예약 → "수집·계산 통합 워크플로(daily_collect.yml after 잡)가 계산까지 성공한 직후" 하루 1번으로 변경.
 #   예전엔 16:05 수집·계산이 끝나기 전에 보내져 그날 계산이 빠진 요약이 갈 수 있었음.
 #   20:40 KST 예약은 보조 — 그때까지 연결 발송이 한 번도 안 됐을 때만 보냄. 수동 실행(Run workflow)은 언제나 발송.
 on:
-  workflow_run:
-    workflows: ["Daily Collect + Compute (수집·계산 통합)"]
-    types: [completed]
   schedule:
     - cron: "40 11 * * 1-5"   # 20:40 KST 보조
   workflow_dispatch:

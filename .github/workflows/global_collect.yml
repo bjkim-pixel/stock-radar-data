@@ -10,9 +10,7 @@ on:
     - cron: "0 23 * * 5"
   # 2026-10-25: 수집·계산 통합 워크플로가 성공으로 끝나면 이어서 실행(하루 첫 성공 실행 뒤에만, 평일·거래일에만).
   # GitHub 예약 실행이 몇 시간씩 늦어지는 문제를 피하려는 것 — 위 예약은 보조 수단으로 남겨 둡니다.
-  workflow_run:
-    workflows: ["Daily Collect + Compute (수집·계산 통합)"]
-    types: [completed]
+  # (workflow_run 연결은 이 이름의 통합 워크플로 뒤에 실제로 발화하지 않아, daily_collect.yml의 after 잡이 직접 실행하도록 바꿈)
   workflow_dispatch:
     inputs:
       pack_only:

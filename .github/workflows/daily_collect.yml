@@ -176,3 +176,31 @@ jobs:
     with:
       daily: true
       date: ${{ github.event.inputs.target_date }}
+
+  # 수집·계산이 모두 성공하면 후속 작업을 직접 실행(workflow_dispatch) — workflow_run 연결이 이 워크플로 뒤에 발화하지 않아 교체.
+  #  · 수급 사전계산(Flow/MarketCap Ratio, Sector Flow Daily): 매번
+  #  · 글로벌 시황 수집 · 텔레그램 요약: 오늘 아직 안 했을 때만(하루 1번)
+  after:
+    needs: compute
+    if: needs.compute.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: 후속 워크플로 실행
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run flow_cap_ratio.yml --ref main
+          gh workflow run sector_flow_daily.yml --ref main
+          N=$(bash .github/scripts/done_today.sh global_collect.yml "Collect + pack")
+          if [ "${N:-0}" -eq 0 ]; then gh workflow run global_collect.yml --ref main; else echo "글로벌 시황: 오늘 이미 수집함(${N}번) — 건너뜀"; fi
+          # 수동 실행(skip_compute 등)은 이 잡에 오지 않으므로 여기서는 거래일 판단 불필요(수집 잡이 휴장일이면 계산이 건너뛰어져도 success라 한 번 더 확인)
+          TODAY=$(TZ=Asia/Seoul date +%F); DOW=$(TZ=Asia/Seoul date +%u)
+          HOLIDAYS="$(bash .github/scripts/holidays.sh)"
+          if [ "$DOW" -ge 6 ] || echo " $HOLIDAYS " | grep -q " $TODAY "; then echo "주말/휴장일 — 텔레그램 요약 건너뜀"; exit 0; fi
+          M=$(bash .github/scripts/done_today.sh daily_summary_trigger.yml "Trigger daily summary (최대 3회 재시도)")
+          if [ "${M:-0}" -eq 0 ]; then gh workflow run daily_summary_trigger.yml --ref main; else echo "텔레그램 요약: 오늘 이미 발송함(${M}번) — 건너뜀"; fi
