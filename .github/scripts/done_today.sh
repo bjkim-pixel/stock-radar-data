@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # 오늘(KST) 이 워크플로가 '실제로' 끝까지 한 번 이상 성공했는지 센다 — 건너뛴(skip) 실행은 제외.
 # 판단 기준: 지정한 이름의 단계(step)가 success로 끝난 실행 수(현재 실행 제외). 결과 숫자를 출력.
-# 사용: bash .github/scripts/done_today.sh <workflow파일> "<단계 이름>"
+# 사용: bash .github/scripts/done_today.sh <workflow파일> "<단계 이름>" [시작 시각(KST 시, 기본 0)]
+#  시작 시각을 주면 오늘 그 시각 이후 실행만 센다(예: 12 → 오늘 12:00 KST 이후).
 set -u
-WF="$1"; STEP="$2"
+WF="$1"; STEP="$2"; HH=$(printf '%02d' "${3:-0}")
 TODAY=$(TZ=Asia/Seoul date +%F)
-SINCE=$(date -u -d "TZ=\"Asia/Seoul\" $TODAY 00:00" +%Y-%m-%dT%H:%M:%SZ)
+SINCE=$(date -u -d "TZ=\"Asia/Seoul\" $TODAY $HH:00" +%Y-%m-%dT%H:%M:%SZ)
 IDS=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$WF/runs?created=>=$SINCE&per_page=30" \
       --jq ".workflow_runs[] | select(.id != ${GITHUB_RUN_ID:-0} and .conclusion == \"success\") | .id" 2>/dev/null || true)
 N=0

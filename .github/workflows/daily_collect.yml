@@ -196,7 +196,7 @@ jobs:
         run: |
           gh workflow run flow_cap_ratio.yml --ref main
           gh workflow run sector_flow_daily.yml --ref main
-          N=$(bash .github/scripts/done_today.sh global_collect.yml "Collect + pack")
+          N=$(bash .github/scripts/done_today.sh global_collect.yml "Collect + pack" 12)   # 낮 12시 이후 = 한국 장마감 후 수집(아침 미국 마감 수집은 제외)
           if [ "${N:-0}" -eq 0 ]; then gh workflow run global_collect.yml --ref main; else echo "글로벌 시황: 오늘 이미 수집함(${N}번) — 건너뜀"; fi
           # 수동 실행(skip_compute 등)은 이 잡에 오지 않으므로 여기서는 거래일 판단 불필요(수집 잡이 휴장일이면 계산이 건너뛰어져도 success라 한 번 더 확인)
           TODAY=$(TZ=Asia/Seoul date +%F); DOW=$(TZ=Asia/Seoul date +%u)

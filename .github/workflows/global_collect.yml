@@ -4,8 +4,12 @@ name: Global Market Collection
 # 21_collect_global.py가 테이블 생성(85_global_market.sql)까지 직접 하므로 SQL 수동 실행 불필요.
 on:
   schedule:
-    # 월~금 16:20 KST (07:20 UTC) — 한국 장마감 확정 + 전날 밤 미국 종가 확정 이후
+    # 월~금 16:20 KST (07:20 UTC) — 한국 장마감 확정 이후 (한국 탭·전체 묶음)
     - cron: "20 7 * * 1-5"
+    # 화~토 06:30 KST (월~금 21:30 UTC) — 미국 정규장 마감(16:00 ET = 서머타임 05:00 / 표준시 06:00 KST) 직후 미국 탭 갱신.
+    # 21:30 UTC는 서머타임(마감 20:00 UTC)·표준시(21:00 UTC) 모두 마감 뒤라 시간을 바꿀 필요 없음. 22:30 UTC는 실패·지연 대비 재시도(이미 성공했으면 건너뜀).
+    - cron: "30 21 * * 1-5"
+    - cron: "30 22 * * 1-5"
     # 토 08:00 KST (금 23:00 UTC) — 금요일 미국 종가 반영
     - cron: "0 23 * * 5"
   # 2026-10-25: 수집·계산 통합 워크플로가 성공으로 끝나면 이어서 실행(하루 첫 성공 실행 뒤에만, 평일·거래일에만).
@@ -41,6 +45,12 @@ jobs:
           EV="${{ github.event_name }}"
           if [ "$EV" = "workflow_dispatch" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           DOW=$(TZ=Asia/Seoul date +%u)
+          # 미국 마감 직후 아침 예약: 오늘 04시 이후 이미 성공했으면 건너뜀(재시도 예약용), 아니면 실행(한국 휴장일과 무관)
+          if [ "$EV" = "schedule" ] && { [ "${{ github.event.schedule }}" = "30 21 * * 1-5" ] || [ "${{ github.event.schedule }}" = "30 22 * * 1-5" ]; }; then
+            N=$(bash .github/scripts/done_today.sh global_collect.yml "Collect + pack" 4)
+            if [ "${N:-0}" -gt 0 ]; then echo "⏸️ 오늘 미국 마감 후 수집이 이미 성공했습니다 — 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
+            exit 0
+          fi
           # 토요일 08:00 예약(금요일 미국 종가 반영)은 항상 실행
           if [ "$EV" = "schedule" ] && [ "$DOW" -ge 6 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           if [ "$EV" = "workflow_run" ]; then
@@ -54,7 +64,7 @@ jobs:
             fi
           fi
           # 평일 예약(16:20 보조)과 연결 실행: 오늘 이미 '실제로' 수집한 실행이 있으면 건너뜀(건너뛴 실행은 세지 않음)
-          N=$(bash .github/scripts/done_today.sh global_collect.yml "Collect + pack")
+          N=$(bash .github/scripts/done_today.sh global_collect.yml "Collect + pack" 12)   # 낮 12시 이후 = 한국 장마감 후 수집
           if [ "${N:-0}" -gt 0 ]; then
             echo "⏸️ 오늘 이미 글로벌 시황 수집을 ${N}번 했습니다 — 건너뜁니다"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
           fi

@@ -3174,7 +3174,7 @@ async function loadGlobal(tab){
   if(!S.gm.packs[tab]){
     $("#gmBody").innerHTML='<div class="note">불러오는 중…</div>';
     const r=await q("global_pack",`select=as_of,updated_at,payload&tab=eq.${tab}`).catch(()=>[]);
-    if(!r.length){$("#gmBody").innerHTML='<div class="note">데이터 준비 중입니다 (매일 16:20 수집).</div>';return;}
+    if(!r.length){$("#gmBody").innerHTML='<div class="note">데이터 준비 중입니다 (한국 장마감 후 · 미국 마감 직후 자동 수집).</div>';return;}
     S.gm.packs[tab]=r[0];
   }
   if(S.gm.tab===tab)renderGlobal(S.gm.packs[tab]);
