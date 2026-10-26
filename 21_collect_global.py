@@ -609,6 +609,8 @@ def collect_kr(conn, stats, token, etf_codes):
         adv, dec = fnum(o1.get("ascn_issu_cnt")), fnum(o1.get("down_issu_cnt"))
         if adv is None or dec is None:
             continue
+        if adv == 0 and dec == 0:   # 장 시작 전(아침 미국 마감 수집 등)에는 당일 값이 0/0 — 저장하지 않음
+            log(f"  - {mk} 등락종목수: 0/0(장 시작 전)이라 저장 생략"); continue
         upsert_series(conn, [(f"KRB:{mk}_ADV", dd, adv), (f"KRB:{mk}_DEC", dd, dec)])
         log(f"- {mk} {dd} 상승 {int(adv)} / 하락 {int(dec)}")
 
