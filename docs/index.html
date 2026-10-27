@@ -285,7 +285,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 /* 데스크탑: 주체를 가로로 나란히(컬럼) 붙이고, 각 컬럼 안에서는 매수순위 표
    위에 매도순위 표를 세로로 쌓습니다. 모바일(960px 이하)에서는 주체가 세로로
    쌓이는 대신, 그 안의 매수/매도 두 표는 폭을 아끼려고 한 줄(가로)로 붙입니다. */
-.flow-subj-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px}
+.flow-subj-grid{display:block}   /* 2026-10-27: 종목후보 표와 같은 열 구성(약 30열)이라 주체별 패널을 세로로 쌓고 표는 가로로 펼침 */
+.flow-subj-grid .flow-subj-panel{margin-bottom:13px}
 .flow-subj-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:11px 12px}
 .flow-subj-panel h4{font-size:12.5px;font-weight:700;margin:0 0 10px;display:flex;align-items:baseline;gap:6px}
 .flow-subj-panel h4 .d{font-size:10.5px;color:var(--ink-3);font-weight:400;margin-left:auto}
@@ -294,7 +295,6 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .flow-subj-panel table{font-size:11px}
 .flow-subj-panel td,.flow-subj-panel th{padding:5px 7px}
 @media(max-width:960px){
-  .flow-subj-grid{grid-template-columns:1fr}
   .flow-subj-tables{display:flex;flex-direction:column;gap:10px}
 }
 
@@ -892,8 +892,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
   </div>
 
-  <div class="card"><h3>주체별 시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시가총액 · 기간 누적 · Top 20</span></h3>
-    <div id="flowSubjGrid" class="flow-subj-grid"></div>
+  <div class="card"><h3>주체별 시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시가총액 · 기간 누적 · 주체별 매수·매도 Top 10 · 표 구성은 종목후보와 같음(열 머리 = 정렬)</span></h3>
+    <div id="flowSubjGrid" class="flow-subj-grid scrlike"></div>
   </div>
 </section>
 
@@ -2015,7 +2015,7 @@ function go(v,detailCode){
   S.curTab=v;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
   ["proc","today","flow","scr","fav","pair","sector","detail","perf","perf2"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
-  document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav");   // 폭 넓은 표 화면에서만 가로 숨김 해제
+  document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="flow");   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
   // "아직 종목상세를 한 번도 안 봤으면(S.chart.code 없음) 디폴트 SK하이닉스를
@@ -2824,13 +2824,13 @@ async function loadFlowRawData(){
   return S.flowRaw;
 }
 const FLOW_RANK_N=10; // Top N
-function flowSubjTableHTML(rows,label){
+function flowSubjTableHTML(rows,label,tid){
+  const body=rows.length?rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
+      <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td>
+      <td class="${sgn(r.ratio)}">${r.ratio!=null?pm(r.ratio,2)+"%":"–"}</td>${scrCells(r)}</tr>`).join("")
+    :'<tr><td colspan="30" class="load">해당 없음</td></tr>';
   return `<div class="flow-subj-sub">${label}</div>
-    <div class="tw"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th>등락률</th><th>비중</th><th>금액(억)</th>
-      <th title="당일 이 주체의 순매수 대금이, 이 종목에 대한 그 주체의 DB 보유 전체 기간(2025-09-01~) 순매수 대금 중 몇 위인지(1위=역대 최대)">역대순위</th>
-    </tr></thead><tbody>${rows.length?rows.map((r,i)=>flowRankRow(r,i)).join("")
-      :'<tr><td colspan="6" class="load">해당 없음</td></tr>'}</tbody></table></div>`;
+    <div class="tw"><table><thead>${scrThead('<th>순매수(억)</th><th>시총대비</th>')}</thead><tbody id="${tid}">${body}</tbody></table></div>`;
 }
 function flowSubjPanelHTML(subj,cand){
   const withRatio=cand.filter(r=>r.ratio!=null);
@@ -2840,14 +2840,15 @@ function flowSubjPanelHTML(subj,cand){
   return `<div class="flow-subj-panel" data-subj="${subj}">
       <h4>${FLOW_SUBJ[subj]}<span class="d">${S.date||""}</span></h4>
       <div class="flow-subj-tables">
-        ${flowSubjTableHTML(buy,"시총대비 매수순위")}
-        ${flowSubjTableHTML(sell,"시총대비 매도순위")}
+        ${flowSubjTableHTML(buy,"시총대비 매수순위","flowSubj_"+subj+"_buy")}
+        ${flowSubjTableHTML(sell,"시총대비 매도순위","flowSubj_"+subj+"_sell")}
       </div>
     </div>`;
 }
 function renderFlowSubjGrid(bySubj){
   $("#flowSubjGrid").innerHTML=FLOW_SUBJ_ORDER.map(subj=>flowSubjPanelHTML(subj,bySubj[subj])).join("");
   $$("#flowSubjGrid a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
+  FLOW_SUBJ_ORDER.forEach(subj=>["buy","sell"].forEach(k=>makeSortable("flowSubj_"+subj+"_"+k)));
 }
 async function loadFlowLists(){
   const all=await loadFlowRawData();
