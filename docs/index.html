@@ -1652,6 +1652,19 @@ function lineChart(host,series,labels,opt={}){
   (opt.monthTicks?monthTicks(labels):[0,Math.floor(labels.length/2),labels.length-1]).forEach(i=>{
     const t=el("text",{x:X(i),y:H-6,"text-anchor":i===0?"start":i===labels.length-1?"end":"middle",
       "font-size":8.5,fill:css("--ink-3")});t.textContent=monthLabel(labels[i]);svg.appendChild(t);});
+  /* opt.bg = {v:[...],n,ft}: 배경 보조선(예: 종가) — 자기 값 범위로 따로 맞춘 회색 얇은 선, 눈금·마커 없음, 툴팁에만 값 표시 */
+  if(opt.bg){
+    const bv=opt.bg.v.filter(v=>v!=null&&!isNaN(v));
+    if(bv.length>1){
+      let bmin=Math.min(...bv),bmax=Math.max(...bv);if(bmax===bmin){bmax+=1;bmin-=1;}
+      const Yb=v=>P.t+4+(bmax-v)/(bmax-bmin)*(H-P.t-P.b-8);
+      let d="",pen=false;
+      opt.bg.v.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}
+        d+=`${pen?"L":"M"}${X(i).toFixed(1)},${Yb(v).toFixed(1)}`;pen=true;});
+      svg.appendChild(el("path",{d,fill:"none",stroke:css("--ink-3"),"stroke-width":1,opacity:.55,
+        "stroke-linecap":"round","stroke-linejoin":"round"}));
+    }
+  }
   series.forEach(s=>{
     let d="",pen=false;
     s.v.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}
@@ -1714,7 +1727,8 @@ function lineChart(host,series,labels,opt={}){
       if(v==null||isNaN(v)){dots[k].setAttribute("opacity",0);return;}
       dots[k].setAttribute("cx",X(i));dots[k].setAttribute("cy",Y(v));dots[k].setAttribute("opacity",1);});
     tip.innerHTML=`<b>${labels[i]}</b>`+series.map(s=>s.v[i]==null?"":
-      `<div class="row"><span style="color:${css(s.c)}">${s.n}</span><b>${opt.ft?opt.ft(s.v[i]):N(s.v[i],0)}</b></div>`).join("");
+      `<div class="row"><span style="color:${css(s.c)}">${s.n}</span><b>${opt.ft?opt.ft(s.v[i]):N(s.v[i],0)}</b></div>`).join("")
+      +(opt.bg&&opt.bg.v[i]!=null?`<div class="row"><span style="color:${css("--ink-3")}">${opt.bg.n}</span><b>${opt.bg.ft?opt.bg.ft(opt.bg.v[i]):N(opt.bg.v[i],0)}</b></div>`:"");
     tip.style.opacity=1;
     tip.style.left=Math.min(r.width-160,Math.max(0,X(i)/W*r.width+12))+"px";tip.style.top="4px";});
   hit.addEventListener("pointerleave",()=>{cross.setAttribute("opacity",0);
@@ -3707,9 +3721,10 @@ async function loadDetail(code){
   // 낡은 프레임의 그리기는 건너뛴다.
   requestAnimationFrame(()=>{
     if(myReqId!==S_detailReqId)return;
+    const closes=rows.map(r=>+r.close);   // 2026-10-27: 각 차트 뒤에 종가(회색)를 함께 표시
     minis.forEach(([n,arr],i)=>lineChart($("#mini_"+i),
       [{n,v:arr,c:"--s1"}],lb,{h:110,w:300,pr:8,pl:38,zero:true,labelEnds:false,
-        fy:v=>N(v,0),ft:v=>pm(v,0)+"억"}));
+        fy:v=>N(v,0),ft:v=>pm(v,0)+"억",bg:{v:closes,n:"종가",ft:v=>N(v)+"원"}}));
   });
 }
 // 가격·거래량·투자자별 누적 순매수 — #dStart~#dEnd로 고른 기간만 다시 그립니다
