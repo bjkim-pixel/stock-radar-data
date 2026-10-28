@@ -228,6 +228,8 @@ th.grp{border-left:1px solid var(--border)} td.grp{border-left:1px solid var(--g
 td{padding:8px 10px;text-align:right;font-size:12px;white-space:nowrap;border-bottom:1px solid var(--grid)}
 tbody tr:last-child td{border-bottom:none}
 tbody tr.clk{cursor:pointer} tbody tr.clk:hover td{background:var(--surface-2)}
+/* 종목 목록: 종목명이 아닌 칸을 누르면 그 종목 행 전체를 밝게 표시(한 번 더 누르면 해제) */
+tbody tr.row-hl>td{background:color-mix(in srgb,var(--warn) 24%,var(--surface))!important}
 tbody tr[aria-selected=true] td{background:color-mix(in srgb,var(--up) 8%,var(--surface))}
 td .nm{font-weight:600} td .cd{color:var(--ink-3);font-size:10.5px}
 .rank{color:var(--ink-3);font-size:10.5px}
@@ -4885,6 +4887,14 @@ function renderAsOf(){
   if(h!==_asofLast){_asofLast=h;el.innerHTML=h;}
 }
 setInterval(renderAsOf,2000);
+// 종목 목록 행 강조: 종목 링크(a.lk[data-code])가 있는 표 행에서 링크·버튼·입력이 아닌 칸을 누르면 토글
+document.addEventListener("click",e=>{
+  const td=e.target.closest&&e.target.closest("tbody td");
+  if(!td||e.target.closest("a,button,input,select,label,svg"))return;
+  const tr=td.parentElement;
+  if(!tr||tr.tagName!=="TR"||!tr.querySelector("a.lk[data-code]"))return;
+  tr.classList.toggle("row-hl");
+});
 
 /* ══ 부트 ══ */
 async function boot(){
