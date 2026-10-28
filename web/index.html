@@ -799,7 +799,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 <!-- ═══════════ 수급 동향 ═══════════ -->
 <section id="v-flow" class="hide">
   <div class="card" style="margin-top:16px"><h3>자금 이동 타임라인
-    <span class="r">2026-06-01~ 전 기간 · 거래대금 상위 10개 업종 · 좌우로 밀어서 10거래일씩 보기(업종 열 고정) · 칸 = 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
+    <span class="r">2026-06-01~ 전 기간 · 거래대금 상위 10개 업종 · 좌우로 밀어서 20거래일씩 보기(업종 열 고정) · 칸 = 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
     <div class="tl-tabs" id="tlTabs"><button data-m="all" class="on">전체</button><button data-m="KOSPI">코스피</button><button data-m="KOSDAQ">코스닥</button></div>
     <div class="tl-legend">
       <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--up) 45%,transparent)"></i> 순매수</span>
@@ -2402,7 +2402,12 @@ function renderFlowTimeline(){
   const sc=rows.filter(r=>dates.includes(r.trade_date)&&(mk==="all"||r.market===mk));
   const amtBy={};sc.forEach(r=>{amtBy[r.sector]=(amtBy[r.sector]||0)+(+r.trade_amount||0);});
   const secs=Object.keys(amtBy).sort((a,b)=>amtBy[b]-amtBy[a]).slice(0,10);
-  const W=host.clientWidth||360, lw=60, cw=Math.max(28,Math.floor((W-lw-2*10)/10));   // 화면에 정확히 10거래일이 보이도록
+  // 2026-10-28: 화면에 20거래일이 보이도록 칸 폭을 줄임(스크롤은 그대로). 칸이 30px보다 좁아지면 숫자가 겹쳐서,
+  // 좁은 화면(모바일)에서는 영역 최소 폭을 늘려 페이지를 옆으로 밀어서 20일 전체를 보게 함.
+  const VIS=20;
+  host.style.minWidth="";
+  const W=host.clientWidth||360, lw=60, cw=Math.max(30,Math.floor((W-lw-2*VIS)/VIS));
+  host.style.minWidth=(lw+VIS*(cw+2)+4)+"px";
   const parts=TL_SUBJ.map(([key,label,id])=>{
     const cell={},dayTot={};
     sc.forEach(r=>{const v=+r[key]||0,k=r.sector+"|"+r.trade_date;cell[k]=(cell[k]||0)+v;dayTot[r.trade_date]=(dayTot[r.trade_date]||0)+v;});
@@ -2428,7 +2433,7 @@ function renderFlowTimeline(){
   S.tlMeta={secs,dates,mk,cw:cw+2};
   const scs=$$("#tlBody .tl-scroll");
   const setPos=x=>scs.forEach(e=>{e.scrollLeft=x;});
-  // 처음엔 가장 최근 10일, 시장 탭을 바꿔도 보던 위치 유지
+  // 처음엔 가장 최근 20일, 시장 탭을 바꿔도 보던 위치 유지
   requestAnimationFrame(()=>{setPos(S.tlScroll==null?1e9:S.tlScroll);updTlRange();drawTimelinePaths();});
   let lock=false;
   scs.forEach(e=>e.addEventListener("scroll",()=>{
@@ -2437,7 +2442,7 @@ function renderFlowTimeline(){
 }
 function updTlRange(){
   const m=S.tlMeta,sc=$("#tlBody .tl-scroll");if(!m||!sc)return;
-  const i0=Math.min(m.dates.length-1,Math.round(sc.scrollLeft/m.cw)),i1=Math.min(m.dates.length-1,i0+9);
+  const i0=Math.min(m.dates.length-1,Math.round(sc.scrollLeft/m.cw)),i1=Math.min(m.dates.length-1,i0+19);
   const f=d=>d.slice(2).replace(/-/g,".");
   $("#tlRng").textContent=`${f(m.dates[i0])} ~ ${f(m.dates[i1])} · 전체 ${m.dates.length}거래일`;
 }
