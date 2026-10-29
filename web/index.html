@@ -1143,6 +1143,13 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="card">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <select id="dSec" style="width:auto;max-width:180px" title="업종으로 종목 목록 좁히기"><option value="">업종 전체</option></select>
+      <select id="dMaF" style="width:auto;max-width:200px" title="이동평균선 조건으로 종목 목록 좁히기 (최근 거래일 기준)">
+        <option value="">이평선 조건 없음</option>
+        <optgroup label="종가가 이평선 위">
+          <option value="p20">종가 &gt; 20일선</option><option value="p60">종가 &gt; 60일선</option><option value="p120">종가 &gt; 120일선</option></optgroup>
+        <optgroup label="정배열">
+          <option value="a5">정배열 전체 (종가&gt;5&gt;20&gt;60&gt;120)</option><option value="a20">정배열 20일 이상 (종가&gt;20&gt;60&gt;120)</option><option value="a60">정배열 60일 이상 (종가&gt;60&gt;120)</option></optgroup>
+      </select>
       <select id="dSel" style="width:auto;min-width:220px"></select>
       <button class="btn ghost" id="dNext" style="padding:5px 12px;font-size:11.5px" title="이름(가나다)순 리스트 기준 다음 종목으로 이동">다음 종목 →</button>
       <div id="dHead" style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap"></div>
@@ -3914,11 +3921,35 @@ function renderRangeCharts(){
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 // 2026-10-29: 종목상세 업종 필터 — 기본 "업종 전체". 업종을 고르면 종목 선택 목록과 "다음 종목"이 그 업종 안에서만 움직임.
 S.dSec="";
-function dCodeList(){return S.dSec?S.codes.filter(c=>(c.sector||"미분류")===S.dSec):S.codes;}
+// 2026-10-30: 이평선 조건 필터 — v_screener 최근 거래일의 close·ma5/20/60/120으로 판정. 업종 필터와 함께(AND) 적용.
+S.dMaF="";S.dMaMap=null;
+const MA_COND={
+  p20:m=>m.ma20!=null&&m.close>m.ma20, p60:m=>m.ma60!=null&&m.close>m.ma60, p120:m=>m.ma120!=null&&m.close>m.ma120,
+  a5:m=>m.ma5!=null&&m.ma20!=null&&m.ma60!=null&&m.ma120!=null&&m.close>m.ma5&&m.ma5>m.ma20&&m.ma20>m.ma60&&m.ma60>m.ma120,
+  a20:m=>m.ma20!=null&&m.ma60!=null&&m.ma120!=null&&m.close>m.ma20&&m.ma20>m.ma60&&m.ma60>m.ma120,
+  a60:m=>m.ma60!=null&&m.ma120!=null&&m.close>m.ma60&&m.ma60>m.ma120};
+function dCodeList(){
+  let l=S.dSec?S.codes.filter(c=>(c.sector||"미분류")===S.dSec):S.codes;
+  if(S.dMaF&&S.dMaMap){const f=MA_COND[S.dMaF];l=l.filter(c=>{const m=S.dMaMap[c.code];return m&&f(m);});}
+  return l;
+}
+async function loadDetailMa(){
+  if(S.dMaMap)return;
+  const m={};
+  for(let off=0;off<20000;off+=1000){
+    const part=await q("v_screener",`select=code,close,ma5,ma20,ma60,ma120&trade_date=eq.${S.date}&order=code.asc&limit=1000&offset=${off}`);
+    part.forEach(r=>m[r.code]={close:+r.close,ma5:r.ma5!=null?+r.ma5:null,ma20:r.ma20!=null?+r.ma20:null,ma60:r.ma60!=null?+r.ma60:null,ma120:r.ma120!=null?+r.ma120:null});
+    if(part.length<1000)break;
+  }
+  S.dMaMap=m;
+}
 function dFillSel(){
   const list=dCodeList();
   $("#dSel").innerHTML=list.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join("");
   if(S.chart&&S.chart.code&&list.some(c=>c.code===S.chart.code))$("#dSel").value=S.chart.code;
+  const tag=[S.dSec,S.dMaF?$("#dMaF").selectedOptions[0].textContent:""].filter(Boolean);
+  $("#dSel").title=tag.length?`${tag.join(" · ")} — ${list.length}종목`:"";
+  $("#dSel").style.outline=(S.dMaF||S.dSec)&&!list.length?"2px solid var(--down)":"";
 }
 async function loadDetailSectors(){
   const all=[];
@@ -3933,6 +3964,18 @@ async function loadDetailSectors(){
   $("#dSec").innerHTML=`<option value="">업종 전체 (${S.codes.length})</option>`+secs.map(k=>`<option value="${k}">${k} (${cnt[k]})</option>`).join("");
   $("#dSec").value=S.dSec;
 }
+$("#dMaF").onchange=async e=>{
+  const v=e.target.value;
+  if(v&&!S.dMaMap){
+    e.target.disabled=true;
+    try{await loadDetailMa();}catch(err){console.error("이평선 필터",err);e.target.value="";e.target.disabled=false;e.target.title="이평선 데이터를 불러오지 못했습니다 — 다시 선택해 주세요";return;}
+    e.target.disabled=false;
+  }
+  S.dMaF=v;dFillSel();
+  const list=dCodeList();
+  if(v&&!list.length){$("#dSel").innerHTML='<option value="">조건에 맞는 종목 없음</option>';return;}
+  if(list.length&&!list.some(c=>c.code===S.chart.code)){S.dRangeTouched=false;loadDetail(list[0].code);}
+};
 $("#dSec").onchange=e=>{
   S.dSec=e.target.value;
   dFillSel();
