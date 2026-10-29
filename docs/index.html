@@ -3070,14 +3070,14 @@ async function loadMarketFlowDaily(){
   const m={};
   all.forEach(r=>{const d=m[r.trade_date]||(m[r.trade_date]={foreign:0,inst:0,corp_other:0,individual:0});
     d.foreign+=+r.foreign_net||0;d.inst+=+r.inst_net||0;d.corp_other+=+r.corp_other_net||0;d.individual+=+r.individual_net||0;});
-  const days=Object.keys(m).filter(d=>!S.date||d<S.date).sort().reverse().map(d=>({date:d,...m[d]}));
+  const days=Object.keys(m).filter(d=>(!S.date||d<S.date)&&(!S.tradeDaySet||!S.tradeDaySet.size||S.tradeDaySet.has(d))).sort().reverse().map(d=>({date:d,...m[d]}));
   _mfdCache={key:S.date,days};
   return days;
 }
 // 오늘값 v(원) 대비 전일 순매수액·증감률 / 직전 5거래일 평균 순매수액·증감률
 function flowCmpHtml(v,days,key){
   const val=d=>key==="combo"?d.foreign+d.inst:d[key];
-  const rt=(b)=>b?pm((v-b)/Math.abs(b)*100,0)+"%":"–";
+  const rt=(b)=>b&&v!==0?pm((v-b)/Math.abs(b)*100,0)+"%":"–"; // 오늘 수급 미집계(0)면 증감률 생략
   let h="";
   if(key!=="combo"&&days.length&&days[0][key]===undefined)return "";
   if(days.length>=1){const p=val(days[0]);h+=`<br><span class="faint">전일 ${pm(p/EOK,0)}억 · <span class="${sgn(v-p)}">${rt(p)}</span></span>`;}
@@ -3095,6 +3095,8 @@ async function loadToday(){
       S.flowTrendRow?Promise.resolve(S.flowTrendRow):q("v_market_flow_periods","select=*").then(r=>r[0])
     ]);
     S.flowTrendRow=flowRow;
+    // 실제 거래일 집합(지수 종가가 있는 평일) — 주말·휴장일 행을 비교 평균에서 빼기 위함
+    S.tradeDaySet=new Set(mdKospi.filter(r=>{const w=new Date(r.trade_date+"T00:00:00+09:00").getDay();return w>=1&&w<=5&&+r.index_close>0;}).map(r=>r.trade_date));
     const rg=mdKospi[0]?.regime||"–";
     const kr={RISK_ON:"양호",RISK_OFF:"위험",NEUTRAL:"중립"}[rg]||rg;
     const col=rg==="RISK_ON"?"up":rg==="RISK_OFF"?"down":"dim";
