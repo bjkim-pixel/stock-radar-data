@@ -737,10 +737,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div class="tile"><div class="lb">KOSPI 10일 박스</div><div class="vl" id="tdBoxKospi">–</div><div class="boxbar" id="tdBoxKospiBar"></div><div class="sub" id="tdBoxKospiSub"></div></div>
       <div class="tile"><div class="lb">KOSDAQ 10일 박스</div><div class="vl" id="tdBoxKosdaq">–</div><div class="boxbar" id="tdBoxKosdaqBar"></div><div class="sub" id="tdBoxKosdaqSub"></div></div>
       <div class="tile"><div class="lb">오늘 최다 순매수 주체</div><div class="vl" id="tdTopSubj">–</div><div class="sub" id="tdTopSubjSub"></div></div>
-      <div class="tile"><div class="lb">외국인 순매수</div><div class="vl" id="tdForeign">–</div></div>
-      <div class="tile"><div class="lb">기관합계 순매수</div><div class="vl" id="tdInst">–</div></div>
-      <div class="tile"><div class="lb">기타법인 순매수</div><div class="vl" id="tdCorpOther">–</div></div>
-      <div class="tile"><div class="lb">개인 순매수</div><div class="vl" id="tdIndividual">–</div></div>
+      <div class="tile"><div class="lb">외국인 순매수</div><div class="vl" id="tdForeign">–</div><div class="sub" id="tdForeignSub"></div></div>
+      <div class="tile"><div class="lb">기관합계 순매수</div><div class="vl" id="tdInst">–</div><div class="sub" id="tdInstSub"></div></div>
+      <div class="tile"><div class="lb">기타법인 순매수</div><div class="vl" id="tdCorpOther">–</div><div class="sub" id="tdCorpOtherSub"></div></div>
+      <div class="tile"><div class="lb">개인 순매수</div><div class="vl" id="tdIndividual">–</div><div class="sub" id="tdIndividualSub"></div></div>
     </div>
   </div>
 
@@ -3051,6 +3051,39 @@ function fillBoxTile(prefix,rows){
   bar.innerHTML=`<i style="left:${Math.min(100,Math.max(0,pos))}%"></i>`;
   sub.textContent=`${N(lo,0)} ~ ${N(hi,0)}`;
 }
+// 지수 타일 보조줄: 전일 대비 / 5거래일 전 대비 등락률 (휴장일 행 제외)
+function idxSubHtml(rows){
+  const cl=rows.filter(r=>{const w=new Date(r.trade_date+"T00:00:00+09:00").getDay();return w>=1&&w<=5&&+r.index_close>0;}).map(r=>+r.index_close);
+  const f=(n,l)=>cl.length>n?`<span class="faint">${l} <span class="${sgn(cl[0]-cl[n])}">${pm((cl[0]/cl[n]-1)*100,2)}%</span></span>`:"";
+  return [f(1,"전일比"),f(5,"5거래일比")].filter(Boolean).join("<br>");
+}
+// 시장 전체 일별 주체별 순매수 합계 (sector_flow_daily를 날짜별로 합산) — 최근 약 3주
+let _mfdCache=null;
+async function loadMarketFlowDaily(){
+  if(_mfdCache&&_mfdCache.key===S.date)return _mfdCache.days;
+  const from=new Date(Date.now()-24*864e5).toISOString().slice(0,10);
+  const all=[];
+  for(let off=0;off<8000;off+=1000){
+    const part=await q("sector_flow_daily",`select=trade_date,foreign_net,inst_net,corp_other_net,individual_net&trade_date=gte.${from}&order=trade_date.desc&limit=1000&offset=${off}`);
+    all.push(...part); if(part.length<1000)break;
+  }
+  const m={};
+  all.forEach(r=>{const d=m[r.trade_date]||(m[r.trade_date]={foreign:0,inst:0,corp_other:0,individual:0});
+    d.foreign+=+r.foreign_net||0;d.inst+=+r.inst_net||0;d.corp_other+=+r.corp_other_net||0;d.individual+=+r.individual_net||0;});
+  const days=Object.keys(m).filter(d=>!S.date||d<S.date).sort().reverse().map(d=>({date:d,...m[d]}));
+  _mfdCache={key:S.date,days};
+  return days;
+}
+// 오늘값 v(원) 대비 전일 순매수액·증감률 / 직전 5거래일 평균 순매수액·증감률
+function flowCmpHtml(v,days,key){
+  const val=d=>key==="combo"?d.foreign+d.inst:d[key];
+  const rt=(b)=>b?pm((v-b)/Math.abs(b)*100,0)+"%":"–";
+  let h="";
+  if(key!=="combo"&&days.length&&days[0][key]===undefined)return "";
+  if(days.length>=1){const p=val(days[0]);h+=`<br><span class="faint">전일 ${pm(p/EOK,0)}억 · <span class="${sgn(v-p)}">${rt(p)}</span></span>`;}
+  if(days.length>=5){const a=days.slice(0,5).reduce((x,d)=>x+val(d),0)/5;h+=`<br><span class="faint">5일평균 ${pm(a/EOK,0)}억 · <span class="${sgn(v-a)}">${rt(a)}</span></span>`;}
+  return h;
+}
 async function loadToday(){
   try{
     $("#todayMktNote").textContent="불러오는 중…";
@@ -3058,7 +3091,7 @@ async function loadToday(){
     const [mdKospi,mdKosdaq,amtRows,flowRow]=await Promise.all([
       q("market_daily",`select=trade_date,index_close,regime&market=eq.KOSPI&order=trade_date.desc&limit=20`),
       q("market_daily",`select=trade_date,index_close&market=eq.KOSDAQ&order=trade_date.desc&limit=20`),
-      q("v_market_amount_real","select=*&order=trade_date.desc&limit=1"),
+      q("v_market_amount_real","select=*&order=trade_date.desc&limit=7"),
       S.flowTrendRow?Promise.resolve(S.flowTrendRow):q("v_market_flow_periods","select=*").then(r=>r[0])
     ]);
     S.flowTrendRow=flowRow;
@@ -3071,14 +3104,19 @@ async function loadToday(){
     const kospiChg=idxChg(mdKospi), kosdaqChg=idxChg(mdKosdaq);
     fillBoxTile("tdBoxKospi",mdKospi); fillBoxTile("tdBoxKosdaq",mdKosdaq);
     $("#tdKospi").innerHTML=mdKospi[0]?.index_close?N(+mdKospi[0].index_close,2):"–";
-    $("#tdKospiSub").innerHTML=kospiChg!=null?`<span class="${sgn(kospiChg)}">${pm(kospiChg,2)}%</span>`:"";
+    $("#tdKospiSub").innerHTML=idxSubHtml(mdKospi);
     $("#tdKosdaq").innerHTML=mdKosdaq[0]?.index_close?N(+mdKosdaq[0].index_close,2):"–";
-    $("#tdKosdaqSub").innerHTML=kosdaqChg!=null?`<span class="${sgn(kosdaqChg)}">${pm(kosdaqChg,2)}%</span>`:"";
+    $("#tdKosdaqSub").innerHTML=idxSubHtml(mdKosdaq);
     const amt=amtRows[0];
     if(amt){
       $("#tdAmt").textContent=N(+amt.total_amount/JO,1)+"조";
       const ok=+amt.total_amount>=+amt.amt_ma20;
-      $("#tdAmtSub").innerHTML=`<span class="${ok?"up":"down"}">20일평균 ${ok?"상회":"하회"}</span>`;
+      const aT=+amt.total_amount, aPrev=amtRows[1]?+amtRows[1].total_amount:null;
+      const aAvg=amtRows.length>=6?amtRows.slice(1,6).reduce((a,r)=>a+ +r.total_amount,0)/5:null;
+      const rt=(b)=>b>0?pm((aT/b-1)*100,1)+"%":"–";
+      $("#tdAmtSub").innerHTML=`<span class="${ok?"up":"down"}">20일평균 ${ok?"상회":"하회"}</span>`
+        +(aPrev?`<br><span class="faint">전일 ${N(aPrev/JO,1)}조 · <span class="${sgn(aT-aPrev)}">${rt(aPrev)}</span></span>`:"")
+        +(aAvg?`<br><span class="faint">5일평균 ${N(aAvg/JO,1)}조 · <span class="${sgn(aT-aAvg)}">${rt(aAvg)}</span></span>`:"");
     }
     if(flowRow){
       // 최다 "순매수" 주체 = 오늘 가장 많이 산(순매수액이 가장 큰) 주체.
@@ -3098,6 +3136,14 @@ async function loadToday(){
           const v=flowVal(flowRow,key,"1d");
           $("#"+id).innerHTML=`<span class="${sgn(v)}">${pm(v/EOK,0)}억</span>`;
         });
+      // 전일/5거래일 비교 — 일별 시장 합계(sector_flow_daily). 실패해도 위 값은 그대로 표시.
+      loadMarketFlowDaily().then(days=>{
+        if(!days)return;
+        [["tdForeign","foreign"],["tdInst","inst"],["tdCorpOther","corp_other"],["tdIndividual","individual"]]
+          .forEach(([id,key])=>{const e=$("#"+id+"Sub");if(e)e.innerHTML=flowCmpHtml(flowVal(flowRow,key,"1d"),days,key);});
+        if(top){const e=$("#tdTopSubjSub");
+          if(e)e.innerHTML=`${pm(topV/EOK,0)}억`+flowCmpHtml(topV,days,top==="combo"?"combo":top);}
+      }).catch(()=>{});
     }
     $("#todayMktNote").textContent=S.date?`${S.date} 기준`:"";
 
