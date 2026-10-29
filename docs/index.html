@@ -1180,6 +1180,21 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note">● 표시는 <span id="dPriceRange">2025-09-01~오늘</span> 구간 <b>최고가 · 최저가 · 오늘 종가</b>입니다.</div>
   </div>
 
+  <div class="card" id="dMaCard"><h3>이평선 정렬<span class="r" id="dMaRange"></span></h3>
+    <div class="qf seg" id="dMaSet" style="margin-bottom:8px">
+      <button class="fchip" data-v="0" aria-pressed="true">전체</button>
+      <button class="fchip" data-v="20">20일 이상</button>
+      <button class="fchip" data-v="60">60일 이상</button>
+      <button class="fchip" data-v="120">120일 이상</button>
+    </div>
+    <div class="smhead" id="dMaHead"></div>
+    <div class="faint" style="font-size:11.5px;margin:6px 0 4px"><b>정렬 이력</b> — 위 기간 입력 구간의 매 거래일 판정 (<span style="color:var(--up)">■ 정배열</span> · <span style="color:var(--down)">■ 역배열</span> · <span style="color:var(--ink-2)">■ 혼조</span>)</div>
+    <div id="dMaStrip"></div>
+    <div class="tw"><table><thead><tr><th class="l">이평선</th><th>값</th><th>종가 대비</th><th>5일 기울기</th></tr></thead><tbody id="dMaBody"></tbody></table></div>
+    <div class="note">정배열 = 종가 &gt; 가장 짧은 이평선 &gt; … &gt; 가장 긴 이평선 순서. 역배열 = 반대 순서. 그 외는 혼조.
+      "N일 이상"은 이동평균 기간이 N일 이상인 선(5·10·20·60·120·200일 중)만으로 판정합니다. 이력이 부족한 이평선은 계산되지 않아 목록에서 빠집니다.</div>
+  </div>
+
   <div class="card"><h3>무게/주식수 <span class="r" style="font-weight:400;font-size:11px">외+기관 순매수 ÷ 주식수 · 양수=자금유입</span></h3>
     <div class="chart" id="dWeight"></div>
   </div>
@@ -3894,6 +3909,7 @@ function renderRangeCharts(){
     {n:"기타법인",v:rcum("corp_other_cum"),c:"--s4"}],rlb,
     {h:450,w:1180,pr:66,zero:true,marks:"each",monthTicks:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
   try{renderSmCard();}catch(e){console.error("smart money card",e);}
+  try{renderMaCard();}catch(e){console.error("ma card",e);}
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 // 2026-10-29: 종목상세 업종 필터 — 기본 "업종 전체". 업종을 고르면 종목 선택 목록과 "다음 종목"이 그 업종 안에서만 움직임.
@@ -4228,6 +4244,74 @@ function renderSmCard(){
   profileChart($("#dSmProfile"),prof,{h:300,w:580,pr:110,pl:70,fx:v=>N(v,0)+"억",hideNeg:true,subj:"스마트머니 순매수",
     aboveSum:aboveSupply(allRows,r=>r._sm)});
 }
+
+
+/* ══ 종목상세 이평선 정렬 (2026-10-29) ══ */
+const MA_ALL=[5,10,20,60,120,200];
+S.dMaMin=0;
+function maSeries(rows){
+  const cl=rows.map(r=>+r.close),n=cl.length,out={};
+  MA_ALL.forEach(p=>{
+    const v=new Array(n).fill(null);let sum=0;
+    for(let i=0;i<n;i++){sum+=cl[i];if(i>=p)sum-=cl[i-p];if(i>=p-1)v[i]=sum/p;}
+    out[p]=v;
+  });
+  return out;
+}
+function maState(close,vals){            // vals: 짧은→긴 이평선 값 배열
+  const seq=[close,...vals];let up=0,dn=0;
+  for(let k=0;k<seq.length-1;k++){if(seq[k]>seq[k+1])up++;else if(seq[k]<seq[k+1])dn++;}
+  const pairs=seq.length-1;
+  return {st:up===pairs?"up":(dn===pairs?"dn":"mix"),up,dn,pairs};
+}
+function renderMaCard(){
+  const rows=S.chart&&S.chart.rows;if(!rows||!rows.length)return;
+  const start=$("#dStart").value||START_D,end=$("#dEnd").value||rows.at(-1).trade_date;
+  const ma=maSeries(rows),n=rows.length;
+  const periods=MA_ALL.filter(p=>p>=S.dMaMin);
+  const lastI=n-1;
+  const avail=periods.filter(p=>ma[p][lastI]!=null);
+  $$("#dMaSet button").forEach(b=>b.setAttribute("aria-pressed",String(+b.dataset.v===S.dMaMin)));
+  const stAt=i=>{const ps=periods.filter(p=>ma[p][i]!=null);if(ps.length<2)return null;
+    return maState(+rows[i].close,ps.map(p=>ma[p][i]));};
+  const cur=stAt(lastI);
+  const lab={up:"정배열",dn:"역배열",mix:"혼조"},col={up:"var(--up)",dn:"var(--down)",mix:"var(--ink-2)"};
+  let runDays=0;
+  if(cur){for(let i=lastI;i>=0;i--){const x=stAt(i);if(x&&x.st===cur.st)runDays++;else break;}}
+  let since="";
+  if(cur&&runDays>0)since=rows[lastI-runDays+1].trade_date;
+  // 구간 내 일수 비율
+  const idx=[];rows.forEach((r,i)=>{if(r.trade_date>=start&&r.trade_date<=end)idx.push(i);});
+  const cnt={up:0,dn:0,mix:0};let tot=0;
+  idx.forEach(i=>{const x=stAt(i);if(x){cnt[x.st]++;tot++;}});
+  const pc=k=>tot?N(cnt[k]/tot*100,0)+"%":"–";
+  $("#dMaRange").textContent=avail.length?`기준: ${avail.map(p=>p+"일").join(" · ")}`:"";
+  if(!cur){
+    $("#dMaHead").innerHTML='<div class="faint">이평선 이력이 부족해 판정할 수 없습니다.</div>';
+    $("#dMaStrip").innerHTML="";$("#dMaBody").innerHTML="";return;
+  }
+  const tile=(t,v,sub,c)=>`<div class="card" style="margin:0;padding:10px 12px"><div class="faint" style="font-size:11px">${t}</div><div style="font-size:18px;font-weight:700;${c?`color:${c}`:""}">${v}</div><div class="faint" style="font-size:11px">${sub}</div></div>`;
+  $("#dMaHead").innerHTML=
+    tile("현재 상태",lab[cur.st],`${cur.pairs}개 단계 중 정배열 ${cur.up} · 역배열 ${cur.dn}`,col[cur.st])+
+    tile("같은 상태 지속",runDays+"일",`${since} 부터`)+
+    tile("구간 내 정배열",pc("up"),`역배열 ${pc("dn")} · 혼조 ${pc("mix")}`)+
+    tile("판정 이평선",avail.length+"개",avail.map(p=>p+"일").join(" · "));
+  // 정렬 이력 띠
+  const W=1180,H=26,m=idx.length||1,bw=W/m;
+  let rects="";
+  idx.forEach((i,k)=>{const x=stAt(i);if(!x)return;
+    rects+=`<rect x="${(k*bw).toFixed(2)}" y="0" width="${(bw+.4).toFixed(2)}" height="${H}" fill="${col[x.st]}" opacity="${x.st==="mix"?.25:.85}"><title>${rows[i].trade_date} ${lab[x.st]}</title></rect>`;});
+  $("#dMaStrip").innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px;display:block;border-radius:4px;background:var(--surface)" role="img" aria-label="이평선 정렬 이력">${rects}</svg>
+    <div class="faint" style="display:flex;justify-content:space-between;font-size:10.5px;margin:2px 0 8px"><span>${rows[idx[0]||0].trade_date}</span><span>${rows[idx.at(-1)||lastI].trade_date}</span></div>`;
+  // 이평선 값 표 (값 큰 순서 = 위에서 아래로)
+  const close=+rows[lastI].close;
+  const tr=[...avail].sort((a,b)=>ma[b][lastI]-ma[a][lastI]).map(p=>{
+    const v=ma[p][lastI],v5=lastI>=5?ma[p][lastI-5]:null;
+    const gap=(close/v-1)*100,sl=v5!=null?(v/v5-1)*100:null;
+    return `<tr><td class="l">MA${p}</td><td>${N(v)}</td><td class="${gap>=0?"up":"down"}">${pm(gap,1)}%</td><td class="${sl==null?"":(sl>=0?"up":"down")}">${sl==null?"–":pm(sl,2)+"%"}</td></tr>`;}).join("");
+  $("#dMaBody").innerHTML=`<tr><td class="l"><b>종가</b></td><td><b>${N(close)}</b></td><td></td><td></td></tr>`+tr;
+}
+$$("#dMaSet button").forEach(b=>b.onclick=()=>{S.dMaMin=+b.dataset.v;try{renderMaCard();}catch(e){console.error(e);}});
 
 /* ══ 짝꿍매매 ══════════════════════════════════════════════════════
    시장매크로 STEP2의 "업종별 거래대금" 표와 완전히 동일한 로직(SEC_COLS,
