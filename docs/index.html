@@ -4346,9 +4346,9 @@ function renderMaCard(){
     rects+=`<rect x="${(k*bw).toFixed(2)}" y="0" width="${(bw+.4).toFixed(2)}" height="${H}" fill="${col[x.st]}" opacity="${x.st==="mix"?.25:.85}"><title>${rows[i].trade_date} ${lab[x.st]}</title></rect>`;});
   $("#dMaStrip").innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px;display:block;border-radius:4px;background:var(--surface)" role="img" aria-label="이평선 정렬 이력">${rects}</svg>
     <div class="faint" style="display:flex;justify-content:space-between;font-size:10.5px;margin:2px 0 8px"><span>${rows[idx[0]||0].trade_date}</span><span>${rows[idx.at(-1)||lastI].trade_date}</span></div>`;
-  // 이평선 값 표 (값 큰 순서 = 위에서 아래로)
+  // 이평선 값 표 (종가 → 5·10·20·60·120·200 기간 순)
   const close=+rows[lastI].close;
-  const tr=[...avail].sort((a,b)=>ma[b][lastI]-ma[a][lastI]).map(p=>{
+  const tr=avail.map(p=>{
     const v=ma[p][lastI],v5=lastI>=5?ma[p][lastI-5]:null;
     const gap=(close/v-1)*100,sl=v5!=null?(v/v5-1)*100:null;
     return `<tr><td class="l">MA${p}</td><td>${N(v)}</td><td class="${gap>=0?"up":"down"}">${pm(gap,1)}%</td><td class="${sl==null?"":(sl>=0?"up":"down")}">${sl==null?"–":pm(sl,2)+"%"}</td></tr>`;}).join("");
