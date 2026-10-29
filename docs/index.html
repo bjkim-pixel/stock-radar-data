@@ -1158,9 +1158,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div id="dSmCtl" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"></div>
     <div class="smhead" id="dSmHead"></div>
     <div class="chart" id="dSmPrice"></div>
-    <div class="legend" style="margin:6px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span>
-      <span class="faint">배경 =</span><span><i class="bx" style="background:color-mix(in srgb,var(--good) 30%,transparent);border:1px solid var(--good)"></i>①매집</span><span><i class="bx" style="background:color-mix(in srgb,var(--up) 30%,transparent);border:1px solid var(--up)"></i>②상승</span><span><i class="bx" style="background:color-mix(in srgb,var(--s1) 30%,transparent);border:1px solid var(--s1)"></i>③분산</span><span><i class="bx" style="background:color-mix(in srgb,var(--down) 30%,transparent);border:1px solid var(--down)"></i>④이탈</span><span class="faint">배경 없음 = 중립</span>
-      <span style="color:var(--up)">▲ 매수 신호</span><span style="color:var(--down)">▼ 매도 신호</span><span class="faint">△▽ 참고 신호</span></div>
+    <div class="legend" style="margin:6px 0 0;flex-wrap:nowrap;white-space:nowrap"><span class="faint">배경</span><span><i class="bx" style="background:color-mix(in srgb,var(--good) 30%,transparent);border:1px solid var(--good)"></i>①매집</span><span><i class="bx" style="background:color-mix(in srgb,var(--up) 30%,transparent);border:1px solid var(--up)"></i>②상승</span><span><i class="bx" style="background:color-mix(in srgb,var(--warn) 30%,transparent);border:1px solid var(--warn)"></i>③분산</span><span><i class="bx" style="background:color-mix(in srgb,var(--down) 30%,transparent);border:1px solid var(--down)"></i>④이탈</span></div>
+    <div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span><span style="color:var(--up)">▲ 매수 신호</span><span style="color:var(--down)">▼ 매도 신호</span><span class="faint">△▽ 참고 신호</span></div>
     <div class="grid2" style="margin-top:12px">
       <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 누적 순매수 주식수 ÷ 상장주식수(%) · 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = 종가</div><div class="chart" id="dSmFlow"></div>
         <div class="legend" style="margin:6px 0 0"><span><i style="background:var(--good)"></i>스마트머니(외국인+투신+사모+연기금)</span><span><i style="background:var(--down)"></i>개인</span><span><i style="background:var(--axis)"></i>종가</span></div></div>
@@ -3984,7 +3983,7 @@ function smSeries(rows,W=120){
 }
 
 const SM_ORDER=["ACC","MARKUP","DIST","DOWN"];
-const SM_PH_C={ACC:"var(--good)",MARKUP:"var(--up)",DIST:"var(--s1)",DOWN:"var(--down)",NEUTRAL:"var(--ink-3)"};
+const SM_PH_C={ACC:"var(--good)",MARKUP:"var(--up)",DIST:"var(--warn)",DOWN:"var(--down)",NEUTRAL:"var(--ink-3)"};
 const SM_SUBJ_ALL=[["foreign","외국인"],["inv_trust","투신"],["pe","사모"],["pension","연기금"],["fin_inv","금융투자"],["corp_other","기타법인"]];
 const SM_SUBJ_DEF=["foreign","inv_trust","pe","pension"];
 // 단계 막대 ①②③④ — 현재 칸은 진하게, 지나온 칸은 옅게, 중립이면 모두 빈 칸
@@ -4029,7 +4028,7 @@ function smPriceChart(host,ser,opt={}){
     if(i===n||ser[i].phase!==ser[a].phase){
       const p=ser[a].phase;
       if(p!=="NEUTRAL"){const x0=a===0?P.l:(X(a-1)+X(a))/2, x1=i===n?P.l+iw:(X(i-1)+X(i))/2;
-        s+=`<rect x="${x0}" y="${P.t}" width="${Math.max(1,x1-x0)}" height="${ih}" fill="${SM_PH_C[p]}" fill-opacity=".10"/>`;}
+        s+=`<rect x="${x0}" y="${P.t}" width="${Math.max(1,x1-x0)}" height="${ih}" fill="${SM_PH_C[p]}" fill-opacity="${p==="DIST"?".18":".10"}"/>`;}
       a=i;
     }
   }
@@ -4147,9 +4146,9 @@ async function smToggle(btn){
   const rows=await q("v_stock_chart",`select=trade_date,close,high,low,volume,trade_amount,market_cap,foreign_net,inst_net,individual_net,inv_trust_cum,pe_cum,pension_cum,fin_inv_cum,corp_other_cum&code=eq.${tr.dataset.code}&order=trade_date.asc`);
   const ser=smSeries(smRowsFrom(rows),120);
   smPriceChart(pv.querySelector(".chart"),ser.slice(-250),{h:260});
-  pv.querySelector(".chart").insertAdjacentHTML("afterend",`<div class="legend" style="margin:6px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span><span class="faint">배경 =</span>`
-    +SM_ORDER.map(p=>`<span><i class="bx" style="background:color-mix(in srgb,${SM_PH_C[p]} 30%,transparent);border:1px solid ${SM_PH_C[p]}"></i>${SM_PH_KR[p]}</span>`).join("")
-    +`<span class="faint">배경 없음 = 중립</span><span style="color:var(--up)">▲ 매수</span><span style="color:var(--down)">▼ 매도</span><span class="faint">△▽ 참고</span></div>`);
+  pv.querySelector(".chart").insertAdjacentHTML("afterend",`<div class="legend" style="margin:6px 0 0;flex-wrap:nowrap;white-space:nowrap"><span class="faint">배경</span>`
+    +SM_ORDER.map(p=>`<span><i class="bx" style="background:color-mix(in srgb,${SM_PH_C[p]} 30%,transparent);border:1px solid ${SM_PH_C[p]}"></i>${SM_PH_KR[p]}</span>`).join("")+`</div>`
+    +`<div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span><span style="color:var(--up)">▲ 매수</span><span style="color:var(--down)">▼ 매도</span><span class="faint">△▽ 참고</span></div>`);
 }
 
 /* ══ 종목상세 · 스마트머니 카드 ══ */
