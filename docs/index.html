@@ -1142,6 +1142,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div style="margin:12px 0 4px"><button class="btn ghost" id="dBackTop">← 이전 화면으로</button></div>
   <div class="card">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <select id="dSec" style="width:auto;max-width:180px" title="업종으로 종목 목록 좁히기"><option value="">업종 전체</option></select>
       <select id="dSel" style="width:auto;min-width:220px"></select>
       <button class="btn ghost" id="dNext" style="padding:5px 12px;font-size:11.5px" title="이름(가나다)순 리스트 기준 다음 종목으로 이동">다음 종목 →</button>
       <div id="dHead" style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap"></div>
@@ -3772,6 +3773,8 @@ async function loadDetail(code){
   if(myReqId!==S_detailReqId)return; // 이 요청보다 나중에 시작된 loadDetail()이 있으면 결과 버림
   if(!rows.length)return;
   S.chart={code,rows};
+  // 다른 화면에서 업종 밖 종목으로 들어오면 업종 필터를 "전체"로 되돌림
+  if(S.dSec){const c=S.codes.find(x=>x.code===code);if(!c||(c.sector||"미분류")!==S.dSec){S.dSec="";$("#dSec").value="";dFillSel();}}
   $("#dSel").value=code;
   if(S.curTab==="detail"){const h="#detail/"+code;if(location.hash!==h)history.replaceState(null,"",h);}
   const sum=sumRows[0]||{};
@@ -3893,12 +3896,40 @@ function renderRangeCharts(){
   try{renderSmCard();}catch(e){console.error("smart money card",e);}
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
+// 2026-10-29: 종목상세 업종 필터 — 기본 "업종 전체". 업종을 고르면 종목 선택 목록과 "다음 종목"이 그 업종 안에서만 움직임.
+S.dSec="";
+function dCodeList(){return S.dSec?S.codes.filter(c=>(c.sector||"미분류")===S.dSec):S.codes;}
+function dFillSel(){
+  const list=dCodeList();
+  $("#dSel").innerHTML=list.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join("");
+  if(S.chart&&S.chart.code&&list.some(c=>c.code===S.chart.code))$("#dSel").value=S.chart.code;
+}
+async function loadDetailSectors(){
+  const all=[];
+  for(let off=0;off<20000;off+=1000){
+    const part=await q("v_stock_sector",`select=code,sector&order=code.asc&limit=1000&offset=${off}`);
+    all.push(...part);if(part.length<1000)break;
+  }
+  const m={};all.forEach(r=>m[r.code]=r.sector);
+  S.codes.forEach(c=>c.sector=m[c.code]||null);
+  const cnt={};S.codes.forEach(c=>{const k=c.sector||"미분류";cnt[k]=(cnt[k]||0)+1;});
+  const secs=Object.keys(cnt).sort((a,b)=>a==="미분류"?1:b==="미분류"?-1:a.localeCompare(b,"ko"));
+  $("#dSec").innerHTML=`<option value="">업종 전체 (${S.codes.length})</option>`+secs.map(k=>`<option value="${k}">${k} (${cnt[k]})</option>`).join("");
+  $("#dSec").value=S.dSec;
+}
+$("#dSec").onchange=e=>{
+  S.dSec=e.target.value;
+  dFillSel();
+  const list=dCodeList();
+  if(list.length&&!list.some(c=>c.code===S.chart.code)){S.dRangeTouched=false;loadDetail(list[0].code);}
+};
 // 2026-09-19: "다음 종목" 버튼 — S.codes(현재 시가총액 내림차순 리스트) 기준으로
 // 현재 종목 다음 것으로 이동. 리스트 끝에 도달하면 처음(시총 1위)으로 순환.
 $("#dNext").onclick=()=>{
-  if(!S.codes||!S.codes.length)return;
-  const i=S.codes.findIndex(c=>c.code===S.chart.code);
-  const next=S.codes[i<0?0:(i+1)%S.codes.length];
+  const list=dCodeList();
+  if(!list||!list.length)return;
+  const i=list.findIndex(c=>c.code===S.chart.code);
+  const next=list[i<0?0:(i+1)%list.length];
   S.dRangeTouched=false;
   loadDetail(next.code);
 };
@@ -5313,6 +5344,7 @@ async function boot(){
     const stk=await q("stocks","select=code,name&security_type=eq.STOCK&order=name.asc");
     S.codes=stk;
     $("#dSel").innerHTML=stk.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join("");
+    loadDetailSectors().catch(e=>console.error("업종 필터",e));
     $("#chipUniv").textContent=stk.length;
     const last=await loadMarket();
     S.date=last.trade_date;
