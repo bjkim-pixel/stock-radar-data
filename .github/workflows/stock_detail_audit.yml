@@ -1,0 +1,35 @@
+name: Stock Detail Audit (종목상세 데이터 점검, 읽기 전용)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Audit
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 90_stock_detail_audit.py audit_report.md
+      - name: Publish report (branch audit-report)
+        if: always()
+        run: |
+          [ -f audit_report.md ] || echo "리포트 없음 — 실패. Actions 로그 확인" > audit_report.md
+          cp audit_report.md /tmp/audit_report.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan audit-report
+          git rm -rq --cached . || true
+          cp /tmp/audit_report.md audit_report.md
+          git add -f audit_report.md
+          git commit -qm "audit report ${{ github.run_id }}"
+          git push -f origin audit-report
