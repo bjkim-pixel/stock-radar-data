@@ -81,8 +81,8 @@ def build_state(by, series, meta, sector, last_day):
     out = []
     for code, s in cand.items():
         z = s[-1]; prev = s[-2] if len(s) >= 2 else z
-        bs, ba, bd = smc.last_signal(s, smc.BUY_SIG)
-        ss, sa, sd = smc.last_signal(s, smc.SELL_SIG)
+        bs, ba, bd = smc.last_signal(s, smc.VALID_BUY)
+        ss, sa, sd = smc.last_signal(s, smc.VALID_SELL)
         buy = (smc.recency_pts(ba) + 30 * p_d(z["dW"]) + 15 * z["buy20"] / 20 + smc.gap_pts(z["gap"])) if (ba is not None and ba <= 4) else None
         sell = (smc.recency_pts(sa) + 30 * p_s(-z["d20"]) + 15 * (z["transfer"] or 0)
                 + 15 * min(max(z["gap"] or 0, 0) / 0.5, 1)) if (sa is not None and sa <= 4) else None

@@ -312,7 +312,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .smseg b{font-size:13px;color:var(--c)} .smseg span{color:var(--ink-2)}
 .smseg[aria-pressed=true]{box-shadow:0 0 0 2px var(--c);background:color-mix(in srgb,var(--c) 20%,var(--surface))}
 .smsig{display:inline-block;padding:0 6px;border-radius:5px;font-size:11px;font-weight:650;border:1px solid;line-height:17px}
-.smsig.b{color:var(--up);border-color:var(--up)} .smsig.s{color:var(--down);border-color:var(--down)}
+.smsig.b{color:var(--up);border-color:var(--up)} .smsig.s{color:var(--down);border-color:var(--down)} .smsig.r{color:var(--ink-3);border-color:var(--border);border-style:dashed}
 .smx{border:1px solid var(--border);background:var(--surface);color:var(--ink-2);border-radius:6px;width:24px;height:22px;cursor:pointer;padding:0}
 .smck{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;margin-right:8px;cursor:pointer}
 .smhead{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0 12px}
@@ -935,9 +935,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <th title="현재가 ÷ SM 평균 매입단가 − 1">평단 괴리</th><th title="최근 20일 SM 순매도 물량 중 같은 날 개인이 순매수한 비율">개인 이전율</th>
       <th>20일 매수일</th><th>120일 수익률</th><th>점수</th><th class="opt">거래대금(억)</th></tr></thead>
       <tbody id="smBody"><tr><td colspan="13" class="load sk"></td></tr></tbody></table></div>
-    <div class="note"><b>신호</b> — <span class="smsig b">B1</span> 매집 20일 이상 뒤 거래량 1.5배 돌파 · <span class="smsig b">B2</span> 상승 국면에서 평단 +0~5%로 눌림(SM 매도 없음, 개인 매도)
-      · <span class="smsig s">S1</span> 분산 국면 진입 · <span class="smsig s">S2</span> 평단 아래 2일 · <span class="smsig s">S3</span> 보유 고점 대비 절반 청산 · <span class="smsig s">S4</span> 평단 +30%↑ 거래량 급증 윗꼬리.
-      장 마감 후 수급이 확정된 뒤 계산하므로 신호는 다음 날 시가 기준입니다. 시장 레짐이 "위험"이어도 신호를 그대로 보여줍니다. 기준값은 백테스트 결과를 보고 조정합니다.</div>
+    <div class="note"><b>신호</b> — <span class="smsig b">B1</span> 매집 20일 이상 뒤 거래량 1.5배 돌파 · <span class="smsig s">S2</span> 평단 아래 2일 · <span class="smsig s">S4</span> 평단 +30%↑에서 거래량 급증·윗꼬리.
+      <span class="smsig r">B2</span> 평단 눌림 · <span class="smsig r">S1</span> 분산 진입 · <span class="smsig r">S3</span> 보유 절반 청산은 1차 백테스트(2025-09~2026-10, 309종목)에서 효과가 없어 <b>참고</b>로만 표시합니다.
+      장 마감 후 수급이 확정된 뒤 계산하므로 신호는 다음 날 시가 기준입니다. 시장 레짐이 "위험"이어도 신호를 그대로 보여줍니다.</div>
   </div>
 </section>
 
@@ -1158,7 +1158,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="smhead" id="dSmHead"></div>
     <div class="legend"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(점선)</span>
       <span><i style="background:var(--good)"></i>①매집</span><span><i style="background:var(--up)"></i>②상승</span><span><i style="background:var(--s1)"></i>③분산</span><span><i style="background:var(--down)"></i>④이탈</span>
-      <span style="color:var(--up)">▲ 매수 신호</span><span style="color:var(--down)">▼ 매도 신호</span></div>
+      <span style="color:var(--up)">▲ 매수 신호</span><span style="color:var(--down)">▼ 매도 신호</span><span class="faint">△▽ 참고 신호</span></div>
     <div class="chart" id="dSmPrice"></div>
     <div class="grid2" style="margin-top:12px">
       <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 누적 순매수 주식수 ÷ 상장주식수(%) · 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = 종가</div><div class="chart" id="dSmFlow"></div></div>
@@ -3909,6 +3909,8 @@ $("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
 const SM_PH_KR={NEUTRAL:"중립",ACC:"①매집",MARKUP:"②상승",DIST:"③분산",DOWN:"④이탈"};
 const SM_PH_IDX={ACC:1,MARKUP:2,DIST:3,DOWN:4,NEUTRAL:0};
 const SM_SIG_KR={B1:"매집 돌파",B2:"평단 눌림",S1:"분산 개시",S2:"평단 이탈",S3:"보유 소진",S4:"이익 실현"};
+// 1차 백테스트(2026-10-29, 20일 초과수익) 통과 신호 — 목록·점수는 이것만 씀. 나머지는 "참고"(회색) 표시. sm_core.py VALID_BUY/VALID_SELL과 같게 유지
+const SM_SIG_OK=new Set(["B1","S2","S4"]);
 function smThresholds(W){return W>=120?[1.0,0.15]:[0.5,0.10];}
 function smSeries(rows,W=120){
   const [dth,rth]=smThresholds(W);
@@ -3995,8 +3997,8 @@ function smPhaseSub(p,days,changed,prev){
 }
 function smSigHtml(sig,ago){
   if(!sig)return '<span class="faint">–</span>';
-  const b=sig[0]==="B";
-  return `<span class="smsig ${b?"b":"s"}" title="${SM_SIG_KR[sig]}">${sig}</span> <span class="faint" style="font-size:10.5px">${ago===0?"오늘":ago+"일 전"}</span>`;
+  const b=sig[0]==="B", ok=SM_SIG_OK.has(sig);
+  return `<span class="smsig ${ok?(b?"b":"s"):"r"}" title="${SM_SIG_KR[sig]}${ok?"":" — 참고(백테스트 미통과)"}">${sig}</span> <span class="faint" style="font-size:10.5px">${ago===0?"오늘":ago+"일 전"}</span>`;
 }
 // v_stock_chart 행 → smSeries 입력. 투신·사모·연기금·금융투자·기타법인은 누적(_cum)의 차이로 일별 값을 복원
 function smRowsFrom(rows,subj=SM_SUBJ_DEF){
@@ -4038,8 +4040,8 @@ function smPriceChart(host,ser,opt={}){
   if(d)s+=`<path d="${d}" fill="none" stroke="var(--s3)" stroke-width="1.6" stroke-dasharray="5 4"/>`;
   s+=`<path d="${ser.map((z,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(z.close).toFixed(1)).join("")}" fill="none" stroke="var(--ink)" stroke-width="1.5"/>`;
   ser.forEach((z,i)=>z.signals.forEach(g=>{
-    const b=g[0]==="B", y=b?Y(z.close)+16:Y(z.close)-8;
-    s+=`<text x="${X(i)}" y="${y}" font-size="12" text-anchor="middle" fill="${b?"var(--up)":"var(--down)"}">${b?"▲":"▼"}</text>`;
+    const b=g[0]==="B", y=b?Y(z.close)+16:Y(z.close)-8, ok=SM_SIG_OK.has(g);
+    s+=`<text x="${X(i)}" y="${y}" font-size="${ok?12:10}" text-anchor="middle" fill="${ok?(b?"var(--up)":"var(--down)"):"var(--ink-3)"}" opacity="${ok?1:.7}">${b?(ok?"▲":"△"):(ok?"▼":"▽")}</text>`;
   }));
   const last=ser.at(-1);
   if(last.cost!=null)s+=`<text x="${P.l+iw+6}" y="${Y(last.cost)+4}" font-size="11" font-weight="650" fill="var(--s3)">평단 ${N(last.cost,0)}</text>`;
@@ -4051,7 +4053,7 @@ function smPriceChart(host,ser,opt={}){
     const i=Math.max(0,Math.min(n-1,Math.round((xv-P.l)/iw*(n-1)))), z=ser[i];
     cx.setAttribute("x1",X(i));cx.setAttribute("x2",X(i));cx.setAttribute("visibility","visible");
     tip.innerHTML=`<b>${z.date}</b><br>종가 ${N(z.close)}원${z.cost!=null?`<br>SM 평단 ${N(z.cost,0)}원 (${pm(z.gap*100,1)}%)`:""}<br>${SM_PH_KR[z.phase]} ${z.phase_days}일째`
-      +(z.signals.length?`<br>${z.signals.map(g=>`<b>${g}</b> ${SM_SIG_KR[g]}`).join(", ")}`:"");
+      +(z.signals.length?`<br>${z.signals.map(g=>`<b>${g}</b> ${SM_SIG_KR[g]}${SM_SIG_OK.has(g)?"":"(참고)"}`).join(", ")}`:"");
     tip.style.display="block";
     const hx=(e.clientX-host.getBoundingClientRect().left);
     tip.style.left=Math.min(hx+12,host.clientWidth-180)+"px";tip.style.top="8px";
@@ -4093,10 +4095,10 @@ function renderSm(){
     scoreK=null;note=`<b>${SM_PH_KR[S.smPhase]}</b> 국면 종목 — ${desc?"SM 120일 지분 증가 큰 순":"SM 20일 순매도 큰 순"} (국면 칸을 다시 누르면 해제)`;
   }else if(S.smTab==="buy"){
     list=rows.filter(r=>r.buy_score!=null).sort((a,b)=>b.buy_score-a.buy_score);scoreK="buy_score";
-    note="최근 5거래일 안에 <b>B1 매집 돌파·B2 평단 눌림</b>이 나온 종목 — 점수 = 신호 신선도 40 + 매집 강도 30 + 지속성 15 + 평단 근접 15";
+    note="최근 5거래일 안에 <b>B1 매집 돌파</b>가 나온 종목 — 점수 = 신호 신선도 40 + 매집 강도 30 + 지속성 15 + 평단 근접 15"+(list.length?"":" · 지금은 없음 — <b>매집 진행</b> 탭에서 돌파 전 종목을 보세요");
   }else if(S.smTab==="sell"){
     list=rows.filter(r=>r.sell_score!=null).sort((a,b)=>b.sell_score-a.sell_score);scoreK="sell_score";
-    note="최근 5거래일 안에 <b>S1 분산 개시·S2 평단 이탈·S3 보유 소진·S4 이익 실현</b>이 나온 종목 — 점수 = 신선도 40 + 분산 강도 30 + 개인 이전율 15 + 평단 괴리 15";
+    note="최근 5거래일 안에 <b>S2 평단 이탈·S4 이익 실현</b>이 나온 종목 — 점수 = 신선도 40 + 분산 강도 30 + 개인 이전율 15 + 평단 괴리 15";
   }else if(S.smTab==="acc"){
     list=rows.filter(r=>r.phase==="ACC"||r.quiet).sort((a,b)=>(+b.d_w)-(+a.d_w));scoreK=null;
     note="아직 신호 전인 <b>①매집</b> 국면 + 조용한 매집(가격은 120일간 안 올랐는데 SM이 모은 종목) — SM 120일 지분 증가 큰 순";
@@ -4169,7 +4171,7 @@ function renderSmCard(){
   $("#dSmRange").textContent=`${rs[0].date}~${rs.at(-1).date} · ${S.smW}일 판정`;
   const z=ser.at(-1), prev=ser.at(-2)||z;
   const findSig=kinds=>{for(let k=ser.length-1;k>=0;k--){const h=ser[k].signals.filter(g=>kinds.includes(g));if(h.length)return [h.at(-1),ser.length-1-k];}return [null,null];};
-  const [bs,ba]=findSig(["B1","B2"]),[ss,sa]=findSig(["S1","S2","S3","S4"]);
+  const [bs,ba]=findSig(["B1"]),[ss,sa]=findSig(["S2","S4"]),[rs0,ra]=findSig(["B2","S1","S3"]);
   const tile=(l,v,sub="")=>`<div class="tile"><div class="lb">${l}</div><div class="vl" style="font-size:16px">${v}</div>${sub?`<div class="sub">${sub}</div>`:""}</div>`;
   $("#dSmHead").innerHTML=`<div class="tile smbadge" style="--c:${SM_PH_C[z.phase]}"><div>${smStageHtml(z.phase)}</div>
       <div class="vl" style="font-size:17px;color:${SM_PH_C[z.phase]}">${SM_PH_KR[z.phase]}</div>
@@ -4177,7 +4179,8 @@ function renderSmCard(){
     +tile(`SM ${S.smW}일 지분 변화`,`<span class="${sgn(z.dW)}">${pm(z.dW,2)}%p</span>`,`20일 ${pm(z.d20,2)}%p · 개인 ${S.smW}일 ${pm(z.indW,2)}%p`)
     +tile("SM 평단 · 괴리",z.cost!=null?`${N(z.cost,0)}원`:"–",z.gap!=null?`<span class="${sgn(z.gap)}">현재가 ${pm(z.gap*100,1)}%</span> · 추정 보유 ${N(z.hold_pct,2)}%`:"보유 추정 0")
     +tile("개인 이전율 (20일)",z.transfer==null?"–":N(z.transfer*100,0)+"%","SM이 판 물량 중 개인이 받은 비율")
-    +tile("최근 신호",[bs?`${smSigHtml(bs,ba)}`:"",ss?`${smSigHtml(ss,sa)}`:""].filter(Boolean).join("<br>")||"–",`20일 중 SM 순매수 ${z.buy20}일`);
+    +tile("최근 신호",[bs?`${smSigHtml(bs,ba)}`:"",ss?`${smSigHtml(ss,sa)}`:""].filter(Boolean).join("<br>")||"–",
+      (rs0?`참고 ${smSigHtml(rs0,ra)} · `:"")+`20일 중 SM 순매수 ${z.buy20}일`);
   smPriceChart($("#dSmPrice"),rs,{h:360});
   const lb=rs.map(x=>String(x.date).slice(2).replace(/-/g,"/"));
   const F0=rs[0].F, I0=rs[0].I;
