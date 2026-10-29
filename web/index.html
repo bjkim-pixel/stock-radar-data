@@ -319,6 +319,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .smbadge{border:2px solid var(--c);background:color-mix(in srgb,var(--c) 8%,var(--surface))}
 .legend{display:flex;gap:13px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:8px}
 .legend i{display:inline-block;width:11px;height:3px;border-radius:2px;margin-right:6px;vertical-align:2px}
+.legend i.bx{width:12px;height:10px;vertical-align:-1px;box-sizing:border-box}
 .tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--border);
   border-radius:7px;padding:7px 10px;font-size:11.5px;box-shadow:0 4px 14px rgba(0,0,0,.14);
   opacity:0;transition:opacity .1s;z-index:20;white-space:nowrap}
@@ -1156,12 +1157,13 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="card" id="dSmCard"><h3>스마트머니 국면<span class="r" id="dSmRange"></span></h3>
     <div id="dSmCtl" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"></div>
     <div class="smhead" id="dSmHead"></div>
-    <div class="legend"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(점선)</span>
-      <span><i style="background:var(--good)"></i>①매집</span><span><i style="background:var(--up)"></i>②상승</span><span><i style="background:var(--s1)"></i>③분산</span><span><i style="background:var(--down)"></i>④이탈</span>
-      <span style="color:var(--up)">▲ 매수 신호</span><span style="color:var(--down)">▼ 매도 신호</span><span class="faint">△▽ 참고 신호</span></div>
     <div class="chart" id="dSmPrice"></div>
+    <div class="legend" style="margin:6px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span>
+      <span class="faint">배경 =</span><span><i class="bx" style="background:color-mix(in srgb,var(--good) 30%,transparent);border:1px solid var(--good)"></i>①매집</span><span><i class="bx" style="background:color-mix(in srgb,var(--up) 30%,transparent);border:1px solid var(--up)"></i>②상승</span><span><i class="bx" style="background:color-mix(in srgb,var(--s1) 30%,transparent);border:1px solid var(--s1)"></i>③분산</span><span><i class="bx" style="background:color-mix(in srgb,var(--down) 30%,transparent);border:1px solid var(--down)"></i>④이탈</span><span class="faint">배경 없음 = 중립</span>
+      <span style="color:var(--up)">▲ 매수 신호</span><span style="color:var(--down)">▼ 매도 신호</span><span class="faint">△▽ 참고 신호</span></div>
     <div class="grid2" style="margin-top:12px">
-      <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 누적 순매수 주식수 ÷ 상장주식수(%) · 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = 종가</div><div class="chart" id="dSmFlow"></div></div>
+      <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 누적 순매수 주식수 ÷ 상장주식수(%) · 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = 종가</div><div class="chart" id="dSmFlow"></div>
+        <div class="legend" style="margin:6px 0 0"><span><i style="background:var(--good)"></i>스마트머니(외국인+투신+사모+연기금)</span><span><i style="background:var(--down)"></i>개인</span><span><i style="background:var(--axis)"></i>종가</span></div></div>
       <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>SM 매물대</b> — 가격대별 스마트머니 순매수 합(억원) · 현재가 아래 물량이 많을수록 지지</div><div class="chart" id="dSmProfile"></div></div>
     </div>
     <div class="note">위 기간 입력을 따릅니다. 주체·판정 구간을 바꾸면 이 카드만 다시 계산합니다(스마트머니 탭 목록은 기본값 외국인+투신+사모+연기금·120일 고정).
@@ -4138,13 +4140,16 @@ async function smToggle(btn){
   if(nx&&nx.classList.contains("smpv")){nx.remove();btn.textContent="▸";return;}
   btn.textContent="▾";
   const pv=document.createElement("tr");pv.className="smpv";
-  pv.innerHTML=`<td colspan="13" style="padding:6px 8px 12px"><div class="note" style="margin:0 0 4px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>최근 250거래일 · 배경 = 국면(①초록 ②빨강 ③주황 ④파랑) · 보라 점선 = SM 평단 · ▲ 매수 ▼ 매도 신호</span>
+  pv.innerHTML=`<td colspan="13" style="padding:6px 8px 12px"><div class="note" style="margin:0 0 4px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>최근 250거래일</span>
     <a class="lk" data-code="${tr.dataset.code}">종목상세 →</a></div><div class="chart"></div></td>`;
   tr.after(pv);
   pv.querySelector("a.lk").onclick=e=>go("detail",e.target.dataset.code);
   const rows=await q("v_stock_chart",`select=trade_date,close,high,low,volume,trade_amount,market_cap,foreign_net,inst_net,individual_net,inv_trust_cum,pe_cum,pension_cum,fin_inv_cum,corp_other_cum&code=eq.${tr.dataset.code}&order=trade_date.asc`);
   const ser=smSeries(smRowsFrom(rows),120);
   smPriceChart(pv.querySelector(".chart"),ser.slice(-250),{h:260});
+  pv.querySelector(".chart").insertAdjacentHTML("afterend",`<div class="legend" style="margin:6px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span><span class="faint">배경 =</span>`
+    +SM_ORDER.map(p=>`<span><i class="bx" style="background:color-mix(in srgb,${SM_PH_C[p]} 30%,transparent);border:1px solid ${SM_PH_C[p]}"></i>${SM_PH_KR[p]}</span>`).join("")
+    +`<span class="faint">배경 없음 = 중립</span><span style="color:var(--up)">▲ 매수</span><span style="color:var(--down)">▼ 매도</span><span class="faint">△▽ 참고</span></div>`);
 }
 
 /* ══ 종목상세 · 스마트머니 카드 ══ */
