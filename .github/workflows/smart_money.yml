@@ -1,0 +1,53 @@
+name: Smart Money Phase (스마트머니 국면)
+
+# 스마트머니(외국인+투신+사모+연기금) 매집·분산 국면과 신호를 전 종목 다시 계산해 smart_money_state / smart_money_signal에 저장합니다.
+# 지표 계산(Compute Metrics & Signals)이 끝난 직후 실행 — 통합 파이프라인 뒤는 daily_collect.yml의 after 잡이 직접 실행합니다.
+# 수동 실행 시 backtest=true면 신호별 성과(백테스트)와 SM 구성·구간 비교를 리포트(브랜치 smart-money-report)에 추가합니다.
+on:
+  workflow_run:
+    workflows: ["Compute Metrics & Signals"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      backtest:
+        description: '백테스트 리포트도 만들기 (5~15분 더 걸림)'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: smart-money
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  compute:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Compute smart money
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BT: ${{ inputs.backtest && '--backtest' || '' }}
+        run: python 91_smart_money.py --report sm_report.md $BT
+      - name: Publish report (branch smart-money-report)
+        if: always()
+        run: |
+          [ -f sm_report.md ] || echo "리포트 없음 — 계산 실패. Actions 로그 확인" > sm_report.md
+          cp sm_report.md /tmp/sm_report.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan smart-money-report
+          git rm -rq --cached . || true
+          cp /tmp/sm_report.md sm_report.md
+          git add -f sm_report.md
+          git commit -qm "smart money report ${{ github.run_id }}"
+          git push -f origin smart-money-report

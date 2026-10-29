@@ -302,6 +302,21 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 
 .chart{position:relative}
 .chart svg{display:block;width:100%;height:auto;overflow:visible}
+.smstage{display:inline-flex;gap:3px;vertical-align:middle}
+.smstage i{display:inline-block;width:16px;height:9px;border-radius:2px;border:1px solid var(--c)}
+.smstage i.on{background:var(--c)} .smstage i.past{background:color-mix(in srgb,var(--c) 28%,transparent)}
+.smmap{display:flex;gap:6px;flex-wrap:wrap}
+.smseg{flex:var(--w) 1 0;min-width:92px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;cursor:pointer;
+  border:1.5px solid var(--c);border-radius:8px;padding:8px 10px;color:var(--ink);font:inherit;font-size:11.5px;
+  background:color-mix(in srgb,var(--c) 9%,var(--surface))}
+.smseg b{font-size:13px;color:var(--c)} .smseg span{color:var(--ink-2)}
+.smseg[aria-pressed=true]{box-shadow:0 0 0 2px var(--c);background:color-mix(in srgb,var(--c) 20%,var(--surface))}
+.smsig{display:inline-block;padding:0 6px;border-radius:5px;font-size:11px;font-weight:650;border:1px solid;line-height:17px}
+.smsig.b{color:var(--up);border-color:var(--up)} .smsig.s{color:var(--down);border-color:var(--down)}
+.smx{border:1px solid var(--border);background:var(--surface);color:var(--ink-2);border-radius:6px;width:24px;height:22px;cursor:pointer;padding:0}
+.smck{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;margin-right:8px;cursor:pointer}
+.smhead{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0 12px}
+.smbadge{border:2px solid var(--c);background:color-mix(in srgb,var(--c) 8%,var(--surface))}
 .legend{display:flex;gap:13px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:8px}
 .legend i{display:inline-block;width:11px;height:3px;border-radius:2px;margin-right:6px;vertical-align:2px}
 .tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--border);
@@ -600,6 +615,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <button data-v="today">오늘의 종목</button>
     <button data-v="sector">업종동향</button>
     <button data-v="flow">수급 동향</button>
+    <button data-v="sm">스마트머니</button>
     <button data-v="scr">종목 후보</button>
     <button data-v="fav">★ 관심</button>
     <button data-v="pair">짝꿍매매</button>
@@ -899,6 +915,32 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   </div>
 </section>
 
+<!-- ═══════════ 스마트머니 ═══════════ -->
+<section id="v-sm" class="hide">
+  <div class="card" style="margin-top:16px"><h3>스마트머니 국면 지도 <span class="r" id="smAsOf">불러오는 중…</span></h3>
+    <div class="smmap" id="smMap"><div class="load sk"></div></div>
+    <div class="note">칸 너비 = 그 국면 종목 수 비율 · "오늘 +n" = 오늘 그 국면으로 들어온 종목 수 · 칸을 누르면 아래 목록이 그 국면만 남습니다.
+      스마트머니(SM) = 외국인+투신+사모+연기금. 국면은 ①매집 → ②상승 → ③분산 → ④이탈 순으로 돕니다.</div>
+  </div>
+  <div class="card"><h3>종목 목록 <span class="r">★ 관심 종목은 각 목록 맨 위 고정 · ▸ = 가격·평단·국면 미리보기</span></h3>
+    <div class="qf seg" id="smTabs" style="margin-bottom:8px">
+      <button class="fchip" data-v="buy" aria-pressed="true">매수 후보</button>
+      <button class="fchip" data-v="sell">매도 경고</button>
+      <button class="fchip" data-v="acc">매집 진행</button>
+      <button class="fchip" data-v="fav">★ 내 관심</button>
+    </div>
+    <div class="note" id="smNote" style="margin:0 0 8px"></div>
+    <div class="tw tw-scroll"><table><thead><tr><th class="l"></th><th class="l">#</th><th class="l">종목</th><th class="l">단계 ①②③④</th><th class="l">신호</th>
+      <th title="최근 120거래일 SM 순매수 주식수 합 ÷ 상장주식수">SM 120일 지분</th><th title="데이터 시작 이후 SM 순매수 누적(0 이하로 내려가면 초기화) ÷ 상장주식수">SM 추정 보유</th>
+      <th title="현재가 ÷ SM 평균 매입단가 − 1">평단 괴리</th><th title="최근 20일 SM 순매도 물량 중 같은 날 개인이 순매수한 비율">개인 이전율</th>
+      <th>20일 매수일</th><th>120일 수익률</th><th>점수</th><th class="opt">거래대금(억)</th></tr></thead>
+      <tbody id="smBody"><tr><td colspan="13" class="load sk"></td></tr></tbody></table></div>
+    <div class="note"><b>신호</b> — <span class="smsig b">B1</span> 매집 20일 이상 뒤 거래량 1.5배 돌파 · <span class="smsig b">B2</span> 상승 국면에서 평단 +0~5%로 눌림(SM 매도 없음, 개인 매도)
+      · <span class="smsig s">S1</span> 분산 국면 진입 · <span class="smsig s">S2</span> 평단 아래 2일 · <span class="smsig s">S3</span> 보유 고점 대비 절반 청산 · <span class="smsig s">S4</span> 평단 +30%↑ 거래량 급증 윗꼬리.
+      장 마감 후 수급이 확정된 뒤 계산하므로 신호는 다음 날 시가 기준입니다. 시장 레짐이 "위험"이어도 신호를 그대로 보여줍니다. 기준값은 백테스트 결과를 보고 조정합니다.</div>
+  </div>
+</section>
+
 <!-- ═══════════ 조건 스크리너 ═══════════ -->
 <section id="v-scr" class="hide">
   <div class="card" style="margin-top:16px">
@@ -1109,6 +1151,21 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <input type="date" id="dEnd" style="width:auto">
       <button class="btn ghost" id="dRangeApply" style="padding:5px 12px;font-size:11.5px">적용</button>
     </div>
+  </div>
+
+  <div class="card" id="dSmCard"><h3>스마트머니 국면<span class="r" id="dSmRange"></span></h3>
+    <div id="dSmCtl" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"></div>
+    <div class="smhead" id="dSmHead"></div>
+    <div class="legend"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(점선)</span>
+      <span><i style="background:var(--good)"></i>①매집</span><span><i style="background:var(--up)"></i>②상승</span><span><i style="background:var(--s1)"></i>③분산</span><span><i style="background:var(--down)"></i>④이탈</span>
+      <span style="color:var(--up)">▲ 매수 신호</span><span style="color:var(--down)">▼ 매도 신호</span></div>
+    <div class="chart" id="dSmPrice"></div>
+    <div class="grid2" style="margin-top:12px">
+      <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 누적 순매수 주식수 ÷ 상장주식수(%) · 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = 종가</div><div class="chart" id="dSmFlow"></div></div>
+      <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>SM 매물대</b> — 가격대별 스마트머니 순매수 합(억원) · 현재가 아래 물량이 많을수록 지지</div><div class="chart" id="dSmProfile"></div></div>
+    </div>
+    <div class="note">위 기간 입력을 따릅니다. 주체·판정 구간을 바꾸면 이 카드만 다시 계산합니다(스마트머니 탭 목록은 기본값 외국인+투신+사모+연기금·120일 고정).
+      보유·평단은 순매수 금액 ÷ 당일 평균가로 추정한 수량 기준이라 실제 보유와 차이가 있을 수 있습니다.</div>
   </div>
 
   <div class="card"><h3>가격 · 이동평균<span class="r" id="dRange">전 기간</span></h3>
@@ -2030,8 +2087,8 @@ function go(v,detailCode){
   if(cur&&cur!==v)S.prevView=cur;
   S.curTab=v;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
-  ["proc","today","flow","scr","fav","pair","sector","detail","perf","perf2"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
-  document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="flow");   // 폭 넓은 표 화면에서만 가로 숨김 해제
+  ["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="flow"||v==="sm");   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
   // "아직 종목상세를 한 번도 안 봤으면(S.chart.code 없음) 디폴트 SK하이닉스를
@@ -2064,6 +2121,7 @@ function go(v,detailCode){
     }
   }
   if(v==="fav")loadFav();
+  if(v==="sm"){if(!S.smLoaded){S.smLoaded=true;loadSm().catch(e=>{console.error(e);S.smLoaded=false;$("#smMap").innerHTML='<div class="load">불러오기 실패 — Actions에서 Smart Money Phase를 한 번 실행했는지 확인</div>';});}else renderSm();}
   renderAsOf();
   if(!_hashNav)setHash(v,v==="detail"?S.chart.code:null);
   if(v==="perf")loadPerf();
@@ -3831,6 +3889,7 @@ function renderRangeCharts(){
     {n:"개인",v:rcum("individual_cum"),c:"--s3"},
     {n:"기타법인",v:rcum("corp_other_cum"),c:"--s4"}],rlb,
     {h:450,w:1180,pr:66,zero:true,marks:"each",monthTicks:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+  try{renderSmCard();}catch(e){console.error("smart money card",e);}
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 // 2026-09-19: "다음 종목" 버튼 — S.codes(현재 시가총액 내림차순 리스트) 기준으로
@@ -3843,6 +3902,294 @@ $("#dNext").onclick=()=>{
   loadDetail(next.code);
 };
 $("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
+
+/* ══ 스마트머니(SM) 매집·분산 — sm_core.py sm_series()와 한 줄씩 같은 계산 ══════════
+   (서버가 smart_money_state를 이 로직으로 채우고, 종목상세 카드는 주체·구간을 바꿔 브라우저에서 다시 계산)
+   한쪽을 고치면 다른 쪽도 같이 고칠 것. rows: {date,close,high,low,volume,trade_amount,market_cap,sm,ind} 오름차순 */
+const SM_PH_KR={NEUTRAL:"중립",ACC:"①매집",MARKUP:"②상승",DIST:"③분산",DOWN:"④이탈"};
+const SM_PH_IDX={ACC:1,MARKUP:2,DIST:3,DOWN:4,NEUTRAL:0};
+const SM_SIG_KR={B1:"매집 돌파",B2:"평단 눌림",S1:"분산 개시",S2:"평단 이탈",S3:"보유 소진",S4:"이익 실현"};
+function smThresholds(W){return W>=120?[1.0,0.15]:[0.5,0.10];}
+function smSeries(rows,W=120){
+  const [dth,rth]=smThresholds(W);
+  const out=[],F=[],I=[],Q=[],QI=[],ma20=[];
+  const closes=rows.map(r=>+r.close), vols=rows.map(r=>+(r.volume||0));
+  let shares=null,H=0,C=0,Hpeak=0,phase="NEUTRAL",pdays=0,pendT=null,pend=0,gapPrev=null,lastB2=-999;
+  const sum=a=>a.reduce((x,y)=>x+y,0);
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i], close=closes[i], mc=+(r.market_cap||0);
+    if(mc>0&&close>0)shares=mc/close;
+    const ta=+(r.trade_amount||0), vol=vols[i];
+    const vwap=(ta>0&&vol>0)?ta/vol:close;
+    const sm=+(r.sm||0), ind=+(r.ind||0);
+    const q=vwap>0?sm/vwap:0, qi=vwap>0?ind/vwap:0;
+    Q.push(q);QI.push(qi);
+    const fr=shares?q/shares*100:0, ifr=shares?qi/shares*100:0;
+    F.push((F.length?F.at(-1):0)+fr); I.push((I.length?I.at(-1):0)+ifr);
+    const Hprev=H, HpeakPrev=Hpeak;
+    if(q>0){C=(C*H+vwap*q)/(H+q);H=H+q;}
+    else{H=H+q;if(H<=0){H=0;C=0;Hpeak=0;}}
+    if(H>Hpeak)Hpeak=H;
+    const holdPct=shares?H/shares*100:0, peakPct=shares?Hpeak/shares*100:0;
+    const back=(a,k)=>{const j=i-k;return j>=0?a[j]:0;};
+    const dW=F[i]-back(F,W), d20=F[i]-back(F,20), indW=I[i]-back(I,W), ind20=I[i]-back(I,20);
+    const c0=closes[Math.max(0,i-W)], retW=c0>0?close/c0-1:0;
+    const lo20=Math.max(0,i-19);
+    let buy20=0;for(let k=lo20;k<=i;k++)if(Q[k]>0)buy20++;
+    const high20p=i>=1?Math.max(...closes.slice(Math.max(0,i-20),i)):close;
+    const high60=Math.max(...closes.slice(Math.max(0,i-59),i+1));
+    const v20=vols.slice(Math.max(0,i-20),i), vol20p=i>=1?sum(v20)/v20.length:vol;
+    const v5=vols.slice(Math.max(0,i-4),i+1), vol5=sum(v5)/v5.length;
+    ma20.push(i>=19?sum(closes.slice(i-19,i+1))/20:null);
+    const rising=i>=24&&ma20[i]!=null&&ma20[i-5]!=null&&ma20[i]>ma20[i-5];
+    const gap=(C>0&&H>0)?close/C-1:null;
+    let num=0,den=0;
+    for(let k=lo20;k<=i;k++)if(Q[k]<0){den+=-Q[k];num+=Math.min(-Q[k],Math.max(QI[k],0));}
+    const transfer=den>0?num/den:null;
+    const acc=dW>=dth&&retW<rth&&indW<0;
+    const quiet=acc&&retW<=0;
+    const markup=H>0&&Hpeak>0&&H>=0.8*Hpeak&&gap!=null&&gap>0.05&&rising;
+    const dist=H>0&&((gap!=null&&gap>=0.20)||close>=0.95*high60)&&d20<0&&ind20>0&&vol5>=vol20p;
+    const markdown=d20<0&&((peakPct>=0.5&&H<=0.5*Hpeak)||(gap!=null&&gap<0));
+    const sig=[], cur=phase;
+    if(cur==="ACC"&&pdays>=20&&i>=20&&close>high20p&&q>0&&vol>=1.5*vol20p)sig.push("B1");
+    if(cur==="MARKUP"&&gap!=null&&gap>=0&&gap<=0.05&&sum(Q.slice(Math.max(0,i-4),i+1))>=0&&ind<0&&i-lastB2>=5){sig.push("B2");lastB2=i;}
+    if((cur==="MARKUP"||cur==="DIST")&&gap!=null&&gap<0&&gapPrev!=null&&gapPrev<0
+       &&!(i>=2&&out[i-2].gap!=null&&out[i-2].gap<0))sig.push("S2");
+    if(peakPct>=0.5&&H<=0.5*Hpeak&&HpeakPrev>0&&Hprev>0.5*HpeakPrev)sig.push("S3");
+    const hl=+(r.high||0)-+(r.low||0);
+    if(gap!=null&&gap>=0.30&&vol>=2*vol20p&&hl>0&&(+(r.high||0)-close)/hl>=0.5&&q<0)sig.push("S4");
+    let tgt;
+    if(cur==="ACC")tgt=markdown?"DOWN":(markup&&retW>=rth)?"MARKUP":dW<=0?"NEUTRAL":"ACC";
+    else if(cur==="MARKUP")tgt=dist?"DIST":markdown?"DOWN":H===0?"NEUTRAL":"MARKUP";
+    else if(cur==="DIST")tgt=markdown?"DOWN":(markup&&d20>0)?"MARKUP":H===0?"NEUTRAL":"DIST";
+    else if(cur==="DOWN")tgt=acc?"ACC":!markdown?"NEUTRAL":"DOWN";
+    else tgt=acc?"ACC":dist?"DIST":markup?"MARKUP":"NEUTRAL";
+    let nw=cur;
+    if(sig.includes("B1")){nw="MARKUP";pendT=null;pend=0;}
+    else if(tgt!==cur){
+      if(pendT===tgt)pend++;else{pendT=tgt;pend=1;}
+      if(pend>=3){nw=tgt;pendT=null;pend=0;}
+    }else{pendT=null;pend=0;}
+    if(nw!==cur){if(nw==="DIST")sig.push("S1");phase=nw;pdays=1;}else pdays++;
+    gapPrev=gap;
+    out.push({date:r.date,close,phase,phase_days:pdays,signals:sig,hold_pct:holdPct,peak_pct:peakPct,
+      cost:H>0?C:null,gap,F:F[i],I:I[i],dW,d20,indW,ind20,retW,buy20,transfer,quiet,q});
+  }
+  return out;
+}
+
+const SM_ORDER=["ACC","MARKUP","DIST","DOWN"];
+const SM_PH_C={ACC:"var(--good)",MARKUP:"var(--up)",DIST:"var(--s1)",DOWN:"var(--down)",NEUTRAL:"var(--ink-3)"};
+const SM_SUBJ_ALL=[["foreign","외국인"],["inv_trust","투신"],["pe","사모"],["pension","연기금"],["fin_inv","금융투자"],["corp_other","기타법인"]];
+const SM_SUBJ_DEF=["foreign","inv_trust","pe","pension"];
+// 단계 막대 ①②③④ — 현재 칸은 진하게, 지나온 칸은 옅게, 중립이면 모두 빈 칸
+function smStageHtml(phase){
+  const k=SM_PH_IDX[phase]||0;
+  return `<span class="smstage" title="${SM_PH_KR[phase]||""}">`+SM_ORDER.map((p,i)=>
+    `<i class="${i+1===k?"on":i+1<k?"past":""}" style="--c:${SM_PH_C[p]}"></i>`).join("")+`</span>`;
+}
+function smPhaseSub(p,days,changed,prev){
+  if(changed)return `<span style="color:${SM_PH_C[p]};font-weight:650">오늘 ${SM_PH_KR[prev]||"중립"}→${SM_PH_KR[p]}</span>`;
+  return `<span class="faint">${SM_PH_KR[p]} ${days}일째</span>`;
+}
+function smSigHtml(sig,ago){
+  if(!sig)return '<span class="faint">–</span>';
+  const b=sig[0]==="B";
+  return `<span class="smsig ${b?"b":"s"}" title="${SM_SIG_KR[sig]}">${sig}</span> <span class="faint" style="font-size:10.5px">${ago===0?"오늘":ago+"일 전"}</span>`;
+}
+// v_stock_chart 행 → smSeries 입력. 투신·사모·연기금·금융투자·기타법인은 누적(_cum)의 차이로 일별 값을 복원
+function smRowsFrom(rows,subj=SM_SUBJ_DEF){
+  const cumK={inv_trust:"inv_trust_cum",pe:"pe_cum",pension:"pension_cum",fin_inv:"fin_inv_cum",corp_other:"corp_other_cum"};
+  return rows.map((r,i)=>{
+    const p=i>0?rows[i-1]:null;
+    const day=k=>k==="foreign"?+(r.foreign_net||0):k==="inst"?+(r.inst_net||0):(+(r[cumK[k]]||0)-(p?+(p[cumK[k]]||0):0));
+    return {date:r.trade_date,trade_date:r.trade_date,close:+r.close,high:+r.high,low:+r.low,volume:+r.volume,
+      trade_amount:+r.trade_amount,market_cap:r.market_cap==null?null:+r.market_cap,
+      sm:subj.reduce((a,k)=>a+day(k),0),ind:+(r.individual_net||0)};
+  });
+}
+// 가격 + SM 평단선(점선) + 국면 배경 띠 + 신호 마커(▲매수 ▼매도)
+function smPriceChart(host,ser,opt={}){
+  host.innerHTML="";
+  if(!ser.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
+  const W=opt.w||1180,H=opt.h||320,P={t:14,r:70,b:22,l:12};
+  const iw=W-P.l-P.r, ih=H-P.t-P.b, n=ser.length;
+  const vals=ser.flatMap(z=>[z.close,z.cost]).filter(v=>v!=null&&v>0);
+  let lo=Math.min(...vals),hi=Math.max(...vals);const pad=(hi-lo)*0.06||hi*0.02;lo-=pad;hi+=pad;
+  const X=i=>P.l+(n===1?iw/2:i*iw/(n-1)), Y=v=>P.t+ih-(v-lo)/(hi-lo)*ih;
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">`;
+  // 국면 띠
+  let a=0;
+  for(let i=1;i<=n;i++){
+    if(i===n||ser[i].phase!==ser[a].phase){
+      const p=ser[a].phase;
+      if(p!=="NEUTRAL"){const x0=a===0?P.l:(X(a-1)+X(a))/2, x1=i===n?P.l+iw:(X(i-1)+X(i))/2;
+        s+=`<rect x="${x0}" y="${P.t}" width="${Math.max(1,x1-x0)}" height="${ih}" fill="${SM_PH_C[p]}" fill-opacity=".10"/>`;}
+      a=i;
+    }
+  }
+  for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,y=Y(v);
+    s+=`<line x1="${P.l}" x2="${P.l+iw}" y1="${y}" y2="${y}" stroke="var(--grid)"/><text x="${P.l+iw+6}" y="${y+4}" font-size="11" fill="var(--ink-3)">${N(v,0)}</text>`;}
+  const lb=ser.map(z=>String(z.date).slice(2).replace(/-/g,"/"));
+  monthTicks(lb).forEach(i=>{s+=`<text x="${X(i)}" y="${H-6}" font-size="10.5" fill="var(--ink-3)" text-anchor="middle">${monthLabel(lb[i])}</text>`;});
+  // 평단선 (보유 0이면 끊김)
+  let d="";ser.forEach((z,i)=>{if(z.cost!=null){d+=(d&&ser[i-1]&&ser[i-1].cost!=null?"L":"M")+X(i).toFixed(1)+" "+Y(z.cost).toFixed(1);}});
+  if(d)s+=`<path d="${d}" fill="none" stroke="var(--s3)" stroke-width="1.6" stroke-dasharray="5 4"/>`;
+  s+=`<path d="${ser.map((z,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(z.close).toFixed(1)).join("")}" fill="none" stroke="var(--ink)" stroke-width="1.5"/>`;
+  ser.forEach((z,i)=>z.signals.forEach(g=>{
+    const b=g[0]==="B", y=b?Y(z.close)+16:Y(z.close)-8;
+    s+=`<text x="${X(i)}" y="${y}" font-size="12" text-anchor="middle" fill="${b?"var(--up)":"var(--down)"}">${b?"▲":"▼"}</text>`;
+  }));
+  const last=ser.at(-1);
+  if(last.cost!=null)s+=`<text x="${P.l+iw+6}" y="${Y(last.cost)+4}" font-size="11" font-weight="650" fill="var(--s3)">평단 ${N(last.cost,0)}</text>`;
+  s+=`<line class="cx" x1="0" x2="0" y1="${P.t}" y2="${P.t+ih}" stroke="var(--axis)" visibility="hidden"/></svg>`;
+  host.insertAdjacentHTML("beforeend",s);
+  const svg=host.querySelector("svg"), tip=tipFor(host), cx=svg.querySelector(".cx");
+  svg.onmousemove=e=>{
+    const rc=svg.getBoundingClientRect(), xv=(e.clientX-rc.left)/rc.width*W;
+    const i=Math.max(0,Math.min(n-1,Math.round((xv-P.l)/iw*(n-1)))), z=ser[i];
+    cx.setAttribute("x1",X(i));cx.setAttribute("x2",X(i));cx.setAttribute("visibility","visible");
+    tip.innerHTML=`<b>${z.date}</b><br>종가 ${N(z.close)}원${z.cost!=null?`<br>SM 평단 ${N(z.cost,0)}원 (${pm(z.gap*100,1)}%)`:""}<br>${SM_PH_KR[z.phase]} ${z.phase_days}일째`
+      +(z.signals.length?`<br>${z.signals.map(g=>`<b>${g}</b> ${SM_SIG_KR[g]}`).join(", ")}`:"");
+    tip.style.display="block";
+    const hx=(e.clientX-host.getBoundingClientRect().left);
+    tip.style.left=Math.min(hx+12,host.clientWidth-180)+"px";tip.style.top="8px";
+  };
+  svg.onmouseleave=()=>{tip.style.display="none";cx.setAttribute("visibility","hidden");};
+}
+
+/* ══ 스마트머니 탭 ══════════════════════════════════════════════════ */
+S.smTab=S.smTab||"buy"; S.smPhase=null;
+async function loadSm(){
+  if(!S.smRows){
+    const all=[];
+    for(let off=0;off<10000;off+=1000){
+      const part=await q("smart_money_state",`select=*&order=code.asc&limit=1000&offset=${off}`);
+      all.push(...part);if(part.length<1000)break;
+    }
+    S.smRows=all;
+  }
+  renderSm();
+}
+function renderSm(){
+  const rows=S.smRows||[];
+  if(!rows.length){$("#smMap").innerHTML='<div class="load">아직 계산 결과가 없습니다 — Actions에서 "Smart Money Phase"를 한 번 실행하세요.</div>';$("#smBody").innerHTML="";return;}
+  $("#smAsOf").textContent=`${rows[0].as_of} 기준 · ${N(rows.length)}종목 · SM = 외국인+투신+사모+연기금 · 판정 120일`;
+  const cnt={},chg={};["ACC","MARKUP","DIST","DOWN","NEUTRAL"].forEach(p=>{cnt[p]=0;chg[p]=0;});
+  rows.forEach(r=>{cnt[r.phase]=(cnt[r.phase]||0)+1;if(r.changed_today)chg[r.phase]=(chg[r.phase]||0)+1;});
+  $("#smMap").innerHTML=["ACC","MARKUP","DIST","DOWN","NEUTRAL"].map(p=>
+    `<button class="smseg" data-p="${p}" aria-pressed="${S.smPhase===p}" style="--c:${SM_PH_C[p]};--w:${Math.max(1,cnt[p])}">
+      <b>${SM_PH_KR[p]}</b><span>${N(cnt[p])}개${p!=="NEUTRAL"?` · 오늘 +${chg[p]}`:""}</span></button>`).join("");
+  $$("#smMap .smseg").forEach(b=>b.onclick=()=>{S.smPhase=S.smPhase===b.dataset.p?null:b.dataset.p;renderSm();});
+  $$("#smTabs .fchip").forEach(b=>{b.setAttribute("aria-pressed",!S.smPhase&&b.dataset.v===S.smTab);
+    b.onclick=()=>{S.smTab=b.dataset.v;S.smPhase=null;renderSm();};});
+  const favs=new Set(favList());
+  let list,scoreK,note;
+  if(S.smPhase){
+    list=rows.filter(r=>r.phase===S.smPhase);
+    const desc=S.smPhase==="ACC"||S.smPhase==="MARKUP";
+    list.sort((a,b)=>desc?(+b.d_w)-(+a.d_w):(+a.d_20)-(+b.d_20));
+    scoreK=null;note=`<b>${SM_PH_KR[S.smPhase]}</b> 국면 종목 — ${desc?"SM 120일 지분 증가 큰 순":"SM 20일 순매도 큰 순"} (국면 칸을 다시 누르면 해제)`;
+  }else if(S.smTab==="buy"){
+    list=rows.filter(r=>r.buy_score!=null).sort((a,b)=>b.buy_score-a.buy_score);scoreK="buy_score";
+    note="최근 5거래일 안에 <b>B1 매집 돌파·B2 평단 눌림</b>이 나온 종목 — 점수 = 신호 신선도 40 + 매집 강도 30 + 지속성 15 + 평단 근접 15";
+  }else if(S.smTab==="sell"){
+    list=rows.filter(r=>r.sell_score!=null).sort((a,b)=>b.sell_score-a.sell_score);scoreK="sell_score";
+    note="최근 5거래일 안에 <b>S1 분산 개시·S2 평단 이탈·S3 보유 소진·S4 이익 실현</b>이 나온 종목 — 점수 = 신선도 40 + 분산 강도 30 + 개인 이전율 15 + 평단 괴리 15";
+  }else if(S.smTab==="acc"){
+    list=rows.filter(r=>r.phase==="ACC"||r.quiet).sort((a,b)=>(+b.d_w)-(+a.d_w));scoreK=null;
+    note="아직 신호 전인 <b>①매집</b> 국면 + 조용한 매집(가격은 120일간 안 올랐는데 SM이 모은 종목) — SM 120일 지분 증가 큰 순";
+  }else{
+    const rk=r=>(r.changed_today?0:1)*10+(r.sell_score!=null?1:r.buy_score!=null?2:3);
+    list=rows.filter(r=>favs.has(r.code)).sort((a,b)=>rk(a)-rk(b)||(+b.d_w)-(+a.d_w));scoreK=null;
+    note="★ 관심 종목 — 오늘 국면이 바뀐 종목 → 매도 경고 → 매수 후보 순";
+  }
+  if(!S.smPhase&&S.smTab!=="fav")list=[...list.filter(r=>favs.has(r.code)),...list.filter(r=>!favs.has(r.code))];
+  $("#smNote").innerHTML=note+` · ${N(list.length)}종목`;
+  const shown=list.slice(0,200);
+  const sigOf=r=>S.smTab==="sell"&&!S.smPhase?[r.sell_sig,r.sell_sig_ago]:S.smTab==="buy"&&!S.smPhase?[r.buy_sig,r.buy_sig_ago]
+    :(r.buy_sig_ago!=null&&(r.sell_sig_ago==null||r.buy_sig_ago<=r.sell_sig_ago))?[r.buy_sig,r.buy_sig_ago]:[r.sell_sig,r.sell_sig_ago];
+  const f=(v,d)=>v==null?"–":pm(+v,d);
+  $("#smBody").innerHTML=shown.length?shown.map((r,i)=>{const [sg,ago]=sigOf(r);
+    const score=scoreK?r[scoreK]:(r.buy_score??r.sell_score);
+    return `<tr data-code="${r.code}">
+      <td class="l"><button class="smx" data-code="${r.code}" title="가격·평단·국면 미리보기">▸</button></td>
+      <td class="l rank">${i+1}</td>
+      <td class="l">${favStar(r.code)}<a class="lk nm" data-code="${r.code}">${r.name||r.code}</a><div class="faint" style="font-size:10.5px">${r.sector||""}</div></td>
+      <td class="l">${smStageHtml(r.phase)}<div style="font-size:10.5px">${smPhaseSub(r.phase,r.phase_days,r.changed_today,r.phase_prev)}</div></td>
+      <td class="l">${smSigHtml(sg,ago)}</td>
+      <td class="${sgn(+r.d_w)}">${f(r.d_w,2)}%p</td>
+      <td>${r.hold_pct==null?"–":N(+r.hold_pct,2)+"%"}</td>
+      <td class="${sgn(+r.gap)}">${r.gap==null?"–":pm(r.gap*100,1)+"%"}</td>
+      <td>${r.transfer20==null?"–":N(r.transfer20*100,0)+"%"}</td>
+      <td>${r.buy_days20??"–"}/20</td>
+      <td class="${sgn(+r.ret_w)}">${r.ret_w==null?"–":pm(r.ret_w*100,1)+"%"}</td>
+      <td><b>${score==null?"–":N(+score,0)}</b></td>
+      <td class="opt">${r.trade_amount==null?"–":N(r.trade_amount/EOK,0)}</td></tr>`;}).join("")
+    :'<tr><td colspan="13" class="load">해당 종목 없음</td></tr>';
+  $$("#smBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+  $$("#smBody .smx").forEach(b=>b.onclick=()=>smToggle(b));
+}
+async function smToggle(btn){
+  const tr=btn.closest("tr"), nx=tr.nextElementSibling;
+  if(nx&&nx.classList.contains("smpv")){nx.remove();btn.textContent="▸";return;}
+  btn.textContent="▾";
+  const pv=document.createElement("tr");pv.className="smpv";
+  pv.innerHTML=`<td colspan="13" style="padding:6px 8px 12px"><div class="note" style="margin:0 0 4px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>최근 250거래일 · 배경 = 국면(①초록 ②빨강 ③주황 ④파랑) · 보라 점선 = SM 평단 · ▲ 매수 ▼ 매도 신호</span>
+    <a class="lk" data-code="${tr.dataset.code}">종목상세 →</a></div><div class="chart"></div></td>`;
+  tr.after(pv);
+  pv.querySelector("a.lk").onclick=e=>go("detail",e.target.dataset.code);
+  const rows=await q("v_stock_chart",`select=trade_date,close,high,low,volume,trade_amount,market_cap,foreign_net,inst_net,individual_net,inv_trust_cum,pe_cum,pension_cum,fin_inv_cum,corp_other_cum&code=eq.${tr.dataset.code}&order=trade_date.asc`);
+  const ser=smSeries(smRowsFrom(rows),120);
+  smPriceChart(pv.querySelector(".chart"),ser.slice(-250),{h:260});
+}
+
+/* ══ 종목상세 · 스마트머니 카드 ══ */
+S.smSubj=S.smSubj||[...SM_SUBJ_DEF]; S.smW=S.smW||120;
+function smCtlInit(){
+  const h=$("#dSmCtl");if(!h||h._init)return;h._init=true;
+  h.innerHTML=`<span class="faint" style="font-size:11px">주체</span>`+SM_SUBJ_ALL.map(([k,l])=>
+    `<label class="smck"><input type="checkbox" data-k="${k}" ${S.smSubj.includes(k)?"checked":""}>${l}</label>`).join("")
+    +`<span class="faint" style="font-size:11px;margin-left:10px">판정 구간</span>`
+    +[120,60].map(w=>`<label class="smck"><input type="radio" name="smW" value="${w}" ${S.smW===w?"checked":""}>${w}일</label>`).join("");
+  h.querySelectorAll("input[type=checkbox]").forEach(c=>c.onchange=()=>{
+    S.smSubj=[...h.querySelectorAll("input[type=checkbox]:checked")].map(x=>x.dataset.k);renderSmCard();});
+  h.querySelectorAll("input[type=radio]").forEach(c=>c.onchange=()=>{S.smW=+c.value;renderSmCard();});
+}
+function renderSmCard(){
+  smCtlInit();
+  const rows=S.chart&&S.chart.rows;if(!rows||!rows.length)return;
+  const sr=smRowsFrom(rows,S.smSubj.length?S.smSubj:SM_SUBJ_DEF);
+  const ser=smSeries(sr,S.smW);
+  const start=$("#dStart").value||START_D, end=$("#dEnd").value||rows.at(-1).trade_date;
+  let i0=ser.findIndex(z=>z.date>=start); if(i0<0)i0=0;
+  let i1=ser.length-1; while(i1>0&&ser[i1].date>end)i1--;
+  const rs=ser.slice(i0,i1+1), rrows=sr.slice(i0,i1+1);
+  $("#dSmRange").textContent=`${rs[0].date}~${rs.at(-1).date} · ${S.smW}일 판정`;
+  const z=ser.at(-1), prev=ser.at(-2)||z;
+  const findSig=kinds=>{for(let k=ser.length-1;k>=0;k--){const h=ser[k].signals.filter(g=>kinds.includes(g));if(h.length)return [h.at(-1),ser.length-1-k];}return [null,null];};
+  const [bs,ba]=findSig(["B1","B2"]),[ss,sa]=findSig(["S1","S2","S3","S4"]);
+  const tile=(l,v,sub="")=>`<div class="tile"><div class="lb">${l}</div><div class="vl" style="font-size:16px">${v}</div>${sub?`<div class="sub">${sub}</div>`:""}</div>`;
+  $("#dSmHead").innerHTML=`<div class="tile smbadge" style="--c:${SM_PH_C[z.phase]}"><div>${smStageHtml(z.phase)}</div>
+      <div class="vl" style="font-size:17px;color:${SM_PH_C[z.phase]}">${SM_PH_KR[z.phase]}</div>
+      <div class="sub">${z.phase!==prev.phase?`오늘 ${SM_PH_KR[prev.phase]}→${SM_PH_KR[z.phase]}`:`${z.phase_days}일째`}${z.quiet?" · 조용한 매집":""}</div></div>`
+    +tile(`SM ${S.smW}일 지분 변화`,`<span class="${sgn(z.dW)}">${pm(z.dW,2)}%p</span>`,`20일 ${pm(z.d20,2)}%p · 개인 ${S.smW}일 ${pm(z.indW,2)}%p`)
+    +tile("SM 평단 · 괴리",z.cost!=null?`${N(z.cost,0)}원`:"–",z.gap!=null?`<span class="${sgn(z.gap)}">현재가 ${pm(z.gap*100,1)}%</span> · 추정 보유 ${N(z.hold_pct,2)}%`:"보유 추정 0")
+    +tile("개인 이전율 (20일)",z.transfer==null?"–":N(z.transfer*100,0)+"%","SM이 판 물량 중 개인이 받은 비율")
+    +tile("최근 신호",[bs?`${smSigHtml(bs,ba)}`:"",ss?`${smSigHtml(ss,sa)}`:""].filter(Boolean).join("<br>")||"–",`20일 중 SM 순매수 ${z.buy20}일`);
+  smPriceChart($("#dSmPrice"),rs,{h:360});
+  const lb=rs.map(x=>String(x.date).slice(2).replace(/-/g,"/"));
+  const F0=rs[0].F, I0=rs[0].I;
+  lineChart($("#dSmFlow"),[{n:"스마트머니",v:rs.map(x=>x.F-F0),c:"--good"},{n:"개인",v:rs.map(x=>x.I-I0),c:"--down"}],lb,
+    {h:260,w:580,pr:58,zero:true,labelEnds:false,monthTicks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,2)+"%",fm:v=>pm(v,2)+"%",
+     bg:{v:rs.map(x=>x.close),n:"종가",ft:v=>N(v)+"원"}});
+  const chartRows=rows.slice(i0,i1+1).map((r,k)=>({...r,_sm:rrows[k].sm}));
+  const allRows=rows.map((r,k)=>({...r,_sm:sr[k].sm}));
+  const prof=buildPriceProfile(chartRows,24,r=>r._sm);
+  profileChart($("#dSmProfile"),prof,{h:300,w:580,pr:110,pl:70,fx:v=>N(v,0)+"억",hideNeg:true,subj:"스마트머니 순매수",
+    aboveSum:aboveSupply(allRows,r=>r._sm)});
+}
 
 /* ══ 짝꿍매매 ══════════════════════════════════════════════════════
    시장매크로 STEP2의 "업종별 거래대금" 표와 완전히 동일한 로직(SEC_COLS,
@@ -4793,7 +5140,7 @@ function redraw(skipDetailReload){
 /* ══ 2026-10-25 UI 보강: 주소(해시) 연결 · 표 열 묶음 · ⓘ 설명 접기 · 다시 시도 · 관심종목 ══ */
 // ── 주소 연결: #today, #detail/000660 처럼 화면(과 종목)을 주소에 담아 뒤로가기·즐겨찾기·링크 공유가 되게 함
 let _hashNav=false;
-const VIEW_IDS=["proc","today","flow","scr","fav","pair","sector","detail","perf","perf2"];
+const VIEW_IDS=["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2"];
 function setHash(v,code){
   const h="#"+v+(code?"/"+code:"");
   if(location.hash!==h)history.pushState(null,"",h);
