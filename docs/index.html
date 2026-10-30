@@ -578,6 +578,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .gm-sub{font-size:9.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gm-c svg{display:block;width:100%;height:46px;margin-top:2px}
 .gm-c.big svg{height:150px}
+.fh{margin:4px 0 5px;font-size:11px;line-height:1.6;font-variant-numeric:tabular-nums}
+.fh>div{display:grid;grid-template-columns:34px 68px auto;gap:4px;align-items:baseline;white-space:nowrap}
+.fh>div>span:nth-child(2){text-align:right}
+.fh .d{color:var(--ink-3);font-size:10px}
 .gm-hist{margin-top:8px;border-top:1px dashed var(--grid);padding-top:6px}
 .gm-hist .hr{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;font-size:12px;line-height:1.7;font-variant-numeric:tabular-nums}
 .gm-hist .hr .d{font-size:10px;color:var(--ink-3);margin-left:4px}
@@ -3189,6 +3193,16 @@ async function loadMarketFlowDaily(){
   _mfdCache={key:S.date,days};
   return days;
 }
+/* 2026-10-30: 최근 5거래일(오늘 포함, 최신순) 순매수액 + 괄호 = 바로 전 거래일 대비 증감률(상승 빨강·하락 파랑) */
+function flowHistHtml(v,days,key){
+  if(days.length<5||days[0][key]===undefined)return "";
+  const rows=[{date:S.date,v},...days.slice(0,5).map(d=>({date:d.date,v:d[key]}))];   // 6개: 5일 + 5번째의 전일
+  const md=d=>d?d.slice(5).replace("-","/"):"";
+  return `<div class="fh">`+rows.slice(0,5).map((r,i)=>{
+    const b=rows[i+1].v, ok=b!==0&&r.v!==0;
+    const rt=ok?`<span class="${sgn(r.v-b)}">(${pm((r.v-b)/Math.abs(b)*100,0)}%)</span>`:"";
+    return `<div><span class="d">${md(r.date)}</span><span class="${sgn(r.v)}">${pm(r.v/EOK,0)}억</span>${rt}</div>`;}).join("")+`</div>`;
+}
 // 오늘값 v(원) 대비 전일 순매수액·증감률 / 직전 5거래일 평균 순매수액·증감률
 function flowCmpHtml(v,days,key){
   const val=d=>key==="combo"?d.foreign+d.inst:d[key];
@@ -3257,7 +3271,7 @@ async function loadToday(){
       loadMarketFlowDaily().then(days=>{
         if(!days)return;
         [["tdForeign","foreign"],["tdInst","inst"],["tdCorpOther","corp_other"],["tdIndividual","individual"]]
-          .forEach(([id,key])=>{const e=$("#"+id+"Sub");if(e)e.innerHTML=flowCmpHtml(flowVal(flowRow,key,"1d"),days,key);});
+          .forEach(([id,key])=>{const e=$("#"+id+"Sub");if(e){const v=flowVal(flowRow,key,"1d");e.innerHTML=flowHistHtml(v,days,key)+flowCmpHtml(v,days,key).replace(/^<br>/,"");}});
         if(top){const e=$("#tdTopSubjSub");
           if(e)e.innerHTML=`${pm(topV/EOK,0)}억`+flowCmpHtml(topV,days,top==="combo"?"combo":top);}
       }).catch(()=>{});
