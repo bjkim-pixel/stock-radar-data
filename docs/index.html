@@ -305,6 +305,14 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .smstage{display:inline-flex;gap:3px;vertical-align:middle}
 .smstage i{display:inline-block;width:16px;height:9px;border-radius:2px;border:1px solid var(--c)}
 .smstage i.on{background:var(--c)} .smstage i.past{background:color-mix(in srgb,var(--c) 28%,transparent)}
+.smlogic{margin-top:8px;border-top:1px dashed var(--grid);padding-top:8px}
+.smlogic summary{cursor:pointer;font-size:12px;font-weight:650;color:var(--ink-2);list-style:none}
+.smlogic summary::-webkit-details-marker{display:none}
+.smlogic summary::before{content:"▸ ";color:var(--ink-3)} .smlogic[open] summary::before{content:"▾ "}
+.smlogic-t{width:100%;border-collapse:collapse;font-size:11.5px;line-height:1.55;margin:6px 0}
+.smlogic-t th{white-space:nowrap;text-align:left;vertical-align:top;padding:5px 8px 5px 0;width:1%}
+.smlogic-t{table-layout:fixed}.smlogic-t th{width:62px!important}
+.smlogic-t td{padding:5px 0;border-top:1px solid var(--grid);white-space:normal!important;text-align:left!important;word-break:keep-all} .smlogic-t tr:first-child td{border-top:0}
 .smmap{display:flex;gap:6px;flex-wrap:wrap}
 .smseg{flex:var(--w) 1 0;min-width:92px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;cursor:pointer;
   border:1.5px solid var(--c);border-radius:8px;padding:8px 10px;color:var(--ink);font:inherit;font-size:11.5px;
@@ -931,6 +939,22 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="smmap" id="smMap"><div class="load sk"></div></div>
     <div class="note">칸 너비 = 그 국면 종목 수 비율 · "오늘 +n" = 오늘 그 국면으로 들어온 종목 수 · 칸을 누르면 아래 목록이 그 국면만 남습니다.
       스마트머니(SM) = 외국인+투신+사모+연기금. 국면은 ①매집 → ②상승 → ③분산 → ④이탈 순으로 돕니다.</div>
+    <details class="smlogic"><summary>국면 산출 로직 보기</summary>
+      <div class="note" style="margin-top:6px">SM 지분 = 순매수 금액 ÷ 당일 평균가(거래대금÷거래량)로 추정한 주식수 ÷ 상장주식수. 판정 구간 W 기본 120일(60일 선택 시 지분 +0.5%p · 주가 +10% 기준).
+        평단은 순매수일만 갱신하는 평균단가법이고, 매도일은 수량만 줄이며 보유가 0 이하가 되면 초기화합니다.</div>
+      <table class="smlogic-t"><tbody>
+        <tr><th style="color:var(--good)">①매집</th><td>최근 120일 SM 지분 변화 <b>+1.0%p 이상</b> · 같은 기간 주가 상승률 <b>15% 미만</b> · 같은 기간 개인 지분 <b>감소</b>.
+          주가가 오르지 않았거나 내렸으면 "조용한 매집"으로 따로 표시.</td></tr>
+        <tr><th style="color:var(--up)">②상승</th><td>SM 추정 보유가 보유 고점의 <b>80% 이상</b> · 현재가가 SM 평단보다 <b>5% 넘게 위</b> · 20일선이 5거래일 전보다 <b>상승</b>.
+          매집→상승 전환은 주가 상승률 15% 이상이 필요하고, B1 신호가 뜨면 바로 상승으로 전환.</td></tr>
+        <tr><th style="color:var(--warn)">③분산</th><td>보유가 있고 (평단 대비 <b>+20% 이상</b> 또는 종가가 60일 고가의 <b>95% 이상</b>) · 최근 20일 SM 지분 <b>감소</b> · 최근 20일 개인 지분 <b>증가</b> ·
+          최근 5일 평균 거래량이 직전 20일 평균 <b>이상</b>. 높은 가격에서 거래량이 붙으며 SM이 개인에게 넘기는 모습.</td></tr>
+        <tr><th style="color:var(--down)">④이탈</th><td>최근 20일 SM 지분 <b>감소</b> 이면서 (보유가 고점의 <b>절반 이하</b>로 줄었음(고점 0.5% 이상일 때) 또는 현재가가 SM 평단 <b>아래</b>).</td></tr>
+        <tr><th>중립</th><td>위 조건에 모두 해당하지 않을 때, 또는 매집 중 지분 변화가 0 이하로 떨어졌을 때, 보유가 0일 때.</td></tr>
+        <tr><th>전환 규칙</th><td>새 국면 조건이 <b>3거래일 연속</b> 충족돼야 바뀝니다(하루짜리 흔들림 제외). 예외: B1 신호는 즉시 ②상승.</td></tr>
+      </tbody></table>
+      <div class="note">참고: 백테스트(20일 초과수익)에서 분산 진입(S1)은 이후에도 더 오르는 경향이 있어 매도 근거가 아니라 참고 표시입니다. 기준값은 <code>sm_core.py</code>와 화면 계산(<code>smSeries</code>)이 같습니다.</div>
+    </details>
   </div>
   <div class="card"><h3>종목 목록 <span class="r">★ 관심 종목은 각 목록 맨 위 고정 · ▸ = 가격·평단·국면 미리보기</span></h3>
     <div class="qf seg" id="smTabs" style="margin-bottom:8px">
