@@ -3189,19 +3189,34 @@ async function loadMarketFlowDaily(){
   const m={};
   all.forEach(r=>{const d=m[r.trade_date]||(m[r.trade_date]={foreign:0,inst:0,corp_other:0,individual:0});
     d.foreign+=+r.foreign_net||0;d.inst+=+r.inst_net||0;d.corp_other+=+r.corp_other_net||0;d.individual+=+r.individual_net||0;});
-  const days=Object.keys(m).filter(d=>(!S.date||d<S.date)&&(!S.tradeDaySet||!S.tradeDaySet.size||S.tradeDaySet.has(d))).sort().reverse().map(d=>({date:d,...m[d]}));
+  const days=Object.keys(m).filter(d=>{const w=new Date(d+"T00:00:00+09:00").getDay();return w>=1&&w<=5&&(!S.tradeDaySet||!S.tradeDaySet.size||S.tradeDaySet.has(d));}).sort().reverse().map(d=>({date:d,...m[d]}));
   _mfdCache={key:S.date,days};
   return days;
 }
-/* 2026-10-30: 최근 5거래일(오늘 포함, 최신순) 순매수액 + 괄호 = 바로 전 거래일 대비 증감률(상승 빨강·하락 파랑) */
-function flowHistHtml(v,days,key){
-  if(days.length<5||days[0][key]===undefined)return "";
-  const rows=[{date:S.date,v},...days.slice(0,5).map(d=>({date:d.date,v:d[key]}))];   // 6개: 5일 + 5번째의 전일
+/* 2026-10-30: 최근 5거래일(오늘 포함, 최신순) 순매수액 + 괄호 = 바로 전 거래일 대비 증감률(상승 빨강·하락 파랑).
+   series: [{date,v}] 최신순(오늘이 맨 앞). 오늘 값은 큰 숫자와 같은 값이라 한 번만 나옴 */
+function flowHistHtml(series){
+  if(!series||series.length<2)return "";
   const md=d=>d?d.slice(5).replace("-","/"):"";
-  return `<div class="fh">`+rows.slice(0,5).map((r,i)=>{
-    const b=rows[i+1].v, ok=b!==0&&r.v!==0;
-    const rt=ok?`<span class="${sgn(r.v-b)}">(${pm((r.v-b)/Math.abs(b)*100,0)}%)</span>`:"";
+  return `<div class="fh">`+series.slice(0,5).map((r,i)=>{
+    const p=series[i+1], ok=p&&p.v!==0&&r.v!==0;
+    const rt=ok?`<span class="${sgn(r.v-p.v)}">(${pm((r.v-p.v)/Math.abs(p.v)*100,0)}%)</span>`:"";
     return `<div><span class="d">${md(r.date)}</span><span class="${sgn(r.v)}">${pm(r.v/EOK,0)}억</span>${rt}</div>`;}).join("")+`</div>`;
+}
+// 주체별 일별 시장 합계 시계열 [{date,v}] 최신순. sector_flow_daily에 있는 주체는 그대로, 없는 주체(금투·투신·연금·사모)는 daily_flow를 날짜별로 합산
+const _sdCache={};
+async function loadSubjDaily(key,days){
+  if(days.length&&days[0][key]!==undefined)return days.map(d=>({date:d.date,v:d[key]}));
+  const ck=key+"|"+(days[0]&&days[0].date);
+  if(_sdCache[ck])return _sdCache[ck];
+  const ok=new Set(days.map(d=>d.date));
+  const from=new Date(Date.now()-24*864e5).toISOString().slice(0,10), col=key+"_net", m={};
+  for(let off=0;off<10000;off+=1000){
+    const part=await q("daily_flow",`select=trade_date,${col}&trade_date=gte.${from}&order=trade_date.desc&limit=1000&offset=${off}`);
+    part.forEach(r=>{if(ok.has(r.trade_date))m[r.trade_date]=(m[r.trade_date]||0)+(+r[col]||0);});
+    if(part.length<1000)break;
+  }
+  return _sdCache[ck]=Object.keys(m).sort().reverse().map(d=>({date:d,v:m[d]}));
 }
 // 오늘값 v(원) 대비 전일 순매수액·증감률 / 직전 5거래일 평균 순매수액·증감률
 function flowCmpHtml(v,days,key){
@@ -3271,9 +3286,9 @@ async function loadToday(){
       loadMarketFlowDaily().then(days=>{
         if(!days)return;
         [["tdForeign","foreign"],["tdInst","inst"],["tdCorpOther","corp_other"],["tdIndividual","individual"]]
-          .forEach(([id,key])=>{const e=$("#"+id+"Sub");if(e){const v=flowVal(flowRow,key,"1d");e.innerHTML=flowHistHtml(v,days,key)+flowCmpHtml(v,days,key).replace(/^<br>/,"");}});
+          .forEach(([id,key])=>{const e=$("#"+id+"Sub");if(e)e.innerHTML=flowHistHtml(days.map(d=>({date:d.date,v:d[key]})));});
         if(top){const e=$("#tdTopSubjSub");
-          if(e)e.innerHTML=`${pm(topV/EOK,0)}억`+flowCmpHtml(topV,days,top==="combo"?"combo":top);}
+          if(e&&top!=="combo")loadSubjDaily(top,days).then(sr=>{const h=flowHistHtml(sr);if(h)e.innerHTML=h;}).catch(()=>{});}
       }).catch(()=>{});
     }
     $("#todayMktNote").textContent=S.date?`${S.date} 기준`:"";
