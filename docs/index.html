@@ -1169,8 +1169,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="legend" style="margin:6px 0 0;flex-wrap:nowrap;white-space:nowrap"><span class="faint">배경</span><span><i class="bx" style="background:color-mix(in srgb,var(--good) 30%,transparent);border:1px solid var(--good)"></i>①매집</span><span><i class="bx" style="background:color-mix(in srgb,var(--up) 30%,transparent);border:1px solid var(--up)"></i>②상승</span><span><i class="bx" style="background:color-mix(in srgb,var(--warn) 30%,transparent);border:1px solid var(--warn)"></i>③분산</span><span><i class="bx" style="background:color-mix(in srgb,var(--down) 30%,transparent);border:1px solid var(--down)"></i>④이탈</span></div>
     <div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span><span style="color:var(--up)">▲ 매수 신호</span><span style="color:var(--down)">▼ 매도 신호</span><span class="faint">△▽ 참고 신호</span></div>
     <div class="grid2" style="margin-top:12px">
-      <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 누적 순매수 주식수 ÷ 상장주식수(%) · 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = 종가</div><div class="chart" id="dSmFlow"></div>
-        <div class="legend" style="margin:6px 0 0"><span><i style="background:var(--good)"></i>스마트머니(외국인+투신+사모+연기금)</span><span><i style="background:var(--down)"></i>개인</span><span><i style="background:var(--axis)"></i>종가</span></div></div>
+      <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 누적 순매수 주식수 ÷ 상장주식수(%) · 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = 종가(최고·최저·종가 가격 표시) · 주황 점선 = 2026-08 이후 박스권 상·하단</div><div class="chart" id="dSmFlow"></div>
+        <div class="legend" style="margin:6px 0 0"><span><i style="background:var(--good)"></i>스마트머니(외국인+투신+사모+연기금)</span><span><i style="background:var(--down)"></i>개인</span><span><i style="background:var(--axis)"></i>종가</span><span><i class="bx" style="border:1.5px dashed var(--warn)"></i>박스권(2026-08~) 상·하단</span></div></div>
       <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>SM 매물대</b> — 가격대별 스마트머니 순매수 합(억원) · 현재가 아래 물량이 많을수록 지지</div><div class="chart" id="dSmProfile"></div></div>
     </div>
     <div class="note">위 기간 입력을 따릅니다. 주체·판정 구간을 바꾸면 이 카드만 다시 계산합니다(스마트머니 탭 목록은 기본값 외국인+투신+사모+연기금·120일 고정).
@@ -1746,6 +1746,34 @@ function lineChart(host,series,labels,opt={}){
         d+=`${pen?"L":"M"}${X(i).toFixed(1)},${Yb(v).toFixed(1)}`;pen=true;});
       svg.appendChild(el("path",{d,fill:"none",stroke:css("--ink-3"),"stroke-width":1,opacity:.55,
         "stroke-linecap":"round","stroke-linejoin":"round"}));
+      /* 2026-10-30: bg.marks — 종가선에 최고·최저·오늘 점과 가격, bg.boxFrom(인덱스) — 그 이후 최고·최저 종가를 가로 점선(박스권)으로 */
+      const pts=opt.bg.v.map((v,i)=>({v,i})).filter(o=>o.v!=null&&!isNaN(o.v));
+      const txt=(x,y,anc,str,c,sz=10)=>{const t=el("text",{x,y,"text-anchor":anc,"font-size":sz,"font-weight":700,fill:c,
+        stroke:css("--surface"),"stroke-width":3.2,"paint-order":"stroke"});t.textContent=str;svg.appendChild(t);};
+      if(opt.bg.boxFrom!=null&&opt.bg.boxFrom<labels.length){
+        const seg=pts.filter(o=>o.i>=opt.bg.boxFrom);
+        if(seg.length>1){
+          const bh=Math.max(...seg.map(o=>o.v)),bl=Math.min(...seg.map(o=>o.v));
+          const yh=Yb(bh),yl=Yb(bl),x0=X(seg[0].i),x1=W-P.r,c=css("--warn");
+          svg.appendChild(el("rect",{x:x0,y:yh,width:x1-x0,height:Math.max(1,yl-yh),fill:c,"fill-opacity":.07}));
+          [yh,yl].forEach(y=>svg.appendChild(el("line",{x1:x0,x2:x1,y1:y,y2:y,stroke:c,"stroke-width":1.3,"stroke-dasharray":"4 3"})));
+          txt(x1+4,yh+3.5,"start","상단 "+N(bh),c,9.5);
+          txt(x1+4,yl+3.5,"start","하단 "+N(bl),c,9.5);
+          txt(x0+3,yl+11,"start","박스권 "+String(labels[seg[0].i]).replace(/\//g,"-")+"~",c,9);
+        }
+      }
+      if(opt.bg.marks&&pts.length>1){
+        const hi=pts.reduce((a,b)=>b.v>a.v?b:a),lo=pts.reduce((a,b)=>b.v<a.v?b:a),td=pts.at(-1);
+        const m=new Map();
+        [[hi,"최고"],[lo,"최저"],[td,"종가"]].forEach(([o,t])=>{const e=m.get(o.i)||{o,t:[]};e.t.push(t);m.set(o.i,e);});
+        const mid=(hi.v+lo.v)/2;
+        m.forEach(({o,t})=>{
+          const col=t.includes("최고")?css("--up"):t.includes("최저")?css("--down"):css("--ink");
+          svg.appendChild(el("circle",{cx:X(o.i),cy:Yb(o.v),r:3.8,fill:col,stroke:css("--surface"),"stroke-width":1.8}));
+          const left=o.i>labels.length*0.8,below=o.v<mid;
+          txt(X(o.i)+(left?-7:7),Yb(o.v)+(below?13:-7),left?"end":"start",t.join("·")+" "+N(o.v),col);
+        });
+      }
     }
   }
   series.forEach(s=>{
@@ -3997,6 +4025,8 @@ $("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
 /* ══ 스마트머니(SM) 매집·분산 — sm_core.py sm_series()와 한 줄씩 같은 계산 ══════════
    (서버가 smart_money_state를 이 로직으로 채우고, 종목상세 카드는 주체·구간을 바꿔 브라우저에서 다시 계산)
    한쪽을 고치면 다른 쪽도 같이 고칠 것. rows: {date,close,high,low,volume,trade_amount,market_cap,sm,ind} 오름차순 */
+// 박스권 표시 시작일 — 이 날짜 이후 종가의 최고·최저를 매집/분산 차트에 점선으로 그림 (2026-10-30 사용자 지정)
+const SM_BOX_FROM="2026-08-01";
 const SM_PH_KR={NEUTRAL:"중립",ACC:"①매집",MARKUP:"②상승",DIST:"③분산",DOWN:"④이탈"};
 const SM_PH_IDX={ACC:1,MARKUP:2,DIST:3,DOWN:4,NEUTRAL:0};
 const SM_SIG_KR={B1:"매집 돌파",B2:"평단 눌림",S1:"분산 개시",S2:"평단 이탈",S3:"보유 소진",S4:"이익 실현"};
@@ -4279,8 +4309,9 @@ function renderSmCard(){
   const lb=rs.map(x=>String(x.date).slice(2).replace(/-/g,"/"));
   const F0=rs[0].F, I0=rs[0].I;
   lineChart($("#dSmFlow"),[{n:"스마트머니",v:rs.map(x=>x.F-F0),c:"--good"},{n:"개인",v:rs.map(x=>x.I-I0),c:"--down"}],lb,
-    {h:260,w:580,pr:58,zero:true,labelEnds:false,monthTicks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,2)+"%",fm:v=>pm(v,2)+"%",
-     bg:{v:rs.map(x=>x.close),n:"종가",ft:v=>N(v)+"원"}});
+    {h:300,w:580,pr:92,zero:true,labelEnds:false,monthTicks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,2)+"%",fm:v=>pm(v,2)+"%",
+     bg:{v:rs.map(x=>x.close),n:"종가",ft:v=>N(v)+"원",marks:true,
+         boxFrom:(i=>i<0?null:i)(rs.findIndex(x=>x.date>=SM_BOX_FROM))}});
   const chartRows=rows.slice(i0,i1+1).map((r,k)=>({...r,_sm:rrows[k].sm}));
   const allRows=rows.map((r,k)=>({...r,_sm:sr[k].sm}));
   const prof=buildPriceProfile(chartRows,24,r=>r._sm);
