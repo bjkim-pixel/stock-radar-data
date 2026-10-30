@@ -783,7 +783,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   </div>
 
   <div class="card" style="margin-top:12px"><h3>기준별 강한 종목 Top 10
-    <span class="r">오늘 이 기준으로 가장 강했던 종목 · 칩 선택으로 기준 전환</span></h3>
+    <span class="r">오늘 이 기준으로 가장 강했던 종목 · 칩을 여러 개 누르면 모두 만족하는 종목</span></h3>
     <div id="tdTopChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px">
       <button class="fchip on" data-crit="weight">무게/주식수</button>
       <button class="fchip" data-crit="rs_accel">RS 가속</button>
@@ -3643,26 +3643,54 @@ function buildTopCodes(universe){
   S._topCodeMap=map; S._topCodeDate=S.date;
   return map;
 }
-function renderTodayTop(universe){
-  const crit=S.tdTopCrit||"weight", def=TD_TOP_CRITERIA[crit];
-  if(!def)return;
-  $("#tdTopKeyHd").textContent=def.lbl;
-  $("#tdTopCritNote").textContent=def.note;
-  $$("#tdTopChips .fchip").forEach(b=>b.classList.toggle("on",b.dataset.crit===crit));
-  const topMap=buildTopCodes(universe);
-  const sorted=[...universe].filter(r=>def.keyFn(r)!=null)
+/* 2026-10-30: 칩을 여러 개 고르면 "모든 기준을 동시에 만족하는 종목" — 각 기준 상위 TD_MULTI_K위 이내 종목의 교집합,
+   기준별 순위 합이 작은 순(동률은 등락률 큰 순)으로 10개. 하나만 고르면 기존과 동일. */
+const TD_MULTI_K=100;
+S.tdTopSet=null;
+function tdRankMap(universe,def,topMap){
+  const arr=[...universe].filter(r=>def.keyFn(r)!=null)
     .sort((a,b)=>(def.dir===1?def.keyFn(b)-def.keyFn(a):def.keyFn(a)-def.keyFn(b))
-      ||((def.meta||def.tie)?(+b.change_pct||0)-(+a.change_pct||0):0)).slice(0,10);
+      ||((def.meta||def.tie)?(+b.change_pct||0)-(+a.change_pct||0):0));
+  const m=new Map(); arr.slice(0,TD_MULTI_K).forEach((r,i)=>m.set(r.code,i+1)); return m;
+}
+function renderTodayTop(universe){
+  if(!S.tdTopSet||!S.tdTopSet.size)S.tdTopSet=new Set([S.tdTopCrit||"weight"]);
+  const crits=[...S.tdTopSet].filter(c=>TD_TOP_CRITERIA[c]);
+  const multi=crits.length>1;
+  const crit=crits[0]||"weight", def=TD_TOP_CRITERIA[crit];
+  if(!def)return;
+  $("#tdTopKeyHd").textContent=multi?"기준별 순위":def.lbl;
+  $("#tdTopCritNote").textContent=multi
+    ?`선택한 ${crits.length}개 기준(${crits.map(c=>TD_TOP_CRITERIA[c].lbl).join(" + ")})을 모두 만족하는 종목 — 각 기준 상위 ${TD_MULTI_K}위 이내 교집합, 기준별 순위 합이 작은 순`
+    :def.note;
+  $$("#tdTopChips .fchip").forEach(b=>b.classList.toggle("on",S.tdTopSet.has(b.dataset.crit)));
+  const topMap=buildTopCodes(universe);
+  let sorted, rankInfo=null;
+  if(multi){
+    const maps=crits.map(c=>tdRankMap(universe,TD_TOP_CRITERIA[c],topMap));
+    const byCode=new Map(universe.map(r=>[r.code,r]));
+    rankInfo=new Map();
+    sorted=[...maps[0].keys()].filter(code=>maps.every(m=>m.has(code))).map(code=>{
+      const ranks=maps.map(m=>m.get(code)); rankInfo.set(code,ranks);
+      return {r:byCode.get(code),sum:ranks.reduce((a,b)=>a+b,0)};})
+      .filter(x=>x.r).sort((a,b)=>a.sum-b.sum||(+b.r.change_pct||0)-(+a.r.change_pct||0)).map(x=>x.r).slice(0,10);
+  }else{
+    sorted=[...universe].filter(r=>def.keyFn(r)!=null)
+      .sort((a,b)=>(def.dir===1?def.keyFn(b)-def.keyFn(a):def.keyFn(a)-def.keyFn(b))
+        ||((def.meta||def.tie)?(+b.change_pct||0)-(+a.change_pct||0):0)).slice(0,10);
+  }
   const mk=r=>r.market==="KOSPI"?'<span class="cd">피</span> ':'<span class="cd">닥</span> ';
   const badge=()=>"";
   const dn=$("#tdTopDupNote");
-  if(def.meta){
+  if(def.meta&&!multi){
     dn.style.display="";
     dn.innerHTML=sorted.length?sorted.map((r,i)=>`${i+1}. <b>${r.name}</b> — ${[...(topMap[r.code]||[])].join(", ")}`).join("<br>"):"";
   }else{dn.style.display="none";dn.innerHTML="";}
   const rowsHtml=sorted.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
-      <td><b>${def.keyFmt(def.keyFn(r),r)}</b></td>${scrCells(r)}</tr>`).join("");
-  $("#tdTopBody").innerHTML=sorted.length?rowsHtml:`<tr><td colspan="30" class="load">해당 종목 없음</td></tr>`;
+      <td>${multi
+        ?`<span style="font-size:10.5px;line-height:1.5;display:block">${crits.map((c,k)=>`${TD_TOP_CRITERIA[c].lbl} <b>${rankInfo.get(r.code)[k]}위</b>`).join("<br>")}</span>`
+        :`<b>${def.keyFmt(def.keyFn(r),r)}</b>`}</td>${scrCells(r)}</tr>`).join("");
+  $("#tdTopBody").innerHTML=sorted.length?rowsHtml:`<tr><td colspan="30" class="load">${multi?"선택한 기준을 모두 만족하는 종목이 없습니다 — 기준을 줄여 보세요":"해당 종목 없음"}</td></tr>`;
   $$("#tdTopBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   makeSortable("tdTopBody");
 }
@@ -3674,7 +3702,11 @@ async function loadTodayClusterSectors(){
   }catch(e){ S.tdClusterSectors=new Set(); }
 }
 $$("#tdTopChips .fchip").forEach(b=>b.onclick=()=>{
-  S.tdTopCrit=b.dataset.crit;
+  if(!S.tdTopSet||!S.tdTopSet.size)S.tdTopSet=new Set([S.tdTopCrit||"weight"]);
+  const k=b.dataset.crit;
+  if(S.tdTopSet.has(k)){if(S.tdTopSet.size>1)S.tdTopSet.delete(k);}   // 마지막 하나는 해제 불가
+  else S.tdTopSet.add(k);
+  S.tdTopCrit=[...S.tdTopSet][0];
   if(S.tdUniverse)renderTodayTop(S.tdUniverse);
 });
 function renderTodayScoreTable(scored){
