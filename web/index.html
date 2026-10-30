@@ -597,6 +597,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .gm-v{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
 .gm-desc{font-size:9.5px;line-height:1.3;color:var(--ink-3);margin-top:1px}
 .gm-sub{font-size:9.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-sv{position:relative}.gm-pl{position:absolute;inset:0;pointer-events:none}
 .gm-c svg{display:block;width:100%;height:46px;margin-top:2px}
 .gm-c.big svg{height:150px}
 .fh{margin:4px 0 5px;font-size:11px;line-height:1.6;font-variant-numeric:tabular-nums}
@@ -3485,7 +3486,7 @@ function gmWin(p,period){
   if(period==="ytd"){const y=p.as_of.slice(0,4);const i=p.dates.findIndex(d=>d.slice(0,4)===y);return i<0?p.dates.length:p.dates.length-i;}
   return Math.min(+period||126,p.dates.length);
 }
-function gmSpark(c,n,big){
+function gmSpark(c,n,big,it){
   const a=c.slice(-n), W=big?600:160, H=big?150:46, P=3;
   const v=a.map((x,i)=>[i,x]).filter(x=>x[1]!=null);
   if(v.length<2)return `<svg viewBox="0 0 ${W} ${H}"></svg>`;
@@ -3499,7 +3500,18 @@ function gmSpark(c,n,big){
     <circle cx="${X(mn[0]).toFixed(1)}" cy="${Y(mn[1]).toFixed(1)}" r="${big?3.5:2.6}" fill="var(--down)"/>
     <circle cx="${X(mx[0]).toFixed(1)}" cy="${Y(mx[1]).toFixed(1)}" r="${big?3.5:2.6}" fill="var(--up)"/>
     ${(mx===last||mn===last)?"":`<circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="${big?3.2:2.3}" fill="var(--ink)" stroke="var(--surface)" stroke-width="1" vector-effect="non-scaling-stroke"/>`}
-  </svg>`;
+  </svg>${it?gmSparkLabels(v,mx,mn,last,X,Y,W,H,it,big):""}`;
+}
+/* 최고(빨강)·최저(파랑)·오늘(검정) 점 옆에 값 표시 — svg가 가로세로로 늘어나서 글자는 HTML 겹침층으로 올림.
+   점이 왼쪽 절반이면 오른쪽에, 오른쪽 절반이면 왼쪽에 놓아 카드 밖으로 안 나가게 하고 세로는 점 높이에 맞춤 */
+function gmSparkLabels(v,mx,mn,last,X,Y,W,H,it,big){
+  const pts=[[mx,"최고","var(--up)"],[mn,"최저","var(--down)"],[last,"오늘","var(--ink)"]];
+  const seen=new Map();
+  pts.forEach(([p,t,c])=>{const e=seen.get(p)||{p,t:[],c};e.t.push(t);if(t!=="오늘")e.c=c;seen.set(p,e);});
+  return `<span class="gm-pl">`+[...seen.values()].map(({p,t,c})=>{
+    const fx=X(p[0])/W,fy=Y(p[1])/H,right=fx<0.5;
+    const txt=gmFv(it,p[1]);
+    return `<span style="position:absolute;top:${(fy*100).toFixed(1)}%;${right?`left:calc(${(fx*100).toFixed(1)}% + 6px)`:`right:calc(${((1-fx)*100).toFixed(1)}% + 6px)`};transform:translateY(-50%);color:${c};font-size:${big?10.5:8.5}px;font-weight:700;line-height:1;white-space:nowrap;text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 3px var(--surface)">${t.includes("오늘")&&t.length===1?"":""}${txt}</span>`;}).join("")+`</span>`;
 }
 /* 가로축 눈금: 짧은 기간(≤30일)은 주 시작 M/D, 그 외는 월 시작 M월. 라벨 간격이 좁으면 N개 건너뛰어 겹치지 않게 */
 function gmAxis(p,n,big){
@@ -3577,7 +3589,7 @@ function gmCard(p,key,it,period,hot){
   }
   return `<div class="gm-c${hot?" "+hot:""}${big?" big":""}" data-gmk="${key}">
     <div class="gm-h"><span class="gm-n">${it.n}${it.cap!=null?` <span class="gm-cap">${N(it.cap,0)}억</span>`:""}</span>${gmCardVal(it)}</div>${sub}${it.d_?`<div class="gm-desc">${it.d_}</div>`:""}
-    ${gmSpark(it.c,n,big)}${gmAxis(p,n,big)}${extra}${hold}</div>`;
+    <div class="gm-sv">${gmSpark(it.c,n,big,it)}</div>${gmAxis(p,n,big)}${extra}${hold}</div>`;
 }
 function gmGrid(p,g){
   const its=g.keys.map(k=>[k,p.items[k]]).filter(x=>x[1]);
