@@ -578,6 +578,11 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .gm-sub{font-size:9.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gm-c svg{display:block;width:100%;height:46px;margin-top:2px}
 .gm-c.big svg{height:150px}
+.gm-hist{margin-top:8px;border-top:1px dashed var(--grid);padding-top:6px}
+.gm-hist .hr{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;font-size:12px;line-height:1.7;font-variant-numeric:tabular-nums}
+.gm-hist .hr .d{font-size:10px;color:var(--ink-3);margin-left:4px}
+.gm-hist .hr .v{text-align:right;font-weight:650}
+.gm-hist .hr .c{min-width:74px;text-align:right;font-weight:600}
 .gm-hold{margin-top:4px;border-top:1px dashed var(--grid);padding-top:3px}
 .gm-hl{display:flex;justify-content:space-between;gap:6px;font-size:10.5px;line-height:1.55}
 .gm-hl .nm:has(.ko){display:flex;gap:4px;align-items:baseline;flex:1}
@@ -3412,6 +3417,27 @@ function gmCardVal(it){
   if(it.k==="lvl0")return `<span class="gm-v">${last==null?"–":N(last,0)}</span>`;
   const v=it.m&&it.m.d;return `<span class="gm-v ${gmC(v)}">${gmF(v)}</span>`;
 }
+/* 2026-10-30: 크게 보기 맨 아래 — 3개월전·1개월전·2주전·1주전·오늘 값, 오른쪽 괄호는 바로 윗줄(직전 시점) 대비 변화(상승 빨강·하락 파랑).
+   %·금리 계열(lvlpct·yld)은 %p 차이, 나머지는 % 변화율 */
+function gmHist(p,it){
+  const c=it.c, L=c.length;
+  const at=off=>{for(let i=L-1-off;i>=0&&i>=L-1-off-5;i--)if(c[i]!=null)return {v:c[i],d:p.dates[p.dates.length-L+i]||""};return null;};
+  const rows=[["3개월전",63],["1개월전",21],["2주전",10],["1주전",5],["오늘",0]].map(([l,o])=>({l,o,x:L>o?at(o):null}));
+  if(rows.filter(r=>r.x).length<2)return "";
+  const diff=it.k==="lvlpct"||it.k==="yld";
+  const fv=v=>it.k==="lvlpct"?gmF(v)+"%":it.k==="yld"?N(v,2)+"%":it.k==="lvl"?N(v,1):it.k==="lvl0"?N(v,0):it.k==="lvl2"?N(v,2):(Math.abs(v)>=1000?N(v,0):N(v,2));
+  let prev=null;
+  const html=rows.map(r=>{
+    let ch="";
+    if(r.x&&prev){
+      const v=diff?r.x.v-prev.v:(prev.v?(r.x.v/prev.v-1)*100:null);
+      if(v!=null&&isFinite(v)){const cl=v>0?"up":v<0?"down":"dim";ch=`<span class="${cl}">(${pm(v,2)}${diff?"%p":"%"})</span>`;}
+    }
+    if(r.x)prev=r.x;
+    return `<div class="hr"><span>${r.l}<span class="d">${r.x?r.x.d.slice(5):""}</span></span><span class="v">${r.x?fv(r.x.v):"–"}</span><span class="c">${ch}</span></div>`;
+  }).join("");
+  return `<div class="gm-hist">${html}</div>`;
+}
 function gmCard(p,key,it,period,hot){
   const big=S.gm.big===key, n=big?gmWin(p,S.gm.bigN):gmWin(p,S.gm.allN||period);
   const sub=it.etf?`<div class="gm-sub">${it.etf}</div>`:(it.s&&!/^\d/.test(it.s)&&p.tab==="US"?`<div class="gm-sub">${it.s}</div>`:"");
@@ -3421,7 +3447,7 @@ function gmCard(p,key,it,period,hot){
   if(big){
     const ds=p.dates.slice(-n);
     extra=`<div class="gm-ax"><span>${ds[0]||""}</span><span>${ds[ds.length-1]||""}</span></div>
-      <div class="gm-per">${[[21,"1M"],[63,"3M"],[126,"6M"],[252,"1Y"]].map(([v,l])=>`<button class="fchip" data-gmn="${v}" aria-pressed="${S.gm.bigN==v}">${l}</button>`).join("")}</div>`;
+      <div class="gm-per">${[[21,"1M"],[63,"3M"],[126,"6M"],[252,"1Y"]].map(([v,l])=>`<button class="fchip" data-gmn="${v}" aria-pressed="${S.gm.bigN==v}">${l}</button>`).join("")}</div>${gmHist(p,it)}`;
   }
   return `<div class="gm-c${hot?" "+hot:""}${big?" big":""}" data-gmk="${key}">
     <div class="gm-h"><span class="gm-n">${it.n}${it.cap!=null?` <span class="gm-cap">${N(it.cap,0)}억</span>`:""}</span>${gmCardVal(it)}</div>${sub}${it.d_?`<div class="gm-desc">${it.d_}</div>`:""}
