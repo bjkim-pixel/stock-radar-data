@@ -4365,6 +4365,22 @@ async function loadSm(){
   }
   renderSm();
 }
+/* 표 머리글 클릭 정렬: 열 번호 → 정렬 키 (# 열은 기본 순서로 되돌리기) */
+const SM_COLKEY={2:"name",3:"phase",4:"sig",5:"d_w",6:"hold_pct",7:"gap",8:"transfer20",9:"buy_days20",10:"ret_w",11:"score",12:"trade_amount"};
+function smHeadMark(){
+  $$("#v-sm thead th").forEach((th,i)=>{
+    if(!th.dataset.smInit&&(SM_COLKEY[i]||i===1)){
+      th.dataset.smInit="1";th.style.cursor="pointer";th.style.userSelect="none";
+      th.addEventListener("click",()=>{
+        if(i===1){S.smSort=null;}
+        else{const k=SM_COLKEY[i];S.smSort=(S.smSort&&S.smSort.k===k)?{k,dir:S.smSort.dir==="desc"?"asc":"desc"}:{k,dir:k==="name"?"asc":"desc"};}
+        renderSm();
+      });
+    }
+    const k=SM_COLKEY[i];th.querySelector(".smar")?.remove();
+    if(k&&S.smSort&&S.smSort.k===k)th.insertAdjacentHTML("beforeend",`<span class="smar"> ${S.smSort.dir==="desc"?"▼":"▲"}</span>`);
+  });
+}
 function renderSm(){
   const rows=S.smRows||[];
   if(!rows.length){$("#smMap").innerHTML='<div class="load">아직 계산 결과가 없습니다 — Actions에서 "Smart Money Phase"를 한 번 실행하세요.</div>';$("#smBody").innerHTML="";return;}
@@ -4374,9 +4390,9 @@ function renderSm(){
   $("#smMap").innerHTML=["ACC","MARKUP","DIST","DOWN","NEUTRAL"].map(p=>
     `<button class="smseg" data-p="${p}" aria-pressed="${S.smPhase===p}" style="--c:${SM_PH_C[p]};--w:${Math.max(1,cnt[p])}">
       <b>${SM_PH_KR[p]}</b><span>${N(cnt[p])}개${p!=="NEUTRAL"?` · 오늘 +${chg[p]}`:""}</span></button>`).join("");
-  $$("#smMap .smseg").forEach(b=>b.onclick=()=>{S.smPhase=S.smPhase===b.dataset.p?null:b.dataset.p;renderSm();});
+  $$("#smMap .smseg").forEach(b=>b.onclick=()=>{S.smPhase=S.smPhase===b.dataset.p?null:b.dataset.p;S.smSort=null;renderSm();});
   $$("#smTabs .fchip").forEach(b=>{b.setAttribute("aria-pressed",!S.smPhase&&b.dataset.v===S.smTab);
-    b.onclick=()=>{S.smTab=b.dataset.v;S.smPhase=null;renderSm();};});
+    b.onclick=()=>{S.smTab=b.dataset.v;S.smPhase=null;S.smSort=null;renderSm();};});
   const favs=new Set(favList());
   let list,scoreK,note;
   if(S.smPhase){
@@ -4398,11 +4414,21 @@ function renderSm(){
     list=rows.filter(r=>favs.has(r.code)).sort((a,b)=>rk(a)-rk(b)||(+b.d_w)-(+a.d_w));scoreK=null;
     note="★ 관심 종목 — 오늘 국면이 바뀐 종목 → 매도 경고 → 매수 후보 순";
   }
-  if(!S.smPhase&&S.smTab!=="fav")list=[...list.filter(r=>favs.has(r.code)),...list.filter(r=>!favs.has(r.code))];
-  $("#smNote").innerHTML=note+` · ${N(list.length)}종목`;
-  const shown=list.slice(0,200);
   const sigOf=r=>S.smTab==="sell"&&!S.smPhase?[r.sell_sig,r.sell_sig_ago]:S.smTab==="buy"&&!S.smPhase?[r.buy_sig,r.buy_sig_ago]
     :(r.buy_sig_ago!=null&&(r.sell_sig_ago==null||r.buy_sig_ago<=r.sell_sig_ago))?[r.buy_sig,r.buy_sig_ago]:[r.sell_sig,r.sell_sig_ago];
+  /* 2026-10-30: 헤더 클릭 정렬(내림차순↔오름차순). 값이 없는 종목은 항상 맨 아래, ★ 관심 종목은 정렬 뒤에도 맨 위 고정 */
+  const SMV={name:r=>r.name||r.code,phase:r=>SM_PH_IDX[r.phase]??0,sig:r=>{const a=sigOf(r)[1];return a==null?null:1000-a;},
+    d_w:r=>r.d_w,hold_pct:r=>r.hold_pct,gap:r=>r.gap,transfer20:r=>r.transfer20,buy_days20:r=>r.buy_days20,ret_w:r=>r.ret_w,
+    score:r=>(scoreK?r[scoreK]:(r.buy_score??r.sell_score)),trade_amount:r=>r.trade_amount};
+  if(S.smSort&&SMV[S.smSort.k]){
+    const g=SMV[S.smSort.k],dir=S.smSort.dir==="asc"?1:-1,isStr=S.smSort.k==="name";
+    const has=r=>{const v=g(r);return v!=null&&v!==""&&(isStr||!isNaN(+v));};
+    list=[...list.filter(has).sort((a,b)=>isStr?dir*String(g(a)).localeCompare(String(g(b)),"ko"):dir*(+g(a)-+g(b))),...list.filter(r=>!has(r))];
+  }
+  if(!S.smPhase&&S.smTab!=="fav")list=[...list.filter(r=>favs.has(r.code)),...list.filter(r=>!favs.has(r.code))];
+  smHeadMark();
+  $("#smNote").innerHTML=note+(S.smSort?" · <span class=\"faint\">표 머리글 정렬 적용 중(# 를 누르면 기본 순서)</span>":"")+` · ${N(list.length)}종목`;
+  const shown=list.slice(0,200);
   const f=(v,d)=>v==null?"–":pm(+v,d);
   $("#smBody").innerHTML=shown.length?shown.map((r,i)=>{const [sg,ago]=sigOf(r);
     const score=scoreK?r[scoreK]:(r.buy_score??r.sell_score);
