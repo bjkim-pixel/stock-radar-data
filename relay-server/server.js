@@ -2918,7 +2918,124 @@ function readBody(req) {
   });
 }
 
+/* ════════════════════════════════════════════════════════════════════════
+   접속 기록 (2026-10-30) — 사이트가 열릴 때마다 /visit-log 로 알려오면 Supabase access_log에 한 줄 저장.
+   조회(/access-log)는 토큰이 있어야 하고, 토큰은 Render 환경변수 ACCESS_LOG_TOKEN(없으면 DAILY_SUMMARY_TOKEN)으로만 설정.
+   IP는 Render 프록시 헤더(cf-connecting-ip / x-forwarded-for)에서 읽고, 위치·통신사는 ip-api.com으로 조회(24시간 캐시).
+   ════════════════════════════════════════════════════════════════════════ */
+const ACCESS_LOG_TOKEN = process.env.ACCESS_LOG_TOKEN || process.env.DAILY_SUMMARY_TOKEN || '';
+const ACCESS_LOG_KEEP_DAYS = 180;
+const _geoCache = new Map();       // ip -> {t, v}
+const _visitRate = new Map();      // ip -> [timestamps]
+function clientIp(req) {
+  let ip = req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || (req.socket && req.socket.remoteAddress) || '';
+  return String(ip).replace(/^::ffff:/, '').slice(0, 64);
+}
+function isPrivateIp(ip) {
+  return !ip || /^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|::1|fc|fd|fe80)/i.test(ip);
+}
+async function geoLookup(ip) {
+  if (isPrivateIp(ip)) return null;
+  const hit = _geoCache.get(ip);
+  if (hit && Date.now() - hit.t < 24 * 3600 * 1000) return hit.v;
+  try {
+    const r = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,regionName,city,isp,mobile,proxy&lang=ko`, { signal: AbortSignal.timeout(4000) });
+    const j = await r.json();
+    const v = j && j.status === 'success' ? j : null;
+    _geoCache.set(ip, { t: Date.now(), v });
+    return v;
+  } catch (_) { return null; }
+}
+function parseUa(ua) {
+  ua = ua || '';
+  const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad|iPod/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows' : /Mac OS X|Macintosh/i.test(ua) ? 'macOS' : /Linux/i.test(ua) ? 'Linux' : '기타';
+  const browser = /SamsungBrowser/i.test(ua) ? '삼성 인터넷' : /Whale/i.test(ua) ? 'Whale' : /Edg\//i.test(ua) ? 'Edge' : /Firefox|FxiOS/i.test(ua) ? 'Firefox' : /CriOS|Chrome/i.test(ua) ? 'Chrome' : /Safari/i.test(ua) ? 'Safari' : '기타';
+  const device = /iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) ? '태블릿' : /Mobi|iPhone|Android/i.test(ua) ? '모바일' : 'PC';
+  return { os, browser, device };
+}
+const _cut = (v, n = 300) => (v == null ? null : String(v).slice(0, n));
+function visitRateOk(ip) {
+  const now = Date.now(), arr = (_visitRate.get(ip) || []).filter(t => now - t < 3600 * 1000);
+  if (arr.length >= 60) { _visitRate.set(ip, arr); return false; }
+  arr.push(now); _visitRate.set(ip, arr); return true;
+}
+function accessCors(req, res, methods) {
+  const origin = req.headers.origin;
+  res.setHeader('Access-Control-Allow-Origin', (origin && ALLOWED_ORIGINS.includes(origin)) ? origin : ALLOWED_ORIGINS[0]);
+  res.setHeader('Access-Control-Allow-Methods', methods);
+  res.setHeader('Access-Control-Allow-Headers', 'content-type, x-access-token');
+  res.setHeader('Vary', 'Origin');
+}
+function tokenOk(req) {
+  const given = String(req.headers['x-access-token'] || '');
+  if (!ACCESS_LOG_TOKEN || !given) return false;
+  const a = Buffer.from(given), b = Buffer.from(ACCESS_LOG_TOKEN);
+  return a.length === b.length && require('crypto').timingSafeEqual(a, b);
+}
+async function recordVisit(req, body) {
+  const ip = clientIp(req);
+  const vid = /^[A-Za-z0-9-]{8,64}$/.test(body.vid || '') ? body.vid : null;
+  if (body.mark !== undefined) {            // "내 기기" 표시/해제 — 그 기기의 기존 기록 전체에 반영
+    if (!vid) return;
+    await sbWrite(`access_log?visitor_id=eq.${encodeURIComponent(vid)}`, 'PATCH', { is_owner: !!body.mark });
+    return;
+  }
+  if (!visitRateOk(ip)) return;
+  const ua = _cut(body.ua || req.headers['user-agent'], 400);
+  const p = parseUa(ua), g = await geoLookup(ip);
+  await sbWrite('access_log', 'POST', [{
+    visitor_id: vid, session_id: _cut(body.sid, 64), ip,
+    country: g ? g.country : null, region: g ? g.regionName : null, city: g ? g.city : null, isp: g ? g.isp : null,
+    is_mobile_net: g ? !!g.mobile : null, is_proxy: g ? !!g.proxy : null,
+    ua, os: p.os, browser: p.browser, device: p.device,
+    screen: _cut(body.screen, 40), lang: _cut(body.lang, 20), tz: _cut(body.tz, 60),
+    referrer: _cut(body.ref, 300), view: _cut(body.view, 80),
+    is_owner: !!body.owner, is_bot: /bot|crawl|spider|slurp|preview|facebookexternalhit|monitor|uptime|lighthouse/i.test(ua || ''),
+  }]);
+}
+async function cleanupAccessLog() {
+  if (!SUPABASE_SERVICE_KEY) return;
+  try { await sbWrite(`access_log?ts=lt.${encodeURIComponent(new Date(Date.now() - ACCESS_LOG_KEEP_DAYS * 864e5).toISOString())}`, 'DELETE'); }
+  catch (e) { if (!/42P01|does not exist/.test(e.message)) console.warn('[access_log] 정리 실패:', e.message); }
+}
+setTimeout(cleanupAccessLog, 60 * 1000); setInterval(cleanupAccessLog, 6 * 3600 * 1000);
+if (!ACCESS_LOG_TOKEN) console.warn('[access_log] ACCESS_LOG_TOKEN(또는 DAILY_SUMMARY_TOKEN) 미설정 — 접속 기록 조회가 비활성화됩니다(기록은 계속 저장).');
+
+function handleAccessLog(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path === '/visit-log') {
+    accessCors(req, res, 'POST, OPTIONS');
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+    if (req.method !== 'POST') { res.writeHead(405); res.end(); return true; }
+    readBody(req).then(raw => {
+      res.writeHead(204); res.end();      // 응답은 바로 — 기록은 뒤에서
+      let body; try { body = JSON.parse(raw); } catch (_) { return; }
+      if (!body || typeof body !== 'object') return;
+      return recordVisit(req, body);
+    }).catch(err => { if (!/42P01|does not exist/.test(err.message)) console.warn('[access_log] 기록 실패:', err.message); });
+    return true;
+  }
+  if (path === '/access-log') {
+    accessCors(req, res, 'GET, OPTIONS');
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+    const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+    if (!ACCESS_LOG_TOKEN) { json(503, { ok: false, error: 'token not configured' }); return true; }
+    if (!tokenOk(req)) { json(401, { ok: false, error: 'unauthorized' }); return true; }
+    const days = Math.min(180, Math.max(1, +new URL(req.url, 'http://x').searchParams.get('days') || 14));
+    const since = new Date(Date.now() - days * 864e5).toISOString();
+    fetch(`${SUPABASE_URL}/rest/v1/access_log?select=*&ts=gte.${encodeURIComponent(since)}&order=ts.desc&limit=3000`, {
+      headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+    }).then(async r => {
+      if (!r.ok) { json(502, { ok: false, error: `db ${r.status}`, detail: (await r.text().catch(() => '')).slice(0, 200) }); return; }
+      json(200, { ok: true, rows: await r.json() });
+    }).catch(e => json(500, { ok: false, error: e.message }));
+    return true;
+  }
+  return false;
+}
+
 const server = http.createServer((req, res) => {
+  if (handleAccessLog(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;

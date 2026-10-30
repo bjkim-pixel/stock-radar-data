@@ -51,7 +51,7 @@ a.lk:hover{color:var(--up);text-decoration-color:var(--up)}
 
 header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--page) 90%,transparent);
   backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
-.hbar{max-width:1480px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:14px}
+.hbar{max-width:1480px;margin:0 auto;padding:5px 20px;display:flex;align-items:center;gap:14px}
 .brand b{font-size:15.5px;letter-spacing:-.02em;white-space:nowrap}
 .hmeta{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:4px 10px;
@@ -62,12 +62,12 @@ header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--page)
   width:32px;height:30px;cursor:pointer;color:var(--ink-2);font-size:13px}
 nav{display:flex;gap:2px;max-width:1480px;margin:0 auto;padding:0 20px;overflow-x:auto;
   border-bottom:1px solid var(--border)}
-nav button{background:none;border:none;padding:11px 15px;font-size:13px;font-weight:550;
+nav button{background:none;border:none;padding:8px 15px;font-size:13px;font-weight:550;
   color:var(--ink-3);cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;
   margin-bottom:-1px;font-family:inherit}
 nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 
-.funnel{position:sticky;top:83px;z-index:45;background:var(--surface);
+.funnel{position:sticky;top:68px;z-index:45;background:var(--surface);
   border:1px solid var(--border);border-radius:var(--r);padding:11px 14px;margin:14px 0 18px;
   display:flex;gap:0;overflow-x:auto}
 .fstep{flex:1;min-width:132px;display:flex;align-items:center;gap:10px;padding:2px 12px;
@@ -406,6 +406,15 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .bar-top.live{background:color-mix(in srgb,var(--good) 12%,var(--page))}
 .bar-top.err{background:color-mix(in srgb,var(--crit) 14%,var(--page));color:var(--crit)}
 .hide{display:none!important}
+section[id^="v-"]>.card:first-child{margin-top:8px!important}
+.acc-ov{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:24px 10px;overflow:auto}
+.acc-pn{background:var(--page);border:1px solid var(--border);border-radius:12px;width:min(1100px,100%);padding:14px 16px 16px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.acc-pn h3{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:8px}
+.acc-pn h3 .x{margin-left:auto}
+.acc-pn .tw{max-height:46vh;overflow:auto}
+.acc-pn td,.acc-pn th{white-space:nowrap}
+.acc-tag{display:inline-block;font-size:10px;padding:0 6px;border-radius:8px;border:1px solid var(--border);line-height:16px}
+.acc-tag.me{color:var(--good);border-color:var(--good)} .acc-tag.ot{color:var(--up);border-color:var(--up);font-weight:700} .acc-tag.bot{color:var(--ink-3)}
 .asof{margin:10px 0 -4px;font-size:11px;color:var(--ink-3);line-height:1.6}
 .asof b{color:var(--ink-2);font-weight:600}
 .load{text-align:center;padding:26px;color:var(--ink-3);font-size:12px}
@@ -626,10 +635,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="hbar">
     <div class="brand" id="brandHome" style="cursor:pointer" title="새로고침"><b>STOCK RADAR</b></div>
     <div class="hmeta">
-      <span class="chip" id="chipRegime"><span class="dot" style="background:var(--ink-3)"></span>시장 <b>–</b></span>
       <span class="chip opt">유니버스 <b id="chipUniv">–</b></span>
       <span class="chip opt" id="chipHighPos" title="유니버스 종목 중 52주 신고가 -10% 이내 비율">신고가근처 <b>–</b></span>
       <span class="chip">기준 <b id="chipDate">–</b> <span id="chipAsOf" class="faint" style="font-weight:400"></span></span>
+      <button class="icon-btn" id="btnAccess" title="접속 기록 보기" aria-label="접속 기록" style="width:auto;padding:0 10px;font-size:11.5px;font-weight:600">접속기록</button>
     </div>
   </div>
   <nav id="tabs">
@@ -1450,6 +1459,33 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   </div>
 </div>
 
+<div class="acc-ov hide" id="accessModal" role="dialog" aria-modal="true" aria-label="접속 기록">
+  <div class="acc-pn">
+    <h3>접속 기록 <span class="faint" style="font-size:11.5px;font-weight:400" id="accSub"></span><button class="icon-btn x" id="accClose" aria-label="닫기">✕</button></h3>
+    <div id="accAuth" class="hide" style="margin:8px 0">
+      <div class="faint" style="font-size:12px;margin-bottom:6px">조회 토큰을 입력하세요 (Render 환경변수 <code>ACCESS_LOG_TOKEN</code>, 없으면 <code>DAILY_SUMMARY_TOKEN</code> 값). 이 기기 브라우저에만 저장됩니다.</div>
+      <input type="password" id="accTok" placeholder="토큰" autocomplete="off" style="width:220px"> <button class="btn ghost" id="accTokGo" style="padding:5px 12px">조회</button>
+      <div id="accAuthMsg" class="faint" style="font-size:11.5px;margin-top:6px"></div>
+    </div>
+    <div id="accMain" class="hide">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <select id="accDays" style="width:auto"><option value="7">최근 7일</option><option value="14" selected>최근 14일</option><option value="30">최근 30일</option><option value="90">최근 90일</option></select>
+        <label class="smck"><input type="checkbox" id="accHideMe"> 내 기기 제외</label>
+        <label class="smck"><input type="checkbox" id="accHideBot"> 봇 제외</label>
+        <button class="btn ghost" id="accMark" style="padding:4px 10px;font-size:11.5px"></button>
+        <button class="btn ghost" id="accLogout" style="padding:4px 10px;font-size:11.5px">토큰 지우기</button>
+      </div>
+      <div class="grid5" id="accTiles" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px"></div>
+      <div class="note" style="margin:6px 0 4px"><b>일별 요약</b></div>
+      <div class="tw"><table><thead><tr><th class="l">날짜</th><th>접속</th><th>고유 기기</th><th>내 기기 제외</th></tr></thead><tbody id="accDaily"></tbody></table></div>
+      <div class="note" style="margin:10px 0 4px"><b>기기(방문자)별</b> — 같은 브라우저는 같은 기기로 셉니다</div>
+      <div class="tw"><table><thead><tr><th class="l">구분</th><th class="l">기기</th><th>접속</th><th class="l">처음</th><th class="l">마지막</th><th class="l">위치</th><th class="l">통신사</th></tr></thead><tbody id="accVis"></tbody></table></div>
+      <div class="note" style="margin:10px 0 4px"><b>접속 내역</b> (최신순, 최대 300건)</div>
+      <div class="tw"><table><thead><tr><th class="l">일시</th><th class="l">구분</th><th class="l">IP</th><th class="l">위치</th><th class="l">통신사</th><th class="l">기기</th><th class="l">화면</th><th class="l">첫 화면</th><th class="l">유입</th></tr></thead><tbody id="accRows"></tbody></table></div>
+      <div class="note">IP·위치는 접속 시 서버가 기록하고(위치는 IP 기반이라 시·도 수준, 통신사 망 위치로 나올 수 있음), 180일이 지나면 자동 삭제됩니다. "내 기기" 표시는 이 브라우저 기준이라 다른 기기에서 본인이 접속하면 "다른 기기"로 보입니다 — 그 기기에서도 이 창에서 "내 기기로 표시"를 한 번 눌러 주세요. VPN·사내망이면 위치가 실제와 다를 수 있습니다.</div>
+    </div>
+  </div>
+</div>
 <script>
 /* ══════════════════════════════════════════════════════════════════════
    Supabase 연결 설정
@@ -1466,6 +1502,15 @@ const CFG = {
 // (KIS 실시간 구독은 approval_key당 동시 구독 가능 종목 수 제한이 있음)
 const RELAY_WS_URL = "wss://kis-relay-server.onrender.com/ws";
 const RELAY_HTTP_BASE = "https://kis-relay-server.onrender.com";
+/* ══ 접속 기록 (2026-10-30) — 세션당 1번 relay-server(/visit-log)에 알림. 조회는 토큰 필요 ══ */
+function sriLS(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(_){return null;}}
+function sriVid(){let v=sriLS("sr_vid");if(!v){v=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now().toString(36)+Math.random().toString(36).slice(2,12)+"abcdef");sriLS("sr_vid",v);}return v;}
+(function(){try{
+  if(sessionStorage.getItem("sr_vlog"))return; sessionStorage.setItem("sr_vlog","1");
+  const body={vid:sriVid(),sid:Math.random().toString(36).slice(2,12),view:location.hash||"",screen:`${screen.width}x${screen.height}@${window.devicePixelRatio||1}`,
+    lang:navigator.language,tz:(Intl.DateTimeFormat().resolvedOptions().timeZone||""),ref:document.referrer,ua:navigator.userAgent,owner:sriLS("sr_owner")==="1"};
+  fetch(RELAY_HTTP_BASE+"/visit-log",{method:"POST",headers:{"content-type":"text/plain"},body:JSON.stringify(body),keepalive:true}).catch(()=>{});
+}catch(_){}})();
 
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const N=(v,d=0)=>(v==null||isNaN(v))?"–":Number(v).toLocaleString("ko-KR",
@@ -4545,6 +4590,82 @@ function renderMaCard(){
 }
 $$("#dMaSet button").forEach(b=>b.onclick=()=>{S.dMaMin=+b.dataset.v;try{renderMaCard();}catch(e){console.error(e);}});
 
+/* ══ 접속 기록 창 ══ */
+const ACC={rows:[],days:14};
+const accKst=(t,withSec)=>new Date(t).toLocaleString("ko-KR",{timeZone:"Asia/Seoul",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false,...(withSec?{second:"2-digit"}:{})});
+const accDay=t=>new Date(t).toLocaleDateString("sv-SE",{timeZone:"Asia/Seoul"});
+const accLoc=r=>[r.country,r.region,r.city].filter((x,i,a)=>x&&a.indexOf(x)===i).join(" ")||"–";
+const accEsc=v=>String(v==null?"":v).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function accOpen(){
+  $("#accessModal").classList.remove("hide");
+  const tok=sriLS("sr_acc_token");
+  if(!tok){$("#accAuth").classList.remove("hide");$("#accMain").classList.add("hide");$("#accAuthMsg").textContent="";return;}
+  accLoad();
+}
+async function accLoad(){
+  const tok=sriLS("sr_acc_token"); if(!tok)return;
+  $("#accSub").textContent="불러오는 중… (서버가 잠들어 있으면 30초쯤 걸릴 수 있습니다)";
+  try{
+    const r=await fetch(`${RELAY_HTTP_BASE}/access-log?days=${ACC.days}`,{headers:{"x-access-token":tok}});
+    if(r.status===401||r.status===503){
+      if(r.status===401)sriLS("sr_acc_token",null);
+      $("#accAuth").classList.remove("hide");$("#accMain").classList.add("hide");
+      $("#accAuthMsg").textContent=r.status===401?"토큰이 맞지 않습니다.":"서버에 조회 토큰이 설정되지 않았습니다 (Render 환경변수 ACCESS_LOG_TOKEN 설정 필요).";
+      $("#accSub").textContent="";return;}
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||("HTTP "+r.status));
+    ACC.rows=j.rows||[];$("#accAuth").classList.add("hide");$("#accMain").classList.remove("hide");accRender();
+  }catch(e){
+    $("#accSub").textContent="";$("#accAuth").classList.remove("hide");
+    $("#accAuthMsg").textContent="불러오지 못했습니다: "+e.message+(String(e.message).includes("db 4")||String(e.message).includes("db 5")?" — Actions의 'Setup Access Log'를 먼저 실행했는지 확인하세요.":"");
+  }
+}
+function accRender(){
+  const hideMe=$("#accHideMe").checked,hideBot=$("#accHideBot").checked;
+  // 기기 중 한 번이라도 "내 기기"로 표시된 기록이 있으면 그 기기는 모두 내 기기로 봄
+  const mine=new Set(ACC.rows.filter(r=>r.is_owner&&r.visitor_id).map(r=>r.visitor_id));
+  const isMine=r=>r.is_owner||(r.visitor_id&&mine.has(r.visitor_id));
+  const all=ACC.rows.filter(r=>!(hideBot&&r.is_bot));
+  const rows=all.filter(r=>!(hideMe&&isMine(r)));
+  const myVid=sriLS("sr_vid"), iMarked=sriLS("sr_owner")==="1";
+  $("#accMark").textContent=iMarked?"이 기기: 내 기기로 표시됨 (해제)":"이 기기를 내 기기로 표시";
+  const todayK=accDay(Date.now()), d7=Date.now()-7*864e5;
+  const uniq=a=>new Set(a.map(r=>r.visitor_id||r.ip)).size;
+  const other=all.filter(r=>!isMine(r)&&!r.is_bot);
+  const tile=(l,v,sub)=>`<div class="tile"><div class="lb">${l}</div><div class="vl" style="font-size:18px">${v}</div>${sub?`<div class="sub">${sub}</div>`:""}</div>`;
+  $("#accTiles").innerHTML=
+    tile("오늘 접속",all.filter(r=>accDay(r.ts)===todayK).length+"회",`고유 기기 ${uniq(all.filter(r=>accDay(r.ts)===todayK))}`)+
+    tile("7일 접속",all.filter(r=>+new Date(r.ts)>=d7).length+"회",`고유 기기 ${uniq(all.filter(r=>+new Date(r.ts)>=d7))}`)+
+    tile(`${ACC.days}일 고유 기기`,uniq(all)+"대",`내 기기 ${new Set(all.filter(isMine).map(r=>r.visitor_id||r.ip)).size}대`)+
+    tile("다른 사람(추정) 접속",`<span class="${other.length?"up":""}">${other.length}회</span>`,`고유 기기 ${uniq(other)}대 · 봇 ${ACC.rows.filter(r=>r.is_bot).length}회`);
+  $("#accSub").textContent=`${ACC.days}일 · 총 ${ACC.rows.length}건`;
+  // 일별
+  const dm={};
+  all.forEach(r=>{const d=accDay(r.ts);(dm[d]||(dm[d]={a:[],o:[]})).a.push(r);if(!isMine(r))dm[d].o.push(r);});
+  $("#accDaily").innerHTML=Object.keys(dm).sort().reverse().map(d=>`<tr><td class="l">${d}</td><td>${dm[d].a.length}</td><td>${uniq(dm[d].a)}</td><td class="${dm[d].o.length?"up":"dim"}">${dm[d].o.length}</td></tr>`).join("")||'<tr><td colspan="4" class="load">기록 없음</td></tr>';
+  // 기기별
+  const vm={};
+  rows.forEach(r=>{const k=r.visitor_id||("ip:"+r.ip);const v=vm[k]||(vm[k]={n:0,first:r.ts,last:r.ts,r});v.n++;if(r.ts<v.first)v.first=r.ts;if(r.ts>v.last){v.last=r.ts;v.r=r;}});
+  const tag=(r)=>r.is_bot?'<span class="acc-tag bot">봇</span>':isMine(r)?'<span class="acc-tag me">내 기기</span>':'<span class="acc-tag ot">다른 기기</span>';
+  $("#accVis").innerHTML=Object.entries(vm).sort((a,b)=>b[1].last.localeCompare(a[1].last)).map(([k,v])=>`<tr><td class="l">${tag(v.r)}${k===myVid?' <span class="faint">(지금 이 기기)</span>':""}</td><td class="l">${accEsc(v.r.device)} · ${accEsc(v.r.os)} · ${accEsc(v.r.browser)}</td><td>${v.n}</td><td class="l">${accKst(v.first)}</td><td class="l">${accKst(v.last)}</td><td class="l">${accEsc(accLoc(v.r))}</td><td class="l">${accEsc(v.r.isp||"–")}${v.r.is_proxy?' <span class="acc-tag">VPN/프록시</span>':""}</td></tr>`).join("")||'<tr><td colspan="7" class="load">기록 없음</td></tr>';
+  // 내역
+  $("#accRows").innerHTML=rows.slice(0,300).map(r=>`<tr><td class="l">${accKst(r.ts,true)}</td><td class="l">${tag(r)}</td><td class="l">${accEsc(r.ip||"–")}</td><td class="l">${accEsc(accLoc(r))}</td><td class="l">${accEsc(r.isp||"–")}${r.is_mobile_net?' <span class="faint">(모바일망)</span>':""}</td><td class="l">${accEsc(r.device||"")} ${accEsc(r.os||"")} ${accEsc(r.browser||"")}</td><td class="l">${accEsc(r.screen||"–")}</td><td class="l">${accEsc(r.view||"–")}</td><td class="l">${accEsc((r.referrer||"").replace(/^https?:\/\//,"").slice(0,40)||"직접")}</td></tr>`).join("")||'<tr><td colspan="9" class="load">기록 없음</td></tr>';
+}
+$("#btnAccess").onclick=accOpen;
+$("#accClose").onclick=()=>$("#accessModal").classList.add("hide");
+$("#accessModal").addEventListener("click",e=>{if(e.target.id==="accessModal")$("#accessModal").classList.add("hide");});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")$("#accessModal").classList.add("hide");});
+$("#accTokGo").onclick=()=>{const v=$("#accTok").value.trim();if(!v)return;sriLS("sr_acc_token",v);$("#accTok").value="";accLoad();};
+$("#accTok").addEventListener("keydown",e=>{if(e.key==="Enter")$("#accTokGo").click();});
+$("#accLogout").onclick=()=>{sriLS("sr_acc_token",null);ACC.rows=[];$("#accMain").classList.add("hide");$("#accAuth").classList.remove("hide");$("#accAuthMsg").textContent="토큰을 지웠습니다.";};
+$("#accDays").onchange=e=>{ACC.days=+e.target.value;accLoad();};
+$("#accHideMe").onchange=$("#accHideBot").onchange=()=>accRender();
+$("#accMark").onclick=async()=>{
+  const on=sriLS("sr_owner")!=="1";sriLS("sr_owner",on?"1":null);
+  try{await fetch(RELAY_HTTP_BASE+"/visit-log",{method:"POST",headers:{"content-type":"text/plain"},body:JSON.stringify({vid:sriVid(),mark:on})});}catch(_){}
+  ACC.rows.forEach(r=>{if(r.visitor_id===sriVid())r.is_owner=on;});accRender();
+};
+
 /* ══ 짝꿍매매 ══════════════════════════════════════════════════════
    시장매크로 STEP2의 "업종별 거래대금" 표와 완전히 동일한 로직(SEC_COLS,
    헤더 클릭=그 기준 상위5·하위5, 기본 정렬=평균 등락률 내림차순)을 그대로
@@ -5672,7 +5793,7 @@ async function boot(){
     const rg=md[0]?.regime||"–";
     const col=rg==="RISK_ON"?"var(--up)":rg==="RISK_OFF"?"var(--down)":"var(--warn)";
     const kr={RISK_ON:"양호",RISK_OFF:"위험",NEUTRAL:"중립"}[rg]||rg;
-    $("#chipRegime").innerHTML=`<span class="dot" style="background:${col}"></span>시장 <b>${kr}</b>`;
+    const _cr=$("#chipRegime"); if(_cr)_cr.innerHTML=`<span class="dot" style="background:${col}"></span>시장 <b>${kr}</b>`;
     const amtOk=+last.total_amount>=+last.amt_ma20;
     $("#mktVerdict").innerHTML=`레짐 <b>${kr}</b> · 거래대금 20일평균 ${amtOk?"상회":"하회"}`;
     $("#fn1").innerHTML=`${kr}<small>레짐</small>`;
