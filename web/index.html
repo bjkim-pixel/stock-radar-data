@@ -4364,6 +4364,18 @@ function maState(close,vals){            // vals: 짧은→긴 이평선 값 배
   const pairs=seq.length-1;
   return {st:up===pairs?"up":(dn===pairs?"dn":"mix"),up,dn,pairs};
 }
+/* 정렬 이력 띠 아래 월 눈금: 월이 바뀌는 첫 거래일 위치에 "n월"(1월은 '연.1). 라벨끼리 좁으면 건너뜀 */
+function maMonthAxis(rows,idx){
+  const n=idx.length; if(n<2)return "";
+  const t=[];
+  idx.forEach((ri,k)=>{const d=rows[ri].trade_date,pd=k?rows[idx[k-1]].trade_date:null;
+    if(k===0||d.slice(5,7)!==pd.slice(5,7)){const m=+d.slice(5,7);t.push([k,(m===1||k===0&&false)?`'${d.slice(2,4)}.1`:m+"월"]);}});
+  const minPx=26, W=340, out=[]; let last=-1e9;
+  t.forEach(([k,l])=>{const px=k/(n-1)*W; if(px-last>=minPx){out.push([k,l]);last=px;}});
+  return `<div style="position:relative;height:16px;margin:2px 0 8px;font-size:9.5px;color:var(--ink-3)">${out.map(([k,l])=>{const pc=k/(n-1)*100;
+    const tr=pc<6?"0":pc>94?"-100%":"-50%";
+    return `<span style="position:absolute;left:${pc.toFixed(1)}%;transform:translateX(${tr});white-space:nowrap"><i style="display:block;width:1px;height:4px;background:var(--grid);margin:0 auto 1px"></i>${l}</span>`;}).join("")}</div>`;
+}
 function renderMaCard(){
   const rows=S.chart&&S.chart.rows;if(!rows||!rows.length)return;
   const start=$("#dStart").value||START_D,end=$("#dEnd").value||rows.at(-1).trade_date;
@@ -4402,7 +4414,7 @@ function renderMaCard(){
   idx.forEach((i,k)=>{const x=stAt(i);if(!x)return;
     rects+=`<rect x="${(k*bw).toFixed(2)}" y="0" width="${(bw+.4).toFixed(2)}" height="${H}" fill="${col[x.st]}" opacity="${x.st==="mix"?.25:.85}"><title>${rows[i].trade_date} ${lab[x.st]}</title></rect>`;});
   $("#dMaStrip").innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px;display:block;border-radius:4px;background:var(--surface)" role="img" aria-label="이평선 정렬 이력">${rects}</svg>
-    <div class="faint" style="display:flex;justify-content:space-between;font-size:10.5px;margin:2px 0 8px"><span>${rows[idx[0]||0].trade_date}</span><span>${rows[idx.at(-1)||lastI].trade_date}</span></div>`;
+    ${maMonthAxis(rows,idx)}`;
   // 이평선 값 표 (종가 → 5·10·20·60·120·200 기간 순)
   const close=+rows[lastI].close;
   const tr=avail.map(p=>{
