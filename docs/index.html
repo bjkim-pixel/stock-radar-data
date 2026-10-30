@@ -305,6 +305,10 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .smstage{display:inline-flex;gap:3px;vertical-align:middle}
 .smstage i{display:inline-block;width:16px;height:9px;border-radius:2px;border:1px solid var(--c)}
 .smstage i.on{background:var(--c)} .smstage i.past{background:color-mix(in srgb,var(--c) 28%,transparent)}
+.dd{max-height:560px;overflow:auto}
+.dd thead th{position:sticky;top:0;background:var(--surface);z-index:2}
+.dd td:first-child,.dd th:first-child{position:sticky;left:0;background:var(--surface);z-index:1;text-align:left}
+.dd tr.sum td{font-weight:700;background:color-mix(in srgb,var(--ink) 5%,var(--surface))}
 .smlogic{margin-top:8px;border-top:1px dashed var(--grid);padding-top:8px}
 .smlogic summary{cursor:pointer;font-size:12px;font-weight:650;color:var(--ink-2);list-style:none}
 .smlogic summary::-webkit-details-marker{display:none}
@@ -1286,6 +1290,16 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
   <div class="card"><h3>수급 주체별 누적<span class="r">전 기간 · 억원 · 각 차트 오른쪽 끝이 오늘 · 회색 선 = 종가</span></h3>
     <div class="grid5" id="dMinis"></div>
+  </div>
+
+  <div class="card" id="dDailyCard"><h3>거래주체별 일별 순매수<span class="r" id="dDailyRange"></span></h3>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <label class="faint" style="font-size:12px" for="dDailyN">조회 기간</label>
+      <select id="dDailyN" style="width:auto"><option value="20">최근 20거래일</option><option value="60">최근 60거래일</option><option value="120">최근 120거래일</option></select>
+      <span class="faint" style="font-size:11.5px">억원 · 최신 날짜가 위 · <span class="up">순매수 빨강</span> / <span class="down">순매도 파랑</span></span>
+    </div>
+    <div class="tw tw-scroll dd" id="dDailyWrap"><table><thead id="dDailyHead"></thead><tbody id="dDailyBody"></tbody></table></div>
+    <div class="note">맨 위 "합계" 줄은 선택한 기간 동안의 주체별 순매수 합계입니다. 일별 값은 v_stock_chart의 주체별 누적값을 하루씩 뺀 값이라 위쪽 "수급주체별 순매수 거래대금" 표(기간 합계)와 같은 데이터입니다. 프로그램은 외국인·기관 등과 겹치는 별도 집계라 합계에 다른 주체와 더해 해석하지 마세요.</div>
   </div>
 
   <div style="margin:16px 0 40px"><button class="btn ghost" id="dBack">← 이전 화면으로</button></div>
@@ -4024,6 +4038,7 @@ function renderRangeCharts(){
     {h:450,w:1180,pr:66,zero:true,marks:"each",monthTicks:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
   try{renderSmCard();}catch(e){console.error("smart money card",e);}
   try{renderMaCard();}catch(e){console.error("ma card",e);}
+  try{renderDailyFlow();}catch(e){console.error("daily flow table",e);}
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 // 2026-10-29: 종목상세 업종 필터 — 기본 "업종 전체". 업종을 고르면 종목 선택 목록과 "다음 종목"이 그 업종 안에서만 움직임.
@@ -4399,7 +4414,27 @@ function renderSmCard(){
 }
 
 
-/* ══ 종목상세 이평선 정렬 (2026-10-29) ══ */
+/* ══ 종목상세 거래주체별 일별 순매수 (2026-10-30) ══
+   v_stock_chart에는 주체별 "누적"(…_cum)이 있어 하루씩 빼서 일별 값을 만든다. 프로그램은 pgtr_net_amt가 일별 값. */
+const DD_COLS=[["외국인","foreign_cum"],["기관","inst_cum"],["금투","fin_inv_cum"],["투신","inv_trust_cum"],["연금","pension_cum"],
+  ["사모","pe_cum"],["기타법인","corp_other_cum"],["개인","individual_cum"],["프로그램","pgtr_net_amt"]];
+S.dDailyN=S.dDailyN||20;
+function renderDailyFlow(){
+  const rows=S.chart&&S.chart.rows; if(!rows||!rows.length)return;
+  const n=Math.min(S.dDailyN,rows.length), from=rows.length-n;
+  const dv=(i,k)=>k==="pgtr_net_amt"?(rows[i][k]==null?null:+rows[i][k]):((+rows[i][k]||0)-(i?(+rows[i-1][k]||0):0));
+  const sum=DD_COLS.map(([,k])=>{let t=0,any=false;for(let i=from;i<rows.length;i++){const v=dv(i,k);if(v!=null){t+=v;any=true;}}return any?t:null;});
+  const cell=v=>v==null?'<td class="dim">–</td>':(Math.round(v/EOK)===0?'<td class="dim">0</td>':`<td class="${sgn(v)}">${pm(v/EOK,0)}</td>`);
+  $("#dDailyHead").innerHTML="<tr><th>날짜</th>"+DD_COLS.map(([l])=>`<th>${l}</th>`).join("")+"</tr>";
+  let h=`<tr class="sum"><td>합계 (${n}일)</td>${sum.map(cell).join("")}</tr>`;
+  for(let i=rows.length-1;i>=from;i--)h+=`<tr><td>${rows[i].trade_date.slice(2).replace(/-/g,"/")}</td>${DD_COLS.map(([,k])=>cell(dv(i,k))).join("")}</tr>`;
+  $("#dDailyBody").innerHTML=h;
+  $("#dDailyRange").textContent=`${rows[from].trade_date} ~ ${rows.at(-1).trade_date} · ${n}거래일`;
+  $("#dDailyN").value=String(S.dDailyN);
+}
+$("#dDailyN").onchange=e=>{S.dDailyN=+e.target.value;try{renderDailyFlow();}catch(err){console.error(err);}};
+
+/* ══ 종목상세 이평선 정렬 (2026-10-29) ══
 const MA_ALL=[5,10,20,60,120,200];
 S.dMaMin=0;
 function maSeries(rows){
