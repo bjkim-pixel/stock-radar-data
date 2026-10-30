@@ -603,6 +603,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .fh>div{display:grid;grid-template-columns:34px 68px auto;gap:4px;align-items:baseline;white-space:nowrap}
 .fh>div>span:nth-child(2){text-align:right}
 .fh .d{color:var(--ink-3);font-size:10px}
+.gm-ext{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;margin:6px 0 2px;font-variant-numeric:tabular-nums}
+.gm-ext i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:0}
+.gm-ext .d{color:var(--ink-3);font-size:10px}
 .gm-hist{margin-top:8px;border-top:1px dashed var(--grid);padding-top:6px}
 .gm-hist .hr{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;font-size:12px;line-height:1.7;font-variant-numeric:tabular-nums}
 .gm-hist .hr .d{font-size:10px;color:var(--ink-3);margin-left:4px}
@@ -3489,12 +3492,13 @@ function gmSpark(c,n,big){
   let lo=Math.min(...v.map(x=>x[1])),hi=Math.max(...v.map(x=>x[1]));if(hi===lo){hi+=1;lo-=1;}
   const X=i=>P+i/(a.length-1)*(W-2*P), Y=y=>P+(hi-y)/(hi-lo)*(H-2*P);
   const d=v.map((x,k)=>(k?"L":"M")+X(x[0]).toFixed(1)+" "+Y(x[1]).toFixed(1)).join("");
-  const b=Y(v[0][1]).toFixed(1), mx=v.reduce((m,x)=>x[1]>m[1]?x:m,v[0]), last=v[v.length-1];
+  const b=Y(v[0][1]).toFixed(1), mx=v.reduce((m,x)=>x[1]>m[1]?x:m,v[0]), mn=v.reduce((m,x)=>x[1]<m[1]?x:m,v[0]), last=v[v.length-1];
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     <line x1="${P}" y1="${b}" x2="${W-P}" y2="${b}" stroke="var(--axis)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>
     <path d="${d}" fill="none" stroke="var(--ink-2)" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+    <circle cx="${X(mn[0]).toFixed(1)}" cy="${Y(mn[1]).toFixed(1)}" r="${big?3.5:2.6}" fill="var(--down)"/>
     <circle cx="${X(mx[0]).toFixed(1)}" cy="${Y(mx[1]).toFixed(1)}" r="${big?3.5:2.6}" fill="var(--up)"/>
-    ${mx===last?"":`<circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="${big?2.5:1.8}" fill="var(--ink-2)"/>`}
+    ${(mx===last||mn===last)?"":`<circle cx="${X(last[0]).toFixed(1)}" cy="${Y(last[1]).toFixed(1)}" r="${big?3.2:2.3}" fill="var(--ink)" stroke="var(--surface)" stroke-width="1" vector-effect="non-scaling-stroke"/>`}
   </svg>`;
 }
 /* 가로축 눈금: 짧은 기간(≤30일)은 주 시작 M/D, 그 외는 월 시작 M월. 라벨 간격이 좁으면 N개 건너뛰어 겹치지 않게 */
@@ -3530,13 +3534,24 @@ function gmCardVal(it){
 }
 /* 2026-10-30: 크게 보기 맨 아래 — 3개월전·1개월전·2주전·1주전·오늘 값, 오른쪽 괄호는 바로 윗줄(직전 시점) 대비 변화(상승 빨강·하락 파랑).
    %·금리 계열(lvlpct·yld)은 %p 차이, 나머지는 % 변화율 */
+function gmFv(it,v){return it.k==="lvlpct"?gmF(v)+"%":it.k==="yld"?N(v,2)+"%":it.k==="lvl"?N(v,1):it.k==="lvl0"?N(v,0):it.k==="lvl2"?N(v,2):(Math.abs(v)>=1000?N(v,0):N(v,2));}
+/* 크게 보기: 선택 기간의 최고(빨강)·최저(파랑)·오늘 값과 날짜 */
+function gmExtHtml(p,it,n){
+  const c=it.c.slice(-n),ds=p.dates.slice(-n);
+  const v=c.map((x,i)=>[i,x]).filter(x=>x[1]!=null);if(v.length<2)return "";
+  const hi=v.reduce((m,x)=>x[1]>m[1]?x:m,v[0]),lo=v.reduce((m,x)=>x[1]<m[1]?x:m,v[0]),la=v[v.length-1];
+  const md=i=>(ds[i]||"").slice(5).replace("-","/");
+  return `<div class="gm-ext"><span><i style="background:var(--up)"></i>최고 <b class="up">${gmFv(it,hi[1])}</b> <span class="d">${md(hi[0])}</span></span>
+    <span><i style="background:var(--down)"></i>최저 <b class="down">${gmFv(it,lo[1])}</b> <span class="d">${md(lo[0])}</span></span>
+    <span><i style="background:var(--ink)"></i>오늘 <b>${gmFv(it,la[1])}</b> <span class="d">${md(la[0])}</span></span></div>`;
+}
 function gmHist(p,it){
   const c=it.c, L=c.length;
   const at=off=>{for(let i=L-1-off;i>=0&&i>=L-1-off-5;i--)if(c[i]!=null)return {v:c[i],d:p.dates[p.dates.length-L+i]||""};return null;};
   const rows=[["3개월전",63],["1개월전",21],["2주전",10],["1주전",5],["오늘",0]].map(([l,o])=>({l,o,x:L>o?at(o):null}));
   if(rows.filter(r=>r.x).length<2)return "";
   const diff=it.k==="lvlpct"||it.k==="yld";
-  const fv=v=>it.k==="lvlpct"?gmF(v)+"%":it.k==="yld"?N(v,2)+"%":it.k==="lvl"?N(v,1):it.k==="lvl0"?N(v,0):it.k==="lvl2"?N(v,2):(Math.abs(v)>=1000?N(v,0):N(v,2));
+  const fv=v=>gmFv(it,v);
   let prev=null;
   const html=rows.map(r=>{
     let ch="";
@@ -3557,7 +3572,7 @@ function gmCard(p,key,it,period,hot){
   let extra="";
   if(big){
     const ds=p.dates.slice(-n);
-    extra=`<div class="gm-ax"><span>${ds[0]||""}</span><span>${ds[ds.length-1]||""}</span></div>
+    extra=`<div class="gm-ax"><span>${ds[0]||""}</span><span>${ds[ds.length-1]||""}</span></div>${gmExtHtml(p,it,n)}
       <div class="gm-per">${[[21,"1M"],[63,"3M"],[126,"6M"],[252,"1Y"]].map(([v,l])=>`<button class="fchip" data-gmn="${v}" aria-pressed="${S.gm.bigN==v}">${l}</button>`).join("")}</div>${gmHist(p,it)}`;
   }
   return `<div class="gm-c${hot?" "+hot:""}${big?" big":""}" data-gmk="${key}">
