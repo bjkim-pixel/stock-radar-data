@@ -407,6 +407,16 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .bar-top.err{background:color-mix(in srgb,var(--crit) 14%,var(--page));color:var(--crit)}
 .hide{display:none!important}
 section[id^="v-"]>.card:first-child{margin-top:8px!important}
+.jr-form{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--surface)}
+.jr-row{display:flex;gap:8px;flex-wrap:wrap}.jr-row label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--ink-3);flex:1 1 120px}
+.jr-form textarea{width:100%;box-sizing:border-box;background:var(--page);color:var(--ink);border:1px solid var(--border);border-radius:7px;padding:8px;font:inherit;font-size:13px;line-height:1.55;resize:vertical}
+.jr-item{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.jr-hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px}
+.jr-ti{font-weight:650;font-size:13.5px}
+.jr-body{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.6;margin:6px 0 4px;color:var(--ink-2)}
+.jr-k{display:inline-block;font-size:10.5px;padding:0 7px;border-radius:8px;border:1px solid var(--border);line-height:17px}
+.jr-k.b{color:var(--up);border-color:var(--up)}.jr-k.s{color:var(--dn,#3b6fd4);border-color:var(--dn,#3b6fd4)}
+.jr-act{margin-left:auto;display:flex;gap:6px}.jr-act button{background:none;border:1px solid var(--border);color:var(--ink-3);border-radius:6px;font-size:11px;padding:2px 8px;cursor:pointer}
 .acc-ov{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:24px 10px;overflow:auto}
 .acc-pn{background:var(--page);border:1px solid var(--border);border-radius:12px;width:min(1100px,100%);padding:14px 16px 16px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
 .acc-pn h3{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:8px}
@@ -656,6 +666,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <button data-v="detail">종목 상세</button>
     <button data-v="perf">전략 성과</button>
     <button data-v="perf2">전략 성과2</button>
+    <button data-v="journal">투자일지</button>
   </nav>
 </header>
 
@@ -1383,6 +1394,48 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <th class="l">종목</th><th class="l">전략</th><th>진입일</th><th class="opt">진입가</th><th class="opt">평단</th><th class="opt">트랜치</th>
       <th>청산일</th><th>청산가</th><th class="opt">사유</th><th>실현손익(원)</th><th>수익률</th>
     </tr></thead><tbody id="perfBody"><tr><td colspan="11" class="load sk"></td></tr></tbody></table></div>
+  </div>
+</section>
+
+<!-- ═══════════ 투자일지 (나만 보는 게시판) ═══════════ -->
+<section id="v-journal" class="hide">
+  <div class="card" style="margin-top:16px"><h3>투자일지 <span class="r">나만 보는 게시판 · 토큰이 있어야 읽고 쓸 수 있습니다</span></h3>
+    <div id="jrAuth" class="hide" style="margin:8px 0">
+      <div class="faint" style="font-size:12px;margin-bottom:6px">토큰을 입력하세요 (접속 기록과 같은 토큰: Render 환경변수 <code>ACCESS_LOG_TOKEN</code>). 이 기기 브라우저에만 저장됩니다.</div>
+      <input type="password" id="jrTok" placeholder="토큰" autocomplete="off" style="width:220px"> <button class="btn ghost" id="jrTokGo" style="padding:5px 12px">열기</button>
+      <div id="jrAuthMsg" class="faint" style="font-size:11.5px;margin-top:6px"></div>
+    </div>
+    <div id="jrMain" class="hide">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn" id="jrNew" style="padding:6px 14px">+ 새 일지</button>
+        <select id="jrKindF" style="width:auto"><option value="">전체 구분</option><option>매수</option><option>매도</option><option>관찰</option><option>복기</option><option>메모</option></select>
+        <input type="text" id="jrQ" placeholder="제목·내용·종목·태그 검색" style="width:200px">
+        <span class="faint" id="jrCnt" style="font-size:11.5px"></span>
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn ghost" id="jrExp" style="padding:4px 10px;font-size:11.5px">내보내기(.md)</button>
+          <button class="btn ghost" id="jrOut" style="padding:4px 10px;font-size:11.5px">토큰 지우기</button>
+        </span>
+      </div>
+      <div id="jrForm" class="hide jr-form">
+        <div class="jr-row">
+          <label>날짜<input type="date" id="jrDate"></label>
+          <label>구분<select id="jrKind"><option>매수</option><option>매도</option><option>관찰</option><option>복기</option><option selected>메모</option></select></label>
+          <label>종목<input type="text" id="jrStock" list="jrStockList" placeholder="종목명 또는 코드(선택)"></label>
+          <label>가격(원)<input type="number" id="jrPrice" step="any" placeholder="선택"></label>
+          <label>수량<input type="number" id="jrQty" step="any" placeholder="선택"></label>
+        </div>
+        <datalist id="jrStockList"></datalist>
+        <input type="text" id="jrTitle" placeholder="제목" style="margin:8px 0 6px">
+        <textarea id="jrBody" rows="9" placeholder="매매 근거, 시장 상황, 느낀 점, 다음에 지킬 원칙…"></textarea>
+        <input type="text" id="jrTags" placeholder="태그 (쉼표로 구분: 스마트머니, 손절, 실수)" style="margin-top:6px">
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+          <button class="btn" id="jrSave" style="padding:6px 16px">저장</button>
+          <button class="btn ghost" id="jrCancel" style="padding:6px 14px">취소</button>
+          <span class="faint" id="jrMsg" style="font-size:11.5px"></span>
+        </div>
+      </div>
+      <div id="jrList"><div class="load sk"></div></div>
+    </div>
   </div>
 </section>
 
@@ -2234,7 +2287,7 @@ function go(v,detailCode){
   if(cur&&cur!==v)S.prevView=cur;
   S.curTab=v;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
-  ["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","journal"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="flow"||v==="sm");   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -2273,6 +2326,7 @@ function go(v,detailCode){
   if(!_hashNav)setHash(v,v==="detail"?S.chart.code:null);
   if(v==="perf")loadPerf();
   if(v==="perf2")loadPerf2();
+  if(v==="journal")jrOpen();
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);})}
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
     Promise.all([loadFlowTrends(),loadFlowLists(),loadFlowSectorMap(),loadFlowTimeline()]).catch(()=>{});}
@@ -5667,7 +5721,94 @@ function redraw(skipDetailReload){
 /* ══ 2026-10-25 UI 보강: 주소(해시) 연결 · 표 열 묶음 · ⓘ 설명 접기 · 다시 시도 · 관심종목 ══ */
 // ── 주소 연결: #today, #detail/000660 처럼 화면(과 종목)을 주소에 담아 뒤로가기·즐겨찾기·링크 공유가 되게 함
 let _hashNav=false;
-const VIEW_IDS=["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2"];
+
+/* ══ 투자일지 (2026-10-31) — 나만 보는 게시판. relay-server /journal, 토큰(x-access-token)으로만 접근 ══ */
+const JR={rows:[],editId:null,quotes:{},delArm:null};
+const jrEsc=accEsc;
+function jrAuthShow(msg){$("#jrAuth").classList.remove("hide");$("#jrMain").classList.add("hide");$("#jrAuthMsg").textContent=msg||"";}
+async function jrApi(method,body){
+  const tok=sriLS("sr_acc_token");
+  const r=await fetch(RELAY_HTTP_BASE+"/journal",{method,headers:{"x-access-token":tok,...(body?{"content-type":"application/json"}:{})},body:body?JSON.stringify(body):undefined});
+  if(r.status===401){sriLS("sr_acc_token",null);jrAuthShow("토큰이 맞지 않습니다.");throw new Error("unauthorized");}
+  if(r.status===503){jrAuthShow("서버에 토큰이 설정되지 않았습니다 (Render 환경변수 ACCESS_LOG_TOKEN 필요).");throw new Error("no token");}
+  const j=await r.json();if(!j.ok)throw new Error(j.error||("HTTP "+r.status));return j;
+}
+async function jrOpen(){
+  if(!sriLS("sr_acc_token")){jrAuthShow("");return;}
+  $("#jrAuth").classList.add("hide");$("#jrMain").classList.remove("hide");
+  if(!$("#jrStockList").children.length&&S.codes&&S.codes.length)$("#jrStockList").innerHTML=S.codes.map(c=>`<option value="${jrEsc(c.name)} (${c.code})">`).join("");
+  try{const j=await jrApi("GET");JR.rows=j.rows||[];await jrQuotes();jrRender();}
+  catch(e){if(!/unauthorized|no token/.test(e.message))$("#jrList").innerHTML=`<div class="load">불러오지 못했습니다: ${jrEsc(e.message)}${/db 4|db 5/.test(e.message)?" — Actions의 'Setup Journal'을 먼저 실행하세요.":""}</div>`;}
+}
+async function jrQuotes(){
+  const codes=[...new Set(JR.rows.filter(r=>r.stock_code&&r.price).map(r=>r.stock_code))];
+  if(!codes.length)return;
+  try{const rows=await q("v_stock_summary",`select=code,close&code=in.(${codes.join(",")})`);JR.quotes={};rows.forEach(r=>JR.quotes[r.code]=+r.close);}catch(_){}
+}
+function jrFiltered(){
+  const k=$("#jrKindF").value,t=$("#jrQ").value.trim().toLowerCase();
+  return JR.rows.filter(r=>(!k||r.kind===k)&&(!t||[r.title,r.body,r.stock_name,r.stock_code,(r.tags||[]).join(" ")].join(" ").toLowerCase().includes(t)));
+}
+function jrRender(){
+  const L=jrFiltered();$("#jrCnt").textContent=`${L.length}건${L.length!==JR.rows.length?` / 전체 ${JR.rows.length}건`:""}`;
+  if(!L.length){$("#jrList").innerHTML='<div class="load">일지가 없습니다. "+ 새 일지"로 첫 기록을 남겨보세요.</div>';return;}
+  $("#jrList").innerHTML=L.map(r=>{
+    const kc=r.kind==="매수"?"b":r.kind==="매도"?"s":"";
+    let ret="";const cur=JR.quotes[r.stock_code];
+    if(r.stock_code&&r.price&&cur){const p=(cur/r.price-1)*100;ret=`<span style="color:${p>=0?"var(--up)":"var(--dn,#3b6fd4)"};font-weight:650">현재 ${N(cur)}원 (${p>=0?"+":""}${p.toFixed(1)}%)</span>`;}
+    const del=JR.delArm===r.id?`<button data-jr="delok" data-id="${r.id}" style="color:var(--up);border-color:var(--up)">정말 삭제</button><button data-jr="delno" data-id="${r.id}">취소</button>`:`<button data-jr="edit" data-id="${r.id}">수정</button><button data-jr="del" data-id="${r.id}">삭제</button>`;
+    return `<div class="jr-item"><div class="jr-hd"><span class="faint">${r.entry_date}</span><span class="jr-k ${kc}">${jrEsc(r.kind)}</span>
+      ${r.stock_code?`<a href="#detail/${r.stock_code}" style="font-weight:600">${jrEsc(r.stock_name||r.stock_code)}</a>`:""}
+      ${r.price?`<span>${N(r.price)}원${r.qty?` × ${N(r.qty)}주`:""}</span>`:""}${ret}<span class="jr-act">${del}</span></div>
+      ${r.title?`<div class="jr-ti" style="margin-top:4px">${jrEsc(r.title)}</div>`:""}
+      ${r.body?`<div class="jr-body">${jrEsc(r.body)}</div>`:""}
+      ${(r.tags||[]).length?`<div>${r.tags.map(t=>`<span class="acc-tag">#${jrEsc(t)}</span>`).join(" ")}</div>`:""}</div>`;
+  }).join("");
+}
+function jrForm(r){
+  JR.editId=r?r.id:null;
+  $("#jrForm").classList.remove("hide");
+  $("#jrDate").value=r?r.entry_date:new Date(Date.now()+9*36e5).toISOString().slice(0,10);
+  $("#jrKind").value=r?r.kind:"메모";
+  $("#jrStock").value=r&&r.stock_code?`${r.stock_name||""} (${r.stock_code})`:"";
+  $("#jrPrice").value=r&&r.price!=null?r.price:"";$("#jrQty").value=r&&r.qty!=null?r.qty:"";
+  $("#jrTitle").value=r?r.title||"":"";$("#jrBody").value=r?r.body||"":"";$("#jrTags").value=r?(r.tags||[]).join(", "):"";
+  $("#jrMsg").textContent="";$("#jrTitle").focus();
+}
+function jrStockParse(v){
+  v=v.trim();if(!v)return{};
+  let m=v.match(/\(([0-9A-Za-z]{1,12})\)\s*$/);
+  let c=m?S.codes.find(x=>x.code===m[1]):S.codes.find(x=>x.code===v||x.name===v);
+  return c?{stock_code:c.code,stock_name:c.name}:{stock_name:v};
+}
+async function jrSave(){
+  const b={id:JR.editId,entry_date:$("#jrDate").value,kind:$("#jrKind").value,title:$("#jrTitle").value.trim(),body:$("#jrBody").value,
+    ...jrStockParse($("#jrStock").value),price:$("#jrPrice").value,qty:$("#jrQty").value,
+    tags:$("#jrTags").value.split(/[,，]/).map(t=>t.trim().replace(/^#/,"")).filter(Boolean)};
+  if(!b.title&&!b.body.trim()){$("#jrMsg").textContent="제목이나 내용을 입력하세요.";return;}
+  $("#jrSave").disabled=true;$("#jrMsg").textContent="저장 중…";
+  try{await jrApi("POST",b);$("#jrForm").classList.add("hide");const j=await jrApi("GET");JR.rows=j.rows||[];await jrQuotes();jrRender();}
+  catch(e){$("#jrMsg").textContent="저장 실패: "+e.message;}
+  $("#jrSave").disabled=false;
+}
+function jrExport(){
+  const md=JR.rows.map(r=>`## ${r.entry_date} [${r.kind}] ${r.title||""}\n${r.stock_code?`- 종목: ${r.stock_name||""} (${r.stock_code})\n`:""}${r.price?`- 가격: ${r.price}원${r.qty?` × ${r.qty}`:""}\n`:""}${(r.tags||[]).length?`- 태그: ${r.tags.join(", ")}\n`:""}\n${r.body||""}\n`).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([md],{type:"text/markdown"}));a.download="투자일지_"+new Date().toISOString().slice(0,10)+".md";a.click();
+}
+$("#jrTokGo").onclick=()=>{const v=$("#jrTok").value.trim();if(!v)return;sriLS("sr_acc_token",v);$("#jrTok").value="";jrOpen();};
+$("#jrNew").onclick=()=>jrForm(null);
+$("#jrCancel").onclick=()=>$("#jrForm").classList.add("hide");
+$("#jrSave").onclick=jrSave;$("#jrExp").onclick=jrExport;
+$("#jrOut").onclick=()=>{sriLS("sr_acc_token",null);JR.rows=[];jrAuthShow("토큰을 지웠습니다.");};
+$("#jrKindF").onchange=jrRender;$("#jrQ").oninput=jrRender;
+$("#jrList").addEventListener("click",async e=>{
+  const b=e.target.closest("button[data-jr]");if(!b)return;const id=+b.dataset.id,a=b.dataset.jr;
+  if(a==="edit"){jrForm(JR.rows.find(r=>r.id===id));scrollTo(0,0);}
+  else if(a==="del"){JR.delArm=id;jrRender();}
+  else if(a==="delno"){JR.delArm=null;jrRender();}
+  else if(a==="delok"){JR.delArm=null;try{await jrApi("POST",{action:"delete",id});JR.rows=JR.rows.filter(r=>r.id!==id);}catch(_){}jrRender();}
+});
+const VIEW_IDS=["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","journal"];
 function setHash(v,code){
   const h="#"+v+(code?"/"+code:"");
   if(location.hash!==h)history.pushState(null,"",h);
@@ -5797,6 +5938,8 @@ function renderAsOf(){
   if(v==="detail"&&S.chart&&S.chart.rows&&S.chart.rows.length)date=S.chart.rows.at(-1).trade_date;
   if(v==="perf"){
     parts.push(S.perfUpd?`전략 계산 <b>${fmtKst(S.perfUpd)}</b>`:"전략 계산 시각 확인 중");
+  }else if(v==="journal"){
+    parts.push("나만 보는 일지 · 토큰으로 보호됨");
   }else if(v==="perf2"){
     parts.push(S.perf2Upd?`실시간 목록 조회 <b>${fmtKst(S.perf2Upd,true)}</b> (30초마다 자동 갱신)`:"조회 중");
   }else{

@@ -3001,6 +3001,58 @@ async function cleanupAccessLog() {
 setTimeout(cleanupAccessLog, 60 * 1000); setInterval(cleanupAccessLog, 6 * 3600 * 1000);
 if (!ACCESS_LOG_TOKEN) console.warn('[access_log] ACCESS_LOG_TOKEN(또는 DAILY_SUMMARY_TOKEN) 미설정 — 접속 기록 조회가 비활성화됩니다(기록은 계속 저장).');
 
+/* ── 투자일지 (2026-10-31) — 나만 보는 게시판. 접속 기록과 같은 토큰(ACCESS_LOG_TOKEN)으로만 읽기·쓰기 ── */
+const JOURNAL_KINDS = ['매수', '매도', '관찰', '복기', '메모'];
+function journalClean(b) {
+  const num = v => (v === '' || v == null || !isFinite(+v)) ? null : +v;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(b.entry_date || '') ? b.entry_date : new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const tags = (Array.isArray(b.tags) ? b.tags : []).map(t => String(t).trim().slice(0, 30)).filter(Boolean).slice(0, 12);
+  const code = /^[0-9A-Za-z]{1,12}$/.test(b.stock_code || '') ? b.stock_code : null;
+  return {
+    entry_date: date, kind: JOURNAL_KINDS.includes(b.kind) ? b.kind : '메모',
+    title: _cut(b.title, 200), body: _cut(b.body, 20000),
+    stock_code: code, stock_name: code ? _cut(b.stock_name, 80) : _cut(b.stock_name, 80),
+    price: num(b.price), qty: num(b.qty), tags,
+  };
+}
+function handleJournal(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path !== '/journal') return false;
+  accessCors(req, res, 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+  if (!ACCESS_LOG_TOKEN) { json(503, { ok: false, error: 'token not configured' }); return true; }
+  if (!tokenOk(req)) { json(401, { ok: false, error: 'unauthorized' }); return true; }
+  if (req.method === 'GET') {
+    fetch(`${SUPABASE_URL}/rest/v1/journal_entries?select=*&order=entry_date.desc,id.desc&limit=2000`, {
+      headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+    }).then(async r => {
+      if (!r.ok) { json(502, { ok: false, error: `db ${r.status}` }); return; }
+      json(200, { ok: true, rows: await r.json() });
+    }).catch(e => json(500, { ok: false, error: e.message }));
+    return true;
+  }
+  if (req.method === 'POST') {
+    readBody(req).then(async raw => {
+      let b; try { b = JSON.parse(raw); } catch (_) { json(400, { ok: false, error: 'invalid JSON' }); return; }
+      if (!b || typeof b !== 'object') { json(400, { ok: false, error: 'invalid body' }); return; }
+      const id = Number.isInteger(+b.id) && +b.id > 0 ? +b.id : null;
+      if (b.action === 'delete') {
+        if (!id) { json(400, { ok: false, error: 'id required' }); return; }
+        await sbWrite(`journal_entries?id=eq.${id}`, 'DELETE');
+        json(200, { ok: true }); return;
+      }
+      const row = journalClean(b);
+      const out = id
+        ? await sbWriteReturning(`journal_entries?id=eq.${id}`, 'PATCH', { ...row, updated_at: new Date().toISOString() })
+        : await sbWriteReturning('journal_entries', 'POST', [row]);
+      json(200, { ok: true, row: out[0] || null });
+    }).catch(e => json(500, { ok: false, error: e.message }));
+    return true;
+  }
+  res.writeHead(405); res.end(); return true;
+}
+
 function handleAccessLog(req, res) {
   const path = (req.url || '').split('?')[0];
   if (path === '/visit-log') {
@@ -3035,7 +3087,7 @@ function handleAccessLog(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  if (handleAccessLog(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;

@@ -1,0 +1,20 @@
+name: Setup Journal (투자일지 테이블 생성)
+
+# 94_journal.sql 을 실행해 journal_entries 테이블을 만듭니다(여러 번 실행해도 안전).
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Create journal_entries
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 94_journal_setup.py
