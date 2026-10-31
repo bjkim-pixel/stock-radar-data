@@ -811,18 +811,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
   </div>
 
-  <div class="card" id="tdKCard" style="margin-top:12px"><h3>KOSPI 차트 <span class="r" id="tdKNote">불러오는 중…</span></h3>
-    <div id="tdKChart"><div class="load sk"></div></div>
-    <div class="note" id="tdKMaNote" style="margin:4px 0 10px"></div>
-    <div class="note" style="margin:8px 0 4px"><b>스마트머니 국면</b> <span class="faint">KOSPI 종목 국면 분포 · 스마트머니(외국인+투신+사모+연기금) 누적 순매수</span></div>
-    <div id="tdKPhase" style="margin-bottom:8px"></div>
-    <div class="faint" style="font-size:11.5px;margin-bottom:2px"><b style="color:var(--good)">━</b> 스마트머니 누적 · <b style="color:var(--down)">━</b> 개인 누적 · <b style="color:var(--ink-3)">━</b> KOSPI 지수 (최근 120거래일, 조원)</div>
-    <div id="tdKSm"><div class="load sk"></div></div>
-    <div class="note" style="margin:12px 0 4px"><b>수급주체별 일별 순매수</b> <span class="faint">KOSPI 개별 종목 합산 · 억원 · 최신 날짜가 위 · <span class="up">순매수 빨강</span> / <span class="down">순매도 파랑</span></span>
-      <select id="tdKN" style="width:auto;margin-left:8px"><option value="20">최근 20거래일</option><option value="60">최근 60거래일</option><option value="120">최근 120거래일</option></select></div>
-    <div class="tw tw-scroll dd"><table><thead id="tdKHead"></thead><tbody id="tdKBody"></tbody></table></div>
-    <div class="note">지수 이동평균은 KOSPI 지수 종가 기준입니다. 스마트머니 국면은 종목별 국면(매집·상승·분산·이탈)을 KOSPI 종목 전체에서 센 분포이고, 지수 자체의 국면 판정은 아닙니다. 맨 위 "합계" 줄은 선택 기간 합계입니다. 수급은 ETF·우선주 등을 뺀 개별 종목(STOCK)을 합산한 값이라 거래소 공식 시장 합계와 다를 수 있습니다.</div>
-  </div>
+  <div id="tdKWrap" style="margin-top:12px"><div class="card"><h3>KOSPI <span class="r" id="tdKNote">불러오는 중…</span></h3><div class="load sk"></div></div></div>
 
   <div class="card" style="margin-top:12px"><h3>기준별 강한 종목 Top 10
     <span class="r">오늘 이 기준으로 가장 강했던 종목 · 칩을 여러 개 누르면 모두 만족하는 종목</span></h3>
@@ -1256,7 +1245,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       보유·평단은 순매수 금액 ÷ 당일 평균가로 추정한 수량 기준이라 실제 보유와 차이가 있을 수 있습니다.</div>
   </div>
 
-  <div class="card"><h3>가격 · 이동평균<span class="r" id="dRange">전 기간</span></h3>
+  <div class="card" id="dPriceCard"><h3>가격 · 이동평균<span class="r" id="dRange">전 기간</span></h3>
     <div class="legend">
       <span><i style="background:var(--ink)"></i>종가</span>
       <span><i style="background:var(--mac1)"></i>MA5</span>
@@ -1281,11 +1270,11 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       "N일 이상"은 이동평균 기간이 N일 이상인 선(5·10·20·60·120·200일 중)만으로 판정합니다. 이력이 부족한 이평선은 계산되지 않아 목록에서 빠집니다.</div>
   </div>
 
-  <div class="card"><h3>무게/주식수 <span class="r" style="font-weight:400;font-size:11px">외+기관 순매수 ÷ 주식수 · 양수=자금유입</span></h3>
+  <div class="card" id="dWeightCard"><h3>무게/주식수 <span class="r" style="font-weight:400;font-size:11px">외+기관 순매수 ÷ 주식수 · 양수=자금유입</span></h3>
     <div class="chart" id="dWeight"></div>
   </div>
 
-  <div class="card"><h3>거래량<span class="r" id="dVolRange">2025-09-01~오늘</span></h3>
+  <div class="card" id="dVolCard"><h3>거래량<span class="r" id="dVolRange">2025-09-01~오늘</span></h3>
     <div class="chart" id="dVolume"></div>
   </div>
 
@@ -1314,7 +1303,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div id="dProfileInstTop"></div>
   </div>
 
-  <div class="card"><h3>투자자별 누적 순매수<span class="r" id="dFlowRange">2025-09-01~오늘 · 억원</span></h3>
+  <div class="card" id="dFlowCard"><h3>투자자별 누적 순매수<span class="r" id="dFlowRange">2025-09-01~오늘 · 억원</span></h3>
     <div class="legend">
       <span><i style="background:var(--s1)"></i>외국인</span>
       <span><i style="background:var(--s2)"></i>기관</span>
@@ -1590,7 +1579,9 @@ function sriVid(){let v=sriLS("sr_vid");if(!v){v=(window.crypto&&crypto.randomUU
   fetch(RELAY_HTTP_BASE+"/visit-log",{method:"POST",headers:{"content-type":"text/plain"},body:JSON.stringify(body),keepalive:true}).catch(()=>{});
 }catch(_){}})();
 
-const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+let DCTX=false;   // true이면 "#dXxx" 선택자를 "#kdXxx"(오늘의 종목 · KOSPI 카드의 복제본)로 바꿔 종목상세 렌더러를 그대로 재사용
+const kq=s=>(DCTX&&typeof s==="string"&&/^#d[A-Z]/.test(s))?"#k"+s.slice(1):s;
+const $=(s,r=document)=>r.querySelector(r===document?kq(s):s), $$=(s,r=document)=>[...r.querySelectorAll(r===document?kq(s):s)];
 const N=(v,d=0)=>(v==null||isNaN(v))?"–":Number(v).toLocaleString("ko-KR",
   {minimumFractionDigits:d,maximumFractionDigits:d});
 const sgn=v=>(v>0?"up":v<0?"down":"dim");
@@ -4577,10 +4568,11 @@ function smCtlInit(){
   h.innerHTML=`<span class="faint" style="font-size:11px">주체</span>`+SM_SUBJ_ALL.map(([k,l])=>
     `<label class="smck"><input type="checkbox" data-k="${k}" ${S.smSubj.includes(k)?"checked":""}>${l}</label>`).join("")
     +`<span class="faint" style="font-size:11px;margin-left:10px">판정 구간</span>`
-    +[120,60].map(w=>`<label class="smck"><input type="radio" name="smW" value="${w}" ${S.smW===w?"checked":""}>${w}일</label>`).join("");
-  h.querySelectorAll("input[type=checkbox]").forEach(c=>c.onchange=()=>{
-    S.smSubj=[...h.querySelectorAll("input[type=checkbox]:checked")].map(x=>x.dataset.k);renderSmCard();});
-  h.querySelectorAll("input[type=radio]").forEach(c=>c.onchange=()=>{S.smW=+c.value;renderSmCard();});
+    +[120,60].map(w=>`<label class="smck"><input type="radio" name="smW${DCTX?"K":""}" value="${w}" ${S.smW===w?"checked":""}>${w}일</label>`).join("");
+  const call=DCTX?(fn=>inKospi(fn)):(fn=>fn());   // KOSPI 카드의 컨트롤이면 KOSPI 상태·데이터로 실행
+  h.querySelectorAll("input[type=checkbox]").forEach(c=>c.onchange=()=>call(()=>{
+    S.smSubj=[...h.querySelectorAll("input[type=checkbox]:checked")].map(x=>x.dataset.k);renderSmCard();}));
+  h.querySelectorAll("input[type=radio]").forEach(c=>c.onchange=()=>call(()=>{S.smW=+c.value;renderSmCard();}));
 }
 function renderSmCard(){
   smCtlInit();
@@ -5878,64 +5870,98 @@ $("#jrList").addEventListener("click",async e=>{
   else if(a==="delok"){JR.delArm=null;try{await jrApi("POST",{action:"delete",id});JR.rows=JR.rows.filter(r=>r.id!==id);}catch(_){}jrRender();}
 });
 
-/* ══ 오늘의 종목 · KOSPI 차트 카드 (2026-10-31) ══ */
-S.tdKN=S.tdKN||20;
-const TDK_COLS=[["외국인","foreign_net"],["기관","inst_net"],["금투","fin_inv_net"],["투신","inv_trust_net"],["연금","pension_net"],["사모","pe_net"],["기타법인","corp_other_net"],["개인","individual_net"]];
-function tdKTable(){
-  const fl=S.tdK&&S.tdK.flow;if(!fl||!fl.length)return;
-  const n=Math.min(S.tdKN,fl.length),from=fl.length-n;
-  const cell=v=>v==null?'<td class="dim">–</td>':(Math.round(v/EOK)===0?'<td class="dim">0</td>':`<td class="${sgn(v)}">${pm(v/EOK,0)}</td>`);
-  const tot=TDK_COLS.map(([,k])=>{let t=0;for(let i=from;i<fl.length;i++)t+=+fl[i][k]||0;return t;});
-  $("#tdKHead").innerHTML="<tr><th>날짜</th>"+TDK_COLS.map(([l])=>`<th>${l}</th>`).join("")+"</tr>";
-  let h=`<tr class="sum"><td>합계 (${n}일)</td>${tot.map(cell).join("")}</tr>`;
-  for(let i=fl.length-1;i>=from;i--)h+=`<tr><td>${fl[i].trade_date.slice(2).replace(/-/g,"/")}</td>${TDK_COLS.map(([,k])=>cell(fl[i][k]==null?null:+fl[i][k])).join("")}</tr>`;
-  $("#tdKBody").innerHTML=h;
+/* ══ 오늘의 종목 · KOSPI를 "한 종목"처럼 보기 (2026-10-31) ══
+   종목상세의 카드(스마트머니 국면·가격/이평·이평선 정렬·무게/주식수·거래량·누적 순매수·일별 순매수)를 복제해 놓고,
+   종목상세 렌더러를 그대로 호출합니다. DCTX가 켜지면 $("#dXxx")가 복제본("#kdXxx")을 가리키고, S.chart는 KOSPI 합성 데이터로 바뀝니다.
+   지수 종가 = "종가", KOSPI 개별 종목(STOCK) 합산 시총 = "시가총액", 수급주체별 순매수 = 개별 종목 합산(v_kospi_flow_daily). */
+const KS={smSubj:[...SM_SUBJ_DEF],smW:120,dMaMin:0,dDailyN:20};
+const KST=Object.keys(KS);
+function inKospi(fn){
+  const sd=DCTX,sc=S.chart,o={};KST.forEach(k=>o[k]=S[k]);
+  DCTX=true;S.chart=S.kChart;KST.forEach(k=>S[k]=KS[k]);
+  try{return fn();}finally{KST.forEach(k=>KS[k]=S[k]);KST.forEach(k=>S[k]=o[k]);S.chart=sc;DCTX=sd;}
+}
+function kBuild(idx,flow){
+  const fm={};flow.forEach(f=>fm[f.trade_date]=f);
+  const cumK=["foreign","inst","fin_inv","inv_trust","pension","pe","corp_other","individual"],cu={};cumK.forEach(k=>cu[k]=0);
+  const rows=[];
+  idx.forEach(x=>{
+    const f=fm[x.trade_date];if(!f||!(+x.index_close>0))return;
+    const r={trade_date:x.trade_date,close:+x.index_close,open:+x.index_close,high:+x.index_close,low:+x.index_close,
+      volume:+f.volume||0,trade_amount:0,amount:+f.trade_amount||0,market_cap:+f.market_cap||null,pgtr_net_amt:null};
+    cumK.forEach(k=>{const v=+f[k+"_net"]||0;r[k+"_net"]=v;cu[k]+=v;r[k+"_cum"]=cu[k];});
+    r.weight_per_share=r.market_cap?((r.foreign_net+r.inst_net)/r.market_cap):null;
+    rows.push(r);
+  });
+  const ma=maSeries(rows);rows.forEach((r,i)=>{r.ma5=ma[5][i];r.ma20=ma[20][i];r.ma120=ma[120][i];});
+  return rows;
+}
+function kRangeCharts(){
+  const rows=S.chart.rows,start=$("#dStart").value||rows[0].trade_date,end=$("#dEnd").value||rows.at(-1).trade_date;
+  let rp=rows.filter(r=>r.trade_date>=start&&r.trade_date<=end);if(!rp.length)rp=rows;
+  const rlb=rp.map(r=>r.trade_date.slice(2).replace(/-/g,"/")),rangeTxt=`${rp[0].trade_date}~${rp.at(-1).trade_date}`;
+  $("#dRange").textContent=`${rows[0].trade_date} ~ ${rows.at(-1).trade_date} (${rows.length}거래일)`;
+  $("#dPriceRange").textContent=rangeTxt;$("#dVolRange").textContent=rangeTxt+" · 조원";$("#dFlowRange").textContent=rangeTxt+" · 억원";
+  const maxClose=Math.max(...rp.map(r=>+r.close));
+  lineChart($("#dPrice"),[{n:"종가",v:rp.map(r=>+r.close),c:"--ink"},
+    {n:"MA5",v:rp.map(r=>r.ma5),c:"--mac1"},{n:"MA20",v:rp.map(r=>r.ma20),c:"--mac2"},{n:"MA120",v:rp.map(r=>r.ma120),c:"--mac3"}],rlb,
+    {h:450,w:1180,pr:66,labelEnds:false,marks:true,monthTicks:true,fy:v=>N(v,0),fm:v=>N(v,2),ft:v=>N(v,2),refLine:maxClose,refLabel:`전고점 ${N(maxClose,2)}`});
+  volumeBars($("#dWeight"),rp.map(r=>r.weight_per_share!=null?r.weight_per_share*100:null),rlb,
+    {h:450,w:1180,pr:66,monthTicks:true,marks:true,fy:v=>pm(v,2)+"%",ft:v=>pm(v,3)+"%"});
+  volumeBars($("#dVolume"),rp.map(r=>r.amount/1e12),rlb,
+    {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v,0)+"조",ft:v=>N(v,1)+"조원"});
+  const rb=rp[0],rcum=k=>rp.map(r=>(+r[k]-+rb[k])/EOK);
+  lineChart($("#dFlow"),[{n:"외국인",v:rcum("foreign_cum"),c:"--s1"},{n:"기관",v:rcum("inst_cum"),c:"--s2"},
+    {n:"개인",v:rcum("individual_cum"),c:"--s3"},{n:"기타법인",v:rcum("corp_other_cum"),c:"--s4"}],rlb,
+    {h:450,w:1180,pr:66,zero:true,marks:"each",monthTicks:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+  try{renderSmCard();}catch(e){console.error("kospi sm",e);}
+  $("#dSmHead").innerHTML=$("#dSmHead").innerHTML.replace(/(\d)원/g,"$1");   // 지수는 "원"이 아니라 포인트
+  try{renderMaCard();}catch(e){console.error("kospi ma",e);}
+  try{renderDailyFlow();}catch(e){console.error("kospi daily",e);}
+}
+function kMount(){
+  const w=$("#tdKWrap");if(w._m)return;w._m=true;
+  w.innerHTML=`<div class="card"><h3>KOSPI <span class="faint" style="font-weight:400;font-size:11.5px">지수를 한 종목처럼 · 종목상세와 같은 구성</span><span class="r" id="tdKNote">불러오는 중…</span></h3>
+    <div class="smhead" id="tdKHead"></div>
+    <div class="note">종가 = KOSPI 지수, 수급 = KOSPI 개별 종목(ETF·우선주 제외) 합산, 시가총액 = 같은 종목들의 합. 스마트머니 국면은 "스마트머니가 KOSPI 시총의 몇 %를 순매수했나"로 종목과 같은 기준을 그대로 적용합니다.</div>
+    <input type="hidden" id="kdStart"><input type="hidden" id="kdEnd"></div>`;
+  [["dSmCard","스마트머니 국면"],["dPriceCard"],["dMaCard"],["dWeightCard"],["dVolCard","거래대금 (시장 전체)"],["dFlowCard"],["dDailyCard"]].forEach(([id,t])=>{
+    const c=document.getElementById(id).cloneNode(true);
+    [c,...c.querySelectorAll("[id]")].forEach(e=>{if(e.id)e.id="k"+e.id;});
+    c.style.marginTop="12px";
+    if(t&&id==="dVolCard"){const h=c.querySelector("h3");h.firstChild.textContent=t;}
+    w.appendChild(c);
+  });
+  document.querySelector("#kdWeightCard .r").textContent="외국인+기관 순매수 ÷ KOSPI 시총 · 양수=자금유입";
+  inKospi(()=>{
+    $$("#dMaSet button").forEach(b=>b.onclick=()=>inKospi(()=>{S.dMaMin=+b.dataset.v;try{renderMaCard();}catch(e){console.error(e);}}));
+    $("#dDailyN").onchange=e=>inKospi(()=>{S.dDailyN=+e.target.value;try{renderDailyFlow();}catch(err){console.error(err);}});
+  });
 }
 async function loadTdKospi(){
+  kMount();
   try{
-    const [idx,flow,st]=await Promise.all([
+    const [idx,flow]=await Promise.all([
       q("market_daily","select=trade_date,index_close&market=eq.KOSPI&order=trade_date.asc"),
-      q("v_kospi_flow_daily","select=*&order=trade_date.asc"),
-      q("smart_money_state","select=phase,changed_today&market=eq.KOSPI&limit=3000")
-    ]);
-    const r=idx.filter(x=>x.index_close!=null&&+x.index_close>0);
-    if(!r.length){$("#tdKChart").innerHTML='<div class="load">데이터 없음</div>';return;}
-    S.tdK={flow};
-    // 1) 지수 + 이동평균(5·20·60·120)
-    const rows=r.map(x=>({close:+x.index_close,trade_date:x.trade_date})),ma=maSeries(rows);
-    const cut=Math.max(0,rows.length-260),lb=r.slice(cut).map(x=>x.trade_date.slice(2).replace(/-/g,"/"));
-    const sl=a=>a.slice(cut);
-    lineChart($("#tdKChart"),[
-      {n:"KOSPI",v:sl(rows.map(x=>x.close)),c:"--up"},
-      {n:"MA5",v:sl(ma[5]),c:"--ma1",o:.9},{n:"MA20",v:sl(ma[20]),c:"--ma2",o:.9},
-      {n:"MA60",v:sl(ma[60]),c:"--warn",o:.9},{n:"MA120",v:sl(ma[120]),c:"--good",o:.9}],lb,
-      {h:240,pr:64,pl:46,marks:true,monthTicks:true,fy:v=>N(v,0),ft:v=>N(v,1),fm:v=>N(v,1)});
-    const L=rows.length-1,cl=rows[L].close,vals=[5,10,20,60,120].map(p=>ma[p][L]);
-    const stt=maState(cl,vals.filter(v=>v!=null)),stKr={up:"정배열",dn:"역배열",mix:"혼조"}[stt.st];
-    $("#tdKMaNote").innerHTML=`종가 <b>${N(cl,2)}</b> · 이평선 ${stKr} · `+[5,20,60,120].map(p=>ma[p][L]!=null?`MA${p} ${N(ma[p][L],0)} <span class="${sgn(cl/ma[p][L]-1)}">(${pm((cl/ma[p][L]-1)*100,1)}%)</span>`:"").filter(Boolean).join(" · ");
-    $("#tdKNote").textContent=`${r[L].trade_date} 기준`;
-    // 2) 스마트머니 국면 분포 + 누적 순매수
-    const cnt={ACC:0,MARKUP:0,DIST:0,DOWN:0,NEUTRAL:0};st.forEach(x=>{if(x.phase in cnt)cnt[x.phase]++;});
-    const tot=st.length||1;
-    $("#tdKPhase").innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap">`+["ACC","MARKUP","DIST","DOWN","NEUTRAL"].map(k=>
-      `<div class="tile" style="min-width:96px;flex:1"><div class="lb" style="color:${SM_PH_C[k]}">${SM_PH_KR[k]}</div><div class="vl" style="font-size:16px">${cnt[k]}<span class="faint" style="font-size:11px"> 종목</span></div><div class="sub">${(cnt[k]/tot*100).toFixed(0)}%</div></div>`).join("")+`</div>`;
-    const fl=flow.slice(-120),smK=["foreign_net","inv_trust_net","pe_net","pension_net"];
-    let a=0,b=0;const smc=[],ind=[];
-    fl.forEach(x=>{a+=smK.reduce((t,k)=>t+(+x[k]||0),0);b+=+x.individual_net||0;smc.push(a/EOK/1e4);ind.push(b/EOK/1e4);});
-    const px={};r.forEach(x=>px[x.trade_date]=+x.index_close);
-    lineChart($("#tdKSm"),[{n:"스마트머니 누적",v:smc,c:"--good"},{n:"개인 누적",v:ind,c:"--down"}],
-      fl.map(x=>x.trade_date.slice(2).replace(/-/g,"/")),
-      {h:240,pr:70,zero:true,labelEnds:false,monthTicks:true,fy:v=>pm(v,1)+"조",ft:v=>pm(v,2)+"조",fm:v=>pm(v,2)+"조",
-       bg:{v:fl.map(x=>px[x.trade_date]??null),n:"KOSPI",ft:v=>N(v,1),marks:true}});
-    // 3) 주체별 표
-    $("#tdKN").value=String(S.tdKN);tdKTable();
+      q("v_kospi_flow_daily","select=*&order=trade_date.asc")]);
+    const rows=kBuild(idx,flow);
+    if(!rows.length)throw new Error("데이터 없음");
+    S.kChart={code:"KOSPI",rows};
+    inKospi(()=>{
+      $("#dStart").value=START_D<rows[0].trade_date?rows[0].trade_date:START_D;$("#dEnd").value=rows.at(-1).trade_date;
+      kRangeCharts();
+    });
+    const L=rows.at(-1),P=rows.at(-2),chg=P?(L.close/P.close-1)*100:null;
+    $("#tdKNote").textContent=`${L.trade_date} 기준`;
+    $("#tdKHead").innerHTML=`<div class="tile"><div class="lb">종가</div><div class="vl">${N(L.close,2)}</div><div class="sub">${chg==null?"":`<span class="${sgn(chg)}">${pm(chg,2)}%</span>`}</div></div>
+      <div class="tile"><div class="lb">KOSPI 시총(합산)</div><div class="vl" style="font-size:16px">${N(L.market_cap/1e12,0)}조원</div><div class="sub">${rows.length}거래일 이력</div></div>
+      <div class="tile"><div class="lb">시장 거래대금</div><div class="vl" style="font-size:16px">${N(L.amount/1e12,1)}조원</div></div>`;
   }catch(e){
     console.error(e);
     $("#tdKNote").textContent="";
-    $("#tdKChart").innerHTML=`<div class="load">불러오지 못했습니다${/v_kospi_flow_daily|404|PGRST/.test(String(e.message))?" — Actions의 'Setup KOSPI Flow View'를 먼저 실행하세요":""}</div>`;
+    $("#tdKHead").innerHTML=`<div class="load">불러오지 못했습니다${/v_kospi_flow_daily|404|PGRST|42/.test(String(e.message))?" — Actions의 'Setup KOSPI Flow View'를 먼저 실행하세요":""}: ${accEsc(e.message).slice(0,120)}</div>`;
   }
 }
-$("#tdKN").onchange=e=>{S.tdKN=+e.target.value;tdKTable();};
 const VIEW_IDS=["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","journal"];
 function setHash(v,code){
   const h="#"+v+(code?"/"+code:"");
