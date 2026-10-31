@@ -1,0 +1,35 @@
+name: KOSPI SM Probe (KOSPI 스마트머니 국면 점검, 읽기 전용)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Probe
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 96_kospi_sm_probe.py
+      - name: Publish report (branch kospi-sm-report)
+        if: always()
+        run: |
+          [ -f kospi_sm_report.md ] || echo "리포트 없음 — 실패" > kospi_sm_report.md
+          cp kospi_sm_report.md /tmp/r.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan kospi-sm-report
+          git rm -rq --cached . || true
+          cp /tmp/r.md kospi_sm_report.md
+          git add -f kospi_sm_report.md
+          git commit -qm "kospi sm ${{ github.run_id }}"
+          git push -f origin kospi-sm-report
