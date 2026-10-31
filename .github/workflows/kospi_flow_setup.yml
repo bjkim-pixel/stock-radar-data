@@ -1,0 +1,20 @@
+name: Setup KOSPI Flow View (수급 일별 뷰 생성)
+
+# 95_kospi_flow.sql 을 실행해 v_kospi_flow_daily 뷰를 만듭니다(여러 번 실행해도 안전).
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Create view
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 95_kospi_flow_setup.py
