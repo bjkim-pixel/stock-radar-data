@@ -110,6 +110,8 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
   vertical-align:-2px;border:1px solid var(--border)}
 
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px}
+/* 오늘의 종목: 카드(흰 배경)는 넓은 표에 맞춰 길어져도, 수치 박스(타일)는 화면 폭 안에서만 늘어나게 제한 */
+#v-today .tiles{max-width:min(100%,calc(100vw - 52px))}
 .tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
 .tile .lb{font-size:10.5px;color:var(--ink-3);margin-bottom:4px}
 .tile .vl{font-size:20px;font-weight:680;letter-spacing:-.02em;line-height:1.15}
