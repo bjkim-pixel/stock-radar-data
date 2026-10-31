@@ -410,6 +410,11 @@ section[id^="v-"]>.card:first-child{margin-top:8px!important}
 .jr-form{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--surface)}
 .jr-row{display:flex;gap:8px;flex-wrap:wrap}.jr-row label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--ink-3);flex:1 1 120px}
 .jr-form textarea{width:100%;box-sizing:border-box;background:var(--page);color:var(--ink);border:1px solid var(--border);border-radius:7px;padding:8px;font:inherit;font-size:13px;line-height:1.55;resize:vertical}
+.jr-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.jr-th{position:relative}.jr-th img,.jr-imgs img{height:90px;max-width:160px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;background:var(--surface)}
+.jr-th .x{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--page);color:var(--ink-2);font-size:11px;line-height:1;cursor:pointer;padding:0}
+.jr-imgs{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.jr-lb{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out}.jr-lb img{max-width:96vw;max-height:94vh;border-radius:6px}
 .jr-item{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
 .jr-hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px}
 .jr-ti{font-weight:650;font-size:13.5px}
@@ -1428,6 +1433,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <input type="text" id="jrTitle" placeholder="제목" style="margin:8px 0 6px">
         <textarea id="jrBody" rows="9" placeholder="매매 근거, 시장 상황, 느낀 점, 다음에 지킬 원칙…"></textarea>
         <input type="text" id="jrTags" placeholder="태그 (쉼표로 구분: 스마트머니, 손절, 실수)" style="margin-top:6px">
+        <div style="margin-top:8px"><label class="btn ghost" style="padding:4px 12px;font-size:12px;cursor:pointer;display:inline-block">🖼 이미지 추가<input type="file" id="jrFile" accept="image/*" multiple hidden></label>
+          <span class="faint" style="font-size:11.5px">또는 입력창에서 붙여넣기(Ctrl+V) · 일지당 최대 8장 · 자동으로 줄여서 저장</span></div>
+        <div id="jrThumbs" class="jr-thumbs"></div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
           <button class="btn" id="jrSave" style="padding:6px 16px">저장</button>
           <button class="btn ghost" id="jrCancel" style="padding:6px 14px">취소</button>
@@ -5723,12 +5731,12 @@ function redraw(skipDetailReload){
 let _hashNav=false;
 
 /* ══ 투자일지 (2026-10-31) — 나만 보는 게시판. relay-server /journal, 토큰(x-access-token)으로만 접근 ══ */
-const JR={rows:[],editId:null,quotes:{},delArm:null};
+const JR={rows:[],editId:null,quotes:{},delArm:null,imgCache:{},pend:[],keep:[],drop:[]};
 const jrEsc=accEsc;
 function jrAuthShow(msg){$("#jrAuth").classList.remove("hide");$("#jrMain").classList.add("hide");$("#jrAuthMsg").textContent=msg||"";}
-async function jrApi(method,body){
+async function jrApi(method,body,qs){
   const tok=sriLS("sr_acc_token");
-  const r=await fetch(RELAY_HTTP_BASE+"/journal",{method,headers:{"x-access-token":tok,...(body?{"content-type":"application/json"}:{})},body:body?JSON.stringify(body):undefined});
+  const r=await fetch(RELAY_HTTP_BASE+"/journal"+(qs||""),{method,headers:{"x-access-token":tok,...(body?{"content-type":"application/json"}:{})},body:body?JSON.stringify(body):undefined});
   if(r.status===401){sriLS("sr_acc_token",null);jrAuthShow("토큰이 맞지 않습니다.");throw new Error("unauthorized");}
   if(r.status===503){jrAuthShow("서버에 토큰이 설정되지 않았습니다 (Render 환경변수 ACCESS_LOG_TOKEN 필요).");throw new Error("no token");}
   const j=await r.json();if(!j.ok)throw new Error(j.error||("HTTP "+r.status));return j;
@@ -5762,11 +5770,45 @@ function jrRender(){
       ${r.price?`<span>${N(r.price)}원${r.qty?` × ${N(r.qty)}주`:""}</span>`:""}${ret}<span class="jr-act">${del}</span></div>
       ${r.title?`<div class="jr-ti" style="margin-top:4px">${jrEsc(r.title)}</div>`:""}
       ${r.body?`<div class="jr-body">${jrEsc(r.body)}</div>`:""}
+      ${(r.images||[]).length?`<div class="jr-imgs">${r.images.map(i=>`<img data-iid="${i}" alt="첨부 이미지" ${JR.imgCache[i]?`src="${JR.imgCache[i]}"`:""}>`).join("")}</div>`:""}
       ${(r.tags||[]).length?`<div>${r.tags.map(t=>`<span class="acc-tag">#${jrEsc(t)}</span>`).join(" ")}</div>`:""}</div>`;
   }).join("");
+  jrLoadImgs($$("#jrList img[data-iid]"));
+}
+async function jrImg(id){
+  if(JR.imgCache[id])return JR.imgCache[id];
+  const j=await jrApi("GET",null,"?img="+id);JR.imgCache[id]=j.data||"";return JR.imgCache[id];
+}
+function jrLoadImgs(imgs){imgs.forEach(async el=>{if(el.getAttribute("src"))return;try{el.src=await jrImg(+el.dataset.iid);}catch(_){}});}
+function jrThumbs(){
+  $("#jrThumbs").innerHTML=JR.keep.map(i=>`<div class="jr-th"><img data-iid="${i}" ${JR.imgCache[i]?`src="${JR.imgCache[i]}"`:""}><button class="x" data-k="${i}" type="button" aria-label="삭제">✕</button></div>`).join("")
+    +JR.pend.map((d,n)=>`<div class="jr-th"><img src="${d}"><button class="x" data-p="${n}" type="button" aria-label="삭제">✕</button></div>`).join("");
+  jrLoadImgs($$("#jrThumbs img[data-iid]"));
+}
+function jrShrink(file){
+  return new Promise((ok,no)=>{
+    const u=URL.createObjectURL(file),im=new Image();
+    im.onload=()=>{const m=1280,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement("canvas");
+      c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
+      const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);
+      URL.revokeObjectURL(u);ok(c.toDataURL("image/jpeg",.82));};
+    im.onerror=()=>{URL.revokeObjectURL(u);no(new Error("이미지를 읽지 못했습니다"));};im.src=u;
+  });
+}
+async function jrAddFiles(files){
+  for(const f of files){
+    if(!/^image\//.test(f.type))continue;
+    if(JR.keep.length+JR.pend.length>=8){$("#jrMsg").textContent="이미지는 8장까지입니다.";break;}
+    try{JR.pend.push(await jrShrink(f));}catch(e){$("#jrMsg").textContent=e.message;}
+  }
+  jrThumbs();
+}
+function jrLightbox(src){
+  if(!src)return;const d=document.createElement("div");d.className="jr-lb";d.innerHTML=`<img src="${src}">`;
+  d.onclick=()=>d.remove();document.body.appendChild(d);
 }
 function jrForm(r){
-  JR.editId=r?r.id:null;
+  JR.editId=r?r.id:null;JR.pend=[];JR.keep=r?[...(r.images||[])]:[];JR.drop=[];jrThumbs();
   $("#jrForm").classList.remove("hide");
   $("#jrDate").value=r?r.entry_date:new Date(Date.now()+9*36e5).toISOString().slice(0,10);
   $("#jrKind").value=r?r.kind:"메모";
@@ -5787,7 +5829,12 @@ async function jrSave(){
     tags:$("#jrTags").value.split(/[,，]/).map(t=>t.trim().replace(/^#/,"")).filter(Boolean)};
   if(!b.title&&!b.body.trim()){$("#jrMsg").textContent="제목이나 내용을 입력하세요.";return;}
   $("#jrSave").disabled=true;$("#jrMsg").textContent="저장 중…";
-  try{await jrApi("POST",b);$("#jrForm").classList.add("hide");const j=await jrApi("GET");JR.rows=j.rows||[];await jrQuotes();jrRender();}
+  try{
+    const sv=await jrApi("POST",b);const eid=JR.editId||(sv.row&&sv.row.id);
+    for(const i of JR.drop)await jrApi("POST",{action:"img_del",img_id:i});
+    for(let n=0;n<JR.pend.length;n++){$("#jrMsg").textContent=`이미지 올리는 중 ${n+1}/${JR.pend.length}…`;await jrApi("POST",{action:"img_add",entry_id:eid,data:JR.pend[n]});}
+    JR.pend=[];JR.drop=[];
+    $("#jrForm").classList.add("hide");const j=await jrApi("GET");JR.rows=j.rows||[];await jrQuotes();jrRender();}
   catch(e){$("#jrMsg").textContent="저장 실패: "+e.message;}
   $("#jrSave").disabled=false;
 }
@@ -5800,6 +5847,14 @@ $("#jrNew").onclick=()=>jrForm(null);
 $("#jrCancel").onclick=()=>$("#jrForm").classList.add("hide");
 $("#jrSave").onclick=jrSave;$("#jrExp").onclick=jrExport;
 $("#jrOut").onclick=()=>{sriLS("sr_acc_token",null);JR.rows=[];jrAuthShow("토큰을 지웠습니다.");};
+$("#jrFile").onchange=e=>{jrAddFiles([...e.target.files]);e.target.value="";};
+$("#jrForm").addEventListener("paste",e=>{const fs=[...(e.clipboardData&&e.clipboardData.files||[])].filter(f=>/^image\//.test(f.type));if(fs.length){e.preventDefault();jrAddFiles(fs);}});
+$("#jrThumbs").addEventListener("click",e=>{
+  const x=e.target.closest("button.x");
+  if(x){if(x.dataset.k){const i=+x.dataset.k;JR.keep=JR.keep.filter(v=>v!==i);JR.drop.push(i);}else JR.pend.splice(+x.dataset.p,1);jrThumbs();return;}
+  if(e.target.tagName==="IMG")jrLightbox(e.target.src);
+});
+$("#jrList").addEventListener("click",e=>{if(e.target.matches(".jr-imgs img"))jrLightbox(e.target.src);});
 $("#jrKindF").onchange=jrRender;$("#jrQ").oninput=jrRender;
 $("#jrList").addEventListener("click",async e=>{
   const b=e.target.closest("button[data-jr]");if(!b)return;const id=+b.dataset.id,a=b.dataset.jr;

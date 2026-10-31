@@ -2909,10 +2909,10 @@ async function sendDailySummary(force = false) {
 // ----------------------------------------------------------------------------
 // 7) 프론트엔드용 웹소켓 서버
 // ----------------------------------------------------------------------------
-function readBody(req) {
+function readBody(req, max = 1e6) {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (chunk) => { data += chunk; if (data.length > 1e6) req.destroy(); });
+    req.on('data', (chunk) => { data += chunk; if (data.length > max) req.destroy(); });
     req.on('end', () => resolve(data));
     req.on('error', reject);
   });
@@ -3023,19 +3023,44 @@ function handleJournal(req, res) {
   const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
   if (!ACCESS_LOG_TOKEN) { json(503, { ok: false, error: 'token not configured' }); return true; }
   if (!tokenOk(req)) { json(401, { ok: false, error: 'unauthorized' }); return true; }
+  const sbGet = async p => {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${p}`, { headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` } });
+    if (!r.ok) throw new Error(`db ${r.status}`);
+    return r.json();
+  };
   if (req.method === 'GET') {
-    fetch(`${SUPABASE_URL}/rest/v1/journal_entries?select=*&order=entry_date.desc,id.desc&limit=2000`, {
-      headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
-    }).then(async r => {
-      if (!r.ok) { json(502, { ok: false, error: `db ${r.status}` }); return; }
-      json(200, { ok: true, rows: await r.json() });
-    }).catch(e => json(500, { ok: false, error: e.message }));
+    const imgId = +((req.url.split('?')[1] || '').match(/(?:^|&)img=(\d+)/) || [])[1];
+    (imgId
+      ? sbGet(`journal_images?select=data&id=eq.${imgId}`).then(r => json(200, { ok: true, data: r[0] ? r[0].data : null }))
+      : Promise.all([
+          sbGet('journal_entries?select=*&order=entry_date.desc,id.desc&limit=2000'),
+          sbGet('journal_images?select=id,entry_id&order=id.asc&limit=10000'),
+        ]).then(([rows, imgs]) => {
+          const m = {}; imgs.forEach(i => (m[i.entry_id] = m[i.entry_id] || []).push(i.id));
+          rows.forEach(r => { r.images = m[r.id] || []; });
+          json(200, { ok: true, rows });
+        })
+    ).catch(e => json(500, { ok: false, error: e.message }));
     return true;
   }
   if (req.method === 'POST') {
-    readBody(req).then(async raw => {
+    readBody(req, 3e6).then(async raw => {
       let b; try { b = JSON.parse(raw); } catch (_) { json(400, { ok: false, error: 'invalid JSON' }); return; }
       if (!b || typeof b !== 'object') { json(400, { ok: false, error: 'invalid body' }); return; }
+      if (b.action === 'img_add') {
+        const eid = +b.entry_id;
+        if (!Number.isInteger(eid) || eid < 1 || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(b.data || '') || b.data.length > 2.5e6) { json(400, { ok: false, error: 'bad image' }); return; }
+        const cnt = await (await fetch(`${SUPABASE_URL}/rest/v1/journal_images?select=id&entry_id=eq.${eid}`, { headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` } })).json();
+        if (Array.isArray(cnt) && cnt.length >= 8) { json(400, { ok: false, error: '이미지는 일지당 8장까지' }); return; }
+        const out = await sbWriteReturning('journal_images', 'POST', [{ entry_id: eid, data: b.data }]);
+        json(200, { ok: true, id: out[0] && out[0].id }); return;
+      }
+      if (b.action === 'img_del') {
+        const iid = +b.img_id;
+        if (!Number.isInteger(iid) || iid < 1) { json(400, { ok: false, error: 'id required' }); return; }
+        await sbWrite(`journal_images?id=eq.${iid}`, 'DELETE');
+        json(200, { ok: true }); return;
+      }
       const id = Number.isInteger(+b.id) && +b.id > 0 ? +b.id : null;
       if (b.action === 'delete') {
         if (!id) { json(400, { ok: false, error: 'id required' }); return; }

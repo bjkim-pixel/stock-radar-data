@@ -25,3 +25,17 @@ revoke all on journal_entries from anon, authenticated;
 do $$ begin
   revoke all on sequence journal_entries_id_seq from anon, authenticated;
 exception when others then null; end $$;
+
+-- 이미지(차트 캡처 등): 브라우저에서 줄여(≈1280px JPEG) 올린 data URL을 그대로 저장. 목록 조회에는 data를 싣지 않음.
+create table if not exists journal_images (
+  id        bigserial primary key,
+  entry_id  bigint not null references journal_entries(id) on delete cascade,
+  data      text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_journal_img_entry on journal_images (entry_id);
+alter table journal_images enable row level security;
+revoke all on journal_images from anon, authenticated;
+do $$ begin
+  revoke all on sequence journal_images_id_seq from anon, authenticated;
+exception when others then null; end $$;
