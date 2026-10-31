@@ -1438,11 +1438,11 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         </div>
         <datalist id="jrStockList"></datalist>
         <input type="text" id="jrTitle" placeholder="제목" style="margin:8px 0 6px">
-        <textarea id="jrBody" rows="9" placeholder="매매 근거, 시장 상황, 느낀 점, 다음에 지킬 원칙…"></textarea>
-        <input type="text" id="jrTags" placeholder="태그 (쉼표로 구분: 스마트머니, 손절, 실수)" style="margin-top:6px">
-        <div style="margin-top:8px"><label class="btn ghost" style="padding:4px 12px;font-size:12px;cursor:pointer;display:inline-block">🖼 이미지 추가<input type="file" id="jrFile" accept="image/*" multiple hidden></label>
+        <div style="margin-bottom:6px"><label class="btn ghost" style="padding:4px 12px;font-size:12px;cursor:pointer;display:inline-block">🖼 이미지 추가<input type="file" id="jrFile" accept="image/*" multiple hidden></label>
           <span class="faint" style="font-size:11.5px">또는 입력창에서 붙여넣기(Ctrl+V) · 일지당 최대 8장 · 자동으로 줄여서 저장</span></div>
         <div id="jrThumbs" class="jr-thumbs"></div>
+        <textarea id="jrBody" rows="9" placeholder="매매 근거, 시장 상황, 느낀 점, 다음에 지킬 원칙…"></textarea>
+        <input type="text" id="jrTags" placeholder="태그 (쉼표로 구분: 스마트머니, 손절, 실수)" style="margin-top:6px">
         <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
           <button class="btn" id="jrSave" style="padding:6px 16px">저장</button>
           <button class="btn ghost" id="jrCancel" style="padding:6px 14px">취소</button>
@@ -5782,8 +5782,8 @@ function jrRender(){
       ${r.stock_code?`<a href="#detail/${r.stock_code}" style="font-weight:600">${jrEsc(r.stock_name||r.stock_code)}</a>`:""}
       ${r.price?`<span>${N(r.price)}원${r.qty?` × ${N(r.qty)}주`:""}</span>`:""}${ret}<span class="jr-act">${del}</span></div>
       ${r.title?`<div class="jr-ti" style="margin-top:4px">${jrEsc(r.title)}</div>`:""}
-      ${r.body?`<div class="jr-body">${jrEsc(r.body)}</div>`:""}
       ${(r.images||[]).length?`<div class="jr-imgs">${r.images.map(i=>`<img data-iid="${i}" alt="첨부 이미지" ${JR.imgCache[i]?`src="${JR.imgCache[i]}"`:""}>`).join("")}</div>`:""}
+      ${r.body?`<div class="jr-body">${jrEsc(r.body)}</div>`:""}
       ${(r.tags||[]).length?`<div>${r.tags.map(t=>`<span class="acc-tag">#${jrEsc(t)}</span>`).join(" ")}</div>`:""}</div>`;
   }).join("");
   jrLoadImgs($$("#jrList img[data-iid]"));
