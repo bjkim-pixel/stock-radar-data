@@ -10,5 +10,6 @@ cur = conn.cursor(); cur.execute(sql)
 cur.execute("select max(trade_date)||' '||count(*) from v_kospi_flow_daily"); print("v_kospi_flow_daily 준비 완료 — 최신 행:", cur.fetchone()[0])
 import time
 t=time.time(); cur.execute("select * from v_kospi_flow_daily"); rows=cur.fetchall()
-print(f"조회 {len(rows)}행 · {time.time()-t:.1f}초 (anon 제한시간 초과 여부 확인용)")
-if rows: print("최신:", rows[-1])
+msg=f"조회 {len(rows)}행 · {time.time()-t:.1f}초 (anon 제한시간 초과 여부 확인용)"; print(msg)
+if rows: msg+="\n최신: "+str(rows[-1])+"\n처음: "+str(rows[0]); print(rows[-1])
+open("kospi_flow_report.md","w",encoding="utf-8").write(msg+"\n")

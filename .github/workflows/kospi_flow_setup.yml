@@ -4,6 +4,9 @@ name: Setup KOSPI Flow View (수급 일별 뷰 생성)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   setup:
     runs-on: ubuntu-latest
@@ -18,3 +21,16 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python 95_kospi_flow_setup.py
+      - name: Publish report (branch kospi-flow-report)
+        if: always()
+        run: |
+          [ -f kospi_flow_report.md ] || echo "리포트 없음 — 실패" > kospi_flow_report.md
+          cp kospi_flow_report.md /tmp/r.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan kospi-flow-report
+          git rm -rq --cached . || true
+          cp /tmp/r.md kospi_flow_report.md
+          git add -f kospi_flow_report.md
+          git commit -qm "kospi flow ${{ github.run_id }}"
+          git push -f origin kospi-flow-report
