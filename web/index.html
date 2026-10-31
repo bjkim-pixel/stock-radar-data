@@ -2340,7 +2340,8 @@ function go(v,detailCode){
   if(v==="perf")loadPerf();
   if(v==="perf2")loadPerf2();
   if(v==="journal")jrOpen();
-  if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);});loadTdKospi();}
+  if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);}).finally(()=>{tdFitSoon();setTimeout(tdFit,2500);});loadTdKospi();}
+  if(v==='today')tdFitSoon();
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
     Promise.all([loadFlowTrends(),loadFlowLists(),loadFlowSectorMap(),loadFlowTimeline()]).catch(()=>{});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
@@ -5938,6 +5939,17 @@ function kMount(){
     $("#dDailyN").onchange=e=>inKospi(()=>{S.dDailyN=+e.target.value;try{renderDailyFlow();}catch(err){console.error(err);}});
   });
 }
+/* 오늘의 종목: 표가 넓어 화면이 가로로 길어질 때, 위쪽 카드(흰 배경)가 아래 넓은 카드보다 좁아 수치 박스가 흰 배경 밖으로 나가 보이는 문제 —
+   모든 카드의 최소 가로폭을 가장 넓은 카드에 맞춤 */
+function tdFit(){
+  if(S.curTab!=="today")return;
+  const els=[...$$("#v-today > .card")];   // KOSPI 영역(#tdKWrap)은 차트가 과하게 늘어나지 않도록 제외
+  els.forEach(e=>e.style.minWidth="");
+  const mw=Math.max(...els.map(e=>Math.max(e.getBoundingClientRect().width,e.scrollWidth)));
+  if(mw>0)els.forEach(e=>e.style.minWidth=Math.ceil(mw)+"px");
+}
+let _tdFitT=null;const tdFitSoon=()=>{clearTimeout(_tdFitT);_tdFitT=setTimeout(tdFit,250);};
+addEventListener("resize",tdFitSoon);
 async function loadTdKospi(){
   kMount();
   try{
@@ -5951,6 +5963,7 @@ async function loadTdKospi(){
       $("#dStart").value=START_D<rows[0].trade_date?rows[0].trade_date:START_D;$("#dEnd").value=rows.at(-1).trade_date;
       kRangeCharts();
     });
+    setTimeout(tdFit,100);
     const L=rows.at(-1),P=rows.at(-2),chg=P?(L.close/P.close-1)*100:null;
     $("#tdKNote").textContent=`${L.trade_date} 기준`;
     $("#tdKHead").innerHTML=`<div class="tile"><div class="lb">종가</div><div class="vl">${N(L.close,2)}</div><div class="sub">${chg==null?"":`<span class="${sgn(chg)}">${pm(chg,2)}%</span>`}</div></div>
