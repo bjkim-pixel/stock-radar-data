@@ -25,7 +25,7 @@ def log(m=""):
     print(m, flush=True); lines.append(m)
 
 SUBJ_COLS = ("foreign", "inst", "fin_inv", "inv_trust", "pension", "pe", "individual", "corp_other")
-PH_KR = {"NEUTRAL": "중립", "ACC": "①매집", "MARKUP": "②상승", "DIST": "③분산", "DOWN": "④이탈"}
+PH_KR = {"NEUTRAL": "중립", "ACC": "①매집", "MARKUP": "②상승", "DIST": "③분산"}
 
 
 def load(cur):
@@ -149,7 +149,7 @@ def backtest(by, series, regime, label):
             e60 = statistics.fmean(x[1] for x in hs[60]) if hs.get(60) else float("nan")
             log(f"| {sg} | {k[1]} | {len(hs[20])} | {pc(m5)} | {pc(m20)} | {pc(e20)} | {w20 * 100:.0f}% | {pc(e60) if not math.isnan(e60) else '–'} |")
     log("\n**국면별 이후 20일 초과수익 (매일 기준)**\n\n| 국면 | 표본(종목·일) | 20일 초과 평균 |\n|---|---|---|")
-    for p in ("ACC", "MARKUP", "DIST", "DOWN", "NEUTRAL"):
+    for p in ("ACC", "MARKUP", "DIST", "NEUTRAL"):
         v = ph.get(p) or []
         if v:
             log(f"| {PH_KR[p]} | {len(v):,} | {pc(statistics.fmean(v))} |")
@@ -195,7 +195,7 @@ def main():
         cnt[r[7]] += 1
         if r[10]:
             chg[r[7]] += 1
-    log("- 국면 분포: " + " · ".join(f"{PH_KR[p]} {cnt[p]}(오늘 +{chg[p]})" for p in ("ACC", "MARKUP", "DIST", "DOWN", "NEUTRAL")))
+    log("- 국면 분포: " + " · ".join(f"{PH_KR[p]} {cnt[p]}(오늘 +{chg[p]})" for p in ("ACC", "MARKUP", "DIST", "NEUTRAL")))
     today = defaultdict(int)
     for s in sigs:
         if s[1] == last_day:

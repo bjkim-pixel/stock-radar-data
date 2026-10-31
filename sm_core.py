@@ -9,7 +9,7 @@ web/index.html 의 smSeries()와 한 줄 한 줄 같은 계산입니다(종목�
 출력: 행마다 dict (phase, phase_days, signals, hold_pct, cost, gap, dW, d20, indW, ind20, ...)
 """
 
-PHASES = ("NEUTRAL", "ACC", "MARKUP", "DIST", "DOWN")
+PHASES = ("NEUTRAL", "ACC", "MARKUP", "DIST")   # 2026-11-01: 이탈(DOWN)을 분산(DIST)에 통합
 DEFAULT_SUBJ = ("foreign", "inv_trust", "pe", "pension")   # 외국인+투신+사모+연기금 (2026-10-29 확정)
 
 
@@ -116,15 +116,13 @@ def sm_series(rows, W=120):
 
         # ── 국면 전환 (3일 연속 확인, B1은 즉시 상승 전환) ──
         if cur == "ACC":
-            tgt = "DOWN" if markdown else ("MARKUP" if (markup and retW >= rth) else ("NEUTRAL" if dW <= 0 else "ACC"))
+            tgt = "DIST" if markdown else ("MARKUP" if (markup and retW >= rth) else ("NEUTRAL" if dW <= 0 else "ACC"))
         elif cur == "MARKUP":
-            tgt = "DIST" if dist else ("DOWN" if markdown else ("NEUTRAL" if H == 0 else "MARKUP"))
+            tgt = "DIST" if (dist or markdown) else ("NEUTRAL" if H == 0 else "MARKUP")
         elif cur == "DIST":
-            tgt = "DOWN" if markdown else ("MARKUP" if (markup and d20 > 0) else ("NEUTRAL" if H == 0 else "DIST"))
-        elif cur == "DOWN":
-            tgt = "ACC" if acc else ("NEUTRAL" if not markdown else "DOWN")
+            tgt = "DIST" if markdown else ("ACC" if acc else ("MARKUP" if (markup and d20 > 0) else ("NEUTRAL" if H == 0 else "DIST")))
         else:
-            tgt = "ACC" if acc else ("DIST" if dist else ("DOWN" if outflow else ("MARKUP" if markup else "NEUTRAL")))
+            tgt = "ACC" if acc else ("DIST" if (dist or outflow) else ("MARKUP" if markup else "NEUTRAL"))
         new = cur
         if "B1" in sig:
             new = "MARKUP"; pend_t = None; pend = 0
