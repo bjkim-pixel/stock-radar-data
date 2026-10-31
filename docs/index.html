@@ -976,15 +976,17 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       스마트머니(SM) = 외국인+투신+사모+연기금. 국면은 ①매집 → ②상승 → ③분산 → ④이탈 순으로 돕니다.</div>
     <details class="smlogic"><summary>국면 산출 로직 보기</summary>
       <div class="note" style="margin-top:6px">SM 지분 = 순매수 금액 ÷ 당일 평균가(거래대금÷거래량)로 추정한 주식수 ÷ 상장주식수. 판정 구간 W 기본 120일(60일 선택 시 지분 +0.5%p · 주가 +10% 기준).
-        평단은 순매수일만 갱신하는 평균단가법이고, 매도일은 수량만 줄이며 보유가 0 이하가 되면 초기화합니다.</div>
+        평단은 순매수일만 갱신하는 평균단가법이고, 매도일은 수량만 줄이며 보유가 0 이하가 되면 초기화합니다.
+        보유 추정은 수집 시작일(2025-09-01) 이후 순매수만 알 수 있어 0 밑으로는 내려가지 않지만, "SM 지분 변화"는 마이너스까지 그대로 누적해 그 이전 보유분 매도(순유출)도 보여줍니다.</div>
       <table class="smlogic-t"><tbody>
         <tr><th style="color:var(--good)">①매집</th><td>최근 120일 SM 지분 변화 <b>+1.0%p 이상</b> · 같은 기간 주가 상승률 <b>15% 미만</b> · 같은 기간 개인 지분 <b>감소</b>.
           주가가 오르지 않았거나 내렸으면 "조용한 매집"으로 따로 표시.</td></tr>
         <tr><th style="color:var(--up)">②상승</th><td>SM 추정 보유가 보유 고점의 <b>80% 이상</b> · 현재가가 SM 평단보다 <b>5% 넘게 위</b> · 20일선이 5거래일 전보다 <b>상승</b>.
           매집→상승 전환은 주가 상승률 15% 이상이 필요하고, B1 신호가 뜨면 바로 상승으로 전환.</td></tr>
-        <tr><th style="color:var(--warn)">③분산</th><td>보유가 있고 (평단 대비 <b>+20% 이상</b> 또는 종가가 60일 고가의 <b>95% 이상</b>) · 최근 20일 SM 지분 <b>감소</b> · 최근 20일 개인 지분 <b>증가</b> ·
+        <tr><th style="color:var(--warn)">③분산</th><td>보유가 있거나 SM 지분 변화가 <b>마이너스</b>이고 (평단 대비 <b>+20% 이상</b> 또는 종가가 60일 고가의 <b>95% 이상</b>) · 최근 20일 SM 지분 <b>감소</b> · 최근 20일 개인 지분 <b>증가</b> ·
           최근 5일 평균 거래량이 직전 20일 평균 <b>이상</b>. 높은 가격에서 거래량이 붙으며 SM이 개인에게 넘기는 모습.</td></tr>
-        <tr><th style="color:var(--down)">④이탈</th><td>최근 20일 SM 지분 <b>감소</b> 이면서 (보유가 고점의 <b>절반 이하</b>로 줄었음(고점 0.5% 이상일 때) 또는 현재가가 SM 평단 <b>아래</b>).</td></tr>
+        <tr><th style="color:var(--down)">④이탈</th><td>다음 중 하나. ⓐ <b>순유출</b>: 최근 120일 SM 지분 변화 <b>-1.0%p 이하</b>(60일 선택 시 -0.5%p)이면서 같은 기간 개인 지분 <b>증가</b> — 보유 추정이 없어도 적용(데이터 수집이 2025-09부터라 그 이전부터 SM이 갖고 있던 물량을 판 경우 포함).
+          ⓑ 최근 20일 SM 지분 <b>감소</b> 이면서 (보유가 고점의 <b>절반 이하</b>로 줄었음(고점 0.5% 이상일 때) 또는 현재가가 SM 평단 <b>아래</b>).</td></tr>
         <tr><th>중립</th><td>위 조건에 모두 해당하지 않을 때, 또는 매집 중 지분 변화가 0 이하로 떨어졌을 때, 보유가 0일 때.</td></tr>
         <tr><th>전환 규칙</th><td>새 국면 조건이 <b>3거래일 연속</b> 충족돼야 바뀝니다(하루짜리 흔들림 제외). 예외: B1 신호는 즉시 ②상승.</td></tr>
       </tbody></table>
@@ -4337,8 +4339,10 @@ function smSeries(rows,W=120){
     const acc=dW>=dth&&retW<rth&&indW<0;
     const quiet=acc&&retW<=0;
     const markup=H>0&&Hpeak>0&&H>=0.8*Hpeak&&gap!=null&&gap>0.05&&rising;
-    const dist=H>0&&((gap!=null&&gap>=0.20)||close>=0.95*high60)&&d20<0&&ind20>0&&vol5>=vol20p;
-    const markdown=d20<0&&((peakPct>=0.5&&H<=0.5*Hpeak)||(gap!=null&&gap<0));
+    // 2026-10-31: 수집 시작(2025-09) 이전 보유분을 판 경우 H가 0으로 눌려 분산·이탈이 꺼지던 문제 — dW(0에서 자르지 않은 지분 변화)로 "순유출"을 따로 본다 (sm_core.py와 같게)
+    const outflow=dW<=-dth&&indW>0;
+    const dist=(H>0||dW<0)&&((gap!=null&&gap>=0.20)||close>=0.95*high60)&&d20<0&&ind20>0&&vol5>=vol20p;
+    const markdown=(d20<0&&((peakPct>=0.5&&H<=0.5*Hpeak)||(gap!=null&&gap<0)))||outflow;
     const sig=[], cur=phase;
     if(cur==="ACC"&&pdays>=20&&i>=20&&close>high20p&&q>0&&vol>=1.5*vol20p)sig.push("B1");
     if(cur==="MARKUP"&&gap!=null&&gap>=0&&gap<=0.05&&sum(Q.slice(Math.max(0,i-4),i+1))>=0&&ind<0&&i-lastB2>=5){sig.push("B2");lastB2=i;}
@@ -4352,7 +4356,7 @@ function smSeries(rows,W=120){
     else if(cur==="MARKUP")tgt=dist?"DIST":markdown?"DOWN":H===0?"NEUTRAL":"MARKUP";
     else if(cur==="DIST")tgt=markdown?"DOWN":(markup&&d20>0)?"MARKUP":H===0?"NEUTRAL":"DIST";
     else if(cur==="DOWN")tgt=acc?"ACC":!markdown?"NEUTRAL":"DOWN";
-    else tgt=acc?"ACC":dist?"DIST":markup?"MARKUP":"NEUTRAL";
+    else tgt=acc?"ACC":dist?"DIST":outflow?"DOWN":markup?"MARKUP":"NEUTRAL";
     let nw=cur;
     if(sig.includes("B1")){nw="MARKUP";pendT=null;pend=0;}
     else if(tgt!==cur){

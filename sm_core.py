@@ -91,8 +91,12 @@ def sm_series(rows, W=120):
         acc = dW >= dth and retW < rth and indW < 0
         quiet = acc and retW <= 0
         markup = H > 0 and Hpeak > 0 and H >= 0.8 * Hpeak and gap is not None and gap > 0.05 and rising
-        dist = H > 0 and ((gap is not None and gap >= 0.20) or close >= 0.95 * high60) and d20 < 0 and ind20 > 0 and vol5 >= vol20p
-        markdown = d20 < 0 and ((peak_pct >= 0.5 and H <= 0.5 * Hpeak) or (gap is not None and gap < 0))
+        # 2026-10-31: 수집 시작(2025-09) 이전부터 SM이 갖고 있던 물량은 보유(H)에 잡히지 않아, 순매도가 H를 0 밑으로 눌러 버리면
+        # 분산·이탈 판정이 꺼지는 문제가 있었다. 지분 변화(dW)는 0에서 자르지 않고 음수까지 누적하므로 이를 "순유출"로 보고
+        # (SM 지분 W일 -dth%p 이하 + 개인 지분 증가) 보유 유무와 관계없이 이탈로 본다. 분산도 보유 대신 dW<0이면 허용.
+        outflow = dW <= -dth and indW > 0
+        dist = (H > 0 or dW < 0) and ((gap is not None and gap >= 0.20) or close >= 0.95 * high60) and d20 < 0 and ind20 > 0 and vol5 >= vol20p
+        markdown = (d20 < 0 and ((peak_pct >= 0.5 and H <= 0.5 * Hpeak) or (gap is not None and gap < 0))) or outflow
 
         sig = []
         cur = phase
@@ -120,7 +124,7 @@ def sm_series(rows, W=120):
         elif cur == "DOWN":
             tgt = "ACC" if acc else ("NEUTRAL" if not markdown else "DOWN")
         else:
-            tgt = "ACC" if acc else ("DIST" if dist else ("MARKUP" if markup else "NEUTRAL"))
+            tgt = "ACC" if acc else ("DIST" if dist else ("DOWN" if outflow else ("MARKUP" if markup else "NEUTRAL")))
         new = cur
         if "B1" in sig:
             new = "MARKUP"; pend_t = None; pend = 0
