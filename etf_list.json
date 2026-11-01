@@ -1,0 +1,1012 @@
+[
+{
+"code": "0060H0",
+"name": "TIGER 토탈월드스탁액티브",
+"field": "국가별(해외주식)",
+"subfield": "글로벌",
+"tags": "",
+"country": "글로벌",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "426030",
+"name": "TIME 미국나스닥100액티브",
+"field": "국가별(해외주식)",
+"subfield": "미국",
+"tags": "",
+"country": "미국",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "426020",
+"name": "TIME 미국S&P500액티브",
+"field": "국가별(해외주식)",
+"subfield": "미국",
+"tags": "",
+"country": "미국",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "245710",
+"name": "ACE 베트남VN30(합성)",
+"field": "국가별(해외주식)",
+"subfield": "베트남",
+"tags": "",
+"country": "베트남",
+"mgmt": "패시브",
+"flags": "합성"
+},
+{
+"code": "195980",
+"name": "PLUS 신흥국MSCI(합성 H)",
+"field": "국가별(해외주식)",
+"subfield": "신흥국",
+"tags": "",
+"country": "신흥국",
+"mgmt": "패시브",
+"flags": "합성/환헤지(H)"
+},
+{
+"code": "195930",
+"name": "TIGER 유로스탁스50(합성 H)",
+"field": "국가별(해외주식)",
+"subfield": "유럽",
+"tags": "",
+"country": "유럽",
+"mgmt": "패시브",
+"flags": "합성/환헤지(H)"
+},
+{
+"code": "453810",
+"name": "KODEX 인도Nifty50",
+"field": "국가별(해외주식)",
+"subfield": "인도",
+"tags": "",
+"country": "인도",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "256440",
+"name": "ACE MSCI인도네시아(합성)",
+"field": "국가별(해외주식)",
+"subfield": "인도네시아",
+"tags": "",
+"country": "인도네시아",
+"mgmt": "패시브",
+"flags": "합성"
+},
+{
+"code": "241180",
+"name": "TIGER 일본니케이225",
+"field": "국가별(해외주식)",
+"subfield": "일본",
+"tags": "",
+"country": "일본",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "101280",
+"name": "KODEX 일본TOPIX100",
+"field": "국가별(해외주식)",
+"subfield": "일본",
+"tags": "",
+"country": "일본",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "283580",
+"name": "KODEX 차이나CSI300",
+"field": "국가별(해외주식)",
+"subfield": "중국",
+"tags": "",
+"country": "중국",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "414780",
+"name": "TIGER 차이나과창판STAR50(합성)",
+"field": "국가별(해외주식)",
+"subfield": "중국",
+"tags": "",
+"country": "중국",
+"mgmt": "패시브",
+"flags": "합성"
+},
+{
+"code": "102780",
+"name": "KODEX 삼성그룹",
+"field": "국내 시장지수",
+"subfield": "코스피/코스닥",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "292150",
+"name": "TIGER 코리아TOP10",
+"field": "국내 시장지수",
+"subfield": "코스피/코스닥",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "494890",
+"name": "KODEX 200액티브",
+"field": "국내 시장지수",
+"subfield": "코스피/코스닥",
+"tags": "",
+"country": "",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "0163Y0",
+"name": "KoAct 코스닥액티브",
+"field": "국내 시장지수",
+"subfield": "코스피/코스닥",
+"tags": "",
+"country": "",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "385720",
+"name": "TIME 코스피액티브",
+"field": "국내 시장지수",
+"subfield": "코스피/코스닥",
+"tags": "",
+"country": "",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "305720",
+"name": "KODEX 2차전지산업",
+"field": "국내 업종·테마",
+"subfield": "2차전지·배터리",
+"tags": "2차전지·배터리",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "305540",
+"name": "TIGER 2차전지테마",
+"field": "국내 업종·테마",
+"subfield": "2차전지·배터리",
+"tags": "2차전지·배터리/우주·테마기타",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "364980",
+"name": "TIGER 2차전지TOP10",
+"field": "국내 업종·테마",
+"subfield": "2차전지·배터리",
+"tags": "2차전지·배터리",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "462010",
+"name": "TIGER 2차전지소재Fn",
+"field": "국내 업종·테마",
+"subfield": "2차전지·배터리",
+"tags": "2차전지·배터리/철강·소재·화학",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0209D0",
+"name": "KODEX 전고체배터리ESS TOP2플러스",
+"field": "국내 업종·테마",
+"subfield": "2차전지·배터리",
+"tags": "2차전지·배터리/원자력·전력·에너지",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0005D0",
+"name": "SOL 전고체배터리&실리콘음극재",
+"field": "국내 업종·테마",
+"subfield": "2차전지·배터리",
+"tags": "2차전지·배터리",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "461950",
+"name": "KODEX 2차전지핵심소재10",
+"field": "국내 업종·테마",
+"subfield": "2차전지·배터리",
+"tags": "2차전지·배터리/철강·소재·화학",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "329200",
+"name": "TIGER 리츠부동산인프라",
+"field": "국내 업종·테마",
+"subfield": "건설·부동산·리츠",
+"tags": "건설·부동산·리츠",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "117700",
+"name": "KODEX 건설",
+"field": "국내 업종·테마",
+"subfield": "건설·부동산·리츠",
+"tags": "건설·부동산·리츠",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "466940",
+"name": "TIGER 은행고배당플러스TOP10",
+"field": "국내 업종·테마",
+"subfield": "금융",
+"tags": "금융/배당·가치",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "157500",
+"name": "TIGER 증권",
+"field": "국내 업종·테마",
+"subfield": "금융",
+"tags": "금융",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "139270",
+"name": "TIGER 200 금융",
+"field": "국내 업종·테마",
+"subfield": "금융",
+"tags": "금융",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "091220",
+"name": "TIGER 은행",
+"field": "국내 업종·테마",
+"subfield": "금융",
+"tags": "금융",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "139260",
+"name": "TIGER 200 IT",
+"field": "국내 업종·테마",
+"subfield": "로봇·AI·소프트웨어",
+"tags": "로봇·AI·소프트웨어",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "445290",
+"name": "KODEX 로봇액티브",
+"field": "국내 업종·테마",
+"subfield": "로봇·AI·소프트웨어",
+"tags": "로봇·AI·소프트웨어",
+"country": "",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "0148J0",
+"name": "TIGER 코리아휴머노이드로봇산업",
+"field": "국내 업종·테마",
+"subfield": "로봇·AI·소프트웨어",
+"tags": "로봇·AI·소프트웨어",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "367760",
+"name": "RISE 네트워크인프라",
+"field": "국내 업종·테마",
+"subfield": "로봇·AI·소프트웨어",
+"tags": "로봇·AI·소프트웨어/건설·부동산·리츠",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "315270",
+"name": "TIGER 200커뮤니케이션서비스",
+"field": "국내 업종·테마",
+"subfield": "로봇·AI·소프트웨어",
+"tags": "로봇·AI·소프트웨어",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "364970",
+"name": "TIGER 바이오TOP10",
+"field": "국내 업종·테마",
+"subfield": "바이오·헬스케어",
+"tags": "바이오·헬스케어",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0168K0",
+"name": "TIGER 기술이전바이오액티브",
+"field": "국내 업종·테마",
+"subfield": "바이오·헬스케어",
+"tags": "바이오·헬스케어",
+"country": "",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "396500",
+"name": "TIGER 반도체TOP10",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "091160",
+"name": "KODEX 반도체",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0167A0",
+"name": "SOL AI반도체TOP2플러스",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체/로봇·AI·소프트웨어",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "395270",
+"name": "HANARO Fn K-반도체",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "455850",
+"name": "SOL AI반도체소부장",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체/로봇·AI·소프트웨어/철강·소재·화학",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "469150",
+"name": "ACE AI반도체TOP3+",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체/로봇·AI·소프트웨어",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "471990",
+"name": "KODEX AI반도체핵심장비",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체/로봇·AI·소프트웨어",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "475300",
+"name": "SOL 반도체전공정",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0182R0",
+"name": "1Q K반도체TOP2+",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "471760",
+"name": "TIGER AI반도체핵심공정",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체/로봇·AI·소프트웨어",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "475310",
+"name": "SOL 반도체후공정",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0239Z0",
+"name": "PLUS AI반도체소부장액티브",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체/로봇·AI·소프트웨어/철강·소재·화학",
+"country": "",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "0090B0",
+"name": "PLUS K방산소부장",
+"field": "국내 업종·테마",
+"subfield": "반도체",
+"tags": "반도체/방산·우주·항공/철강·소재·화학",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "449450",
+"name": "PLUS K방산",
+"field": "국내 업종·테마",
+"subfield": "방산·우주·항공",
+"tags": "방산·우주·항공",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "463250",
+"name": "TIGER K방산&우주",
+"field": "국내 업종·테마",
+"subfield": "방산·우주·항공",
+"tags": "방산·우주·항공",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0080G0",
+"name": "KODEX 방산TOP10",
+"field": "국내 업종·테마",
+"subfield": "방산·우주·항공",
+"tags": "방산·우주·항공",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "421320",
+"name": "PLUS 우주항공",
+"field": "국내 업종·테마",
+"subfield": "방산·우주·항공",
+"tags": "방산·우주·항공",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0207G0",
+"name": "SOL 우주항공밸류체인",
+"field": "국내 업종·테마",
+"subfield": "방산·우주·항공",
+"tags": "방산·우주·항공",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0219B0",
+"name": "KoAct 광통신&위성네트워크액티브",
+"field": "국내 업종·테마",
+"subfield": "방산·우주·항공",
+"tags": "방산·우주·항공/로봇·AI·소프트웨어",
+"country": "",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "161510",
+"name": "PLUS 고배당주",
+"field": "국내 업종·테마",
+"subfield": "배당·가치",
+"tags": "배당·가치",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "487240",
+"name": "KODEX AI전력핵심설비",
+"field": "국내 업종·테마",
+"subfield": "원자력·전력·에너지",
+"tags": "원자력·전력·에너지/로봇·AI·소프트웨어",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0091P0",
+"name": "TIGER 코리아원자력",
+"field": "국내 업종·테마",
+"subfield": "원자력·전력·에너지",
+"tags": "원자력·전력·에너지",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "434730",
+"name": "HANARO 원자력iSelect",
+"field": "국내 업종·테마",
+"subfield": "원자력·전력·에너지",
+"tags": "원자력·전력·에너지",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "0098F0",
+"name": "KODEX 원자력SMR",
+"field": "국내 업종·테마",
+"subfield": "원자력·전력·에너지",
+"tags": "원자력·전력·에너지",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "457990",
+"name": "PLUS 태양광&ESS",
+"field": "국내 업종·테마",
+"subfield": "원자력·전력·에너지",
+"tags": "원자력·전력·에너지",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "404120",
+"name": "TIME K신재생에너지액티브",
+"field": "국내 업종·테마",
+"subfield": "원자력·전력·에너지",
+"tags": "원자력·전력·에너지",
+"country": "",
+"mgmt": "액티브",
+"flags": "액티브"
+},
+{
+"code": "466920",
+"name": "SOL 조선TOP3플러스",
+"field": "국내 업종·테마",
+"subfield": "조선·해운",
+"tags": "조선·해운",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "228790",
+"name": "TIGER 화장품",
+"field": "국내 업종·테마",
+"subfield": "콘텐츠·소비",
+"tags": "콘텐츠·소비",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "475050",
+"name": "ACE KPOP포커스",
+"field": "국내 업종·테마",
+"subfield": "콘텐츠·소비",
+"tags": "콘텐츠·소비",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "228810",
+"name": "TIGER 미디어컨텐츠",
+"field": "국내 업종·테마",
+"subfield": "콘텐츠·소비",
+"tags": "콘텐츠·소비",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "228800",
+"name": "TIGER 여행레저",
+"field": "국내 업종·테마",
+"subfield": "콘텐츠·소비",
+"tags": "콘텐츠·소비",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "364990",
+"name": "TIGER 게임TOP10",
+"field": "국내 업종·테마",
+"subfield": "콘텐츠·소비",
+"tags": "콘텐츠·소비",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "438900",
+"name": "HANARO Fn K-푸드",
+"field": "국내 업종·테마",
+"subfield": "콘텐츠·소비",
+"tags": "콘텐츠·소비",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "395150",
+"name": "KODEX 웹툰&드라마",
+"field": "국내 업종·테마",
+"subfield": "콘텐츠·소비",
+"tags": "콘텐츠·소비",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "160580",
+"name": "TIGER 구리실물",
+"field": "원자재",
+"subfield": "구리·기타",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "400570",
+"name": "KODEX 유럽탄소배출권선물ICE(H)",
+"field": "원자재",
+"subfield": "구리·기타",
+"tags": "",
+"country": "유럽",
+"mgmt": "패시브",
+"flags": "선물/환헤지(H)"
+},
+{
+"code": "411060",
+"name": "ACE KRX금현물",
+"field": "원자재",
+"subfield": "금·은",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": ""
+},
+{
+"code": "144600",
+"name": "KODEX 은선물(H)",
+"field": "원자재",
+"subfield": "금·은",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": "선물/환헤지(H)"
+},
+{
+"code": "261220",
+"name": "KODEX WTI원유선물(H)",
+"field": "원자재",
+"subfield": "원유·에너지",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": "선물/환헤지(H)"
+},
+{
+"code": "122630",
+"name": "KODEX 레버리지",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": "레버리지"
+},
+{
+"code": "233740",
+"name": "KODEX 코스닥150레버리지",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": "레버리지"
+},
+{
+"code": "0193T0",
+"name": "KODEX SK하이닉스단일종목레버리지",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": "레버리지"
+},
+{
+"code": "0193W0",
+"name": "KODEX 삼성전자단일종목레버리지",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": "레버리지"
+},
+{
+"code": "494310",
+"name": "KODEX 반도체레버리지",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": "레버리지"
+},
+{
+"code": "462330",
+"name": "KODEX 2차전지산업레버리지",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "2차전지·배터리",
+"country": "",
+"mgmt": "패시브",
+"flags": "레버리지"
+},
+{
+"code": "243880",
+"name": "TIGER 200IT레버리지",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": "레버리지"
+},
+{
+"code": "412570",
+"name": "TIGER 2차전지TOP10레버리지",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "2차전지·배터리",
+"country": "",
+"mgmt": "패시브",
+"flags": "레버리지"
+},
+{
+"code": "204480",
+"name": "TIGER 차이나CSI300레버리지(합성)",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "",
+"country": "중국",
+"mgmt": "패시브",
+"flags": "합성/레버리지"
+},
+{
+"code": "0100K0",
+"name": "KODEX 방산TOP10레버리지",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "방산·우주·항공",
+"country": "",
+"mgmt": "패시브",
+"flags": "레버리지"
+},
+{
+"code": "204450",
+"name": "KODEX 차이나H레버리지(H)",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "",
+"country": "중국",
+"mgmt": "패시브",
+"flags": "환헤지(H)/레버리지"
+},
+{
+"code": "456680",
+"name": "TIGER 차이나전기차레버리지(합성)",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "자동차·모빌리티",
+"country": "중국",
+"mgmt": "패시브",
+"flags": "합성/레버리지"
+},
+{
+"code": "438320",
+"name": "TIGER 차이나항셍테크레버리지(합성 H)",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "",
+"country": "중국",
+"mgmt": "패시브",
+"flags": "합성/환헤지(H)/레버리지"
+},
+{
+"code": "236350",
+"name": "TIGER 인도니프티50레버리지(합성)",
+"field": "인버스·레버리지",
+"subfield": "레버리지",
+"tags": "",
+"country": "인도",
+"mgmt": "패시브",
+"flags": "합성/레버리지"
+},
+{
+"code": "252670",
+"name": "KODEX 200선물인버스2X",
+"field": "인버스·레버리지",
+"subfield": "레버리지인버스",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": "선물/레버리지/인버스"
+},
+{
+"code": "0197X0",
+"name": "SOL SK하이닉스선물단일종목인버스2X",
+"field": "인버스·레버리지",
+"subfield": "레버리지인버스",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": "선물/레버리지/인버스"
+},
+{
+"code": "0193L0",
+"name": "PLUS 삼성전자선물단일종목인버스2X",
+"field": "인버스·레버리지",
+"subfield": "레버리지인버스",
+"tags": "반도체",
+"country": "",
+"mgmt": "패시브",
+"flags": "선물/레버리지/인버스"
+},
+{
+"code": "114800",
+"name": "KODEX 인버스",
+"field": "인버스·레버리지",
+"subfield": "인버스",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": "인버스"
+},
+{
+"code": "271050",
+"name": "KODEX WTI원유선물인버스(H)",
+"field": "인버스·레버리지",
+"subfield": "인버스",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": "선물/환헤지(H)/인버스"
+},
+{
+"code": "251340",
+"name": "KODEX 코스닥150선물인버스",
+"field": "인버스·레버리지",
+"subfield": "인버스",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": "선물/인버스"
+},
+{
+"code": "176950",
+"name": "KODEX 국채선물10년인버스",
+"field": "인버스·레버리지",
+"subfield": "인버스",
+"tags": "",
+"country": "",
+"mgmt": "패시브",
+"flags": "선물/인버스"
+},
+{
+"code": "472870",
+"name": "RISE 미국30년국채엔화노출(합성 H)",
+"field": "채권",
+"subfield": "해외채권",
+"tags": "",
+"country": "미국",
+"mgmt": "패시브",
+"flags": "합성/환헤지(H)"
+},
+{
+"code": "0094L0",
+"name": "RISE 차이나테크TOP10위클리타겟커버드콜",
+"field": "커버드콜·옵션",
+"subfield": "커버드콜",
+"tags": "로봇·AI·소프트웨어",
+"country": "중국",
+"mgmt": "패시브",
+"flags": "커버드콜"
+},
+{
+"code": "292560",
+"name": "TIGER 일본엔선물",
+"field": "통화",
+"subfield": "통화",
+"tags": "",
+"country": "일본",
+"mgmt": "패시브",
+"flags": "선물"
+},
+{
+"code": "489000",
+"name": "PLUS 일본엔화초단기국채(합성)",
+"field": "현금성·단기채",
+"subfield": "머니마켓/CD/KOFR",
+"tags": "",
+"country": "일본",
+"mgmt": "패시브",
+"flags": "합성"
+}
+]

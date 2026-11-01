@@ -1,0 +1,38 @@
+name: ETF Collection (ETF 101종목 일봉 수집)
+
+# 107_etf_collect.py — etf_list.json 의 ETF 101종목 마스터·일봉을 etf_master / etf_daily 에 저장.
+# 처음 실행하면 2025-09-01부터 백필하고, 이후에는 최근 15일만 갱신합니다. 전체 재수집은 full=true.
+on:
+  schedule:
+    - cron: "50 7 * * 1-5"   # 월~금 16:50 KST — 장마감 확정 이후
+  workflow_dispatch:
+    inputs:
+      full:
+        description: '전 종목을 2025-09-01부터 다시 수집 (true/false)'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary requests
+      - name: Collect ETF daily
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ "${{ github.event.inputs.full }}" = "true" ]; then python 107_etf_collect.py --full; else python 107_etf_collect.py; fi
