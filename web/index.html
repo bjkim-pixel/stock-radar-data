@@ -425,6 +425,20 @@ section[id^="v-"]>.card:first-child{margin-top:8px!important}
 .jr-k{display:inline-block;font-size:10.5px;padding:0 7px;border-radius:8px;border:1px solid var(--border);line-height:17px}
 .jr-k.b{color:var(--up);border-color:var(--up)}.jr-k.s{color:var(--dn,#3b6fd4);border-color:var(--dn,#3b6fd4)}
 .jr-act{margin-left:auto;display:flex;gap:6px}.jr-act button{background:none;border:1px solid var(--border);color:var(--ink-3);border-radius:6px;font-size:11px;padding:2px 8px;cursor:pointer}
+/* 종목상세 상단 필터: 두 줄 안에 모두 들어가도록 폭을 줄임 */
+.dfrow{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.dfrow select.df{width:auto;flex:1 1 84px;min-width:0;max-width:150px;padding:6px 6px;font-size:11.5px}
+.dfrow select.dsel{flex:2 1 130px;max-width:260px}
+.dfrow input.dd{width:auto;flex:1 1 100px;min-width:0;max-width:130px;padding:6px 5px;font-size:11.5px}
+.dfrow .dnext{padding:5px 8px;font-size:11px;white-space:nowrap}
+.dfrow .dtl{font-size:11px}
+@media (max-width:560px){
+  .dfrow{gap:4px}
+  .dfrow select.df{flex:1 1 30%;padding:6px 3px;font-size:11px}
+  .dfrow select.dsel{flex:1 1 0;min-width:70px;max-width:none}
+  .dfrow input.dd{flex:0 0 84px;max-width:84px;padding:6px 2px;font-size:10.5px}
+  .dfrow .dnext{padding:5px 6px;font-size:10.5px}
+}
 .acc-ov{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding:24px 10px;overflow:auto}
 .acc-pn{background:var(--page);border:1px solid var(--border);border-radius:12px;width:min(1100px,100%);padding:14px 16px 16px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
 .acc-pn h3{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:8px}
@@ -1212,26 +1226,28 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 <!-- ═══════════ 종목 상세 ═══════════ -->
 <section id="v-detail" class="hide">
   <div style="margin:12px 0 4px"><button class="btn ghost" id="dBackTop">← 이전 화면으로</button></div>
-  <div class="card">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <select id="dSec" style="width:auto;max-width:180px" title="업종으로 종목 목록 좁히기"><option value="">업종 전체</option></select>
-      <select id="dMaF" style="width:auto;max-width:200px" title="이동평균선 조건으로 종목 목록 좁히기 (최근 거래일 기준)">
+  <div class="card dfcard">
+    <div class="dfrow">
+      <select id="dSec" class="df" title="업종으로 종목 목록 좁히기"><option value="">업종 전체</option></select>
+      <select id="dMaF" class="df" title="이동평균선 조건으로 종목 목록 좁히기 (최근 거래일 기준)">
         <option value="">이평선 조건 없음</option>
         <optgroup label="종가가 이평선 위">
           <option value="p20">종가 &gt; 20일선</option><option value="p60">종가 &gt; 60일선</option><option value="p120">종가 &gt; 120일선</option></optgroup>
         <optgroup label="정배열">
           <option value="a5">정배열 전체 (종가&gt;5&gt;20&gt;60&gt;120)</option><option value="a20">정배열 20일 이상 (종가&gt;20&gt;60&gt;120)</option><option value="a60">정배열 60일 이상 (종가&gt;60&gt;120)</option></optgroup>
       </select>
-      <select id="dSel" style="width:auto;min-width:220px"></select>
-      <button class="btn ghost" id="dNext" style="padding:5px 12px;font-size:11.5px" title="이름(가나다)순 리스트 기준 다음 종목으로 이동">다음 종목 →</button>
-      <div id="dHead" style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap"></div>
+      <select id="dPh" class="df" title="스마트머니 국면으로 종목 목록 좁히기 (스마트머니 탭과 같은 기준·같은 업데이트 날짜)">
+        <option value="">국면 전체</option>
+        <optgroup label="큰 구분"><option value="ACC,MARKUP">매집 전체</option><option value="DIST,DOWN">분산 전체</option></optgroup>
+        <optgroup label="세부"><option value="ACC">①매집(보합)</option><option value="MARKUP">②매집(상승)</option><option value="DIST">③분산(전가)</option><option value="DOWN">④분산(이탈)</option><option value="NEUTRAL">중립</option></optgroup>
+      </select>
+      <select id="dSel" class="df dsel"></select>
+      <button class="btn ghost dnext" id="dNext" title="이름(가나다)순 리스트 기준 다음 종목으로 이동">다음 →</button>
+      <input type="date" id="dStart" class="df dd" title="차트 시작일"><span class="faint dtl">~</span>
+      <input type="date" id="dEnd" class="df dd" title="차트 종료일">
+      <button class="btn ghost" id="dRangeApply" style="display:none">적용</button>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px">
-      <span class="faint" style="font-size:11px">가격·거래량·수급 차트 기간</span>
-      <input type="date" id="dStart" style="width:auto"><span class="faint">~</span>
-      <input type="date" id="dEnd" style="width:auto">
-      <button class="btn ghost" id="dRangeApply" style="padding:5px 12px;font-size:11.5px">적용</button>
-    </div>
+    <div id="dHead" style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-top:10px"></div>
   </div>
 
   <div class="card" id="dSmCard"><h3>스마트머니 국면<span class="r" id="dSmRange"></span></h3>
@@ -4228,6 +4244,7 @@ const MA_COND={
 function dCodeList(){
   let l=S.dSec?S.codes.filter(c=>(c.sector||"미분류")===S.dSec):S.codes;
   if(S.dMaF&&S.dMaMap){const f=MA_COND[S.dMaF];l=l.filter(c=>{const m=S.dMaMap[c.code];return m&&f(m);});}
+  if(S.dPh&&S.dPhMap){const set=new Set(S.dPh.split(","));l=l.filter(c=>set.has(S.dPhMap[c.code]||"NEUTRAL"));}
   return l;
 }
 async function loadDetailMa(){
@@ -4244,9 +4261,9 @@ function dFillSel(){
   const list=dCodeList();
   $("#dSel").innerHTML=list.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join("");
   if(S.chart&&S.chart.code&&list.some(c=>c.code===S.chart.code))$("#dSel").value=S.chart.code;
-  const tag=[S.dSec,S.dMaF?$("#dMaF").selectedOptions[0].textContent:""].filter(Boolean);
+  const tag=[S.dSec,S.dMaF?$("#dMaF").selectedOptions[0].textContent:"",S.dPh?$("#dPh").selectedOptions[0].textContent:""].filter(Boolean);
   $("#dSel").title=tag.length?`${tag.join(" · ")} — ${list.length}종목`:"";
-  $("#dSel").style.outline=(S.dMaF||S.dSec)&&!list.length?"2px solid var(--down)":"";
+  $("#dSel").style.outline=(S.dMaF||S.dSec||S.dPh)&&!list.length?"2px solid var(--down)":"";
 }
 async function loadDetailSectors(){
   const all=[];
@@ -4273,6 +4290,35 @@ $("#dMaF").onchange=async e=>{
   if(v&&!list.length){$("#dSel").innerHTML='<option value="">조건에 맞는 종목 없음</option>';return;}
   if(list.length&&!list.some(c=>c.code===S.chart.code)){S.dRangeTouched=false;loadDetail(list[0].code);}
 };
+S.dPh="";S.dPhMap=null;
+async function loadDetailPh(){
+  if(S.dPhMap)return;
+  const m={},cnt={};let asof="";
+  for(let off=0;off<20000;off+=1000){
+    const part=await q("smart_money_state",`select=code,phase,as_of&order=code.asc&limit=1000&offset=${off}`);
+    part.forEach(r=>{m[r.code]=r.phase;if(r.as_of&&r.as_of>asof)asof=r.as_of;});
+    if(part.length<1000)break;
+  }
+  S.dPhMap=m;S.dPhAsOf=asof;
+  S.codes.forEach(c=>{const p=m[c.code]||"NEUTRAL";cnt[p]=(cnt[p]||0)+1;});
+  const sel=$("#dPh"),n=(...ks)=>ks.reduce((t,k)=>t+(cnt[k]||0),0);
+  sel.title=`스마트머니 국면 필터 — ${asof||"–"} 기준(스마트머니 탭과 같은 계산)`;
+  [["","국면 전체",S.codes.length],["ACC,MARKUP","매집 전체",n("ACC","MARKUP")],["DIST,DOWN","분산 전체",n("DIST","DOWN")],
+   ["ACC","①매집(보합)",n("ACC")],["MARKUP","②매집(상승)",n("MARKUP")],["DIST","③분산(전가)",n("DIST")],["DOWN","④분산(이탈)",n("DOWN")],["NEUTRAL","중립",n("NEUTRAL")]]
+   .forEach(([v,l,c])=>{const o=[...sel.options].find(x=>x.value===v);if(o)o.textContent=`${l} (${c})`;});
+}
+$("#dPh").onchange=async e=>{
+  const v=e.target.value;
+  if(v&&!S.dPhMap){
+    e.target.disabled=true;
+    try{await loadDetailPh();}catch(err){console.error("국면 필터",err);e.target.value="";e.target.disabled=false;e.target.title="국면 데이터를 불러오지 못했습니다";return;}
+    e.target.disabled=false;
+  }
+  S.dPh=v;dFillSel();
+  const list=dCodeList();
+  if(v&&!list.length){$("#dSel").innerHTML='<option value="">조건에 맞는 종목 없음</option>';return;}
+  if(list.length&&!list.some(c=>c.code===S.chart.code)){S.dRangeTouched=false;loadDetail(list[0].code);}
+};
 $("#dSec").onchange=e=>{
   S.dSec=e.target.value;
   dFillSel();
@@ -4290,6 +4336,7 @@ $("#dNext").onclick=()=>{
   loadDetail(next.code);
 };
 $("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
+$("#dStart").onchange=$("#dEnd").onchange=()=>{S.dRangeTouched=true;renderRangeCharts();};   // 적용 버튼 없이 날짜를 바꾸면 바로 반영
 
 /* ══ 스마트머니(SM) 매집·분산 — sm_core.py sm_series()와 한 줄씩 같은 계산 ══════════
    (서버가 smart_money_state를 이 로직으로 채우고, 종목상세 카드는 주체·구간을 바꿔 브라우저에서 다시 계산)
