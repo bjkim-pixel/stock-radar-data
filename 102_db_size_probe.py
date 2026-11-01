@@ -19,4 +19,11 @@ for q,lab in (("select count(distinct code),count(*),min(trade_date),max(trade_d
               ("select count(distinct code),count(*) from smart_money_state","smart_money_state")):
     try: cur.execute(q); log(f"- {lab}: {cur.fetchone()}")
     except Exception as e: c.rollback(); log(f"- {lab}: 실패 {str(e)[:80]}")
+for q,lab in (("select count(*),count(distinct code),min(trade_date),max(trade_date) from etf_daily","etf_daily 행/종목/시작/끝"),
+              ("select count(*),count(*) filter (where mcap_eok is not null) from etf_master","etf_master 행/시총있음"),
+              ("select field,count(*) from etf_master group by 1 order by 2 desc","etf_master 분야별"),
+              ("select code,count(*) from etf_daily group by 1 having count(*)<150 order by 2 limit 10","봉수 150 미만 종목"),
+              ("select pg_size_pretty(pg_total_relation_size('etf_daily')),pg_size_pretty(pg_database_size(current_database()))","etf_daily 크기 / DB 전체")):
+    try: cur.execute(q); log(f"- {lab}: {cur.fetchall()}")
+    except Exception as e: c.rollback(); log(f"- {lab}: 실패 {str(e)[:80]}")
 open('db_size_report.md','w',encoding='utf-8').write("\n".join(L))
