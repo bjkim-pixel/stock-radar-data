@@ -16,7 +16,7 @@ create table if not exists smart_money_state (
   as_of           date,
   close           bigint,
   trade_amount    bigint,
-  phase           text,          -- NEUTRAL | ACC | MARKUP | DIST  (DOWN=이탈은 2026-11-01 DIST에 통합)
+  phase           text,          -- NEUTRAL | ACC(매집·보합) | MARKUP(매집·상승) | DIST(분산·전가) | DOWN(분산·이탈)
   phase_days      integer,
   phase_prev      text,
   changed_today   boolean,

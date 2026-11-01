@@ -975,22 +975,24 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="card" style="margin-top:16px"><h3>스마트머니 국면 지도 <span class="r" id="smAsOf">불러오는 중…</span></h3>
     <div class="smmap" id="smMap"><div class="load sk"></div></div>
     <div class="note">칸 너비 = 그 국면 종목 수 비율 · "오늘 +n" = 오늘 그 국면으로 들어온 종목 수 · 칸을 누르면 아래 목록이 그 국면만 남습니다.
-      스마트머니(SM) = 외국인+투신+사모+연기금. 국면은 ①매집 → ②상승 → ③분산 순으로 돕니다(③분산에는 스마트머니가 빠져나가며 가격이 약해지는 "이탈"도 포함).</div>
+      스마트머니(SM) = 외국인+투신+사모+연기금. 국면은 크게 매집(①보합 · ②상승) → 분산(③전가 · ④이탈) 순으로 돕니다.</div>
     <details class="smlogic"><summary>국면 산출 로직 보기</summary>
       <div class="note" style="margin-top:6px">SM 지분 = 순매수 금액 ÷ 당일 평균가(거래대금÷거래량)로 추정한 주식수 ÷ 상장주식수. 판정 구간 W 기본 120일(60일 선택 시 지분 +0.5%p · 주가 +10% 기준).
         평단은 순매수일만 갱신하는 평균단가법이고, 매도일은 수량만 줄이며 보유가 0 이하가 되면 초기화합니다.
         보유 추정은 수집 시작일(2025-09-01) 이후 순매수만 알 수 있어 0 밑으로는 내려가지 않지만, "SM 지분 변화"는 마이너스까지 그대로 누적해 그 이전 보유분 매도(순유출)도 보여줍니다.</div>
       <table class="smlogic-t"><tbody>
-        <tr><th style="color:var(--good)">①매집</th><td>최근 120일 SM 지분 변화 <b>+1.0%p 이상</b> · 같은 기간 주가 상승률 <b>15% 미만</b> · 같은 기간 개인 지분 <b>감소</b>.
-          주가가 오르지 않았거나 내렸으면 "조용한 매집"으로 따로 표시.</td></tr>
-        <tr><th style="color:var(--up)">②상승</th><td>SM 추정 보유가 보유 고점의 <b>80% 이상</b> · 현재가가 SM 평단보다 <b>5% 넘게 위</b> · 20일선이 5거래일 전보다 <b>상승</b>.
-          매집→상승 전환은 주가 상승률 15% 이상이 필요하고, B1 신호가 뜨면 바로 상승으로 전환.</td></tr>
-        <tr><th style="color:var(--down)">③분산</th><td>스마트머니가 개인에게 물량을 넘기거나 빠져나가는 단계(예전 "이탈" 포함). 다음 중 하나.
-          ⓐ <b>높은 가격에서 넘기기</b>: 보유가 있거나 SM 지분 변화가 <b>마이너스</b>이고 (평단 대비 <b>+20% 이상</b> 또는 종가가 60일 고가의 <b>95% 이상</b>) · 최근 20일 SM 지분 <b>감소</b> · 최근 20일 개인 지분 <b>증가</b> · 최근 5일 평균 거래량이 직전 20일 평균 <b>이상</b>.
-          ⓑ <b>순유출</b>: 최근 120일 SM 지분 변화 <b>-1.0%p 이하</b>(60일 선택 시 -0.5%p)이면서 같은 기간 개인 지분 <b>증가</b> — 보유 추정이 없어도 적용(데이터 수집이 2025-09부터라 그 이전부터 SM이 갖고 있던 물량을 판 경우 포함).
-          ⓒ <b>이탈</b>: 최근 20일 SM 지분 <b>감소</b> 이면서 (보유가 고점의 <b>절반 이하</b>로 줄었음(고점 0.5% 이상일 때) 또는 현재가가 SM 평단 <b>아래</b>).</td></tr>
+        <tr><th style="color:var(--good)">①매집(보합)</th><td>최근 120일 SM 지분 변화 <b>+1.0%p 이상</b> · 같은 기간 주가 상승률 <b>15% 미만</b> · 같은 기간 개인 지분 <b>감소</b>.
+          주가가 오르지 않고 잔잔하거나 내렸는데 SM이 모으는 모습(내렸으면 "조용한 매집"으로 따로 표시).</td></tr>
+        <tr><th style="color:var(--up)">②매집(상승)</th><td>오르는 중에 SM이 산 경우. ⓐ SM 추정 보유가 보유 고점의 <b>80% 이상</b> · 현재가가 SM 평단보다 <b>5% 넘게 위</b> · 20일선이 5거래일 전보다 <b>상승</b>,
+          또는 ⓑ SM 지분 <b>+1.0%p 이상</b>·개인 지분 <b>감소</b>인데 주가 상승률이 <b>15% 이상</b>. 매집→상승 전환은 주가 상승률 15% 이상이 필요하고, B1 신호가 뜨면 바로 ②.</td></tr>
+        <tr><th style="color:var(--warn)">③분산(전가)</th><td>높은 가격에서 SM이 개인에게 넘기는 단계. 보유가 있거나 SM 지분 변화가 <b>마이너스</b>이고 (평단 대비 <b>+20% 이상</b> 또는 종가가 60일 고가의 <b>95% 이상</b>) ·
+          최근 20일 SM 지분 <b>감소</b> · 최근 20일 개인 지분 <b>증가</b> · 최근 5일 평균 거래량이 직전 20일 평균 <b>이상</b>.</td></tr>
+        <tr><th style="color:var(--down)">④분산(이탈)</th><td>주가가 내려온 뒤에도 SM이 계속 개인에게 넘기는 단계(고점권이 아닐 때). 다음 중 하나.
+          ⓐ <b>순유출</b>: 최근 120일 SM 지분 변화 <b>-1.0%p 이하</b>(60일 선택 시 -0.5%p)이면서 같은 기간 개인 지분 <b>증가</b> — 보유 추정이 없어도 적용(데이터 수집이 2025-09부터라 그 이전부터 SM이 갖고 있던 물량을 판 경우 포함).
+          ⓑ 최근 20일 SM 지분 <b>감소</b> 이면서 (보유가 고점의 <b>절반 이하</b>로 줄었음(고점 0.5% 이상일 때) 또는 현재가가 SM 평단 <b>아래</b>).
+          고점권이면 ③분산(전가)이 우선합니다.</td></tr>
         <tr><th>중립</th><td>위 조건에 모두 해당하지 않을 때, 또는 매집 중 지분 변화가 0 이하로 떨어졌을 때, 보유가 0일 때.</td></tr>
-        <tr><th>전환 규칙</th><td>새 국면 조건이 <b>3거래일 연속</b> 충족돼야 바뀝니다(하루짜리 흔들림 제외). 예외: B1 신호는 즉시 ②상승.</td></tr>
+        <tr><th>전환 규칙</th><td>새 국면 조건이 <b>3거래일 연속</b> 충족돼야 바뀝니다(하루짜리 흔들림 제외). 예외: B1 신호는 즉시 ②매집(상승).</td></tr>
       </tbody></table>
       <div class="note">참고: 백테스트(20일 초과수익)에서 분산 진입(S1)은 이후에도 더 오르는 경향이 있어 매도 근거가 아니라 참고 표시입니다. 기준값은 <code>sm_core.py</code>와 화면 계산(<code>smSeries</code>)이 같습니다.</div>
     </details>
@@ -1003,7 +1005,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <button class="fchip" data-v="fav">★ 내 관심</button>
     </div>
     <div class="note" id="smNote" style="margin:0 0 8px"></div>
-    <div class="tw tw-scroll"><table><thead><tr><th class="l"></th><th class="l">#</th><th class="l">종목</th><th class="l">단계 ①②③</th><th class="l">신호</th>
+    <div class="tw tw-scroll"><table><thead><tr><th class="l"></th><th class="l">#</th><th class="l">종목</th><th class="l">단계 ①②③④</th><th class="l">신호</th>
       <th title="최근 120거래일 SM 순매수 주식수 합 ÷ 상장주식수">SM 120일 지분</th><th title="데이터 시작 이후 SM 순매수 누적(0 이하로 내려가면 초기화) ÷ 상장주식수">SM 추정 보유</th>
       <th title="현재가 ÷ SM 평균 매입단가 − 1">평단 괴리</th><th title="최근 20일 SM 순매도 물량 중 같은 날 개인이 순매수한 비율">개인 이전율</th>
       <th>20일 매수일</th><th>120일 수익률</th><th>점수</th><th class="opt">거래대금(억)</th></tr></thead>
@@ -1238,7 +1240,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div id="dSmCtl" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"></div>
     <div class="smhead" id="dSmHead"></div>
     <div class="chart" id="dSmPrice"></div>
-    <div class="legend" style="margin:6px 0 0;flex-wrap:nowrap;white-space:nowrap"><span class="faint">배경</span><span><i class="bx" style="background:color-mix(in srgb,var(--good) 30%,transparent);border:1px solid var(--good)"></i>①매집</span><span><i class="bx" style="background:color-mix(in srgb,var(--up) 30%,transparent);border:1px solid var(--up)"></i>②상승</span><span><i class="bx" style="background:color-mix(in srgb,var(--down) 30%,transparent);border:1px solid var(--down)"></i>③분산(이탈 포함)</span></div>
+    <div class="legend" style="margin:6px 0 0;flex-wrap:nowrap;white-space:nowrap"><span class="faint">배경</span><span><i class="bx" style="background:color-mix(in srgb,var(--good) 30%,transparent);border:1px solid var(--good)"></i>①매집(보합)</span><span><i class="bx" style="background:color-mix(in srgb,var(--up) 30%,transparent);border:1px solid var(--up)"></i>②매집(상승)</span><span><i class="bx" style="background:color-mix(in srgb,var(--warn) 30%,transparent);border:1px solid var(--warn)"></i>③분산(전가)</span><span><i class="bx" style="background:color-mix(in srgb,var(--down) 30%,transparent);border:1px solid var(--down)"></i>④분산(이탈)</span></div>
     <div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span><span style="color:var(--up)">▲ 매수 신호</span><span style="color:var(--down)">▼ 매도 신호</span><span class="faint">△▽ 참고 신호</span></div>
     <div class="grid2" style="margin-top:12px">
       <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 누적 순매수 주식수 ÷ 상장주식수(%) · 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = 종가(최고·최저·종가 가격 표시) · 주황 점선 = 2026-08 이후 박스권 상·하단</div><div class="chart" id="dSmFlow"></div>
@@ -4296,8 +4298,8 @@ $("#dRangeApply").onclick=()=>{S.dRangeTouched=true;renderRangeCharts();};
    한쪽을 고치면 다른 쪽도 같이 고칠 것. rows: {date,close,high,low,volume,trade_amount,market_cap,sm,ind} 오름차순 */
 // 박스권 표시 시작일 — 이 날짜 이후 종가의 최고·최저를 매집/분산 차트에 점선으로 그림 (2026-10-30 사용자 지정)
 const SM_BOX_FROM="2026-08-01";
-const SM_PH_KR={NEUTRAL:"중립",ACC:"①매집",MARKUP:"②상승",DIST:"③분산"};   // 2026-11-01: 이탈은 분산에 통합(색은 옛 이탈의 파랑)
-const SM_PH_IDX={ACC:1,MARKUP:2,DIST:3,NEUTRAL:0};
+const SM_PH_KR={NEUTRAL:"중립",ACC:"①매집(보합)",MARKUP:"②매집(상승)",DIST:"③분산(전가)",DOWN:"④분산(이탈)"};   // 2026-11-01 개편: 코드는 그대로, 이름만 변경
+const SM_PH_IDX={ACC:1,MARKUP:2,DIST:3,DOWN:4,NEUTRAL:0};
 const SM_SIG_KR={B1:"매집 돌파",B2:"평단 눌림",S1:"분산 개시",S2:"평단 이탈",S3:"보유 소진",S4:"이익 실현"};
 // 1차 백테스트(2026-10-29, 20일 초과수익) 통과 신호 — 목록·점수는 이것만 씀. 나머지는 "참고"(회색) 표시. sm_core.py VALID_BUY/VALID_SELL과 같게 유지
 const SM_SIG_OK=new Set(["B1","S2","S4"]);
@@ -4343,6 +4345,7 @@ function smSeries(rows,W=120){
     const markup=H>0&&Hpeak>0&&H>=0.8*Hpeak&&gap!=null&&gap>0.05&&rising;
     // 2026-10-31: 수집 시작(2025-09) 이전 보유분을 판 경우 H가 0으로 눌려 분산·이탈이 꺼지던 문제 — dW(0에서 자르지 않은 지분 변화)로 "순유출"을 따로 본다 (sm_core.py와 같게)
     const outflow=dW<=-dth&&indW>0;
+    const accUp=dW>=dth&&indW<0&&retW>=rth;   // 오르는 중에 SM이 계속 사는 경우 → 매집(상승)
     const dist=(H>0||dW<0)&&((gap!=null&&gap>=0.20)||close>=0.95*high60)&&d20<0&&ind20>0&&vol5>=vol20p;
     const markdown=(d20<0&&((peakPct>=0.5&&H<=0.5*Hpeak)||(gap!=null&&gap<0)))||outflow;
     const sig=[], cur=phase;
@@ -4354,10 +4357,11 @@ function smSeries(rows,W=120){
     const hl=+(r.high||0)-+(r.low||0);
     if(gap!=null&&gap>=0.30&&vol>=2*vol20p&&hl>0&&(+(r.high||0)-close)/hl>=0.5&&q<0)sig.push("S4");
     let tgt;
-    if(cur==="ACC")tgt=markdown?"DIST":(markup&&retW>=rth)?"MARKUP":dW<=0?"NEUTRAL":"ACC";
-    else if(cur==="MARKUP")tgt=(dist||markdown)?"DIST":H===0?"NEUTRAL":"MARKUP";
-    else if(cur==="DIST")tgt=markdown?"DIST":acc?"ACC":(markup&&d20>0)?"MARKUP":H===0?"NEUTRAL":"DIST";
-    else tgt=acc?"ACC":(dist||outflow)?"DIST":markup?"MARKUP":"NEUTRAL";
+    if(cur==="ACC")tgt=markdown?"DOWN":((markup||accUp)&&retW>=rth)?"MARKUP":dW<=0?"NEUTRAL":"ACC";
+    else if(cur==="MARKUP")tgt=dist?"DIST":markdown?"DOWN":H===0?"NEUTRAL":"MARKUP";
+    else if(cur==="DIST")tgt=dist?"DIST":markdown?"DOWN":acc?"ACC":(markup&&d20>0)?"MARKUP":H===0?"NEUTRAL":"DIST";
+    else if(cur==="DOWN")tgt=acc?"ACC":dist?"DIST":markdown?"DOWN":"NEUTRAL";
+    else tgt=acc?"ACC":dist?"DIST":outflow?"DOWN":(markup||accUp)?"MARKUP":"NEUTRAL";
     let nw=cur;
     if(sig.includes("B1")){nw="MARKUP";pendT=null;pend=0;}
     else if(tgt!==cur){
@@ -4372,11 +4376,11 @@ function smSeries(rows,W=120){
   return out;
 }
 
-const SM_ORDER=["ACC","MARKUP","DIST"];
-const SM_PH_C={ACC:"var(--good)",MARKUP:"var(--up)",DIST:"var(--down)",NEUTRAL:"var(--ink-3)"};
+const SM_ORDER=["ACC","MARKUP","DIST","DOWN"];
+const SM_PH_C={ACC:"var(--good)",MARKUP:"var(--up)",DIST:"var(--warn)",DOWN:"var(--down)",NEUTRAL:"var(--ink-3)"};
 const SM_SUBJ_ALL=[["foreign","외국인"],["inv_trust","투신"],["pe","사모"],["pension","연기금"],["fin_inv","금융투자"],["corp_other","기타법인"]];
 const SM_SUBJ_DEF=["foreign","inv_trust","pe","pension"];
-// 단계 막대 ①②③ — 현재 칸은 진하게, 지나온 칸은 옅게, 중립이면 모두 빈 칸
+// 단계 막대 ①②③④ — 현재 칸은 진하게, 지나온 칸은 옅게, 중립이면 모두 빈 칸
 function smStageHtml(phase){
   const k=SM_PH_IDX[phase]||0;
   return `<span class="smstage" title="${SM_PH_KR[phase]||""}">`+SM_ORDER.map((p,i)=>
@@ -4485,9 +4489,9 @@ function renderSm(){
   const rows=S.smRows||[];
   if(!rows.length){$("#smMap").innerHTML='<div class="load">아직 계산 결과가 없습니다 — Actions에서 "Smart Money Phase"를 한 번 실행하세요.</div>';$("#smBody").innerHTML="";return;}
   $("#smAsOf").textContent=`${rows[0].as_of} 기준 · ${N(rows.length)}종목 · SM = 외국인+투신+사모+연기금 · 판정 120일`;
-  const cnt={},chg={};["ACC","MARKUP","DIST","NEUTRAL"].forEach(p=>{cnt[p]=0;chg[p]=0;});
+  const cnt={},chg={};["ACC","MARKUP","DIST","DOWN","NEUTRAL"].forEach(p=>{cnt[p]=0;chg[p]=0;});
   rows.forEach(r=>{cnt[r.phase]=(cnt[r.phase]||0)+1;if(r.changed_today)chg[r.phase]=(chg[r.phase]||0)+1;});
-  $("#smMap").innerHTML=["ACC","MARKUP","DIST","NEUTRAL"].map(p=>
+  $("#smMap").innerHTML=["ACC","MARKUP","DIST","DOWN","NEUTRAL"].map(p=>
     `<button class="smseg" data-p="${p}" aria-pressed="${S.smPhase===p}" style="--c:${SM_PH_C[p]};--w:${Math.max(1,cnt[p])}">
       <b>${SM_PH_KR[p]}</b><span>${N(cnt[p])}개${p!=="NEUTRAL"?` · 오늘 +${chg[p]}`:""}</span></button>`).join("");
   $$("#smMap .smseg").forEach(b=>b.onclick=()=>{S.smPhase=S.smPhase===b.dataset.p?null:b.dataset.p;S.smSort=null;renderSm();});
@@ -4508,7 +4512,7 @@ function renderSm(){
     note="최근 5거래일 안에 <b>S2 평단 이탈·S4 이익 실현</b>이 나온 종목 — 점수 = 신선도 40 + 분산 강도 30 + 개인 이전율 15 + 평단 괴리 15";
   }else if(S.smTab==="acc"){
     list=rows.filter(r=>r.phase==="ACC"||r.quiet).sort((a,b)=>(+b.d_w)-(+a.d_w));scoreK=null;
-    note="아직 신호 전인 <b>①매집</b> 국면 + 조용한 매집(가격은 120일간 안 올랐는데 SM이 모은 종목) — SM 120일 지분 증가 큰 순";
+    note="아직 신호 전인 <b>①매집(보합)</b> 국면 + 조용한 매집(가격은 120일간 안 올랐는데 SM이 모은 종목) — SM 120일 지분 증가 큰 순";
   }else{
     const rk=r=>(r.changed_today?0:1)*10+(r.sell_score!=null?1:r.buy_score!=null?2:3);
     list=rows.filter(r=>favs.has(r.code)).sort((a,b)=>rk(a)-rk(b)||(+b.d_w)-(+a.d_w));scoreK=null;

@@ -9,7 +9,8 @@ web/index.html 의 smSeries()와 한 줄 한 줄 같은 계산입니다(종목�
 출력: 행마다 dict (phase, phase_days, signals, hold_pct, cost, gap, dW, d20, indW, ind20, ...)
 """
 
-PHASES = ("NEUTRAL", "ACC", "MARKUP", "DIST")   # 2026-11-01: 이탈(DOWN)을 분산(DIST)에 통합
+# 2026-11-01 국면 개편: 코드는 그대로, 이름만 ACC=매집(보합) · MARKUP=매집(상승) · DIST=분산(전가) · DOWN=분산(이탈)
+PHASES = ("NEUTRAL", "ACC", "MARKUP", "DIST", "DOWN")
 DEFAULT_SUBJ = ("foreign", "inv_trust", "pe", "pension")   # 외국인+투신+사모+연기금 (2026-10-29 확정)
 
 
@@ -95,6 +96,7 @@ def sm_series(rows, W=120):
         # 분산·이탈 판정이 꺼지는 문제가 있었다. 지분 변화(dW)는 0에서 자르지 않고 음수까지 누적하므로 이를 "순유출"로 보고
         # (SM 지분 W일 -dth%p 이하 + 개인 지분 증가) 보유 유무와 관계없이 이탈로 본다. 분산도 보유 대신 dW<0이면 허용.
         outflow = dW <= -dth and indW > 0
+        acc_up = dW >= dth and indW < 0 and retW >= rth      # 오르는 중에 SM이 계속 사는 경우 → 매집(상승)
         dist = (H > 0 or dW < 0) and ((gap is not None and gap >= 0.20) or close >= 0.95 * high60) and d20 < 0 and ind20 > 0 and vol5 >= vol20p
         markdown = (d20 < 0 and ((peak_pct >= 0.5 and H <= 0.5 * Hpeak) or (gap is not None and gap < 0))) or outflow
 
@@ -116,13 +118,15 @@ def sm_series(rows, W=120):
 
         # ── 국면 전환 (3일 연속 확인, B1은 즉시 상승 전환) ──
         if cur == "ACC":
-            tgt = "DIST" if markdown else ("MARKUP" if (markup and retW >= rth) else ("NEUTRAL" if dW <= 0 else "ACC"))
+            tgt = "DOWN" if markdown else ("MARKUP" if ((markup or acc_up) and retW >= rth) else ("NEUTRAL" if dW <= 0 else "ACC"))
         elif cur == "MARKUP":
-            tgt = "DIST" if (dist or markdown) else ("NEUTRAL" if H == 0 else "MARKUP")
+            tgt = "DIST" if dist else ("DOWN" if markdown else ("NEUTRAL" if H == 0 else "MARKUP"))
         elif cur == "DIST":
-            tgt = "DIST" if markdown else ("ACC" if acc else ("MARKUP" if (markup and d20 > 0) else ("NEUTRAL" if H == 0 else "DIST")))
+            tgt = "DIST" if dist else ("DOWN" if markdown else ("ACC" if acc else ("MARKUP" if (markup and d20 > 0) else ("NEUTRAL" if H == 0 else "DIST"))))
+        elif cur == "DOWN":
+            tgt = "ACC" if acc else ("DIST" if dist else ("DOWN" if markdown else "NEUTRAL"))
         else:
-            tgt = "ACC" if acc else ("DIST" if (dist or outflow) else ("MARKUP" if markup else "NEUTRAL"))
+            tgt = "ACC" if acc else ("DIST" if dist else ("DOWN" if outflow else ("MARKUP" if (markup or acc_up) else "NEUTRAL")))
         new = cur
         if "B1" in sig:
             new = "MARKUP"; pend_t = None; pend = 0
