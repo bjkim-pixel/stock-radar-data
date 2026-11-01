@@ -1,0 +1,37 @@
+name: DB Size Probe (용량 점검, 읽기 전용)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary requests
+      - name: Probe
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 102_db_size_probe.py
+      - name: Publish report (branch db-size-report)
+        if: always()
+        run: |
+          [ -f db_size_report.md ] || echo "리포트 없음 — 실패. Actions 로그 확인" > db_size_report.md
+          cp db_size_report.md /tmp/db_size_report.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan db-size-report
+          git rm -rq --cached . || true
+          cp /tmp/db_size_report.md db_size_report.md
+          git add -f db_size_report.md
+          git commit -qm "db size probe ${{ github.run_id }}"
+          git push -f origin db-size-report
