@@ -22,8 +22,8 @@ z=zipfile.ZipFile(io.BytesIO(r.content)); raw=z.read(z.namelist()[0]).decode("cp
 etfs=[]; grp=collections.Counter()
 for x in raw:
     if len(x)<240: continue
-    t=x[-228:]; g=t[:2]; grp[g]+=1
-    if g=="EF": etfs.append((x[:9].strip(),x[21:-228].strip()))
+    t=x[-227:]; g=t[:2]; grp[g]+=1
+    if g=="EF": etfs.append((x[:9].strip(),x[21:-227].strip()))
 log(f"- 코스피 마스터 {len(raw)}행 · 그룹코드 분포 {dict(grp)} · ETF {len(etfs)}개")
 def kind(n):
     if re.search(r"곱버스|인버스\s*2X|2X\s*인버스|레버리지\s*인버스|인버스.*레버리지",n) : return "레버리지인버스"
