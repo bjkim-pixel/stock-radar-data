@@ -1,0 +1,37 @@
+name: ETF Universe (후보 유니버스, 읽기 전용)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary requests
+      - name: Probe
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 106_etf_universe.py
+      - name: Publish report (branch etf-universe-report)
+        if: always()
+        run: |
+          [ -f etf_universe_report.md ] || echo "리포트 없음 — 실패. Actions 로그 확인" > etf_universe_report.md
+          cp etf_universe_report.md /tmp/etf_universe_report.md; cp etf_universe.csv /tmp/etf_universe.csv 2>/dev/null || true
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan etf-universe-report
+          git rm -rq --cached . || true
+          cp /tmp/etf_universe_report.md etf_universe_report.md; cp /tmp/etf_universe.csv etf_universe.csv 2>/dev/null || true
+          git add -f etf_universe_report.md; [ -f etf_universe.csv ] && git add -f etf_universe.csv
+          git commit -qm "etf universe ${{ github.run_id }}"
+          git push -f origin etf-universe-report
