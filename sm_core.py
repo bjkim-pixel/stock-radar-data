@@ -97,8 +97,10 @@ def sm_series(rows, W=120):
         # (SM 지분 W일 -dth%p 이하 + 개인 지분 증가) 보유 유무와 관계없이 이탈로 본다. 분산도 보유 대신 dW<0이면 허용.
         outflow = dW <= -dth and indW > 0
         acc_up = dW >= dth and indW < 0 and retW >= rth      # 오르는 중에 SM이 계속 사는 경우 → 매집(상승)
-        dist = (H > 0 or dW < 0) and ((gap is not None and gap >= 0.20) or close >= 0.95 * high60) and d20 < 0 and ind20 > 0 and vol5 >= vol20p
-        markdown = (d20 < 0 and ((peak_pct >= 0.5 and H <= 0.5 * Hpeak) or (gap is not None and gap < 0))) or outflow
+        # 고점권(near): 평단 대비 +20% 이상이거나 종가가 60일 고가의 90% 이상. 고점권에서 넘기면 분산(전가), 가격이 내려온 뒤에도 넘기면 분산(이탈)
+        near = (gap is not None and gap >= 0.20) or close >= 0.90 * high60
+        dist = (H > 0 or dW < 0) and near and ((d20 < 0 and ind20 > 0 and vol5 >= vol20p) or outflow)
+        markdown = ((d20 < 0 and ((peak_pct >= 0.5 and H <= 0.5 * Hpeak) or (gap is not None and gap < 0))) or outflow) and not near
 
         sig = []
         cur = phase
@@ -126,7 +128,7 @@ def sm_series(rows, W=120):
         elif cur == "DOWN":
             tgt = "ACC" if acc else ("DIST" if dist else ("DOWN" if markdown else "NEUTRAL"))
         else:
-            tgt = "ACC" if acc else ("DIST" if dist else ("DOWN" if outflow else ("MARKUP" if (markup or acc_up) else "NEUTRAL")))
+            tgt = "ACC" if acc else ("DIST" if dist else ("DOWN" if (outflow and not near) else ("MARKUP" if (markup or acc_up) else "NEUTRAL")))
         new = cur
         if "B1" in sig:
             new = "MARKUP"; pend_t = None; pend = 0
