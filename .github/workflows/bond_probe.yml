@@ -20,6 +20,7 @@ jobs:
         env:
           KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: python 98_bond_probe.py --report bond_probe_report.md
       - name: Publish report (branch bond-probe-report)
         if: always()
