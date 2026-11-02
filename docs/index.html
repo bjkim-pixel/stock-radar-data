@@ -3700,8 +3700,8 @@ function gmCard(p,key,it,period,hot){
     if(b)it=Object.assign({},it,{k:"gl",c:it.c.map(x=>x==null?null:x/b*100)});
   }
   const sub=it.etf?`<div class="gm-sub">${it.etf}</div>`:(it.s&&!/^\d/.test(it.s)&&p.tab==="US"?`<div class="gm-sub">${it.s}</div>`:"");
-  const hold=(it.h&&it.h.length)?`<div class="gm-hold">${it.h.map(h=>`<div class="gm-hl"><span class="nm">${
-      S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:(h.f?`<span title="${h.f.replace(/"/g,"&quot;")}"><b>${h.n}</b> <span class="ko">${h.k||""}</span></span>${h.x?`<span class="mk">${h.x}</span>`:""}`:h.n)}</span><span class="${gmC(h.ch)}">${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
+  const hold=(it.h&&it.h.length)?`<div class="gm-hold">${it.hn?`<div class="faint" style="font-size:10px">${it.hn}</div>`:""}${it.h.map(h=>`<div class="gm-hl"><span class="nm">${
+      S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:(h.f?`<span title="${h.f.replace(/"/g,"&quot;")}"><b>${h.n}</b> <span class="ko">${h.k||""}</span></span>${h.x?`<span class="mk">${h.x}</span>`:""}`:h.n)}</span><span class="${gmC(h.ch)}">${big&&h.w!=null?`<span class="faint">${N(h.w,1)}% </span>`:""}${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
   let extra="";
   if(big){
     const ds=p.dates.slice(-n);

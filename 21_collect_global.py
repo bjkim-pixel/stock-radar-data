@@ -66,6 +66,10 @@ US_THEME = [
     ("IGV", "소프트웨어"), ("OZEM", "비만치료제"), ("BIZD", "BDC·사모대출"), ("STBQ", "스테이블코인"),
     ("KWEB", "중국 인터넷"), ("CAPA", "AI 커패시터·MLCC"),
 ]
+# 글로벌 주식 탭: 국내 상장 해외주식 ETF → 같은 시장을 대표하는 미국 상장 ETF(구성종목 조회용 대리 티커)
+GL_PROXY = {"426020": "SPY", "426030": "QQQ", "283580": "ASHR", "414780": "KSTR", "195930": "FEZ",
+            "453810": "INDY", "241180": "EWJ", "101280": "EWJ", "256440": "EIDO", "245710": "VNM",
+            "195980": "EEM", "0060H0": "ACWI"}
 # 미국 ETF 보유종목 한글 종목명 (없으면 영문명을 줄여 표시)
 US_KO = {
     "277810.KS": "레인보우로보틱스", "285A.JP": "키옥시아", "3081.TT": "랜드마크 옵토일렉트로닉스", "4519.JP": "주가이제약",
@@ -374,6 +378,12 @@ def collect_us_holdings(conn):
         for t, _ in lst:
             if t not in etfs:
                 etfs.append(t)
+    for t in ("SPY", "QQQ", "IWM", "IWC"):          # 인덱스 카드용 (2026-11-02)
+        if t not in etfs:
+            etfs.append(t)
+    for t in sorted(set(GL_PROXY.values())):         # 글로벌 주식 탭 대리 티커
+        if t not in etfs:
+            etfs.append(t)
     ses = requests.Session()
     ses.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36"})
     crumb = None
@@ -732,6 +742,18 @@ def load_all(conn):
         for e, r, sc, sn, w, ch, ex in cur.fetchall():
             H.setdefault(e, []).append({"c": sc, "n": sn, "w": float(w) if w is not None else None,
                                         "ch": float(ch) if ch is not None else None, "x": ex})
+        # KOSPI·KOSDAQ 인덱스 카드: 시가총액 상위 5종목 (DB 최신일 기준)
+        try:
+            cur.execute("""select s.market, p.code, s.name, p.change_pct from daily_price p join stocks s on s.code = p.code
+                           where p.trade_date = (select max(trade_date) from daily_price) and s.security_type = 'STOCK'
+                             and s.market in ('KOSPI','KOSDAQ') and p.market_cap > 0
+                           order by p.market_cap desc""")
+            for mk, c, nm, ch in cur.fetchall():
+                L = H.setdefault("KRIDX:" + mk, [])
+                if len(L) < 5:
+                    L.append({"c": c, "n": nm, "w": None, "ch": float(ch) if ch is not None else None, "x": None})
+        except Exception as ex:
+            conn.rollback(); log(f"- ⚠ 인덱스 시총 상위 조회 실패: {str(ex)[:100]}")
     return S, H
 
 def item(cal, series, name, bench_al, kind="px", sym=None):
@@ -781,7 +803,7 @@ def build_us(S, H):
             if it:
                 if t in US_DESC and grp_id in ("index", "macro"):
                     it["d_"] = US_DESC[t]
-                if grp_id in ("sector", "theme") and not t.startswith("RATIO:"):
+                if grp_id in ("sector", "theme", "index") and not t.startswith("RATIO:"):
                     it["h"] = [{"c": x["c"], "n": x["c"], "f": x["n"], "k": US_KO.get(x["c"]) or short_en(x["n"]),
                                 "x": exch_label(x["c"], x.get("x")), "w": x["w"], "ch": x["ch"]}
                                for x in H.get("US:" + t, [])]
@@ -826,6 +848,9 @@ def build_kr(S, H, etf_codes, theme_of):
     put("index:KOSPI_DD", item(cal, dd, "KOSPI 고점대비", None, "lvlpct"))
     put("index:KOSPI_DISP", item(cal, ds, "KOSPI 이격도(20일)", None, "lvl"))
     put("index:KOSDAQ", item(cal, kq, "KOSDAQ", None))
+    for mk in ("KOSPI", "KOSDAQ"):
+        if items.get("index:" + mk) and H.get("KRIDX:" + mk):
+            items["index:" + mk]["h"] = H["KRIDX:" + mk]; items["index:" + mk]["hn"] = "시가총액 상위 5"
     put("index:KQKS", item(cal, {d: kq[d] / ks[d] for d in kq if d in ks and ks[d]}, "KOSDAQ / KOSPI", None, "ratio"))
     put("index:KRW", item(cal, S.get("FX:KRW") or {}, "원/달러", None))
     for mk in ("KOSPI", "KOSDAQ"):

@@ -31,6 +31,13 @@ def main():
         S = {}
         for c, d, x in cur.fetchall():
             S.setdefault(c, {})[d] = float(x)
+    with conn.cursor() as cur:   # 대리 미국 ETF의 구성종목 상위 5 (21_collect_global.py가 etf_holdings에 저장)
+        cur.execute("select etf_symbol, stock_code, stock_name, weight, change_pct, exch from etf_holdings where etf_symbol like 'US:%%' order by etf_symbol, rank")
+        H = {}
+        for e, sc, sn, w, ch, ex in cur.fetchall():
+            H.setdefault(e[3:], []).append({"c": sc, "n": sc, "f": sn, "k": G.US_KO.get(sc) or G.short_en(sn),
+                                            "x": G.exch_label(sc, ex), "w": float(w) if w is not None else None,
+                                            "ch": float(ch) if ch is not None else None})
     cal = sorted({d for s in S.values() for d in s})
     if len(cal) < 30:
         raise SystemExit("etf_daily 데이터 부족")
@@ -47,6 +54,9 @@ def main():
                 continue
             it["etf"] = f"{c} · {m[2] or ''}" + (f" · {m[3]}" if m[3] else "")
             it["cap"] = round(float(m[4])) if m[4] else None
+            px = G.GL_PROXY.get(c)
+            if px and H.get(px):
+                it["h"] = H[px]; it["hn"] = f"{px} 구성 상위 5 (같은 시장 대리)"
             cap += it["cap"] or 0
             items["etf:" + c] = it; keys.append("etf:" + c)
         if keys:
