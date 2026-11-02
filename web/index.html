@@ -1355,6 +1355,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <label class="faint" style="font-size:12px" for="dDailyN">조회 기간</label>
       <select id="dDailyN" style="width:auto"><option value="20">최근 20거래일</option><option value="60">최근 60거래일</option><option value="120">최근 120거래일</option></select>
       <span class="faint" style="font-size:11.5px">억원 · 최신 날짜가 위 · <span class="up">순매수 빨강</span> / <span class="down">순매도 파랑</span></span>
+      <button type="button" class="btn ghost" id="dDailyFull" title="표를 화면 전체로 펼치고 확대·축소" style="padding:2px 10px;font-size:12px">⤢ 전체 펼쳐보기</button>
     </div>
     <div class="tw tw-scroll dd" id="dDailyWrap"><table><thead id="dDailyHead"></thead><tbody id="dDailyBody"></tbody></table></div>
     <div class="note">맨 위 "합계" 줄은 선택한 기간 동안의 주체별 순매수 합계입니다. 일별 값은 v_stock_chart의 주체별 누적값을 하루씩 뺀 값이라 위쪽 "수급주체별 순매수 거래대금" 표(기간 합계)와 같은 데이터입니다. 프로그램은 외국인·기관 등과 겹치는 별도 집계라 합계에 다른 주체와 더해 해석하지 마세요.</div>
@@ -4767,6 +4768,33 @@ function renderDailyFlow(){
   $("#dDailyRange").textContent=`${rows[from].trade_date} ~ ${rows.at(-1).trade_date} · ${n}거래일`;
   $("#dDailyN").value=String(S.dDailyN);
 }
+/* 거래주체별 일별 순매수 — 전체 화면으로 펼쳐서 모든 열을 숨김 없이 보고 확대·축소 (셀 높이·줄바꿈 없음, 날짜열·머리글 고정) */
+function openDailyFull(){
+  const src=$("#dDailyWrap table");if(!src)return;
+  let z=1;
+  const ov=document.createElement("div");
+  ov.id="ddFull";
+  ov.style.cssText="position:fixed;inset:0;z-index:9999;background:var(--bg,#fff);display:flex;flex-direction:column";
+  ov.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+      <b style="font-size:14px">거래주체별 일별 순매수</b><span class="faint" style="font-size:11.5px">${$("#dDailyRange").textContent} · 억원</span>
+      <span style="flex:1"></span>
+      <button type="button" class="btn ghost" data-z="-1" style="padding:2px 12px;font-size:16px">−</button>
+      <span id="ddZ" class="num" style="min-width:42px;text-align:center;font-size:12px">100%</span>
+      <button type="button" class="btn ghost" data-z="1" style="padding:2px 12px;font-size:16px">＋</button>
+      <button type="button" class="btn" id="ddClose" style="padding:2px 12px;font-size:12px">닫기 ✕</button></div>
+    <div class="tw tw-scroll dd" id="ddFullWrap" style="flex:1;max-height:none;border:0;border-radius:0;overflow:auto;-webkit-overflow-scrolling:touch"></div>`;
+  document.body.appendChild(ov);
+  const wrap=$("#ddFullWrap",ov), t=src.cloneNode(true);
+  t.style.cssText="width:max-content;min-width:100%;transform-origin:0 0";
+  wrap.appendChild(t);
+  const apply=()=>{t.style.zoom=z;$("#ddZ",ov).textContent=Math.round(z*100)+"%";};
+  ov.querySelectorAll("[data-z]").forEach(b=>b.onclick=()=>{z=Math.min(3,Math.max(.5,+(z+(+b.dataset.z)*.15).toFixed(2)));apply();});
+  const close=()=>{ov.remove();document.removeEventListener("keydown",esc);document.body.style.overflow="";};
+  const esc=e=>{if(e.key==="Escape")close();};
+  $("#ddClose",ov).onclick=close;document.addEventListener("keydown",esc);
+  document.body.style.overflow="hidden";
+}
+$("#dDailyFull").onclick=openDailyFull;
 $("#dDailyN").onchange=e=>{S.dDailyN=+e.target.value;try{renderDailyFlow();}catch(err){console.error(err);}};
 
 /* ══ 종목상세 이평선 정렬 (2026-10-29) ══ */
