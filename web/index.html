@@ -3120,6 +3120,14 @@ function flowRankRow(r,i){
     <td class="dim">${rk}</td></tr>`;
 }
 /* 외+기 누적 순매수/시총(3M·1M·1W) — 86_flow_cap_ratio.sql 사전 계산 테이블(종목당 1행). 없거나 실패하면 빈 값("–") */
+/* 수급주체 역대순위(괄호) — flow_rank_on(date) 함수가 빠르고(112_flow_rank_fn.sql), 실패하면 예전 뷰로 재시도.
+   2026-11-02: 뷰는 ~2.7초라 느린 날 타임아웃 → 조용히 빈 값이 되어 순위가 사라지던 문제 대응 */
+async function qFlowRank(date){
+  for(const t of [()=>q("rpc/flow_rank_on",`d=${date}`),()=>q("v_flow_rank_today",`select=*&trade_date=eq.${date}`),()=>q("rpc/flow_rank_on",`d=${date}`)]){
+    try{const r=await t();if(Array.isArray(r)&&r.length)return r;}catch(e){console.warn("flow rank 조회 재시도",e.message);}
+  }
+  return [];
+}
 async function loadFlowCapRatio(){
   if(S.fcrCache)return S.fcrCache;
   const rows=await q("flow_cap_ratio","select=code,a_3m,a_1m,a_1w,r_3m,r_1m,r_1w").catch(()=>[]);
@@ -3132,7 +3140,7 @@ async function loadFlowRawData(){
     const [scr,per,rk,fcr]=await Promise.all([
       q("v_screener",`select=*&trade_date=eq.${S.date}`),
       q("v_stock_flow_periods","select=*"),
-      q("v_flow_rank_today",`select=*&trade_date=eq.${S.date}`).catch(()=>[]),
+      qFlowRank(S.date),
       loadFlowCapRatio()]);
     const byCode={};per.forEach(p=>byCode[p.code]=p);
     const rkByCode={};rk.forEach(p=>rkByCode[p.code]=p);
@@ -4070,7 +4078,7 @@ async function runScreener(){
   const kind=$("#fKind")?$("#fKind").value:"stock", wantStk=kind!=="etf", wantEtf=kind!=="stock";
   let [rows,rk,per,d20Rows,fcr,etfRows]=await Promise.all([
     wantStk?q("v_screener",`select=*&trade_date=eq.${date}`):Promise.resolve([]),
-    q("v_flow_rank_today",`select=*&trade_date=eq.${date}`).catch(()=>[]),
+    qFlowRank(date),
     q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_2m,inst_2m,fin_inv_1m,inv_trust_1m,pension_1m,pe_1m,fin_inv_2m,inv_trust_2m,pension_2m,pe_2m,individual_1m,corp_other_1m,individual_2m,corp_other_2m").catch(()=>[]),
     q("daily_price",`select=trade_date&trade_date=lt.${date}&order=trade_date.desc&limit=1&offset=19`).catch(()=>[]),
     loadFlowCapRatio(),
