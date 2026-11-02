@@ -60,6 +60,11 @@ def main():
     G.save_pack(conn, pack)
     for s in secs:
         print(s["n"], [(items[k]["n"], items[k]["m"].get("m") if items[k]["m"] else None) for k in s["keys"]])
+    for c in codes:   # 검증용: 최근 종가 (1달 전 / 직전 / 최신)
+        sr = S.get(c) or {}
+        ds = sorted(sr)
+        if len(ds) > 22:
+            print("  ", c, M[c][1], "| 21행전", ds[-22], sr[ds[-22]], "| 직전", ds[-2], sr[ds[-2]], "| 최신", ds[-1], sr[ds[-1]])
     conn.close()
 
 if __name__ == "__main__":
