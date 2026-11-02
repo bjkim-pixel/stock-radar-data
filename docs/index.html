@@ -4164,7 +4164,7 @@ async function loadDetail(code){
   const sum=sumRows[0]||{};
   const last=rows.at(-1);
   $("#dHead").innerHTML=`
-    <div><div style="font-size:18px;font-weight:680">${favStar(code,"big")}${isEtf?'<span class="cd" style="color:var(--accent,#2f6fed);font-weight:700">ETF</span> ':""}${sum.name||code}
+    <div><div style="font-size:18px;font-weight:680">${favStar(code,"big")}${isEtf?'<span class="cd" style="color:var(--accent,#2f6fed);font-weight:700">ETF</span> ':""}${sum.name||code}<button type="button" class="btn ghost" id="dCopyName" title="종목명 복사" style="margin-left:8px;padding:1px 8px;font-size:11px;font-weight:500;vertical-align:middle">복사</button>
       <span class="faint" style="font-size:11.5px;font-weight:400">${code} · ${sum.market||""}</span></div>
       <div class="faint" style="font-size:11px">${rows.length}거래일 이력</div></div>
     <div class="num ${sgn(+last.change_pct)}" style="font-size:28px;font-weight:730;letter-spacing:-.025em;line-height:1">${N(+last.close)}</div>
@@ -4176,6 +4176,13 @@ async function loadDetail(code){
       <div class="faint" style="font-size:12px">${sum.sector||"–"}</div>
       <div class="faint" style="font-size:12px">${isEtf?(sum.etf_field||"ETF"):"업종RS "+(sum.sector_rs_rank?sum.sector_rs_rank+"위":"–")}</div>
     </div>`;
+  const cpb=$("#dCopyName");
+  if(cpb)cpb.onclick=async()=>{
+    const nm=sum.name||code;
+    try{await navigator.clipboard.writeText(nm);}
+    catch(e){const t=document.createElement("textarea");t.value=nm;document.body.appendChild(t);t.select();try{document.execCommand("copy");}catch(_){}t.remove();}
+    cpb.textContent="복사됨 ✓";setTimeout(()=>{cpb.textContent="복사";},1200);
+  };
   const lb=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
   $("#dRange").textContent=`${rows[0].trade_date} ~ ${last.trade_date} (${rows.length}거래일)`;
   // 기간 선택 입력의 기본값(가격/거래량/수급 차트에 공통 적용) = 2025-09-01~오늘
