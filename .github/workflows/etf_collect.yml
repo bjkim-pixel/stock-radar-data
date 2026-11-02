@@ -36,3 +36,7 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           if [ "${{ github.event.inputs.full }}" = "true" ]; then python 107_etf_collect.py --full; else python 107_etf_collect.py; fi
+      - name: Build global-stock tab pack (글로벌 주식 탭)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 109_global_stock_pack.py

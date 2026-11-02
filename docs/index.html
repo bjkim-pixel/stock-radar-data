@@ -1196,6 +1196,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="qf seg" id="gmTabSel" style="margin:0">
       <button class="fchip" data-v="US" aria-pressed="true">미국 주식</button>
       <button class="fchip" data-v="KR" aria-pressed="false">한국 주식</button>
+      <button class="fchip" data-v="GL" aria-pressed="false">글로벌 주식</button>
     </div>
     <div class="qf seg" id="gmPerSel" style="margin:0" title="모든 차트의 기간을 한 번에 변경">
       <button class="fchip" data-v="def" aria-pressed="true">기본</button>
@@ -3631,6 +3632,7 @@ function gmAxis(p,n,big){
 function gmCardVal(it){
   const last=[...it.c].reverse().find(x=>x!=null);
   if(it.days!=null&&it.days<20)return `<span class="gm-v dim">수집 ${it.days}/20일</span>`;
+  if(it.k==="gl")return `<span class="gm-v ${gmC(last==null?null:last-100)}">${last==null?"–":gmF(last-100)+"%"}</span>`;
   if(it.k==="lvlpct")return `<span class="gm-v ${gmC(last)}">${gmF(last)}%</span>`;
   if(it.k==="yld")return `<span class="gm-v">${last==null?"–":N(last,2)+"%"}</span>`;
   if(it.k==="lvl")return `<span class="gm-v">${last==null?"–":N(last,1)}</span>`;
@@ -3640,7 +3642,7 @@ function gmCardVal(it){
 }
 /* 2026-10-30: 크게 보기 맨 아래 — 3개월전·1개월전·2주전·1주전·오늘 값, 오른쪽 괄호는 바로 윗줄(직전 시점) 대비 변화(상승 빨강·하락 파랑).
    %·금리 계열(lvlpct·yld)은 %p 차이, 나머지는 % 변화율 */
-function gmFv(it,v){return it.k==="lvlpct"?gmF(v)+"%":it.k==="yld"?N(v,2)+"%":it.k==="lvl"?N(v,1):it.k==="lvl0"?N(v,0):it.k==="lvl2"?N(v,2):(Math.abs(v)>=1000?N(v,0):N(v,2));}
+function gmFv(it,v){return it.k==="gl"?N(v,1):it.k==="lvlpct"?gmF(v)+"%":it.k==="yld"?N(v,2)+"%":it.k==="lvl"?N(v,1):it.k==="lvl0"?N(v,0):it.k==="lvl2"?N(v,2):(Math.abs(v)>=1000?N(v,0):N(v,2));}
 /* 크게 보기: 선택 기간의 최고(빨강)·최저(파랑)·오늘 값과 날짜 */
 function gmExtHtml(p,it,n){
   const c=it.c.slice(-n),ds=p.dates.slice(-n);
@@ -3670,8 +3672,33 @@ function gmHist(p,it){
   }).join("");
   return `<div class="gm-hist">${html}</div>`;
 }
+/* 글로벌 주식 탭 맨 위: 모든 ETF를 기간 시작=100 으로 맞춘 비교 선차트 + 범례(기간 수익률 큰 순) */
+function gmCompare(p){
+  const n=gmWin(p,S.gm.allN||126), keys=p.groups.flatMap(g=>g.keys), W=1100,H=300,PL=44,PR=10,PT=10,PB=22;
+  const ser=keys.map(k=>{const it=p.items[k],a=it.c.slice(-n),b=a.find(x=>x!=null);
+    return b?{k,n:it.n,v:a.map(x=>x==null?null:x/b*100)}:null;}).filter(Boolean);
+  if(!ser.length||n<2)return "";
+  const all=ser.flatMap(s=>s.v).filter(x=>x!=null),lo=Math.min(...all,100),hi=Math.max(...all,100);
+  const X=i=>PL+i/(n-1)*(W-PL-PR),Y=v=>PT+(hi-v)/(hi-lo||1)*(H-PT-PB);
+  const col=i=>`hsl(${Math.round(i*360/ser.length)} 62% ${i%2?42:52}%)`;
+  const lines=ser.map((s,i)=>{let d="";s.v.forEach((v,j)=>{if(v!=null)d+=(d?"L":"M")+X(j).toFixed(1)+" "+Y(v).toFixed(1);});
+    return `<path d="${d}" fill="none" stroke="${col(i)}" stroke-width="1.4" vector-effect="non-scaling-stroke"><title>${s.n}</title></path>`;}).join("");
+  const ticks=[0,.25,.5,.75,1].map(f=>{const v=lo+(hi-lo)*f;return `<text x="${PL-6}" y="${Y(v).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--ink-3,#888)" dominant-baseline="middle">${v.toFixed(0)}</text>`;}).join("");
+  const ds=p.dates.slice(-n);
+  const leg=ser.map((s,i)=>({s,i,r:(s.v.filter(x=>x!=null).at(-1)||100)-100})).sort((a,b)=>b.r-a.r)
+    .map(({s,i,r})=>`<span style="display:inline-flex;align-items:center;gap:5px;margin:2px 12px 2px 0;font-size:12px"><i style="width:10px;height:10px;border-radius:2px;background:${col(i)}"></i>${s.n} <b class="${gmC(r)}">${gmF(r)}%</b></span>`).join("");
+  return `<div class="gm-sec">전 국가 비교<span class="r">${GM_PER_LBL[S.gm.allN||126]||""} · 기간 시작=100</span></div>
+    <div class="card" style="margin:0 0 10px;padding:10px 12px"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:260px;display:block">
+      <line x1="${PL}" y1="${Y(100).toFixed(1)}" x2="${W-PR}" y2="${Y(100).toFixed(1)}" stroke="var(--axis)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>${ticks}${lines}</svg>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3,#888);padding:0 4px"><span>${ds[0]||""}</span><span>${ds.at(-1)||""}</span></div>
+      <div style="margin-top:6px">${leg}</div></div>`;
+}
 function gmCard(p,key,it,period,hot){
   const big=S.gm.big===key, n=big?gmWin(p,S.gm.bigN):gmWin(p,S.gm.allN||period);
+  if(p.tab==="GL"){   /* 글로벌 주식: 선택 기간 시작=100 으로 환산한 지수 형태 */
+    const b=it.c.slice(-n).find(x=>x!=null);
+    if(b)it=Object.assign({},it,{k:"gl",c:it.c.map(x=>x==null?null:x/b*100)});
+  }
   const sub=it.etf?`<div class="gm-sub">${it.etf}</div>`:(it.s&&!/^\d/.test(it.s)&&p.tab==="US"?`<div class="gm-sub">${it.s}</div>`:"");
   const hold=(it.h&&it.h.length)?`<div class="gm-hold">${it.h.map(h=>`<div class="gm-hl"><span class="nm">${
       S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:(h.f?`<span title="${h.f.replace(/"/g,"&quot;")}"><b>${h.n}</b> <span class="ko">${h.k||""}</span></span>${h.x?`<span class="mk">${h.x}</span>`:""}`:h.n)}</span><span class="${gmC(h.ch)}">${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
@@ -3688,12 +3715,12 @@ function gmCard(p,key,it,period,hot){
 function gmGrid(p,g){
   const its=g.keys.map(k=>[k,p.items[k]]).filter(x=>x[1]);
   const hot={};
-  if(g.id!=="index"&&g.id!=="macro"&&g.id!=="credit"){
+  if(g.id!=="index"&&g.id!=="macro"&&g.id!=="credit"&&p.tab!=="GL"){
     const byD=its.filter(x=>x[1].m&&x[1].m.d!=null).sort((a,b)=>b[1].m.d-a[1].m.d);
     byD.slice(0,3).forEach(x=>{if(x[1].m.d>0)hot[x[0]]="hot-up";});
     byD.slice(-3).forEach(x=>{if(x[1].m.d<0)hot[x[0]]="hot-dn";});
   }
-  const head=`<div class="gm-sec">${g.title}<span class="r">${GM_PER_LBL[S.gm.allN||g.period]||""} 차트 · 숫자 = ${g.id==="credit"?"가장 최근 공시값(금융투자협회 · 하루 늦게 공시)":"당일 등락률"}${g.id==="macro"?"(금리·VIX는 현재 수준)":""}${g.sections?" · ETF 시총(억원) 큰 순":""}</span></div>`;
+  const head=`<div class="gm-sec">${g.title}<span class="r">${GM_PER_LBL[S.gm.allN||g.period]||""} 차트 · 숫자 = ${g.id==="credit"?"가장 최근 공시값(금융투자협회 · 하루 늦게 공시)":p.tab==="GL"?"기간 수익률(시작=100 기준)":"당일 등락률"}${g.id==="macro"?"(금리·VIX는 현재 수준)":""}${p.tab==="GL"?" · 국가 GDP 큰 순":g.sections?" · ETF 시총(억원) 큰 순":""}</span></div>`;
   const cards=ks=>ks.map(k=>p.items[k]?gmCard(p,k,p.items[k],g.period,hot[k]):"").join("");
   if(g.sections)   /* 테마별 헤더 + 그 테마 ETF 카드(시총 큰 순) */
     return head+g.sections.map((sc,i)=>`<div class="gm-th" id="gmth_${p.tab}_${i}"><span>${sc.n}</span><span class="r">ETF ${sc.keys.length}개 · 시총 합계 ${N(sc.cap,0)}억원</span></div>
@@ -3741,12 +3768,14 @@ function renderGlobal(row){
   const G=Object.fromEntries(p.groups.map(g=>[g.id,g]));
   let h="";
   if(p.tiles&&p.tiles.length)h+=gmTiles(p);   /* 지수 2개 + 10일 박스 2개 타일 */
+  if(p.tab==="GL")h+=gmCompare(p);   /* 글로벌 주식: 전 국가 비교 차트 */
   if(G.index)h+=gmGrid(p,G.index);   /* 인덱스 차트를 맨 위로 */
   if(G.macro)h+=gmGrid(p,G.macro);   /* 금리·원자재·심리 */
   (p.summary||[]).forEach(id=>{if(G[id])h+=gmTable(p,G[id]);});
   if(G.credit)h+=gmGrid(p,G.credit);   /* 신용융자·반대매매는 인덱스·금리 다음 */
   p.groups.forEach(g=>{if(g.id!=="index"&&g.id!=="macro"&&g.id!=="credit")h+=gmGrid(p,g);});
   h+=`<div class="note" style="margin-top:8px">추세 ▲▲ = 50일선 위 + 50일선 상승 · ▲ = 50일선 위 · ▼ = 50일선 아래. 국면 = ${p.bench} 대비 1M·3M 초과수익 부호(주도 +/+ · 개선 1M+ 3M− · 약화 1M− 3M+ · 소외 −/−). 고점대비 = 최근 1년 최고 종가 대비.${p.tab==="KR"?" 차트는 ETF 종가(테마별로 묶고 ETF 시총 큰 순), 시총은 한국투자증권 현재가 기준 ETF 시가총액(억원), ADR은 상승종목수÷하락종목수 20일 합 ×100(2026-10-23부터 수집).":""}</div>`;
+  if(p.tab==="GL"&&p.note)h+=`<div class="note" style="margin-top:8px">${p.note}</div>`;
   $("#gmBody").innerHTML=h;
   (p.summary||[]).forEach(id=>makeSortable("gmT_"+p.tab+"_"+id));
   $$("#gmBody [data-gmk2]").forEach(a=>a.onclick=e=>{   /* ETF명 클릭 → 그 ETF 차트 카드로 */
