@@ -119,7 +119,13 @@ US_EXCH = {"NMS": "나스닥", "NGM": "나스닥", "NCM": "나스닥", "NYQ": "N
            "BTS": "Cboe", "PNK": "OTC", "OQB": "OTC", "OQX": "OTC", "LSE": "런던", "IOB": "런던", "TOR": "토론토", "VAN": "토론토",
            "JPX": "도쿄", "TYO": "도쿄", "HKG": "홍콩", "KSC": "코스피", "KOE": "코스닥", "TAI": "대만", "TWO": "대만", "SHH": "상하이", "SHZ": "선전",
            "NAS": "나스닥", "TEX": "도쿄", "NasdaqGS": "나스닥", "NasdaqGM": "나스닥", "NasdaqCM": "나스닥"}
-US_SUFFIX = {".KS": "코스피", ".KQ": "코스닥", ".JP": "도쿄", ".T": "도쿄", ".TT": "대만", ".TW": "대만", ".C1": "중국 A주", ".L": "런던", ".HK": "홍콩"}
+# stockanalysis.com 해외 종목 표기("TYO:8306") → Yahoo 티커 접미사
+SA_SUFFIX = {"TYO": ".T", "AMS": ".AS", "SHA": ".SS", "SHE": ".SZ", "TPE": ".TW", "IDX": ".JK", "EPA": ".PA", "ETR": ".DE",
+             "BIT": ".MI", "BME": ".MC", "HKG": ".HK", "NSE": ".NS", "BOM": ".BO", "LON": ".L", "SWX": ".SW", "STO": ".ST",
+             "CPH": ".CO", "HEL": ".HE", "ASX": ".AX", "TSX": ".TO", "BVMF": ".SA", "KRX": ".KS", "EBR": ".BR", "VIE": ".VI"}
+US_SUFFIX = {".AS": "암스테르담", ".SS": "상하이", ".SZ": "선전", ".JK": "인니", ".PA": "파리", ".DE": "프랑크푸르트",
+             ".MI": "밀라노", ".MC": "마드리드", ".NS": "인도", ".BO": "인도", ".SW": "스위스", ".ST": "스톡홀름",
+             ".KS": "코스피", ".KQ": "코스닥", ".JP": "도쿄", ".T": "도쿄", ".TT": "대만", ".TW": "대만", ".C1": "중국 A주", ".L": "런던", ".HK": "홍콩"}
 def exch_label(code, ex):
     if ex and US_EXCH.get(ex, ex):
         return US_EXCH.get(ex, ex)
@@ -358,6 +364,9 @@ def holdings_stockanalysis(t, diag=False):
             sym = cells[1] if re.fullmatch(r"\d+", cells[0]) else cells[0]
             nm = cells[2] if re.fullmatch(r"\d+", cells[0]) else cells[1]
             sym = sym.replace("$", "").strip()
+            if ":" in sym:
+                ex, tk = sym.split(":", 1)
+                sym = tk + SA_SUFFIX.get(ex.upper(), "") if ex.upper() in SA_SUFFIX else tk
             if re.fullmatch(r"[A-Za-z0-9.\-]{1,12}", sym):
                 rows.append((sym, _h.unescape(nm), float(pct[:-1])))
     if not rows:  # 내장 JSON 형태
