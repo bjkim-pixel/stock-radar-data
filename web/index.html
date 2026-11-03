@@ -49,8 +49,10 @@ b{font-weight:640}
 a.lk{color:inherit;text-decoration:underline dotted var(--ink-3);text-underline-offset:2px;cursor:pointer}
 a.lk:hover{color:var(--up);text-decoration-color:var(--up)}
 
-header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--page) 90%,transparent);
-  backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+header{position:sticky;top:0;z-index:50}
+/* 헤더 배경·하단선을 페이지 실제 가로폭(--pw, JS가 계산)까지 확장 — 표가 넓은 화면을 축소해 봐도 오른쪽에 빈 띠가 생기지 않음(콘텐츠 폭은 그대로) */
+header::before{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--pw,100%);z-index:-1;pointer-events:none;
+  background:color-mix(in srgb,var(--page) 90%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
 .hbar{max-width:1480px;margin:0 auto;padding:5px 20px;display:flex;align-items:center;gap:14px}
 .brand b{font-size:15.5px;letter-spacing:-.02em;white-space:nowrap}
 .hmeta{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -2364,7 +2366,7 @@ function go(v,detailCode){
   S.curTab=v;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
   ["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","journal"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
-  document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="flow"||v==="sm");   // 폭 넓은 표 화면에서만 가로 숨김 해제
+  document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="flow"||v==="sm");setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
   // "아직 종목상세를 한 번도 안 봤으면(S.chart.code 없음) 디폴트 SK하이닉스를
@@ -2423,6 +2425,14 @@ setInterval(()=>{ if(S.curTab==="perf2") loadPerf2().catch(()=>{}); }, 30000);
 // 표 헤더가 sticky로 붙는 위치(--stick-top)를 전역 헤더의 실제 렌더 높이로
 // 맞춥니다. 고정폭을 하드코딩하면 모바일에서 헤더 줄바꿈 등으로 어긋나므로,
 // 항상 실측치를 씁니다. 표는 안쪽 스크롤 없이 페이지 스크롤을 그대로 씁니다.
+function setPageW(){
+  const r=document.documentElement,st=r.style;
+  st.setProperty("--pw","0px");
+  const w=Math.max(r.scrollWidth,document.body.scrollWidth,window.innerWidth);
+  st.setProperty("--pw",w+"px");
+}
+window.addEventListener("resize",setPageW);window.addEventListener("load",setPageW);
+setInterval(setPageW,1500);
 function setStickyOffset(){
   const h=$("header"),hh=h?h.offsetHeight:0;
   document.documentElement.style.setProperty("--stick-top",hh+"px");
