@@ -696,19 +696,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 <!-- ═══════════ 오늘의 프로세스 ═══════════ -->
 <section id="v-proc">
-  <div class="funnel" id="funnel">
-    <div class="fstep on" data-g="s1"><span class="no">1</span>
-      <span><span class="lb">시장</span><span class="vl" id="fn1">–</span></span></div>
-    <div class="fstep" data-g="s2"><span class="no">2</span>
-      <span><span class="lb">주도 섹터</span><span class="vl" id="fn2">–</span></span></div>
-    <div class="fstep" data-g="s3"><span class="no">3</span>
-      <span><span class="lb">종목</span><span class="vl" id="fn3">–</span></span></div>
-    <div class="fstep" data-g="s4"><span class="no">4</span>
-      <span><span class="lb">수급 통과</span><span class="vl" id="fn4">–</span></span></div>
-    <div class="fstep" data-g="s5"><span class="no">5</span>
-      <span><span class="lb">최종 후보</span><span class="vl" id="fn5">–</span></span></div>
-  </div>
-
   <!-- STEP 1 -->
   <div class="step-hd" id="s1"><span class="n">STEP 1</span><h2>오늘의 시장</h2>
     <span class="q">오늘 매매해도 되는 날인가?</span>
@@ -785,29 +772,24 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div id="tdKWrap" style="margin-top:12px"><div class="card"><h3>KOSPI <span class="r" id="tdKNote">불러오는 중…</span></h3><div class="load sk"></div></div></div>
 
 
-  <!-- STEP 4 -->
-  <div class="step-hd" id="s4"><span class="n">STEP 4</span><h2>수급</h2>
-    <span class="q">돈이 계속 들어오고 있나?</span>
-    <span class="out" id="flowOut"></span></div>
-  <div class="card"><h3>후보 종목 5일 수급 흐름 <span class="tag-d b">조합</span>
-    <span class="r">막대 = 일별 비개인 순매수 · 오른쪽이 오늘</span></h3>
-    <div class="tw"><table><thead><tr>
-      <th class="l">종목</th><th class="l">5일 흐름</th><th>5일 누적</th><th class="opt">20일 누적</th>
-      <th class="opt">연속 양매수</th><th>방향</th><th>생로병사</th>
-    </tr></thead><tbody id="flowBody"><tr><td colspan="7" class="load sk"></td></tr></tbody></table></div>
-    <div class="note">같은 “+1,000억”이라도 <b>늘어나며 들어오는 돈</b>과 <b>줄어들며 빠지는 돈</b>은 정반대 신호입니다.</div>
-  </div>
-
-  <!-- STEP 5 -->
-  <div class="step-hd" id="s5"><span class="n">STEP 5</span><h2>타점</h2>
-    <span class="q">오늘 종가에 살 자리인가?</span>
-    <span class="out" id="finalOut"></span></div>
-  <div id="finalWrap"><div class="card"><div class="load sk"></div></div></div>
 </section>
 
 
 <!-- ═══════════ 오늘의 종목 ═══════════ -->
 <section id="v-today" class="hide">
+  <div class="funnel" id="funnel" title="각 단계를 누르면 해당 탭의 그 위치로 이동합니다">
+    <div class="fstep on" data-g="s1"><span class="no">1</span>
+      <span><span class="lb">시장</span><span class="vl" id="fn1">–</span></span></div>
+    <div class="fstep" data-g="s2"><span class="no">2</span>
+      <span><span class="lb">주도 섹터</span><span class="vl" id="fn2">–</span></span></div>
+    <div class="fstep" data-g="s3"><span class="no">3</span>
+      <span><span class="lb">종목</span><span class="vl" id="fn3">–</span></span></div>
+    <div class="fstep" data-g="s4"><span class="no">4</span>
+      <span><span class="lb">수급 통과</span><span class="vl" id="fn4">–</span></span></div>
+    <div class="fstep" data-g="s5"><span class="no">5</span>
+      <span><span class="lb">최종 후보</span><span class="vl" id="fn5">–</span></span></div>
+  </div>
+
   <div class="card" style="margin-top:16px"><h3>기준별 강한 종목 Top 10
     <span class="r">오늘 이 기준으로 가장 강했던 종목 · 칩을 여러 개 누르면 모두 만족하는 종목</span></h3>
     <div id="tdTopChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px">
@@ -834,40 +816,18 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 보기, #·종목명 고정) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순</div>
   </div>
 
-  <div class="card"><h3>수급 주체별 매수 상위 종목 <span class="r" id="tdFlowSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
-    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFlowPeriodSel">
-      <button class="fchip" data-v="6m" aria-pressed="false">6개월</button>
-      <button class="fchip" data-v="3m" aria-pressed="false">3개월</button>
-      <button class="fchip" data-v="2m" aria-pressed="false">2개월</button>
-      <button class="fchip" data-v="1m" aria-pressed="false">1개월</button>
-      <button class="fchip" data-v="2w" aria-pressed="false">2주</button>
-      <button class="fchip" data-v="1w" aria-pressed="false">1주</button>
-      <button class="fchip" data-v="1d" aria-pressed="true">오늘</button>
-    </div></div>
-    <div class="qf-group"><div class="qf-lb">정렬</div><div class="qf seg" id="tdFlowSortSel">
-      <button class="fchip" data-v="amt" aria-pressed="true">절대금액순</button>
-      <button class="fchip" data-v="ratio">시가총액 대비 비중순</button>
-    </div></div>
-    <div class="qf-group"><div class="qf-lb">주체</div><div class="qf seg" id="tdFlowSubjSel">
-      <button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button>
-      <button class="fchip" data-v="foreign">외국인</button>
-      <button class="fchip" data-v="inst">기관합계</button>
-      <button class="fchip" data-v="pgtr">프로그램</button>
-      <button class="fchip" data-v="fin_inv">금융투자</button>
-      <button class="fchip" data-v="inv_trust">투신</button>
-      <button class="fchip" data-v="pension">연기금</button>
-      <button class="fchip" data-v="pe">사모</button>
-    </div></div>
-    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFlowBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
-    <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
-  </div>
-
   <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 35(당일 등락률·무게/주식수·개별RS) · 수급 35(당일 실측 외국인+기관·프로그램·공통매수) · 섹터 20(섹터RS 1위 최고점) · 단발성 급등·거래량 과열 감점 (백테스트 미검증 참고용 휴리스틱, 투자 조언 아님)</span></h3>
     <div class="tw tw-scroll tw-rank"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>스코어</th><th class="opt">모멘텀</th><th class="opt">수급</th><th class="opt">섹터</th>
       <th>등락률</th><th class="opt">시총</th><th class="l">사유</th>
     </tr></thead><tbody id="tdScoreBody"><tr><td colspan="9" class="load sk"></td></tr></tbody></table></div>
   </div>
+
+  <!-- STEP 5 -->
+  <div class="step-hd" id="s5"><h2>최종 후보 · 타점</h2>
+    <span class="q">오늘 종가에 살 자리인가?</span>
+    <span class="out" id="finalOut"></span></div>
+  <div id="finalWrap"><div class="card"><div class="load sk"></div></div></div>
 </section>
 
 
@@ -941,9 +901,51 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
   </div>
 
+  <div class="card" style="margin-top:12px"><h3>수급 주체별 매수 상위 종목 <span class="r" id="tdFlowSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
+    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFlowPeriodSel">
+      <button class="fchip" data-v="6m" aria-pressed="false">6개월</button>
+      <button class="fchip" data-v="3m" aria-pressed="false">3개월</button>
+      <button class="fchip" data-v="2m" aria-pressed="false">2개월</button>
+      <button class="fchip" data-v="1m" aria-pressed="false">1개월</button>
+      <button class="fchip" data-v="2w" aria-pressed="false">2주</button>
+      <button class="fchip" data-v="1w" aria-pressed="false">1주</button>
+      <button class="fchip" data-v="1d" aria-pressed="true">오늘</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">정렬</div><div class="qf seg" id="tdFlowSortSel">
+      <button class="fchip" data-v="amt" aria-pressed="true">절대금액순</button>
+      <button class="fchip" data-v="ratio">시가총액 대비 비중순</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">주체</div><div class="qf seg" id="tdFlowSubjSel">
+      <button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button>
+      <button class="fchip" data-v="foreign">외국인</button>
+      <button class="fchip" data-v="inst">기관합계</button>
+      <button class="fchip" data-v="pgtr">프로그램</button>
+      <button class="fchip" data-v="fin_inv">금융투자</button>
+      <button class="fchip" data-v="inv_trust">투신</button>
+      <button class="fchip" data-v="pension">연기금</button>
+      <button class="fchip" data-v="pe">사모</button>
+    </div></div>
+    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFlowBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
+  </div>
+
   <div class="card"><h3>주체별 시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시가총액 · 기간 누적 · 주체별 매수·매도 Top 10 · 표 구성은 종목후보와 같음(열 머리 = 정렬)</span></h3>
     <div id="flowSubjGrid" class="flow-subj-grid scrlike"></div>
   </div>
+
+  <!-- STEP 4 -->
+  <div class="step-hd" id="s4" style="margin-top:20px"><h2>후보 종목 수급 확인</h2>
+    <span class="q">돈이 계속 들어오고 있나?</span>
+    <span class="out" id="flowOut"></span></div>
+  <div class="card"><h3>후보 종목 5일 수급 흐름 <span class="tag-d b">조합</span>
+    <span class="r">막대 = 일별 비개인 순매수 · 오른쪽이 오늘</span></h3>
+    <div class="tw"><table><thead><tr>
+      <th class="l">종목</th><th class="l">5일 흐름</th><th>5일 누적</th><th class="opt">20일 누적</th>
+      <th class="opt">연속 양매수</th><th>방향</th><th>생로병사</th>
+    </tr></thead><tbody id="flowBody"><tr><td colspan="7" class="load sk"></td></tr></tbody></table></div>
+    <div class="note">같은 “+1,000억”이라도 <b>늘어나며 들어오는 돈</b>과 <b>줄어들며 빠지는 돈</b>은 정반대 신호입니다.</div>
+  </div>
+
 </section>
 
 <!-- ═══════════ 스마트머니 ═══════════ -->
@@ -2405,7 +2407,8 @@ function go(v,detailCode){
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);}).finally(()=>{tdFitSoon();setTimeout(tdFit,2500);});}
   if(v==='today')tdFitSoon();
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
-    Promise.all([loadFlowLists()]).catch(()=>{});}
+    Promise.all([loadFlowLists()]).catch(()=>{});
+    loadFlowRawData().then(initTdFlowCard).catch(e=>{console.error("수급 상위",e);S._tdFlowInit=false;$("#tdFlowBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
   if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadFlowSectorMap().catch(()=>{});loadFlowTimeline().catch(()=>{});loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
   redraw(detailJustLoaded);
@@ -2429,9 +2432,14 @@ function setStickyOffset(){
 window.addEventListener("resize",setStickyOffset);
 window.addEventListener("load",setStickyOffset);
 $("#brandHome").onclick=()=>location.reload();
+/* 5단계 퍼널: 각 단계가 있는 탭으로 이동한 뒤 그 위치로 스크롤 (2026-11 재배치: 단계별 카드가 시장/업종·테마/수급 동향/오늘의 종목으로 나뉨) */
+const FUNNEL_GO={s1:["proc","s1"],s2:["sector","s2"],s3:["sector","s3"],s4:["flow","s4"],s5:["today","s5"]};
 $$("#funnel .fstep").forEach(f=>f.onclick=()=>{
   $$("#funnel .fstep").forEach(x=>x.classList.toggle("on",x===f));
-  $("#"+f.dataset.g).scrollIntoView({behavior:"smooth",block:"start"});});
+  const [v,a]=FUNNEL_GO[f.dataset.g]||["today",f.dataset.g];
+  if(S.curTab!==v)go(v);
+  setTimeout(()=>{const t=document.getElementById(a);if(t)t.scrollIntoView({behavior:"smooth",block:"start"});},80);
+});
 $$(".qf:not(.seg) .fchip").forEach(b=>b.onclick=e=>{
   if(e.target.closest(".pop"))return;
   b.setAttribute("aria-pressed",b.getAttribute("aria-pressed")!=="true");});
@@ -3520,6 +3528,26 @@ async function loadTodayMarket(){
     $("#todayMktNote").textContent=S.date?`${S.date} 기준`:"";
   }
 }
+/* 수급 주체별 매수 상위 종목 카드 — "수급 동향" 탭으로 이동. 수급 동향 진입 시 1회(원본 데이터 공유) */
+function initTdFlowCard(raw){
+  if(S._tdFlowInit)return;S._tdFlowInit=true;
+  S.tdFlowSort=S.tdFlowSort||"amt";
+  S.tdFlowSubj=S.tdFlowSubj||"combo";
+  S.tdFlowPeriod=S.tdFlowPeriod||"1d";
+  renderTodayFlow(raw);
+  $("#tdFlowPeriodSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
+    $$("#tdFlowPeriodSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+    S.tdFlowPeriod=b.dataset.v; renderTodayFlow(raw);
+  });
+  $("#tdFlowSortSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
+    $$("#tdFlowSortSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+    S.tdFlowSort=b.dataset.v; renderTodayFlow(raw);
+  });
+  $("#tdFlowSubjSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
+    $$("#tdFlowSubjSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+    S.tdFlowSubj=b.dataset.v; renderTodayFlow(raw);
+  });
+}
 async function loadToday(){
   try{
     await ensureTodayMarket();
@@ -3535,24 +3563,6 @@ async function loadToday(){
     S.tdUniverse=universe; S.tdTopCrit=S.tdTopCrit||"weight";
     loadTodayClusterSectors().then(()=>renderTodayTop(universe));
     renderTodayTop(universe);
-
-    // ── 4) 수급 주체별 매수 상위 종목 ──
-    S.tdFlowSort=S.tdFlowSort||"amt";
-    S.tdFlowSubj=S.tdFlowSubj||"combo";
-    S.tdFlowPeriod=S.tdFlowPeriod||"1d";
-    renderTodayFlow(raw);
-    $("#tdFlowPeriodSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
-      $$("#tdFlowPeriodSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
-      S.tdFlowPeriod=b.dataset.v; renderTodayFlow(raw);
-    });
-    $("#tdFlowSortSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
-      $$("#tdFlowSortSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
-      S.tdFlowSort=b.dataset.v; renderTodayFlow(raw);
-    });
-    $("#tdFlowSubjSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
-      $$("#tdFlowSubjSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
-      S.tdFlowSubj=b.dataset.v; renderTodayFlow(raw);
-    });
 
     // ── 5) 종합 스코어 랭킹 ──
     const idxByCode={}; universe.forEach((r,i)=>idxByCode[r.code]=i);
@@ -6284,7 +6294,7 @@ function retryCurrent(){
   S.flowRaw=null;S.fcrCache=null;S._fsmRowsP=null;S._tlRowsP=null;S._tlFlow=null;
   const v=S.curTab||"proc";
   if(v==="proc"){location.reload();return;}
-  S.todayLoaded=S.flowLoaded=S.pairLoaded=S.sectorTrendLoaded=S.procEntered=false;S._tdMktP=null;
+  S.todayLoaded=S.flowLoaded=S.pairLoaded=S.sectorTrendLoaded=S.procEntered=false;S._tdMktP=null;S._tdFlowInit=false;
   if(v==="scr"&&typeof runScreener==="function"){runScreener().catch(()=>{});return;}
   go(v,v==="detail"?S.chart.code:undefined);
 }
