@@ -466,12 +466,14 @@ section[id^="v-"]>.card:first-child{margin-top:8px!important}
 .card>h3.info-open .info-btn{background:var(--ink);color:var(--surface);border-color:var(--ink)}
 /* 표 열 묶음 토글 · 관심 ★ */
 /* 수급 주체별 매수 상위 종목 카드: 기간·정렬·주체 선택줄을 한 줄 라벨+칩으로 압축해 세로 공간 절약 */
-#tdFlowCard .qf-group{display:flex;align-items:center;gap:8px;margin-top:5px}
-#tdFlowCard .qf-lb{flex:none;width:auto;margin:0;padding:0;font-size:10px;cursor:default}
-#tdFlowCard .qf{gap:4px 5px}
-#tdFlowCard .fchip{min-height:0;padding:2px 9px;font-size:11px}
-#tdFlowCard .gbar{margin:5px 0 4px}
-#tdFlowCard .gbar button{padding:2px 9px}
+#tdFlowCard .qf-group,#flowRankCard .qf-group{display:flex;align-items:center;gap:8px;margin-top:5px}
+#tdFlowCard .qf-lb,#flowRankCard .qf-lb{flex:none;width:auto;margin:0;padding:0;font-size:10px;cursor:default}
+#tdFlowCard .qf,#flowRankCard .qf{gap:4px 5px}
+#tdFlowCard .fchip,#flowRankCard .fchip{min-height:0;padding:2px 9px;font-size:11px}
+#tdFlowCard .gbar,#flowRankCard .gbar{margin:5px 0 4px}
+#tdFlowCard .gbar button,#flowRankCard .gbar button{padding:2px 9px}
+#flowRankCard .note{margin-top:6px}
+#flowRankCard .btn{min-height:0;padding:3px 11px;font-size:11.5px}
 .gbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 8px;font-size:11px;color:var(--ink-3)}
 .gbar button{padding:3px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface-2);color:var(--ink-3);font-size:11px;cursor:pointer}
 .gbar button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
@@ -870,7 +872,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
   </div>
 
-  <div class="card" style="margin-top:12px"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
+  <div class="card" id="flowRankCard" style="margin-top:12px"><h3>종목별 수급 랭킹 · 주체별 시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시총 · 기간 누적 · 주체별 매수·매도 Top 10 · 조건은 종목 후보와 별개로 이 화면에서만 적용</span></h3>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="flowPeriodSel">
       <button class="fchip" data-v="6m">6개월</button>
       <button class="fchip" data-v="3m">3개월</button>
@@ -882,7 +884,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div></div>
     <div class="note" id="flowSelNote"></div>
 
-    <div style="margin-top:16px">
+    <div style="margin-top:6px">
       <button class="btn ghost" id="flowCondToggle" aria-expanded="false">상세 조건 설정 ▾</button>
       <span class="faint" style="font-size:11px;margin-left:8px">등락률·시총·업종 등으로 종목을 더 좁히고 싶을 때만 열어보세요</span>
     </div>
@@ -936,10 +938,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <span class="faint" style="font-size:11px">전략칩 조건 설명은 종목 후보 화면의 같은 버튼을 참고하세요</span>
       </div>
     </div>
-  </div>
-
-  <div class="card"><h3>주체별 시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시가총액 · 기간 누적 · 주체별 매수·매도 Top 10 · 표 구성은 종목후보와 같음(열 머리 = 정렬)</span></h3>
-    <div id="flowSubjGrid" class="flow-subj-grid scrlike"></div>
+    <div id="flowSubjGrid" class="flow-subj-grid scrlike" style="margin-top:6px"></div>
   </div>
 
   <!-- STEP 4 -->
