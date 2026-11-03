@@ -854,7 +854,16 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 보기, #·종목명 고정) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순</div>
   </div>
 
-  <div class="card"><h3>수급 주체별 매수 상위 종목 <span class="r">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
+  <div class="card"><h3>수급 주체별 매수 상위 종목 <span class="r" id="tdFlowSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
+    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFlowPeriodSel">
+      <button class="fchip" data-v="6m" aria-pressed="false">6개월</button>
+      <button class="fchip" data-v="3m" aria-pressed="false">3개월</button>
+      <button class="fchip" data-v="2m" aria-pressed="false">2개월</button>
+      <button class="fchip" data-v="1m" aria-pressed="false">1개월</button>
+      <button class="fchip" data-v="2w" aria-pressed="false">2주</button>
+      <button class="fchip" data-v="1w" aria-pressed="false">1주</button>
+      <button class="fchip" data-v="1d" aria-pressed="true">오늘</button>
+    </div></div>
     <div class="qf-group"><div class="qf-lb">정렬</div><div class="qf seg" id="tdFlowSortSel">
       <button class="fchip" data-v="amt" aria-pressed="true">절대금액순</button>
       <button class="fchip" data-v="ratio">시가총액 대비 비중순</button>
@@ -3498,7 +3507,12 @@ async function loadToday(){
     // ── 4) 수급 주체별 매수 상위 종목 ──
     S.tdFlowSort=S.tdFlowSort||"amt";
     S.tdFlowSubj=S.tdFlowSubj||"combo";
+    S.tdFlowPeriod=S.tdFlowPeriod||"1d";
     renderTodayFlow(raw);
+    $("#tdFlowPeriodSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
+      $$("#tdFlowPeriodSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+      S.tdFlowPeriod=b.dataset.v; renderTodayFlow(raw);
+    });
     $("#tdFlowSortSel").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
       $$("#tdFlowSortSel .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
       S.tdFlowSort=b.dataset.v; renderTodayFlow(raw);
@@ -3546,10 +3560,12 @@ const TODAY_FLOW_KEY_MAP={pgtr:"program"};
 function renderTodayFlow(raw){
   const key=TODAY_FLOW_KEY_MAP[S.tdFlowSubj]||S.tdFlowSubj;
   const rows=raw.filter(r=>+r.market_cap>=TODAY_FLOW_CAP).map(r=>{
-    const v=flowVal(r,key,"1d");
+    const v=flowVal(r,key,S.tdFlowPeriod||"1d");
     const ratio=+r.market_cap>0?v/(+r.market_cap)*100:null;
     return {...r,v,ratio};
   }).filter(r=>r.v>0);
+  const plb=(typeof FLOW_PERIOD!=="undefined"&&FLOW_PERIOD[S.tdFlowPeriod||"1d"])||"오늘";
+  const sub=$("#tdFlowSub");if(sub)sub.textContent=`${(S.tdFlowPeriod||"1d")==="1d"?"오늘 1일":plb+" 누적"} 기준 · 시가총액 1천억원 이상`;
   const sorted=[...rows].sort((a,b)=>S.tdFlowSort==="ratio"?(b.ratio-a.ratio):(b.v-a.v)).slice(0,10);
   $("#tdFlowBody").innerHTML=sorted.length?sorted.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
       <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td>
