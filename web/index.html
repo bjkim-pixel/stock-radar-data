@@ -785,56 +785,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div id="tdKWrap" style="margin-top:12px"><div class="card"><h3>KOSPI <span class="r" id="tdKNote">불러오는 중…</span></h3><div class="load sk"></div></div></div>
 
 
-  <!-- STEP 2 -->
-  <div class="step-hd" id="s2"><span class="n">STEP 2</span><h2>섹터</h2>
-    <span class="q">돈이 어디로 몰리고 있나?</span>
-    <span class="out" id="secOut"></span></div>
-
-  <div class="g-2-1">
-    <div class="card"><h3>업종별 거래대금
-      <span class="r">헤더 클릭 = 그 기준 상위5·하위5 · 다시 누르면 오름차순 <span class="tag-d b">조합</span></span></h3>
-      <div class="note">
-        <b>주간증감</b> = 최근 5거래일 거래대금 합계 ÷ 이전 5거래일 거래대금 합계.
-        <b>평균 등락률</b> = 그날 업종 소속 종목들의 당일 등락률 단순평균.
-        <b>RS20</b> = 업종 평균 등락률의 20거래일(≈1개월) 복리 누적수익률을 업종끼리 비교한 순위입니다
-        (KOSPI/KOSDAQ 지수 등 외부 벤치마크 대비가 아니라 업종 간 상대 순위이며,
-        최소 15거래일 데이터 · 소속 3종목 이상인 업종만 순위를 매깁니다 · <b>자체 산출</b>).
-        <b>RS5</b>는 같은 방식의 5거래일(≈1주) 버전으로, 빠른 순환매를 더 민감하게 잡아냅니다.
-        <span class="up">신흥 주도</span> = RS5 상위 5위가 2일 연속 유지됐지만 아직 RS20 상위 5위는
-        아닌 업종(막 뜨기 시작). <span class="down">이탈 조짐</span> = RS20은 아직 상위 5위인데
-        RS5가 당장 5위 밖으로 밀린 업종(꺾이기 시작 — 진입은 2일 연속으로 신중히, 이탈은 하루만으로
-        빠르게 표시합니다).
-      </div>
-      <div class="faint" id="secLblTop" style="font-size:11px;margin:10px 0 4px">상위 5</div>
-      <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadTop"></tr></thead>
-        <tbody id="secBodyTop"><tr><td colspan="8" class="load sk"></td></tr></tbody></table></div>
-      <div class="faint" id="secLblBot" style="font-size:11px;margin:14px 0 4px">하위 5</div>
-      <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadBot"></tr></thead>
-        <tbody id="secBodyBot"><tr><td colspan="8" class="load sk"></td></tr></tbody></table></div>
-      <div class="note">행을 누르면 오른쪽 수급과 STEP 3 종목 목록이 그 업종으로 바뀝니다.</div>
-    </div>
-    <div class="card"><h3><span id="secFlowTitle">업종 수급주체</span>
-      <span class="r">2025-09-01~오늘 누적 · 억원</span></h3>
-      <div class="chart" id="cSecFlow"></div>
-      <div class="note" id="secFlowNote"></div>
-    </div>
-  </div>
-
-  <!-- STEP 3 -->
-  <div class="step-hd" id="s3"><span class="n">STEP 3</span><h2>종목</h2>
-    <span class="q">그 섹터에서 가장 강한 종목은?</span>
-    <span class="out" id="stkOut"></span></div>
-
-  <div class="card"><h3>구성 종목 <span class="r" id="secName"></span></h3>
-    <div class="tw tw-scroll tw-rank"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th class="grp">시총</th>
-      <th class="opt">거래대금</th><th class="opt">거래량비</th>
-      <th>무게/주식수</th>
-      <th class="grp opt">종가위치</th><th class="opt">52주 신고가</th><th class="opt">신고가일</th><th>단계</th>
-    </tr></thead><tbody id="stkBody"><tr><td colspan="12" class="load">업종을 선택하세요</td></tr></tbody></table></div>
-    <div class="note">종목명을 누르면 종목 상세로 이동합니다.</div>
-  </div>
-
   <!-- STEP 4 -->
   <div class="step-hd" id="s4"><span class="n">STEP 4</span><h2>수급</h2>
     <span class="q">돈이 계속 들어오고 있나?</span>
@@ -923,27 +873,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 <!-- ═══════════ 수급 동향 ═══════════ -->
 <section id="v-flow" class="hide">
-  <div class="card" style="margin-top:16px"><h3>자금 이동 타임라인
-    <span class="r">2026-06-01~ 전 기간 · 거래대금 상위 10개 업종 · 좌우로 밀어서 10거래일씩 보기(업종 열 고정) · 칸 = 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
-    <div class="tl-tabs" id="tlTabs"><button data-m="all" class="on">전체</button><button data-m="KOSPI">코스피</button><button data-m="KOSDAQ">코스닥</button></div>
-    <div class="tl-legend">
-      <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--up) 45%,transparent)"></i> 순매수</span>
-      <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--down) 45%,transparent)"></i> 순매도</span>
-      <span><i style="width:18px;border-top:3px solid var(--up)"></i> 매수1위 업종 이동(테두리 칸)</span>
-      <span><i style="width:18px;border-top:3px dashed var(--down)"></i> 매도1위 업종 이동(테두리 칸)</span>
-    </div>
-    <div class="tl-nav"><button id="tlPrev">◀ 5일</button><button id="tlNext">5일 ▶</button><button id="tlLast">최근</button><span class="rng" id="tlRng"></span></div>
-    <div id="tlBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
-  </div>
-
-  <div class="card"><h3>업종별 자금흐름
-    <span class="r">최근 5거래일 · 시장별 주요 업종을 어느 주체가 샀는지 · 업종 터치 = 그날 종목별 순매수(등락률 순)</span></h3>
-    <div id="fsmBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">시장 거래대금은 시장 전체(KIS), 업종 표는 추적 종목 기준 · 억원 · 색칠 칸 = 그 업종 최대 순매수 주체</div>
-  </div>
-
-  <div class="card"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
+  <div class="card" style="margin-top:16px"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="flowPeriodSel">
       <button class="fchip" data-v="6m">6개월</button>
       <button class="fchip" data-v="3m">3개월</button>
@@ -1228,6 +1158,57 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div id="sectorClusterBody"><div class="note">불러오는 중…</div></div>
   </div>
 
+  <!-- 시장 매크로 STEP2·3 에서 이동 -->
+  <!-- STEP 2 -->
+  <div class="step-hd" id="s2" style="margin-top:20px"><h2>업종 순위·수급</h2>
+    <span class="q">돈이 어디로 몰리고 있나?</span>
+    <span class="out" id="secOut"></span></div>
+
+  <div class="g-2-1">
+    <div class="card"><h3>업종별 거래대금
+      <span class="r">헤더 클릭 = 그 기준 상위5·하위5 · 다시 누르면 오름차순 <span class="tag-d b">조합</span></span></h3>
+      <div class="note">
+        <b>주간증감</b> = 최근 5거래일 거래대금 합계 ÷ 이전 5거래일 거래대금 합계.
+        <b>평균 등락률</b> = 그날 업종 소속 종목들의 당일 등락률 단순평균.
+        <b>RS20</b> = 업종 평균 등락률의 20거래일(≈1개월) 복리 누적수익률을 업종끼리 비교한 순위입니다
+        (KOSPI/KOSDAQ 지수 등 외부 벤치마크 대비가 아니라 업종 간 상대 순위이며,
+        최소 15거래일 데이터 · 소속 3종목 이상인 업종만 순위를 매깁니다 · <b>자체 산출</b>).
+        <b>RS5</b>는 같은 방식의 5거래일(≈1주) 버전으로, 빠른 순환매를 더 민감하게 잡아냅니다.
+        <span class="up">신흥 주도</span> = RS5 상위 5위가 2일 연속 유지됐지만 아직 RS20 상위 5위는
+        아닌 업종(막 뜨기 시작). <span class="down">이탈 조짐</span> = RS20은 아직 상위 5위인데
+        RS5가 당장 5위 밖으로 밀린 업종(꺾이기 시작 — 진입은 2일 연속으로 신중히, 이탈은 하루만으로
+        빠르게 표시합니다).
+      </div>
+      <div class="faint" id="secLblTop" style="font-size:11px;margin:10px 0 4px">상위 5</div>
+      <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadTop"></tr></thead>
+        <tbody id="secBodyTop"><tr><td colspan="8" class="load sk"></td></tr></tbody></table></div>
+      <div class="faint" id="secLblBot" style="font-size:11px;margin:14px 0 4px">하위 5</div>
+      <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadBot"></tr></thead>
+        <tbody id="secBodyBot"><tr><td colspan="8" class="load sk"></td></tr></tbody></table></div>
+      <div class="note">행을 누르면 오른쪽 수급과 STEP 3 종목 목록이 그 업종으로 바뀝니다.</div>
+    </div>
+    <div class="card"><h3><span id="secFlowTitle">업종 수급주체</span>
+      <span class="r">2025-09-01~오늘 누적 · 억원</span></h3>
+      <div class="chart" id="cSecFlow"></div>
+      <div class="note" id="secFlowNote"></div>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step-hd" id="s3"><h2>업종 안의 강한 종목</h2>
+    <span class="q">그 섹터에서 가장 강한 종목은?</span>
+    <span class="out" id="stkOut"></span></div>
+
+  <div class="card"><h3>구성 종목 <span class="r" id="secName"></span></h3>
+    <div class="tw tw-scroll tw-rank"><table><thead><tr>
+      <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th class="grp">시총</th>
+      <th class="opt">거래대금</th><th class="opt">거래량비</th>
+      <th>무게/주식수</th>
+      <th class="grp opt">종가위치</th><th class="opt">52주 신고가</th><th class="opt">신고가일</th><th>단계</th>
+    </tr></thead><tbody id="stkBody"><tr><td colspan="12" class="load">업종을 선택하세요</td></tr></tbody></table></div>
+    <div class="note">종목명을 누르면 종목 상세로 이동합니다.</div>
+  </div>
+
   <div class="card"><h3>업종별 수급 현황
     <span class="r">전체 업종 · 헤더 클릭 = 그 기준 정렬(다시 클릭하면 오름차순↔내림차순 전환) · 기본 거래대금 내림차순</span></h3>
     <div class="tw"><table><thead><tr id="sectorTrendHead"></tr></thead>
@@ -1239,6 +1220,28 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <span class="r">전 기간 · 억원 · 각 차트 오른쪽 끝이 오늘</span></h3>
     <div class="grid5" id="sectorTrendMinis"></div>
   </div>
+
+  <!-- 수급 동향에서 이동 -->
+  <div class="card" style="margin-top:12px"><h3>자금 이동 타임라인
+    <span class="r">2026-06-01~ 전 기간 · 거래대금 상위 10개 업종 · 좌우로 밀어서 10거래일씩 보기(업종 열 고정) · 칸 = 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
+    <div class="tl-tabs" id="tlTabs"><button data-m="all" class="on">전체</button><button data-m="KOSPI">코스피</button><button data-m="KOSDAQ">코스닥</button></div>
+    <div class="tl-legend">
+      <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--up) 45%,transparent)"></i> 순매수</span>
+      <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--down) 45%,transparent)"></i> 순매도</span>
+      <span><i style="width:18px;border-top:3px solid var(--up)"></i> 매수1위 업종 이동(테두리 칸)</span>
+      <span><i style="width:18px;border-top:3px dashed var(--down)"></i> 매도1위 업종 이동(테두리 칸)</span>
+    </div>
+    <div class="tl-nav"><button id="tlPrev">◀ 5일</button><button id="tlNext">5일 ▶</button><button id="tlLast">최근</button><span class="rng" id="tlRng"></span></div>
+    <div id="tlBody"><div class="load sk"></div></div>
+    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
+  </div>
+
+  <div class="card"><h3>업종별 자금흐름
+    <span class="r">최근 5거래일 · 시장별 주요 업종을 어느 주체가 샀는지 · 업종 터치 = 그날 종목별 순매수(등락률 순)</span></h3>
+    <div id="fsmBody"><div class="load sk"></div></div>
+    <div class="note" style="margin-top:8px">시장 거래대금은 시장 전체(KIS), 업종 표는 추적 종목 기준 · 억원 · 색칠 칸 = 그 업종 최대 순매수 주체</div>
+  </div>
+
 </section>
 
 
@@ -2402,9 +2405,9 @@ function go(v,detailCode){
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);}).finally(()=>{tdFitSoon();setTimeout(tdFit,2500);});}
   if(v==='today')tdFitSoon();
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
-    Promise.all([loadFlowLists(),loadFlowSectorMap(),loadFlowTimeline()]).catch(()=>{});}
+    Promise.all([loadFlowLists()]).catch(()=>{});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
-  if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
+  if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadFlowSectorMap().catch(()=>{});loadFlowTimeline().catch(()=>{});loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
   redraw(detailJustLoaded);
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
