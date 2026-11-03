@@ -835,7 +835,35 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 <!-- ═══════════ 수급 동향 ═══════════ -->
 <section id="v-flow" class="hide">
-  <div class="card" style="margin-top:16px"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
+  <div class="card" style="margin-top:16px"><h3>수급 주체별 매수 상위 종목 <span class="r" id="tdFlowSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
+    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFlowPeriodSel">
+      <button class="fchip" data-v="6m" aria-pressed="false">6개월</button>
+      <button class="fchip" data-v="3m" aria-pressed="false">3개월</button>
+      <button class="fchip" data-v="2m" aria-pressed="false">2개월</button>
+      <button class="fchip" data-v="1m" aria-pressed="false">1개월</button>
+      <button class="fchip" data-v="2w" aria-pressed="false">2주</button>
+      <button class="fchip" data-v="1w" aria-pressed="false">1주</button>
+      <button class="fchip" data-v="1d" aria-pressed="true">오늘</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">정렬</div><div class="qf seg" id="tdFlowSortSel">
+      <button class="fchip" data-v="amt" aria-pressed="true">절대금액순</button>
+      <button class="fchip" data-v="ratio">시가총액 대비 비중순</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">주체</div><div class="qf seg" id="tdFlowSubjSel">
+      <button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button>
+      <button class="fchip" data-v="foreign">외국인</button>
+      <button class="fchip" data-v="inst">기관합계</button>
+      <button class="fchip" data-v="pgtr">프로그램</button>
+      <button class="fchip" data-v="fin_inv">금융투자</button>
+      <button class="fchip" data-v="inv_trust">투신</button>
+      <button class="fchip" data-v="pension">연기금</button>
+      <button class="fchip" data-v="pe">사모</button>
+    </div></div>
+    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFlowBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
+  </div>
+
+  <div class="card" style="margin-top:12px"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="flowPeriodSel">
       <button class="fchip" data-v="6m">6개월</button>
       <button class="fchip" data-v="3m">3개월</button>
@@ -901,34 +929,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <span class="faint" style="font-size:11px">전략칩 조건 설명은 종목 후보 화면의 같은 버튼을 참고하세요</span>
       </div>
     </div>
-  </div>
-
-  <div class="card" style="margin-top:12px"><h3>수급 주체별 매수 상위 종목 <span class="r" id="tdFlowSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
-    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFlowPeriodSel">
-      <button class="fchip" data-v="6m" aria-pressed="false">6개월</button>
-      <button class="fchip" data-v="3m" aria-pressed="false">3개월</button>
-      <button class="fchip" data-v="2m" aria-pressed="false">2개월</button>
-      <button class="fchip" data-v="1m" aria-pressed="false">1개월</button>
-      <button class="fchip" data-v="2w" aria-pressed="false">2주</button>
-      <button class="fchip" data-v="1w" aria-pressed="false">1주</button>
-      <button class="fchip" data-v="1d" aria-pressed="true">오늘</button>
-    </div></div>
-    <div class="qf-group"><div class="qf-lb">정렬</div><div class="qf seg" id="tdFlowSortSel">
-      <button class="fchip" data-v="amt" aria-pressed="true">절대금액순</button>
-      <button class="fchip" data-v="ratio">시가총액 대비 비중순</button>
-    </div></div>
-    <div class="qf-group"><div class="qf-lb">주체</div><div class="qf seg" id="tdFlowSubjSel">
-      <button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button>
-      <button class="fchip" data-v="foreign">외국인</button>
-      <button class="fchip" data-v="inst">기관합계</button>
-      <button class="fchip" data-v="pgtr">프로그램</button>
-      <button class="fchip" data-v="fin_inv">금융투자</button>
-      <button class="fchip" data-v="inv_trust">투신</button>
-      <button class="fchip" data-v="pension">연기금</button>
-      <button class="fchip" data-v="pe">사모</button>
-    </div></div>
-    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFlowBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
-    <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
   </div>
 
   <div class="card"><h3>주체별 시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시가총액 · 기간 누적 · 주체별 매수·매도 Top 10 · 표 구성은 종목후보와 같음(열 머리 = 정렬)</span></h3>
