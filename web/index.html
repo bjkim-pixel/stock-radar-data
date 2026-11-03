@@ -111,7 +111,7 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px}
 /* 오늘의 종목: 카드(흰 배경)는 넓은 표에 맞춰 길어져도, 수치 박스(타일)는 화면 폭 안에서만 늘어나게 제한 */
-#v-today .tiles{max-width:min(100%,calc(100vw - 52px))}
+#v-today .tiles,#v-proc .tiles{max-width:min(100%,calc(100vw - 52px))}
 .tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
 .tile .lb{font-size:10.5px;color:var(--ink-3);margin-bottom:4px}
 .tile .vl{font-size:20px;font-weight:680;letter-spacing:-.02em;line-height:1.15}
@@ -676,10 +676,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
   </div>
   <nav id="tabs">
-    <button aria-selected="true" data-v="proc">시장 매크로</button>
-    <button data-v="today">오늘의 종목</button>
-    <button data-v="sector">업종동향</button>
+    <button aria-selected="true" data-v="proc">시장</button>
+    <button data-v="sector">업종·테마</button>
     <button data-v="flow">수급 동향</button>
+    <button data-v="today">오늘의 종목</button>
     <button data-v="sm">스마트머니</button>
     <button data-v="scr">종목 후보</button>
     <button data-v="fav">★ 관심</button>
@@ -714,7 +714,24 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <span class="q">오늘 매매해도 되는 날인가?</span>
     <span class="out" id="mktVerdict"></span></div>
 
-  <div class="grid3">
+  <div class="card" style="margin-top:8px"><h3>오늘의 시장 요약 <span class="r" id="todayMktNote">불러오는 중…</span></h3>
+    <div class="tiles">
+      <div class="tile"><div class="lb">시장 레짐</div><div class="vl" id="tdRegime">–</div><div class="sub" id="tdRegimeSub"></div></div>
+      <div class="tile"><div class="lb">KOSPI</div><div class="vl" id="tdKospi">–</div><div class="sub" id="tdKospiSub"></div></div>
+      <div class="tile"><div class="lb">KOSDAQ</div><div class="vl" id="tdKosdaq">–</div><div class="sub" id="tdKosdaqSub"></div></div>
+      <div class="tile"><div class="lb">시장 거래대금</div><div class="vl" id="tdAmt">–</div><div class="sub" id="tdAmtSub"></div></div>
+      <div class="tile"><div class="lb">KOSPI 10일 박스</div><div class="vl" id="tdBoxKospi">–</div><div class="boxbar" id="tdBoxKospiBar"></div><div class="sub" id="tdBoxKospiSub"></div></div>
+      <div class="tile"><div class="lb">KOSDAQ 10일 박스</div><div class="vl" id="tdBoxKosdaq">–</div><div class="boxbar" id="tdBoxKosdaqBar"></div><div class="sub" id="tdBoxKosdaqSub"></div></div>
+      <div class="tile"><div class="lb">오늘 최다 순매수 주체</div><div class="vl" id="tdTopSubj">–</div><div class="sub" id="tdTopSubjSub"></div></div>
+      <div class="tile"><div class="lb">외국인 순매수</div><div class="vl" id="tdForeign">–</div><div class="sub" id="tdForeignSub"></div></div>
+      <div class="tile"><div class="lb">기관합계 순매수</div><div class="vl" id="tdInst">–</div><div class="sub" id="tdInstSub"></div></div>
+      <div class="tile"><div class="lb">기타법인 순매수</div><div class="vl" id="tdCorpOther">–</div><div class="sub" id="tdCorpOtherSub"></div></div>
+      <div class="tile"><div class="lb">개인 순매수</div><div class="vl" id="tdIndividual">–</div><div class="sub" id="tdIndividualSub"></div></div>
+    </div>
+  </div>
+
+
+  <div class="grid3" style="margin-top:12px">
     <div class="card"><h3>KOSPI<span class="r">2025-09-01~오늘</span></h3>
       <div class="chart" id="cKospi"></div></div>
     <div class="card"><h3>KOSDAQ<span class="r">2025-09-01~오늘</span></h3>
@@ -736,6 +753,37 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note">일별 순매수가 아니라 <b>누적</b>입니다. 선이 계속 올라가면 그 주체가 꾸준히 사들이고 있다는 뜻이고,
       기울기가 꺾이는 지점이 수급 방향이 바뀐 시점입니다.</div>
   </div>
+
+  <!-- 시장 수급·글로벌·KOSPI (2026-11: 다른 탭에서 이동) -->
+  <div class="card" style="margin-top:12px"><h3>오늘의 수급주체별 순매수 거래대금
+    <span class="r">시장 전체 · 억원 · 헤더 클릭 = 그 주체 기준 정렬(다시 클릭하면 오름차순↔내림차순 전환)</span></h3>
+    <div class="tw" id="flowTrendWrap"><table><thead><tr id="flowTrendHead"></tr></thead>
+      <tbody id="flowTrendBody"><tr><td colspan="9" class="load sk"></td></tr></tbody></table></div>
+  </div>
+
+
+  <div class="card" id="gmCard" style="margin-top:12px"><h3>글로벌 시황
+    <span class="r" id="gmAsOf">추세가 오르는 시장·업종·테마 찾기</span></h3>
+    <div style="display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;margin:4px 0 10px">
+    <div class="qf seg" id="gmTabSel" style="margin:0">
+      <button class="fchip" data-v="US" aria-pressed="true">미국 주식</button>
+      <button class="fchip" data-v="KR" aria-pressed="false">한국 주식</button>
+      <button class="fchip" data-v="GL" aria-pressed="false">글로벌 주식</button>
+    </div>
+    <div class="qf seg" id="gmPerSel" style="margin:0" title="모든 차트의 기간을 한 번에 변경">
+      <button class="fchip" data-v="def" aria-pressed="true">기본</button>
+      <button class="fchip" data-v="21" aria-pressed="false">1M</button>
+      <button class="fchip" data-v="63" aria-pressed="false">3M</button>
+      <button class="fchip" data-v="126" aria-pressed="false">6M</button>
+      <button class="fchip" data-v="252" aria-pressed="false">1Y</button>
+    </div>
+    </div>
+    <div id="gmBody"><div class="note">불러오는 중…</div></div>
+  </div>
+
+
+  <div id="tdKWrap" style="margin-top:12px"><div class="card"><h3>KOSPI <span class="r" id="tdKNote">불러오는 중…</span></h3><div class="load sk"></div></div></div>
+
 
   <!-- STEP 2 -->
   <div class="step-hd" id="s2"><span class="n">STEP 2</span><h2>섹터</h2>
@@ -810,25 +858,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 <!-- ═══════════ 오늘의 종목 ═══════════ -->
 <section id="v-today" class="hide">
-  <div class="card" style="margin-top:16px"><h3>오늘의 시장 <span class="r" id="todayMktNote">불러오는 중…</span></h3>
-    <div class="tiles">
-      <div class="tile"><div class="lb">시장 레짐</div><div class="vl" id="tdRegime">–</div><div class="sub" id="tdRegimeSub"></div></div>
-      <div class="tile"><div class="lb">KOSPI</div><div class="vl" id="tdKospi">–</div><div class="sub" id="tdKospiSub"></div></div>
-      <div class="tile"><div class="lb">KOSDAQ</div><div class="vl" id="tdKosdaq">–</div><div class="sub" id="tdKosdaqSub"></div></div>
-      <div class="tile"><div class="lb">시장 거래대금</div><div class="vl" id="tdAmt">–</div><div class="sub" id="tdAmtSub"></div></div>
-      <div class="tile"><div class="lb">KOSPI 10일 박스</div><div class="vl" id="tdBoxKospi">–</div><div class="boxbar" id="tdBoxKospiBar"></div><div class="sub" id="tdBoxKospiSub"></div></div>
-      <div class="tile"><div class="lb">KOSDAQ 10일 박스</div><div class="vl" id="tdBoxKosdaq">–</div><div class="boxbar" id="tdBoxKosdaqBar"></div><div class="sub" id="tdBoxKosdaqSub"></div></div>
-      <div class="tile"><div class="lb">오늘 최다 순매수 주체</div><div class="vl" id="tdTopSubj">–</div><div class="sub" id="tdTopSubjSub"></div></div>
-      <div class="tile"><div class="lb">외국인 순매수</div><div class="vl" id="tdForeign">–</div><div class="sub" id="tdForeignSub"></div></div>
-      <div class="tile"><div class="lb">기관합계 순매수</div><div class="vl" id="tdInst">–</div><div class="sub" id="tdInstSub"></div></div>
-      <div class="tile"><div class="lb">기타법인 순매수</div><div class="vl" id="tdCorpOther">–</div><div class="sub" id="tdCorpOtherSub"></div></div>
-      <div class="tile"><div class="lb">개인 순매수</div><div class="vl" id="tdIndividual">–</div><div class="sub" id="tdIndividualSub"></div></div>
-    </div>
-  </div>
-
-  <div id="tdKWrap" style="margin-top:12px"><div class="card"><h3>KOSPI <span class="r" id="tdKNote">불러오는 중…</span></h3><div class="load sk"></div></div></div>
-
-  <div class="card" style="margin-top:12px"><h3>기준별 강한 종목 Top 10
+  <div class="card" style="margin-top:16px"><h3>기준별 강한 종목 Top 10
     <span class="r">오늘 이 기준으로 가장 강했던 종목 · 칩을 여러 개 누르면 모두 만족하는 종목</span></h3>
     <div id="tdTopChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px">
       <button class="fchip on" data-crit="weight">무게/주식수</button>
@@ -911,12 +941,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <span class="r">최근 5거래일 · 시장별 주요 업종을 어느 주체가 샀는지 · 업종 터치 = 그날 종목별 순매수(등락률 순)</span></h3>
     <div id="fsmBody"><div class="load sk"></div></div>
     <div class="note" style="margin-top:8px">시장 거래대금은 시장 전체(KIS), 업종 표는 추적 종목 기준 · 억원 · 색칠 칸 = 그 업종 최대 순매수 주체</div>
-  </div>
-
-  <div class="card"><h3>오늘의 수급주체별 순매수 거래대금
-    <span class="r">시장 전체 · 억원 · 헤더 클릭 = 그 주체 기준 정렬(다시 클릭하면 오름차순↔내림차순 전환)</span></h3>
-    <div class="tw" id="flowTrendWrap"><table><thead><tr id="flowTrendHead"></tr></thead>
-      <tbody id="flowTrendBody"><tr><td colspan="9" class="load sk"></td></tr></tbody></table></div>
   </div>
 
   <div class="card"><h3>종목별 수급 랭킹 <span class="r">아래 조건은 종목 후보와 별개로 이 화면에서만 적용됩니다</span></h3>
@@ -1199,25 +1223,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 <!-- ═══════════ 업종동향 ═══════════ -->
 <section id="v-sector" class="hide">
-  <div class="card" id="gmCard" style="margin-top:16px"><h3>글로벌 시황
-    <span class="r" id="gmAsOf">추세가 오르는 시장·업종·테마 찾기</span></h3>
-    <div style="display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;margin:4px 0 10px">
-    <div class="qf seg" id="gmTabSel" style="margin:0">
-      <button class="fchip" data-v="US" aria-pressed="true">미국 주식</button>
-      <button class="fchip" data-v="KR" aria-pressed="false">한국 주식</button>
-      <button class="fchip" data-v="GL" aria-pressed="false">글로벌 주식</button>
-    </div>
-    <div class="qf seg" id="gmPerSel" style="margin:0" title="모든 차트의 기간을 한 번에 변경">
-      <button class="fchip" data-v="def" aria-pressed="true">기본</button>
-      <button class="fchip" data-v="21" aria-pressed="false">1M</button>
-      <button class="fchip" data-v="63" aria-pressed="false">3M</button>
-      <button class="fchip" data-v="126" aria-pressed="false">6M</button>
-      <button class="fchip" data-v="252" aria-pressed="false">1Y</button>
-    </div>
-    </div>
-    <div id="gmBody"><div class="note">불러오는 중…</div></div>
-  </div>
-
   <div class="card" style="margin-top:16px"><h3>오늘의 클러스터
     <span class="r">같은 업종 4종목↑ 동시 +5%↑ 급등 · 같은 수급주체(외국인/기관) 순매수</span></h3>
     <div id="sectorClusterBody"><div class="note">불러오는 중…</div></div>
@@ -2332,6 +2337,22 @@ const stg=k=>`<span class="st ${k}">${STAGE[k]}</span>`;
 
 /* ══ 탭 ══ */
 $$("#tabs button").forEach(b=>b.onclick=()=>go(b.dataset.v));
+/* 화면에 가까워졌을 때(스크롤로 근처까지 내려왔을 때) 한 번만 불러오는 도우미 — 무거운 카드를 첫 화면 로딩에서 빼기 위함.
+   요소가 숨겨진 탭 안에 있으면 그 탭이 열려 화면에 보일 때 비로소 동작합니다. */
+function lazyNear(el,fn,margin){
+  if(!el||el._lazy)return;el._lazy=true;
+  if(!("IntersectionObserver" in window)){fn();return;}
+  const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){io.disconnect();fn();}},{rootMargin:margin||"500px 0px"});
+  io.observe(el);
+}
+/* "시장" 탭 진입 시 1회: 시장 요약 타일 · 시장 수급주체표 · (가까워지면) 글로벌 시황 · KOSPI 카드 */
+function procEnter(){
+  if(S.procEntered)return;S.procEntered=true;
+  ensureTodayMarket().catch(e=>console.error("시장 요약",e));
+  loadFlowTrends().catch(()=>{});
+  lazyNear($("#gmCard"),()=>loadGlobal().catch(console.error));
+  lazyNear($("#tdKWrap"),()=>loadTdKospi().catch(e=>console.error("KOSPI 카드",e)));
+}
 function go(v,detailCode){
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
   if(cur&&cur!==v)S.prevView=cur;
@@ -2370,6 +2391,7 @@ function go(v,detailCode){
       detailJustLoaded=true;
     }
   }
+  if(v==="proc")procEnter();
   if(v==="fav")loadFav();
   if(v==="sm"){if(!S.smLoaded){S.smLoaded=true;loadSm().catch(e=>{console.error(e);S.smLoaded=false;$("#smMap").innerHTML='<div class="load">불러오기 실패 — Actions에서 Smart Money Phase를 한 번 실행했는지 확인</div>';});}else renderSm();}
   renderAsOf();
@@ -2377,12 +2399,12 @@ function go(v,detailCode){
   if(v==="perf")loadPerf();
   if(v==="perf2")loadPerf2();
   if(v==="journal")jrOpen();
-  if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);}).finally(()=>{tdFitSoon();setTimeout(tdFit,2500);});loadTdKospi();}
+  if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);}).finally(()=>{tdFitSoon();setTimeout(tdFit,2500);});}
   if(v==='today')tdFitSoon();
   if(v==="flow"&&!S.flowLoaded){S.flowLoaded=true;
-    Promise.all([loadFlowTrends(),loadFlowLists(),loadFlowSectorMap(),loadFlowTimeline()]).catch(()=>{});}
+    Promise.all([loadFlowLists(),loadFlowSectorMap(),loadFlowTimeline()]).catch(()=>{});}
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
-  if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadGlobal().catch(console.error);loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
+  if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
   redraw(detailJustLoaded);
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
@@ -3427,8 +3449,10 @@ function flowCmpHtml(v,days,key){
   if(days.length>=5){const a=days.slice(0,5).reduce((x,d)=>x+val(d),0)/5;h+=`<br><span class="faint">5일평균 ${pm(a/EOK,0)}억 · <span class="${sgn(v-a)}">${rt(a)}</span></span>`;}
   return h;
 }
-async function loadToday(){
-  try{
+/* 시장 요약 타일 — "시장" 탭으로 옮겨졌고, 오늘의 종목(loadToday)도 이 결과(S.flowTrendRow·S.tradeDaySet)를 쓰므로 한 번만 실행(공유) */
+function ensureTodayMarket(){return S._tdMktP||(S._tdMktP=loadTodayMarket().catch(e=>{S._tdMktP=null;throw e;}));}
+async function loadTodayMarket(){
+  {
     $("#todayMktNote").textContent="불러오는 중…";
     // ── 1) 시장 요약 타일 ──
     const [mdKospi,mdKosdaq,amtRows,flowRow]=await Promise.all([
@@ -3491,6 +3515,11 @@ async function loadToday(){
       }).catch(()=>{});
     }
     $("#todayMktNote").textContent=S.date?`${S.date} 기준`:"";
+  }
+}
+async function loadToday(){
+  try{
+    await ensureTodayMarket();
 
     // ── 데이터 로드: 스크리너 원본 + 수급 원본 ──
     const raw=await loadFlowRawData();
@@ -6252,7 +6281,7 @@ function retryCurrent(){
   S.flowRaw=null;S.fcrCache=null;S._fsmRowsP=null;S._tlRowsP=null;S._tlFlow=null;
   const v=S.curTab||"proc";
   if(v==="proc"){location.reload();return;}
-  S.todayLoaded=S.flowLoaded=S.pairLoaded=S.sectorTrendLoaded=false;
+  S.todayLoaded=S.flowLoaded=S.pairLoaded=S.sectorTrendLoaded=S.procEntered=false;S._tdMktP=null;
   if(v==="scr"&&typeof runScreener==="function"){runScreener().catch(()=>{});return;}
   go(v,v==="detail"?S.chart.code:undefined);
 }
@@ -6294,7 +6323,7 @@ function renderAsOf(){
     if(date)parts.push(`데이터 기준일 <b>${date}</b>`);
     if(S.asOf)parts.push(`수집 <b>${fmtKst(S.asOf)}</b> ${S.asOfPartial?'<span style="color:var(--warn)">잠정</span>':'<span style="color:var(--good)">확정</span>'}`);
     const gp=S.gm&&S.gm.packs&&S.gm.packs[S.gm.tab];
-    if(v==="sector"&&gp&&gp.updated_at)parts.push(`글로벌 시황 <b>${fmtKst(gp.updated_at)}</b>`);
+    if(v==="proc"&&gp&&gp.updated_at)parts.push(`글로벌 시황 <b>${fmtKst(gp.updated_at)}</b>`);
   }
   const h=parts.join(" · ");
   if(h!==_asofLast){_asofLast=h;el.innerHTML=h;}
@@ -6353,6 +6382,7 @@ async function boot(){
     const deepSector=new URLSearchParams(location.search).get("sector");
     if(deepSector)goSectorStocks(deepSector);
     else if(location.hash)navFromHash();
+    if(!deepSector&&(!location.hash||(S.curTab||"proc")==="proc"))procEnter();   // 첫 화면이 "시장"이면 go()를 거치지 않으므로 여기서 시작
   }catch(e){
     status("err",`연결 실패: ${e.message}<br><span style="font-size:11px">anon 키가 맞는지, 19_web_views.sql을 적용했는지 확인해주세요.</span>`);
     console.error(e);
