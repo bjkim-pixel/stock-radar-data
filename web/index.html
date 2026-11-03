@@ -474,6 +474,31 @@ section[id^="v-"]>.card:first-child{margin-top:8px!important}
 #tdFlowCard .gbar button,#flowRankCard .gbar button{padding:2px 9px}
 #flowRankCard .note{margin-top:6px}
 #flowRankCard .btn{min-height:0;padding:3px 11px;font-size:11.5px}
+/* AI 브리핑 */
+.ai-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 12px}
+.ai-bar .fchip{min-height:0;padding:2px 10px;font-size:11.5px}
+.ai-head{font-size:17px;font-weight:700;letter-spacing:-.01em;line-height:1.45;margin:2px 0 8px}
+.ai-stance{display:inline-flex;align-items:center;font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 9px;margin-right:8px;vertical-align:2px}
+.ai-stance.s-공격{background:color-mix(in srgb,var(--up) 14%,var(--surface));color:var(--up)}
+.ai-stance.s-중립{background:var(--surface-2);color:var(--ink-2)}
+.ai-stance.s-방어{background:color-mix(in srgb,var(--down) 14%,var(--surface));color:var(--down)}
+.ai-txt{font-size:13px;line-height:1.7;color:var(--ink-2);margin:4px 0}
+.ai-sub{font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:.05em;margin:16px 0 6px}
+.ai-chips{display:flex;gap:6px;flex-wrap:wrap}
+.ai-chip{border:1px solid var(--border);border-radius:8px;padding:6px 10px;background:var(--surface);font-size:12px;max-width:100%}
+.ai-chip b{display:block;font-size:12.5px;color:var(--ink)}
+.ai-chip span{color:var(--ink-3);font-size:11.5px}
+.ai-picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
+.ai-pick{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:9px 12px}
+.ai-pick-hd{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;font-size:13px}
+.ai-pick-hd .nm{font-weight:700}
+.ai-pick-px{margin-left:auto;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.ai-pick-bd{font-size:12px;line-height:1.6;color:var(--ink-2);margin-top:5px}
+.ai-pick-bd b{font-weight:650;margin-right:4px}
+.ai-sec{border-top:1px solid var(--grid);margin-top:12px;padding-top:4px}
+.ai-sec summary{cursor:pointer;font-weight:650;font-size:13px;padding:6px 0;color:var(--ink)}
+.ai-mini{width:auto;min-width:0;font-size:12px}
+.ai-mini td,.ai-mini th{padding:4px 8px}
 .gbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 8px;font-size:11px;color:var(--ink-3)}
 .gbar button{padding:3px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface-2);color:var(--ink-3);font-size:11px;cursor:pointer}
 .gbar button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
@@ -698,6 +723,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <button data-v="detail">종목 상세</button>
     <button data-v="perf">전략 성과</button>
     <button data-v="perf2">전략 성과2</button>
+    <button data-v="ai">AI 브리핑</button>
     <button data-v="journal">투자일지</button>
   </nav>
 </header>
@@ -1460,7 +1486,19 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   </div>
 </section>
 
-<!-- ═══════════ 투자일지 (나만 보는 게시판) ═══════════ -->
+<!-- ═══════════ AI 브리핑 ═══════════ -->
+<section id="v-ai" class="hide">
+  <div class="card" style="margin-top:16px"><h3>AI 데일리 브리핑 <span class="r">장마감 후 하루 2회(16시·18시 데이터) · 우리 사이트 데이터만 보고 Gemini가 종합 · 단기 스윙(3~10거래일) 관점</span></h3>
+    <div class="ai-bar">
+      <select id="aiDate" style="width:auto"></select>
+      <div class="qf seg" id="aiRound"></div>
+      <span class="faint" id="aiMeta" style="font-size:11px"></span>
+    </div>
+    <div id="aiBody"><div class="load sk"></div></div>
+  </div>
+</section>
+
+<!-- ═══════════ 투자일지 ═══════════ -->
 <section id="v-journal" class="hide">
   <div class="card" style="margin-top:16px"><h3>투자일지 <span class="r">나만 보는 게시판 · 토큰이 있어야 읽고 쓸 수 있습니다</span></h3>
     <div id="jrAuth" class="hide" style="margin:8px 0">
@@ -2371,7 +2409,7 @@ function go(v,detailCode){
   if(cur&&cur!==v)S.prevView=cur;
   S.curTab=v;
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
-  ["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","journal"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","ai","journal"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="sm");setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -2412,6 +2450,7 @@ function go(v,detailCode){
   if(v==="perf")loadPerf();
   if(v==="perf2")loadPerf2();
   if(v==="journal")jrOpen();
+  if(v==="ai")aiOpen();
   if(v==="today"&&!S.flowLoaded){S.flowLoaded=true;   // 수급 카드(2026-11 수급 동향에서 이동)
     Promise.all([loadFlowLists()]).catch(()=>{});
     loadFlowRawData().then(initTdFlowCard).catch(e=>{console.error("수급 상위",e);S._tdFlowInit=false;$("#tdFlowBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});}
@@ -5987,6 +6026,83 @@ async function jrApi(method,body,qs){
   if(r.status===503){jrAuthShow("서버에 토큰이 설정되지 않았습니다 (Render 환경변수 ACCESS_LOG_TOKEN 필요).");throw new Error("no token");}
   const j=await r.json();if(!j.ok)throw new Error(j.error||("HTTP "+r.status));return j;
 }
+/* ══════════ AI 데일리 브리핑 (113_ai_brief.py가 ai_brief 테이블에 저장) ══════════ */
+async function aiOpen(){
+  if(!S.aiList){
+    try{
+      S.aiList=await q("ai_brief","select=trade_date,round,created_at,model,status,data_partial&order=trade_date.desc,round.desc&limit=120");
+    }catch(e){
+      S.aiList=null;
+      $("#aiBody").innerHTML=`<div class="load">${/ai_brief|404|PGRST|42P01/.test(String(e.message))?"아직 생성된 브리핑이 없습니다 — Actions의 'AI Daily Brief'가 처음 실행되면 표시됩니다.":"불러오기 실패: "+accEsc(String(e.message).slice(0,120))}</div>`;
+      return;
+    }
+    if(!S.aiList.length){$("#aiBody").innerHTML='<div class="load">아직 생성된 브리핑이 없습니다 — 장마감 후 16시·18시 수집이 끝나면 자동으로 만들어집니다.</div>';return;}
+    const dates=[...new Set(S.aiList.map(r=>r.trade_date))];
+    $("#aiDate").innerHTML=dates.map(d=>`<option value="${d}">${d}</option>`).join("");
+    $("#aiDate").onchange=()=>aiPick($("#aiDate").value);
+    aiPick(dates[0]);
+  }else if(S.aiCur)renderAsOf();
+}
+function aiPick(date,round){
+  const rs=S.aiList.filter(r=>r.trade_date===date).sort((a,b)=>a.round-b.round);
+  const cur=rs.find(r=>r.round===round)||rs.at(-1);
+  $("#aiRound").innerHTML=rs.map(r=>`<button class="fchip" data-r="${r.round}" aria-pressed="${r===cur}">${r.round===1?"16시 데이터":"18시 데이터"}${r.status!=="ok"?" (AI 미생성)":""}</button>`).join("");
+  $$("#aiRound .fchip").forEach(b=>b.onclick=()=>aiPick(date,+b.dataset.r));
+  aiLoad(cur);
+}
+async function aiLoad(meta){
+  const key=meta.trade_date+"/"+meta.round;
+  S.aiCache=S.aiCache||{};
+  $("#aiBody").innerHTML='<div class="load sk"></div>';
+  try{
+    if(!S.aiCache[key]){
+      const r=await q("ai_brief",`select=*&trade_date=eq.${meta.trade_date}&round=eq.${meta.round}`);
+      S.aiCache[key]=r[0];
+    }
+    S.aiCur=S.aiCache[key];renderAsOf();
+    await aiRender(S.aiCur);
+  }catch(e){console.error(e);$("#aiBody").innerHTML=`<div class="load">불러오기 실패: ${accEsc(String(e.message).slice(0,120))}</div>`;}
+}
+async function aiRender(b){
+  const R=b.result||{},D=b.digest||{},E=accEsc;
+  $("#aiMeta").innerHTML=`${b.data_partial?'<span style="color:var(--warn)">수급 잠정</span>':'<span style="color:var(--good)">수급 확정</span>'} · ${b.model?E(b.model):"AI 없음(규칙 후보)"} · 생성 ${fmtKst(b.created_at)}`;
+  // 관심 종목: 브리핑 당시 종가 → 최신 종가 수익률
+  const picks=R.picks||[];
+  let now={};
+  if(picks.length&&S.date&&S.date>b.trade_date){
+    try{(await q("v_screener",`select=code,close&trade_date=eq.${S.date}&code=in.(${picks.map(p=>p.code).join(",")})`)).forEach(x=>now[x.code]=+x.close);}catch(e){}
+  }
+  const ret=p=>{const c=now[p.code];if(!c||!p.close)return'<span class="faint">–</span>';const v=(c/p.close-1)*100;return `<span class="${sgn(v)}">${pm(v,1)}%</span>`;};
+  const pickRows=picks.map((p,i)=>`<div class="ai-pick"><div class="ai-pick-hd"><span class="faint">${i+1}</span> ${favStar(p.code)} <a class="lk nm" data-code="${E(p.code)}">${E(p.name)}</a>
+      <span class="faint" style="font-size:11px">${E(p.sector||"")}</span>
+      <span class="ai-pick-px">당시 ${p.close!=null?N(p.close,0):"–"} <span class="${sgn(p.chg)}">${p.chg!=null?pm(p.chg,1)+"%":""}</span> · 이후 ${ret(p)}</span></div>
+      <div class="ai-pick-bd"><div><b>근거</b> ${E(p.reason)}</div><div><b class="down">리스크</b> ${E(p.risk||"-")}</div><div><b class="faint">관심 제외 조건</b> ${E(p.invalidation||"-")}</div></div></div>`).join("");
+  const chips=(arr)=>(arr||[]).length?`<div class="ai-chips">${arr.map(x=>`<div class="ai-chip"><b>${E(x.name)}</b><span>${E(x.reason||"")}</span></div>`).join("")}</div>`:'<div class="faint">–</div>';
+  const idxRow=(k)=>{const m=(D.국내시장||{})[k];return m?`<tr><td class="l">${k}</td><td>${N(m.종가,2)}</td><td class="${sgn(m["1d"])}">${pm(m["1d"],2)}%</td><td class="${sgn(m["5d"])}">${pm(m["5d"],1)}%</td><td class="${sgn(m["20d"])}">${pm(m["20d"],1)}%</td><td class="l">${E(m.레짐||"")}</td></tr>`:"";};
+  const flowRows=Object.entries((D.국내시장||{}).수급_억원||{}).map(([k,v])=>`<tr><td class="l">${E(k)}</td><td class="${sgn(v.오늘)}">${pm(v.오늘,0)}</td><td class="${sgn(v["1주"])}">${pm(v["1주"],0)}</td></tr>`).join("");
+  const mac=R.macro||{};
+  const sec=(t,inner,open)=>`<details class="ai-sec"${open?" open":""}><summary>${t}</summary>${inner}</details>`;
+  $("#aiBody").innerHTML=`
+    ${R.fallback?'<div class="note" style="color:var(--warn);margin:0 0 8px">AI 응답을 받지 못해 규칙 점수 상위 후보만 표시합니다 (GEMINI_API_KEY 시크릿·호출 한도 확인).</div>':""}
+    <div class="ai-head">${R.stance?`<span class="ai-stance s-${E(R.stance)}">${E(R.stance)}</span>`:""}${E(R.headline||"")}</div>
+    ${R.stance_reason?`<div class="ai-txt">${E(R.stance_reason)}</div>`:""}
+    <div class="ai-sub">주목 업종</div>${chips(R.focus_sectors)}
+    <div class="ai-sub">관심 종목 (단기 스윙)</div>
+    <div class="ai-picks">${pickRows||'<div class="load">없음</div>'}</div>
+    ${(R.avoid||[]).length?`<div class="ai-sub">피할 업종·유형</div>${chips(R.avoid)}`:""}
+    ${(R.checkpoints||[]).length?`<div class="ai-sub">내일 체크포인트</div><ul class="ai-txt" style="margin:0;padding-left:18px">${R.checkpoints.map(x=>`<li>${E(x)}</li>`).join("")}</ul>`:""}
+    ${sec("① 국내 시장",`<div class="ai-txt">${E(R.market||"")}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+      <div class="tw"><table class="ai-mini"><thead><tr><th class="l">지수</th><th>종가</th><th>1일</th><th>5일</th><th>20일</th><th class="l">레짐</th></tr></thead><tbody>${idxRow("KOSPI")}${idxRow("KOSDAQ")}</tbody></table></div>
+      <div class="tw"><table class="ai-mini"><thead><tr><th class="l">수급(억)</th><th>오늘</th><th>1주</th></tr></thead><tbody>${flowRows}</tbody></table></div></div>`,true)}
+    ${sec("② 업종·테마",`<div class="ai-txt">${E((R.sectors||{}).summary||"")}</div><div class="ai-sub">강한 업종</div>${chips((R.sectors||{}).strong)}<div class="ai-sub">약한 업종</div>${chips((R.sectors||{}).weak)}`)}
+    ${sec("③ 오늘 강했던 종목",`<div class="ai-txt">${E(R.stocks_today||"")}</div>`)}
+    ${sec("④ 미국",`<div class="ai-txt">${E(R.us||"")}</div>`)}
+    ${sec("⑤ 글로벌",`<div class="ai-txt">${E(R.global||"")}</div>`)}
+    ${sec("⑥ 매크로 (금리·환율·원자재·심리)",`<div class="ai-txt">${E(mac.summary||"")}</div>${(mac.items||[]).length?`<div class="tw" style="margin-top:6px"><table class="ai-mini"><tbody>${mac.items.map(x=>`<tr><td class="l">${E(x.name)}</td><td class="${x.dir==="↑"?"up":x.dir==="↓"?"down":""}" style="text-align:center">${E(x.dir||"")}</td><td class="l" style="white-space:normal">${E(x.comment||"")}</td></tr>`).join("")}</tbody></table></div>`:""}`)}
+    <div class="note" style="margin-top:14px">AI(Gemini)가 우리 사이트 데이터(다이제스트)만 보고 쓴 분석 보조이며 투자 권유가 아닙니다. 관심 종목은 규칙 점수 상위 30개 후보 안에서만 고르도록 제한했습니다. 수익률은 브리핑 기준일 종가 대비 최신 거래일 종가입니다.</div>`;
+  $$("#aiBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+}
 async function jrOpen(){
   if(!sriLS("sr_acc_token")){jrAuthShow("");return;}
   $("#jrAuth").classList.add("hide");$("#jrMain").classList.remove("hide");
@@ -6214,7 +6330,7 @@ async function loadTdKospi(){
     $("#tdKHead").innerHTML=`<div class="load">불러오지 못했습니다${/v_kospi_flow_daily|404|PGRST|42/.test(String(e.message))?" — Actions의 'Setup KOSPI Flow View'를 먼저 실행하세요":""}: ${accEsc(e.message).slice(0,120)}</div>`;
   }
 }
-const VIEW_IDS=["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","journal"];
+const VIEW_IDS=["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","ai","journal"];
 function setHash(v,code){
   const h="#"+v+(code?"/"+code:"");
   if(location.hash!==h)history.pushState(null,"",h);
@@ -6344,6 +6460,8 @@ function renderAsOf(){
   if(v==="detail"&&S.chart&&S.chart.rows&&S.chart.rows.length)date=S.chart.rows.at(-1).trade_date;
   if(v==="perf"){
     parts.push(S.perfUpd?`전략 계산 <b>${fmtKst(S.perfUpd)}</b>`:"전략 계산 시각 확인 중");
+  }else if(v==="ai"){
+    parts.push(S.aiCur?`AI 브리핑 <b>${S.aiCur.trade_date}</b> ${S.aiCur.round===1?"16시":"18시"} 데이터 · 생성 <b>${fmtKst(S.aiCur.created_at)}</b>`:"AI 브리핑 불러오는 중");
   }else if(v==="journal"){
     parts.push("나만 보는 일지 · 토큰으로 보호됨");
   }else if(v==="perf2"){
