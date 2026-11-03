@@ -1157,7 +1157,28 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 <!-- ═══════════ 업종동향 ═══════════ -->
 <section id="v-sector" class="hide">
-  <div class="card" style="margin-top:16px"><h3>오늘의 클러스터
+  <!-- 수급 동향에서 이동 -->
+  <div class="card" style="margin-top:16px"><h3>자금 이동 타임라인
+    <span class="r">2026-06-01~ 전 기간 · 거래대금 상위 10개 업종 · 좌우로 밀어서 10거래일씩 보기(업종 열 고정) · 칸 = 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
+    <div class="tl-tabs" id="tlTabs"><button data-m="all" class="on">전체</button><button data-m="KOSPI">코스피</button><button data-m="KOSDAQ">코스닥</button></div>
+    <div class="tl-legend">
+      <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--up) 45%,transparent)"></i> 순매수</span>
+      <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--down) 45%,transparent)"></i> 순매도</span>
+      <span><i style="width:18px;border-top:3px solid var(--up)"></i> 매수1위 업종 이동(테두리 칸)</span>
+      <span><i style="width:18px;border-top:3px dashed var(--down)"></i> 매도1위 업종 이동(테두리 칸)</span>
+    </div>
+    <div class="tl-nav"><button id="tlPrev">◀ 5일</button><button id="tlNext">5일 ▶</button><button id="tlLast">최근</button><span class="rng" id="tlRng"></span></div>
+    <div id="tlBody"><div class="load sk"></div></div>
+    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
+  </div>
+
+  <div class="card"><h3>업종별 자금흐름
+    <span class="r">최근 5거래일 · 시장별 주요 업종을 어느 주체가 샀는지 · 업종 터치 = 그날 종목별 순매수(등락률 순)</span></h3>
+    <div id="fsmBody"><div class="load sk"></div></div>
+    <div class="note" style="margin-top:8px">시장 거래대금은 시장 전체(KIS), 업종 표는 추적 종목 기준 · 억원 · 색칠 칸 = 그 업종 최대 순매수 주체</div>
+  </div>
+
+  <div class="card" style="margin-top:12px"><h3>오늘의 클러스터
     <span class="r">같은 업종 4종목↑ 동시 +5%↑ 급등 · 같은 수급주체(외국인/기관) 순매수</span></h3>
     <div id="sectorClusterBody"><div class="note">불러오는 중…</div></div>
   </div>
@@ -1223,27 +1244,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="card"><h3><span id="sectorTrendMinisTitle">업종을 선택하세요</span>
     <span class="r">전 기간 · 억원 · 각 차트 오른쪽 끝이 오늘</span></h3>
     <div class="grid5" id="sectorTrendMinis"></div>
-  </div>
-
-  <!-- 수급 동향에서 이동 -->
-  <div class="card" style="margin-top:12px"><h3>자금 이동 타임라인
-    <span class="r">2026-06-01~ 전 기간 · 거래대금 상위 10개 업종 · 좌우로 밀어서 10거래일씩 보기(업종 열 고정) · 칸 = 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
-    <div class="tl-tabs" id="tlTabs"><button data-m="all" class="on">전체</button><button data-m="KOSPI">코스피</button><button data-m="KOSDAQ">코스닥</button></div>
-    <div class="tl-legend">
-      <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--up) 45%,transparent)"></i> 순매수</span>
-      <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--down) 45%,transparent)"></i> 순매도</span>
-      <span><i style="width:18px;border-top:3px solid var(--up)"></i> 매수1위 업종 이동(테두리 칸)</span>
-      <span><i style="width:18px;border-top:3px dashed var(--down)"></i> 매도1위 업종 이동(테두리 칸)</span>
-    </div>
-    <div class="tl-nav"><button id="tlPrev">◀ 5일</button><button id="tlNext">5일 ▶</button><button id="tlLast">최근</button><span class="rng" id="tlRng"></span></div>
-    <div id="tlBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
-  </div>
-
-  <div class="card"><h3>업종별 자금흐름
-    <span class="r">최근 5거래일 · 시장별 주요 업종을 어느 주체가 샀는지 · 업종 터치 = 그날 종목별 순매수(등락률 순)</span></h3>
-    <div id="fsmBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">시장 거래대금은 시장 전체(KIS), 업종 표는 추적 종목 기준 · 억원 · 색칠 칸 = 그 업종 최대 순매수 주체</div>
   </div>
 
 </section>
