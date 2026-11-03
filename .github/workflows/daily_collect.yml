@@ -203,5 +203,8 @@ jobs:
           TODAY=$(TZ=Asia/Seoul date +%F); DOW=$(TZ=Asia/Seoul date +%u)
           HOLIDAYS="$(bash .github/scripts/holidays.sh)"
           if [ "$DOW" -ge 6 ] || echo " $HOLIDAYS " | grep -q " $TODAY "; then echo "주말/휴장일 — 텔레그램 요약 건너뜀"; exit 0; fi
+          # AI 브리핑: 18시 전 실행 = 1회차(16시 데이터), 18시 이후 = 2회차(18시 데이터). 이미 만든 회차는 스크립트가 건너뜀.
+          HH=$(TZ=Asia/Seoul date +%-H); R=1; [ "$HH" -ge 18 ] && R=2
+          gh workflow run ai_brief.yml --ref main -f round=$R || echo "AI 브리핑 실행 실패(무시)"
           M=$(bash .github/scripts/done_today.sh daily_summary_trigger.yml "Trigger daily summary (최대 3회 재시도)")
           if [ "${M:-0}" -eq 0 ]; then gh workflow run daily_summary_trigger.yml --ref main; else echo "텔레그램 요약: 오늘 이미 발송함(${M}번) — 건너뜀"; fi
