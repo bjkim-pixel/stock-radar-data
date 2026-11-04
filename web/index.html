@@ -497,6 +497,15 @@ section[id^="v-"]>.card:first-child{margin-top:8px!important}
 .ai-pick-bd b{font-weight:650;margin-right:4px}
 .ai-sec{border-top:1px solid var(--grid);margin-top:12px;padding-top:4px}
 .ai-sec summary{cursor:pointer;font-weight:650;font-size:13px;padding:6px 0;color:var(--ink)}
+.ai-tiles{margin:6px 0 10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.ai-kvs{display:flex;flex-wrap:wrap;gap:2px 10px;font-size:11px;margin-top:5px;font-variant-numeric:tabular-nums}
+.ai-kv{white-space:nowrap}
+.ai-hl td{background:color-mix(in srgb,var(--up) 7%,var(--surface))}
+#v-ai .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ai-mini th,.ai-mini td{white-space:nowrap}
+.ai-wide{overflow-x:auto}
+.ai-wide table{width:max-content;min-width:100%}
+.ai-wide td,.ai-wide th{white-space:nowrap}
 .ai-mini{width:auto;min-width:0;font-size:12px}
 .ai-mini td,.ai-mini th{padding:4px 8px}
 .gbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 8px;font-size:11px;color:var(--ink-3)}
@@ -6063,45 +6072,101 @@ async function aiLoad(meta){
     await aiRender(S.aiCur);
   }catch(e){console.error(e);$("#aiBody").innerHTML=`<div class="load">불러오기 실패: ${accEsc(String(e.message).slice(0,120))}</div>`;}
 }
+/* 숫자 셀 헬퍼 — 값이 없으면 – */
+const aiP=(v,d=1)=>`<td class="${sgn(v)}">${v==null?"–":pm(v,d)+"%"}</td>`;
+const aiE=(v)=>`<td class="${sgn(v)}">${v==null?"–":pm(v,0)}</td>`;
+function aiTable(id,head,rowsHtml,cls){
+  return `<div class="tw ${cls||""}"><table class="ai-mini"><thead><tr>${head}</tr></thead><tbody id="${id}">${rowsHtml||'<tr><td colspan="30" class="load">없음</td></tr>'}</tbody></table></div>`;
+}
+function aiGlobalRows(arr){
+  return (arr||[]).map(x=>`<tr><td class="l">${accEsc(x.n)}</td>${aiP(x["1d"],2)}${aiP(x["5d"])}${aiP(x["20d"])}${aiP(x["60d"])}${aiP(x["고점대비"])}
+    <td>${x.방향==="↑"?'<span class="up">↑</span>':x.방향==="↓"?'<span class="down">↓</span>':x.방향||""}</td><td class="l">${accEsc(x.국면||"")}</td><td class="l">${accEsc(x.추세||"")}</td></tr>`).join("");
+}
+const AI_GHEAD='<th class="l">종목·지수</th><th>1일</th><th>5일</th><th>20일</th><th>60일</th><th title="1년 고점 대비">고점대비</th><th>방향</th><th class="l" title="20일·60일 상대강도 기준 국면(주도/개선/둔화/부진)">국면</th><th class="l">추세</th>';
 async function aiRender(b){
-  const R=b.result||{},D=b.digest||{},E=accEsc;
+  const R=b.result||{},D=b.digest||{},E=accEsc,K=D.국내시장||{};
   $("#aiMeta").innerHTML=`${b.data_partial?'<span style="color:var(--warn)">수급 잠정</span>':'<span style="color:var(--good)">수급 확정</span>'} · ${b.model?E(b.model):"AI 없음(규칙 후보)"} · 생성 ${fmtKst(b.created_at)}`;
-  // 관심 종목: 브리핑 당시 종가 → 최신 종가 수익률
   const picks=R.picks||[];
+  const cand={};(D.후보종목||[]).forEach(c=>cand[c.code]=c);
   let now={};
   if(picks.length&&S.date&&S.date>b.trade_date){
     try{(await q("v_screener",`select=code,close&trade_date=eq.${S.date}&code=in.(${picks.map(p=>p.code).join(",")})`)).forEach(x=>now[x.code]=+x.close);}catch(e){}
   }
   const ret=p=>{const c=now[p.code];if(!c||!p.close)return'<span class="faint">–</span>';const v=(c/p.close-1)*100;return `<span class="${sgn(v)}">${pm(v,1)}%</span>`;};
-  const pickRows=picks.map((p,i)=>`<div class="ai-pick"><div class="ai-pick-hd"><span class="faint">${i+1}</span> ${favStar(p.code)} <a class="lk nm" data-code="${E(p.code)}">${E(p.name)}</a>
+  // ── 상단 핵심 숫자 타일
+  const fl=K.수급_억원||{};
+  const tile=(lb,val,sub,cls)=>`<div class="tile"><div class="lb">${lb}</div><div class="vl ${cls||""}" style="font-size:16px">${val}</div><div class="faint" style="font-size:10.5px">${sub||""}</div></div>`;
+  const ix=(k)=>{const m=K[k];return m?tile(k,`${pm(m["1d"],2)}%`,`종가 ${N(m.종가,0)} · 5일 ${pm(m["5d"],1)}% · 20일 ${pm(m["20d"],1)}%`,sgn(m["1d"])):"";};
+  const tiles=ix("KOSPI")+ix("KOSDAQ")
+    +(K.거래대금?tile("거래대금",`${N(K.거래대금.오늘_조원,1)}조`,`20일평균 대비 ${pm(K.거래대금["20일평균대비%"],0)}%`,sgn(K.거래대금["20일평균대비%"])):"")
+    +["외국인","기관합계","개인"].map(k=>fl[k]?tile(k+" 오늘",`${pm(fl[k].오늘,0)}억`,`1주 ${pm(fl[k]["1주"],0)}억 · 1개월 ${pm(fl[k]["1개월"],0)}억`,sgn(fl[k].오늘)):"").join("");
+  // ── 관심 종목 카드 (수치 한 줄 포함)
+  const pickRows=picks.map((p,i)=>{
+    const c=cand[p.code]||{};
+    const m=(lb,v)=>v==null||v===""?"":`<span class="ai-kv"><span class="faint">${lb}</span> ${v}</span>`;
+    return `<div class="ai-pick"><div class="ai-pick-hd"><span class="faint">${i+1}</span> ${favStar(p.code)} <a class="lk nm" data-code="${E(p.code)}">${E(p.name)}</a>
       <span class="faint" style="font-size:11px">${E(p.sector||"")}</span>
       <span class="ai-pick-px">당시 ${p.close!=null?N(p.close,0):"–"} <span class="${sgn(p.chg)}">${p.chg!=null?pm(p.chg,1)+"%":""}</span> · 이후 ${ret(p)}</span></div>
-      <div class="ai-pick-bd"><div><b>근거</b> ${E(p.reason)}</div><div><b class="down">리스크</b> ${E(p.risk||"-")}</div><div><b class="faint">관심 제외 조건</b> ${E(p.invalidation||"-")}</div></div></div>`).join("");
+      <div class="ai-kvs">${m("점수",c.규칙점수)}${m("거래대금",c.거래대금억!=null?N(c.거래대금억,0)+"억":null)}${m("외국인",c.외국인오늘억!=null?pm(c.외국인오늘억,0)+"억":null)}${m("기관",c.기관오늘억!=null?pm(c.기관오늘억,0)+"억":null)}${m("외기5일",c.외기합5일억!=null?pm(c.외기합5일억,0)+"억":null)}${m("연속양매수",c.연속양매수일!=null?c.연속양매수일+"일":null)}${m("RS5/20",c.RS5백분위!=null?`${c.RS5백분위}/${c.RS20백분위}`:null)}${m("고점대비",c["고점대비%"]!=null?pm(c["고점대비%"],1)+"%":null)}${m("업종RS",c.업종RS순위!=null?c.업종RS순위+"위":null)}${m("SM",c.스마트머니국면)}</div>
+      <div class="ai-pick-bd"><div><b>근거</b> ${E(p.reason)}</div><div><b class="down">리스크</b> ${E(p.risk||"-")}</div><div><b class="faint">관심 제외 조건</b> ${E(p.invalidation||"-")}</div></div></div>`;}).join("");
   const chips=(arr)=>(arr||[]).length?`<div class="ai-chips">${arr.map(x=>`<div class="ai-chip"><b>${E(x.name)}</b><span>${E(x.reason||"")}</span></div>`).join("")}</div>`:'<div class="faint">–</div>';
-  const idxRow=(k)=>{const m=(D.국내시장||{})[k];return m?`<tr><td class="l">${k}</td><td>${N(m.종가,2)}</td><td class="${sgn(m["1d"])}">${pm(m["1d"],2)}%</td><td class="${sgn(m["5d"])}">${pm(m["5d"],1)}%</td><td class="${sgn(m["20d"])}">${pm(m["20d"],1)}%</td><td class="l">${E(m.레짐||"")}</td></tr>`:"";};
-  const flowRows=Object.entries((D.국내시장||{}).수급_억원||{}).map(([k,v])=>`<tr><td class="l">${E(k)}</td><td class="${sgn(v.오늘)}">${pm(v.오늘,0)}</td><td class="${sgn(v["1주"])}">${pm(v["1주"],0)}</td></tr>`).join("");
+  // ── ① 국내 시장 표
+  const idxRow=(k)=>{const m=K[k];return m?`<tr><td class="l">${k}</td><td>${N(m.종가,2)}</td>${aiP(m["1d"],2)}${aiP(m["5d"])}${aiP(m["20d"])}${aiP(m["20일선대비"])}<td class="l">${E(m.레짐||"")}</td></tr>`:"";};
+  const flowRows=Object.entries(fl).map(([k,v])=>{const avg=v["1주"]!=null?v["1주"]/5:null,avg1m=v["1개월"]!=null?v["1개월"]/20:null;
+    return `<tr><td class="l">${E(k)}</td>${aiE(v.오늘)}${aiE(v["1주"])}${aiE(v["1개월"])}${aiE(avg!=null?Math.round(avg):null)}${aiE(avg1m!=null?Math.round(avg1m):null)}
+      <td class="${sgn(v.오늘-(avg||0))}" title="오늘 순매수 − 최근 1주 일평균">${avg==null?"–":pm(v.오늘-avg,0)}</td></tr>`;}).join("");
+  // ── ② 업종 표
+  const secRows=(D.업종||[]).map(x=>`<tr><td class="l">${E(x.업종)}${x.신흥주도?' <span class="up" style="font-size:10px">신흥</span>':""}${x.이탈조짐?' <span class="down" style="font-size:10px">이탈</span>':""}</td>
+    <td>${x.RS20순위??"–"}</td><td>${x.RS5순위??"–"}</td>${aiP(x["오늘평균등락%"],2)}<td>${x["거래대금비중%"]==null?"–":N(x["거래대금비중%"],1)+"%"}</td>${aiP(x["거래대금주간증감%"],0)}
+    ${aiE(x.외국인오늘억)}${aiE(x.기관오늘억)}${aiE(x.외기합5일억)}${aiE(x.개인5일억)}</tr>`).join("");
+  // ── ③ 후보·강한 종목 표
+  const hl=new Set(picks.map(p=>p.code));
+  const candRows=(D.후보종목||[]).map((c,i)=>`<tr${hl.has(c.code)?' class="ai-hl"':""}><td class="l rank">${i+1}</td><td class="l">${favStar(c.code)} <a class="lk nm" data-code="${E(c.code)}">${E(c.name)}</a> <span class="faint" style="font-size:10.5px">${E(c.업종||"")}</span></td>
+    <td><b>${c.규칙점수}</b></td>${aiP(c["등락%"],1)}<td>${N(c.거래대금억,0)}</td>${aiE(c.외국인오늘억)}${aiE(c.기관오늘억)}${aiE(c.외기합5일억)}
+    <td class="${sgn(c["외기합오늘_시총대비%"])}">${c["외기합오늘_시총대비%"]==null?"–":pm(c["외기합오늘_시총대비%"],3)+"%"}</td><td>${c.연속양매수일??"–"}</td><td>${c.RS5백분위??"–"}/${c.RS20백분위??"–"}</td>
+    ${aiP(c["고점대비%"],1)}<td class="l">${E(c.스마트머니국면||"")}</td><td class="l" style="white-space:normal;min-width:110px;font-size:11px">${(c.리스크||[]).map(E).join(", ")}</td></tr>`).join("");
+  const top3=(t,arr)=>`<div style="flex:1;min-width:230px"><div class="ai-sub" style="margin-top:6px">${t}</div>${aiTable("","<th class=\"l\">종목</th><th>등락</th><th>외기합(억)</th>",(arr||[]).map(x=>`<tr><td class="l"><a class="lk nm" data-code="${E(x.code)}">${E(x.name)}</a> <span class="faint" style="font-size:10.5px">${E(x.업종||"")}</span></td>${aiP(x["등락%"],1)}${aiE(x.외기합오늘억)}</tr>`).join(""))}</div>`;
+  const S2=D.강한종목||{};
+  const cl=(D.클러스터_같은업종_동반매수||[]).map(c=>`<tr><td class="l">${E(c.업종)}</td><td>${c.외국인동반??"–"}</td><td>${c.기관동반??"–"}</td><td class="l" style="white-space:normal">${(c.종목||[]).map(E).join(", ")}</td></tr>`).join("");
   const mac=R.macro||{};
+  const US=D.미국||{},GL=D.글로벌_국가지수||{},MC=D.매크로||{};
   const sec=(t,inner,open)=>`<details class="ai-sec"${open?" open":""}><summary>${t}</summary>${inner}</details>`;
+  const txt=(t)=>t?`<div class="ai-txt">${E(t)}</div>`:"";
   $("#aiBody").innerHTML=`
     ${R.fallback?'<div class="note" style="color:var(--warn);margin:0 0 8px">AI 응답을 받지 못해 규칙 점수 상위 후보만 표시합니다 (GEMINI_API_KEY 시크릿·호출 한도 확인).</div>':""}
     <div class="ai-head">${R.stance?`<span class="ai-stance s-${E(R.stance)}">${E(R.stance)}</span>`:""}${E(R.headline||"")}</div>
+    <div class="tiles ai-tiles">${tiles}</div>
     ${R.stance_reason?`<div class="ai-txt">${E(R.stance_reason)}</div>`:""}
     <div class="ai-sub">주목 업종</div>${chips(R.focus_sectors)}
     <div class="ai-sub">관심 종목 (단기 스윙)</div>
     <div class="ai-picks">${pickRows||'<div class="load">없음</div>'}</div>
     ${(R.avoid||[]).length?`<div class="ai-sub">피할 업종·유형</div>${chips(R.avoid)}`:""}
     ${(R.checkpoints||[]).length?`<div class="ai-sub">내일 체크포인트</div><ul class="ai-txt" style="margin:0;padding-left:18px">${R.checkpoints.map(x=>`<li>${E(x)}</li>`).join("")}</ul>`:""}
-    ${sec("① 국내 시장",`<div class="ai-txt">${E(R.market||"")}</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
-      <div class="tw"><table class="ai-mini"><thead><tr><th class="l">지수</th><th>종가</th><th>1일</th><th>5일</th><th>20일</th><th class="l">레짐</th></tr></thead><tbody>${idxRow("KOSPI")}${idxRow("KOSDAQ")}</tbody></table></div>
-      <div class="tw"><table class="ai-mini"><thead><tr><th class="l">수급(억)</th><th>오늘</th><th>1주</th></tr></thead><tbody>${flowRows}</tbody></table></div></div>`,true)}
-    ${sec("② 업종·테마",`<div class="ai-txt">${E((R.sectors||{}).summary||"")}</div><div class="ai-sub">강한 업종</div>${chips((R.sectors||{}).strong)}<div class="ai-sub">약한 업종</div>${chips((R.sectors||{}).weak)}`)}
-    ${sec("③ 오늘 강했던 종목",`<div class="ai-txt">${E(R.stocks_today||"")}</div>`)}
-    ${sec("④ 미국",`<div class="ai-txt">${E(R.us||"")}</div>`)}
-    ${sec("⑤ 글로벌",`<div class="ai-txt">${E(R.global||"")}</div>`)}
-    ${sec("⑥ 매크로 (금리·환율·원자재·심리)",`<div class="ai-txt">${E(mac.summary||"")}</div>${(mac.items||[]).length?`<div class="tw" style="margin-top:6px"><table class="ai-mini"><tbody>${mac.items.map(x=>`<tr><td class="l">${E(x.name)}</td><td class="${x.dir==="↑"?"up":x.dir==="↓"?"down":""}" style="text-align:center">${E(x.dir||"")}</td><td class="l" style="white-space:normal">${E(x.comment||"")}</td></tr>`).join("")}</tbody></table></div>`:""}`)}
-    <div class="note" style="margin-top:14px">AI(Gemini)가 우리 사이트 데이터(다이제스트)만 보고 쓴 분석 보조이며 투자 권유가 아닙니다. 관심 종목은 규칙 점수 상위 30개 후보 안에서만 고르도록 제한했습니다. 수익률은 브리핑 기준일 종가 대비 최신 거래일 종가입니다.</div>`;
+    ${sec("① 국내 시장 · 지수·거래대금·수급 비교",`${txt(R.market)}
+      ${aiTable("","<th class=\"l\">지수</th><th>종가</th><th>1일</th><th>5일</th><th>20일</th><th title=\"20일 이동평균 대비\">20일선대비</th><th class=\"l\">레짐</th>",idxRow("KOSPI")+idxRow("KOSDAQ"))}
+      <div class="ai-sub">주체별 순매수 (억원) · 기간 비교</div>
+      ${aiTable("","<th class=\"l\">주체</th><th>오늘</th><th>1주</th><th>1개월</th><th>1주 일평균</th><th>1개월 일평균</th><th title=\"오늘 − 1주 일평균\">오늘−주평균</th>",flowRows)}`,true)}
+    ${sec("② 업종·테마 · 22개 업종 전체 (헤더 클릭 정렬)",`${txt((R.sectors||{}).summary)}
+      ${aiTable("aiSecBody","<th class=\"l\">업종</th><th title=\"20일 수익률 업종 순위\">RS20</th><th title=\"5일 수익률 업종 순위\">RS5</th><th>오늘 평균등락</th><th>거래대금 비중</th><th title=\"최근 5일÷이전 5일 거래대금\">주간증감</th><th>외국인 오늘(억)</th><th>기관 오늘(억)</th><th>외기합 5일(억)</th><th>개인 5일(억)</th>",secRows)}
+      ${cl?`<div class="ai-sub">같은 업종 동반 매수 (외국인·기관)</div>${aiTable("","<th class=\"l\">업종</th><th>외국인 종목수</th><th>기관 종목수</th><th class=\"l\">종목</th>",cl)}`:""}
+      <div class="ai-sub">AI 판단 · 강한 업종</div>${chips((R.sectors||{}).strong)}<div class="ai-sub">AI 판단 · 약한 업종</div>${chips((R.sectors||{}).weak)}`,true)}
+    ${sec("③ 종목 · 후보 30 점수·수급 비교 (★=관심 종목, 헤더 클릭 정렬)",`${txt(R.stocks_today)}
+      <div class="tw ai-wide"><table class="ai-mini"><thead><tr><th class="l">#</th><th class="l">종목</th><th title="모멘텀·수급·추세·업종−리스크 규칙 점수">점수</th><th>등락</th><th>거래대금(억)</th><th>외국인(억)</th><th>기관(억)</th><th>외기합 5일(억)</th><th title="외국인+기관 오늘 순매수 ÷ 시가총액">외기합/시총</th><th>연속 양매수</th><th title="개별 RS 5일/20일 백분위(100=최상)">RS5/20</th><th>고점대비</th><th class="l">스마트머니</th><th class="l">리스크</th></tr></thead><tbody id="aiCandBody">${candRows}</tbody></table></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">${top3("등락률 상위",S2.등락률상위)}${top3("외기합 순매수 상위",S2.외기합순매수상위)}${top3("외기합 순매도 상위",S2.외기합순매도상위)}</div>
+      ${(S2.신고가||[]).length?`<div class="ai-sub">신고가 종목</div><div class="ai-txt">${S2.신고가.map(E).join(" · ")}</div>`:""}`,true)}
+    ${sec("④ 미국 · 지수·섹터·테마 기간 비교",`${txt(R.us)}
+      <div class="ai-sub">지수</div>${aiTable("",AI_GHEAD,aiGlobalRows(US.지수))}
+      <div class="ai-sub">섹터</div>${aiTable("",AI_GHEAD,aiGlobalRows(US.섹터))}
+      <div class="ai-sub">테마</div>${aiTable("",AI_GHEAD,aiGlobalRows(US.테마))}`)}
+    ${sec("⑤ 글로벌 · 국가별 (GDP 큰 순)",`${txt(R.global)}${aiTable("",AI_GHEAD,aiGlobalRows(GL.국가))}`)}
+    ${sec("⑥ 매크로 · 금리·환율·원자재·심리",`${txt(mac.summary)}
+      <div class="ai-sub">미국·원자재 (금리는 %, 변동은 %)</div>${aiTable("",AI_GHEAD,aiGlobalRows(MC.미국))}
+      <div class="ai-sub">한국 (원/달러·신용 등)</div>${aiTable("",AI_GHEAD,aiGlobalRows(MC.한국))}
+      ${(mac.items||[]).length?`<div class="ai-sub">AI 해석</div>${aiTable("","<th class=\"l\">지표</th><th>방향</th><th class=\"l\">해석</th>",mac.items.map(x=>`<tr><td class="l">${E(x.name)}</td><td class="${x.dir==="↑"?"up":x.dir==="↓"?"down":""}" style="text-align:center">${E(x.dir||"")}</td><td class="l" style="white-space:normal">${E(x.comment||"")}</td></tr>`).join(""))}`:""}`)}
+    ${sec("⑦ 한국 테마 ETF",`${aiTable("",AI_GHEAD,aiGlobalRows(D.한국테마ETF))}`)}
+    <div class="note" style="margin-top:14px">숫자는 모두 우리 사이트 데이터로 코드가 계산한 값이고, 문장 해석만 AI(Gemini)가 씁니다. 분석 보조이며 투자 권유가 아닙니다. 관심 종목은 규칙 점수 상위 30개 후보 안에서만 고르도록 제한했습니다. 이후 수익률은 브리핑 기준일 종가 대비 최신 거래일 종가입니다.</div>`;
   $$("#aiBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+  ["aiSecBody","aiCandBody"].forEach(id=>makeSortable(id));
 }
 async function jrOpen(){
   if(!sriLS("sr_acc_token")){jrAuthShow("");return;}
