@@ -18,7 +18,7 @@ on:
         required: false
         default: false
       min_amt:
-        description: '후보 최소 거래대금(억원, 비우면 기본값)'
+        description: '후보 최소 거래대금(억원, 비우면 기본값 300)'
         required: false
         default: ''
       sim:

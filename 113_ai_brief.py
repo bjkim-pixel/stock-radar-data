@@ -20,7 +20,7 @@ ARGS = sys.argv[1:]
 def arg(name, default=None):
     return ARGS[ARGS.index(name) + 1] if name in ARGS and ARGS.index(name) + 1 < len(ARGS) else default
 REPORT = arg("--report")
-MIN_AMT_EOK = float(arg("--min-amt", "") or os.environ.get("MIN_AMT_EOK", "") or 10)   # 후보 최소 거래대금(억원)
+MIN_AMT_EOK = float(arg("--min-amt", "") or os.environ.get("MIN_AMT_EOK", "") or 300)   # 후보 최소 거래대금(억원) — 소형주 작전 우려로 300억 이상(2026-11-04)
 lines = []
 def log(m=""):
     print(m, flush=True); lines.append(str(m))
@@ -133,9 +133,14 @@ def build_digest(conn):
     sm = {x["code"]: x for x in rows(cur, "select code, phase, phase_days, changed_today, quiet from smart_money_state")}
     sec_rank = {s["업종"]: s for s in secs}
     U = []
+    thr = MIN_AMT_EOK
+    if sum(1 for r in sc if (f(r.get("market_cap")) or 0) >= 1000 * EOK and (f(r.get("trade_amount")) or 0) >= thr * EOK) < 30 and thr > 100:
+        log(f"- ⚠ 거래대금 {thr:g}억 이상이 30종목 미만 — 100억으로 완화")   # 거래 부진일 안전장치
+        thr = 100
+    D["후보_최소거래대금억"] = thr
     for r in sc:
         cap, amt = f(r.get("market_cap")) or 0, f(r.get("trade_amount")) or 0
-        if cap < 1000 * EOK or amt < MIN_AMT_EOK * EOK:
+        if cap < 1000 * EOK or amt < thr * EOK:
             continue
         p = per.get(r["code"], {})
         combo1 = (f(r.get("foreign_net")) or 0) + (f(r.get("inst_net")) or 0)
