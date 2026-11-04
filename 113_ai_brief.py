@@ -351,6 +351,11 @@ def sim(conn, D):
     log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for i, c in enumerate(D["후보종목"][:20], 1):
         log(f"| {i} | {c['name']}({c['code']}) | {c['업종']} | {c['규칙점수']} | {c['등락%']} | {c['거래대금억']} | {c['시총조']} | {c['외국인오늘억']} | {c['기관오늘억']} | {c['외기합5일억']} | {c['연속양매수일']} | {c['고점대비%']} | {c['스마트머니국면']} | {', '.join(c['리스크'])} |")
+    sc = [c["규칙점수"] for c in D["후보종목"]]
+    am = sorted(c["거래대금억"] for c in D["후보종목"])
+    log(f"\n- 점수 분포(후보 {len(sc)}): 1위 {sc[0]} · 5위 {sc[4] if len(sc)>4 else None} · 10위 {sc[9] if len(sc)>9 else None} · 30위 {sc[-1]} · 평균 {round(sum(sc)/len(sc),1)}")
+    log(f"- 후보 거래대금(억): 최소 {am[0]} · 중앙 {am[len(am)//2]} · 최대 {am[-1]}")
+    log("- 상위10: " + ", ".join(f"{c['name']}({c['규칙점수']}/{c['거래대금억']}억)" for c in D["후보종목"][:10]))
     # 업종 분포
     from collections import Counter
     cnt = Counter(c["업종"] for c in D["후보종목"])
