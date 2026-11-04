@@ -17,6 +17,15 @@ on:
         type: boolean
         required: false
         default: false
+      min_amt:
+        description: '후보 최소 거래대금(억원, 비우면 기본값)'
+        required: false
+        default: ''
+      sim:
+        description: '시뮬레이션만(저장·AI 호출 없이 후보 순위 리포트)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -57,6 +66,8 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
         run: |
           F=""; [ "${{ github.event.inputs.force }}" = "true" ] && F="--force"
+          [ "${{ github.event.inputs.sim }}" = "true" ] && F="$F --sim"
+          [ -n "${{ github.event.inputs.min_amt }}" ] && F="$F --min-amt ${{ github.event.inputs.min_amt }}"
           python 113_ai_brief.py --round "${{ github.event.inputs.round || 'auto' }}" $F --dump --report brief_report.md
       - name: Publish report (branch ai-brief-report)
         if: always()

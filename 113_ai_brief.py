@@ -20,6 +20,7 @@ ARGS = sys.argv[1:]
 def arg(name, default=None):
     return ARGS[ARGS.index(name) + 1] if name in ARGS and ARGS.index(name) + 1 < len(ARGS) else default
 REPORT = arg("--report")
+MIN_AMT_EOK = float(arg("--min-amt", "") or os.environ.get("MIN_AMT_EOK", "") or 10)   # 후보 최소 거래대금(억원)
 lines = []
 def log(m=""):
     print(m, flush=True); lines.append(str(m))
@@ -134,7 +135,7 @@ def build_digest(conn):
     U = []
     for r in sc:
         cap, amt = f(r.get("market_cap")) or 0, f(r.get("trade_amount")) or 0
-        if cap < 1000 * EOK or amt < 10 * EOK:
+        if cap < 1000 * EOK or amt < MIN_AMT_EOK * EOK:
             continue
         p = per.get(r["code"], {})
         combo1 = (f(r.get("foreign_net")) or 0) + (f(r.get("inst_net")) or 0)
@@ -335,6 +336,27 @@ def update_perf(conn):
     cur.execute("""select count(*), round(avg(r1),2), round(avg(r5),2), round(avg(r_last),2) from ai_brief_perf""")
     log(f"- 성과 요약(전체): 건수 {cur.fetchone()}  [건수, 평균 1일, 평균 5일, 평균 최신]")
 
+def sim(conn, D):
+    log(f"## 시뮬레이션 — 후보 최소 거래대금 {MIN_AMT_EOK:g}억원 · 기준일 {D['기준일']} · 통과 {D['유동성통과종목수']}종목")
+    cur = conn.cursor()
+    cur.execute("select round, result from ai_brief where trade_date=%s order by round", (D["기준일"],))
+    old = {rd: [(p.get("code"), p.get("name")) for p in ((res or {}).get("picks") or [])] for rd, res in cur.fetchall()}
+    amt_of = {c["code"]: c["거래대금억"] for c in D["후보종목"]}
+    cur.execute("select code, trade_amount from v_screener where trade_date=%s", (D["기준일"],))
+    amt_all = {c: round(float(a) / EOK) for c, a in cur.fetchall() if a is not None}
+    for rd, picks in old.items():
+        log(f"- 기존 {rd}회차 AI 추천 5종목의 거래대금: " + ", ".join(f"{n}({c}) {amt_all.get(c)}억" for c, n in picks))
+    log("")
+    log("| 순위 | 종목 | 업종 | 점수 | 등락% | 거래대금(억) | 시총(조) | 외국인(억) | 기관(억) | 외기5일(억) | 연속양매수 | 고점대비% | 스마트머니 | 리스크 |")
+    log("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for i, c in enumerate(D["후보종목"][:20], 1):
+        log(f"| {i} | {c['name']}({c['code']}) | {c['업종']} | {c['규칙점수']} | {c['등락%']} | {c['거래대금억']} | {c['시총조']} | {c['외국인오늘억']} | {c['기관오늘억']} | {c['외기합5일억']} | {c['연속양매수일']} | {c['고점대비%']} | {c['스마트머니국면']} | {', '.join(c['리스크'])} |")
+    # 업종 분포
+    from collections import Counter
+    cnt = Counter(c["업종"] for c in D["후보종목"])
+    log("\n- 후보 30 업종 분포: " + ", ".join(f"{k} {v}" for k, v in cnt.most_common()))
+    finish()
+
 # ─────────────────────────────── main ───────────────────────────────
 def main():
     if not DB_URL:
@@ -349,6 +371,8 @@ def main():
     log(f"# AI 데일리 브리핑 ({now:%Y-%m-%d %H:%M} KST · {rnd}회차 = {'16시' if rnd == 1 else '18시'} 데이터)")
     D = build_digest(conn)
     td = D["기준일"]
+    if "--sim" in ARGS:   # 시뮬레이션: 저장·AI 호출 없이 최소 거래대금 기준의 후보 순위만 출력
+        return sim(conn, D)
     with conn.cursor() as cur:
         cur.execute("select status from ai_brief where trade_date=%s and round=%s", (td, rnd))
         ex = cur.fetchone()
