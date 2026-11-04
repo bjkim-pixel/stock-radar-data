@@ -1503,6 +1503,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div class="qf seg" id="aiRound"></div>
       <span class="faint" id="aiMeta" style="font-size:11px"></span>
     </div>
+    <details class="ai-sec" id="aiPerfBox" style="margin:0 0 10px;border-top:none" open><summary>AI 추천 성과 <span class="faint" style="font-weight:400;font-size:11px">· 관심 종목의 브리핑 기준일 종가 대비 이후 수익률 (KOSPI 비교)</span></summary>
+      <div id="aiPerf"><div class="load sk"></div></div></details>
     <div id="aiBody"><div class="load sk"></div></div>
   </div>
 </section>
@@ -6050,6 +6052,7 @@ async function aiOpen(){
     $("#aiDate").innerHTML=dates.map(d=>`<option value="${d}">${d}</option>`).join("");
     $("#aiDate").onchange=()=>aiPick($("#aiDate").value);
     aiPick(dates[0]);
+    aiPerfLoad();
   }else if(S.aiCur)renderAsOf();
 }
 function aiPick(date,round){
@@ -6071,6 +6074,34 @@ async function aiLoad(meta){
     S.aiCur=S.aiCache[key];renderAsOf();
     await aiRender(S.aiCur);
   }catch(e){console.error(e);$("#aiBody").innerHTML=`<div class="load">불러오기 실패: ${accEsc(String(e.message).slice(0,120))}</div>`;}
+}
+/* 추천 성과: ai_brief_perf(113_ai_brief.py가 매일 갱신) 집계 */
+async function aiPerfLoad(){
+  try{
+    S.aiPerf=await q("ai_brief_perf","select=*&order=trade_date.desc,round.asc,rank.asc&limit=2000");
+  }catch(e){
+    $("#aiPerf").innerHTML=`<div class="load">${/ai_brief_perf|404|PGRST|42P01/.test(String(e.message))?"아직 집계 전입니다 — AI 브리핑이 한 번 더 실행되면 표시됩니다.":"불러오기 실패"}</div>`;return;
+  }
+  aiPerfRender("all");
+}
+function aiPerfRender(rd){
+  const all=S.aiPerf||[];
+  const rows=all.filter(r=>rd==="all"||String(r.round)===rd);
+  const nb=new Set(rows.map(r=>r.trade_date+"/"+r.round)).size;
+  const H=[["1일 뒤","r1","k1"],["5일 뒤","r5","k5"],["20일 뒤","r20","k20"],["최신(현재)","r_last","k_last"]];
+  const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  const body=H.map(([lb,rk,kk])=>{
+    const v=rows.filter(r=>r[rk]!=null).map(r=>({r:+r[rk],k:r[kk]==null?null:+r[kk]}));
+    const ex=v.filter(x=>x.k!=null).map(x=>x.r-x.k);
+    const win=v.length?v.filter(x=>x.r>0).length/v.length*100:null;
+    const ewin=ex.length?ex.filter(x=>x>0).length/ex.length*100:null;
+    const mr=avg(v.map(x=>x.r)),mk=avg(v.filter(x=>x.k!=null).map(x=>x.k)),me=avg(ex);
+    return `<tr><td class="l">${lb}</td><td>${v.length}</td>${aiP(mr,2)}${aiP(mk,2)}${aiP(me,2)}<td>${win==null?"–":N(win,0)+"%"}</td><td>${ewin==null?"–":N(ewin,0)+"%"}</td></tr>`;}).join("");
+  const chips=[["all","전체"],["1","16시 데이터"],["2","18시 데이터"]].map(([v,lb])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===rd}">${lb}</button>`).join("");
+  $("#aiPerf").innerHTML=`<div class="ai-bar" style="margin:2px 0 6px"><div class="qf seg" id="aiPerfSel">${chips}</div><span class="faint" style="font-size:11px">브리핑 ${nb}회 · 추천 ${rows.length}건</span></div>
+    ${rows.length?aiTable("","<th class=\"l\">기간</th><th>집계 건수</th><th>평균 수익률</th><th>같은 기간 KOSPI</th><th title=\"종목 평균 − KOSPI\">초과수익</th><th>승률</th><th title=\"KOSPI보다 높았던 비율\">초과 승률</th>",body):'<div class="load">집계할 추천이 아직 없습니다 (브리핑 다음 거래일부터 쌓입니다)</div>'}
+    <div class="note" style="margin:6px 0 0">승률 = 수익률이 +인 비율, 초과 승률 = KOSPI보다 높았던 비율. 거래비용·슬리피지 미반영, 표본이 쌓이기 전(수십 건 미만)에는 우연 변동이 큽니다.</div>`;
+  $$("#aiPerfSel .fchip").forEach(b=>b.onclick=()=>aiPerfRender(b.dataset.v));
 }
 /* 숫자 셀 헬퍼 — 값이 없으면 – */
 const aiP=(v,d=1)=>`<td class="${sgn(v)}">${v==null?"–":pm(v,d)+"%"}</td>`;

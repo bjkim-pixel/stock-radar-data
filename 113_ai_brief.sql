@@ -30,3 +30,29 @@ begin
   exception when undefined_object then null;
   end;
 end $$;
+
+-- 추천 성과 추적: 브리핑이 고른 관심 종목의 이후 수익률(브리핑 기준일 종가 → N거래일 뒤 종가)과 같은 기간 KOSPI 수익률
+create table if not exists ai_brief_perf (
+  trade_date  date     not null,
+  round       smallint not null,
+  code        text     not null,
+  name        text,
+  rank        smallint,
+  entry_close numeric,
+  days_after  integer,          -- 기준일 이후 지난 거래일 수(최신 종가까지)
+  r1 numeric, r5 numeric, r20 numeric, r_last numeric,   -- 종목 수익률(%)
+  k1 numeric, k5 numeric, k20 numeric, k_last numeric,   -- 같은 기간 KOSPI 수익률(%)
+  updated_at  timestamptz not null default now(),
+  primary key (trade_date, round, code)
+);
+do $$
+begin
+  alter table public.ai_brief_perf enable row level security;
+  drop policy if exists "public read" on public.ai_brief_perf;
+  create policy "public read" on public.ai_brief_perf for select using (true);
+  begin
+    revoke insert, update, delete, truncate, trigger, references on public.ai_brief_perf from anon, authenticated;
+    grant select on public.ai_brief_perf to anon, authenticated;
+  exception when undefined_object then null;
+  end;
+end $$;

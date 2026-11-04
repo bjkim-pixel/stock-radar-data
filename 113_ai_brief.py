@@ -288,6 +288,53 @@ def fallback(D):
             "picks": [{"code": x["code"], "name": x["name"], "sector": x["업종"], "close": x["종가"], "chg": x["등락%"], "score": x["규칙점수"],
                        "reason": "규칙 점수 상위(모멘텀·수급·추세·업종)", "risk": ", ".join(x["리스크"]) or "-", "invalidation": "-"} for x in c]}
 
+# ─────────────────────────────── 추천 성과 추적 ───────────────────────────────
+def update_perf(conn):
+    """ok 상태 브리핑(최근 90일)의 관심 종목 → 기준일 종가 대비 1·5·20거래일 뒤/최신 수익률과 같은 기간 KOSPI 수익률."""
+    cur = conn.cursor()
+    cur.execute("select trade_date, round, result from ai_brief where status='ok' and trade_date >= current_date - 90 order by trade_date")
+    briefs = cur.fetchall()
+    if not briefs:
+        return
+    first = min(b[0] for b in briefs)
+    cur.execute("select trade_date, index_close from market_daily where market='KOSPI' and index_close is not null and trade_date >= %s order by trade_date", (first,))
+    kd = [(d, float(c)) for d, c in cur.fetchall()]
+    kidx = {d: i for i, (d, _) in enumerate(kd)}
+    codes = sorted({p["code"] for _, _, res in briefs for p in ((res or {}).get("picks") or []) if p.get("code")})
+    cur.execute("select code, trade_date, close from daily_price where code = any(%s) and trade_date >= %s order by trade_date", (codes, first))
+    px = {}
+    for c, d, cl in cur.fetchall():
+        px.setdefault(c, []).append((d, float(cl)))
+    n = 0
+    for td, rnd, res in briefs:
+        for rank, p in enumerate((res or {}).get("picks") or [], 1):
+            ser = px.get(p.get("code")) or []
+            ent = next((cl for d, cl in ser if d == td), None)
+            if not ent:
+                continue
+            after = [(d, cl) for d, cl in ser if d > td]
+            def ret(k):   # k거래일 뒤(None이면 최신)
+                if not after or (k and len(after) < k):
+                    return None, None
+                d, cl = after[(k - 1) if k else -1]
+                a = (cl / ent - 1) * 100
+                b = None
+                if td in kidx and d in kidx:
+                    b = (kd[kidx[d]][1] / kd[kidx[td]][1] - 1) * 100
+                return round(a, 2), None if b is None else round(b, 2)
+            (r1, k1), (r5, k5), (r20, k20), (rl, kl) = ret(1), ret(5), ret(20), ret(0)
+            cur.execute("""insert into ai_brief_perf (trade_date, round, code, name, rank, entry_close, days_after, r1, r5, r20, r_last, k1, k5, k20, k_last, updated_at)
+                           values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())
+                           on conflict (trade_date, round, code) do update set name=excluded.name, rank=excluded.rank, entry_close=excluded.entry_close,
+                             days_after=excluded.days_after, r1=excluded.r1, r5=excluded.r5, r20=excluded.r20, r_last=excluded.r_last,
+                             k1=excluded.k1, k5=excluded.k5, k20=excluded.k20, k_last=excluded.k_last, updated_at=now()""",
+                        (td, rnd, p["code"], p.get("name"), rank, ent, len(after), r1, r5, r20, rl, k1, k5, k20, kl))
+            n += 1
+    conn.commit()
+    log(f"- 추천 성과 갱신: {n}건 (브리핑 {len(briefs)}회)")
+    cur.execute("""select count(*), round(avg(r1),2), round(avg(r5),2), round(avg(r_last),2) from ai_brief_perf""")
+    log(f"- 성과 요약(전체): 건수 {cur.fetchone()}  [건수, 평균 1일, 평균 5일, 평균 최신]")
+
 # ─────────────────────────────── main ───────────────────────────────
 def main():
     if not DB_URL:
@@ -307,6 +354,7 @@ def main():
         ex = cur.fetchone()
     if ex and "--force" not in ARGS and ex[0] == "ok":
         log(f"- {td} {rnd}회차 이미 생성됨 — 건너뜀 (--force로 덮어쓰기)")
+        update_perf(conn)
         return finish()
     log(f"- 기준일 {td} · {D['데이터상태']} · 유동성 통과 {D['유동성통과종목수']}종목 · 후보 {len(D['후보종목'])} · 업종 {len(D['업종'])}")
     log(f"- 다이제스트 크기 {len(json.dumps(D, ensure_ascii=False))}자")
@@ -338,6 +386,7 @@ def main():
     log(f"- 스탠스: {res.get('stance')} · 주목 업종: {[s.get('name') for s in res.get('focus_sectors') or []]}")
     for p in res.get("picks") or []:
         log(f"  - {p.get('name')}({p.get('code')}) {p.get('sector')} · 점수 {p.get('score')} · {p.get('reason')}")
+    update_perf(conn)
     if "--dump" in ARGS:
         log("\n## 다이제스트(일부)\n```json\n" + json.dumps({k: D[k] for k in ("국내시장", "매크로")}, ensure_ascii=False, indent=1)[:6000] + "\n```")
     finish()
