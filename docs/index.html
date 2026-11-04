@@ -1015,7 +1015,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div class="faint" id="secLblBot" style="font-size:11px;margin:14px 0 4px">하위 5</div>
       <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadBot"></tr></thead>
         <tbody id="secBodyBot"><tr><td colspan="8" class="load sk"></td></tr></tbody></table></div>
-      <div class="note">행을 누르면 오른쪽 수급 차트와 업종·테마 탭의 "업종 안의 강한 종목"이 그 업종으로 바뀝니다.</div>
+      <div class="note">행을 누르면 오른쪽 수급 차트와 아래 "업종 안의 강한 종목"이 그 업종으로 바뀝니다.</div>
     </div>
     <div class="card"><h3><span id="secFlowTitle">업종 수급주체</span>
       <span class="r">2025-09-01~오늘 누적 · 억원</span></h3>
@@ -1024,6 +1024,21 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
   </div>
 
+
+  <!-- STEP 3 -->
+  <div class="step-hd" id="s3" style="margin-top:20px"><h2>업종 안의 강한 종목</h2>
+    <span class="q">그 섹터에서 가장 강한 종목은?</span>
+    <span class="out" id="stkOut"></span></div>
+
+  <div class="card"><h3>구성 종목 <span class="r" id="secName"></span></h3>
+    <div class="tw tw-scroll tw-rank"><table><thead><tr>
+      <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th class="grp">시총</th>
+      <th class="opt">거래대금</th><th class="opt">거래량비</th>
+      <th>무게/주식수</th>
+      <th class="grp opt">종가위치</th><th class="opt">52주 신고가</th><th class="opt">신고가일</th><th>단계</th>
+    </tr></thead><tbody id="stkBody"><tr><td colspan="12" class="load">업종을 선택하세요</td></tr></tbody></table></div>
+    <div class="note">종목명을 누르면 종목 상세로 이동합니다.</div>
+  </div>
 </section>
 
 <!-- ═══════════ 스마트머니 ═══════════ -->
@@ -1260,21 +1275,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   </div>
 
   <!-- 시장 매크로 STEP2·3 에서 이동 -->
-  <!-- STEP 3 -->
-  <div class="step-hd" id="s3"><h2>업종 안의 강한 종목</h2>
-    <span class="q">그 섹터에서 가장 강한 종목은?</span>
-    <span class="out" id="stkOut"></span></div>
-
-  <div class="card"><h3>구성 종목 <span class="r" id="secName"></span></h3>
-    <div class="tw tw-scroll tw-rank"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th class="grp">시총</th>
-      <th class="opt">거래대금</th><th class="opt">거래량비</th>
-      <th>무게/주식수</th>
-      <th class="grp opt">종가위치</th><th class="opt">52주 신고가</th><th class="opt">신고가일</th><th>단계</th>
-    </tr></thead><tbody id="stkBody"><tr><td colspan="12" class="load">업종을 선택하세요</td></tr></tbody></table></div>
-    <div class="note">종목명을 누르면 종목 상세로 이동합니다.</div>
-  </div>
-
   <div class="card"><h3>업종별 수급 현황
     <span class="r">전체 업종 · 헤더 클릭 = 그 기준 정렬(다시 클릭하면 오름차순↔내림차순 전환) · 기본 거래대금 내림차순</span></h3>
     <div class="tw"><table><thead><tr id="sectorTrendHead"></tr></thead>
@@ -2499,7 +2499,7 @@ window.addEventListener("resize",setStickyOffset);
 window.addEventListener("load",setStickyOffset);
 $("#brandHome").onclick=()=>location.reload();
 /* 5단계 퍼널: 각 단계가 있는 탭으로 이동한 뒤 그 위치로 스크롤 (2026-11 재배치: 단계별 카드가 시장/업종·테마/수급 동향/오늘의 종목으로 나뉨) */
-const FUNNEL_GO={s1:["proc","s1"],s2:["flow","s2"],s3:["sector","s3"],s4:["today","s4"],s5:["today","s5"]};
+const FUNNEL_GO={s1:["proc","s1"],s2:["flow","s2"],s3:["flow","s3"],s4:["today","s4"],s5:["today","s5"]};
 $$("#funnel .fstep").forEach(f=>f.onclick=()=>{
   $$("#funnel .fstep").forEach(x=>x.classList.toggle("on",x===f));
   const [v,a]=FUNNEL_GO[f.dataset.g]||["today",f.dataset.g];
@@ -2737,7 +2737,7 @@ function renderSectorTrendTable(){
 // 누적 차트)" 기능(selectSector)을 그대로 재사용. 처음엔 종목후보 화면으로 보냈는데
 // 조건 검색 방식이라 복잡하다는 피드백으로 변경. ?sector= 딥링크도 같은 함수 사용.
 async function goSectorStocks(sec){
-  go("proc");
+  go("flow");
   try{await selectSector(sec);}
   catch(e){status("err","업종 조회 실패: "+e.message);return;}
   $("#s3").scrollIntoView({behavior:"smooth",block:"start"});
