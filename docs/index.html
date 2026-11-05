@@ -558,6 +558,7 @@ html.hg-g1 .g-g1,html.hg-g2 .g-g2,html.hg-g3 .g-g3,html.hg-g4 .g-g4,html.hg-g5 .
      ⚠ 2026-09-20: #scrWrap(종목후보 표)은 이후 "스크롤 없이 확대해서 보기"
      방식으로 다시 바뀌었습니다(아래 #scrWrap 규칙 참고) — 여기 flowTrendWrap은
      그와 무관하게 스크롤+sticky 방식을 그대로 유지합니다. */
+  #mktInvWrap td,#mktInvWrap th{text-align:right;white-space:nowrap}#mktInvWrap th.l,#mktInvWrap td.l{text-align:left}#mktInvWrap .mi-f,#mktInvWrap td.mi-f{background:rgba(255,200,0,.14);font-weight:700}
   #flowTrendWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   #flowTrendWrap table{font-size:10px}
   #flowTrendWrap th,#flowTrendWrap td{padding:3px 3px;font-size:10px;white-space:nowrap}
@@ -788,6 +789,12 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="chart" id="cInv"></div>
     <div class="note">일별 순매수가 아니라 <b>누적</b>입니다. 선이 계속 올라가면 그 주체가 꾸준히 사들이고 있다는 뜻이고,
       기울기가 꺾이는 지점이 수급 방향이 바뀐 시점입니다.</div>
+  </div>
+
+  <div class="card" id="mktInvCard" style="margin-top:12px"><h3>거래주체별 매수현황 <span class="r" id="mktInvDate">억원 · 순매수</span></h3>
+    <div class="tw" id="mktInvWrap"><table><thead><tr><th class="l">구분</th><th>개인</th><th class="mi-f">외국인</th><th>기관계</th></tr></thead>
+      <tbody id="mktInvBody"><tr><td colspan="4" class="load sk"></td></tr></tbody></table></div>
+    <div class="note">코스피·코스닥은 시장 전체, 선물은 코스피200 선물 기준입니다. 장중에는 잠정치이며 장 마감 후 확정값으로 갱신됩니다.</div>
   </div>
 
   <!-- 시장 수급·글로벌·KOSPI (2026-11: 다른 탭에서 이동) -->
@@ -2415,6 +2422,7 @@ function procEnter(){
   if(S.procEntered)return;S.procEntered=true;
   ensureTodayMarket().catch(e=>console.error("시장 요약",e));
   loadFlowTrends().catch(()=>{});
+  loadMarketInvestor().catch(e=>{$("#mktInvBody").innerHTML='<tr><td colspan="4" class="load">데이터 없음</td></tr>';});
   lazyNear($("#gmCard"),()=>loadGlobal().catch(console.error));
   lazyNear($("#tdKWrap"),()=>loadTdKospi().catch(e=>console.error("KOSPI 카드",e)));
 }
@@ -3127,6 +3135,17 @@ S.flowTrendDir=S.flowTrendDir||"desc";
 function flowVal(row,subj,period){
   if(subj==="combo")return (+row["foreign_"+period]||0)+(+row["inst_"+period]||0);
   return +row[subj+"_"+period]||0;
+}
+async function loadMarketInvestor(){
+  const rows=await q("market_investor_daily","select=trade_date,market,personal,foreign_net,inst&order=trade_date.desc&limit=3");
+  const d=rows.length?rows[0].trade_date:null;
+  const cur=rows.filter(r=>r.trade_date===d);
+  const by={};cur.forEach(r=>by[r.market]=r);
+  if(!d){$("#mktInvBody").innerHTML='<tr><td colspan="4" class="load">데이터 없음</td></tr>';return;}
+  $("#mktInvDate").textContent=d+" 기준 · 억원 · 순매수";
+  const NM=[["KOSPI","코스피"],["KOSDAQ","코스닥"],["FUT","선물"]];
+  const c=(v,f)=>v==null?`<td class="${f||""}">-</td>`:`<td class="${sgn(+v)} ${f||""}">${pm(+v,0)}</td>`;
+  $("#mktInvBody").innerHTML=NM.map(([k,n])=>{const r=by[k]||{};return `<tr><td class="l">${n}</td>${c(r.personal)}${c(r.foreign_net,"mi-f")}${c(r.inst)}</tr>`;}).join("");
 }
 async function loadFlowTrends(){
   if(!S.flowTrendRow)S.flowTrendRow=(await q("v_market_flow_periods","select=*"))[0];
