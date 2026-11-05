@@ -1,0 +1,40 @@
+name: Market Investor (코스피·코스닥·선물 투자자별 순매수)
+
+# 수집·계산(daily_collect.yml) 후속 잡이 실행합니다. 같은 날 여러 번 돌아도 upsert라 안전(장 마감 후 값이 확정값으로 갱신됨).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: market-investor
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary requests
+      - name: Collect
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 115_market_investor.py --report investor_collect_report.md
+      - name: Publish report (branch investor-collect-report)
+        if: always()
+        run: |
+          [ -f investor_collect_report.md ] || echo "리포트 없음 — 실패. Actions 로그 확인" > investor_collect_report.md
+          cp investor_collect_report.md /tmp/investor_collect_report.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan investor-collect-report
+          git rm -rq --cached . || true
+          cp /tmp/investor_collect_report.md investor_collect_report.md
+          git add -f investor_collect_report.md
+          git commit -qm "market investor report ${{ github.run_id }}"
+          git push -f origin investor-collect-report
