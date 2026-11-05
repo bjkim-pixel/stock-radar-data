@@ -25,18 +25,17 @@ if tok:
         kis("inquire-investor-daily-by-market", "FHPTJ04040000",
             {"FID_COND_MRKT_DIV_CODE": "U", "FID_INPUT_ISCD": iscd, "FID_INPUT_DATE_1": today, "FID_INPUT_ISCD_1": "KSP" if iscd == "0001" else "KSQ", "FID_INPUT_DATE_2": today, "FID_INPUT_ISCD_2": iscd}, f"일별 {nm}")
     kis("inquire-investor-time-by-market", "FHPTJ04030000", {"FID_INPUT_ISCD": "KSP", "FID_INPUT_ISCD_2": "0001"}, "시간대별 코스피")
-H = {"User-Agent": "Mozilla/5.0"}
-def strip(html):
-    t = re.sub(r"<script.*?</script>|<style.*?</style>", "", html, flags=re.S)
-    t = re.sub(r"<[^>]+>", " ", t); return re.sub(r"\s+", " ", t)
-r = requests.get("https://finance.naver.com/sise/sise_trans_style.naver", headers=H, timeout=20)
-r.encoding = r.apparent_encoding or "utf-8"
-log(f"\n## NAVER sise_trans_style HTTP {r.status_code} enc={r.encoding} 길이 {len(r.text)}")
-t = strip(r.text)
-i = t.find("선물")
-log(t[max(0, i - 900): i + 1500] if i >= 0 else t[:2500])
-log("iframes/scripts: " + str(re.findall(r'(?:src|href)="([^"]*(?:invest|trans|sise)[^"]*)"', r.text)[:20]))
-for u in re.findall(r'src="(/sise/[^"]+)"', r.text)[:6]:
-    rr = requests.get("https://finance.naver.com" + u, headers=H, timeout=20); rr.encoding = rr.apparent_encoding or "utf-8"
-    log(f"\n## NAVER {u} HTTP {rr.status_code}\n" + strip(rr.text)[:1500])
+H = {"User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36", "Accept": "application/json"}
+urls = []
+for code in ("KOSPI", "KOSDAQ", "FUT", "KPI200", "K200F"):
+    for suf in ("integration", "trend", "dealTrend", "basic"):
+        urls.append(f"https://m.stock.naver.com/api/index/{code}/{suf}")
+urls += ["https://api.stock.naver.com/index/KOSPI/integration", "https://api.stock.naver.com/index/FUT/integration",
+         "https://m.stock.naver.com/api/index/KOSPI/dealTrend?pageSize=5", "https://m.stock.naver.com/api/futures/FUT/integration"]
+for u in urls:
+    try:
+        r = requests.get(u, headers=H, timeout=15)
+        log(f"\n## {u}  HTTP {r.status_code} 길이 {len(r.text)}\n" + r.text[:900].replace("\n", " "))
+    except Exception as ex:
+        log(f"\n## {u} 오류 {str(ex)[:100]}")
 open("investor_report.md", "w", encoding="utf-8").write("\n".join(out))
