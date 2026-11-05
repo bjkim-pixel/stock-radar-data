@@ -1,0 +1,30 @@
+name: VKOSPI Probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary requests
+      - name: Probe
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: python 116_vkospi_probe.py
+      - name: Publish
+        if: always()
+        run: |
+          [ -f vkospi_report.md ] || echo "실패" > vkospi_report.md
+          cp vkospi_report.md /tmp/r.md
+          git config user.name github-actions; git config user.email github-actions@users.noreply.github.com
+          git checkout --orphan vkospi-report; git rm -rq --cached . || true
+          cp /tmp/r.md vkospi_report.md; git add -f vkospi_report.md
+          git commit -qm report; git push -f origin vkospi-report
