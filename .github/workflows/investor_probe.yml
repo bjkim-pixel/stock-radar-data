@@ -1,0 +1,34 @@
+name: Investor Probe (시장별 투자자·선물 소스 탐색, 읽기 전용)
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary requests
+      - name: Probe
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 114_investor_probe.py
+      - name: Publish report (branch investor-report)
+        if: always()
+        run: |
+          [ -f investor_report.md ] || echo "리포트 없음 — 실패. Actions 로그 확인" > investor_report.md
+          cp investor_report.md /tmp/investor_report.md
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git checkout --orphan investor-report
+          git rm -rq --cached . || true
+          cp /tmp/investor_report.md investor_report.md
+          git add -f investor_report.md
+          git commit -qm "investor probe ${{ github.run_id }}"
+          git push -f origin investor-report
