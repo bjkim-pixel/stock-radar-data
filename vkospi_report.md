@@ -1,0 +1,26 @@
+## Naver
+- VKOSPI/basic: 409 {"code":"StockConflict"}
+- VKOSPI/price?pageSize=3&page=1: 409 {"code":"StockConflict","message":"Not Found - VKOSPI"}
+- KSVKOSPI/basic: 409 {"code":"StockConflict"}
+- KSVKOSPI/price?pageSize=3&page=1: 409 {"code":"StockConflict","message":"Not Found - KSVKOSPI"}
+- KOSPI_VOLATILITY/basic: 409 {"code":"StockConflict"}
+- KOSPI_VOLATILITY/price?pageSize=3&page=1: 409 {"code":"StockConflict","message":"Not Found - KOSPI_VOLATILITY"}
+- VKOSPI200/basic: 409 {"code":"StockConflict"}
+- VKOSPI200/price?pageSize=3&page=1: 409 {"code":"StockConflict","message":"Not Found - VKOSPI200"}
+## KIS
+- 0001 inquire-index-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '5383.80', 'bstp_nmix_prdy_vrss': '-300.00', 'prdy_vrss_sign': '5', 'bstp_nmix_prdy_ctrt': '-5.28', 'acml_vol': '256819', 'prdy_vol': '276889', 'acml_tr_pbmn': '22617576', 'prdy_tr_
+- 0001 inquire-index-daily-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '5383.80', 'bstp_nmix_prdy_vrss': '-300.00', 'prdy_vrss_sign': '5', 'bstp_nmix_prdy_ctrt': '-5.28', 'acml_vol': '256819', 'acml_tr_pbmn': '22617576', 'bstp_nmix_oprc': '5580.09', 'b
+- 0101 inquire-index-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'prdy_vol': '0', 'acml_tr_pbmn': '0', 'prdy_tr_pbmn': '0', 'bstp_nmix_o
+- 0101 inquire-index-daily-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'acml_tr_pbmn': '0', 'bstp_nmix_oprc': '0.00', 'bstp_nmix_hgpr': '0.00'
+- 0201 inquire-index-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'prdy_vol': '0', 'acml_tr_pbmn': '0', 'prdy_tr_pbmn': '0', 'bstp_nmix_o
+- 0201 inquire-index-daily-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'acml_tr_pbmn': '0', 'bstp_nmix_oprc': '0.00', 'bstp_nmix_hgpr': '0.00'
+- VKOSPI inquire-index-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'prdy_vol': '0', 'acml_tr_pbmn': '0', 'prdy_tr_pbmn': '0', 'bstp_nmix_o
+- VKOSPI inquire-index-daily-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'acml_tr_pbmn': '0', 'bstp_nmix_oprc': '0.00', 'bstp_nmix_hgpr': '0.00'
+- 1101 inquire-index-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'prdy_vol': '0', 'acml_tr_pbmn': '0', 'prdy_tr_pbmn': '0', 'bstp_nmix_o
+- 1101 inquire-index-daily-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'acml_tr_pbmn': '0', 'bstp_nmix_oprc': '0.00', 'bstp_nmix_hgpr': '0.00'
+- 3001 inquire-index-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'prdy_vol': '0', 'acml_tr_pbmn': '0', 'prdy_tr_pbmn': '0', 'bstp_nmix_o
+- 3001 inquire-index-daily-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'acml_tr_pbmn': '0', 'bstp_nmix_oprc': '0.00', 'bstp_nmix_hgpr': '0.00'
+- 4001 inquire-index-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '13333.37', 'bstp_nmix_prdy_vrss': '-738.76', 'prdy_vrss_sign': '5', 'bstp_nmix_prdy_ctrt': '-5.25', 'acml_vol': '118243', 'prdy_vol': '128949', 'acml_tr_pbmn': '19832572', 'prdy_tr
+- 4001 inquire-index-daily-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '13333.37', 'bstp_nmix_prdy_vrss': '-738.76', 'prdy_vrss_sign': '5', 'bstp_nmix_prdy_ctrt': '-5.25', 'acml_vol': '118243', 'acml_tr_pbmn': '19832572', 'bstp_nmix_oprc': '13820.19', 
+- 5001 inquire-index-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'prdy_vol': '0', 'acml_tr_pbmn': '0', 'prdy_tr_pbmn': '0', 'bstp_nmix_o
+- 5001 inquire-index-daily-price: 200 rt=0 정상처리 되었습니다. | {'bstp_nmix_prpr': '0.00', 'bstp_nmix_prdy_vrss': '0.00', 'prdy_vrss_sign': '3', 'bstp_nmix_prdy_ctrt': '0.00', 'acml_vol': '0', 'acml_tr_pbmn': '0', 'bstp_nmix_oprc': '0.00', 'bstp_nmix_hgpr': '0.00'
