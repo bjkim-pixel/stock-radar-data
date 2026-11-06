@@ -1,0 +1,223 @@
+name: Post Compute (수급·스마트머니·시장투자자·AI 브리핑)
+
+# 2026-11-06 통합: 예전의 flow_cap_ratio / sector_flow_daily / smart_money / market_investor / ai_brief 5개 워크플로를 한 파일로 합쳤습니다.
+#
+# 언제 돌아가나
+#  ① daily_collect.yml(수집→계산) 안에서 호출(workflow_call) — 계산이 성공하면 아래 4개 잡이 동시에 돌고, 모두 끝나면 AI 브리핑 잡이 이어집니다.
+#     (예전의 "dispatch 후 25분 대기 루프"가 필요 없어짐: needs 로 순서를 보장)
+#  ② NXT 18시 수집 → Compute Metrics & Signals 가 끝나면 자동 발화(workflow_run) — 4개 계산만 수행(AI 브리핑 제외).
+#  ③ 수동 실행: 'parts' 로 일부만 고를 수 있음. AI 브리핑은 parts=ai 이거나 ai_round 를 none 이외로 고르면 생성.
+#
+# 리포트 브랜치(읽는 법은 그대로): flowcap-report / sectorflow-report / smart-money-report / investor-collect-report / ai-brief-report
+on:
+  workflow_call:
+    inputs:
+      parts:
+        description: 'all | flowcap | sectorflow | smartmoney | investor | ai'
+        type: string
+        required: false
+        default: 'all'
+      ai_round:
+        description: 'AI 브리핑 회차: none(생성 안 함) | auto | 0(장중) | 1(16시) | 2(18시)'
+        type: string
+        required: false
+        default: 'none'
+      ai_force:
+        type: boolean
+        required: false
+        default: false
+      ai_min_amt:
+        type: string
+        required: false
+        default: ''
+      ai_mine_only:
+        type: boolean
+        required: false
+        default: false
+      ai_sim:
+        type: boolean
+        required: false
+        default: false
+      backtest:
+        type: boolean
+        required: false
+        default: false
+  workflow_run:
+    workflows: ["Compute Metrics & Signals"]   # NXT 체인 뒤(통합 파이프라인 안의 계산은 workflow_run 이 발화하지 않아 daily_collect 가 직접 호출)
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      parts:
+        description: '실행할 부분'
+        type: choice
+        required: false
+        default: 'all'
+        options: [all, flowcap, sectorflow, smartmoney, investor, ai]
+      ai_round:
+        description: 'AI 브리핑 회차 (none=생성 안 함, auto=지금 시각 기준, 0=장중, 1=16시 데이터, 2=18시 데이터). parts=ai 면 none 이어도 auto 로 생성'
+        type: choice
+        required: false
+        default: 'none'
+        options: [none, auto, '0', '1', '2']
+      ai_force:
+        description: 'AI 브리핑: 이미 있어도 다시 생성'
+        type: boolean
+        required: false
+        default: false
+      ai_min_amt:
+        description: 'AI 브리핑: 후보 최소 거래대금(억원, 비우면 기본값 300)'
+        type: string
+        required: false
+        default: ''
+      ai_mine_only:
+        description: 'AI 브리핑: 내 종목(관심·투자) 의견만 새로 생성해 오늘 최신 브리핑에 반영'
+        type: boolean
+        required: false
+        default: false
+      ai_sim:
+        description: 'AI 브리핑: 시뮬레이션만(저장·AI 호출 없이 후보 순위 리포트)'
+        type: boolean
+        required: false
+        default: false
+      backtest:
+        description: '스마트머니: 백테스트 리포트도 만들기 (5~15분 더 걸림)'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  flowcap:
+    if: ${{ (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && ((inputs.parts || 'all') == 'all' || inputs.parts == 'flowcap') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: flow-cap-ratio
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Refresh flow_cap_ratio
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 86_flow_cap_ratio.py --report flowcap_report.md
+      - if: always()
+        uses: ./.github/actions/publish-report
+        with: { branch: flowcap-report, file: flowcap_report.md }
+
+  sectorflow:
+    if: ${{ (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && ((inputs.parts || 'all') == 'all' || inputs.parts == 'sectorflow') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: sector-flow-daily
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Refresh sector_flow_daily
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 87_sector_flow_daily.py --report sectorflow_report.md
+      - if: always()
+        uses: ./.github/actions/publish-report
+        with: { branch: sectorflow-report, file: sectorflow_report.md }
+
+  smartmoney:
+    if: ${{ (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && ((inputs.parts || 'all') == 'all' || inputs.parts == 'smartmoney') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: smart-money
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Compute smart money
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BT: ${{ inputs.backtest && '--backtest' || '' }}
+        run: python 91_smart_money.py --report sm_report.md $BT
+      - if: always()
+        uses: ./.github/actions/publish-report
+        with: { branch: smart-money-report, file: sm_report.md }
+
+  investor:
+    if: ${{ (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && ((inputs.parts || 'all') == 'all' || inputs.parts == 'investor') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: market-investor
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary requests
+      - name: Collect market investor
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 115_market_investor.py --report investor_collect_report.md
+      - if: always()
+        uses: ./.github/actions/publish-report
+        with: { branch: investor-collect-report, file: investor_collect_report.md }
+
+  # AI 브리핑 — 위 4개 계산(앞 단계가 실패/생략돼도 진행)이 끝난 뒤 생성. 같은 날짜·회차가 이미 성공했으면 113_ai_brief.py 가 스스로 건너뜁니다.
+  ai:
+    needs: [flowcap, sectorflow, smartmoney, investor]
+    if: ${{ !cancelled() && github.event_name != 'workflow_run' && (inputs.parts == 'ai' || (inputs.ai_round != 'none' && inputs.ai_round != '')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: ai-brief
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: 글로벌 시황 수집이 돌고 있으면 끝날 때까지 대기 (최대 15분)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # daily_collect 가 같은 시점에 띄운 global_collect(글로벌 팩)를 AI 가 읽으므로, 진행 중이면 잠깐 기다림. 없으면 즉시 통과.
+          for i in $(seq 1 30); do
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/global_collect.yml/runs?per_page=5" \
+                 --jq '[.workflow_runs[] | select(.status=="in_progress" or .status=="queued" or .status=="waiting")] | length' 2>/dev/null || echo 0)
+            [ "${n:-0}" -eq 0 ] && { echo "✅ 글로벌 수집 대기 없음"; break; }
+            echo "⏳ global_collect 진행 중 — 30초 후 재확인"; sleep 30
+          done
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary requests
+      - name: Generate brief
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          ROUND: ${{ (inputs.ai_round == 'none' || inputs.ai_round == '') && 'auto' || inputs.ai_round }}
+          FORCE: ${{ inputs.ai_force }}
+          SIM: ${{ inputs.ai_sim }}
+          MINE: ${{ inputs.ai_mine_only }}
+          MINAMT: ${{ inputs.ai_min_amt }}
+        run: |
+          F=""
+          [ "$FORCE" = "true" ] && F="--force"
+          [ "$SIM" = "true" ] && F="$F --sim"
+          [ "$MINE" = "true" ] && F="$F --mine-only"
+          [ -n "$MINAMT" ] && F="$F --min-amt $MINAMT"
+          python 113_ai_brief.py --round "$ROUND" $F --dump --report brief_report.md
+      - if: always()
+        uses: ./.github/actions/publish-report
+        with: { branch: ai-brief-report, file: brief_report.md }

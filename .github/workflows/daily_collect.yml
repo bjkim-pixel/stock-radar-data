@@ -2,36 +2,17 @@ name: Daily Collect + Compute (수집·계산 통합)
 
 on:
   schedule:
-    # 2026-09-11 변경: 16:05/20:05 하루 2회 → 16:05~20:05 사이 30분 간격(총 9회)으로
-    # 확대. 이유는 기존과 동일하게 'NXT 마감가'를 새로 받아오려는 게 아니라(아래
-    # 주의사항 참고), KIS 장마감 배치가 드물게 늦게 확정/정정되는 경우를 더 빨리
-    # 잡아내기 위함 — 하루 2번의 스팟체크보다 30분 간격으로 반복 확인하면 정정을
-    # 더 일찍 반영할 수 있음. 매번 같은(trade_date, code) UPSERT라 중복 실행 안전.
-    #
-    # 2026-09-23 재축소: 9회 → 2회(16:05, 18:05). 매번 302개 종목 전체를
-    # daily_price/daily_flow/daily_program 3개 테이블에 다시 upsert하는 이
-    # 워크플로가 하루 중 가장 무거운 반복 부하였음(Supabase nano 무료 인스턴스
-    # Disk IO 버스트 크레딧 고갈로 인한 장애의 주요 원인으로 확인됨). 20:05
-    # 실행은 원래도 NXT 마감가를 받는 게 아니라 16:05와 같은 정규장 데이터를
-    # 한 번 더 확인하는 안전판이었을 뿐이라(아래 주의사항 참고) 빼도 기능
-    # 손실 없음 — "드문 정정을 더 일찍 잡는다"는 목적은 16:05·18:05 두 번으로도
-    # 충분히 달성됨.
-    #
-    # 매 거래일 16:05 KST = 07:05 UTC (월~금) — 정규장(15:30) 마감 확정 직후
-    # 18:05 KST = 09:05 UTC — 마지막 재확인
-    # 주의: KIS 국내주식 시세 API는 정규장 15:20~15:30 동시호가에서 확정된 공식 종가/지수를
-    # 돌려주며, NXT는 KRX와 별개 대체거래소라 이 값에는 반영되지 않습니다. 즉 16:05 이후
-    # 반복 실행은 'NXT 마감가'가 아니라 16:05 실행과 같은 정규장 마감 데이터를 다시 확인하는
-    # 안전판(KIS 장마감 배치가 드물게 늦게 확정/정정되는 경우 대비) 성격입니다.
-    #
-    # 2026-10-25: 수집 → 지표·신호 계산을 한 워크플로로 합쳤습니다(아래 compute 잡). 시각은 16:05·17:05·18:05·19:05 KST
-    # (= 07/08/09/10:05 UTC, 월~금)로 한 시간 간격 4회. 같은 날 여러 번 돌아도 upsert라 안전하고, 매 회 끝에 계산이 이어집니다.
-    # ⚠ GitHub 예약 실행은 큐가 밀리면 몇 시간씩 늦게 시작될 수 있습니다(실측: 16시 예약이 밤 11시경 실행).
-    #   정각에 확실히 돌리려면 이미 쓰는 cron-job.org에 작업 4개(월~금 16:05·17:05·18:05·19:05 KST)를 만들어
+    # 2026-11-06: 자동 실행을 하루 2번(16시·18시)으로 정리 — 16:05 KST(07:05 UTC)·18:05 KST(09:05 UTC), 월~금.
+    #  · 16시 실행 = 정규장 마감 직후 확정 데이터 → 계산 → 후처리 → AI 브리핑 1회차
+    #  · 18시 실행 = 같은 날 재확인(KIS 마감 배치 정정 반영) → 다시 계산 → AI 브리핑 2회차
+    # 예전의 17:05·19:05 실행은 대부분 "이미 한 일을 건너뛰는" 실행이라 없앴습니다(upsert라 빼도 결과 동일).
+    # 참고: KIS는 NXT 마감가를 따로 주지 않아 16시 이후 반복 실행은 정규장 마감 데이터의 재확인입니다.
+    # ⚠ GitHub 예약 실행은 큐가 밀리면 수십 분~몇 시간 늦게 시작될 수 있습니다(실측: 16시 예약이 밤 11시경 실행).
+    #   정각에 확실히 돌리려면 cron-job.org 작업 2개(월~금 16:05·18:05 KST)로
     #   POST https://api.github.com/repos/bjkim-pixel/stock-radar-data/actions/workflows/daily_collect.yml/dispatches
     #   헤더 Authorization: Bearer <이 저장소 전용 fine-grained 토큰(Actions: Read and write)>, Accept: application/vnd.github+json
-    #   본문 {"ref":"main"} 으로 호출하게 하세요. (예약 실행과 겹쳐도 upsert라 안전하고, 겹치면 줄을 서서 차례로 실행됩니다.)
-    - cron: "5 7,8,9,10 * * 1-5"
+    #   본문 {"ref":"main"} 을 호출하게 하세요. (예약과 겹쳐도 upsert라 안전하고, 겹치면 줄을 서서 차례로 실행됩니다.)
+    - cron: "5 7,9 * * 1-5"
   workflow_dispatch:
     # 수동 실행 (GitHub 웹에서 "Run workflow" 버튼)
     inputs:
@@ -55,20 +36,18 @@ on:
         required: false
         default: true
 
-concurrency:
-  # 2026-09-15: KIS REST는 "초당 20건"이 앱키 단위 한도라서, 종목 전체를 도는
-  # 수집 워크플로가 둘 이상 동시에 돌면 각자 한도 안이어도 합산에서 초과한다
-  # (실제로 daily_collect :05/:35 와 intraday_collect :00/:30 는 각 실행이
-  # 7~10분 걸려 매 30분마다 2분가량 겹쳤다). 같은 group을 쓰면 GitHub이
-  # 뒤에 온 실행을 앞 실행이 끝날 때까지 대기시켜 겹침 자체가 사라진다.
-  # cancel-in-progress: false — 진행 중인 수집을 죽이지 않고 줄을 세운다.
-  group: kis-rest-batch
-  cancel-in-progress: false
-
 jobs:
   collect:
     runs-on: ubuntu-latest
     timeout-minutes: 50     # 수집 ~30분 + 앞선 NXT 대기 최대 20분
+    outputs:
+      is_market_day: ${{ steps.market_day.outputs.is_market_day }}
+    # KIS REST는 "초당 20건"이 앱키 단위 한도라서 종목 전체를 도는 수집 워크플로가 동시에 돌면 합산에서 초과한다.
+    # 같은 group을 쓰면 뒤에 온 실행이 앞 실행이 끝날 때까지 대기(cancel-in-progress:false). 2026-11-06부터 이 잡에만 건다
+    # (후처리·AI 브리핑은 KIS를 안 쓰므로 그룹을 붙잡고 있지 않도록).
+    concurrency:
+      group: kis-rest-batch
+      cancel-in-progress: false
 
     steps:
       - name: Checkout
@@ -193,12 +172,11 @@ jobs:
       date: ${{ github.event.inputs.target_date }}
       no_portfolio: ${{ github.event.inputs.intraday == 'true' }}   # 장중 잠정치로는 가상매매(포지션)를 만들지 않음
 
-  # 수집·계산이 모두 성공하면 후속 작업을 직접 실행(workflow_dispatch) — workflow_run 연결이 이 워크플로 뒤에 발화하지 않아 교체.
-  #  · 수급 사전계산(Flow/MarketCap Ratio, Sector Flow Daily): 매번
-  #  · 글로벌 시황 수집 · 텔레그램 요약: 오늘 아직 안 했을 때만(하루 1번)
-  after:
-    needs: compute
-    if: needs.compute.result == 'success'
+  # 계산이 성공하면: ① 글로벌 시황 수집·텔레그램 요약을 띄우고(하루 1번, 장중 모드 제외) ② 후처리(post_compute.yml)를 같은 실행 안에서 이어서 실행.
+  #   예전엔 후속 워크플로 5개를 gh workflow run 으로 따로 띄우고 AI 브리핑이 25분 대기 루프를 돌았는데, 이제 needs 로 순서를 보장합니다.
+  dispatch:
+    needs: [collect, compute]
+    if: needs.compute.result == 'success' && needs.collect.outputs.is_market_day == 'true' && github.event.inputs.intraday != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -206,28 +184,28 @@ jobs:
       actions: write
     steps:
       - uses: actions/checkout@v4
-      - name: 후속 워크플로 실행
+      - name: 글로벌 시황·텔레그램 요약 (오늘 아직 안 했을 때만)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow run flow_cap_ratio.yml --ref main
-          gh workflow run sector_flow_daily.yml --ref main
-          gh workflow run smart_money.yml --ref main
-          gh workflow run market_investor.yml --ref main
-          if [ "${{ github.event.inputs.intraday }}" = "true" ]; then
-            # 장중 수동 업데이트: 글로벌 시황·텔레그램 요약은 건너뛰고(장마감 후 자동 실행이 담당), AI 브리핑은 장중 회차(0)로 생성.
-            # 위 후속 계산이 끝날 때까지 ai_brief.yml이 스스로 기다린 뒤 생성합니다.
-            if [ "${{ github.event.inputs.intraday_ai }}" = "true" ]; then gh workflow run ai_brief.yml --ref main -f round=0 || echo "AI 브리핑 실행 실패(무시)"; fi
-            echo "장중 모드 — 글로벌·텔레그램 건너뜀"; exit 0
-          fi
           N=$(bash .github/scripts/done_today.sh global_collect.yml "Collect + pack" 12)   # 낮 12시 이후 = 한국 장마감 후 수집(아침 미국 마감 수집은 제외)
           if [ "${N:-0}" -eq 0 ]; then gh workflow run global_collect.yml --ref main; else echo "글로벌 시황: 오늘 이미 수집함(${N}번) — 건너뜀"; fi
-          # 수동 실행(skip_compute 등)은 이 잡에 오지 않으므로 여기서는 거래일 판단 불필요(수집 잡이 휴장일이면 계산이 건너뛰어져도 success라 한 번 더 확인)
           TODAY=$(TZ=Asia/Seoul date +%F); DOW=$(TZ=Asia/Seoul date +%u)
           HOLIDAYS="$(bash .github/scripts/holidays.sh)"
           if [ "$DOW" -ge 6 ] || echo " $HOLIDAYS " | grep -q " $TODAY "; then echo "주말/휴장일 — 텔레그램 요약 건너뜀"; exit 0; fi
-          # AI 브리핑: 18시 전 실행 = 1회차(16시 데이터), 18시 이후 = 2회차(18시 데이터). 이미 만든 회차는 스크립트가 건너뜀.
-          HH=$(TZ=Asia/Seoul date +%-H); R=1; [ "$HH" -ge 18 ] && R=2
-          gh workflow run ai_brief.yml --ref main -f round=$R || echo "AI 브리핑 실행 실패(무시)"
           M=$(bash .github/scripts/done_today.sh daily_summary_trigger.yml "Trigger daily summary (최대 3회 재시도)")
           if [ "${M:-0}" -eq 0 ]; then gh workflow run daily_summary_trigger.yml --ref main; else echo "텔레그램 요약: 오늘 이미 발송함(${M}번) — 건너뜀"; fi
+
+  post:
+    needs: [collect, compute, dispatch]
+    # dispatch 는 장중 모드에서 건너뛰므로 always 계열 조건으로 진행. 휴장일·수집/계산 실패 시에는 실행하지 않음.
+    if: ${{ !cancelled() && needs.compute.result == 'success' && needs.collect.outputs.is_market_day == 'true' }}
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/post_compute.yml
+    secrets: inherit
+    with:
+      parts: all
+      # 장중 수동: 'AI도 생성'이면 장중 회차(0), 아니면 생략 / 자동·일반 수동: 지금 시각 기준 회차(18시 전 1회차, 이후 2회차)
+      ai_round: ${{ github.event.inputs.intraday == 'true' && (github.event.inputs.intraday_ai == 'true' && '0' || 'none') || 'auto' }}

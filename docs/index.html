@@ -2518,7 +2518,7 @@ function go(v,detailCode){
   if(v==="proc")procEnter();
   if(v==="gm"&&!S.gmEntered){S.gmEntered=true;loadGlobal().catch(e=>{console.error(e);S.gmEntered=false;});}
   if(v==="fav")wlPull().finally(()=>{loadFav();wlPush();});
-  if(v==="sm"){if(!S.smLoaded){S.smLoaded=true;loadSm().catch(e=>{console.error(e);S.smLoaded=false;$("#smMap").innerHTML='<div class="load">불러오기 실패 — Actions에서 Smart Money Phase를 한 번 실행했는지 확인</div>';});}else renderSm();}
+  if(v==="sm"){if(!S.smLoaded){S.smLoaded=true;loadSm().catch(e=>{console.error(e);S.smLoaded=false;$("#smMap").innerHTML='<div class="load">불러오기 실패 — Actions의 Post Compute를 한 번 실행했는지 확인</div>';});}else renderSm();}
   renderAsOf();
   if(!_hashNav)setHash(v,v==="detail"?S.chart.code:null);
   if(v==="perf")loadPerf();
@@ -4914,7 +4914,7 @@ function smHeadMark(){
 }
 function renderSm(){
   const rows=S.smRows||[];
-  if(!rows.length){$("#smMap").innerHTML='<div class="load">아직 계산 결과가 없습니다 — Actions에서 "Smart Money Phase"를 한 번 실행하세요.</div>';$("#smBody").innerHTML="";return;}
+  if(!rows.length){$("#smMap").innerHTML='<div class="load">아직 계산 결과가 없습니다 — Actions의 "Post Compute"(parts=smartmoney 또는 all)를 한 번 실행하세요.</div>';$("#smBody").innerHTML="";return;}
   $("#smAsOf").textContent=`${rows[0].as_of} 기준 · ${N(rows.length)}종목 · SM = 외국인+투신+사모+연기금 · 판정 120일`;
   const cnt={},chg={};["ACC","MARKUP","DIST","DOWN","NEUTRAL"].forEach(p=>{cnt[p]=0;chg[p]=0;});
   rows.forEach(r=>{cnt[r.phase]=(cnt[r.phase]||0)+1;if(r.changed_today)chg[r.phase]=(chg[r.phase]||0)+1;});
@@ -6218,7 +6218,7 @@ async function aiOpen(){
       S.aiList=await q("ai_brief","select=trade_date,round,created_at,model,status,data_partial&order=trade_date.desc,round.desc&limit=120");
     }catch(e){
       S.aiList=null;
-      $("#aiBody").innerHTML=`<div class="load">${/ai_brief|404|PGRST|42P01/.test(String(e.message))?"아직 생성된 브리핑이 없습니다 — Actions의 'AI Daily Brief'가 처음 실행되면 표시됩니다.":"불러오기 실패: "+accEsc(String(e.message).slice(0,120))}</div>`;
+      $("#aiBody").innerHTML=`<div class="load">${/ai_brief|404|PGRST|42P01/.test(String(e.message))?"아직 생성된 브리핑이 없습니다 — Actions의 'Post Compute'(AI 브리핑)가 처음 실행되면 표시됩니다.":"불러오기 실패: "+accEsc(String(e.message).slice(0,120))}</div>`;
       return;
     }
     if(!S.aiList.length){$("#aiBody").innerHTML='<div class="load">아직 생성된 브리핑이 없습니다 — 장마감 후 16시·18시 수집이 끝나면 자동으로 만들어집니다.</div>';return;}
