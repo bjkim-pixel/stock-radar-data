@@ -4105,10 +4105,11 @@ function wkSvg(it,n){
 }
 function renderWeekly(row){
   const p=row.payload; if(!p||!p.items)return;
+  p.items=p.items.filter(x=>x.code!=="QQQ");   /* 예전 수집분에 남은 QQQ는 표시하지 않음 */
   $("#gmAsOf").textContent=`주봉 · 기준 ${p.as_of} · 수집 ${row.updated_at?fmtUpdTime(row.updated_at):"–"}`;
   const n=S.gm.wkN||156;
   let h=`<div class="qf seg" id="wkNSel" style="margin:0 0 10px">${[[104,"2년"],[156,"3년"],[260,"5년"],[520,"10년"],[1040,"20년"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===n}">${l}</button>`).join("")}</div>`;
-  h+=wkCorrHtml(p.items);
+  h+=wkCorrHtml(["IXIC","KS11","TNX","WTI"].map(c=>p.items.find(x=>x.code===c)).filter(Boolean));   /* 상관관계: 나스닥·코스피·금리·유가 */
   {const ix=c=>p.items.findIndex(x=>x.code===c);
    [["TNX","#f59e0b"],["WTI","#2e7d32"],["KS11","#7b1fa2"]].forEach(([c,col])=>{if(ix("IXIC")>=0&&ix(c)>=0)h+=wkOverlay(p.items[ix("IXIC")],p.items[ix(c)],col,n);});}
   h+=p.items.map(it=>{
