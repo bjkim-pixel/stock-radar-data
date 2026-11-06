@@ -4024,7 +4024,7 @@ function gmGrid(p,g){
 }
 const GM_COLS=[["d","D"],["w","W"],["m","M"],["m3","3M"],["ytd","YTD"],["hi","고점대비"],["rs3","3M 초과"]];
 function gmTable(p,g){
-  const its=g.keys.map(k=>[k,p.items[k]]).filter(x=>x[1]&&x[1].m);
+  const its=g.keys.map(k=>[k,p.items[k]]).filter(x=>x[1]&&x[1].m&&!x[1].nosum);   // nosum = 요약표 제외(차트 섹션에는 표시)
   const rank={};
   GM_COLS.forEach(([f])=>{
     const s=its.map(x=>x[1].m[f]).filter(v=>v!=null).sort((a,b)=>b-a);

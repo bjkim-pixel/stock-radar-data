@@ -188,7 +188,12 @@ KR_THEMES = [
                     ("TIGER 미디어컨텐츠", None), ("TIGER 게임TOP10", None)]),
     ("K-소비", [("TIGER 화장품", None), ("HANARO Fn K-푸드", "438900"), ("TIGER 여행레저", None)]),
     ("코스닥150", [("KODEX 코스닥150", "229200")]),
+    # 2026-11: 인버스 — 지수·단일종목 인버스 ETF. 요약표에는 코스피 인버스(INVERSE_REP) 1개만 올리고, 아래 테마 차트에는 전부 개별로 표시
+    ("인버스", [("KODEX 인버스", "114800"), ("KODEX 200선물인버스2X", "252670"), ("TIGER 인버스", "123310"),
+              ("KODEX 코스닥150선물인버스", "251340"), ("SOL SK하이닉스선물단일종목인버스2X", "0197X0"),
+              ("PLUS 삼성전자선물단일종목인버스2X", "0193L0")]),
 ]
+INVERSE_THEME, INVERSE_REP = "인버스", "114800"   # 요약표 대표 = 코스피 지수 인버스(KODEX 인버스)
 KR_ETF = [e for _, lst in KR_THEMES for e in lst]
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -901,6 +906,8 @@ def build_kr(S, H, etf_codes, theme_of):
         th = theme_of.get(c, "기타")
         cap = last_cap(c)
         it["th"] = th
+        if th == INVERSE_THEME and c != INVERSE_REP:
+            it["nosum"] = True          # 테마 요약표에서는 제외(차트 섹션에는 표시)
         it["cap"] = round(cap) if cap else None
         it["h"] = H.get("KR:" + c, [])
         items["etf:" + c] = it
