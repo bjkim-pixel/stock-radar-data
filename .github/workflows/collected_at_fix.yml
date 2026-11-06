@@ -1,4 +1,4 @@
-name: AsOf Probe
+name: Fix collected_at default
 on:
   workflow_dispatch:
 permissions:
@@ -16,7 +16,7 @@ jobs:
       - name: Probe
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: python 118_asof_probe.py
+        run: python 119_collected_at_fix.py
       - name: Publish
         if: always()
         run: |
