@@ -21,6 +21,11 @@ on:
         description: '후보 최소 거래대금(억원, 비우면 기본값 300)'
         required: false
         default: ''
+      mine_only:
+        description: '내 종목(관심·투자) 의견만 새로 생성해 오늘 최신 브리핑에 반영'
+        type: boolean
+        required: false
+        default: false
       sim:
         description: '시뮬레이션만(저장·AI 호출 없이 후보 순위 리포트)'
         type: boolean
@@ -67,6 +72,7 @@ jobs:
         run: |
           F=""; [ "${{ github.event.inputs.force }}" = "true" ] && F="--force"
           [ "${{ github.event.inputs.sim }}" = "true" ] && F="$F --sim"
+          [ "${{ github.event.inputs.mine_only }}" = "true" ] && F="$F --mine-only"
           [ -n "${{ github.event.inputs.min_amt }}" ] && F="$F --min-amt ${{ github.event.inputs.min_amt }}"
           python 113_ai_brief.py --round "${{ github.event.inputs.round || 'auto' }}" $F --dump --report brief_report.md
       - name: Publish report (branch ai-brief-report)

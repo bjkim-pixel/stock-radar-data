@@ -194,6 +194,9 @@ def build_digest(conn):
                   "신고가": [x["name"] for x in (feat(u) for u in U) if x["신고가"]][:15]}
     D["유동성통과종목수"] = len(U)
 
+    # 3-2) 내 종목(관심·투자) — 후보 필터와 무관하게 watchlist 전체를 평가
+    D["내종목"] = build_mine(cur.connection, cur, sc, per, sm, sec_rank, len(secs))
+
     # 4~6) 미국·글로벌·매크로 — global_pack(이미 계산된 지표)
     packs = {x["tab"]: x["payload"] for x in rows(cur, "select tab, payload from global_pack")}
     for k, v in list(packs.items()):
@@ -205,6 +208,168 @@ def build_digest(conn):
     D["매크로"] = {"미국": pack_items(us, "macro"), "한국": pack_items(kr, "index") + pack_items(kr, "credit")}
     D["한국테마ETF"] = pack_items(kr, "theme", 30)
     return D
+
+
+# ─────────────────────────────── 내 종목(관심·투자) 매수/보유/매도 의견 ───────────────────────────────
+PHASE_KR = {"ACC": "매집·보합", "MARKUP": "매집·상승", "DIST": "분산·전가", "DOWN": "분산·이탈", "NEUTRAL": "중립"}
+
+def journal_cost(cur, codes):
+    """투자일지(journal_entries)의 매수·매도 기록 → 종목별 평균단가법 평단·보유수량."""
+    out = {}
+    if not codes:
+        return out
+    try:
+        cur.execute("""select stock_code, kind, price, qty from journal_entries
+                       where stock_code = any(%s) and kind in ('매수','매도') and price is not null and qty is not null
+                       order by entry_date, id""", (list(codes),))
+        for code, kind, price, qty in cur.fetchall():
+            price, qty = float(price), float(qty)
+            s = out.setdefault(code, {"qty": 0.0, "cost": 0.0})
+            if kind == "매수":
+                s["cost"] = (s["cost"] * s["qty"] + price * qty) / (s["qty"] + qty) if s["qty"] + qty else price
+                s["qty"] += qty
+            else:
+                s["qty"] -= qty
+                if s["qty"] <= 0:
+                    s["qty"], s["cost"] = 0.0, 0.0
+    except Exception as ex:
+        cur.connection.rollback(); log(f"- ⚠ 투자일지 조회 실패(평단 생략): {str(ex)[:100]}")
+    return {c: v for c, v in out.items() if v["qty"] > 0}
+
+def score_mine(r, p, smrow, sec_rank, n_sec, held, avg_cost):
+    """한 종목의 정량 점수와 근거(항목·값·점수·해석). 모든 숫자는 DB 값, 임계값은 아래 코드 그대로 — AI는 계산하지 않는다."""
+    ev = []
+    def add(item, val, pts, why):
+        ev.append({"항목": item, "값": val, "점수": pts, "설명": why})
+    close = f(r.get("close")); chg = f(r.get("change_pct")) or 0
+    ma5, ma20, ma60, ma120 = (f(r.get("ma" + k)) for k in ("5", "20", "60", "120"))
+    cap = f(r.get("market_cap")) or 0
+    # 1) 추세 — 이동평균 배열
+    if close and ma20 and ma60:
+        g20, g60 = (close / ma20 - 1) * 100, (close / ma60 - 1) * 100
+        aligned = bool(r.get("ma_aligned"))
+        if aligned:   pts, why = 2, "종가>5>20>60>120일선 정배열 — 상승 추세"
+        elif close > ma20 and ma20 > ma60: pts, why = 1, "20일선 위 · 20>60일선 — 상승 추세 유지"
+        elif close < ma60: pts, why = -2, "60일선 아래 — 중기 추세 이탈"
+        elif close < ma20: pts, why = -1, "20일선 아래 — 단기 추세 약화"
+        else: pts, why = 0, "이평선 혼조"
+        add("추세(이평)", f"20일선 {g20:+.1f}% · 60일선 {g60:+.1f}%", pts, why)
+    # 2) 상대강도
+    rs5, rs20 = f(r.get("rs5_pctl")), f(r.get("rs20_pctl"))
+    if rs5 is not None and rs20 is not None:
+        avg = (rs5 + rs20) / 2
+        pts, why = (1, "시장 대비 상위권 — 강세") if avg >= 70 else (-1, "시장 대비 하위권 — 약세") if avg <= 30 else (0, "시장 평균 수준")
+        add("상대강도(RS)", f"5일 {rs5:.0f} · 20일 {rs20:.0f} 백분위", pts, why)
+    # 3) 5일 외국인+기관 수급 (시총 대비)
+    combo5 = (f(p.get("foreign_1w")) or 0) + (f(p.get("inst_1w")) or 0)
+    if cap:
+        c5r = combo5 / cap * 100
+        pts, why = (2, "외기 5일 순매수가 시총의 0.1%↑ — 강한 매집") if c5r >= 0.1 else (1, "외기 5일 순매수 우위") if c5r > 0 \
+            else (-2, "외기 5일 순매도가 시총의 0.1%↑ — 강한 이탈") if c5r <= -0.1 else (-1, "외기 5일 순매도 우위")
+        add("수급(5일 외국인+기관)", f"{round(combo5 / EOK):+,}억 (시총대비 {c5r:+.3f}%)", pts, why)
+    # 4) 오늘 수급 + 연속 매수
+    combo1 = (f(r.get("foreign_net")) or 0) + (f(r.get("inst_net")) or 0)
+    indiv = f(r.get("individual_net")) or 0
+    consec = int(r.get("consec_both_buy") or 0)
+    if combo1 > 0 and consec >= 2: pts, why = 1, f"외국인·기관 {consec}일 연속 동반 순매수"
+    elif combo1 < 0 and indiv > 0: pts, why = -1, "개인만 사고 외국인·기관은 파는 수급(물량 넘기기 패턴)"
+    else: pts, why = 0, "뚜렷한 방향 없음"
+    add("수급(오늘·연속)", f"외기 {round(combo1 / EOK):+,}억 · 개인 {round(indiv / EOK):+,}억 · 연속 {consec}일", pts, why)
+    # 5) 스마트머니 국면
+    ph = (smrow or {}).get("phase")
+    if ph:
+        pts = {"MARKUP": 2, "ACC": 1, "DIST": -2, "DOWN": -2}.get(ph, 0)
+        add("스마트머니 국면", PHASE_KR.get(ph, ph), pts, {"MARKUP": "큰손이 사 모으며 상승 중", "ACC": "큰손 매집 구간", "DIST": "고점권에서 큰손이 개인에게 넘기는 중",
+                                                            "DOWN": "주가가 내려오는데 큰손 이탈 지속"}.get(ph, "큰손 방향 뚜렷하지 않음"))
+    # 6) 고점 위치·과열
+    pf = f(r.get("pct_from_high")); vr = f(r.get("vol_ratio20_prev"))
+    if pf is not None:
+        if chg >= 15 or (vr is not None and vr >= 400 and chg >= 10):
+            pts, why = -1, "당일 급등·거래량 과열 — 추격 위험"
+        elif pf >= -3: pts, why = 1, "고점 부근/신고가 — 돌파 구간"
+        elif pf <= -20: pts, why = -1, "고점 대비 -20% 이하 — 반등 근거 약함"
+        else: pts, why = 0, "고점과 적당한 거리"
+        add("고점 대비 위치", f"{pf:+.1f}% · 오늘 {chg:+.1f}% · 거래량비 {round(vr) if vr is not None else '–'}%", pts, why)
+    # 7) 업종 강도
+    sr = (sec_rank.get(r.get("sector")) or {}).get("RS5순위")
+    if sr is not None:
+        pts, why = (1, "업종이 단기 상위권") if sr <= 5 else (-1, "업종이 단기 하위권") if sr >= n_sec - 4 else (0, "업종 중위권")
+        add("업종 강도", f"{r.get('sector')} RS5 {sr}위/{n_sec}", pts, why)
+    # 8) 내 포지션 (투자종목만)
+    pnl = None
+    if held and avg_cost and close:
+        pnl = (close / avg_cost - 1) * 100
+        if pnl <= -7: pts, why = -3, "평단 -7% 이하 — 손절 기준(트레일링 -7%) 도달"
+        elif pnl <= -3: pts, why = -1, "평단 대비 손실 구간 — 손절선 접근"
+        elif pnl >= 20: pts, why = 0, "수익 20%↑ — 20일선 이탈 시 이익 보호 청산 검토"
+        else: pts, why = 0, "평단 부근~소폭 수익"
+        add("내 평단 대비", f"평단 {avg_cost:,.0f}원 → {pnl:+.1f}%", pts, why)
+    score = sum(e["점수"] for e in ev)
+    # 판정 규칙: 보유 중이면 매수(추가)·보유·매도, 아니면 매수·관망·매도(=진입 회피)
+    if held:
+        act = "매수" if score >= 5 else "매도" if score <= -3 else "보유"
+        if pnl is not None and pnl <= -7: act = "매도"
+    else:
+        act = "매수" if score >= 4 else "매도" if score <= -3 else "관망"
+    stop = None
+    if close:
+        stop = round(ma20 * 0.97) if ma20 else round(close * 0.95)
+        if held and avg_cost: stop = max(stop, round(avg_cost * 0.93))
+        if stop >= close: stop = round(close * 0.95)
+    resist = round(close / (1 + pf / 100)) if (close and pf is not None and pf < 0) else (round(close) if close else None)
+    return score, act, ev, stop, resist, pnl
+
+def build_mine(conn, cur, sc, per, sm, sec_rank, n_sec):
+    """watchlist(관심·투자) 종목 + 투자일지 평단 → 정량 점수·규칙 판정·근거."""
+    wl = rows(cur, "select kind, code, name from watchlist")
+    if not wl:
+        log("- 내 종목: watchlist 비어 있음(또는 테이블 없음) — 건너뜀")
+        return []
+    kinds = {}
+    for w in wl:
+        kinds.setdefault(w["code"], set()).add(w["kind"])
+    names = {w["code"]: w["name"] for w in wl}
+    holds = [c for c, k in kinds.items() if "hold" in k]
+    cost = journal_cost(cur, holds)
+    by = {r["code"]: r for r in sc}
+    out = []
+    for code, ks in kinds.items():
+        r = by.get(code)
+        if not r:
+            log(f"- 내 종목 {names.get(code) or code}({code}): 오늘 데이터 없음 — 제외"); continue
+        held = "hold" in ks
+        c = cost.get(code)
+        score, act, ev, stop, resist, pnl = score_mine(r, per.get(code, {}), sm.get(code, {}), sec_rank, n_sec, held, c["cost"] if c else None)
+        out.append({"code": code, "name": r.get("name") or names.get(code), "구분": ("투자" if held else "관심"), "업종": r.get("sector"),
+                    "종가": f(r.get("close")), "등락%": r1(r.get("change_pct"), 2), "정량점수": score, "규칙판정": act,
+                    "손절참고": stop, "직전고점": resist, "평단": round(c["cost"]) if c else None, "평단대비%": None if pnl is None else round(pnl, 1),
+                    "근거": ev})
+    out.sort(key=lambda x: (x["구분"] != "투자", -x["정량점수"]))
+    log(f"- 내 종목 {len(out)}개 평가 (투자 {sum(1 for x in out if x['구분'] == '투자')} · 관심 {sum(1 for x in out if x['구분'] == '관심')})")
+    return out
+
+ACT_ORDER = {"매도": 0, "관망": 1, "보유": 1, "매수": 2}
+def finalize_mine(D, res):
+    """규칙 판정(코드) + AI 의견(Gemini)을 합쳐 res['mine']을 만든다. AI는 규칙 판정에서 한 단계까지만 조정 가능."""
+    ai = {str(m.get("code", "")).strip(): m for m in (res.get("mine") or []) if isinstance(m, dict)}
+    items = []
+    for x in D.get("내종목") or []:
+        held = x["구분"] == "투자"
+        allowed = ("매수", "보유", "매도") if held else ("매수", "관망", "매도")
+        a = ai.get(x["code"]) or {}
+        act = a.get("action") if a.get("action") in allowed else x["규칙판정"]
+        if abs(ACT_ORDER[act] - ACT_ORDER[x["규칙판정"]]) > 1:
+            act = x["규칙판정"]
+        ev = x["근거"]
+        top = sorted(ev, key=lambda e: -abs(e["점수"]))[:2]
+        auto = f"{x['규칙판정']} 판정: " + ", ".join(f"{e['항목']} {e['점수']:+d}({e['설명']})" for e in top if e["점수"]) if any(e["점수"] for e in top) else f"{x['규칙판정']} 판정: 뚜렷한 우위 항목 없음"
+        neg = sorted([e for e in ev if e["점수"] < 0], key=lambda e: e["점수"])
+        items.append({"code": x["code"], "name": x["name"], "kind": x["구분"], "action": act, "rule_action": x["규칙판정"], "score": x["정량점수"],
+                      "opinion": (a.get("opinion") or auto), "risk": (a.get("risk") or (neg[0]["설명"] if neg else "")),
+                      "stop": x["손절참고"], "resist": x["직전고점"], "avg_cost": x["평단"], "pnl_pct": x["평단대비%"],
+                      "close": x["종가"], "chg": x["등락%"], "asof": D["기준일"], "evidence": ev, "ai": bool(a.get("opinion"))})
+    res["mine"] = items
+    return res
 
 # ─────────────────────────────── Gemini ───────────────────────────────
 SCHEMA_HINT = """{
@@ -221,6 +386,7 @@ SCHEMA_HINT = """{
  "focus_sectors": [{"name": "업종명(업종 목록의 이름 그대로)", "reason": "단기 스윙 관점 근거"}],
  "picks": [{"code": "후보종목의 code 그대로", "name": "종목명", "reason": "선정 근거 1~2문장(수급·가격·업종)",
             "risk": "주의할 점 1문장", "invalidation": "이 조건이 나오면 관심 제외(구체적으로)"}],
+ "mine": [{"code": "내종목의 code 그대로", "action": "내종목의 규칙판정과 같거나 한 단계 차이(매수|보유|관망|매도)", "opinion": "의견 2문장 — 근거 항목의 수치를 인용", "risk": "주의점 1문장"}],
  "avoid": [{"name": "업종 또는 유형", "reason": "근거 1문장"}],
  "checkpoints": ["내일 장에서 확인할 것 (3개)"]
 }"""
@@ -233,7 +399,8 @@ def prompt_of(D, err=None):
 3) focus_sectors는 3개, 업종 목록의 이름 그대로 쓴다.
 4) 금액 단위는 억원, 등락은 %. 문장은 한국어 존댓말 없이 간결한 보고서체(~임, ~함 아님, 평서문 '~다').
 5) 투자 권유가 아니라 분석 보조임을 전제로, 단정 대신 조건·근거를 분명히 쓴다.
-6) 출력은 아래 형식의 JSON 하나만. 마크다운 금지.
+6) "내종목"이 비어 있지 않으면 mine에 내종목 전부를 code별로 한 번씩 쓴다. 각 종목은 코드가 계산한 정량점수·규칙판정·근거(항목별 점수)를 따르며, action은 규칙판정과 같거나 인접한 값만 가능(바꾸면 opinion에 이유). 근거에 없는 수치·뉴스를 쓰지 않는다. 투자 구분은 보유 중(매수=추가매수, 보유, 매도=청산·비중축소), 관심 구분은 미보유(매수=신규진입, 관망, 매도=진입 회피).
+7) 출력은 아래 형식의 JSON 하나만. 마크다운 금지.
 형식:
 {SCHEMA_HINT}
 
@@ -281,6 +448,7 @@ def validate(res, D):
     if len(picks) < 3:
         return None, f"picks 중 후보 목록에 있는 code가 {len(picks)}개뿐 — 후보종목의 code만 정확히 5개"
     res["picks"] = picks[:5]
+    finalize_mine(D, res)
     res["focus_sectors"] = [s for s in (res.get("focus_sectors") or []) if s.get("name") in secnames][:3]
     if res.get("stance") not in ("공격", "중립", "방어"):
         res["stance"] = "중립"
@@ -290,9 +458,9 @@ def validate(res, D):
 
 def fallback(D):
     c = D["후보종목"][:5]
-    return {"headline": "AI 미생성 — 규칙 점수 상위 후보만 표시", "stance": None, "fallback": True,
+    return finalize_mine(D, {"headline": "AI 미생성 — 규칙 점수 상위 후보만 표시", "stance": None, "fallback": True,
             "picks": [{"code": x["code"], "name": x["name"], "sector": x["업종"], "close": x["종가"], "chg": x["등락%"], "score": x["규칙점수"],
-                       "reason": "규칙 점수 상위(모멘텀·수급·추세·업종)", "risk": ", ".join(x["리스크"]) or "-", "invalidation": "-"} for x in c]}
+                       "reason": "규칙 점수 상위(모멘텀·수급·추세·업종)", "risk": ", ".join(x["리스크"]) or "-", "invalidation": "-"} for x in c]})
 
 # ─────────────────────────────── 추천 성과 추적 ───────────────────────────────
 def update_perf(conn):
@@ -368,6 +536,35 @@ def sim(conn, D):
     finish()
 
 # ─────────────────────────────── main ───────────────────────────────
+def mine_only(conn):
+    """내 종목 의견만 새로 만들어 오늘 최신 브리핑의 result.mine에 덮어쓴다(시장 브리핑·추천은 그대로). 종목을 담은 직후 바로 확인하고 싶을 때."""
+    D = build_digest(conn)
+    td = D["기준일"]
+    if not D.get("내종목"):
+        log("- 내 종목이 없어 종료"); return finish()
+    res = {}
+    if KEY:
+        slim = {"기준일": td, "국내시장": D["국내시장"], "내종목": D["내종목"]}
+        p = ("너는 한국 주식 단기 스윙 애널리스트다. 아래 데이터(코드가 계산한 정량 점수·규칙판정·근거)만 사용해 내종목 각각의 의견을 쓴다. "
+             "숫자를 지어내지 않는다. 평서문 보고서체. action은 규칙판정과 같거나 인접한 값만(투자=매수·보유·매도, 관심=매수·관망·매도), 바꾸면 opinion에 이유. "
+             'JSON 하나만: {"mine":[{"code":"","action":"","opinion":"2문장(근거 수치 인용)","risk":"1문장"}]}\n\n'
+             + json.dumps(slim, ensure_ascii=False, separators=(",", ":")))
+        try:
+            res, _ = call_gemini(p)
+        except Exception as ex:
+            log(f"- ⚠ AI 오류 — 규칙 판정만 저장: {str(ex)[:150]}"); res = {}
+    finalize_mine(D, res)
+    with conn.cursor() as cur:
+        cur.execute("""update ai_brief set result = coalesce(result,'{}'::jsonb) || jsonb_build_object('mine', %s::jsonb)
+                       where trade_date=%s and round=(select max(round) from ai_brief where trade_date=%s)""",
+                    (json.dumps(res["mine"], ensure_ascii=False), td, td))
+        n = cur.rowcount
+    conn.commit()
+    log(f"- 내 종목 의견 저장: {len(res['mine'])}개 → {td} 최신 브리핑 {n}건 갱신" + ("" if n else " (해당 날짜 브리핑이 아직 없음 — 먼저 AI 브리핑 실행)"))
+    for m in res["mine"]:
+        log(f"  - {m['name']}({m['code']}) [{m['kind']}] {m['action']} · 점수 {m['score']:+d} · {m['opinion'][:90]}")
+    finish()
+
 def main():
     if not DB_URL:
         raise SystemExit("SUPABASE_DB_URL 미설정")
@@ -379,6 +576,8 @@ def main():
     with conn.cursor() as cur:
         cur.execute(open(os.path.join(here, "113_ai_brief.sql"), encoding="utf-8").read()); conn.commit()
     log(f"# AI 데일리 브리핑 ({now:%Y-%m-%d %H:%M} KST · {rnd}회차 = {'16시' if rnd == 1 else '18시'} 데이터)")
+    if "--mine-only" in ARGS:
+        return mine_only(conn)
     D = build_digest(conn)
     td = D["기준일"]
     if "--sim" in ARGS:   # 시뮬레이션: 저장·AI 호출 없이 최소 거래대금 기준의 후보 순위만 출력

@@ -6361,6 +6361,11 @@ async function aiRender(b){
     <div class="ai-sub">주목 업종</div>${chips(R.focus_sectors)}
     <div class="ai-sub">관심 종목 (단기 스윙)</div>
     <div class="ai-picks">${pickRows||'<div class="load">없음</div>'}</div>
+    ${(R.mine||[]).length?`<div class="ai-sub">내 종목 매수·보유·매도 의견 <span class="faint" style="font-weight:400;font-size:11px">관심·투자 종목 · 정량 점수 기반 · 행을 눌러 근거 보기</span></div>
+      <div class="ai-picks">${R.mine.map(m=>`<details class="ai-pick"><summary style="cursor:pointer;list-style:none"><div class="ai-pick-hd">${holdBtn(m.code)}${favStar(m.code)} <a class="lk nm" data-code="${E(m.code)}">${E(m.name)}</a>
+        <span class="tg ${m.kind==="투자"?"hold-t":"ai-t"}">${E(m.kind)}</span> <span class="mine-act ${ACT_CLS[m.action]||"hld"}" style="font-size:12px;padding:1px 8px">${E(m.action)}</span>
+        <span class="faint" style="font-size:11px">점수 ${m.score>0?"+":""}${m.score}</span><span class="ai-pick-px">${m.close!=null?N(m.close,0):"–"} <span class="${sgn(m.chg)}">${m.chg!=null?pm(m.chg,1)+"%":""}</span></span></div>
+        <div class="faint" style="font-size:12px;margin-top:3px">${E(m.opinion||"")}</div></summary><div style="margin-top:8px">${mineEvHTML(m)}</div></details>`).join("")}</div>`:""}
     ${(R.avoid||[]).length?`<div class="ai-sub">피할 업종·유형</div>${chips(R.avoid)}`:""}
     ${(R.checkpoints||[]).length?`<div class="ai-sub">내일 체크포인트</div><ul class="ai-txt" style="margin:0;padding-left:18px">${R.checkpoints.map(x=>`<li>${E(x)}</li>`).join("")}</ul>`:""}
     ${sec("① 국내 시장 · 지수·거래대금·수급 비교",`${txt(R.market)}
