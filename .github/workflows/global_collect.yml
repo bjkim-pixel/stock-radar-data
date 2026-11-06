@@ -21,6 +21,14 @@ on:
         description: '수집 없이 묶음만 다시 생성 (true/false)'
         required: false
         default: 'false'
+      etf:
+        description: 'ETF 일봉 수집 + 글로벌주식 탭 묶음도 실행 (true/false, 수동 기본 true)'
+        required: false
+        default: 'true'
+      etf_full:
+        description: 'ETF 전 종목을 2025-09-01부터 다시 수집 (true/false)'
+        required: false
+        default: 'false'
   # push 트리거 제거(2026-10-25): 코드를 올릴 때마다 자동으로 돌지 않고, 예약·연결·수동 실행(Run workflow)만 씁니다.
 
 concurrency:
@@ -105,6 +113,19 @@ jobs:
           else
             python 21_collect_global.py --report global_report.md
           fi
+      # 2026-11-06 통합: 예전 'ETF Collection'(매일 16:50)을 이 워크플로로 합침. 한국 장마감 후 실행(낮 12시 이후)이거나 수동 실행일 때만.
+      - name: ETF 일봉 수집 + 글로벌주식 탭 묶음
+        if: steps.gate.outputs.run == 'true' && github.event.inputs.pack_only != 'true' && github.event.inputs.etf != 'false'
+        env:
+          KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+          KIS_ACCESS_TOKEN: ${{ steps.kistoken.outputs.token }}
+        run: |
+          HH=$(TZ=Asia/Seoul date +%-H)
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "$HH" -lt 12 ]; then echo "아침(미국 마감) 실행 — ETF 수집은 한국 장마감 후에만"; exit 0; fi
+          if [ "${{ github.event.inputs.etf_full }}" = "true" ]; then python 107_etf_collect.py --full; else python 107_etf_collect.py; fi
+          python 109_global_stock_pack.py
       - name: Publish report (branch global-report)
         if: always() && steps.gate.outputs.run == 'true'
         run: |
