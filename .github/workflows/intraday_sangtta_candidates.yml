@@ -1,4 +1,4 @@
-name: "[상시] 상따 후보 백업수집 | 평일 09:05·09:25 | 전략성과2 후보(릴레이 백업)"
+name: "[상시7] 상따 후보 백업수집 (별도 흐름) | 평일 09:05·09:25 | 전략성과2 후보"
 
 # sangtta_virtual_trading_spec.md 1~3절의 3단계 후보 생성을 스케줄대로 실행합니다.
 # intraday_candidates 테이블에 단계별(source)로 UPSERT됩니다.
