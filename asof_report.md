@@ -1,0 +1,2 @@
+수정 후: [(datetime.date(2026, 11, 6), 313, 313, datetime.datetime(2026, 11, 6, 3, 47, 51, 898942, tzinfo=datetime.timezone.utc))]
+v_data_status: [(datetime.date(2026, 11, 6), datetime.datetime(2026, 11, 6, 3, 47, 51, 898942, tzinfo=datetime.timezone.utc), True, 313)]
