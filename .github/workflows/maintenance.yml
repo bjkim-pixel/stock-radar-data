@@ -1,0 +1,61 @@
+name: Maintenance (유지보수·점검 — vacuum · 용량 · 종목상세 점검)
+
+# 예전의 Vacuum DB / DB Size Probe / Stock Detail Audit 를 하나로 합쳤습니다.
+#   vacuum       — dead tuple 정리(08_vacuum.py). 매주 토요일 05:00 KST 자동 실행 + 디스크 풀 대응 수동 실행
+#   db_size      — DB 용량 점검(읽기 전용) → 브랜치 db-size-report
+#   detail_audit — 종목상세 데이터 점검(읽기 전용) → 브랜치 audit-report
+# 2026-09-23: daily_metrics가 매일 과거 이력을 재계산(UPDATE)하는 구조라 dead tuple이 쌓여 주말(장 없음)에 1회 자동 vacuum.
+on:
+  schedule:
+    - cron: "0 20 * * 5"   # 토요일 05:00 KST = 금요일 20:00 UTC → 입력이 없으므로 vacuum
+  workflow_dispatch:
+    inputs:
+      task:
+        description: '실행할 작업'
+        required: true
+        default: 'vacuum'
+        type: choice
+        options:
+          - vacuum
+          - db_size
+          - detail_audit
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TASK: ${{ inputs.task || 'vacuum' }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary requests
+      - name: Vacuum
+        if: env.TASK == 'vacuum'
+        run: python 08_vacuum.py
+      - name: DB size probe
+        if: env.TASK == 'db_size'
+        run: python 102_db_size_probe.py
+      - name: Publish db-size report
+        if: always() && env.TASK == 'db_size'
+        uses: ./.github/actions/publish-report
+        with:
+          branch: db-size-report
+          file: db_size_report.md
+      - name: Stock detail audit
+        if: env.TASK == 'detail_audit'
+        run: python 90_stock_detail_audit.py audit_report.md
+      - name: Publish audit report
+        if: always() && env.TASK == 'detail_audit'
+        uses: ./.github/actions/publish-report
+        with:
+          branch: audit-report
+          file: audit_report.md

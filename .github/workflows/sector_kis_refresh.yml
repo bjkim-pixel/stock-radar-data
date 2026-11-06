@@ -1,4 +1,4 @@
-name: Sector Classification (KIS) — 갱신·CSV·디버그
+name: Sector Admin (업종 분류 — 갱신·CSV·디버그·일괄 지정)
 
 # 2026-10-25: "Sector Snapshot"과 이 워크플로를 하나로 합쳤습니다(둘 다 21_sector_kis_refresh.py를 쓰는 수동 실행 도구).
 # 실행 모드(수동 실행 화면에서 선택):
@@ -6,6 +6,8 @@ name: Sector Classification (KIS) — 갱신·CSV·디버그
 #   refresh        — 업종 분류 갱신만
 #   export_only    — 갱신 없이 현재 DB 기준 CSV 내보내기·미분류 종목 점검만 커밋
 #   debug          — 한 종목의 KIS 응답 필드 확인(DB 변경 없음)
+#   set_sectors    — 미분류 종목에 업종 일괄 지정(예전 Set Stock Sectors; sector_override 저장, KIS 호출 없음). 사용법:
+#       1) entries를 비워 실행 → '지금 미분류인 종목'과 '쓸 수 있는 업종 이름' 표시  2) entries에 "종목=업종; 종목=업종" + dry_run=true → 검증만  3) 문제없으면 dry_run=false → 저장
 on:
   workflow_dispatch:
     inputs:
@@ -19,17 +21,32 @@ on:
           - refresh
           - export_only
           - debug
+          - set_sectors
       debug_code:
         description: 'debug 모드일 때 조회할 종목코드 (기본: 한국콜마 161890)'
         required: false
         default: '161890'
+      entries:
+        description: '(set_sectors) 종목=업종; 종목=업종 … (종목은 이름 또는 6자리 코드, 예: 엑시콘=반도체; 지투지바이오=제약). 비우면 미분류 목록만 표시'
+        required: false
+        default: ''
+      lookup:
+        description: '(set_sectors) 업종 값을 점검할 종목 이름들 — 예: 엑시콘, 지투지바이오. 비우면 최근 추가 종목 20개만 점검'
+        required: false
+        default: ''
+      dry_run:
+        description: '(set_sectors) 미리보기만(저장 안 함) — 확인 후 false로 다시 실행하면 저장'
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: write
 
 concurrency:
   # KIS REST는 "초당 20건"이 앱키 단위 한도라서 종목 전체를 도는 수집 워크플로를 같은 group으로 줄 세웁니다.
-  group: kis-rest-batch
+  # set_sectors 모드는 KIS를 쓰지 않으므로 줄 세우지 않고 실행마다 따로 돕니다.
+  group: ${{ inputs.mode == 'set_sectors' && format('sector-set-{0}', github.run_id) || 'kis-rest-batch' }}
   cancel-in-progress: false
 
 jobs:
@@ -42,6 +59,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 먼저 시작한 NXT 수집이 끝날 때까지 기다리기
+        if: ${{ inputs.mode != 'set_sectors' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/scripts/wait_kis_turn.sh "nxt_collect.yml" 20
@@ -116,6 +134,22 @@ jobs:
             git commit -m "업종 분류 스냅샷 갱신 ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
             git push
           fi
+
+      - name: Set sectors (업종 일괄 지정 — DB만 사용)
+        if: ${{ inputs.mode == 'set_sectors' }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          ENTRIES: ${{ inputs.entries }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          LOOKUP: ${{ inputs.lookup }}
+        run: python 89_set_sectors.py --report sector_report.md
+
+      - name: Publish sector report
+        if: ${{ always() && inputs.mode == 'set_sectors' }}
+        uses: ./.github/actions/publish-report
+        with:
+          branch: sector-report
+          file: sector_report.md
 
       - name: Notify on failure
         if: failure()

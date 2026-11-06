@@ -1,0 +1,28 @@
+name: Publish report branch
+description: 결과 리포트(md) 한 개를 지정한 브랜치에 올려(고아 브랜치, 덮어쓰기) 어디서든 읽을 수 있게 합니다. 워크플로 마지막 단계에서 if always() 로 호출하세요.
+inputs:
+  branch:
+    description: '리포트를 올릴 브랜치 이름'
+    required: true
+  file:
+    description: '리포트 파일 경로(없으면 "리포트 없음 — 실패" 문구로 대체)'
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        BRANCH: ${{ inputs.branch }}
+        FILE: ${{ inputs.file }}
+      run: |
+        [ -f "$FILE" ] || echo "리포트 없음 — 실패. Actions 로그 확인" > "$FILE"
+        NAME=$(basename "$FILE")
+        cp "$FILE" "/tmp/$NAME"
+        git config user.name "github-actions"
+        git config user.email "github-actions@users.noreply.github.com"
+        git checkout --orphan "$BRANCH"
+        git rm -rq --cached . || true
+        cp "/tmp/$NAME" "$NAME"
+        git add -f "$NAME"
+        git commit -qm "report $BRANCH ${{ github.run_id }}"
+        git push -f origin "$BRANCH"
