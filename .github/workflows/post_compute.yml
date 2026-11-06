@@ -221,3 +221,28 @@ jobs:
       - if: always()
         uses: ./.github/actions/publish-report
         with: { branch: ai-brief-report, file: brief_report.md }
+
+  # AI추천 가상매매 — 브리핑의 '추천 종목'이 새로 저장된 직후, 전략성과의 AI추천(AIPICK) 포지션·신호만 다시 계산합니다.
+  # (compute.yml 이 VIRTUAL 포지션을 통째로 재생성하는 것과 겹치지 않도록 같은 concurrency 그룹 사용. 추세추종·종가베팅은 건드리지 않음)
+  aipick:
+    needs: [ai]
+    if: ${{ !cancelled() && needs.ai.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: compute-db-write
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: AI추천 가상매매 재계산
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        shell: bash
+        run: python 06_portfolio.py --aipick-only | tee aipick_report.txt
+      - if: always()
+        uses: ./.github/actions/publish-report
+        with: { branch: aipick-report, file: aipick_report.txt }

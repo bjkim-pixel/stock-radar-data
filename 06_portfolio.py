@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅 / 종가베팅2)
+STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅 / AI추천)
 ==========================================================================
 06_signals.sql이 만든 V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3(3단계 통과 종목)
-/ V4_CAND_CLOSEBET2_2(2단계 통과 종목)를 받아, 포지션 상태가 있어야만
-판정할 수 있는 매수·불타기·매도를 처리합니다.
+를 받아, 포지션 상태가 있어야만 판정할 수 있는 매수·불타기·매도를 처리합니다.
+AI추천(AIPICK)은 06_signals.sql 후보가 아니라 ai_brief 테이블의 '추천 종목(picks)'을 입력으로 씁니다.
 
 세 전략은 완전히 독립적으로 운용됩니다 — 추세추종이 산 종목은 추세추종
-규칙으로만 팔고, 종가베팅/종가베팅2가 산 종목은 각자 규칙으로만 팝니다.
+규칙으로만 팔고, 종가베팅/AI추천이 산 종목은 각자 규칙으로만 팝니다.
 같은 종목을 여러 전략이 동시에 보유할 수도 있습니다(서로 다른 포지션으로
 취급).
 
-  06_signals.sql  → V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3 / V4_CAND_CLOSEBET2_2
-  06_portfolio.py → V4_BUY_TREND / V4_BUY_CLOSEBET / V4_BUY_CLOSEBET2 (실제 가상매수)
+  06_signals.sql  → V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3
+  06_portfolio.py → V4_BUY_TREND / V4_BUY_CLOSEBET / V4_BUY_AIPICK (실제 가상매수)
                     V4_PYRAMID_TREND                       (+20%마다 불타기, 무제한)
                     V4_SELL_TREND / V4_CRASH_SELL_TREND    (고점 대비 단계형 트레일링 손절,
                                                              단 손익분기 보호선 적용 — 아래 참조)
-                    V4_SELL_CLOSEBET / V4_SELL_CLOSEBET2   (매수 익일 시가 전량 매도)
+                    V4_SELL_CLOSEBET                       (매수 익일 시가 전량 매도)
+                    V4_SELL_AIPICK                         (고점 대비 단계형 트레일링 — 추세추종과 같은 손절선)
 
   ⚠ 2026-09-08 손익분기 보호선(breakeven floor) 추가 — 배경: 6월까지 지수 9000대
     상승장에선 -7% 트레일링도 종종 수익으로 마감했지만, 7월 급락 이후 6000~7000대
@@ -59,7 +60,6 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅 / 
       ③ v5의 Breadth 국면 배수가 아예 미구현 — 파이프라인 어디에도 B20이 없었음
     ①②는 백테스트 기준으로 되돌리고, ③은 breadth_regime()으로 이식했다.
     종가베팅도 "중간 국면 매수중단"(백테스트상 MDD율 -15.4%→-1.9%)을 적용.
-    ※ 종가베팅2(CLOSEBET2)는 사용자 요청으로 이번 변경에서 제외 — 기존 규칙 유지.
 
 매수 금액 — 시가총액 구간별 차등 (불타기 포함, ENTRY_AMOUNT_TIERS)
   · 시가총액 5조원 미만          : 1천만원
@@ -85,17 +85,21 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅 / 
     · 불타기: 없음
     · 매도: 매수 익일 정규장 시가에 무조건 전량 매도 (보유기간 1거래일 고정)
 
-  종가베팅2 (CLOSEBET2, 2026-09-11 신설)
-    · 매수: 2단계 통과 종목 전부(한도 없음, 정규장 마감 후 NXT 마감가에 매수),
-            시총 구간별 금액(위 참조) — NXT 마감가 미수집 시 그날 정규장 종가로 대체
-    · 불타기: 없음
-    · 매도: 매수 익일 정규장 시가에 무조건 전량 매도 (종가베팅과 동일한 청산 규칙)
-    · 신호·매수는 그날 세 번째 계산 실행(20:15 KST, nxt_collect.yml 이후)에서만
-      확정됨 — compute.yml 참고
+  AI추천 (AIPICK, 2026-11-06 신설 — 성과 저조로 폐기한 종가베팅2 자리를 대체)
+    · 매수: AI 브리핑(ai_brief, status=ok)의 그날 '추천 종목(picks)' 전부. 추천이 생성된 회차
+            (0=장중 · 1=16시 · 2=18시)의 추천 당시 가격(picks[].close)에 매수. 같은 날 여러
+            회차에 같은 종목이 나오면 가장 먼저 추천된 회차 가격으로 1회만 매수.
+            금액은 다른 전략과 같은 시총 구간별 금액(1천만/2천만/3천만원).
+    · 불타기·타임스톱: 없음
+    · 매도: 추세추종과 같은 단계형 트레일링 — 고점(종가 기준) 대비 -7%(고점수익 5%미만 =
+            사실상 매수가 -7%) → 5~15% -5% → 15~30% -4% → 30%↑ -3%, 고점 +5% 이후엔 손익분기
+            보호선(매수가+0.3%). 판정은 일봉 종가 기준.
+    · 입력: ai_brief 는 06_portfolio.py 가 아니라 post_compute.yml(AI 브리핑 생성 직후)에서
+            `python 06_portfolio.py --aipick-only` 로 AI추천 포지션만 다시 계산합니다.
 
 포트폴리오 두 종류
   VIRTUAL : 엔진이 자동 운용. 매 실행 시 전 기간을 처음부터 재생성하므로
-            (결정론적) 직접 수정하지 마세요. strategy 컬럼으로 TREND/CLOSEBET/CLOSEBET2 구분.
+            (결정론적) 직접 수정하지 마세요. strategy 컬럼으로 TREND/CLOSEBET/AIPICK 구분.
   REAL    : 사용자가 positions에 직접 넣은 실제 보유분(전략 구분 없음, 기존
             추세추종형 트레일링 손절 규칙 그대로 적용). 엔진은 peak_price
             갱신과 신호 생성만 합니다. ⚠ 손절 조건이 걸리면 REAL 포지션도
@@ -104,6 +108,7 @@ STOCK RADAR · 전략별 가상 포지션 엔진 (추세추종 / 종가베팅 / 
 사용법
   python 06_portfolio.py                    # DB에 있는 전체 기간
   python 06_portfolio.py 20260101 20260818  # 날짜 범위 지정 (신호 생성 구간)
+  python 06_portfolio.py --aipick-only      # AI추천(AIPICK) 포지션·신호만 다시 계산 (AI 브리핑 생성 직후)
 
 ⚠ VIRTUAL 포트폴리오는 항상 가장 이른 후보 발생일부터 전 기간을 재생성합니다.
    포지션이 과거 상태에 의존하기 때문에 부분 재계산이 불가능하기 때문입니다.
@@ -223,15 +228,17 @@ def trail_pct_for(peak_gain):
 BREAKEVEN_TRIGGER_PCT = 0.05      # 고점이 매수가 대비 +5% 이상 찍은 적 있으면 활성화
 BREAKEVEN_FLOOR_PCT   = 0.003     # 활성화 시 매수가 +0.3%(왕복비용 0.24% 커버) 밑으로는 손절선이 안 내려감
 
-CAND_SIGNAL = {"TREND": "V4_CAND_TREND_3", "CLOSEBET": "V4_CAND_CLOSEBET_3",
-               "CLOSEBET2": "V4_CAND_CLOSEBET2_2"}
+CAND_SIGNAL = {"TREND": "V4_CAND_TREND_3", "CLOSEBET": "V4_CAND_CLOSEBET_3"}
 
 # VIRTUAL 신호는 매 실행 시 전 기간을 재생성하므로 "지우고 다시 넣기"가 안전합니다.
 VIRTUAL_SIGNAL_TYPES = [
     "V4_BUY_TREND", "V4_PYRAMID_TREND", "V4_SELL_TREND", "V4_CRASH_SELL_TREND",
     "V4_BUY_CLOSEBET", "V4_SELL_CLOSEBET",
-    "V4_BUY_CLOSEBET2", "V4_SELL_CLOSEBET2",
+    "V4_BUY_AIPICK", "V4_SELL_AIPICK",
 ]
+AIPICK_SIGNAL_TYPES = ["V4_BUY_AIPICK", "V4_SELL_AIPICK"]
+# 폐지된 전략(종가베팅2)의 가상매매 신호 — 실행 때마다 지웁니다(후보 신호 V4_CAND_CLOSEBET2_2 는 relay 가 쓰므로 유지).
+LEGACY_SIGNAL_TYPES = ["V4_BUY_CLOSEBET2", "V4_SELL_CLOSEBET2"]
 
 # REAL 신호는 다릅니다. 한 번 청산된 REAL 포지션은 다음 실행 때 OPEN이 아니라서
 # 다시 계산되지 않는데, VIRTUAL과 똑같이 "이번에 안 나왔으니 stale"로 지워버리면
@@ -257,12 +264,13 @@ for _a in sys.argv[1:]:
     if _a.startswith("--sim-from="):
         SIM_FROM = datetime.date.fromisoformat(iso(_a.split("=", 1)[1]))
 DRY_RUN = "--dry-run" in sys.argv
+AIPICK_ONLY = "--aipick-only" in sys.argv     # AI추천 포지션·신호만 재계산(추세추종·종가베팅·REAL은 건드리지 않음)
 
 
 # ── 데이터 로드 ───────────────────────────────────────────────────────────────
 def load_all(cur):
     """전략별 3단계 후보·종가·시가·종목명을 한 번에 읽어 메모리에 올립니다."""
-    candidates = {"TREND": {}, "CLOSEBET": {}, "CLOSEBET2": {}}
+    candidates = {"TREND": {}, "CLOSEBET": {}, "AIPICK": {}}
     for strat, sigtype in CAND_SIGNAL.items():
         cur.execute("""
             SELECT sg.trade_date, sg.code, sg.reason, s.name
@@ -297,6 +305,43 @@ def load_all(cur):
 
     cur.execute("SELECT code, name FROM stocks")
     names = dict(cur.fetchall())
+
+    # AI추천: ai_brief 의 추천 종목(picks). 같은 날 여러 회차에 같은 종목이 나오면 가장 이른 회차만.
+    cur.execute("""
+        SELECT trade_date, round, created_at, result->'picks'
+        FROM ai_brief
+        WHERE status = 'ok' AND trade_date >= %s AND result ? 'picks'
+        ORDER BY trade_date, round
+    """, (SIM_START,))
+    raw = cur.fetchall()
+    pick_codes = sorted({p.get("code") for _, _, _, pk in raw for p in (pk or []) if p.get("code")})
+    mcaps = {}
+    if pick_codes:
+        cur.execute("""
+            SELECT trade_date, code, market_cap FROM daily_price
+            WHERE trade_date >= %s AND code = ANY(%s) AND market_cap IS NOT NULL
+        """, (SIM_START, pick_codes))
+        mcaps = {(d, c): float(m) for d, c, m in cur.fetchall()}
+    for d, rnd, created, picks in raw:
+        seen = {x["code"] for x in candidates["AIPICK"].get(d, [])}
+        for rank, p in enumerate(picks or [], 1):
+            code = p.get("code")
+            if not code or code in seen:
+                continue
+            seen.add(code)
+            try:
+                px = int(round(float(p.get("close") or 0)))
+            except (TypeError, ValueError):
+                px = 0
+            candidates["AIPICK"].setdefault(d, []).append({
+                "code": code, "name": p.get("name") or names.get(code, code),
+                "pick_score": rnd * 10 + rank,          # 회차 먼저, 그다음 AI 순위
+                "close": px, "nxt_close": 0,
+                "reason": {"round": int(rnd), "rank": rank, "sector": p.get("sector"),
+                           "chg": p.get("chg"), "score": p.get("score"),
+                           "picked_at": created.astimezone(KST).strftime("%H:%M") if created else None,
+                           "market_cap": mcaps.get((d, code))},
+            })
 
     # 2026-09-15: Breadth(B20) 국면 — 시총 2조원 이상 종목 중 20일선 위 비율.
     # 백테스트 v5의 2층 구조("무엇을 살지"는 1층, "얼마나 살지"는 이 2층)와
@@ -670,76 +715,93 @@ def process_day_closebet(day, open_pos, day_closes, day_opens, day_candidates, s
     return closed
 
 
-# ── 종가베팅2: 하루 처리 (NXT 마감가 매수 · 익일 시가 전량 매도 · 불타기 없음) ──
-def process_day_closebet2(day, open_pos, day_closes, day_opens, day_candidates, sig, allow_buy):
+# ── AI추천: 하루 처리 (추천 당시 가격 매수 · 추세추종과 같은 트레일링 매도 · 불타기/타임스톱 없음) ──
+ROUND_LABEL = {0: "장중", 1: "16시", 2: "18시"}
+
+
+def process_day_aipick(day, open_pos, day_closes, day_candidates, sig, allow_buy=True):
     closed = []
 
-    # 1) 매도 판정 — 매수 다음 거래일 시가에 무조건 전량 매도 (종가베팅과 동일)
+    # 1) 매도 판정 — 일봉 종가 기준 고점 갱신 + 단계형 트레일링 + 손익분기 보호선(추세추종과 동일). 매수 당일은 제외.
     for code, pos in list(open_pos.items()):
         if pos.entry_date >= day:
             continue
-        openp = day_opens.get(code)
-        if openp is None:
-            openp = day_closes.get(code)   # 시가 데이터가 없으면 종가로 대체
-        if openp is None:
-            continue                       # 거래정지 등 — 판정 보류(다음날 재시도)
-        pos.close_out(day, openp, "NEXT_OPEN_EXIT")
-        closed.append(pos)
-        del open_pos[code]
-        sig.add(day, code, "V4_SELL_CLOSEBET2", "SELL",
-                min(100.0, max(0.0, 50 + float(pos.return_pct or 0))),
-                {
-                    "portfolio":    pos.portfolio,
-                    "strategy":     "CLOSEBET2",
-                    "entry_date":   pos.entry_date.isoformat(),
-                    "entry_price":  pos.entry_price,
-                    "exit_price":   openp,
-                    "quantity":     pos.quantity,
-                    "invested":     pos.invested,
-                    "realized_pnl": pos.realized_pnl,
-                    "return_pct":   float(pos.return_pct or 0),
-                    "exit_reason":  "NEXT_OPEN_EXIT",
-                },
-                f"[종가베팅2] {pos.name} 익일시가 전량매도 · {openp:,}원 · "
-                f"실현 {pos.return_pct:.1f}% ({pos.realized_pnl:,}원)")
+        close = day_closes.get(code)
+        if close is None:
+            continue
+        if close > pos.peak_price:
+            pos.peak_price = close
+            pos.peak_date = day
+            pos.peak_at = market_close_ts(day)
+        dd = close / pos.peak_price - 1
+        peak_gain = pos.peak_price / pos.entry_price - 1
+        trail_pct = trail_pct_for(peak_gain)
+        breakeven_active = peak_gain >= BREAKEVEN_TRIGGER_PCT
+        breakeven_floor = pos.entry_price * (1 + BREAKEVEN_FLOOR_PCT) if breakeven_active else None
+        trail_stop = pos.peak_price * (1 + trail_pct)
+        stop_line = max(trail_stop, breakeven_floor) if breakeven_active else trail_stop
+        if close <= stop_line:
+            used_breakeven = breakeven_active and breakeven_floor > trail_stop
+            reason_code = "BREAKEVEN_STOP" if used_breakeven else f"TRAIL_STOP_{int(round(abs(trail_pct) * 100))}"
+            pos.close_out(day, close, reason_code)
+            closed.append(pos)
+            del open_pos[code]
+            sig.add(day, code, "V4_SELL_AIPICK", "SELL", min(100.0, abs(dd) * 1000),
+                    {
+                        "portfolio":     pos.portfolio,
+                        "strategy":      "AIPICK",
+                        "entry_date":    pos.entry_date.isoformat(),
+                        "entry_price":   pos.entry_price,
+                        "peak_price":    pos.peak_price,
+                        "peak_date":     pos.peak_date.isoformat(),
+                        "close":         close,
+                        "drawdown_pct":  round(dd * 100, 2),
+                        "peak_gain_pct": round(peak_gain * 100, 2),
+                        "trail_pct":     round(trail_pct * 100, 2),
+                        "quantity":      pos.quantity,
+                        "invested":      pos.invested,
+                        "realized_pnl":  pos.realized_pnl,
+                        "return_pct":    float(pos.return_pct or 0),
+                        "exit_reason":   reason_code,
+                    },
+                    f"[AI추천] {pos.name} 전량매도 · 고점 {pos.peak_price:,}원 대비 {dd*100:.1f}% · "
+                    f"실현 {pos.return_pct:.1f}% ({pos.realized_pnl:,}원)")
 
-    # 2) 신규 매수 — 2단계 통과 후보 전부(기보유 제외), NXT 마감가에 매수, 불타기 없음
+    # 2) 신규 매수 — 그날 AI 추천 종목 전부(기보유 제외), 추천 회차 가격, 시총 구간별 금액
     if allow_buy:
         picks = [c for c in day_candidates if c["code"] not in open_pos]
-        picks.sort(key=lambda c: c["reason"].get("gap_rank") or 999)
+        picks.sort(key=lambda c: c["pick_score"])
         for cand in picks:
-            # NXT 마감가가 우선, 없으면(수집 실패 등) 그날 정규장 종가로 대체
-            close = cand.get("nxt_close") or day_closes.get(cand["code"]) or cand["close"]
+            close = cand["close"] or day_closes.get(cand["code"])
             if not close:
                 continue
-            mcap = cand["reason"].get("market_cap")
-            amount = entry_amount_for(mcap)
-            qty = amount // close
+            r = cand["reason"]
+            mcap = r.get("market_cap")
+            qty = entry_amount_for(mcap) // close
             if qty <= 0:
                 continue
             invested = qty * close
-            pos = Position("VIRTUAL", "CLOSEBET2", cand["code"], cand["name"], day, close,
-                           qty, invested, market_cap=mcap)
+            pos = Position("VIRTUAL", "AIPICK", cand["code"], cand["name"], day, close,
+                           qty, invested, peak_price=close, peak_at=market_close_ts(day),
+                           market_cap=mcap)
             open_pos[cand["code"]] = pos
-            r = cand["reason"]
-            sig.add(day, cand["code"], "V4_BUY_CLOSEBET2", "BUY",
-                    min(100.0, max(0.0, 50 + float(r.get("gap_pct") or 0))),
+            rl = ROUND_LABEL.get(r.get("round"), str(r.get("round")))
+            sig.add(day, cand["code"], "V4_BUY_AIPICK", "BUY",
+                    min(100.0, max(0.0, 100.0 - r.get("rank", 5) * 10)),
                     {
-                        "portfolio":       "VIRTUAL",
-                        "strategy":        "CLOSEBET2",
-                        "change_pct":      r.get("change_pct"),
-                        "nxt_change_pct":  r.get("nxt_change_pct"),
-                        "gap_pct":         r.get("gap_pct"),
-                        "gap_rank":        r.get("gap_rank"),
-                        "cap_rank_top10":  r.get("cap_rank_top10"),
-                        "market_cap":      r.get("market_cap"),
-                        "entry_price":     close,
-                        "quantity":        qty,
-                        "invested":        invested,
+                        "portfolio":   "VIRTUAL",
+                        "strategy":    "AIPICK",
+                        "round":       r.get("round"),
+                        "rank":        r.get("rank"),
+                        "picked_at":   r.get("picked_at"),
+                        "sector":      r.get("sector"),
+                        "market_cap":  mcap,
+                        "entry_price": close,
+                        "quantity":    qty,
+                        "invested":    invested,
                     },
-                    f"[종가베팅2] {cand['name']} 2단계 신규매수(NXT괴리+시총) · NXT 마감가 {close:,}원 "
-                    f"{qty:,}주 ({invested:,}원) · 괴리 {r.get('gap_pct')}%p(상위{r.get('gap_rank')}위) "
-                    f"· 시총 상위{r.get('cap_rank_top10')}위 · 익일 시가 전량매도 예정")
+                    f"[AI추천] {cand['name']} 신규매수({rl} 추천 {r.get('rank')}순위) · "
+                    f"추천가 {close:,}원 {qty:,}주 ({invested:,}원) · {r.get('sector') or ''}")
 
     return closed
 
@@ -760,13 +822,13 @@ def main():
         cur.execute("SET statement_timeout = '10min'")
         candidates, closes, opens, highs, names, breadth = load_all(cur)
 
-        if not candidates["TREND"] and not candidates["CLOSEBET"] and not candidates["CLOSEBET2"]:
-            print("⚠ V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3 / V4_CAND_CLOSEBET2_2 후보가 없습니다. 06_signals.sql을 먼저 실행하세요.")
+        if not candidates["TREND"] and not candidates["CLOSEBET"] and not (AIPICK_ONLY and candidates["AIPICK"]):
+            print("⚠ V4_CAND_TREND_3 / V4_CAND_CLOSEBET_3 후보가 없습니다. 06_signals.sql을 먼저 실행하세요.")
             conn.rollback()
             return
 
         all_days = sorted(closes.keys())
-        first_cand_days = [min(candidates[s].keys()) for s in ("TREND", "CLOSEBET", "CLOSEBET2") if candidates[s]]
+        first_cand_days = [min(candidates[s].keys()) for s in ("TREND", "CLOSEBET", "AIPICK") if candidates[s]]
         first_cand = min(first_cand_days)
         effective_start = max(first_cand, SIM_START)
         if SIM_FROM:
@@ -787,8 +849,19 @@ def main():
         sig = SignalBuffer()
 
         # ── VIRTUAL: 전 기간 재생성, 전략별 독립 운용 ─────────────────────
-        cur.execute("DELETE FROM positions WHERE portfolio = 'VIRTUAL'")
-        print(f"   기존 VIRTUAL 포지션 {cur.rowcount:,}건 삭제 후 재생성")
+        if AIPICK_ONLY:
+            cur.execute("DELETE FROM positions WHERE portfolio = 'VIRTUAL' AND strategy = 'AIPICK'")
+            print(f"   [--aipick-only] 기존 AI추천 포지션 {cur.rowcount:,}건 삭제 후 재생성 (다른 전략은 그대로)")
+        else:
+            cur.execute("DELETE FROM positions WHERE portfolio = 'VIRTUAL'")
+            print(f"   기존 VIRTUAL 포지션 {cur.rowcount:,}건 삭제 후 재생성")
+        # 폐지된 종가베팅2 의 가상매매 포지션·신호 정리
+        cur.execute("DELETE FROM positions WHERE portfolio = 'VIRTUAL' AND strategy = 'CLOSEBET2'")
+        if cur.rowcount:
+            print(f"   폐지된 종가베팅2 포지션 {cur.rowcount:,}건 삭제")
+        cur.execute("DELETE FROM signals WHERE signal_type = ANY(%s)", (LEGACY_SIGNAL_TYPES,))
+        if cur.rowcount:
+            print(f"   폐지된 종가베팅2 가상매매 신호 {cur.rowcount:,}건 삭제")
 
         # SIM_START 이전 백테스트 이력(신호)은 더 이상 유효하지 않으므로 제거합니다.
         # (positions는 위에서 이미 전량 삭제 후 SIM_START부터 재생성되므로 별도 처리 불필요)
@@ -799,13 +872,13 @@ def main():
         if cur.rowcount:
             print(f"   {SIM_START} 이전 VIRTUAL 신호 {cur.rowcount:,}건 삭제 (구 백테스트 이력)")
 
-        open_trend, open_closebet, open_closebet2 = {}, {}, {}
-        closed_trend, closed_closebet, closed_closebet2 = [], [], []
+        open_trend, open_closebet, open_aipick = {}, {}, {}
+        closed_trend, closed_closebet, closed_aipick = [], [], []
         stopped_trend = set()
-        cum_realized = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
-        peak_equity = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
-        mdd_amount = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
-        max_invested = {"TREND": 0, "CLOSEBET": 0, "CLOSEBET2": 0}
+        cum_realized = {"TREND": 0, "CLOSEBET": 0, "AIPICK": 0}
+        peak_equity = {"TREND": 0, "CLOSEBET": 0, "AIPICK": 0}
+        mdd_amount = {"TREND": 0, "CLOSEBET": 0, "AIPICK": 0}
+        max_invested = {"TREND": 0, "CLOSEBET": 0, "AIPICK": 0}
 
         regime_counts = {}
         day_seq = {d: i for i, d in enumerate(sim_days)}   # 타임 스톱용 거래일 순번
@@ -822,25 +895,26 @@ def main():
             bmult = BREADTH_MULTIPLIER.get(regime, 1.0)
             closebet_ok = regime not in CLOSEBET_SKIP_REGIMES
 
-            newly_t = process_day_trend(
-                day, open_trend, dc, dh, candidates["TREND"].get(day, []),
-                stopped_trend, sig, suffix="", allow_buy=True, breadth_mult=bmult,
-                day_seq=day_seq)
-            closed_trend += newly_t
+            newly_t, newly_c = [], []
+            if not AIPICK_ONLY:
+                newly_t = process_day_trend(
+                    day, open_trend, dc, dh, candidates["TREND"].get(day, []),
+                    stopped_trend, sig, suffix="", allow_buy=True, breadth_mult=bmult,
+                    day_seq=day_seq)
+                closed_trend += newly_t
 
-            newly_c = process_day_closebet(
-                day, open_closebet, dc, do, candidates["CLOSEBET"].get(day, []),
-                sig, allow_buy=closebet_ok, regime=regime)
-            closed_closebet += newly_c
+                newly_c = process_day_closebet(
+                    day, open_closebet, dc, do, candidates["CLOSEBET"].get(day, []),
+                    sig, allow_buy=closebet_ok, regime=regime)
+                closed_closebet += newly_c
 
-            newly_c2 = process_day_closebet2(
-                day, open_closebet2, dc, do, candidates["CLOSEBET2"].get(day, []),
-                sig, allow_buy=True)
-            closed_closebet2 += newly_c2
+            newly_a = process_day_aipick(
+                day, open_aipick, dc, candidates["AIPICK"].get(day, []), sig, allow_buy=True)
+            closed_aipick += newly_a
 
             for label, newly, open_pos in (("TREND", newly_t, open_trend),
                                             ("CLOSEBET", newly_c, open_closebet),
-                                            ("CLOSEBET2", newly_c2, open_closebet2)):
+                                            ("AIPICK", newly_a, open_aipick)):
                 cum_realized[label] += sum(p.realized_pnl or 0 for p in newly)
                 invested_open = sum(p.invested for p in open_pos.values())
                 unrealized = sum(p.quantity * dc[p.code] - p.invested
@@ -852,7 +926,7 @@ def main():
 
         v_rows = ([p.as_row() for p in closed_trend] + [p.as_row() for p in open_trend.values()] +
                   [p.as_row() for p in closed_closebet] + [p.as_row() for p in open_closebet.values()] +
-                  [p.as_row() for p in closed_closebet2] + [p.as_row() for p in open_closebet2.values()])
+                  [p.as_row() for p in closed_aipick] + [p.as_row() for p in open_aipick.values()])
 
         # ── REAL: 사용자 보유분 — peak 갱신·신호만, 신규매수 없음 ──────────
         cur.execute("""
@@ -860,7 +934,7 @@ def main():
                    tranches, pyramid_blocked
             FROM positions WHERE portfolio = 'REAL' AND status = 'OPEN'
         """)
-        real_rows = cur.fetchall()
+        real_rows = [] if AIPICK_ONLY else cur.fetchall()
         real_open, real_closed = {}, []
         for code, ed, ep, qty, inv, tr, pb in real_rows:
             real_open[code] = Position("REAL", None, code, names.get(code, code), ed,
@@ -896,8 +970,9 @@ def main():
                   p.exit_price, p.exit_reason, p.realized_pnl, p.return_pct,
                   p.code))
 
+        sig_types = AIPICK_SIGNAL_TYPES if AIPICK_ONLY else VIRTUAL_SIGNAL_TYPES
         keep = [r for r in sig.rows if rec_from <= r[0] <= rec_to]
-        v_keep = [r for r in keep if r[2] in VIRTUAL_SIGNAL_TYPES]
+        v_keep = [r for r in keep if r[2] in sig_types]
         r_keep = [r for r in keep if r[2] in REAL_SIGNAL_TYPES]
 
         # VIRTUAL은 전 기간 재생성이라 "이번에 안 나온 과거 신호"를 지워야 합니다.
@@ -905,13 +980,13 @@ def main():
             SELECT trade_date, code, signal_type, notified
             FROM signals
             WHERE signal_type = ANY(%s) AND trade_date BETWEEN %s AND %s
-        """, (VIRTUAL_SIGNAL_TYPES, rec_from, rec_to))
+        """, (sig_types, rec_from, rec_to))
         was_notified = {(d, c, t): n for d, c, t, n in cur.fetchall()}
 
         cur.execute("""
             DELETE FROM signals
             WHERE signal_type = ANY(%s) AND trade_date BETWEEN %s AND %s
-        """, (VIRTUAL_SIGNAL_TYPES, rec_from, rec_to))
+        """, (sig_types, rec_from, rec_to))
         deleted = cur.rowcount
 
         if v_keep:
@@ -1003,12 +1078,13 @@ def main():
         for p in ranked[-5:][::-1]:
             print(line(p))
 
-    summarize("TREND", closed_trend, open_trend, candidates["TREND"])
-    detail_report("TREND", closed_trend)
-    summarize("CLOSEBET", closed_closebet, open_closebet, candidates["CLOSEBET"])
-    detail_report("CLOSEBET", closed_closebet)
-    summarize("CLOSEBET2", closed_closebet2, open_closebet2, candidates["CLOSEBET2"])
-    detail_report("CLOSEBET2", closed_closebet2)
+    if not AIPICK_ONLY:
+        summarize("TREND", closed_trend, open_trend, candidates["TREND"])
+        detail_report("TREND", closed_trend)
+        summarize("CLOSEBET", closed_closebet, open_closebet, candidates["CLOSEBET"])
+        detail_report("CLOSEBET", closed_closebet)
+    summarize("AIPICK", closed_aipick, open_aipick, candidates["AIPICK"])
+    detail_report("AIPICK", closed_aipick)
 
     by_type = {}
     for r in sig.rows:
