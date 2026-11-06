@@ -6,7 +6,8 @@ name: "[수시] DB 테이블·뷰 생성 | 수동 | 스키마 설정"
 #   access_log — 접속 기록 테이블(92_access_log.sql)
 #   kospi_flow — 수급 일별 뷰 v_kospi_flow_daily(95_kospi_flow.sql)
 #   watchlist  — 관심·투자 종목 테이블 my_watchlist(117_watchlist.sql)
-#   all        — 위 전부
+#   all        — 위 전부 (drop_nxt 는 포함되지 않음)
+#   drop_nxt   — daily_price 의 NXT 컬럼 4개 삭제(120_drop_nxt_columns.sql, 되돌릴 수 없음 · all 에 포함 안 됨)
 on:
   workflow_dispatch:
     inputs:
@@ -21,6 +22,7 @@ on:
           - access_log
           - kospi_flow
           - watchlist
+          - drop_nxt
 
 permissions:
   contents: write
@@ -49,6 +51,19 @@ jobs:
       - name: my_watchlist (관심·투자 종목)
         if: inputs.target == 'all' || inputs.target == 'watchlist'
         run: python 117_watchlist_setup.py
+      - name: daily_price NXT 컬럼 삭제 (되돌릴 수 없음)
+        if: inputs.target == 'drop_nxt'
+        run: |
+          python - <<'PY'
+          import os, psycopg2
+          sql = open("120_drop_nxt_columns.sql", encoding="utf-8").read()
+          conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"])
+          cur = conn.cursor()
+          cur.execute(sql)       # begin/commit 포함 — 오류 시 전체 취소
+          cur.execute("select column_name from information_schema.columns where table_name='daily_price' and column_name like 'nxt%'")
+          print("남은 NXT 컬럼:", cur.fetchall())
+          conn.commit(); conn.close()
+          PY
       - name: Publish kospi-flow report
         if: always() && (inputs.target == 'all' || inputs.target == 'kospi_flow')
         uses: ./.github/actions/publish-report

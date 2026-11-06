@@ -285,7 +285,6 @@ def load_all(cur):
                 "name": name,
                 "pick_score": float(reason.get("pick_score") or 1e9),
                 "close": int(reason.get("close") or 0),
-                "nxt_close": int(reason.get("nxt_close") or 0),
                 "reason": reason,
             })
 
@@ -336,7 +335,7 @@ def load_all(cur):
             candidates["AIPICK"].setdefault(d, []).append({
                 "code": code, "name": p.get("name") or names.get(code, code),
                 "pick_score": rnd * 10 + rank,          # 회차 먼저, 그다음 AI 순위
-                "close": px, "nxt_close": 0,
+                "close": px,
                 "reason": {"round": int(rnd), "rank": rank, "sector": p.get("sector"),
                            "chg": p.get("chg"), "score": p.get("score"),
                            "picked_at": created.astimezone(KST).strftime("%H:%M") if created else None,
