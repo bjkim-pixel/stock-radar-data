@@ -137,7 +137,7 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px}
 /* 오늘의 종목: 카드(흰 배경)는 넓은 표에 맞춰 길어져도, 수치 박스(타일)는 화면 폭 안에서만 늘어나게 제한 */
-#v-today .tiles,#v-proc .tiles{max-width:min(100%,calc(100vw - 52px))}
+#v-today .tiles,#v-proc .tiles,#v-gm .tiles{max-width:min(100%,calc(100vw - 52px))}
 .tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
 .tile .lb{font-size:10.5px;color:var(--ink-3);margin-bottom:4px}
 .tile .vl{font-size:20px;font-weight:680;letter-spacing:-.02em;line-height:1.15}
@@ -749,6 +749,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   </div>
   <nav id="tabs">
     <button aria-selected="true" data-v="proc">시장</button>
+    <button data-v="gm">글로벌 시황</button>
+    <button data-v="ai">AI 브리핑</button>
     <button data-v="sector">업종·테마</button>
     <button data-v="flow">수급 동향</button>
     <button data-v="today">오늘의 종목</button>
@@ -759,7 +761,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <button data-v="detail">종목 상세</button>
     <button data-v="perf">전략 성과</button>
     <button data-v="perf2">전략 성과2</button>
-    <button data-v="ai">AI 브리핑</button>
     <button data-v="journal">투자일지</button>
   </nav>
 </header>
@@ -829,24 +830,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   </div>
 
 
-  <div class="card" id="gmCard" style="margin-top:12px"><h3>글로벌 시황
-    <span class="r" id="gmAsOf">추세가 오르는 시장·업종·테마 찾기</span></h3>
-    <div style="display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;margin:4px 0 10px">
-    <div class="qf seg" id="gmTabSel" style="margin:0">
-      <button class="fchip" data-v="US" aria-pressed="true">미국 주식</button>
-      <button class="fchip" data-v="KR" aria-pressed="false">한국 주식</button>
-      <button class="fchip" data-v="GL" aria-pressed="false">글로벌 주식</button>
-    </div>
-    <div class="qf seg" id="gmPerSel" style="margin:0" title="모든 차트의 기간을 한 번에 변경">
-      <button class="fchip" data-v="def" aria-pressed="true">기본</button>
-      <button class="fchip" data-v="21" aria-pressed="false">1M</button>
-      <button class="fchip" data-v="63" aria-pressed="false">3M</button>
-      <button class="fchip" data-v="126" aria-pressed="false">6M</button>
-      <button class="fchip" data-v="252" aria-pressed="false">1Y</button>
-    </div>
-    </div>
-    <div id="gmBody"><div class="note">불러오는 중…</div></div>
-  </div>
 
 
   <div id="tdKWrap" style="margin-top:12px"><div class="card"><h3>KOSPI <span class="r" id="tdKNote">불러오는 중…</span></h3><div class="load sk"></div></div></div>
@@ -1289,6 +1272,27 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 
 <!-- ═══════════ 업종동향 ═══════════ -->
+<section id="v-gm" class="hide">
+  <div class="card" id="gmCard" style="margin-top:16px"><h3>글로벌 시황
+    <span class="r" id="gmAsOf">추세가 오르는 시장·업종·테마 찾기</span></h3>
+    <div style="display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;margin:4px 0 10px">
+    <div class="qf seg" id="gmTabSel" style="margin:0">
+      <button class="fchip" data-v="US" aria-pressed="true">미국 주식</button>
+      <button class="fchip" data-v="KR" aria-pressed="false">한국 주식</button>
+      <button class="fchip" data-v="GL" aria-pressed="false">글로벌 주식</button>
+    </div>
+    <div class="qf seg" id="gmPerSel" style="margin:0" title="모든 차트의 기간을 한 번에 변경">
+      <button class="fchip" data-v="def" aria-pressed="true">기본</button>
+      <button class="fchip" data-v="21" aria-pressed="false">1M</button>
+      <button class="fchip" data-v="63" aria-pressed="false">3M</button>
+      <button class="fchip" data-v="126" aria-pressed="false">6M</button>
+      <button class="fchip" data-v="252" aria-pressed="false">1Y</button>
+    </div>
+    </div>
+    <div id="gmBody"><div class="note">불러오는 중…</div></div>
+  </div>
+</section>
+
 <section id="v-sector" class="hide">
   <div class="card" id="hmCard" style="margin-top:16px"><h3>업종 히트맵
     <span class="r" id="hmSub">면적 = 시가총액 · 색 = 등락률 · 시총 1천억원 이상</span></h3>
@@ -2463,7 +2467,6 @@ function procEnter(){
   ensureTodayMarket().catch(e=>console.error("시장 요약",e));
   loadFlowTrends().catch(()=>{});
   loadMarketInvestor().catch(e=>{$("#mktInvBody").innerHTML='<tr><td colspan="4" class="load">데이터 없음</td></tr>';});
-  lazyNear($("#gmCard"),()=>loadGlobal().catch(console.error));
   lazyNear($("#tdKWrap"),()=>loadTdKospi().catch(e=>console.error("KOSPI 카드",e)));
 }
 function go(v,detailCode){
@@ -2473,7 +2476,7 @@ function go(v,detailCode){
   if(!S._keepBack)S.backAI=false;
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
-  ["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","ai","journal"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","gm","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","ai","journal"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="sm");setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -2507,6 +2510,7 @@ function go(v,detailCode){
     }
   }
   if(v==="proc")procEnter();
+  if(v==="gm"&&!S.gmEntered){S.gmEntered=true;loadGlobal().catch(e=>{console.error(e);S.gmEntered=false;});}
   if(v==="fav")wlPull().finally(()=>{loadFav();wlPush();});
   if(v==="sm"){if(!S.smLoaded){S.smLoaded=true;loadSm().catch(e=>{console.error(e);S.smLoaded=false;$("#smMap").innerHTML='<div class="load">불러오기 실패 — Actions에서 Smart Money Phase를 한 번 실행했는지 확인</div>';});}else renderSm();}
   renderAsOf();
@@ -6282,7 +6286,7 @@ async function aiGoGlobal(tab,name){
     const items=pk.payload.items||{};
     const key=Object.keys(items).find(k=>items[k].n===name);
     if(!key)continue;
-    aiNav(()=>go("proc"));
+    aiNav(()=>go("gm"));
     S.gm.tab=t;S.gm.big=key;S.gm.bigN=126;
     $$("#gmTabSel .fchip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===t?"true":"false"));
     renderGlobal(pk);
@@ -6623,7 +6627,7 @@ async function loadTdKospi(){
     $("#tdKHead").innerHTML=`<div class="load">불러오지 못했습니다${/v_kospi_flow_daily|404|PGRST|42/.test(String(e.message))?" — Actions의 'Setup KOSPI Flow View'를 먼저 실행하세요":""}: ${accEsc(e.message).slice(0,120)}</div>`;
   }
 }
-const VIEW_IDS=["proc","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","ai","journal"];
+const VIEW_IDS=["proc","gm","today","flow","sm","scr","fav","pair","sector","detail","perf","perf2","ai","journal"];
 function setHash(v,code){
   const h="#"+v+(code?"/"+code:"");
   if(location.hash!==h)history.pushState(null,"",h);
@@ -6818,7 +6822,7 @@ function retryCurrent(){
   S.flowRaw=null;S.fcrCache=null;S._fsmRowsP=null;S._tlRowsP=null;S._tlFlow=null;
   const v=S.curTab||"proc";
   if(v==="proc"){location.reload();return;}
-  S.todayLoaded=S.flowLoaded=S.pairLoaded=S.sectorTrendLoaded=S.procEntered=false;S._tdMktP=null;S._tdFlowInit=false;
+  S.todayLoaded=S.flowLoaded=S.pairLoaded=S.sectorTrendLoaded=S.procEntered=S.gmEntered=false;S._tdMktP=null;S._tdFlowInit=false;
   if(v==="scr"&&typeof runScreener==="function"){runScreener().catch(()=>{});return;}
   go(v,v==="detail"?S.chart.code:undefined);
 }
@@ -6862,7 +6866,7 @@ function renderAsOf(){
     if(date)parts.push(`데이터 기준일 <b>${date}</b>`);
     if(S.asOf)parts.push(`수집 <b>${fmtKst(S.asOf)}</b> ${S.asOfPartial?'<span style="color:var(--warn)">잠정</span>':'<span style="color:var(--good)">확정</span>'}`);
     const gp=S.gm&&S.gm.packs&&S.gm.packs[S.gm.tab];
-    if(v==="proc"&&gp&&gp.updated_at)parts.push(`글로벌 시황 <b>${fmtKst(gp.updated_at)}</b>`);
+    if(v==="gm"&&gp&&gp.updated_at)parts.push(`글로벌 시황 <b>${fmtKst(gp.updated_at)}</b>`);
   }
   const h=parts.join(" · ");
   if(h!==_asofLast){_asofLast=h;el.innerHTML=h;}
