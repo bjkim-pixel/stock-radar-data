@@ -6,7 +6,7 @@ on:
     #  · 16시 실행 = 정규장 마감 직후 확정 데이터 → 계산 → 후처리 → AI 브리핑 1회차
     #  · 18시 실행 = 같은 날 재확인(KIS 마감 배치 정정 반영) → 다시 계산 → AI 브리핑 2회차
     # 예전의 17:05·19:05 실행은 대부분 "이미 한 일을 건너뛰는" 실행이라 없앴습니다(upsert라 빼도 결과 동일).
-    # 참고: KIS는 NXT 마감가를 따로 주지 않아 16시 이후 반복 실행은 정규장 마감 데이터의 재확인입니다.
+    # 참고: 16시 이후 반복 실행은 정규장 마감 데이터의 재확인입니다.
     # ⚠ GitHub 예약 실행은 큐가 밀리면 수십 분~몇 시간 늦게 시작될 수 있습니다(실측: 16시 예약이 밤 11시경 실행).
     #   정각에 확실히 돌리려면 cron-job.org 작업 2개(월~금 16:05·18:05 KST)로
     #   POST https://api.github.com/repos/bjkim-pixel/stock-radar-data/actions/workflows/daily_collect.yml/dispatches
@@ -39,7 +39,7 @@ on:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 50     # 수집 ~30분 + 앞선 NXT 대기 최대 20분
+    timeout-minutes: 50     # 수집 ~30분 + 대기 여유
     outputs:
       is_market_day: ${{ steps.market_day.outputs.is_market_day }}
     # KIS REST는 "초당 20건"이 앱키 단위 한도라서 종목 전체를 도는 수집 워크플로가 동시에 돌면 합산에서 초과한다.
@@ -52,11 +52,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: 먼저 시작한 NXT 수집이 끝날 때까지 기다리기
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash .github/scripts/wait_kis_turn.sh "nxt_collect.yml" 20
 
       - name: 거래일 확인 (공휴일 스킵)
         id: market_day

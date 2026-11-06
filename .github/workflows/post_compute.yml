@@ -5,8 +5,7 @@ name: "[상시4] 후처리·AI브리핑 (계산 직후) | 16·18시 연쇄 | 수
 # 언제 돌아가나
 #  ① daily_collect.yml(수집→계산) 안에서 호출(workflow_call) — 계산이 성공하면 아래 4개 잡이 동시에 돌고, 모두 끝나면 AI 브리핑 잡이 이어집니다.
 #     (예전의 "dispatch 후 25분 대기 루프"가 필요 없어짐: needs 로 순서를 보장)
-#  ② NXT 18시 수집 → Compute Metrics & Signals 가 끝나면 자동 발화(workflow_run) — 4개 계산만 수행(AI 브리핑 제외).
-#  ③ 수동 실행: 'parts' 로 일부만 고를 수 있음. AI 브리핑은 parts=ai 이거나 ai_round 를 none 이외로 고르면 생성.
+#  ② 수동 실행: 'parts' 로 일부만 고를 수 있음. AI 브리핑은 parts=ai 이거나 ai_round 를 none 이외로 고르면 생성.
 #
 # 리포트 브랜치(읽는 법은 그대로): flowcap-report / sectorflow-report / smart-money-report / investor-collect-report / ai-brief-report
 on:
@@ -42,9 +41,6 @@ on:
         type: boolean
         required: false
         default: false
-  workflow_run:
-    workflows: ["[상시2] 지표·신호 계산 (1번 직후 자동) | 수집 직후·NXT 직후 | MA·RS·신호·가상매매"]   # NXT 체인 뒤(통합 파이프라인 안의 계산은 workflow_run 이 발화하지 않아 daily_collect 가 직접 호출)
-    types: [completed]
   workflow_dispatch:
     inputs:
       parts:
@@ -91,7 +87,7 @@ permissions:
 
 jobs:
   flowcap:
-    if: ${{ (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && ((inputs.parts || 'all') == 'all' || inputs.parts == 'flowcap') }}
+    if: ${{ ((inputs.parts || 'all') == 'all' || inputs.parts == 'flowcap') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
@@ -112,7 +108,7 @@ jobs:
         with: { branch: flowcap-report, file: flowcap_report.md }
 
   sectorflow:
-    if: ${{ (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && ((inputs.parts || 'all') == 'all' || inputs.parts == 'sectorflow') }}
+    if: ${{ ((inputs.parts || 'all') == 'all' || inputs.parts == 'sectorflow') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
@@ -133,7 +129,7 @@ jobs:
         with: { branch: sectorflow-report, file: sectorflow_report.md }
 
   smartmoney:
-    if: ${{ (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && ((inputs.parts || 'all') == 'all' || inputs.parts == 'smartmoney') }}
+    if: ${{ ((inputs.parts || 'all') == 'all' || inputs.parts == 'smartmoney') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     concurrency:
@@ -155,7 +151,7 @@ jobs:
         with: { branch: smart-money-report, file: sm_report.md }
 
   investor:
-    if: ${{ (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') && ((inputs.parts || 'all') == 'all' || inputs.parts == 'investor') }}
+    if: ${{ ((inputs.parts || 'all') == 'all' || inputs.parts == 'investor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
@@ -178,7 +174,7 @@ jobs:
   # AI 브리핑 — 위 4개 계산(앞 단계가 실패/생략돼도 진행)이 끝난 뒤 생성. 같은 날짜·회차가 이미 성공했으면 113_ai_brief.py 가 스스로 건너뜁니다.
   ai:
     needs: [flowcap, sectorflow, smartmoney, investor]
-    if: ${{ !cancelled() && github.event_name != 'workflow_run' && (inputs.parts == 'ai' || (inputs.ai_round != 'none' && inputs.ai_round != '')) }}
+    if: ${{ !cancelled() && (inputs.parts == 'ai' || (inputs.ai_round != 'none' && inputs.ai_round != '')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     concurrency:

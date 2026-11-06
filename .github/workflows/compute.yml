@@ -1,9 +1,9 @@
-name: "[상시2] 지표·신호 계산 (1번 직후 자동) | 수집 직후·NXT 직후 | MA·RS·신호·가상매매"
+name: "[상시2] 지표·신호 계산 (1번 직후 자동) | 수집 직후 | MA·RS·신호·가상매매"
 
 on:
   # 2026-10-25: 16:30 KST 단독 스케줄을 없앴습니다. 이제 "Daily Collect + Compute (수집·계산 통합)"이 수집을 끝내면 이 워크플로를
   # 같은 실행 안에서 이어서 호출합니다(workflow_call, daily=true) — 수집→계산을 한 번에 실행.
-  # 아래 workflow_run(NXT 18시 스냅샷 수집 직후 재계산)과 수동 실행(기간 지정·포트폴리오만)은 그대로입니다.
+  # 수동 실행(기간 지정·포트폴리오만)도 가능합니다. (2026-11-06: NXT 수집 직후 자동 재계산(workflow_run)은 NXT 수집 폐지와 함께 없앴습니다.)
   workflow_call:
     inputs:
       daily:
@@ -21,14 +21,6 @@ on:
         type: boolean
         required: false
         default: false
-  workflow_run:
-    # nxt_collect.yml("NXT After-market Collection")의 6개 스케줄 실행
-    # (18:00~19:50 KST 장중 5회 + 20:10 KST 공식마감 1회)이 끝날 때마다 발화.
-    # Compute 스텝에서 시각(KST)으로 장중/마감을 구분해 --no-portfolio 여부를
-    # 결정합니다(아래 참고) — nxt_collect.yml 쪽 cron을 나중에 바꿔도 이 워크플로
-    # 수정 없이 그대로 따라갑니다.
-    workflows: ["[상시6] NXT 시간외 시세 수집 (별도 흐름) | 평일 18:12 | daily_price NXT 컬럼 저장"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       start_date:
@@ -49,7 +41,7 @@ jobs:
   compute:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # 2026-10-25: 계산은 한 번에 하나만 — 통합 파이프라인 안의 계산(workflow_call)과 NXT 직후 계산(workflow_run),
+    # 2026-10-25: 계산은 한 번에 하나만 — 통합 파이프라인 안의 계산(workflow_call)과
     # 수동 실행이 같은 날짜·같은 테이블에 동시에 쓰지 않도록 줄 세움. (job 단위라 통합 파이프라인에서 호출될 때도 적용)
     # 대기가 여러 개 쌓이면 GitHub이 오래된 대기를 취소하지만, 계산은 '오늘 하루치'를 처음부터 다시 만드는 작업이라
     # 뒤에 온 계산이 앞의 것을 대신하므로 결과에는 영향 없음.
@@ -64,23 +56,7 @@ jobs:
       - name: 거래일 확인 (공휴일 스킵)
         id: market_day
         run: |
-          # 2026-09-12: workflow_run 트리거 전용 가드 — nxt_collect.yml 실행이
-          # 실패/취소됐으면 그 값으로 매수를 확정하면 안 되므로 건너뜁니다.
-          # 또한 nxt_collect.yml의 debug_code 등 수동/디버그 실행에는 반응하지
-          # 않고, 정상 스케줄 실행 완료에만 반응합니다.
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-              echo "is_market_day=false" >> "$GITHUB_OUTPUT"
-              echo "⏸️ nxt_collect 실행이 성공하지 못해(conclusion=${{ github.event.workflow_run.conclusion }}) compute를 건너뜁니다"
-              exit 0
-            fi
-            if [ "${{ github.event.workflow_run.event }}" != "schedule" ]; then
-              echo "is_market_day=false" >> "$GITHUB_OUTPUT"
-              echo "⏸️ 수동/디버그로 트리거된 nxt_collect라 compute는 건너뜁니다(event=${{ github.event.workflow_run.event }})"
-              exit 0
-            fi
-          fi
-          if [ "${{ github.event_name }}" != "schedule" ] && [ "${{ github.event_name }}" != "workflow_run" ]; then
+          if [ "${{ github.event_name }}" != "schedule" ]; then
             echo "is_market_day=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -115,16 +91,6 @@ jobs:
             python 05_compute.py "$D" $NP
           elif [ "${{ github.event_name }}" = "schedule" ]; then
             # (예전) 16:30 KST 하나뿐 — 지표·신호 계산 + 실제 가상매수/매도 실행.
-            python 05_compute.py "$(date +%Y%m%d)"
-          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-            # nxt_collect.yml 스케줄 실행이 성공적으로 끝난 직후 실행됩니다.
-            # 2026-09-22: nxt_collect.yml을 하루 6회 → 18:12 KST 1회로 줄이면서,
-            # workflow_run이 이제 하루에 한 번만 발화하므로 "이게 첫 실행인지
-            # 나중 재확인 실행인지"를 시각(HOUR_INT 1809~1830)으로 구분하던
-            # 로직이 더 이상 필요 없어짐 — 나중 실행 자체가 없기 때문. 스케줄
-            # 지연으로 실제 도착 시각이 18:30을 넘겨도(그동안 있었던 문제)
-            # 항상 같은 계산을 하도록 단순화. (2026-11-06: 종가베팅2 폐지 — 이제는 단순 재계산)
-            echo "▶ NXT 18시 스냅샷 수집 완료 감지 — 지표·신호·가상매매 재계산"
             python 05_compute.py "$(date +%Y%m%d)"
           else
             START="${{ github.event.inputs.start_date }}"
