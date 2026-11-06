@@ -4079,17 +4079,17 @@ function wkSvg(it,n){
   let ymax=Math.max(...hi),ymin=Math.min(...lo);
   WK_EMA.forEach(([k])=>sl(k).forEach(v=>{if(v!=null){ymax=Math.max(ymax,v);ymin=Math.min(ymin,v);}}));
   const pad=(ymax-ymin)*0.04; ymax+=pad; ymin-=pad;
-  const X=i=>PL+(i+0.5)/m*(W-PL-PR), Y=v=>(ymax-v)/(ymax-ymin)*PH, cw=Math.max(1,(W-PL-PR)/m*0.62);
+  const X=i=>PL+(i+0.5)/m*(W-PL-PR), Y=v=>(ymax-v)/(ymax-ymin)*PH, cw=Math.max(.7,(W-PL-PR)/m*0.62);
   let g="";
   const step=Math.pow(10,Math.floor(Math.log10((ymax-ymin)/4)))*([1,2,5].find(f=>(ymax-ymin)/4/Math.pow(10,Math.floor(Math.log10((ymax-ymin)/4)))<=f)||10);
-  for(let v=Math.ceil(ymin/step)*step;v<ymax;v+=step)g+=`<line x1="${PL}" x2="${W-PR}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--axis)" stroke-width=".5" opacity=".6"/><text x="${W-PR+4}" y="${(Y(v)+3).toFixed(1)}" font-size="10" fill="var(--ink-3)">${N(v,0)}</text>`;
+  for(let v=Math.ceil(ymin/step)*step;v<ymax;v+=step)g+=`<line x1="${PL}" x2="${W-PR}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--axis)" stroke-width=".5" opacity=".6"/><text x="${W-PR+4}" y="${(Y(v)+3).toFixed(1)}" font-size="10" fill="var(--ink-3)">${N(v,it.dec||0)}</text>`;
   for(let i=0;i<m;i++){
     const up=cl[i]>=op[i],c=up?"var(--up)":"var(--down)";
     g+=`<line x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="${Y(hi[i]).toFixed(1)}" y2="${Y(lo[i]).toFixed(1)}" stroke="${c}" stroke-width="1"/>`
       +`<rect x="${(X(i)-cw/2).toFixed(1)}" y="${Y(Math.max(op[i],cl[i])).toFixed(1)}" width="${cw.toFixed(1)}" height="${Math.max(1,Math.abs(Y(op[i])-Y(cl[i]))).toFixed(1)}" fill="${c}"/>`;
   }
   const line=(k,col,w)=>{const v=sl(k);let d="";v.forEach((y,i)=>{if(y!=null)d+=(d?"L":"M")+X(i).toFixed(1)+" "+Y(y).toFixed(1);});return `<path d="${d}" fill="none" stroke="${col}" stroke-width="${w}"/>`;};
-  WK_EMA.forEach(([k,,col])=>{g+=line(k,col,k==="e200"?2:1.4);const v=sl(k),y=v[m-1];if(y!=null)g+=`<rect x="${W-PR+2}" y="${(Y(y)-7).toFixed(1)}" width="54" height="14" rx="2" fill="${col}"/><text x="${W-PR+5}" y="${(Y(y)+3.5).toFixed(1)}" font-size="10" fill="#fff" font-weight="700">${N(y,0)}</text>`;});
+  WK_EMA.forEach(([k,,col])=>{g+=line(k,col,k==="e200"?2:1.4);const v=sl(k),y=v[m-1];if(y!=null)g+=`<rect x="${W-PR+2}" y="${(Y(y)-7).toFixed(1)}" width="54" height="14" rx="2" fill="${col}"/><text x="${W-PR+5}" y="${(Y(y)+3.5).toFixed(1)}" font-size="10" fill="#fff" font-weight="700">${N(y,it.dec||0)}</text>`;});
   /* 연도 눈금 */
   const ds=it.d.slice(a); let xa="";
   for(let i=1;i<m;i++)if(ds[i].slice(0,4)!==ds[i-1].slice(0,4))xa+=`<text x="${X(i).toFixed(1)}" y="${H-4}" font-size="10" fill="var(--ink-3)" text-anchor="middle">${ds[i].slice(0,4)}</text><line x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="0" y2="${PH+GAP+RH}" stroke="var(--axis)" stroke-width=".4" opacity=".5"/>`;
@@ -4107,7 +4107,8 @@ function renderWeekly(row){
   const p=row.payload; if(!p||!p.items)return;
   $("#gmAsOf").textContent=`주봉 · 기준 ${p.as_of} · 수집 ${row.updated_at?fmtUpdTime(row.updated_at):"–"}`;
   const n=S.gm.wkN||156;
-  let h=`<div class="qf seg" id="wkNSel" style="margin:0 0 10px">${[[104,"2년"],[156,"3년"],[260,"5년"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===n}">${l}</button>`).join("")}</div>`;
+  let h=`<div class="qf seg" id="wkNSel" style="margin:0 0 10px">${[[104,"2년"],[156,"3년"],[260,"5년"],[520,"10년"],[1040,"20년"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===n}">${l}</button>`).join("")}</div>`;
+  h+=wkCorrHtml(p.items);
   h+=p.items.map(it=>{
     const x=it.last,e20=it.e20[it.d.length-1],e50=it.e50[it.d.length-1],e100=it.e100[it.d.length-1],e200=it.e200[it.d.length-1];
     const aligned=x.c>e20&&e20>e50&&e50>e100&&e100>e200;
@@ -4115,9 +4116,9 @@ function renderWeekly(row){
     const rs=x.rsi==null?"–":x.rsi<30?"과매도권":x.rsi>70?"과매수권":"중립";
     return `<div class="card" style="margin-top:12px"><h3>${it.n} <span class="r">주봉 · ${st}</span></h3>
       <div class="tiles" style="margin:2px 0 8px">
-        <div class="tile"><div class="lb">종가</div><div class="vl">${N(x.c,2)}</div></div>
-        <div class="tile"><div class="lb">200주 EMA 이격</div><div class="vl"><span class="${sgn(x.dev200)}">${pm(x.dev200,1)}%</span></div><div class="sub">${N(e200,0)}</div></div>
-        <div class="tile"><div class="lb">20주 EMA 이격</div><div class="vl"><span class="${sgn(x.dev20)}">${pm(x.dev20,1)}%</span></div><div class="sub">${N(e20,0)}</div></div>
+        <div class="tile"><div class="lb">종가</div><div class="vl">${N(x.c,Math.max(2,it.dec||0))}</div></div>
+        <div class="tile"><div class="lb">200주 EMA 이격</div><div class="vl"><span class="${sgn(x.dev200)}">${pm(x.dev200,1)}%</span></div><div class="sub">${N(e200,it.dec||0)}</div></div>
+        <div class="tile"><div class="lb">20주 EMA 이격</div><div class="vl"><span class="${sgn(x.dev20)}">${pm(x.dev20,1)}%</span></div><div class="sub">${N(e20,it.dec||0)}</div></div>
         <div class="tile"><div class="lb">RSI(14)</div><div class="vl">${N(x.rsi,1)}</div><div class="sub">${rs}</div></div>
       </div>${wkSvg(it,n)}
       <div class="note" style="margin-top:4px"><span style="color:#e53935">━</span> EMA20 <span style="color:#f59e0b">━</span> EMA50 <span style="color:#7b1fa2">━</span> EMA100 <span style="color:#555">━</span> EMA200 · 주봉 ${x.weeks}개(${x.first}~) 기준으로 계산${x.weeks<260?" · ⚠ 이력이 짧아 200주선 오차 가능":""}</div></div>`;
@@ -4125,6 +4126,50 @@ function renderWeekly(row){
   h+=`<div class="note" style="margin-top:8px">${p.note||""} · 이격 = 종가 ÷ EMA − 1. 현재 주는 마감 전 잠정봉입니다.</div>`;
   $("#gmBody").innerHTML=h;
   $$("#wkNSel .fchip").forEach(b=>b.onclick=()=>{S.gm.wkN=+b.dataset.v;renderWeekly(row);});
+  $$("#wkCSel .fchip").forEach(b=>b.onclick=()=>{S.gm.wkC=+b.dataset.v;renderWeekly(row);});
+  $$("#wkCorr [data-ci]").forEach(td=>td.onclick=()=>{S.gm.wkPair=[+td.dataset.ci,+td.dataset.cj];renderWeekly(row);});
+}
+/* 상관관계: 같은 주(월요일 기준)로 맞춘 주간 변화율의 피어슨 상관. 금리는 %p 변화, 나머지는 수익률.
+   표 칸을 누르면 그 두 자산의 52주 롤링 상관 추이를 아래에 그림. */
+function wkAlign(items){
+  let common=null;
+  items.forEach(it=>{const s=new Set(it.d);common=common?new Set([...common].filter(d=>s.has(d))):s;});
+  const ds=[...common].sort();
+  const ret=items.map(it=>{const mp=new Map(it.d.map((d,i)=>[d,it.c[i]]));
+    return ds.map((d,i)=>{if(!i)return null;const a=mp.get(ds[i-1]),b=mp.get(d);return(a==null||b==null)?null:(it.kind==="diff"?b-a:(a?b/a-1:null));});});
+  return {ds,ret};
+}
+function wkCorr(x,y,a,b){
+  let n=0,sx=0,sy=0,sxx=0,syy=0,sxy=0;
+  for(let i=a;i<b;i++){const u=x[i],v=y[i];if(u==null||v==null)continue;n++;sx+=u;sy+=v;sxx+=u*u;syy+=v*v;sxy+=u*v;}
+  if(n<20)return null; const c=n*sxy-sx*sy,d=Math.sqrt((n*sxx-sx*sx)*(n*syy-sy*sy)); return d?c/d:null;
+}
+function wkCorrHtml(items){
+  const A=wkAlign(items), L=A.ds.length, w=S.gm.wkC||156, a=Math.max(1,L-w), K=items.length;
+  const short=it=>it.n.replace("미국 10년물 금리(%)","10Y금리").replace("WTI 원유(선물, $)","WTI유가").replace("금(선물, $)","금").replace(/ ?\(.*$/,"").replace("나스닥 종합","나스닥");
+  const cell=(r)=>r==null?"–":`${r>=0?"+":""}${r.toFixed(2)}`;
+  const bg=r=>r==null?"":r>=0?`rgba(198,40,40,${(Math.abs(r)*.55).toFixed(2)})`:`rgba(28,92,171,${(Math.abs(r)*.55).toFixed(2)})`;
+  const pr=S.gm.wkPair||[0,2];
+  let t=`<div class="tw"><table style="text-align:center"><thead><tr><th></th>${items.map(it=>`<th>${short(it)}</th>`).join("")}</tr></thead><tbody>`;
+  for(let i=0;i<K;i++){t+=`<tr><th class="l">${short(items[i])}</th>`+items.map((_,j)=>{
+    const r=i===j?1:wkCorr(A.ret[i],A.ret[j],a,L), sel=(pr[0]===i&&pr[1]===j)||(pr[0]===j&&pr[1]===i);
+    return i===j?`<td style="color:var(--ink-3)">1</td>`:`<td data-ci="${i}" data-cj="${j}" style="cursor:pointer;background:${bg(r)};${sel?"outline:2px solid var(--ink);outline-offset:-2px;":""}">${cell(r)}</td>`;}).join("")+`</tr>`;}
+  t+=`</tbody></table></div>`;
+  /* 롤링 52주 상관 */
+  const [i,j]=pr, R=[]; for(let k=52;k<=L-1;k++)R.push([A.ds[k],wkCorr(A.ret[i],A.ret[j],k-51,k+1)]);
+  const W=760,H=150,PL=6,PR=40,X=k=>PL+k/(R.length-1)*(W-PL-PR),Y=v=>6+(1-v)/2*(H-22);
+  const rr=R.filter(x=>x[1]!=null);
+  const ln=rr.map((x,k)=>(k?"L":"M")+X(R.indexOf(x)).toFixed(1)+" "+Y(x[1]).toFixed(1)).join("");
+  let yr="";for(let k=1;k<R.length;k++)if(R[k][0].slice(0,4)!==R[k-1][0].slice(0,4)&&(+R[k][0].slice(0,4))%2===0)yr+=`<text x="${X(k).toFixed(1)}" y="${H-3}" font-size="10" fill="var(--ink-3)" text-anchor="middle">${R[k][0].slice(0,4)}</text>`;
+  const lastv=rr.length?rr[rr.length-1][1]:null;
+  const svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    ${[-1,-.5,0,.5,1].map(v=>`<line x1="${PL}" x2="${W-PR}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--axis)" stroke-width="${v===0?1:.5}" ${v===0?"":'stroke-dasharray="3 3"'}/><text x="${W-PR+4}" y="${Y(v)+3}" font-size="10" fill="var(--ink-3)">${v}</text>`).join("")}
+    <path d="${ln}" fill="none" stroke="#6a4fb3" stroke-width="1.5"/>${yr}</svg>`;
+  const rd=lastv==null?"":Math.abs(lastv)>=.6?"강한":Math.abs(lastv)>=.3?"뚜렷한":Math.abs(lastv)>=.1?"약한":"거의 없는";
+  return `<div class="card" id="wkCorr" style="margin-top:12px"><h3>상관관계 <span class="r">주간 변화율 · 같은 주끼리 비교</span></h3>
+    <div class="qf seg" id="wkCSel" style="margin:0 0 8px">${[[52,"1년"],[156,"3년"],[260,"5년"],[520,"10년"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===w}">${l}</button>`).join("")}</div>${t}
+    <div style="margin:10px 0 2px;font-weight:700">${short(items[i])} ↔ ${short(items[j])} · 52주 롤링 상관 ${lastv==null?"":`<span class="${sgn(lastv)}">${cell(lastv)}</span> (${rd} ${lastv>=0?"동행":"역행"})`}</div>${svg}
+    <div class="note" style="margin-top:4px">빨강 = 같은 방향으로 움직임(+1에 가까울수록), 파랑 = 반대로 움직임(−1에 가까울수록). 금리는 %p 변화, 나머지는 주간 수익률로 계산. 표 칸을 누르면 그 쌍의 롤링 추이가 아래에 바뀝니다. 상관은 인과가 아니고 기간에 따라 크게 달라집니다.</div></div>`;
 }
 function renderGlobal(row){
   const p=row.payload; if(!p)return;

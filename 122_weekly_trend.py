@@ -8,8 +8,10 @@ global_pack(tab='WK') 한 행에 최근 N주만 담아 저장합니다. 200주 E
 import os, sys, json, time, datetime
 import requests, psycopg2
 
-SYMS = [("IXIC", "나스닥 종합", "^IXIC"), ("QQQ", "QQQ (나스닥100 ETF)", "QQQ"), ("KS11", "코스피", "^KS11")]
-KEEP = 300          # 화면에 보낼 최근 주 수
+# (코드, 이름, Yahoo 티커, 소수자리, 상관 계산 방식: ret=주간 수익률 / diff=주간 변화폭(금리))
+SYMS = [("IXIC", "나스닥 종합", "^IXIC", 0, "ret"), ("QQQ", "QQQ (나스닥100 ETF)", "QQQ", 2, "ret"), ("KS11", "코스피", "^KS11", 0, "ret"),
+        ("TNX", "미국 10년물 금리(%)", "^TNX", 2, "diff"), ("WTI", "WTI 원유(선물, $)", "CL=F", 1, "ret"), ("GOLD", "금(선물, $)", "GC=F", 0, "ret")]
+KEEP = 1100         # 화면에 보낼 최근 주 수(약 21년 — 20년 보기 지원)
 EMAS = (20, 50, 100, 200)
 rep = []
 def log(m=""):
@@ -31,6 +33,7 @@ def fetch(ysym):
                 if None in (o, h, l, c):
                     continue
                 d = datetime.datetime.fromtimestamp(t + off, datetime.timezone.utc).date()
+                d = d - datetime.timedelta(days=d.weekday())   # 그 주 월요일로 통일(자산 간 주 정렬·잠정봉 중복 제거)
                 rows.append((d.isoformat(), float(o), float(h), float(l), float(c)))
             return rows, None
         except Exception as ex:
@@ -67,7 +70,7 @@ def sma(v, n):
 def r2(x):
     return None if x is None else round(x, 2)
 
-def build(code, name, ysym):
+def build(code, name, ysym, dec=0, kind="ret"):
     rows, err = fetch(ysym)
     if not rows:
         log(f"- {code}: 실패 ({err})"); return None
@@ -80,7 +83,7 @@ def build(code, name, ysym):
     rs = rsi_wilder(c); rm = sma(rs, 14)
     a = max(0, len(rows) - KEEP)
     sl = lambda v: [r2(x) for x in v[a:]]
-    it = {"code": code, "n": name, "d": [r[0] for r in rows[a:]],
+    it = {"code": code, "n": name, "dec": dec, "kind": kind, "d": [r[0] for r in rows[a:]],
           "o": sl([r[1] for r in rows]), "h": sl([r[2] for r in rows]), "l": sl([r[3] for r in rows]), "c": sl(c),
           "rsi": sl(rs), "rsm": sl(rm)}
     for n in EMAS: it[f"e{n}"] = sl(E[n])
@@ -99,7 +102,7 @@ def main():
     ok = bool(items)
     if ok:
         pack = {"tab": "WK", "as_of": max(x["d"][-1] for x in items), "items": items,
-                "note": "EMA 20·50·100·200(주봉) · RSI(14) + 14주 이동평균 · 데이터 Yahoo Finance"}
+                "note": "EMA 20·50·100·200(주봉) · RSI(14) + 14주 이동평균 · 데이터 Yahoo Finance(선물은 연속월물 기준)"}
         js = json.dumps(pack, ensure_ascii=False, separators=(",", ":"))
         conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"])
         with conn.cursor() as cur:
