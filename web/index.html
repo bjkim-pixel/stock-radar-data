@@ -54,6 +54,22 @@ b{font-weight:640}
   #hmWrap .ht b{font-weight:700;display:block}#hmWrap .ht{padding:0;line-height:1.12}
   #hmLegend{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-3);margin-top:6px;flex-wrap:wrap}
   #hmLegend i{display:inline-block;width:22px;height:10px;border-radius:2px}
+#favTabs,.fav-add,#favNote{max-width:calc(100vw - 48px);position:sticky;left:0}
+.fav-add{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:2px 0 8px}
+.fav-add input{flex:1 1 160px;min-width:130px;max-width:260px}
+.fav-add .btn{padding:5px 10px;font-size:12px}
+.hold{cursor:pointer;margin-right:4px;user-select:none;font-size:.95em;opacity:.35;filter:grayscale(1)}
+.hold.on{opacity:1;filter:none}
+.tg{display:inline-block;font-size:9.5px;line-height:1;padding:2px 4px;border-radius:3px;margin-left:3px;vertical-align:1px;font-weight:600;white-space:nowrap}
+.tg.hold-t{background:color-mix(in srgb,var(--ink) 14%,transparent);color:var(--ink)}
+.tg.ai-t{background:color-mix(in srgb,#8a5cf5 22%,transparent);color:#7a4fe0}
+.tg.act{cursor:pointer;color:#fff}
+.tg.act.buy{background:var(--up)} .tg.act.sell{background:var(--down)} .tg.act.hld{background:#6b7280}
+.mine-hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.mine-act{padding:3px 10px;border-radius:5px;color:#fff;font-weight:700;font-size:13px}
+.mine-act.buy{background:var(--up)} .mine-act.sell{background:var(--down)} .mine-act.hld{background:#6b7280}
+.mine-ev td,.mine-ev th{font-size:11.5px;padding:3px 6px}
+.mine-ev td.l{text-align:left}
 a.lk{color:inherit;text-decoration:underline dotted var(--ink-3);text-underline-offset:2px;cursor:pointer}
 a.lk:hover{color:var(--up);text-decoration-color:var(--up)}
 
@@ -1221,10 +1237,18 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 <!-- ═══════════ 짝꿍매매 ═══════════ -->
 <section id="v-fav" class="hide">
-  <div class="card" style="margin-top:16px"><h3>관심종목 <span class="r" id="favCount"></span></h3>
-    <div class="note">종목 이름 앞의 ☆를 누르면 담기고, 다시 누르면 빠집니다 · 이 브라우저에만 저장됩니다(다른 기기·브라우저와는 공유되지 않음) · 표 형식은 종목후보와 같습니다</div>
+  <div class="card" style="margin-top:16px"><h3>내 종목 <span class="r" id="favCount"></span></h3>
+    <div class="tl-tabs" id="favTabs"><button data-t="all" class="on">전체</button><button data-t="fav">관심</button><button data-t="hold">투자</button><button data-t="ai">AI 추천</button></div>
+    <div class="fav-add">
+      <input type="text" id="favAddIn" list="favAddList" placeholder="종목명 또는 코드 입력" autocomplete="off">
+      <datalist id="favAddList"></datalist>
+      <button class="btn ghost" id="favAddFav" type="button">+ 관심</button><button class="btn ghost" id="favAddHold" type="button">+ 투자</button>
+      <span class="faint" id="favSync" style="font-size:11px"></span>
+    </div>
+    <div class="note" id="favNote"></div>
     <div class="tw scrlike" style="margin-top:8px"><table><thead></thead><tbody id="favBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
   </div>
+  <div class="card hide" id="favEvCard"><h3 id="favEvTitle">AI 의견 근거</h3><div id="favEv"></div></div>
 </section>
 
 <section id="v-pair" class="hide">
@@ -2483,7 +2507,7 @@ function go(v,detailCode){
     }
   }
   if(v==="proc")procEnter();
-  if(v==="fav")loadFav();
+  if(v==="fav")wlPull().finally(()=>{loadFav();wlPush();});
   if(v==="sm"){if(!S.smLoaded){S.smLoaded=true;loadSm().catch(e=>{console.error(e);S.smLoaded=false;$("#smMap").innerHTML='<div class="load">불러오기 실패 — Actions에서 Smart Money Phase를 한 번 실행했는지 확인</div>';});}else renderSm();}
   renderAsOf();
   if(!_hashNav)setHash(v,v==="detail"?S.chart.code:null);
@@ -4435,7 +4459,7 @@ async function loadDetail(code){
   const sum=sumRows[0]||{};
   const last=rows.at(-1);
   $("#dHead").innerHTML=`
-    <div><div style="font-size:18px;font-weight:680">${favStar(code,"big")}${isEtf?'<span class="cd" style="color:var(--accent,#2f6fed);font-weight:700">ETF</span> ':""}${sum.name||code}<button type="button" class="btn ghost" id="dCopyName" title="종목명 복사" style="margin-left:8px;padding:1px 8px;font-size:11px;font-weight:500;vertical-align:middle">복사</button>
+    <div><div style="font-size:18px;font-weight:680">${holdBtn(code)}${favStar(code,"big")}${isEtf?'<span class="cd" style="color:var(--accent,#2f6fed);font-weight:700">ETF</span> ':""}${sum.name||code}<button type="button" class="btn ghost" id="dCopyName" title="종목명 복사" style="margin-left:8px;padding:1px 8px;font-size:11px;font-weight:500;vertical-align:middle">복사</button>
       <span class="faint" style="font-size:11.5px;font-weight:400">${code} · ${sum.market||""}</span></div>
       <div class="faint" style="font-size:11px">${rows.length}거래일 이력</div></div>
     <div class="num ${sgn(+last.change_pct)}" style="font-size:28px;font-weight:730;letter-spacing:-.025em;line-height:1">${N(+last.close)}</div>
@@ -6617,25 +6641,124 @@ function toggleFav(code){
   try{localStorage.setItem("sr_fav",JSON.stringify(a));}catch(e){}
   const on=a.includes(code);
   $$(`.fav[data-fav="${code}"]`).forEach(x=>{x.classList.toggle("on",on);x.textContent=on?"★":"☆";x.title=on?"관심종목에서 빼기":"관심종목에 담기";});
-  if(S.curTab==="fav")loadFav();
+  wlPushSoon();if(S.curTab==="fav")loadFav();
 }
 document.addEventListener("click",e=>{const f=e.target.closest&&e.target.closest(".fav");if(!f)return;e.preventDefault();e.stopPropagation();toggleFav(f.dataset.fav);},true);
+// ── 투자종목(hold): 관심과 같은 방식(localStorage) + 서버 동기화(토큰이 있을 때만) — AI 브리핑이 서버 목록을 읽어 의견을 만듭니다
+function holdList(){try{const a=JSON.parse(localStorage.getItem("sr_hold")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
+function isHold(code){return holdList().includes(code);}
+function holdBtn(code){const on=isHold(code);return `<span class="hold${on?" on":""}" data-hold="${code}" title="${on?"투자종목에서 빼기":"투자종목에 담기"}">💼</span>`;}
+function codeName(c){return ((S.codes||[]).find(x=>x.code===c)||{}).name||((S.flowRaw||[]).find(x=>x.code===c)||{}).name||c;}
+function setHold(code,on){
+  let a=holdList();a=on?(a.includes(code)?a:[...a,code]):a.filter(c=>c!==code);
+  try{localStorage.setItem("sr_hold",JSON.stringify(a));}catch(e){}
+  $$(`.hold[data-hold="${code}"]`).forEach(x=>{x.classList.toggle("on",a.includes(code));x.title=a.includes(code)?"투자종목에서 빼기":"투자종목에 담기";});
+  wlPushSoon();if(S.curTab==="fav")loadFav();
+}
+document.addEventListener("click",e=>{const h=e.target.closest&&e.target.closest(".hold");if(!h)return;e.preventDefault();e.stopPropagation();setHold(h.dataset.hold,!isHold(h.dataset.hold));},true);
+let _wlT=null;
+function wlPushSoon(){clearTimeout(_wlT);_wlT=setTimeout(wlPush,800);}
+function wlSyncMsg(m,bad){const el=$("#favSync");if(el){el.textContent=m;el.style.color=bad?"var(--warn)":"";}}
+async function wlPush(){
+  const tok=sriLS("sr_acc_token");if(!tok){wlSyncMsg("서버 동기화 꺼짐 — 투자일지 탭에서 토큰을 입력하면 켜집니다",true);return;}
+  try{
+    const mk=a=>a.map(c=>({code:c,name:codeName(c)}));
+    const r=await fetch(RELAY_HTTP_BASE+"/watchlist",{method:"POST",headers:{"x-access-token":tok,"content-type":"application/json"},body:JSON.stringify({fav:mk(favList()),hold:mk(holdList())})});
+    if(r.status===401){wlSyncMsg("토큰이 맞지 않습니다 — 투자일지 탭에서 다시 입력",true);return;}
+    const j=await r.json();if(!j.ok)throw new Error(j.error||r.status);
+    wlSyncMsg("서버 동기화됨 ✓ (AI 브리핑에 반영 · 다음 브리핑부터)");
+  }catch(e){wlSyncMsg("동기화 실패: "+String(e.message).slice(0,60),true);}
+}
+async function wlPull(){ // 이 브라우저 목록이 비어 있으면 서버 목록을 가져온다(다른 기기에서 담은 종목)
+  const tok=sriLS("sr_acc_token");if(!tok)return;
+  try{
+    const r=await fetch(RELAY_HTTP_BASE+"/watchlist",{headers:{"x-access-token":tok}});if(!r.ok)return;
+    const j=await r.json();if(!j.ok)return;
+    for(const [kind,key,get] of [["fav","sr_fav",favList],["hold","sr_hold",holdList]]){
+      if(!get().length){const a=j.rows.filter(x=>x.kind===kind).map(x=>x.code);if(a.length){try{localStorage.setItem(key,JSON.stringify(a));}catch(e){}}}
+    }
+  }catch(e){}
+}
+S.favTab=S.favTab||"all";
+async function favAiLoad(){ // 최신 AI 브리핑의 추천 종목(picks)·내 종목 의견(mine)
+  if(S.favAi)return S.favAi;
+  S.favAi={date:null,picks:[],mine:{}};
+  try{
+    const r=await q("ai_brief","select=trade_date,round,status,picks:result->picks,mine:result->mine&order=trade_date.desc,round.desc&limit=2");
+    if(r.length){
+      S.favAi.date=r[0].trade_date;
+      r.filter(x=>x.trade_date===r[0].trade_date).forEach(x=>{
+        (x.picks||[]).forEach(p=>{if(!S.favAi.picks.some(y=>y.code===p.code))S.favAi.picks.push({code:p.code,name:p.name});});
+      });
+      const withMine=r.find(x=>Array.isArray(x.mine)&&x.mine.length);
+      if(withMine){S.favAi.mineDate=withMine.trade_date;S.favAi.mineRound=withMine.round;withMine.mine.forEach(m=>S.favAi.mine[m.code]=m);}
+    }
+  }catch(e){}
+  return S.favAi;
+}
+const ACT_CLS={"매수":"buy","매도":"sell","보유":"hld","관망":"hld"};
+function mineEvHTML(m){
+  const E=accEsc;
+  const ev=(m.evidence||[]).map(x=>`<tr><td class="l">${E(x.항목)}</td><td>${E(String(x.값))}</td><td class="${x.점수>0?"up":x.점수<0?"down":"dim"}">${x.점수>0?"+":""}${x.점수}</td><td class="l faint">${E(x.설명||"")}</td></tr>`).join("");
+  const lv=[m.stop!=null?`손절 참고 ${N(m.stop,0)}원`:"",m.resist!=null?`직전 고점 ${N(m.resist,0)}원`:"",m.avg_cost!=null?`내 평단 ${N(m.avg_cost,0)}원 (${m.pnl_pct!=null?pm(m.pnl_pct,1)+"%":"–"})`:""].filter(Boolean).join(" · ");
+  return `<div class="mine-hd"><span class="mine-act ${ACT_CLS[m.action]||"hld"}">${E(m.action)}</span>
+      <span class="faint" style="font-size:11.5px">정량 점수 ${m.score>0?"+":""}${m.score} (규칙 판정: ${E(m.rule_action)}) · 기준 ${E(m.asof||"")}</span></div>
+    ${m.opinion?`<div style="margin:4px 0"><b>의견</b> ${E(m.opinion)}</div>`:""}
+    ${m.risk?`<div style="margin:4px 0"><b class="down">리스크</b> ${E(m.risk)}</div>`:""}
+    ${lv?`<div class="faint" style="font-size:11.5px;margin:4px 0">${E(lv)}</div>`:""}
+    <div class="tw"><table class="mine-ev"><thead><tr><th class="l">항목</th><th>값</th><th>점수</th><th class="l">해석</th></tr></thead><tbody>${ev}</tbody></table></div>`;
+}
+function favShowEv(code){
+  const m=(S.favAi&&S.favAi.mine||{})[code];if(!m)return;
+  $("#favEvTitle").textContent=`${codeName(code)} · 매수/매도 의견과 근거`;
+  $("#favEv").innerHTML=mineEvHTML(m);$("#favEvCard").classList.remove("hide");
+  $("#favEvCard").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
 async function loadFav(){
-  const body=$("#favBody"),codes=favList();
-  $("#favCount").textContent=codes.length?`${codes.length}종목`:"";
-  if(!codes.length){body.innerHTML='<tr><td colspan="30" class="load">아직 담은 종목이 없습니다 — 종목 이름 앞의 ☆를 눌러 보세요</td></tr>';return;}
+  const body=$("#favBody"),favs=favList(),holds=holdList();
+  const tab=S.favTab;
+  $$("#favTabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
+  if(!$("#favAddList").children.length&&S.codes&&S.codes.length)$("#favAddList").innerHTML=S.codes.map(c=>`<option value="${accEsc(c.name)} (${c.code})">`).join("");
+  const ai=await favAiLoad();
+  const aiCodes=ai.picks.map(p=>p.code);
+  const kindsOf=c=>({fav:favs.includes(c),hold:holds.includes(c),ai:aiCodes.includes(c)});
+  let codes;
+  if(tab==="fav")codes=favs;else if(tab==="hold")codes=holds;else if(tab==="ai")codes=aiCodes;
+  else codes=[...new Set([...holds,...favs,...aiCodes])];
+  $("#favCount").textContent=`관심 ${favs.length} · 투자 ${holds.length} · AI추천 ${aiCodes.length}`;
+  $("#favNote").innerHTML=({
+    all:"관심·투자·AI 추천 종목을 모아서 봅니다",fav:"☆로 담은 종목",hold:"💼로 담은 종목(내가 투자 중인 종목)",
+    ai:`최신 AI 브리핑(${ai.date||"–"}) 추천 종목 · 성과는 AI 브리핑 탭 하단`})[tab]
+    +" · ☆ 관심 · 💼 투자 · 이 브라우저에 저장되고, 투자일지 토큰이 있으면 서버에도 동기화되어 <b>AI 브리핑이 매수·보유·매도 의견</b>을 달아줍니다"
+    +(ai.mineDate?` · 최근 의견 ${ai.mineDate} ${ai.mineRound===1?"16시":"18시"} 브리핑`:"");
+  if(!codes.length){body.innerHTML='<tr><td colspan="30" class="load">'+(tab==="ai"?"최신 AI 브리핑에 추천 종목이 없습니다":"아직 담은 종목이 없습니다 — 위 입력창이나 종목 이름 앞의 ☆·💼를 눌러 보세요")+"</td></tr>";return;}
   try{
     const raw=await loadFlowRawData();
-    const idx={};codes.forEach((c,i)=>idx[c]=i);
-    const rows=raw.filter(r=>c0(r.code)).sort((a,b)=>idx[a.code]-idx[b.code]);
-    function c0(c){return idx[c]!==undefined;}
-    const miss=codes.filter(c=>!rows.some(r=>r.code===c));
-    body.innerHTML=rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}${scrCells(r)}</tr>`).join("")
-      +miss.map(c=>{const n=(S.codes.find(x=>x.code===c)||{}).name||c;return `<tr><td class="l rank">–</td><td class="l">${favStar(c)}<a class="lk nm" data-code="${c}">${n}</a></td><td colspan="28" class="faint" style="text-align:left">오늘 기준 데이터 없음</td></tr>`;}).join("");
+    const byCode={};raw.forEach(r=>byCode[r.code]=r);
+    const tags=c=>{const k=kindsOf(c),m=(ai.mine||{})[c];
+      return (k.hold?'<span class="tg hold-t">투자</span>':"")+(k.ai?'<span class="tg ai-t">AI추천</span>':"")
+        +(m?`<span class="tg act ${ACT_CLS[m.action]||"hld"}" data-ev="${c}" title="${accEsc(m.opinion||"")}">${accEsc(m.action)}</span>`:"");};
+    const nameCell=(r)=>scrNameCell(r).replace(favStar(r.code),holdBtn(r.code)+favStar(r.code)).replace(/<\/td>$/,tags(r.code)+"</td>");
+    let n=0;
+    body.innerHTML=codes.map(c=>{const r=byCode[c];n++;
+      if(r)return `<tr><td class="l rank">${n}</td>${nameCell(r)}${scrCells(r)}</tr>`;
+      return `<tr><td class="l rank">${n}</td><td class="l">${holdBtn(c)}${favStar(c)}<a class="lk nm" data-code="${c}">${accEsc(codeName(c))}</a>${tags(c)}</td><td colspan="28" class="faint" style="text-align:left">오늘 기준 데이터 없음</td></tr>`;}).join("");
     $$("#favBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+    $$("#favBody .tg.act").forEach(a=>a.onclick=()=>favShowEv(a.dataset.ev));
     makeSortable("favBody");
   }catch(e){body.innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';}
 }
+$$("#favTabs button").forEach(b=>b.onclick=()=>{S.favTab=b.dataset.t;loadFav();});
+function favAddFrom(kind){
+  const v=$("#favAddIn").value.trim();if(!v)return;
+  const m=/\((\w{6})\)\s*$/.exec(v),code=m?m[1]:((S.codes||[]).find(c=>c.name===v||c.code===v)||{}).code;
+  if(!code){wlSyncMsg("종목을 찾지 못했습니다 — 목록에서 선택해 주세요",true);return;}
+  $("#favAddIn").value="";
+  if(kind==="hold")setHold(code,true);
+  else{if(!isFav(code))toggleFav(code);}
+  wlPushSoon();
+}
+$("#favAddFav").onclick=()=>favAddFrom("fav");$("#favAddHold").onclick=()=>favAddFrom("hold");
 
 // ── 표 열 묶음 토글: 종목후보·오늘의 종목·관심 표의 28개 열(순서는 그대로)을 5묶음으로 접고 펴기
 const SCR_GROUPS=[["g1","기본"],["g2","강도·매물대"],["g3","누적 수급"],["g4","거래"],["g5","당일 주체별"]];

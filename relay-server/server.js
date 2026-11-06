@@ -3078,6 +3078,46 @@ function handleJournal(req, res) {
   res.writeHead(405); res.end(); return true;
 }
 
+/* ── 내 종목 목록 (관심 fav · 투자 hold) — 브라우저 목록을 서버에 보관해 AI 브리핑(Actions)이 읽게 함. 투자일지와 같은 토큰 ── */
+function handleWatchlist(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path !== '/watchlist') return false;
+  accessCors(req, res, 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+  if (!ACCESS_LOG_TOKEN) { json(503, { ok: false, error: 'token not configured' }); return true; }
+  if (!tokenOk(req)) { json(401, { ok: false, error: 'unauthorized' }); return true; }
+  if (req.method === 'GET') {
+    fetch(`${SUPABASE_URL}/rest/v1/watchlist?select=kind,code,name,added_at&order=added_at.asc&limit=1000`,
+      { headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` } })
+      .then(async r => { if (!r.ok) throw new Error(`db ${r.status}`); json(200, { ok: true, rows: await r.json() }); })
+      .catch(e => json(500, { ok: false, error: e.message }));
+    return true;
+  }
+  if (req.method === 'POST') {
+    readBody(req, 2e5).then(async raw => {
+      let b; try { b = JSON.parse(raw); } catch (_) { json(400, { ok: false, error: 'invalid JSON' }); return; }
+      // 본문: { fav: [{code,name}], hold: [{code,name}] } — 넘어온 종류만 통째로 교체
+      const out = {};
+      for (const kind of ['fav', 'hold']) {
+        if (!Array.isArray(b && b[kind])) continue;
+        const seen = new Set(), rows = [];
+        for (const it of b[kind].slice(0, 300)) {
+          const code = String((it && it.code) || it || '').trim();
+          if (!/^[0-9A-Za-z]{1,12}$/.test(code) || seen.has(code)) continue;
+          seen.add(code); rows.push({ kind, code, name: _cut(it && it.name, 80) });
+        }
+        await sbWrite(`watchlist?kind=eq.${kind}`, 'DELETE');
+        if (rows.length) await sbWrite('watchlist', 'POST', rows);
+        out[kind] = rows.length;
+      }
+      json(200, { ok: true, saved: out });
+    }).catch(e => json(500, { ok: false, error: e.message }));
+    return true;
+  }
+  res.writeHead(405); res.end(); return true;
+}
+
 function handleAccessLog(req, res) {
   const path = (req.url || '').split('?')[0];
   if (path === '/visit-log') {
@@ -3112,7 +3152,7 @@ function handleAccessLog(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  if (handleAccessLog(req, res) || handleJournal(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;
