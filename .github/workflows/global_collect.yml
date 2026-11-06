@@ -126,6 +126,15 @@ jobs:
           if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "$HH" -lt 12 ]; then echo "아침(미국 마감) 실행 — ETF 수집은 한국 장마감 후에만"; exit 0; fi
           if [ "${{ github.event.inputs.etf_full }}" = "true" ]; then python 107_etf_collect.py --full; else python 107_etf_collect.py; fi
           python 109_global_stock_pack.py
+      # 주봉 추세(나스닥·QQQ·코스피 EMA 20/50/100/200 + RSI) — 글로벌 시황 '주봉 추세' 탭용. 실패해도 위 수집 결과에는 영향 없음.
+      - name: 주봉 추세 (EMA·RSI)
+        if: steps.gate.outputs.run == 'true' && github.event.inputs.pack_only != 'true'
+        continue-on-error: true
+        env:
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          python 122_weekly_trend.py --report weekly_report.md || true
+          [ -f weekly_report.md ] && { echo; cat weekly_report.md; } >> global_report.md || true
       - name: Publish report (branch global-report)
         if: always() && steps.gate.outputs.run == 'true'
         run: |
