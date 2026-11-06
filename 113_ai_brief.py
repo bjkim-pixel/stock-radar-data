@@ -321,9 +321,9 @@ def score_mine(r, p, smrow, sec_rank, n_sec, held, avg_cost):
 
 def build_mine(conn, cur, sc, per, sm, sec_rank, n_sec):
     """watchlist(관심·투자) 종목 + 투자일지 평단 → 정량 점수·규칙 판정·근거."""
-    wl = rows(cur, "select kind, code, name from watchlist")
+    wl = rows(cur, "select kind, code, name from my_watchlist")
     if not wl:
-        log("- 내 종목: watchlist 비어 있음(또는 테이블 없음) — 건너뜀")
+        log("- 내 종목: my_watchlist 비어 있음(또는 테이블 없음) — 건너뜀")
         return []
     kinds = {}
     for w in wl:

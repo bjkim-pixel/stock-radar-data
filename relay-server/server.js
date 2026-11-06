@@ -3088,7 +3088,7 @@ function handleWatchlist(req, res) {
   if (!ACCESS_LOG_TOKEN) { json(503, { ok: false, error: 'token not configured' }); return true; }
   if (!tokenOk(req)) { json(401, { ok: false, error: 'unauthorized' }); return true; }
   if (req.method === 'GET') {
-    fetch(`${SUPABASE_URL}/rest/v1/watchlist?select=kind,code,name,added_at&order=added_at.asc&limit=1000`,
+    fetch(`${SUPABASE_URL}/rest/v1/my_watchlist?select=kind,code,name,added_at&order=added_at.asc&limit=1000`,
       { headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` } })
       .then(async r => { if (!r.ok) throw new Error(`db ${r.status}`); json(200, { ok: true, rows: await r.json() }); })
       .catch(e => json(500, { ok: false, error: e.message }));
@@ -3107,8 +3107,8 @@ function handleWatchlist(req, res) {
           if (!/^[0-9A-Za-z]{1,12}$/.test(code) || seen.has(code)) continue;
           seen.add(code); rows.push({ kind, code, name: _cut(it && it.name, 80) });
         }
-        await sbWrite(`watchlist?kind=eq.${kind}`, 'DELETE');
-        if (rows.length) await sbWrite('watchlist', 'POST', rows);
+        await sbWrite(`my_watchlist?kind=eq.${kind}`, 'DELETE');
+        if (rows.length) await sbWrite('my_watchlist', 'POST', rows);
         out[kind] = rows.length;
       }
       json(200, { ok: true, saved: out });

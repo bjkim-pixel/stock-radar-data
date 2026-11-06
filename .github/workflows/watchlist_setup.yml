@@ -1,6 +1,6 @@
 name: Setup Watchlist (관심·투자 종목 테이블 생성)
 
-# 117_watchlist.sql 을 실행해 watchlist 테이블을 만듭니다(여러 번 실행해도 안전).
+# 117_watchlist.sql 을 실행해 my_watchlist 테이블을 만듭니다(여러 번 실행해도 안전).
 on:
   workflow_dispatch:
 
