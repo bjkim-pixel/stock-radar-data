@@ -6485,7 +6485,7 @@ async function aiRender(b){
       <div class="ai-pick-bd"><div><b>근거</b> ${E(p.reason)}</div><div><b class="down">리스크</b> ${E(p.risk||"-")}</div><div><b class="faint">관심 제외 조건</b> ${E(p.invalidation||"-")}</div></div></div>`;}).join("");
   const secSet=new Set((D.업종||[]).map(x=>x.업종));
   const sLink=(n)=>secSet.has(n)?`<a class="lk ai-s" data-n="${E(n)}">${E(n)}</a>`:E(n);
-  const chips=(arr)=>(arr||[]).length?`<div class="ai-chips">${arr.map(x=>`<div class="ai-chip"><b>${sLink(x.name)}</b><span>${E(x.reason||"")}</span></div>`).join("")}</div>`:'<div class="faint">–</div>';
+  const chips=(arr)=>(arr||[]).length?`<div class="ai-chips">${arr.map(x=>`<div class="ai-chip"><b>${sLink(x.name)}</b><span>${E(x.reason||"")}</span>${x.us_link?`<small class="faint" style="display:block;margin-top:2px">🇺🇸 ${E(x.us_link)}</small>`:""}</div>`).join("")}</div>`:'<div class="faint">–</div>';
   // ── ① 국내 시장 표
   const idxRow=(k)=>{const m=K[k];return m?`<tr><td class="l">${k}</td><td>${N(m.종가,2)}</td>${aiP(m["1d"],2)}${aiP(m["5d"])}${aiP(m["20d"])}${aiP(m["20일선대비"])}<td class="l">${E(m.레짐||"")}</td></tr>`:"";};
   const FLOW_ORD=["외국인","기관합계","투신","금융투자","연기금","사모","기타법인","개인"],ordIx=k=>{const i=FLOW_ORD.indexOf(k);return i<0?99:i;};   // 표시 순서 고정(저장된 JSON은 키 순서가 바뀜)
@@ -6519,7 +6519,7 @@ async function aiRender(b){
     <div class="ai-picks">${pickRows||'<div class="load">없음</div>'}</div>
     ${(R.mine||[]).length?`<div class="ai-sub">내 종목 매수·보유·매도 의견 <span class="faint" style="font-weight:400;font-size:11px">관심·투자 종목 · 정량 점수 기반 · 행을 눌러 근거 보기</span></div>
       <div class="ai-picks">${R.mine.map(m=>`<details class="ai-pick"><summary style="cursor:pointer;list-style:none"><div class="ai-pick-hd">${holdBtn(m.code)}${favStar(m.code)} <a class="lk nm" data-code="${E(m.code)}">${E(m.name)}</a>
-        <span class="tg ${m.kind==="투자"?"hold-t":"ai-t"}">${E(m.kind)}</span> <span class="mine-act ${ACT_CLS[m.action]||"hld"}" style="font-size:12px;padding:1px 8px">${E(m.action)}</span>
+        <span class="tg ${m.kind==="투자"?"hold-t":"ai-t"}">${E(m.kind)}</span>${m.etype&&m.etype!=="주식"?` <span class="tg">${E(m.etype)}</span>`:""} <span class="mine-act ${ACT_CLS[m.action]||"hld"}" style="font-size:12px;padding:1px 8px">${E(m.action)}</span>
         <span class="faint" style="font-size:11px">점수 ${m.score>0?"+":""}${m.score}</span><span class="ai-pick-px">${m.close!=null?N(m.close,0):"–"} <span class="${sgn(m.chg)}">${m.chg!=null?pm(m.chg,1)+"%":""}</span></span></div>
         <div class="faint" style="font-size:12px;margin-top:3px">${E(m.opinion||"")}</div></summary><div style="margin-top:8px">${mineEvHTML(m)}</div></details>`).join("")}</div>`:""}
     ${(R.avoid||[]).length?`<div class="ai-sub">피할 업종·유형</div>${chips(R.avoid)}`:""}
@@ -6809,7 +6809,7 @@ document.addEventListener("click",e=>{const f=e.target.closest&&e.target.closest
 function holdList(){try{const a=JSON.parse(localStorage.getItem("sr_hold")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
 function isHold(code){return holdList().includes(code);}
 function holdBtn(code){const on=isHold(code);return `<span class="hold${on?" on":""}" data-hold="${code}" title="${on?"투자종목에서 빼기":"투자종목에 담기"}">💼</span>`;}
-function codeName(c){return ((S.codes||[]).find(x=>x.code===c)||{}).name||((S.flowRaw||[]).find(x=>x.code===c)||{}).name||c;}
+function codeName(c){return ((S.codes||[]).find(x=>x.code===c)||{}).name||((S.flowRaw||[]).find(x=>x.code===c)||{}).name||((S.etfMap||{})[c]||{}).name||c;}
 function setHold(code,on){
   let a=holdList();a=on?(a.includes(code)?a:[...a,code]):a.filter(c=>c!==code);
   try{localStorage.setItem("sr_hold",JSON.stringify(a));}catch(e){}
@@ -6879,7 +6879,8 @@ async function loadFav(){
   const body=$("#favBody"),favs=favList(),holds=holdList();
   const tab=S.favTab;
   $$("#favTabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
-  if(!$("#favAddList").children.length&&S.codes&&S.codes.length)$("#favAddList").innerHTML=S.codes.map(c=>`<option value="${accEsc(c.name)} (${c.code})">`).join("");
+  if(!$("#favAddList").children.length&&S.codes&&S.codes.length)$("#favAddList").innerHTML=S.codes.map(c=>`<option value="${accEsc(c.name)} (${c.code})">`).join("")
+    +Object.values(S.etfMap||{}).map(c=>`<option value="${accEsc(c.name)} (${c.code})">`).join("");   /* ETF·인버스·레버리지도 담을 수 있게 */
   const ai=await favAiLoad();
   const aiCodes=ai.picks.map(p=>p.code);
   const kindsOf=c=>({fav:favs.includes(c),hold:holds.includes(c),ai:aiCodes.includes(c)});
@@ -6896,6 +6897,8 @@ async function loadFav(){
   try{
     const raw=await loadFlowRawData();
     const byCode={};raw.forEach(r=>byCode[r.code]=r);
+    const miss=codes.filter(c=>!byCode[c]&&(S.etfMap||{})[c]);   /* 주식 화면에 없는 ETF는 ETF 화면에서 가져옴 */
+    if(miss.length){try{(await q("v_etf_screener",`select=*&code=in.(${miss.join(",")})&order=trade_date.desc&limit=${miss.length*3}`)).forEach(r=>{if(!byCode[r.code])byCode[r.code]=r;});}catch(e){console.error("etf 관심",e);}}
     const tags=c=>{const k=kindsOf(c),m=(ai.mine||{})[c];
       return (k.hold?'<span class="tg hold-t">투자</span>':"")+(k.ai?'<span class="tg ai-t">AI추천</span>':"")
         +(m?`<span class="tg act ${ACT_CLS[m.action]||"hld"}" data-ev="${c}" title="${accEsc(m.opinion||"")}">${accEsc(m.action)}</span>`:"");};
@@ -6912,7 +6915,7 @@ async function loadFav(){
 $$("#favTabs button").forEach(b=>b.onclick=()=>{S.favTab=b.dataset.t;loadFav();});
 function favAddFrom(kind){
   const v=$("#favAddIn").value.trim();if(!v)return;
-  const m=/\((\w{6})\)\s*$/.exec(v),code=m?m[1]:((S.codes||[]).find(c=>c.name===v||c.code===v)||{}).code;
+  const m=/\((\w{6})\)\s*$/.exec(v),code=m?m[1]:((S.codes||[]).find(c=>c.name===v||c.code===v)||Object.values(S.etfMap||{}).find(c=>c.name===v||c.code===v)||{}).code;
   if(!code){wlSyncMsg("종목을 찾지 못했습니다 — 목록에서 선택해 주세요",true);return;}
   $("#favAddIn").value="";
   if(kind==="hold")setHold(code,true);

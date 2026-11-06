@@ -80,6 +80,46 @@ def pack_items(pack, gid, limit=None):
                     "방향": dir_of(m.get("w"), m.get("m"))})
     return out
 
+# 국내 업종 ↔ 미국 섹터·테마 연결표(키워드가 업종명에 들어 있으면 해당 미국 항목을 붙임). (구분, 이름)은 global_pack(US)의 항목명 그대로.
+KR_US_MAP = [
+    (("반도체",), [("sector", "기술"), ("index", "반도체"), ("index", "메모리"), ("theme", "반도체"), ("theme", "AI 슈퍼사이클")]),
+    (("IT", "플랫폼", "소프트", "인터넷", "게임"), [("sector", "기술"), ("sector", "커뮤니케이션"), ("theme", "소프트웨어"), ("theme", "클라우드")]),
+    (("2차전지", "배터리", "전지"), [("theme", "리튬·배터리"), ("sector", "경기소비재")]),
+    (("바이오", "제약", "헬스"), [("sector", "헬스케어"), ("theme", "비만치료제"), ("theme", "유전체")]),
+    (("자동차", "모빌리티"), [("sector", "경기소비재"), ("theme", "리튬·배터리")]),
+    (("소비재", "유통", "화장품", "음식", "식품", "의류", "여행", "레저"), [("sector", "경기소비재"), ("sector", "필수소비재")]),
+    (("금융", "증권", "은행", "보험"), [("sector", "금융"), ("theme", "BDC·사모대출"), ("theme", "스테이블코인")]),
+    (("에너지", "정유", "가스"), [("sector", "에너지"), ("theme", "가스발전·터빈")]),
+    (("화학", "철강", "소재", "금속"), [("sector", "소재")]),
+    (("인프라", "건설", "전력", "전기", "원전", "원자력"), [("sector", "산업재"), ("sector", "유틸리티"), ("theme", "미국 전력화"), ("theme", "원자력"), ("theme", "데이터센터 공급망")]),
+    (("조선", "해운", "운송", "항공"), [("sector", "산업재"), ("theme", "글로벌 해운")]),
+    (("방산", "우주"), [("theme", "방산 테크"), ("theme", "우주 혁신"), ("theme", "드론")]),
+    (("기계", "장비", "로봇"), [("sector", "산업재"), ("theme", "휴머노이드"), ("theme", "드론")]),
+    (("통신",), [("sector", "커뮤니케이션"), ("theme", "광학·포토닉스")]),
+    (("엔터", "미디어", "콘텐츠"), [("sector", "커뮤니케이션")]),
+    (("부동산", "리츠"), [("sector", "부동산")]),
+]
+
+def us_link_for(sector, usmap):
+    """업종명 → 연결된 미국 섹터·테마 지표 목록 + 한 줄 요약(문자열)."""
+    seen, out = set(), []
+    for kws, targets in KR_US_MAP:
+        if any(k in (sector or "") for k in kws):
+            for g, n in targets:
+                it = usmap.get((g, n))
+                if it and (g, n) not in seen:
+                    seen.add((g, n)); out.append({"미국": n, "구분": {"sector": "섹터", "theme": "테마", "index": "지수·ETF"}[g],
+                                                  "5d": it.get("5d"), "20d": it.get("20d"), "추세": it.get("추세"), "국면": it.get("국면")})
+    out = out[:4]
+    if not out:
+        return None, None
+    v5 = [x["5d"] for x in out if x["5d"] is not None]; v20 = [x["20d"] for x in out if x["20d"] is not None]
+    med = lambda v: (sorted(v)[len(v) // 2] if len(v) % 2 else sum(sorted(v)[len(v) // 2 - 1:len(v) // 2 + 1]) / 2) if v else None
+    a5, a20 = med(v5), med(v20)   # 평균이 아니라 중앙값 — 한 테마의 극단값에 판정이 끌려가지 않게
+    tag = "미국 강세" if (a5 is not None and a5 > 1 and (a20 or 0) > 0) else "미국 약세" if (a5 is not None and a5 < -1 and (a20 or 0) < 0) else "미국 혼조"
+    txt = " · ".join(f"{x['미국']}({x['구분']}) 5일 {x['5d']:+.1f}%/20일 {x['20d']:+.1f}%" if x["5d"] is not None and x["20d"] is not None else x["미국"] for x in out)
+    return {"연계": out, "판정": tag, "5d중앙": r1(a5), "20d중앙": r1(a20)}, f"{tag}: {txt}"
+
 def build_digest(conn):
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("set statement_timeout = '120s'")
@@ -195,7 +235,7 @@ def build_digest(conn):
     D["유동성통과종목수"] = len(U)
 
     # 3-2) 내 종목(관심·투자) — 후보 필터와 무관하게 watchlist 전체를 평가
-    D["내종목"] = build_mine(cur.connection, cur, sc, per, sm, sec_rank, len(secs))
+    D["내종목"] = build_mine(cur.connection, cur, sc, per, sm, sec_rank, len(secs), mk)
 
     # 4~6) 미국·글로벌·매크로 — global_pack(이미 계산된 지표)
     packs = {x["tab"]: x["payload"] for x in rows(cur, "select tab, payload from global_pack")}
@@ -207,6 +247,21 @@ def build_digest(conn):
     D["글로벌_국가지수"] = {"기준일": (gl or {}).get("as_of"), "국가": pack_items(gl, "country")}
     D["매크로"] = {"미국": pack_items(us, "macro"), "한국": pack_items(kr, "index") + pack_items(kr, "credit")}
     D["한국테마ETF"] = pack_items(kr, "theme", 30)
+
+    # 4-2) 국내 업종 ↔ 미국 섹터·테마 연계 — AI가 '국내 수치 + 미국 확인'을 함께 근거로 쓰도록 업종마다 붙임
+    usmap = {}
+    for g in ("sector", "theme", "index"):
+        for it in pack_items(us, g):
+            usmap[(g, it["n"])] = it
+    for sx in D["업종"]:
+        d, _ = us_link_for(sx["업종"], usmap)
+        if d:
+            sx["미국연계"] = d
+    ust = [x for g in ("sector", "theme") for x in pack_items(us, g) if x.get("20d") is not None]
+    ust.sort(key=lambda x: -(x["20d"] or 0))
+    D["미국_강약요약"] = {"강한_상위5(20일)": [{"n": x["n"], "5d": x["5d"], "20d": x["20d"]} for x in ust[:5]],
+                      "약한_하위5(20일)": [{"n": x["n"], "5d": x["5d"], "20d": x["20d"]} for x in ust[-5:]]} if ust else None
+    D["_us_link_txt"] = {sx["업종"]: us_link_for(sx["업종"], usmap)[1] for sx in D["업종"] if sx.get("미국연계")}
     return D
 
 
@@ -236,7 +291,7 @@ def journal_cost(cur, codes):
         cur.connection.rollback(); log(f"- ⚠ 투자일지 조회 실패(평단 생략): {str(ex)[:100]}")
     return {c: v for c, v in out.items() if v["qty"] > 0}
 
-def score_mine(r, p, smrow, sec_rank, n_sec, held, avg_cost):
+def score_mine(r, p, smrow, sec_rank, n_sec, held, avg_cost, etf=None):
     """한 종목의 정량 점수와 근거(항목·값·점수·해석). 모든 숫자는 DB 값, 임계값은 아래 코드 그대로 — AI는 계산하지 않는다."""
     ev = []
     def add(item, val, pts, why):
@@ -244,6 +299,7 @@ def score_mine(r, p, smrow, sec_rank, n_sec, held, avg_cost):
     close = f(r.get("close")); chg = f(r.get("change_pct")) or 0
     ma5, ma20, ma60, ma120 = (f(r.get("ma" + k)) for k in ("5", "20", "60", "120"))
     cap = f(r.get("market_cap")) or 0
+    is_etf = bool(etf)
     # 1) 추세 — 이동평균 배열
     if close and ma20 and ma60:
         g20, g60 = (close / ma20 - 1) * 100, (close / ma60 - 1) * 100
@@ -262,7 +318,18 @@ def score_mine(r, p, smrow, sec_rank, n_sec, held, avg_cost):
         add("상대강도(RS)", f"5일 {rs5:.0f} · 20일 {rs20:.0f} 백분위", pts, why)
     # 3) 5일 외국인+기관 수급 (시총 대비)
     combo5 = (f(p.get("foreign_1w")) or 0) + (f(p.get("inst_1w")) or 0)
-    if cap:
+    if is_etf:   # ETF는 투자자별 수급·스마트머니·업종 순위가 없음 — 대신 시장 환경(인버스·레버리지)과 거래량으로 판단
+        add("수급·업종", "ETF는 투자자별 수급 미집계", 0, "가격·상대강도·거래량·시장 환경으로만 판단")
+        gap = etf.get("gap")
+        if etf.get("kind") in ("인버스", "레버리지") and gap is not None:
+            sign = -1 if etf["kind"] == "인버스" else 1       # 인버스는 지수가 약할 때, 레버리지는 강할 때 유리
+            g = gap * sign
+            pts, why = (1, f"{etf['idx']}가 20일선 {'아래' if sign < 0 else '위'} — {etf['kind']} ETF에 유리한 환경") if g >= 2 \
+                else (-1, f"{etf['idx']}가 20일선 {'위' if sign < 0 else '아래'} — {etf['kind']} ETF에 불리한 환경") if g <= -2 else (0, "지수가 20일선 부근 — 방향성 약함")
+            add("시장 환경(지수)", f"{etf['idx']} 20일선 대비 {gap:+.1f}%", pts, why)
+        if etf.get("kind") in ("인버스", "레버리지"):
+            add("상품 특성", f"{etf['kind']} ETF", 0, "일간 수익률을 추종 — 길게 들고 가면 복리 효과로 지수와 어긋나 손실 가능(단기용)")
+    elif cap:
         c5r = combo5 / cap * 100
         pts, why = (2, "외기 5일 순매수가 시총의 0.1%↑ — 강한 매집") if c5r >= 0.1 else (1, "외기 5일 순매수 우위") if c5r > 0 \
             else (-2, "외기 5일 순매도가 시총의 0.1%↑ — 강한 이탈") if c5r <= -0.1 else (-1, "외기 5일 순매도 우위")
@@ -271,10 +338,11 @@ def score_mine(r, p, smrow, sec_rank, n_sec, held, avg_cost):
     combo1 = (f(r.get("foreign_net")) or 0) + (f(r.get("inst_net")) or 0)
     indiv = f(r.get("individual_net")) or 0
     consec = int(r.get("consec_both_buy") or 0)
-    if combo1 > 0 and consec >= 2: pts, why = 1, f"외국인·기관 {consec}일 연속 동반 순매수"
+    if is_etf: pass
+    elif combo1 > 0 and consec >= 2: pts, why = 1, f"외국인·기관 {consec}일 연속 동반 순매수"
     elif combo1 < 0 and indiv > 0: pts, why = -1, "개인만 사고 외국인·기관은 파는 수급(물량 넘기기 패턴)"
     else: pts, why = 0, "뚜렷한 방향 없음"
-    add("수급(오늘·연속)", f"외기 {round(combo1 / EOK):+,}억 · 개인 {round(indiv / EOK):+,}억 · 연속 {consec}일", pts, why)
+    if not is_etf: add("수급(오늘·연속)", f"외기 {round(combo1 / EOK):+,}억 · 개인 {round(indiv / EOK):+,}억 · 연속 {consec}일", pts, why)
     # 5) 스마트머니 국면
     ph = (smrow or {}).get("phase")
     if ph:
@@ -291,7 +359,7 @@ def score_mine(r, p, smrow, sec_rank, n_sec, held, avg_cost):
         else: pts, why = 0, "고점과 적당한 거리"
         add("고점 대비 위치", f"{pf:+.1f}% · 오늘 {chg:+.1f}% · 거래량비 {round(vr) if vr is not None else '–'}%", pts, why)
     # 7) 업종 강도
-    sr = (sec_rank.get(r.get("sector")) or {}).get("RS5순위")
+    sr = None if is_etf else (sec_rank.get(r.get("sector")) or {}).get("RS5순위")
     if sr is not None:
         pts, why = (1, "업종이 단기 상위권") if sr <= 5 else (-1, "업종이 단기 하위권") if sr >= n_sec - 4 else (0, "업종 중위권")
         add("업종 강도", f"{r.get('sector')} RS5 {sr}위/{n_sec}", pts, why)
@@ -306,11 +374,12 @@ def score_mine(r, p, smrow, sec_rank, n_sec, held, avg_cost):
         add("내 평단 대비", f"평단 {avg_cost:,.0f}원 → {pnl:+.1f}%", pts, why)
     score = sum(e["점수"] for e in ev)
     # 판정 규칙: 보유 중이면 매수(추가)·보유·매도, 아니면 매수·관망·매도(=진입 회피)
+    bt = (4 if is_etf else 5) if held else (3 if is_etf else 4)   # ETF는 평가 항목이 적어 매수 기준을 한 단계 낮춤
     if held:
-        act = "매수" if score >= 5 else "매도" if score <= -3 else "보유"
+        act = "매수" if score >= bt else "매도" if score <= -3 else "보유"
         if pnl is not None and pnl <= -7: act = "매도"
     else:
-        act = "매수" if score >= 4 else "매도" if score <= -3 else "관망"
+        act = "매수" if score >= bt else "매도" if score <= -3 else "관망"
     stop = None
     if close:
         stop = round(ma20 * 0.97) if ma20 else round(close * 0.95)
@@ -319,7 +388,7 @@ def score_mine(r, p, smrow, sec_rank, n_sec, held, avg_cost):
     resist = round(close / (1 + pf / 100)) if (close and pf is not None and pf < 0) else (round(close) if close else None)
     return score, act, ev, stop, resist, pnl
 
-def build_mine(conn, cur, sc, per, sm, sec_rank, n_sec):
+def build_mine(conn, cur, sc, per, sm, sec_rank, n_sec, mk=None):
     """watchlist(관심·투자) 종목 + 투자일지 평단 → 정량 점수·규칙 판정·근거."""
     wl = rows(cur, "select kind, code, name from my_watchlist")
     if not wl:
@@ -332,15 +401,27 @@ def build_mine(conn, cur, sc, per, sm, sec_rank, n_sec):
     holds = [c for c, k in kinds.items() if "hold" in k]
     cost = journal_cost(cur, holds)
     by = {r["code"]: r for r in sc}
+    etf_by = {}
+    miss = [c for c in kinds if c not in by]
+    if miss:   # 주식 화면(v_screener)에 없으면 ETF 화면(v_etf_screener)에서 찾음 — ETF·인버스·레버리지
+        for r in rows(cur, "select distinct on (code) * from v_etf_screener where code = any(%s) order by code, trade_date desc", (miss,)):
+            etf_by[r["code"]] = r
     out = []
     for code, ks in kinds.items():
         r = by.get(code)
+        etf = None
+        if not r and code in etf_by:
+            r = etf_by[code]; nm = r.get("name") or ""
+            kind = "인버스" if "인버스" in nm else "레버리지" if "레버리지" in nm else "일반"
+            idx = "KOSDAQ" if "코스닥" in nm else "KOSPI"
+            etf = {"kind": kind, "idx": idx, "gap": ((mk or {}).get(idx) or {}).get("20일선대비")}
         if not r:
             log(f"- 내 종목 {names.get(code) or code}({code}): 오늘 데이터 없음 — 제외"); continue
         held = "hold" in ks
         c = cost.get(code)
-        score, act, ev, stop, resist, pnl = score_mine(r, per.get(code, {}), sm.get(code, {}), sec_rank, n_sec, held, c["cost"] if c else None)
-        out.append({"code": code, "name": r.get("name") or names.get(code), "구분": ("투자" if held else "관심"), "업종": r.get("sector"),
+        score, act, ev, stop, resist, pnl = score_mine(r, per.get(code, {}), sm.get(code, {}), sec_rank, n_sec, held, c["cost"] if c else None, etf)
+        out.append({"code": code, "name": r.get("name") or names.get(code), "구분": ("투자" if held else "관심"), "유형": ("주식" if not etf else "인버스 ETF" if etf["kind"] == "인버스" else "레버리지 ETF" if etf["kind"] == "레버리지" else "ETF"),
+                    "기준일": str(r.get("trade_date")) if etf else None, "업종": r.get("sector"),
                     "종가": f(r.get("close")), "등락%": r1(r.get("change_pct"), 2), "정량점수": score, "규칙판정": act,
                     "손절참고": stop, "직전고점": resist, "평단": round(c["cost"]) if c else None, "평단대비%": None if pnl is None else round(pnl, 1),
                     "근거": ev})
@@ -364,10 +445,10 @@ def finalize_mine(D, res):
         top = sorted(ev, key=lambda e: -abs(e["점수"]))[:2]
         auto = f"{x['규칙판정']} 판정: " + ", ".join(f"{e['항목']} {e['점수']:+d}({e['설명']})" for e in top if e["점수"]) if any(e["점수"] for e in top) else f"{x['규칙판정']} 판정: 뚜렷한 우위 항목 없음"
         neg = sorted([e for e in ev if e["점수"] < 0], key=lambda e: e["점수"])
-        items.append({"code": x["code"], "name": x["name"], "kind": x["구분"], "action": act, "rule_action": x["규칙판정"], "score": x["정량점수"],
+        items.append({"code": x["code"], "name": x["name"], "kind": x["구분"], "etype": x.get("유형"), "action": act, "rule_action": x["규칙판정"], "score": x["정량점수"],
                       "opinion": (a.get("opinion") or auto), "risk": (a.get("risk") or (neg[0]["설명"] if neg else "")),
                       "stop": x["손절참고"], "resist": x["직전고점"], "avg_cost": x["평단"], "pnl_pct": x["평단대비%"],
-                      "close": x["종가"], "chg": x["등락%"], "asof": D["기준일"], "evidence": ev, "ai": bool(a.get("opinion"))})
+                      "close": x["종가"], "chg": x["등락%"], "asof": x.get("기준일") or D["기준일"], "evidence": ev, "ai": bool(a.get("opinion"))})
     res["mine"] = items
     return res
 
@@ -377,17 +458,17 @@ SCHEMA_HINT = """{
  "stance": "공격 | 중립 | 방어 중 하나",
  "stance_reason": "왜 그 스탠스인지 2~3문장 (지수·수급·매크로 근거)",
  "market": "국내 시장 요약 3~4문장 (KOSPI/KOSDAQ 등락, 거래대금, 외국인·기관·개인 수급 방향)",
- "sectors": {"summary": "업종 흐름 2~3문장", "strong": [{"name": "업종명", "reason": "근거 1문장"}], "weak": [{"name": "업종명", "reason": "근거 1문장"}]},
+ "sectors": {"summary": "업종 흐름 2~3문장(국내 업종 + 미국 섹터·테마 동조/괴리 포함)", "strong": [{"name": "업종명", "reason": "국내 수치 + 미국연계 수치를 함께 인용한 근거 1~2문장"}], "weak": [{"name": "업종명", "reason": "국내 수치 + 미국연계 수치를 함께 인용한 근거 1~2문장"}]},
  "stocks_today": "오늘 강했던 종목들의 공통점 2~3문장 (종목명 언급 가능)",
  "us": "미국 지수·섹터·테마 요약 2~3문장과 국내 업종에 주는 시사점",
  "global": "국가별 지수 강약 1~2문장",
  "macro": {"summary": "금리·달러/원화·금·구리·원유·VIX 등의 방향이 주는 투자 방향 2~3문장",
            "items": [{"name": "지표명", "dir": "↑ | ↓ | →", "comment": "해석 1문장"}]},
- "focus_sectors": [{"name": "업종명(업종 목록의 이름 그대로)", "reason": "단기 스윙 관점 근거"}],
+ "focus_sectors": [{"name": "업종명(업종 목록의 이름 그대로)", "reason": "단기 스윙 관점 근거 — 국내 수치 + 미국연계 수치 인용"}],
  "picks": [{"code": "후보종목의 code 그대로", "name": "종목명", "reason": "선정 근거 1~2문장(수급·가격·업종)",
             "risk": "주의할 점 1문장", "invalidation": "이 조건이 나오면 관심 제외(구체적으로)"}],
  "mine": [{"code": "내종목의 code 그대로", "action": "내종목의 규칙판정과 같거나 한 단계 차이(매수|보유|관망|매도)", "opinion": "의견 2문장 — 근거 항목의 수치를 인용", "risk": "주의점 1문장"}],
- "avoid": [{"name": "업종 또는 유형", "reason": "근거 1문장"}],
+ "avoid": [{"name": "업종 또는 유형", "reason": "국내 수치 + 미국연계 수치를 함께 인용한 근거 1~2문장"}],
  "checkpoints": ["내일 장에서 확인할 것 (3개)"]
 }"""
 
@@ -396,16 +477,16 @@ def prompt_of(D, err=None):
 규칙:
 1) 이 데이터에 있는 숫자·이름만 사용한다. 데이터에 없는 뉴스·실적·수치를 지어내지 않는다.
 2) picks는 반드시 "후보종목" 목록의 code에서만 정확히 5개 고른다. 규칙점수는 참고용이며 그대로 상위 5개를 고르지 말고, 업종 흐름·수급 지속성·매크로와의 정합성·리스크를 종합해 판단한다. 같은 업종에 3개 이상 몰지 않는다.
-3) focus_sectors는 3개, 업종 목록의 이름 그대로 쓴다.
+3) focus_sectors는 3개, 업종 목록의 이름 그대로 쓴다. 업종 판단(sectors.strong/weak, focus_sectors, avoid)의 reason에는 반드시 ①국내 수치(RS순위·오늘등락·외기합5일억·거래대금 변화)와 ②해당 업종의 "미국연계"(미국 섹터·테마의 5일·20일 수익률과 판정)를 함께 인용한다. 국내 강세+미국 강세는 '미국 동조로 지속성 근거', 국내 강세+미국 약세는 '미국과 괴리 — 지속성 주의', 국내 약세+미국 강세는 '반등 후보', 국내 약세+미국 약세는 '회피 근거'처럼 두 쪽의 관계를 한 문장에 밝힌다. 미국연계 필드가 없는 업종은 국내 근거만 쓴다. "미국_강약요약"은 us 항목과 업종 판단의 배경으로 활용한다.
 4) 금액 단위는 억원, 등락은 %. 문장은 한국어 존댓말 없이 간결한 보고서체(~임, ~함 아님, 평서문 '~다').
 5) 투자 권유가 아니라 분석 보조임을 전제로, 단정 대신 조건·근거를 분명히 쓴다.
-6) "내종목"이 비어 있지 않으면 mine에 내종목 전부를 code별로 한 번씩 쓴다. 각 종목은 코드가 계산한 정량점수·규칙판정·근거(항목별 점수)를 따르며, action은 규칙판정과 같거나 인접한 값만 가능(바꾸면 opinion에 이유). 근거에 없는 수치·뉴스를 쓰지 않는다. 투자 구분은 보유 중(매수=추가매수, 보유, 매도=청산·비중축소), 관심 구분은 미보유(매수=신규진입, 관망, 매도=진입 회피).
+6) "내종목"이 비어 있지 않으면 mine에 내종목 전부를 code별로 한 번씩 쓴다. 각 종목(주식·ETF·인버스 ETF·레버리지 ETF 모두 포함, 유형 필드 참고)은 코드가 계산한 정량점수·규칙판정·근거(항목별 점수)를 따르며 — ETF는 수급 데이터가 없어 가격·RS·시장 환경으로만 판단했음을 의견에 반영하고, 인버스·레버리지는 단기용이라는 점과 지수 방향과의 관계를 언급하며, action은 규칙판정과 같거나 인접한 값만 가능(바꾸면 opinion에 이유). 근거에 없는 수치·뉴스를 쓰지 않는다. 투자 구분은 보유 중(매수=추가매수, 보유, 매도=청산·비중축소), 관심 구분은 미보유(매수=신규진입, 관망, 매도=진입 회피).
 7) 출력은 아래 형식의 JSON 하나만. 마크다운 금지.
 형식:
 {SCHEMA_HINT}
 
 데이터:
-{json.dumps(D, ensure_ascii=False, separators=(',', ':'))}
+{json.dumps({k: v for k, v in D.items() if not k.startswith('_')}, ensure_ascii=False, separators=(',', ':'))}
 """
     if err:
         p += f"\n\n※ 직전 응답이 검증에 실패했다: {err}. 규칙을 지켜 다시 출력하라."
@@ -450,6 +531,11 @@ def validate(res, D):
     res["picks"] = picks[:5]
     finalize_mine(D, res)
     res["focus_sectors"] = [s for s in (res.get("focus_sectors") or []) if s.get("name") in secnames][:3]
+    ut = D.get("_us_link_txt") or {}
+    for grp in (res["focus_sectors"], (res.get("sectors") or {}).get("strong") or [], (res.get("sectors") or {}).get("weak") or [], res.get("avoid") or []):
+        for x in grp:
+            if isinstance(x, dict) and x.get("name") in ut:
+                x["us_link"] = ut[x["name"]]
     if res.get("stance") not in ("공격", "중립", "방어"):
         res["stance"] = "중립"
     for k in ("headline", "market", "us", "global", "stocks_today"):
@@ -612,7 +698,7 @@ def main():
                        values (%s,%s,%s,%s,%s,%s,%s)
                        on conflict (trade_date, round) do update set created_at=now(), model=excluded.model, status=excluded.status,
                          data_partial=excluded.data_partial, digest=excluded.digest, result=excluded.result""",
-                    (td, rnd, model, status, D["데이터상태"].startswith("잠정"), json.dumps(D, ensure_ascii=False), json.dumps(res, ensure_ascii=False)))
+                    (td, rnd, model, status, D["데이터상태"].startswith("잠정"), json.dumps({k: v for k, v in D.items() if not k.startswith("_")}, ensure_ascii=False), json.dumps(res, ensure_ascii=False)))
     conn.commit()
     log(f"- 저장: {td} {rnd}회차 · status={status} · model={model}")
     log(f"- 헤드라인: {res.get('headline')}")
