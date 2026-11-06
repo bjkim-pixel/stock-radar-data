@@ -1989,7 +1989,7 @@ function sortVal(txt,el){
   if(!s||s==='–'||s==='-')return null;
   const n=parseFloat(s);return isNaN(n)?s.toLowerCase():n;
 }
-function makeSortable(tbodyId){
+function makeSortable(tbodyId,incLeft){   // incLeft=true: 왼쪽 글자 열(종목명·업종명 등)도 가나다순 정렬 대상
   const tbody=document.getElementById(tbodyId);
   if(!tbody)return;
   const ths=[...tbody.closest('table').querySelectorAll('thead th')];
@@ -1998,7 +1998,7 @@ function makeSortable(tbodyId){
     if(h.dataset.sortOrig!==undefined)h.textContent=h.dataset.sortOrig;});
   // 최초 1회만 이벤트 바인딩
   ths.forEach((th,ci)=>{
-    if(th.classList.contains('l')||th.dataset.sortOrig!==undefined)return;
+    if((th.classList.contains('l')&&!incLeft)||th.dataset.sortOrig!==undefined)return;
     th.dataset.sortOrig=th.textContent.trim();
     th.classList.add('sortable');
     th.onclick=()=>{
@@ -6449,7 +6449,9 @@ async function aiGoGlobal(tab,name){
 /* 숫자 셀 헬퍼 — 값이 없으면 – */
 const aiP=(v,d=1)=>`<td class="${sgn(v)}">${v==null?"–":pm(v,d)+"%"}</td>`;
 const aiE=(v)=>`<td class="${sgn(v)}">${v==null?"–":pm(v,0)}</td>`;
+let _aiTn=0;
 function aiTable(id,head,rowsHtml,cls){
+  if(!id)id="aiT"+(++_aiTn);   // 모든 표에 자동 id → 헤더 클릭 정렬
   return `<div class="tw ${cls||""}"><table class="ai-mini"><thead><tr>${head}</tr></thead><tbody id="${id}">${rowsHtml||'<tr><td colspan="30" class="load">없음</td></tr>'}</tbody></table></div>`;
 }
 function aiGlobalRows(arr,tab){
@@ -6550,7 +6552,8 @@ async function aiRender(b){
   $$("#aiBody a.lk[data-code]").forEach(a=>a.onclick=()=>aiNav(()=>go("detail",a.dataset.code)));
   $$("#aiBody a.ai-g").forEach(a=>a.onclick=e=>{e.preventDefault();aiGoGlobal(a.dataset.tab,a.dataset.n).catch(console.error);});
   $$("#aiBody a.ai-s").forEach(a=>a.onclick=e=>{e.preventDefault();aiNav(()=>goSectorStocks(a.dataset.n));});
-  ["aiSecBody","aiCandBody"].forEach(id=>makeSortable(id));
+  /* AI 브리핑의 모든 표: 헤더 클릭 = 내림차순 → 다시 클릭 = 오름차순 (글자 열은 가나다순) */
+  $$("#aiBody tbody[id]").forEach(t=>makeSortable(t.id,true));
 }
 async function jrOpen(){
   if(!sriLS("sr_acc_token")){jrAuthShow("");return;}
