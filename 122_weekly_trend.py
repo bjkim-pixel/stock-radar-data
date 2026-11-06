@@ -2,7 +2,7 @@
 """주봉 추세(나스닥 종합·QQQ·코스피) — 글로벌 시황 '주봉 추세' 탭용.
 
 Yahoo 주봉(1wk, 전 기간)을 받아 EMA 20/50/100/200, RSI(14)와 RSI의 14주 이동평균을 계산하고
-global_pack(tab='WK') 한 행에 최근 N주만 담아 저장합니다. 200주 EMA 수렴에 긴 이력이 필요해서 전 기간(max)을 받습니다.
+global_pack(tab='WK') 한 행에 최근 N주만 담아 저장합니다. 200주 EMA 수렴에 긴 이력이 필요해서 2000년부터 받습니다(range=max는 Yahoo가 월·분기봉으로 뭉개서 쓰지 않음).
 사용: SUPABASE_DB_URL=... python 122_weekly_trend.py [--report weekly_report.md]
 """
 import os, sys, json, time, datetime
@@ -20,7 +20,7 @@ def fetch(ysym):
     for host in ("query1", "query2"):
         try:
             r = requests.get(f"https://{host}.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(ysym)}",
-                             params={"interval": "1wk", "range": "max"}, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+                             params={"interval": "1wk", "period1": int(datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc).timestamp()), "period2": int(time.time()) + 86400}, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
             if r.status_code != 200:
                 err = f"HTTP {r.status_code}"; continue
             res = r.json()["chart"]["result"][0]
