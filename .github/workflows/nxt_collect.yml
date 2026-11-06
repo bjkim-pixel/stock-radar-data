@@ -1,4 +1,4 @@
-name: NXT After-market Collection
+name: "[상시] NXT 시간외 수집 | 평일 18:12 | NXT 시간외 시세→종가베팅2 확정"
 
 # 2026-09-11 신설 — "종가베팅2" 전략(정규장 등락률 vs NXT 등락률 괴리 top10 →
 # 시가총액 상위 3개)이 쓰는 daily_price.nxt_close/nxt_change_pct를 채웁니다.

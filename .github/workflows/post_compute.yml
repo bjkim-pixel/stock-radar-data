@@ -1,4 +1,4 @@
-name: Post Compute (수급·스마트머니·시장투자자·AI 브리핑)
+name: "[상시] 후처리 | 계산 직후 연쇄(16·18시) | 수급비율·업종수급·스마트머니·시장투자자·AI브리핑"
 
 # 2026-11-06 통합: 예전의 flow_cap_ratio / sector_flow_daily / smart_money / market_investor / ai_brief 5개 워크플로를 한 파일로 합쳤습니다.
 #
@@ -43,7 +43,7 @@ on:
         required: false
         default: false
   workflow_run:
-    workflows: ["Compute Metrics & Signals"]   # NXT 체인 뒤(통합 파이프라인 안의 계산은 workflow_run 이 발화하지 않아 daily_collect 가 직접 호출)
+    workflows: ["[상시] 지표·신호 계산 | 수집 직후·NXT 직후 연쇄 | MA·RS·신호·가상매매"]   # NXT 체인 뒤(통합 파이프라인 안의 계산은 workflow_run 이 발화하지 않아 daily_collect 가 직접 호출)
     types: [completed]
   workflow_dispatch:
     inputs:

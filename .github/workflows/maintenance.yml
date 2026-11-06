@@ -1,4 +1,4 @@
-name: Maintenance (유지보수·점검 — vacuum · 용량 · 종목상세 점검)
+name: "[상시] 유지보수 | 토 05:00 vacuum(수동: 용량·점검) | DB 정리·용량·종목상세 점검"
 
 # 예전의 Vacuum DB / DB Size Probe / Stock Detail Audit 를 하나로 합쳤습니다.
 #   vacuum       — dead tuple 정리(08_vacuum.py). 매주 토요일 05:00 KST 자동 실행 + 디스크 풀 대응 수동 실행

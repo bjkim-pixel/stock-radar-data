@@ -1,4 +1,4 @@
-name: Add Single Stock
+name: "[수시] 종목 1개 추가 | 수동 | 신규 종목 등록·이력 수집"
 
 on:
   workflow_dispatch:

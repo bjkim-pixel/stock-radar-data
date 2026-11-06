@@ -1,4 +1,4 @@
-name: Daily Collect + Compute (수집·계산 통합)
+name: "[상시] 장마감 수집·계산·AI브리핑 | 평일 16:05·18:05 | 시세·수급·지표·신호·가상매매·후처리"
 
 on:
   schedule:

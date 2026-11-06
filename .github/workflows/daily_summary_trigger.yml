@@ -1,4 +1,4 @@
-name: Daily Stock Summary to Telegram
+name: "[상시] 텔레그램 일일요약 | 수집 직후 1회(20:40 보조) | 텔레그램 발송"
 
 # 거래일마다 relay-server(Render)의 /trigger-daily-summary 엔드포인트를 호출해서, 사이트의 "오늘의 종목" 탭과
 # 같은 로직으로 계산한 요약(시장 요약·섹터RS 상위·수급 상위 종목·종합스코어 Top10)을 텔레그램으로 보냅니다.

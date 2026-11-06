@@ -1,4 +1,4 @@
-name: Backtest (읽기전용 — 시뮬레이션 시작일 지정)
+name: "[수시] 백테스트 | 수동 | 시뮬레이션 리포트(읽기전용)"
 
 # 이미 DB에 계산돼 있는 daily_metrics/signals(V4_CAND_*)를 그대로 사용해서,
 # 가상매매 시뮬레이션만 원하는 시작일부터 다시 돌려봅니다. 06_portfolio.py의

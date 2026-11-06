@@ -1,4 +1,4 @@
-name: Compute Metrics & Signals
+name: "[상시] 지표·신호 계산 | 수집 직후·NXT 직후 연쇄 | MA·RS·신호·가상매매"
 
 on:
   # 2026-10-25: 16:30 KST 단독 스케줄을 없앴습니다. 이제 "Daily Collect + Compute (수집·계산 통합)"이 수집을 끝내면 이 워크플로를
@@ -27,7 +27,7 @@ on:
     # Compute 스텝에서 시각(KST)으로 장중/마감을 구분해 --no-portfolio 여부를
     # 결정합니다(아래 참고) — nxt_collect.yml 쪽 cron을 나중에 바꿔도 이 워크플로
     # 수정 없이 그대로 따라갑니다.
-    workflows: ["NXT After-market Collection"]
+    workflows: ["[상시] NXT 시간외 수집 | 평일 18:12 | NXT 시간외 시세→종가베팅2 확정"]
     types: [completed]
   workflow_dispatch:
     inputs:

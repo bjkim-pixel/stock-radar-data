@@ -55,7 +55,7 @@ def main():
         for r in rows:
             log("- " + " | ".join(f"{c}={'–' if x is None else x}" for c, x in zip(["코드","이름","시장","종류","활성","krx","override","kis","화면업종"], r)))
         if not rows:
-            log("- stocks 테이블에 없음 (Add Single Stock이 안 끝났거나 이름이 다름)")
+            log("- stocks 테이블에 없음 (종목 1개 추가이 안 끝났거나 이름이 다름)")
 
     log(f"# 업종 일괄 지정 ({datetime.datetime.now():%Y-%m-%d %H:%M} UTC) — {'미리보기(저장 안 함)' if DRY else '저장 모드'}")
     log(f"\n## 지금 미분류 종목 {len(unclassified)}개")

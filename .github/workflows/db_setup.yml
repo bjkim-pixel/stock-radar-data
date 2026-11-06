@@ -1,4 +1,4 @@
-name: DB Setup (테이블·뷰 생성 — 선택 실행)
+name: "[수시] DB 테이블·뷰 생성 | 수동 | 스키마 설정"
 
 # 예전의 Setup Journal / Setup Access Log / Setup KOSPI Flow View / Setup Watchlist 를 하나로 합쳤습니다.
 # 모두 여러 번 실행해도 안전합니다(create if not exists). 수동 실행 화면에서 대상을 고르세요.
