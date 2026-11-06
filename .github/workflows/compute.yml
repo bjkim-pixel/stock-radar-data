@@ -16,6 +16,11 @@ on:
         type: string
         required: false
         default: ''
+      no_portfolio:
+        description: '지표·신호만 계산하고 가상매매(포트폴리오)는 건너뜀 — 장중 잠정치용'
+        type: boolean
+        required: false
+        default: false
   workflow_run:
     # nxt_collect.yml("NXT After-market Collection")의 6개 스케줄 실행
     # (18:00~19:50 KST 장중 5회 + 20:10 KST 공식마감 1회)이 끝날 때마다 발화.
@@ -106,7 +111,8 @@ jobs:
           if [ "${{ inputs.daily }}" = "true" ]; then
             # 일일 파이프라인(수집 직후): 오늘 또는 지정한 날짜 하루치 지표·신호 계산 + 가상매수/매도 실행
             D="${{ inputs.date }}"; [ -z "$D" ] && D="$(date +%Y%m%d)"
-            python 05_compute.py "$D"
+            NP=""; [ "${{ inputs.no_portfolio }}" = "true" ] && NP="--no-portfolio"
+            python 05_compute.py "$D" $NP
           elif [ "${{ github.event_name }}" = "schedule" ]; then
             # (예전) 16:30 KST 하나뿐 — 지표·신호 계산 + 실제 가상매수/매도 실행.
             python 05_compute.py "$(date +%Y%m%d)"

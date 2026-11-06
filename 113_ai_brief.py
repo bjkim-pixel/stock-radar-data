@@ -466,7 +466,7 @@ def fallback(D):
 def update_perf(conn):
     """ok 상태 브리핑(최근 90일)의 관심 종목 → 기준일 종가 대비 1·5·20거래일 뒤/최신 수익률과 같은 기간 KOSPI 수익률."""
     cur = conn.cursor()
-    cur.execute("select trade_date, round, result from ai_brief where status='ok' and trade_date >= current_date - 90 order by trade_date")
+    cur.execute("select trade_date, round, result from ai_brief where status='ok' and round > 0 and trade_date >= current_date - 90 order by trade_date")
     briefs = cur.fetchall()
     if not briefs:
         return
@@ -575,7 +575,7 @@ def main():
     here = os.path.dirname(os.path.abspath(__file__))
     with conn.cursor() as cur:
         cur.execute(open(os.path.join(here, "113_ai_brief.sql"), encoding="utf-8").read()); conn.commit()
-    log(f"# AI 데일리 브리핑 ({now:%Y-%m-%d %H:%M} KST · {rnd}회차 = {'16시' if rnd == 1 else '18시'} 데이터)")
+    log(f"# AI 데일리 브리핑 ({now:%Y-%m-%d %H:%M} KST · {rnd}회차 = {'장중 수동' if rnd == 0 else '16시' if rnd == 1 else '18시'} 데이터)")
     if "--mine-only" in ARGS:
         return mine_only(conn)
     D = build_digest(conn)
@@ -585,7 +585,7 @@ def main():
     with conn.cursor() as cur:
         cur.execute("select status from ai_brief where trade_date=%s and round=%s", (td, rnd))
         ex = cur.fetchone()
-    if ex and "--force" not in ARGS and ex[0] == "ok":
+    if ex and "--force" not in ARGS and ex[0] == "ok" and rnd != 0:   # 0회차(장중 수동)는 누를 때마다 새로 만든다
         log(f"- {td} {rnd}회차 이미 생성됨 — 건너뜀 (--force로 덮어쓰기)")
         update_perf(conn)
         return finish()

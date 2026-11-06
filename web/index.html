@@ -6220,7 +6220,7 @@ async function aiOpen(){
 function aiPick(date,round){
   const rs=S.aiList.filter(r=>r.trade_date===date).sort((a,b)=>a.round-b.round);
   const cur=rs.find(r=>r.round===round)||rs.at(-1);
-  $("#aiRound").innerHTML=rs.map(r=>`<button class="fchip" data-r="${r.round}" aria-pressed="${r===cur}">${r.round===1?"16시 데이터":"18시 데이터"}${r.status!=="ok"?" (AI 미생성)":""}</button>`).join("");
+  $("#aiRound").innerHTML=rs.map(r=>`<button class="fchip" data-r="${r.round}" aria-pressed="${r===cur}">${r.round===0?"장중(수동)":r.round===1?"16시 데이터":"18시 데이터"}${r.status!=="ok"?" (AI 미생성)":""}</button>`).join("");
   $$("#aiRound .fchip").forEach(b=>b.onclick=()=>aiPick(date,+b.dataset.r));
   aiLoad(cur);
 }
@@ -6735,7 +6735,7 @@ async function loadFav(){
     all:"관심·투자·AI 추천 종목을 모아서 봅니다",fav:"☆로 담은 종목",hold:"💼로 담은 종목(내가 투자 중인 종목)",
     ai:`최신 AI 브리핑(${ai.date||"–"}) 추천 종목 · 성과는 AI 브리핑 탭 하단`})[tab]
     +" · ☆ 관심 · 💼 투자 · 이 브라우저에 저장되고, 투자일지 토큰이 있으면 서버에도 동기화되어 <b>AI 브리핑이 매수·보유·매도 의견</b>을 달아줍니다"
-    +(ai.mineDate?` · 최근 의견 ${ai.mineDate} ${ai.mineRound===1?"16시":"18시"} 브리핑`:"");
+    +(ai.mineDate?` · 최근 의견 ${ai.mineDate} ${ai.mineRound===0?"장중":ai.mineRound===1?"16시":"18시"} 브리핑`:"");
   if(!codes.length){body.innerHTML='<tr><td colspan="30" class="load">'+(tab==="ai"?"최신 AI 브리핑에 추천 종목이 없습니다":"아직 담은 종목이 없습니다 — 위 입력창이나 종목 이름 앞의 ☆·💼를 눌러 보세요")+"</td></tr>";return;}
   try{
     const raw=await loadFlowRawData();
@@ -6853,7 +6853,7 @@ function renderAsOf(){
   if(v==="perf"){
     parts.push(S.perfUpd?`전략 계산 <b>${fmtKst(S.perfUpd)}</b>`:"전략 계산 시각 확인 중");
   }else if(v==="ai"){
-    parts.push(S.aiCur?`AI 브리핑 <b>${S.aiCur.trade_date}</b> ${S.aiCur.round===1?"16시":"18시"} 데이터 · 생성 <b>${fmtKst(S.aiCur.created_at)}</b>`:"AI 브리핑 불러오는 중");
+    parts.push(S.aiCur?`AI 브리핑 <b>${S.aiCur.trade_date}</b> ${S.aiCur.round===0?"장중(수동)":S.aiCur.round===1?"16시":"18시"} 데이터 · 생성 <b>${fmtKst(S.aiCur.created_at)}</b>`:"AI 브리핑 불러오는 중");
   }else if(v==="journal"){
     parts.push("나만 보는 일지 · 토큰으로 보호됨");
   }else if(v==="perf2"){

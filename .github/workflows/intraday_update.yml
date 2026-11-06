@@ -1,0 +1,37 @@
+name: ★ 장중 업데이트 (수동 · 한 번 클릭)
+
+# 정규장 종료 전, 내가 필요할 때 누르는 버튼: 지금 시점의 시세·수급·지표·업종·스마트머니·시장 투자자 표를 한 번에 갱신하고
+# (잠정치로 표시), 원하면 AI 브리핑(장중 회차)도 만듭니다. 가상매매·텔레그램 요약·글로벌 수집은 건드리지 않습니다.
+# 장마감 후 자동 실행(16·17·18·19시)이 같은 날짜를 확정값으로 덮어쓰므로 안전합니다.
+on:
+  workflow_dispatch:
+    inputs:
+      ai:
+        description: 'AI 브리핑(장중 회차)도 생성'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: 거래일 확인
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TODAY=$(TZ=Asia/Seoul date +%F); DOW=$(TZ=Asia/Seoul date +%u)
+          HOLIDAYS="$(bash .github/scripts/holidays.sh)"
+          if [ "$DOW" -ge 6 ] || echo " $HOLIDAYS " | grep -q " $TODAY "; then echo "::warning::주말/휴장일($TODAY) — 오늘 데이터가 없어 실행하지 않습니다"; exit 1; fi
+      - name: 수집·계산 파이프라인 시작 (장중 모드)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run daily_collect.yml --ref main -f intraday=true -f intraday_ai=${{ github.event.inputs.ai }}
+          echo "시작함 — 보통 10~15분 뒤 사이트 상단 칩이 '기준 HH:MM · 잠정'으로 바뀝니다(Actions 탭의 Daily Collect 실행에서 진행 확인)."

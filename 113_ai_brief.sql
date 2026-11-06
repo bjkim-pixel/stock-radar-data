@@ -8,7 +8,7 @@
 -- ============================================================================
 create table if not exists ai_brief (
   trade_date   date        not null,
-  round        smallint    not null,              -- 1 = 16시 데이터(장마감 직후), 2 = 18시 데이터(수급 확정 후)
+  round        smallint    not null,              -- 0 = 장중 수동(잠정치), 1 = 16시 데이터(장마감 직후), 2 = 18시 데이터(수급 확정 후)
   created_at   timestamptz not null default now(),
   model        text,                              -- 실제 응답한 Gemini 모델 (실패 시 null)
   status       text        not null default 'ok', -- ok | fallback(AI 실패 → 데이터 요약·규칙 후보만)

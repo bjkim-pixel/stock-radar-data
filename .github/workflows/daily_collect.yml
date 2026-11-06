@@ -44,6 +44,16 @@ on:
         type: boolean
         required: false
         default: false
+      intraday:
+        description: '장중 수동 업데이트 — 정규장 종료 전 현재 시점 데이터를 잠정치(is_partial)로 수집·계산하고 가상매매·텔레그램은 건너뜀'
+        type: boolean
+        required: false
+        default: false
+      intraday_ai:
+        description: '(장중 모드) 업데이트 뒤 AI 브리핑(장중 회차)도 생성'
+        type: boolean
+        required: false
+        default: true
 
 concurrency:
   # 2026-09-15: KIS REST는 "초당 20건"이 앱키 단위 한도라서, 종목 전체를 도는
@@ -127,10 +137,15 @@ jobs:
           KIS_ACCESS_TOKEN: ${{ steps.kistoken.outputs.token }}
         run: |
           DATE="${{ github.event.inputs.target_date }}"
+          XA=""
+          if [ "${{ github.event.inputs.intraday }}" = "true" ]; then
+            XA="--partial"; export PARTIAL_WITH_FLOW=1   # 장중 수동: 시세 + (KIS가 내려주는 만큼의) 수급·프로그램도 시도
+            echo "▶ 장중 수동 업데이트 — 잠정치(is_partial)로 저장합니다"
+          fi
           if [ -z "$DATE" ]; then
-            python 03_daily_collect.py
+            python 03_daily_collect.py $XA
           else
-            python 03_daily_collect.py "$DATE"
+            python 03_daily_collect.py "$DATE" $XA
           fi
 
       - name: Run program-trade / US market collection
@@ -176,6 +191,7 @@ jobs:
     with:
       daily: true
       date: ${{ github.event.inputs.target_date }}
+      no_portfolio: ${{ github.event.inputs.intraday == 'true' }}   # 장중 잠정치로는 가상매매(포지션)를 만들지 않음
 
   # 수집·계산이 모두 성공하면 후속 작업을 직접 실행(workflow_dispatch) — workflow_run 연결이 이 워크플로 뒤에 발화하지 않아 교체.
   #  · 수급 사전계산(Flow/MarketCap Ratio, Sector Flow Daily): 매번
@@ -198,6 +214,12 @@ jobs:
           gh workflow run sector_flow_daily.yml --ref main
           gh workflow run smart_money.yml --ref main
           gh workflow run market_investor.yml --ref main
+          if [ "${{ github.event.inputs.intraday }}" = "true" ]; then
+            # 장중 수동 업데이트: 글로벌 시황·텔레그램 요약은 건너뛰고(장마감 후 자동 실행이 담당), AI 브리핑은 장중 회차(0)로 생성.
+            # 위 후속 계산이 끝날 때까지 ai_brief.yml이 스스로 기다린 뒤 생성합니다.
+            if [ "${{ github.event.inputs.intraday_ai }}" = "true" ]; then gh workflow run ai_brief.yml --ref main -f round=0 || echo "AI 브리핑 실행 실패(무시)"; fi
+            echo "장중 모드 — 글로벌·텔레그램 건너뜀"; exit 0
+          fi
           N=$(bash .github/scripts/done_today.sh global_collect.yml "Collect + pack" 12)   # 낮 12시 이후 = 한국 장마감 후 수집(아침 미국 마감 수집은 제외)
           if [ "${N:-0}" -eq 0 ]; then gh workflow run global_collect.yml --ref main; else echo "글로벌 시황: 오늘 이미 수집함(${N}번) — 건너뜀"; fi
           # 수동 실행(skip_compute 등)은 이 잡에 오지 않으므로 여기서는 거래일 판단 불필요(수집 잡이 휴장일이면 계산이 건너뛰어져도 success라 한 번 더 확인)
