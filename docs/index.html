@@ -4109,6 +4109,8 @@ function renderWeekly(row){
   const n=S.gm.wkN||156;
   let h=`<div class="qf seg" id="wkNSel" style="margin:0 0 10px">${[[104,"2년"],[156,"3년"],[260,"5년"],[520,"10년"],[1040,"20년"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===n}">${l}</button>`).join("")}</div>`;
   h+=wkCorrHtml(p.items);
+  {const ix=c=>p.items.findIndex(x=>x.code===c);
+   [["TNX","#f59e0b"],["WTI","#2e7d32"],["KS11","#7b1fa2"]].forEach(([c,col])=>{if(ix("IXIC")>=0&&ix(c)>=0)h+=wkOverlay(p.items[ix("IXIC")],p.items[ix(c)],col,n);});}
   h+=p.items.map(it=>{
     const x=it.last,e20=it.e20[it.d.length-1],e50=it.e50[it.d.length-1],e100=it.e100[it.d.length-1],e200=it.e200[it.d.length-1];
     const aligned=x.c>e20&&e20>e50&&e50>e100&&e100>e200;
@@ -4131,6 +4133,30 @@ function renderWeekly(row){
 }
 /* 상관관계: 같은 주(월요일 기준)로 맞춘 주간 변화율의 피어슨 상관. 금리는 %p 변화, 나머지는 수익률.
    표 칸을 누르면 그 두 자산의 52주 롤링 상관 추이를 아래에 그림. */
+/* 겹침 차트: 두 자산 종가를 한 화면에 이중축으로(왼쪽 = A, 오른쪽 = B). 같은 주만 사용, 선택 기간(n주) */
+function wkOverlay(A,B,col,n){
+  const mb=new Map(B.d.map((d,i)=>[d,B.c[i]])), idx=[];
+  A.d.forEach((d,i)=>{if(mb.get(d)!=null)idx.push(i);});
+  const sel=idx.slice(-n), ds=sel.map(i=>A.d[i]), a=sel.map(i=>A.c[i]), b=sel.map(i=>mb.get(A.d[i])), m=ds.length;
+  if(m<30)return "";
+  const W=760,H=250,PL=6,PR=54,PB=18,X=i=>PL+i/(m-1)*(W-PL-PR);
+  const sc=v=>{let lo=Math.min(...v),hi=Math.max(...v);const pd=(hi-lo)*.06||1;lo-=pd;hi+=pd;return[lo,hi];};
+  const [al,ah]=sc(a),[bl,bh]=sc(b),YA=v=>(ah-v)/(ah-al)*(H-PB),YB=v=>(bh-v)/(bh-bl)*(H-PB);
+  const path=(v,Y)=>v.map((y,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(y).toFixed(1)).join("");
+  let g=[0,.25,.5,.75,1].map(f=>`<line x1="${PL}" x2="${W-PR}" y1="${(f*(H-PB)).toFixed(1)}" y2="${(f*(H-PB)).toFixed(1)}" stroke="var(--axis)" stroke-width=".5" stroke-dasharray="3 3"/>`).join("");
+  for(let i=1;i<m;i++)if(ds[i].slice(0,4)!==ds[i-1].slice(0,4)&&(m<=156||(+ds[i].slice(0,4))%(m>520?4:m>260?2:1)===0))g+=`<text x="${X(i).toFixed(1)}" y="${H-3}" font-size="10" fill="var(--ink-3)" text-anchor="middle">${ds[i].slice(0,4)}</text><line x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="0" y2="${H-PB}" stroke="var(--axis)" stroke-width=".4" opacity=".5"/>`;
+  const decB=B.dec||0;
+  g+=`<path d="${path(a,YA)}" fill="none" stroke="var(--ink)" stroke-width="1.6"/><path d="${path(b,YB)}" fill="none" stroke="${col}" stroke-width="1.6"/>`;
+  g+=`<rect x="${W-PR+2}" y="${(YB(b[m-1])-7).toFixed(1)}" width="50" height="14" rx="2" fill="${col}"/><text x="${W-PR+5}" y="${(YB(b[m-1])+3.5).toFixed(1)}" font-size="10" fill="#fff" font-weight="700">${N(b[m-1],Math.max(decB,b[m-1]<100?2:0))}</text>`;
+  g+=[al+(ah-al)*.02,ah-(ah-al)*.02].map(v=>`<text x="${PL+2}" y="${(YA(v)+(v<(al+ah)/2?-2:10)).toFixed(1)}" font-size="10" fill="var(--ink-3)">${N(v,0)}</text>`).join("");
+  const rA=[],rB=[];for(let i=1;i<m;i++){rA.push(a[i]/a[i-1]-1);rB.push(B.kind==="diff"?b[i]-b[i-1]:b[i]/b[i-1]-1);}
+  const cr=wkCorr(rA,rB,0,rA.length), lv=wkCorr(a,b,0,m);
+  const rd=r=>r==null?"–":`<span class="${sgn(r)}">${r>=0?"+":""}${r.toFixed(2)}</span>`;
+  const nm=x=>x.n.replace("미국 10년물 금리(%)","미국 10년물 금리").replace(/\(.*$/,"").replace("WTI 원유","WTI 유가").trim();
+  return `<div class="card" style="margin-top:12px"><h3>${nm(A)} × ${nm(B)} <span class="r">주 변화 상관 ${rd(cr)} · 수준 상관 ${rd(lv)}</span></h3>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${g}</svg>
+    <div class="note" style="margin-top:4px"><b>━</b> ${nm(A)}(왼쪽 축) <span style="color:${col}"><b>━</b> ${nm(B)}(오른쪽 축)</span> · 선택 기간 ${ds[0]} ~ ${ds[m-1]} · 주 변화 상관 = 주간 변화율끼리, 수준 상관 = 가격 수준끼리(추세만 같아도 높게 나옴)</div></div>`;
+}
 function wkAlign(items){
   let common=null;
   items.forEach(it=>{const s=new Set(it.d);common=common?new Set([...common].filter(d=>s.has(d))):s;});
@@ -4149,15 +4175,15 @@ function wkCorrHtml(items){
   const short=it=>it.n.replace("미국 10년물 금리(%)","10Y금리").replace("WTI 원유(선물, $)","WTI유가").replace("금(선물, $)","금").replace(/ ?\(.*$/,"").replace("나스닥 종합","나스닥");
   const cell=(r)=>r==null?"–":`${r>=0?"+":""}${r.toFixed(2)}`;
   const bg=r=>r==null?"":r>=0?`rgba(198,40,40,${(Math.abs(r)*.55).toFixed(2)})`:`rgba(28,92,171,${(Math.abs(r)*.55).toFixed(2)})`;
-  const pr=S.gm.wkPair||[0,2];
-  let t=`<div class="tw"><table style="text-align:center"><thead><tr><th></th>${items.map(it=>`<th>${short(it)}</th>`).join("")}</tr></thead><tbody>`;
-  for(let i=0;i<K;i++){t+=`<tr><th class="l">${short(items[i])}</th>`+items.map((_,j)=>{
+  const pr=S.gm.wkPair||[0,1];
+  let t=`<table style="text-align:center;width:100%;table-layout:fixed;font-size:15px;border-collapse:collapse"><thead><tr><th style="width:17%"></th>${items.map(it=>`<th style="font-size:12px;padding:6px 2px">${short(it)}</th>`).join("")}</tr></thead><tbody>`;
+  for(let i=0;i<K;i++){t+=`<tr><th class="l" style="font-size:12px;padding:0 2px">${short(items[i])}</th>`+items.map((_,j)=>{
     const r=i===j?1:wkCorr(A.ret[i],A.ret[j],a,L), sel=(pr[0]===i&&pr[1]===j)||(pr[0]===j&&pr[1]===i);
-    return i===j?`<td style="color:var(--ink-3)">1</td>`:`<td data-ci="${i}" data-cj="${j}" style="cursor:pointer;background:${bg(r)};${sel?"outline:2px solid var(--ink);outline-offset:-2px;":""}">${cell(r)}</td>`;}).join("")+`</tr>`;}
-  t+=`</tbody></table></div>`;
+    return i===j?`<td style="color:var(--ink-3)">1</td>`:`<td data-ci="${i}" data-cj="${j}" style="padding:16px 2px;font-weight:700;cursor:pointer;background:${bg(r)};${sel?"outline:2px solid var(--ink);outline-offset:-2px;":""}">${cell(r)}</td>`;}).join("")+`</tr>`;}
+  t+=`</tbody></table>`;
   /* 롤링 52주 상관 */
   const [i,j]=pr, R=[]; for(let k=52;k<=L-1;k++)R.push([A.ds[k],wkCorr(A.ret[i],A.ret[j],k-51,k+1)]);
-  const W=760,H=150,PL=6,PR=40,X=k=>PL+k/(R.length-1)*(W-PL-PR),Y=v=>6+(1-v)/2*(H-22);
+  const W=760,H=210,PL=6,PR=40,X=k=>PL+k/(R.length-1)*(W-PL-PR),Y=v=>6+(1-v)/2*(H-22);
   const rr=R.filter(x=>x[1]!=null);
   const ln=rr.map((x,k)=>(k?"L":"M")+X(R.indexOf(x)).toFixed(1)+" "+Y(x[1]).toFixed(1)).join("");
   let yr="";for(let k=1;k<R.length;k++)if(R[k][0].slice(0,4)!==R[k-1][0].slice(0,4)&&(+R[k][0].slice(0,4))%2===0)yr+=`<text x="${X(k).toFixed(1)}" y="${H-3}" font-size="10" fill="var(--ink-3)" text-anchor="middle">${R[k][0].slice(0,4)}</text>`;
