@@ -288,6 +288,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .qf-lb .qf-chev{font-size:9px;transition:transform .12s}
 .qf{display:flex;gap:7px;flex-wrap:wrap}
 /* 2026-09-20: 조건 버튼(fchip) 세로 여백을 줄여 버튼 높이를 낮춤(사용자 요청) — 5px→3px */
+#gmTabSel,#wkNSel{flex-wrap:nowrap!important;gap:4px!important;max-width:100%}
+#gmTabSel .fchip,#wkNSel .fchip{padding:3px 8px;font-size:11px;white-space:nowrap;flex:0 0 auto}
 .fchip{position:relative;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 11px;
   border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--ink-2);
   cursor:pointer;font-family:inherit}
@@ -4072,6 +4074,17 @@ function gmTiles(p){
 }
 /* ── 주봉 추세: 나스닥·QQQ·코스피 주봉 캔들 + EMA 20/50/100/200 + RSI(14)(보라 띠 = 30~70) ── */
 const WK_EMA=[["e20","20","#e53935"],["e50","50","#f59e0b"],["e100","100","#7b1fa2"],["e200","200","#555"]];
+/* 가로축 눈금: 기간이 짧을수록 촘촘히(3개월→6개월→1년 간격), 1월은 연도로 표기 */
+function wkTicks(ds,n){
+  const step=n<=156?3:n<=260?3:n<=520?6:12, out=[];
+  for(let i=1;i<ds.length;i++){
+    const y=ds[i].slice(0,4),mo=+ds[i].slice(5,7);
+    if(ds[i].slice(0,7)===ds[i-1].slice(0,7))continue;
+    if(n>520){if(mo===1&&(+y)%2===0)out.push([i,y,1]);continue;}   // 20년: 짝수 해만
+    if((mo-1)%step===0)out.push([i,mo===1?y:`${mo}월`,mo===1?1:0]);
+  }
+  return out;
+}
 function wkSvg(it,n){
   const L=it.d.length, a=Math.max(0,L-n), m=L-a, W=760, PH=270, RH=96, GAP=14, H=PH+GAP+RH+22, PL=6, PR=58;
   const sl=k=>it[k].slice(a);
@@ -4090,9 +4103,9 @@ function wkSvg(it,n){
   }
   const line=(k,col,w)=>{const v=sl(k);let d="";v.forEach((y,i)=>{if(y!=null)d+=(d?"L":"M")+X(i).toFixed(1)+" "+Y(y).toFixed(1);});return `<path d="${d}" fill="none" stroke="${col}" stroke-width="${w}"/>`;};
   WK_EMA.forEach(([k,,col])=>{g+=line(k,col,k==="e200"?2:1.4);const v=sl(k),y=v[m-1];if(y!=null)g+=`<rect x="${W-PR+2}" y="${(Y(y)-7).toFixed(1)}" width="54" height="14" rx="2" fill="${col}"/><text x="${W-PR+5}" y="${(Y(y)+3.5).toFixed(1)}" font-size="10" fill="#fff" font-weight="700">${N(y,it.dec||0)}</text>`;});
-  /* 연도 눈금 */
+  /* 가로 눈금 */
   const ds=it.d.slice(a); let xa="";
-  for(let i=1;i<m;i++)if(ds[i].slice(0,4)!==ds[i-1].slice(0,4))xa+=`<text x="${X(i).toFixed(1)}" y="${H-4}" font-size="10" fill="var(--ink-3)" text-anchor="middle">${ds[i].slice(0,4)}</text><line x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="0" y2="${PH+GAP+RH}" stroke="var(--axis)" stroke-width=".4" opacity=".5"/>`;
+  wkTicks(ds,n).forEach(([i,l,yr])=>{xa+=`<text x="${X(i).toFixed(1)}" y="${H-4}" font-size="10" fill="var(--ink-${yr?2:3})" ${yr?'font-weight="700"':''} text-anchor="middle">${l}</text><line x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="0" y2="${PH+GAP+RH}" stroke="var(--axis)" stroke-width="${yr?.6:.3}" opacity=".5"/>`;});
   /* RSI 패널 */
   const oy=PH+GAP, RY=v=>oy+(100-v)/100*RH;
   g+=`<rect x="${PL}" y="${RY(70)}" width="${W-PL-PR}" height="${RY(30)-RY(70)}" fill="#7b1fa2" opacity=".10"/>`
@@ -4129,7 +4142,6 @@ function renderWeekly(row){
   h+=`<div class="note" style="margin-top:8px">${p.note||""} · 이격 = 종가 ÷ EMA − 1. 현재 주는 마감 전 잠정봉입니다.</div>`;
   $("#gmBody").innerHTML=h;
   $$("#wkNSel .fchip").forEach(b=>b.onclick=()=>{S.gm.wkN=+b.dataset.v;renderWeekly(row);});
-  $$("#wkCSel .fchip").forEach(b=>b.onclick=()=>{S.gm.wkC=+b.dataset.v;renderWeekly(row);});
   $$("#wkCorr [data-ci]").forEach(td=>td.onclick=()=>{S.gm.wkPair=[+td.dataset.ci,+td.dataset.cj];renderWeekly(row);});
 }
 /* 상관관계: 같은 주(월요일 기준)로 맞춘 주간 변화율의 피어슨 상관. 금리는 %p 변화, 나머지는 수익률.
@@ -4145,7 +4157,7 @@ function wkOverlay(A,B,col,n){
   const [al,ah]=sc(a),[bl,bh]=sc(b),YA=v=>(ah-v)/(ah-al)*(H-PB),YB=v=>(bh-v)/(bh-bl)*(H-PB);
   const path=(v,Y)=>v.map((y,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(y).toFixed(1)).join("");
   let g=[0,.25,.5,.75,1].map(f=>`<line x1="${PL}" x2="${W-PR}" y1="${(f*(H-PB)).toFixed(1)}" y2="${(f*(H-PB)).toFixed(1)}" stroke="var(--axis)" stroke-width=".5" stroke-dasharray="3 3"/>`).join("");
-  for(let i=1;i<m;i++)if(ds[i].slice(0,4)!==ds[i-1].slice(0,4)&&(m<=156||(+ds[i].slice(0,4))%(m>520?4:m>260?2:1)===0))g+=`<text x="${X(i).toFixed(1)}" y="${H-3}" font-size="10" fill="var(--ink-3)" text-anchor="middle">${ds[i].slice(0,4)}</text><line x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="0" y2="${H-PB}" stroke="var(--axis)" stroke-width=".4" opacity=".5"/>`;
+  wkTicks(ds,n).forEach(([i,l,yr])=>{g+=`<text x="${X(i).toFixed(1)}" y="${H-3}" font-size="10" fill="var(--ink-${yr?2:3})" ${yr?'font-weight="700"':''} text-anchor="middle">${l}</text><line x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="0" y2="${H-PB}" stroke="var(--axis)" stroke-width="${yr?.6:.3}" opacity=".5"/>`;});
   const decB=B.dec||0;
   g+=`<path d="${path(a,YA)}" fill="none" stroke="var(--ink)" stroke-width="1.6"/><path d="${path(b,YB)}" fill="none" stroke="${col}" stroke-width="1.6"/>`;
   g+=`<rect x="${W-PR+2}" y="${(YB(b[m-1])-7).toFixed(1)}" width="50" height="14" rx="2" fill="${col}"/><text x="${W-PR+5}" y="${(YB(b[m-1])+3.5).toFixed(1)}" font-size="10" fill="#fff" font-weight="700">${N(b[m-1],Math.max(decB,b[m-1]<100?2:0))}</text>`;
@@ -4172,7 +4184,7 @@ function wkCorr(x,y,a,b){
   if(n<20)return null; const c=n*sxy-sx*sy,d=Math.sqrt((n*sxx-sx*sx)*(n*syy-sy*sy)); return d?c/d:null;
 }
 function wkCorrHtml(items){
-  const A=wkAlign(items), L=A.ds.length, w=S.gm.wkC||156, a=Math.max(1,L-w), K=items.length;
+  const A=wkAlign(items), L=A.ds.length, w=S.gm.wkN||156, a=Math.max(1,L-w), K=items.length;
   const short=it=>it.n.replace("미국 10년물 금리(%)","10Y금리").replace("WTI 원유(선물, $)","WTI유가").replace("금(선물, $)","금").replace(/ ?\(.*$/,"").replace("나스닥 종합","나스닥");
   const cell=(r)=>r==null?"–":`${r>=0?"+":""}${r.toFixed(2)}`;
   const bg=r=>r==null?"":r>=0?`rgba(198,40,40,${(Math.abs(r)*.55).toFixed(2)})`:`rgba(28,92,171,${(Math.abs(r)*.55).toFixed(2)})`;
@@ -4187,14 +4199,14 @@ function wkCorrHtml(items){
   const W=760,H=210,PL=6,PR=40,X=k=>PL+k/(R.length-1)*(W-PL-PR),Y=v=>6+(1-v)/2*(H-22);
   const rr=R.filter(x=>x[1]!=null);
   const ln=rr.map((x,k)=>(k?"L":"M")+X(R.indexOf(x)).toFixed(1)+" "+Y(x[1]).toFixed(1)).join("");
-  let yr="";for(let k=1;k<R.length;k++)if(R[k][0].slice(0,4)!==R[k-1][0].slice(0,4)&&(+R[k][0].slice(0,4))%2===0)yr+=`<text x="${X(k).toFixed(1)}" y="${H-3}" font-size="10" fill="var(--ink-3)" text-anchor="middle">${R[k][0].slice(0,4)}</text>`;
+  let yr="";for(let k=1;k<R.length;k++)if(R[k][0].slice(0,4)!==R[k-1][0].slice(0,4)&&(+R[k][0].slice(0,4))%2===1)yr+=`<text x="${X(k).toFixed(1)}" y="${H-3}" font-size="10" fill="var(--ink-3)" text-anchor="middle">${R[k][0].slice(0,4)}</text>`;
   const lastv=rr.length?rr[rr.length-1][1]:null;
   const svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
     ${[-1,-.5,0,.5,1].map(v=>`<line x1="${PL}" x2="${W-PR}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--axis)" stroke-width="${v===0?1:.5}" ${v===0?"":'stroke-dasharray="3 3"'}/><text x="${W-PR+4}" y="${Y(v)+3}" font-size="10" fill="var(--ink-3)">${v}</text>`).join("")}
     <path d="${ln}" fill="none" stroke="#6a4fb3" stroke-width="1.5"/>${yr}</svg>`;
   const rd=lastv==null?"":Math.abs(lastv)>=.6?"강한":Math.abs(lastv)>=.3?"뚜렷한":Math.abs(lastv)>=.1?"약한":"거의 없는";
-  return `<div class="card" id="wkCorr" style="margin-top:12px"><h3>상관관계 <span class="r">주간 변화율 · 같은 주끼리 비교</span></h3>
-    <div class="qf seg" id="wkCSel" style="margin:0 0 8px">${[[52,"1년"],[156,"3년"],[260,"5년"],[520,"10년"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===w}">${l}</button>`).join("")}</div>${t}
+  return `<div class="card" id="wkCorr" style="margin-top:12px"><h3>상관관계 <span class="r">주간 변화율 · 위 기간 기준</span></h3>
+    ${t}
     <div style="margin:10px 0 2px;font-weight:700">${short(items[i])} ↔ ${short(items[j])} · 52주 롤링 상관 ${lastv==null?"":`<span class="${sgn(lastv)}">${cell(lastv)}</span> (${rd} ${lastv>=0?"동행":"역행"})`}</div>${svg}
     <div class="note" style="margin-top:4px">빨강 = 같은 방향으로 움직임(+1에 가까울수록), 파랑 = 반대로 움직임(−1에 가까울수록). 금리는 %p 변화, 나머지는 주간 수익률로 계산. 표 칸을 누르면 그 쌍의 롤링 추이가 아래에 바뀝니다. 상관은 인과가 아니고 기간에 따라 크게 달라집니다.</div></div>`;
 }
