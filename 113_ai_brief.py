@@ -708,6 +708,9 @@ def main():
     update_perf(conn)
     if "--dump" in ARGS:
         log("\n## 다이제스트(일부)\n```json\n" + json.dumps({k: D[k] for k in ("국내시장", "매크로")}, ensure_ascii=False, indent=1)[:6000] + "\n```")
+        log("\n## 업종 판단(미국 연계 포함)\n```json\n" + json.dumps({"sectors": res.get("sectors"), "focus": res.get("focus_sectors"), "avoid": res.get("avoid")}, ensure_ascii=False, indent=1)[:6000] + "\n```")
+        log("\n## 업종별 미국연계 요약\n" + "\n".join(f"- {k}: {v}" for k, v in (D.get("_us_link_txt") or {}).items()))
+        log("\n## 내 종목\n" + "\n".join(f"- {m['name']}({m['code']}) [{m.get('etype')}/{m['kind']}] {m['action']} 점수 {m['score']:+d}" for m in res.get("mine", [])))
     finish()
 
 def finish():
