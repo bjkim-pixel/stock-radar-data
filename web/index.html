@@ -51,7 +51,7 @@ b{font-weight:640}
   #hmWrap .hs{position:absolute;box-sizing:border-box;border:1.5px solid var(--surface);overflow:hidden}
   #hmWrap .hsl{position:absolute;left:0;top:0;right:0;font-size:10.5px;font-weight:700;color:#fff;background:rgba(0,0,0,.38);padding:1px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;z-index:2;line-height:15px;height:15px}
   #hmWrap .ht{position:absolute;box-sizing:border-box;border:1px solid rgba(255,255,255,.55);color:#fff;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1.15;text-shadow:0 1px 2px rgba(0,0,0,.45)}
-  #hmWrap .ht b{font-weight:700}
+  #hmWrap .ht b{font-weight:700;display:block}#hmWrap .ht{padding:0;line-height:1.12}
   #hmLegend{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-3);margin-top:6px;flex-wrap:wrap}
   #hmLegend i{display:inline-block;width:22px;height:10px;border-radius:2px}
 a.lk{color:inherit;text-decoration:underline dotted var(--ink-3);text-underline-offset:2px;cursor:pointer}
@@ -2990,6 +2990,36 @@ function hmSquarify(items,x,y,w,h){ // items:[{v,...}] 내림차순, 면적합=w
     k=j;
   }
 }
+
+/* 칸 크기에 맞춰 글자 크기·줄바꿈·글자수를 조절: 큰 칸=종목명+등락률, 작은 칸=종목명 일부(최소 8px에서 읽히는 만큼) */
+function hmCw(ch,f){return (/[가-힣ㄱ-ㅎ]/.test(ch)?1:(/[A-Z]/.test(ch)?0.72:0.58))*f;}
+function hmPack(txt,f,w){ // 글자 폭 기준 줄 나누기 → 줄 배열
+  const L=[];let cur="",cw=0;
+  for(const ch of txt){const x=hmCw(ch,f);if(cur&&cw+x>w){L.push(cur);cur="";cw=0;}cur+=ch;cw+=x;}
+  if(cur)L.push(cur);return L;
+}
+function hmLabel(name,pct,w,h){
+  const iw=w-3,ih=h-2;if(iw<7||ih<8)return "";
+  const MAXF=Math.min(22,Math.sqrt(w*h)/4.6);
+  const fits=(L,f)=>L.length<=3&&Math.max(...L.map(l=>[...l].reduce((a,c)=>a+hmCw(c,f),0)))<=iw+0.5;
+  for(const wantPct of [true,false]){   // 1순위: 종목명+등락률, 2순위: 종목명만(더 크게)
+    for(let f=MAXF;f>=(wantPct?9:8);f-=0.5){
+      const L=hmPack(name,f,iw),lh=f*1.12,need=(L.length+(wantPct?0.95:0))*lh;
+      if(need<=ih&&fits(L,f)){
+        const pf=Math.max(8,f*.82);
+        if(wantPct&&[...pct].reduce((a,c)=>a+hmCw(c,pf),0)>iw)continue;
+        return `<b style="font-size:${f.toFixed(1)}px">${L.join("<br>")}</b>`+(wantPct?`<span style="font-size:${pf.toFixed(1)}px">${pct}</span>`:"");
+      }
+    }
+  }
+  // 전체가 안 들어가면 8px로 들어가는 만큼만(앞 글자) — 줄 수 × 줄당 글자 수
+  const f=8,lh=f*1.12,rows=Math.max(1,Math.floor(ih/lh));
+  const L=[];let rest=[...name];
+  for(let i=0;i<rows&&rest.length;i++){let cur="",cw=0,k=0;
+    while(k<rest.length&&cw+hmCw(rest[k],f)<=iw){cw+=hmCw(rest[k],f);cur+=rest[k];k++;}
+    if(!cur)break;L.push(cur);rest=rest.slice(k);}
+  return L.length?`<b style="font-size:${f}px">${L.join("<br>")}</b>`:"";
+}
 function hmColor(c){
   const v=Math.max(-5,Math.min(5,+c||0))/5, a=Math.abs(v);
   const base=v>=0?[198,40,40]:[28,92,171], mid=[85,85,85];
@@ -3025,11 +3055,7 @@ function renderHeatmap(){
     g.st.forEach(s=>{
       if(s.rw<3||s.rh<3)return;
       const r=s.r,c=+r.change_pct;
-      let inner="";
-      if(s.rw>34&&s.rh>22){
-        const fs=Math.max(9,Math.min(22,Math.sqrt(s.rw*s.rh)/5.2));
-        inner=`<b style="font-size:${fs}px">${r.name}</b>`+(s.rh>fs*2.3?`<span style="font-size:${Math.max(9,fs*.85)}px">${pm(c,2)}%</span>`:"");
-      }
+      const inner=hmLabel(r.name,pm(c,2)+"%",s.rw,s.rh);
       html+=`<div class="ht" data-code="${r.code}" title="${r.name} ${pm(c,2)}% · 시총 ${fmtEokJo(+r.market_cap/EOK)}" style="left:${s.rx}px;top:${s.ry}px;width:${s.rw}px;height:${s.rh}px;background:${hmColor(c)}">${inner}</div>`;
     });
     html+="</div>";
