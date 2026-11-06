@@ -237,8 +237,8 @@ VIRTUAL_SIGNAL_TYPES = [
     "V4_BUY_AIPICK", "V4_SELL_AIPICK",
 ]
 AIPICK_SIGNAL_TYPES = ["V4_BUY_AIPICK", "V4_SELL_AIPICK"]
-# 폐지된 전략(종가베팅2)의 가상매매 신호 — 실행 때마다 지웁니다(후보 신호 V4_CAND_CLOSEBET2_2 는 relay 가 쓰므로 유지).
-LEGACY_SIGNAL_TYPES = ["V4_BUY_CLOSEBET2", "V4_SELL_CLOSEBET2"]
+# 폐지된 전략(종가베팅2)의 신호(가상매매 + 후보) — 실행 때마다 지웁니다.
+LEGACY_SIGNAL_TYPES = ["V4_BUY_CLOSEBET2", "V4_SELL_CLOSEBET2", "V4_CAND_CLOSEBET2_1", "V4_CAND_CLOSEBET2_2"]
 
 # REAL 신호는 다릅니다. 한 번 청산된 REAL 포지션은 다음 실행 때 OPEN이 아니라서
 # 다시 계산되지 않는데, VIRTUAL과 똑같이 "이번에 안 나왔으니 stale"로 지워버리면
@@ -855,13 +855,13 @@ def main():
         else:
             cur.execute("DELETE FROM positions WHERE portfolio = 'VIRTUAL'")
             print(f"   기존 VIRTUAL 포지션 {cur.rowcount:,}건 삭제 후 재생성")
-        # 폐지된 종가베팅2 의 가상매매 포지션·신호 정리
+        # 폐지된 종가베팅2 의 포지션·신호(후보 포함) 정리
         cur.execute("DELETE FROM positions WHERE portfolio = 'VIRTUAL' AND strategy = 'CLOSEBET2'")
         if cur.rowcount:
             print(f"   폐지된 종가베팅2 포지션 {cur.rowcount:,}건 삭제")
         cur.execute("DELETE FROM signals WHERE signal_type = ANY(%s)", (LEGACY_SIGNAL_TYPES,))
         if cur.rowcount:
-            print(f"   폐지된 종가베팅2 가상매매 신호 {cur.rowcount:,}건 삭제")
+            print(f"   폐지된 종가베팅2 신호 {cur.rowcount:,}건 삭제")
 
         # SIM_START 이전 백테스트 이력(신호)은 더 이상 유효하지 않으므로 제거합니다.
         # (positions는 위에서 이미 전량 삭제 후 SIM_START부터 재생성되므로 별도 처리 불필요)

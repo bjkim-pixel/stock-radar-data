@@ -3,7 +3,7 @@ name: "[상시2] 지표·신호 계산 (1번 직후 자동) | 수집 직후·NXT
 on:
   # 2026-10-25: 16:30 KST 단독 스케줄을 없앴습니다. 이제 "Daily Collect + Compute (수집·계산 통합)"이 수집을 끝내면 이 워크플로를
   # 같은 실행 안에서 이어서 호출합니다(workflow_call, daily=true) — 수집→계산을 한 번에 실행.
-  # 아래 workflow_run(NXT 18시 스냅샷 직후 종가베팅2 매수 확정)과 수동 실행(기간 지정·포트폴리오만)은 그대로입니다.
+  # 아래 workflow_run(NXT 18시 스냅샷 수집 직후 재계산)과 수동 실행(기간 지정·포트폴리오만)은 그대로입니다.
   workflow_call:
     inputs:
       daily:
@@ -27,7 +27,7 @@ on:
     # Compute 스텝에서 시각(KST)으로 장중/마감을 구분해 --no-portfolio 여부를
     # 결정합니다(아래 참고) — nxt_collect.yml 쪽 cron을 나중에 바꿔도 이 워크플로
     # 수정 없이 그대로 따라갑니다.
-    workflows: ["[상시6] NXT 시간외 수집 (별도 흐름) | 평일 18:12 | NXT 시간외 시세→종가베팅2 확정"]
+    workflows: ["[상시6] NXT 시간외 시세 수집 (별도 흐름) | 평일 18:12 | daily_price NXT 컬럼 저장"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -123,8 +123,8 @@ jobs:
             # 나중 재확인 실행인지"를 시각(HOUR_INT 1809~1830)으로 구분하던
             # 로직이 더 이상 필요 없어짐 — 나중 실행 자체가 없기 때문. 스케줄
             # 지연으로 실제 도착 시각이 18:30을 넘겨도(그동안 있었던 문제)
-            # 항상 종가베팅2 가상매수를 확정하도록 단순화.
-            echo "▶ NXT 18시 스냅샷 수집 완료 감지 — 종가베팅2 매수 확정"
+            # 항상 같은 계산을 하도록 단순화. (2026-11-06: 종가베팅2 폐지 — 이제는 단순 재계산)
+            echo "▶ NXT 18시 스냅샷 수집 완료 감지 — 지표·신호·가상매매 재계산"
             python 05_compute.py "$(date +%Y%m%d)"
           else
             START="${{ github.event.inputs.start_date }}"

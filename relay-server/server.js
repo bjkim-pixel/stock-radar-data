@@ -850,8 +850,7 @@ const REGULAR_MIN_ACC_AMT = 500_000_000; // 누적거래대금 5억원↑ (유�
 // 2026-09-13: 추세추종(V4_CAND_TREND_3)은 여러 날에 걸친 추세 지속 전략이라
 // "오늘 하루 빠르게 오를 종목"과 무관한 대형 우량주(KB금융·하나금융지주 등)가
 // 자주 섞여 들어와 NXT/REGULAR 단계까지 오염시키는 문제가 있어(사용자가 실제
-// NXT 후보 화면에서 확인) 제외. 종가베팅(V4_CAND_CLOSEBET_3)과 종가베팅2
-// (V4_CAND_CLOSEBET2_2, 기존엔 누락돼 있었음)만 사용하고, 어느 전략에서
+// NXT 후보 화면에서 확인) 제외. 종가베팅(V4_CAND_CLOSEBET_3)만 사용하고(2026-11-06 종가베팅2 폐지), 어느 전략에서
 // 통과됐는지 프론트에서 구분해 보여줄 수 있도록 signal_type을 그대로
 // snapshot.sources에 남긴다(프론트 I2_SOURCE_LABEL 매핑 참고).
 // 2026-09-16: targetDate(후보를 배치할 거래일)를 인자로 받는다. 예전에는 항상
@@ -865,7 +864,7 @@ async function stagePreMarket(targetDate) {
   if (!latest) { console.log('[상따후보] PRE_MARKET: V4_CAND_* 신호가 없음 — 후보 생성 불가'); return; }
 
   const [swingRows, weightRows] = await Promise.all([
-    sbGet(`signals?select=code,signal_type,score,reason&trade_date=eq.${latest}&signal_type=in.(V4_CAND_CLOSEBET_3,V4_CAND_CLOSEBET2_2)`),
+    sbGet(`signals?select=code,signal_type,score,reason&trade_date=eq.${latest}&signal_type=eq.V4_CAND_CLOSEBET_3`),
     sbGet(`daily_metrics?select=code,weight_rank,pick_score&trade_date=eq.${latest}&weight_rank=not.is.null&order=weight_rank.asc&limit=${CANDIDATE_TOP_N}`),
   ]);
 
@@ -908,21 +907,16 @@ async function stagePreMarket(targetDate) {
   }));
   const target = targetDate || kstDateStr();
   console.log(`[상따후보] PRE_MARKET: 기준일 ${latest} → 배치 거래일 ${target}, `
-    + `종가베팅/종가베팅2 ${swingRows.length}건 + 무게상위 ${weightRows.length}건 → 유니크 ${rows.length}건`);
+    + `종가베팅 ${swingRows.length}건 + 무게상위 ${weightRows.length}건 → 유니크 ${rows.length}건`);
   await upsertCandidates(rows, 'PRE_MARKET', target);
 }
 
 // ── 1-b) 장 마감 후 "다음 거래일 장전 배치" 선생성 (2026-09-16 신설) ──────────
 // 사용자 요청: "장전 배치가 당일 아침에야 반영돼서 미리 준비하기 어렵다."
 //
-// 배치의 재료는 두 번에 나눠 확정된다 —
-//   · 종가베팅(V4_CAND_CLOSEBET_3) + 무게상위(daily_metrics.weight_rank)
-//       → compute.yml 16:30 KST 실행에서 확정
-//   · 종가베팅2(V4_CAND_CLOSEBET2_2)
-//       → NXT 애프터마켓이 20:00에 끝난 뒤 nxt_collect(20:20) → compute
-//         workflow_run에서 확정
-// 그래서 저녁에 두 번 돈다. 1차는 마감 직후 볼 수 있게, 2차는 종가베팅2까지 반영된
-// 최종본으로 덮어쓴다.
+// 배치의 재료(종가베팅 V4_CAND_CLOSEBET_3 + 무게상위 daily_metrics.weight_rank)는
+// 일일 파이프라인의 계산 단계(16시대)에서 확정된다.
+// (2026-11-06: 종가베팅2 폐지로, NXT 참고 반영용이던 2차 배치를 없앴다.)
 //
 // 고정 시각 대신 **데이터가 들어왔는지**로 판정하는 이유: GitHub Actions의 schedule은
 // 20분 이상 밀리는 일이 흔해서(실측 16:35 예정 → 16:57 시작) 시각을 박아두면
@@ -938,32 +932,14 @@ async function stagePreMarket(targetDate) {
 // 07:50)으로 새는 게 실측 확인됨(배포 첫날 2026-09-15 저녁, CLOSEBET_3 0건으로
 // 1차가 끝내 못 돎). TREND_1/CLOSEBET_1은 진입 문턱이 훨씬 낮아 사실상 매 거래일
 // 채워지므로 "compute.yml 16:30 실행이 끝났다"는 신호로 이 둘을 대신 쓴다.
-// 실제 후보 내용(stagePreMarket 안의 candidateQuery)은 여전히 CLOSEBET_3 /
-// CLOSEBET2_2만 사용 — 이 부분은 그대로 둔다(그날 후보가 적어지는 것과 "언제
+// 실제 후보 내용(stagePreMarket 안의 candidateQuery)은 CLOSEBET_3
+// 만 사용 — 이 부분은 그대로 둔다(그날 후보가 적어지는 것과 "언제
 // 실행할지 판정"은 별개 문제).
-const _eveningPreMarketDone = { stage1: null, stage2: null };
+const _eveningPreMarketDone = { stage1: null };
 const EVENING_PREMARKET_FROM_MIN = 16 * 60 + 35;  // 16:35 KST 이후부터 감시 시작
-// ⚠ 2026-09-17(2) 수정: 20:20 → 18:00. 사용자 요청 — NXT 애프터마켓(20:00 마감)이
-// 끝나기 전에 참고용 2차를 미리 보고 그날 실전 매매(NXT 매수)에 활용하고 싶다는
-// 목적. 20:20(공식 nxt_collect 마감수집)까지 기다리면 이미 NXT가 닫힌 뒤라 그날은
-// 손쓸 수 없음. 06_signals.sql 138~145행 주석에 따르면 compute.yml이 18:05~19:55
-// KST 사이 5회 더 돌면서(--no-portfolio) nxt_collect의 "장중" 수집값(18:00~19:50
-// KST)으로 V4_CAND_CLOSEBET2_2를 미리 채워준다 — 확정본은 아니지만("참고용,
-// 아직 확정 아님") 18:00 이후엔 실제로 데이터가 존재하므로 임계값을 당겨도 빈
-// 배치가 아니라 진짜 참고용 결과가 나온다.
-const EVENING_PREMARKET2_FROM_MIN = 18 * 60;      // 18:00 KST 이후부터 2차 감시
-
-// ⚠ 2026-09-17(2) 수정: 예전엔 "현재 시각이 2차 임계값을 넘었는가"로 stage1/stage2
-// 중 딱 하나만 골라 그 신호만 확인했다 — 2차 임계값을 지나면 그날 1차가 아직
-// 준비 안 됐어도 다시는 확인하지 않는 구조였다. 20:20이었을 때는 1차가 그 전에
-// 끝날 시간이 충분해(16:35~20:20, 약 3시간45분) 문제가 거의 없었지만, 2차를
-// 18:00으로 당기면서 창이 16:35~18:00(약 1시간25분)로 좁아져 컴퓨트가 밀리는
-// 날엔 1차를 통째로 건너뛸 위험이 커졌다. 그래서 stage1/stage2를 서로 독립적으로
-// 매 하트비트마다 각자 확인하도록 바꾼다(순서상 1차 먼저 확인) — 어느 한쪽이
-// 임계값을 넘었다고 다른 쪽 확인을 막지 않는다.
+// (2026-11-06: 2차 배치 폐지 — 1차만 남았지만, 단계 배열 구조는 그대로 둔다.)
 const EVENING_PREMARKET_STAGES = [
   { key: 'stage1', fromMin: EVENING_PREMARKET_FROM_MIN, needTypes: ['V4_CAND_TREND_1', 'V4_CAND_CLOSEBET_1'], label: '1차(종가베팅·무게상위)' },
-  { key: 'stage2', fromMin: EVENING_PREMARKET2_FROM_MIN, needTypes: ['V4_CAND_CLOSEBET2_2'], label: '2차(종가베팅2 참고 반영)' },
 ];
 
 async function runEveningPreMarket() {

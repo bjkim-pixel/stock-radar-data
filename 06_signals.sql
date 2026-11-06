@@ -1,15 +1,15 @@
 -- ============================================================================
--- STOCK RADAR · 신호 엔진 — 추세추종 · 종가베팅 · 종가베팅2 3전략 스크리닝
+-- STOCK RADAR · 신호 엔진 — 추세추종 · 종가베팅 2전략 스크리닝
 -- ============================================================================
--- 기존 단일 v4 전략을 "추세추종"·"종가베팅"·"종가베팅2"(2026-09-11 신설) 세
--- 개의 독립 전략으로 나누고, 각 전략을 단계별 독립 조건(또는 종가베팅2처럼
--- 누적 2단계)으로 스크리닝합니다. 추세추종·종가베팅은 3단계, 종가베팅2는
--- 2단계 구조입니다 — 화면에는 각 전략의 마지막 단계를 통과한 종목만 실제
--- 가상매수 대상으로 표시합니다(06_portfolio.py가 이어서 처리).
+-- 기존 단일 v4 전략을 "추세추종"·"종가베팅" 두 개의 독립 전략으로 나누고,
+-- 각 전략을 3단계 조건으로 스크리닝합니다 — 화면에는 마지막 단계를 통과한
+-- 종목만 실제 가상매수 대상으로 표시합니다(06_portfolio.py가 이어서 처리).
+-- (2026-11-06: 종가베팅2 전략과 그 후보 신호를 폐지했습니다. 대신 전략성과에는
+--  AI 브리핑 추천 종목을 매매하는 AI추천 전략이 있으며, 이는 이 파일이 아니라
+--  06_portfolio.py 가 ai_brief 테이블에서 직접 읽습니다.)
 --
---   06_signals.sql  → V4_CAND_TREND_{1|2|3} / V4_CAND_CLOSEBET_{1|2|3} /
---                     V4_CAND_CLOSEBET2_{1|2}             (단계별 통과 종목 전부)
---   06_portfolio.py → V4_BUY_{TREND|CLOSEBET|CLOSEBET2} 등 (마지막 단계 통과 종목만 매수)
+--   06_signals.sql  → V4_CAND_TREND_{1|2|3} / V4_CAND_CLOSEBET_{1|2|3}  (단계별 통과 종목 전부)
+--   06_portfolio.py → V4_BUY_{TREND|CLOSEBET|AIPICK} 등 (마지막 단계 통과 종목만 매수)
 --
 -- ── 공통 조건 (두 전략 모두, 모든 단계에 적용) ──────────────────────────────
 --   · 시가총액 1조원 이상
@@ -116,36 +116,6 @@
 --          AND 외국인 순매수(+) AND 기관 순매수(+)
 --          AND 프로그램 순매수(+) — 가상매수 대상
 --
--- ── 종가베팅2 (2026-09-11 신설 — NXT 마감 괴리 기반, 2단계 구조) ─────────────
--- 정규장 마감 등락률과 NXT(넥스트레이드) 애프터마켓 등락률의 괴리를 보는
--- 전략입니다. NXT에서 정규장보다 더 강하게 상승 중인 종목은 애프터마켓에서도
--- 매수세가 계속 붙고 있다는 뜻으로 보고, 그중 시가총액이 큰(=변동성 대비
--- 안정적인) 종목만 추려 NXT 마감가에 매수합니다.
---   1단계: NXT 등락률이 플러스(0% 초과)인 종목 중 괴리율(gap_pct = NXT 등락률
---          − 정규장 등락률) 상위 10종목 (그날 공통조건 통과 유니버스 중,
---          NXT 시세가 있는 종목 대상)
---   2단계: 1단계 10종목 중 시가총액 상위 3종목 — 가상매수 대상
--- ⚠ 2026-09-12: NXT 등락률이 마이너스인 종목은 괴리율이 커도 1단계에서
---   제외한다. "정규장보다 덜 빠졌을 뿐" NXT 애프터마켓에서 실제로는 여전히
---   하락 중인 종목(예: 정규장 -8% → NXT -4%, 괴리 +4%p)을 "매수세 유입"으로
---   잘못 해석해 사들이는 걸 막기 위함 — 진짜 매수 대상은 NXT에서 실제로
---   플러스(+)로 전환된 종목이어야 한다.
--- 다른 두 전략과 달리 "종가"가 아니라 NXT 마감가(daily_price.nxt_close)에
--- 매수하고, 매도는 종가베팅과 동일하게 익일 정규장 시가 전량 청산입니다
--- (06_portfolio.py process_day_closebet2 참고). NXT 마감 데이터는 정규장
--- 마감 후 20:00 KST 이후에나 확정되므로, 실제 가상매수 확정은 nxt_collect.yml
--- 공식마감 수집(20:10 KST) 직후 compute.yml 실행에서만 이뤄집니다.
--- ⚠ 2026-09-12 정정: 이 문단은 원래 "16:30/18:30 실행 시점엔 nxt_change_pct가
--- 없어 1단계 후보가 비어있다"고 적혀 있었으나, 그 사이 compute.yml에 장중
--- 반복실행(18:05~19:55 KST, --no-portfolio)이 5회 추가되면서 실제로는 그
--- 시간대에도 nxt_collect.yml의 장중 수집값(18:00~19:50 KST)으로 1·2단계
--- 후보가 채워져 화면에 표시됩니다(참고용 — 아직 확정 아님). 다만
--- --no-portfolio라 06_portfolio.py 자체가 그 시점엔 실행되지 않으므로,
--- notified 플래그가 미확정 가격으로 먼저 세팅될 위험은 없습니다 — 확정은
--- 여전히 20:10 KST 공식마감 수집 이후 한 번뿐입니다.
--- ⚠ daily_price.nxt_close/nxt_change_pct는 69_nxt_price_columns.sql(스키마)
---   과 70_nxt_collect.py(수집, nxt_collect.yml 20:10 KST)가 있어야 채워집니다.
---
 -- 후보 우선순위: pick_score = 무게/주식수 순위 × 0.6 + 시가총액 순위 × 0.4
 --                (낮을수록 우선 — score 컬럼에는 높을수록 우선이도록 반전 저장)
 --
@@ -189,7 +159,6 @@ WITH base AS (
          m.data_span_days, m.weight_rank, m.cap_rank, m.pick_score,
          m.ma5, m.ma10, m.ma20, m.ma60, m.rs20_vs_mkt,
          p.close, p.high, p.low, p.change_pct, p.market_cap, p.trade_amount,
-         p.nxt_close, p.nxt_change_pct,
          -- 2026-09-12 수정: high=low(상한가 종일 고정 등 당일 변동폭 0)이면
          -- 이전엔 NULL 처리돼 "종가위치 상위 X%" 조건에서 항상 탈락했습니다.
          -- 상한가 락은 가장 강한 상승 신호인데 오히려 배제되는 게 맞지 않으므로,
@@ -247,53 +216,6 @@ scored AS (
          rank() OVER (PARTITION BY trade_date ORDER BY rs20_vs_mkt DESC NULLS LAST) AS rs20_rank,
          count(rs20_vs_mkt) OVER (PARTITION BY trade_date) AS rs20_universe_n
   FROM base
-),
--- ── 종가베팅2 전용 풀 (2026-09-11 신설, 2026-09-18 18시 스냅샷 기준으로 변경) ──
--- 2026-09-18: 종가베팅2 기준가를 NXT 20시 확정 마감가(nxt_close)에서
--- NXT 18시 스냅샷가(nxt_price_1800)로 변경합니다. 이유:
---   · 20시 확정가 기준이면 결과가 20:10경에나 나와서 사용자가 NXT 장중(~20:00)에
---     실제 매수 주문을 넣을 수 없었음(2026-09-18 피드백).
---   · 18시 스냅샷 기준이면 18:12 KST 수집 → 18:15경 compute.yml 실행 → 18시
---     결과 확정. 사용자가 18:15~19:59 동안 실제 매수 판단에 활용 가능.
---
--- 기준가 컬럼:
---   eff_nxt_price   = COALESCE(nxt_price_1800, nxt_close)
---     → 2026-09-18 이후: nxt_price_1800(18시 스냅샷)
---     → 2026-09-18 이전 과거 데이터: nxt_price_1800이 NULL이므로 nxt_close(20시 확정가)로 자동 폴백
---       ∴ 과거 종가베팅2 거래 이력·성과 통계가 이 변경으로 달라지지 않음.
---   eff_nxt_chg_pct = COALESCE(nxt_change_pct_1800, nxt_change_pct)  (동일 원칙)
---
--- 나머지 조건(nxt_change_pct > 0, nxt_close > 0, gap_rank 상위 10 등)은 기존과 동일.
--- ⚠ gap_rank/cap_rank_top10 둘 다 row_number()+code 타이브레이크(2026-09-12).
-closebet2_pool AS (
-  SELECT scored.*,
-         COALESCE(p.nxt_price_1800,      p.nxt_close)        AS eff_nxt_price,
-         COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct)   AS eff_nxt_chg_pct,
-         -- 2026-09-18 배포 직후 발견된 버그(2026-09-19 수정): daily_price를 p로
-         -- 다시 조인하면서 p.change_pct와 scored.change_pct가 둘 다 스코프에
-         -- 들어와 "column reference change_pct is ambiguous"로 이 INSERT 전체
-         -- (TREND/CLOSEBET 포함, UNION ALL로 한 문장)가 실패했음 — scored.로
-         -- 명시해 해결. (psycopg2.errors.AmbiguousColumn, 실행 로그로 확인)
-         (COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) - scored.change_pct) AS gap_pct,
-         row_number() OVER (
-           PARTITION BY scored.trade_date
-           ORDER BY (COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) - scored.change_pct) DESC, scored.code ASC
-         ) AS gap_rank
-  FROM scored
-  JOIN daily_price p ON p.trade_date = scored.trade_date AND p.code = scored.code
-  WHERE COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) IS NOT NULL
-    AND COALESCE(p.nxt_price_1800,      p.nxt_close)      IS NOT NULL
-    AND COALESCE(p.nxt_price_1800,      p.nxt_close)      > 0
-    AND COALESCE(p.nxt_change_pct_1800, p.nxt_change_pct) > 0
-),
--- 1단계(gap_rank<=10) 통과 종목 안에서만 시가총액 순위를 다시 매깁니다 —
--- 전체 유니버스 기준 시총 순위가 아니라 "그 10종목 중" 순위여야 하므로
--- closebet2_pool 전체가 아니라 gap_rank<=10으로 좁힌 뒤 별도로 랭크를 매김.
-closebet2_stage1 AS (
-  SELECT *,
-         row_number() OVER (PARTITION BY trade_date ORDER BY market_cap DESC, code ASC) AS cap_rank_top10
-  FROM closebet2_pool
-  WHERE gap_rank <= 10
 )
 INSERT INTO signals (trade_date, code, signal_type, grade, score, reason, reason_text)
 
@@ -398,32 +320,6 @@ WHERE rs_rank IS NOT NULL AND rs_rank <= 8       -- 2026-09-10: 5위→8위 완�
   AND pct_from_high >= -5
   AND data_span_days >= 20
   AND coalesce(foreign_net,0) > 0 AND coalesce(inst_net,0) > 0 AND coalesce(pgtr_net_amt,0) > 0
-
-UNION ALL
--- ── 종가베팅2 1단계 (NXT 괴리율 상위 10) ─────────────────────────────────────
--- 2026-09-18: nxt_close → eff_nxt_price(18시 스냅샷 우선, 폴백 20시 확정가)
-SELECT trade_date, code, 'V4_CAND_CLOSEBET2_1', 'WATCH', score,
-  jsonb_build_object('strategy','CLOSEBET2','stage',1,
-    'change_pct',change_pct,'nxt_change_pct',eff_nxt_chg_pct,'gap_pct',gap_pct,'gap_rank',gap_rank,
-    'nxt_close',eff_nxt_price,'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
-  name || ' 종가베팅2 1단계 · 정규장 ' || round(change_pct, 1) || '% → NXT(18시) '
-       || round(eff_nxt_chg_pct, 1) || '% (괴리 ' || round(gap_pct, 1) || '%p, 상위' || gap_rank || '위)'
-FROM closebet2_stage1
-
-UNION ALL
--- ── 종가베팅2 2단계 (1단계 10종목 중 시가총액 상위 3, 가상매수 대상) ────────
--- 2026-09-18: nxt_close → eff_nxt_price(18시 스냅샷 우선, 폴백 20시 확정가)
-SELECT trade_date, code, 'V4_CAND_CLOSEBET2_2', 'WATCH', score,
-  jsonb_build_object('strategy','CLOSEBET2','stage',2,
-    'change_pct',change_pct,'nxt_change_pct',eff_nxt_chg_pct,'gap_pct',gap_pct,'gap_rank',gap_rank,
-    'cap_rank_top10',cap_rank_top10,
-    'nxt_close',eff_nxt_price,'market_cap',market_cap,'weight_rank',weight_rank,'pick_score',pick_score,'close',close),
-  name || ' 종가베팅2 2단계(매수) · 정규장 ' || round(change_pct, 1) || '% → NXT(18시) '
-       || round(eff_nxt_chg_pct, 1) || '% (괴리 ' || round(gap_pct, 1) || '%p)'
-       || ' · 시가총액 상위' || cap_rank_top10 || '위(10종목 중)'
-       || ' · NXT 18시가 ' || eff_nxt_price || '원 기준 매수'
-FROM closebet2_stage1
-WHERE cap_rank_top10 <= 3
 
 ON CONFLICT (trade_date, code, signal_type) DO UPDATE SET
   grade       = EXCLUDED.grade,
