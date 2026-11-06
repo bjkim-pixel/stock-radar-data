@@ -6488,8 +6488,9 @@ async function aiRender(b){
   const chips=(arr)=>(arr||[]).length?`<div class="ai-chips">${arr.map(x=>`<div class="ai-chip"><b>${sLink(x.name)}</b><span>${E(x.reason||"")}</span></div>`).join("")}</div>`:'<div class="faint">–</div>';
   // ── ① 국내 시장 표
   const idxRow=(k)=>{const m=K[k];return m?`<tr><td class="l">${k}</td><td>${N(m.종가,2)}</td>${aiP(m["1d"],2)}${aiP(m["5d"])}${aiP(m["20d"])}${aiP(m["20일선대비"])}<td class="l">${E(m.레짐||"")}</td></tr>`:"";};
-  const flowRows=Object.entries(fl).map(([k,v])=>{const avg=v["1주"]!=null?v["1주"]/5:null,avg1m=v["1개월"]!=null?v["1개월"]/20:null;
-    return `<tr><td class="l">${E(k)}</td>${aiE(v.오늘)}${aiE(v["1주"])}${aiE(v["1개월"])}${aiE(avg!=null?Math.round(avg):null)}${aiE(avg1m!=null?Math.round(avg1m):null)}
+  const FLOW_ORD=["외국인","기관합계","투신","금융투자","연기금","사모","기타법인","개인"],ordIx=k=>{const i=FLOW_ORD.indexOf(k);return i<0?99:i;};   // 표시 순서 고정(저장된 JSON은 키 순서가 바뀜)
+  const flowRows=Object.entries(fl).sort((x,y)=>ordIx(x[0])-ordIx(y[0])).map(([k,v])=>{const avg=v["1주"]!=null?v["1주"]/5:null,avg1m=v["1개월"]!=null?v["1개월"]/20:null;
+    return `<tr><td class="l">${E(k==="사모"?"사모펀드":k)}</td>${aiE(v.오늘)}${aiE(v["1주"])}${aiE(v["1개월"])}${aiE(avg!=null?Math.round(avg):null)}${aiE(avg1m!=null?Math.round(avg1m):null)}
       <td class="${sgn(v.오늘-(avg||0))}" title="오늘 순매수 − 최근 1주 일평균">${avg==null?"–":pm(v.오늘-avg,0)}</td></tr>`;}).join("");
   // ── ② 업종 표
   const secRows=(D.업종||[]).map(x=>`<tr><td class="l">${sLink(x.업종)}${x.신흥주도?' <span class="up" style="font-size:10px">신흥</span>':""}${x.이탈조짐?' <span class="down" style="font-size:10px">이탈</span>':""}</td>
