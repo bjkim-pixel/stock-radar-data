@@ -1791,12 +1791,18 @@ function fmtUpdTime(iso){
   return `${g("month")}-${g("day")} ${g("hour")}:${g("minute")}`;
 }
 function status(cls,html){const b=$("#statusBar");b.className="bar-top "+cls;b.innerHTML=html;}
+function setMktNote(){ // "2026-11-06 11:20 기준 · 잠정" — 날짜만이 아니라 수집 시각(KST)·확정 여부까지
+  const e=$("#todayMktNote");if(!e||!S._mktNoteOk||!S.date)return;
+  let tm="";
+  if(S.asOf){tm=" "+new Date(S.asOf).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"});}
+  e.innerHTML=`${S.date}${tm} 기준`+(S.asOf?(S.asOfPartial?' · <span style="color:var(--warn)">잠정</span>':' · <span style="color:var(--good)">확정</span>'):"");
+}
 async function loadDataStatus(){
   const r=(await q("v_data_status","select=*"))[0];
   if(!r||!r.as_of){$("#chipAsOf").textContent="";return;}
   const t=new Date(r.as_of).toLocaleTimeString("ko-KR",
     {hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"});
-  S.asOf=r.as_of;S.asOfPartial=!!r.is_partial;renderAsOf();
+  S.asOf=r.as_of;S.asOfPartial=!!r.is_partial;renderAsOf();setMktNote();
   const tag=r.is_partial
     ? `<span style="color:var(--warn)">${t} · 잠정</span>`
     : `<span style="color:var(--good)">${t} · 확정</span>`;
@@ -3757,7 +3763,7 @@ async function loadTodayMarket(){
           if(e&&top!=="combo")loadSubjDaily(top,days).then(sr=>{const h=flowHistHtml(sr);if(h)e.innerHTML=h;}).catch(()=>{});}
       }).catch(()=>{});
     }
-    $("#todayMktNote").textContent=S.date?`${S.date} 기준`:"";
+    S._mktNoteOk=true;setMktNote();
   }
 }
 /* 수급 주체별 매수 상위 종목 카드 — "수급 동향" 탭으로 이동. 수급 동향 진입 시 1회(원본 데이터 공유) */
@@ -4065,7 +4071,7 @@ function gmTiles(p){
 }
 function renderGlobal(row){
   const p=row.payload; if(!p)return;
-  $("#gmAsOf").textContent=`기준 ${p.as_of}${p.tab==="US"?" (미국 종가)":""} · 기준지수 ${p.bench}`;
+  $("#gmAsOf").textContent=`기준 ${p.as_of}${p.tab==="US"?" (미국 종가)":""} · 수집 ${row.updated_at?fmtUpdTime(row.updated_at):"–"} · 기준지수 ${p.bench}`;
   const G=Object.fromEntries(p.groups.map(g=>[g.id,g]));
   let h="";
   if(p.tiles&&p.tiles.length)h+=gmTiles(p);   /* 지수 2개 + 10일 박스 2개 타일 */
