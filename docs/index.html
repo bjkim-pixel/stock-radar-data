@@ -879,13 +879,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 보기, #·종목명 고정) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순</div>
   </div>
 
-  <div class="card" style="border-color:var(--ink)"><h3>종합 스코어 랭킹 <span class="r">모멘텀 35(당일 등락률·무게/주식수·개별RS) · 수급 35(당일 실측 외국인+기관·프로그램·공통매수) · 섹터 20(섹터RS 1위 최고점) · 단발성 급등·거래량 과열 감점 (백테스트 미검증 참고용 휴리스틱, 투자 조언 아님)</span></h3>
-    <div class="tw tw-scroll tw-rank"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th>스코어</th><th class="opt">모멘텀</th><th class="opt">수급</th><th class="opt">섹터</th>
-      <th>등락률</th><th class="opt">시총</th><th class="l">사유</th>
-    </tr></thead><tbody id="tdScoreBody"><tr><td colspan="9" class="load sk"></td></tr></tbody></table></div>
-  </div>
-
   <div class="card" id="tdFlowCard" style="margin-top:12px"><h3>수급 주체별 매수 상위 종목 <span class="r" id="tdFlowSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFlowPeriodSel">
       <button class="fchip" data-v="6m" aria-pressed="false">6개월</button>
@@ -1001,6 +994,13 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <span class="q">오늘 종가에 살 자리인가?</span>
     <span class="out" id="finalOut"></span></div>
   <div id="finalWrap"><div class="card"><div class="load sk"></div></div></div>
+
+    <div class="card" style="border-color:var(--ink);margin-top:12px"><h3>종합 스코어 랭킹 <span class="r">모멘텀 35(당일 등락률·무게/주식수·개별RS) · 수급 35(당일 실측 외국인+기관·프로그램·공통매수) · 섹터 20(섹터RS 1위 최고점) · 단발성 급등·거래량 과열 감점 (백테스트 미검증 참고용 휴리스틱, 투자 조언 아님)</span></h3>
+    <div class="tw tw-scroll tw-rank"><table><thead><tr>
+      <th class="l">#</th><th class="l">종목</th><th>스코어</th><th class="opt">모멘텀</th><th class="opt">수급</th><th class="opt">섹터</th>
+      <th>등락률</th><th class="opt">시총</th><th class="l">사유</th>
+    </tr></thead><tbody id="tdScoreBody"><tr><td colspan="9" class="load sk"></td></tr></tbody></table></div>
+  </div>
 </section>
 
 
