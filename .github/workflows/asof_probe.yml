@@ -1,0 +1,28 @@
+name: AsOf Probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install psycopg2-binary
+      - name: Probe
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 118_asof_probe.py
+      - name: Publish
+        if: always()
+        run: |
+          [ -f asof_report.md ] || echo "실패" > asof_report.md
+          cp asof_report.md /tmp/r.md
+          git config user.name github-actions; git config user.email github-actions@users.noreply.github.com
+          git checkout --orphan asof-report; git rm -rq --cached . || true
+          cp /tmp/r.md asof_report.md; git add -f asof_report.md
+          git commit -qm report; git push -f origin asof-report
