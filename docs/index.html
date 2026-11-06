@@ -1112,9 +1112,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <select id="fLimit"><option>10</option><option>20</option><option selected>50</option><option>100</option><option>300</option></select></div>
       <div class="field"><label>대상<span class="pop"><b>일반종목 / ETF / 전체</b>
         <p>ETF는 가격·이동평균·거래량·개별RS 기준만 계산됩니다(수급·스마트머니 조건은 ETF에 적용되지 않아 통과하지 못합니다). 종목명을 누르면 ETF도 종목상세로 이동합니다.</p></span></label>
-        <select id="fKind"><option value="stock" selected>일반종목</option><option value="etf">ETF</option><option value="all">전체 (일반+ETF)</option></select></div>
+        <select id="fKind"><option value="stock">일반종목</option><option value="etf">ETF</option><option value="all" selected>전체 (일반+ETF)</option></select></div>
       <div class="field"><label>인버스·레버리지 ETF</label>
-        <select id="fInv"><option value="ex" selected>제외</option><option value="in">포함</option></select></div>
+        <select id="fInv"><option value="ex">제외</option><option value="in" selected>포함</option></select></div>
       <div class="field"><label>등락률 (%)</label>
         <div class="range"><input type="number" id="fChgMin" placeholder="이상" value="1"><span>~</span>
           <input type="number" id="fChgMax" placeholder="이하"></div></div>
@@ -1133,7 +1133,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div class="field"><label>업종</label><select id="fSector"><option value="">전체</option></select></div>
       <div class="field"><label>정렬 기준</label>
         <select id="fSort">
-          <option value="weight_per_share">무게/주식수</option>
+          <option value="weight_per_share" selected>무게/주식수</option>
           <option value="change_pct">등락률</option>
           <option value="market_cap">시가총액</option>
           <option value="trade_amount">거래대금</option>
@@ -1141,7 +1141,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
           <option value="inst_net">기관 순매수</option>
           <option value="consec_both_buy">연속 양매수일</option>
           <option value="vol_ratio20_prev">거래량비</option>
-          <option value="rs5_vs_mkt" selected>개별RS5</option>
+          <option value="rs5_vs_mkt">개별RS5</option>
           <option value="rs20_vs_mkt">개별RS20</option>
         </select></div>
       <div class="field"><label>정렬 방향</label>
@@ -4034,7 +4034,9 @@ function gmTable(p,g){
     const s=its.map(x=>x[1].m[f]).filter(v=>v!=null).sort((a,b)=>b-a);
     rank[f]={hi:s[Math.min(2,s.length-1)],lo:s[Math.max(0,s.length-3)]};
   });
-  its.sort((a,b)=>(b[1].m.rs3??-1e9)-(a[1].m.rs3??-1e9));
+  // 기본 정렬: 내림차순 — 당일(D) 데이터가 있으면 D, 없으면 W(1주) 기준 (값 없는 항목은 맨 아래)
+  const sk=its.some(x=>x[1].m.d!=null)?"d":"w";
+  its.sort((a,b)=>(b[1].m[sk]??-1e9)-(a[1].m[sk]??-1e9));
   const tid="gmT_"+p.tab+"_"+g.id;
   const hasTh=its.some(x=>x[1].th);
   const secIdx={}; ((p.groups.find(x=>x.sections)||{}).sections||[]).forEach((sc,i)=>secIdx[sc.n]=i);
@@ -4046,7 +4048,7 @@ function gmTable(p,g){
         return `<td class="${gmC(v)}${hl}" data-sort-val="${v??""}">${gmF(v)}</td>`;}).join("")}
       <td data-sort-val="${m.tr??""}">${m.tr==null?"–":m.tr===2?'<span class="up">▲▲</span>':m.tr===1?'<span class="up">▲</span>':'<span class="down">▼</span>'}</td>
       <td><span class="gm-ph ${m.ph||""}">${GM_PH[m.ph]||"–"}</span></td></tr>`;}).join("");
-  return `<div class="gm-sec">${g.title} 요약<span class="r">3M 초과(${p.bench} 대비) 큰 순 · 열 머리 = 정렬${hasTh?" · 테마명 클릭 = 차트로 이동":""}</span></div>
+  return `<div class="gm-sec">${g.title} 요약<span class="r">기본 정렬 = 당일(D) 큰 순(없으면 W) · 열 머리 = 정렬${hasTh?" · 테마명 클릭 = 차트로 이동":""}</span></div>
     <div class="tw tw-scroll"><table><thead><tr>${hasTh?'<th class="l">테마</th><th class="l">ETF</th><th>시총(억)</th>':`<th class="l">${p.tab==="US"?"티커":"이름"}</th>`}${GM_COLS.map(c=>`<th>${c[1]}</th>`).join("")}<th>추세</th><th class="l">국면</th></tr></thead>
     <tbody id="${tid}">${rows||'<tr><td colspan="13" class="load">데이터 없음</td></tr>'}</tbody></table></div>`;
 }
@@ -4421,8 +4423,8 @@ $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e
 const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":"","#fRsMin":"","#fRs5Min":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
-  $("#fLimit").value="50";$("#fSort").value="rs5_vs_mkt";$("#fDir").value="desc";
-  $("#fSector").value="";$("#fKind").value="stock";$("#fInv").value="ex";
+  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
+  $("#fSector").value="";$("#fKind").value="all";$("#fInv").value="in";
   $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
 $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
 $("#resetFlowFilter").onclick=()=>{
