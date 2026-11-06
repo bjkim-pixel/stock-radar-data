@@ -4125,7 +4125,7 @@ function renderWeekly(row){
   let h=`<div class="qf seg" id="wkNSel" style="margin:0 0 10px">${[[104,"2년"],[156,"3년"],[260,"5년"],[520,"10년"],[1040,"20년"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===n}">${l}</button>`).join("")}</div>`;
   h+=wkCorrHtml(["IXIC","KS11","TNX","WTI"].map(c=>p.items.find(x=>x.code===c)).filter(Boolean));   /* 상관관계: 나스닥·코스피·금리·유가 */
   {const ix=c=>p.items.findIndex(x=>x.code===c);
-   [["TNX","#f59e0b"],["WTI","#2e7d32"],["KS11","#7b1fa2"]].forEach(([c,col])=>{if(ix("IXIC")>=0&&ix(c)>=0)h+=wkOverlay(p.items[ix("IXIC")],p.items[ix(c)],col,n);});}
+   [["TNX","#f59e0b"],["WTI","#2e7d32"],["GOLD","#c9a227"],["KS11","#7b1fa2"]].forEach(([c,col])=>{if(ix("IXIC")>=0&&ix(c)>=0)h+=wkOverlay(p.items[ix("IXIC")],p.items[ix(c)],col,n);});}
   h+=p.items.map(it=>{
     const x=it.last,e20=it.e20[it.d.length-1],e50=it.e50[it.d.length-1],e100=it.e100[it.d.length-1],e200=it.e200[it.d.length-1];
     const aligned=x.c>e20&&e20>e50&&e50>e100&&e100>e200;
