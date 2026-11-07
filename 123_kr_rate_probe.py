@@ -1,44 +1,43 @@
 #!/usr/bin/env python3
-"""한국 금리 데이터 소스 점검(읽기 전용, 임시) — 일일/주간으로 20년치를 무료·무키로 받을 수 있는지."""
-import requests, re, io
+"""한국 금리 데이터 소스 점검 2차(읽기 전용, 임시)."""
+import requests, re, json
 rep=[]
 def log(m=""): print(m); rep.append(m)
-H={"User-Agent":"Mozilla/5.0"}
+H={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36","Accept-Language":"ko-KR,ko;q=0.9"}
 def t(name,fn):
     try: fn()
-    except Exception as e: log(f"- {name}: 예외 {str(e)[:120]}")
+    except Exception as e: log(f"- {name}: 예외 {str(e)[:140]}")
+def get(url,**kw):
+    r=requests.get(url,headers=H,timeout=kw.pop("timeout",60),**kw)
+    return r
 
 def fred():
-    for sid in ("IRLTLT01KRM156N","IR3TIB01KRM156N","INTGSBKRM193N"):
-        r=requests.get("https://fred.stlouisfed.org/graph/fredgraph.csv",params={"id":sid},headers=H,timeout=30)
-        rows=r.text.strip().splitlines()
-        log(f"- FRED {sid}: HTTP {r.status_code} · {len(rows)-1}행 · 처음 {rows[1] if len(rows)>1 else ''} · 끝 {rows[-1]}")
+    for u in ("https://fred.stlouisfed.org/graph/fredgraph.csv?id=IRLTLT01KRM156N","https://fred.stlouisfed.org/data/IRLTLT01KRM156N.txt"):
+        r=get(u,timeout=90); log(f"- FRED {u[-40:]}: HTTP {r.status_code} · {len(r.text.splitlines())}행 · {r.text[-80:]!r}")
 t("FRED",fred)
 
-def naver(code):
-    for p in (1,2,50,300,600,900):
-        r=requests.get("https://finance.naver.com/marketindex/interestDailyQuote.naver",params={"marketindexCd":code,"page":p},headers=H,timeout=30)
-        r.encoding="euc-kr"
-        d=re.findall(r'class="date">\s*([\d.]+)\s*</td>\s*<td class="num">\s*([\d.]+)',r.text)
-        log(f"- Naver {code} p{p}: HTTP {r.status_code} · {len(d)}행 · {d[:1]}{d[-1:]}")
-        if not d: break
-for c in ("IRR_GOVT03Y","IRR_GOVT10Y","IRR_CD91"):
-    t("Naver "+c,lambda c=c:naver(c))
+def nmain():
+    r=get("https://finance.naver.com/marketindex/"); r.encoding="euc-kr"
+    log(f"- Naver 시장지표 메인: HTTP {r.status_code} · {len(r.text)}자")
+    for m in re.findall(r'href="(/marketindex/[^"]*(?:interest|bond|IRR)[^"]*)"',r.text)[:12]: log(f"  링크 {m}")
+t("naver main",nmain)
 
-def yahoo():
-    for s in ("^KR10YT","KR10YT=RR","^TNX"):
-        r=requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(s)}",params={"interval":"1wk","range":"1y"},headers=H,timeout=30)
-        log(f"- Yahoo {s}: HTTP {r.status_code}")
-t("Yahoo",yahoo)
+def napi():
+    for u in ("https://api.stock.naver.com/marketindex/bond/KR10YT=RR","https://api.stock.naver.com/marketindex/bond/KR10YT=RR/prices?page=1&pageSize=5",
+              "https://m.stock.naver.com/front-api/marketIndex/prices?category=bond&reutersCode=KR10YT%3DRR&page=1&pageSize=5",
+              "https://api.stock.naver.com/marketindex/bond/KR3YT=RR/prices?page=1&pageSize=5"):
+        r=get(u); log(f"- {u[:95]}: HTTP {r.status_code} · {r.text[:160]!r}")
+t("naver api",napi)
 
-def stooq():
-    for s in ("10kry.b","kr10y.b"):
-        r=requests.get(f"https://stooq.com/q/d/l/?s={s}&i=w",headers=H,timeout=30)
-        log(f"- Stooq {s}: HTTP {r.status_code} · {len(r.text.splitlines())}행 · {r.text[:80]!r}")
-t("Stooq",stooq)
+def ecos():
+    r=get("https://ecos.bok.or.kr/api/StatisticSearch/sample/json/kr/1/3/817Y002/D/20260101/20260110/010210000"); log(f"- ECOS sample키: HTTP {r.status_code} · {r.text[:160]!r}")
+t("ecos",ecos)
+
+def wgb():
+    r=get("https://www.worldgovernmentbonds.com/country/south-korea/"); log(f"- worldgovernmentbonds: HTTP {r.status_code} · {len(r.text)}자")
+t("wgb",wgb)
 
 def inv():
-    r=requests.get("https://api.investing.com/api/financialdata/historical/29234",params={"start-date":"2020-01-01","end-date":"2020-02-01","time-frame":"Weekly"},headers=H,timeout=30)
-    log(f"- investing API: HTTP {r.status_code}")
-t("investing",inv)
-open("kr_rate_probe.md","w",encoding="utf-8").write("# 한국 금리 소스 점검\n"+"\n".join(rep)+"\n")
+    r=get("https://query1.finance.yahoo.com/v1/finance/search?q=korea%2010%20year%20bond%20yield"); log(f"- Yahoo search: HTTP {r.status_code} · {[ (q.get('symbol'),q.get('shortname')) for q in r.json().get('quotes',[])][:8]}")
+t("ysearch",inv)
+open("kr_rate_probe.md","w",encoding="utf-8").write("# 한국 금리 소스 점검 2\n"+"\n".join(rep)+"\n")
