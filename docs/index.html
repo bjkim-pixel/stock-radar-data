@@ -1393,6 +1393,16 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       "N일 이상"은 이동평균 기간이 N일 이상인 선(5·10·20·60·120·200일 중)만으로 판정합니다. 이력이 부족한 이평선은 계산되지 않아 목록에서 빠집니다.</div>
   </div>
 
+  <div class="card" id="dEarnCard" style="display:none"><h3>실적 · 예상실적<span class="r" id="dEarnSrc"></span></h3>
+    <div class="qf seg" id="dEarnSet" style="margin-bottom:8px">
+      <button class="fchip" data-v="A" aria-pressed="true">연간</button>
+      <button class="fchip" data-v="Q">분기</button>
+    </div>
+    <div class="tw tw-scroll"><table class="earn-t"><thead id="dEarnHead"></thead><tbody id="dEarnBody"></tbody></table></div>
+    <div class="note">확정 실적은 한국투자증권, <b>예상(E)</b>은 네이버 증권 컨센서스 기준입니다. 분기는 단일 분기 값이며 매출액·영업이익·순이익은 억원(1만억원 이상은 조원) 단위입니다.
+      네이버가 제공하는 예상치는 올해 연간과 다음 분기 1개입니다. 증감률은 연간은 전년 대비, 분기는 전년 동기 대비입니다.</div>
+  </div>
+
   <div class="card" id="dWeightCard"><h3>무게/주식수 <span class="r" style="font-weight:400;font-size:11px">외+기관 순매수 ÷ 주식수 · 양수=자금유입</span></h3>
     <div class="chart" id="dWeight"></div>
   </div>
@@ -4689,6 +4699,7 @@ function renderRangeCharts(){
     volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
       {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
     try{renderMaCard();}catch(e){console.error("ma card",e);}
+    $("#dEarnCard").style.display="none";
     return;
   }
   const profIndiv=buildPriceProfile(rp,24,r=>+r.individual_net||0);
@@ -4721,6 +4732,7 @@ function renderRangeCharts(){
     {h:450,w:1180,pr:66,zero:true,marks:"each",monthTicks:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
   try{renderSmCard();}catch(e){console.error("smart money card",e);}
   try{renderMaCard();}catch(e){console.error("ma card",e);}
+  try{renderEarnCard();}catch(e){console.error("earn card",e);}
   try{renderDailyFlow();}catch(e){console.error("daily flow table",e);}
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
@@ -5257,6 +5269,42 @@ function maMonthAxis(rows,idx){
     const tr=pc<6?"0":pc>94?"-100%":"-50%";
     return `<span style="position:absolute;left:${pc.toFixed(1)}%;transform:translateX(${tr});white-space:nowrap"><i style="display:block;width:1px;height:4px;background:var(--grid);margin:0 auto 1px"></i>${l}</span>`;}).join("")}</div>`;
 }
+// ── 실적·예상실적 카드 (stock_earnings: KIS 확정 + 네이버 컨센서스) ──
+S.earnFreq="A";S.earnCache={};
+const earnEok=v=>v==null?"–":(Math.abs(v)>=10000?N(v/10000,1)+"조":N(v,0)+"억");
+const earnPct=(v,b)=>(v==null||b==null||b<=0)?null:(v-b)/b*100;
+async function renderEarnCard(){
+  const card=$("#dEarnCard"),code=S.chart&&S.chart.code;
+  if(!code||S.chart.etf){card.style.display="none";return;}
+  let rows=S.earnCache[code];
+  if(!rows){
+    try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe&code=eq.${code}&order=period.asc`);}
+    catch(e){rows=[];}
+    S.earnCache[code]=rows;
+  }
+  if(S.chart.code!==code)return;   // 그 사이 다른 종목으로 바뀐 경우
+  if(!rows.length){card.style.display="none";return;}
+  card.style.display="";
+  $$("#dEarnSet button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===S.earnFreq)));
+  const A=S.earnFreq==="A";
+  const all=rows.filter(r=>r.freq===S.earnFreq).map(r=>({...r,sales:r.sales==null?null:+r.sales,op_profit:r.op_profit==null?null:+r.op_profit,
+    net_income:r.net_income==null?null:+r.net_income,eps:r.eps==null?null:+r.eps,bps:r.bps==null?null:+r.bps,roe:r.roe==null?null:+r.roe}));
+  const lag=A?12:3, byP={};all.forEach(r=>byP[r.period]=r);
+  const prevOf=r=>{const y=+r.period.slice(0,4),m=r.period.slice(4);return byP[(y-1)+m];};
+  const list=A?all:all.slice(-9);
+  const yoy=(r,k)=>{const p=prevOf(r);return p?earnPct(r[k],p[k]):null;};
+  const cell=(v,f)=>`<td class="num">${v==null?"–":f(v)}</td>`;
+  const g=(v)=>v==null?"":`<div class="${v>=0?"up":"down"}" style="font-size:10px">${pm(v,0)}%</div>`;
+  $("#dEarnHead").innerHTML="<tr><th class=\"l\">항목</th>"+list.map(r=>`<th>${r.period.slice(0,4)}.${r.period.slice(4)}${r.is_est?' <span class="tag-d b">E</span>':""}</th>`).join("")+"</tr>";
+  const row=(lb,k,f,withG)=>"<tr><td class=\"l\">"+lb+"</td>"+list.map(r=>`<td class="num"${r.is_est?' style="background:var(--surface-2)"':""}>${r[k]==null?"–":f(r[k])}${withG?g(yoy(r,k)):""}</td>`).join("")+"</tr>";
+  const mrg=list.map(r=>r.sales>0&&r.op_profit!=null?r.op_profit/r.sales*100:null);
+  $("#dEarnBody").innerHTML=row("매출액","sales",earnEok,true)+row("영업이익","op_profit",earnEok,true)+
+    "<tr><td class=\"l\">영업이익률</td>"+mrg.map((v,i)=>`<td class="num"${list[i].is_est?' style="background:var(--surface-2)"':""}>${v==null?"–":N(v,1)+"%"}</td>`).join("")+"</tr>"+
+    row("순이익","net_income",earnEok,false)+row("EPS(원)","eps",v=>N(v,0),true)+row("BPS(원)","bps",v=>N(v,0),false)+row("ROE","roe",v=>N(v,1)+"%",false);
+  const upd=list.some(r=>r.is_est);
+  $("#dEarnSrc").textContent=upd?"E = 컨센서스 예상":"";
+}
+$$("#dEarnSet button").forEach(b=>b.onclick=()=>{S.earnFreq=b.dataset.v;renderEarnCard().catch(e=>console.error(e));});
 function renderMaCard(){
   const rows=S.chart&&S.chart.rows;if(!rows||!rows.length)return;
   const start=$("#dStart").value||START_D,end=$("#dEnd").value||rows.at(-1).trade_date;
@@ -6726,6 +6774,7 @@ function kRangeCharts(){
   try{renderSmCard();}catch(e){console.error("kospi sm",e);}
   $("#dSmHead").innerHTML=$("#dSmHead").innerHTML.replace(/(\d)원/g,"$1");   // 지수는 "원"이 아니라 포인트
   try{renderMaCard();}catch(e){console.error("kospi ma",e);}
+  $("#dEarnCard").style.display="none";
   try{renderDailyFlow();}catch(e){console.error("kospi daily",e);}
 }
 function kMount(){
