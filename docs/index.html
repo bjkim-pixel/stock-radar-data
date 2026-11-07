@@ -274,19 +274,19 @@ td .nm{font-weight:600} td .cd{color:var(--ink-3);font-size:10.5px}
 .tag.buy{background:var(--up)} .tag.sell{background:var(--down)}
 .tag.add{background:transparent;color:var(--up);border:1px solid var(--up)}
 
-.panel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:11px}
-.field label{display:block;font-size:10.5px;color:var(--ink-3);margin-bottom:5px}
+.panel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px 11px}
+.field label{display:block;position:relative;font-size:10.5px;color:var(--ink-3);margin-bottom:4px}
 select,input[type=date],input[type=number],input[type=text]{width:100%;background:var(--surface);
   border:1px solid var(--border);color:var(--ink);border-radius:7px;padding:7px 9px;font-size:12.5px;
   font-family:inherit;font-variant-numeric:tabular-nums}
 .range{display:flex;align-items:center;gap:6px}
 .range span{font-size:11px;color:var(--ink-3)}
-.qf-group{margin-top:14px}
-.qf-lb{font-size:10px;color:var(--ink-3);letter-spacing:.05em;margin-bottom:7px;
+.qf-group{margin-top:8px}
+.qf-lb{font-size:10px;color:var(--ink-3);letter-spacing:.05em;margin-bottom:4px;
   display:flex;align-items:center;gap:6px;cursor:pointer;background:none;border:none;
   padding:4px 0;font-family:inherit;text-align:left;width:100%}
 .qf-lb .qf-chev{font-size:9px;transition:transform .12s}
-.qf{display:flex;gap:7px;flex-wrap:wrap}
+.qf{display:flex;gap:5px;flex-wrap:wrap}
 /* 2026-09-20: 조건 버튼(fchip) 세로 여백을 줄여 버튼 높이를 낮춤(사용자 요청) — 5px→3px */
 #gmTabSel,#wkNSel{flex-wrap:nowrap!important;gap:4px!important;max-width:100%}
 #gmTabSel .fchip,#wkNSel .fchip{padding:3px 8px;font-size:11px;white-space:nowrap;flex:0 0 auto}
@@ -297,14 +297,16 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
   border-color:var(--up);color:var(--up);font-weight:600}
 .fchip.strat{border-style:dashed}
 /* 전략 칩에 마우스를 올리면 필터 조건 전체를 보여줍니다 */
-.fchip .pop{position:absolute;bottom:calc(100% + 9px);left:0;width:310px;background:var(--surface);
+.fchip .pop,.field label .pop{position:absolute;bottom:calc(100% + 9px);left:0;width:310px;background:var(--surface);
   border:1px solid var(--border);border-radius:9px;padding:11px 13px;box-shadow:0 8px 26px rgba(0,0,0,.16);
   opacity:0;visibility:hidden;transition:opacity .12s;z-index:60;text-align:left;
   color:var(--ink-2);font-weight:400;cursor:default}
-.fchip:hover .pop{opacity:1;visibility:visible}
-.fchip .pop b{color:var(--ink);display:block;margin-bottom:6px;font-size:12.5px}
+.fchip:hover .pop,.field label:hover .pop{opacity:1;visibility:visible}
+.fchip .pop b,.field label .pop b{color:var(--ink);display:block;margin-bottom:6px;font-size:12.5px}
 .fchip .pop ol{margin:0;padding-left:16px;font-size:11px;line-height:1.75}
 .fchip .pop .ex{margin-top:8px;padding-top:7px;border-top:1px solid var(--grid);font-size:10.5px;color:var(--ink-3)}
+.field label .pop{top:calc(100% + 4px);bottom:auto}
+.field label .pop p{margin:0;font-size:11px;line-height:1.6;color:var(--ink-2)}
 .fchip .pop p{margin:0 0 6px;font-size:11px;line-height:1.6}
 .cond-explain{font-size:10.5px;line-height:1.65;color:var(--ink-3);background:var(--surface-2);
   border-radius:7px;padding:8px 10px;margin:2px 0 10px}
@@ -655,7 +657,7 @@ html.hg-g1 .g-g1,html.hg-g2 .g-g2,html.hg-g3 .g-g3,html.hg-g4 .g-g4,html.hg-g5 .
   /* 터치 타겟 최소 44px */
   nav button{padding:13px 11px;font-size:12.5px}
   .btn{min-height:44px;padding:10px 16px;font-size:13px}
-  .fchip{min-height:32px;padding:4px 12px}
+  .fchip{min-height:28px;padding:3px 11px}
   .pbtn{min-height:36px;padding:6px 10px}
   .icon-btn{width:40px;height:40px;font-size:15px}
 
@@ -663,10 +665,11 @@ html.hg-g1 .g-g1,html.hg-g2 .g-g2,html.hg-g3 .g-g3,html.hg-g4 .g-g4,html.hg-g5 .
   .card{padding:11px 12px}
   .tiles{grid-template-columns:1fr 1fr}
   .tile .vl{font-size:18px}
-  .panel-grid{grid-template-columns:1fr}
+  .panel-grid{grid-template-columns:1fr 1fr;gap:7px 8px}
+  #v-scr .panel-grid .field:has(.range),#v-scr .panel-grid .field:has(#fSector){grid-column:1/-1}
 
   /* 칩 팝업 — 화면 너비 초과 방지 */
-  .fchip .pop{width:min(270px,85vw);left:auto;right:0}
+  .fchip .pop,.field label .pop{width:min(270px,85vw);left:auto;right:0}
 
   /* 범례·툴팁 */
   .legend{font-size:10.5px;gap:8px}
@@ -1127,13 +1130,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
           <input type="number" id="fCapMax" placeholder="이하" step="0.1"></div></div>
       <div class="field"><label>거래대금 ≥ (억원)</label><input type="number" id="fAmtMin"></div>
       <div class="field"><label>거래량비 ≥ (%)</label><input type="number" id="fVolMin"></div>
-      <div class="field"><label>개별RS5 ≥ (%p)<span class="pop"><b>개별RS5(rs5_vs_mkt) = 종목 5일 수익률(%) − 유니버스 평균 5일 수익률(%)</b>
-        <p>계산 방식은 개별RS20과 동일하고 창만 5거래일로 짧습니다. 최근 며칠 사이 새로 시장보다 강해지기 시작한 종목을 더 빠르게 잡아내는 용도입니다.</p>
-      </span></label><input type="number" id="fRs5Min" placeholder="예: 0" step="0.1"></div>
-      <div class="field"><label>개별RS20 ≥ (%p)<span class="pop"><b>개별RS20(rs20_vs_mkt) = 종목 20일 수익률(%) − 유니버스 평균 20일 수익률(%)</b>
-        <p>양수면 최근 20거래일 동안 시장 평균보다 더 많이 올랐다는 뜻입니다. 신고가나 전고점 근처가 아니어도, 바닥권에서 시장 대비 먼저 반등하기 시작한 종목을 잡아낼 수 있습니다. 화면 표시는 이 원시값을 그날 유니버스 내 백분위(상위 N%)로 환산해서 보여주지만, 이 입력칸은 원시 %p 기준으로 필터링합니다.</p>
-        <div class="ex">예) 종목이 20일간 +8%, 같은 기간 유니버스 평균이 +2%라면 개별RS20 = +6%p → 시장보다 강한 초과수익</div>
-      </span></label><input type="number" id="fRsMin" placeholder="예: 0" step="0.1"></div>
       <div class="field"><label>업종</label><select id="fSector"><option value="">전체</option></select></div>
       <div class="field"><label>정렬 기준</label>
         <select id="fSort">
@@ -1172,12 +1168,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div></div>
     <div style="width:100%;border-top:1px solid var(--grid);margin:10px 0 6px;padding-top:10px;font-size:10.5px;font-weight:700;color:var(--ink-3);letter-spacing:.06em">전략별 세부 조건</div>
     <div class="qf-group"><button class="qf-lb" data-qf-toggle aria-expanded="false">종가베팅 <span class="qf-chev">▾</span></button><div class="qf hide">
-      <button class="fchip" data-f="cb_newhigh">신고가 돌파</button>
-      <button class="fchip" data-f="cb_nearhigh">전고점 근처(-10%)</button>
-      <button class="fchip" data-f="cb_closepos">종가 고가권(상위 30%)<span class="pop"><b>종가위치 = (종가−저가)÷(고가−저가)×100</b>
-        <p>값이 70 이상이면 당일 가격 범위(저가~고가) 중 상위 30% 안에서 마감했다는 뜻입니다. 낮을수록 장중 급등 후 밀려서 저가 쪽에서 마감한 '윗꼬리' 형태에 가깝습니다.</p>
-        <div class="ex">예) 시가 10,000 · 고가 11,500 · 저가 9,800 · 종가 11,200원<br>→ (11,200−9,800)÷(11,500−9,800)×100 ≈ 82% → 고가권 마감(조건 충족)<br>같은 날 종가가 10,200원이었다면 ≈ 24% → 저가권 마감(조건 미충족)</div>
-      </span></button>
       <button class="fchip" data-f="cb_fgbuy">외국인 순매수</button>
       <button class="fchip" data-f="cb_insbuy">기관 순매수</button>
       <button class="fchip" data-f="cb_consec3">연속 양매수 3일↑</button>
@@ -1185,15 +1175,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div></div>
     <div class="qf-group"><button class="qf-lb" data-qf-toggle aria-expanded="false">추세추종 <span class="qf-chev">▾</span></button><div class="qf hide">
       <button class="fchip" data-f="v4_newhigh">신고가(전체기간)</button>
-      <button class="fchip" data-f="v4_vol115">거래량비 115%↑</button>
-      <button class="fchip" data-f="v4_leadsec">주도 섹터만</button>
     </div></div>
     <div class="qf-group"><button class="qf-lb" data-qf-toggle aria-expanded="false">전략E<br><span style="font-size:10px;font-weight:400;color:var(--ink-3)">개별RS+소멸형 배제</span> <span class="qf-chev">▾</span></button><div class="qf hide">
-      <button class="fchip" data-f="e_closepos70">종가위치≥70%<span class="pop"><b>종가위치 ≥ 70%</b><p>당일 고저 범위 중 상위 30% 안에서 마감한 종목. 윗꼬리(소멸형) 캔들 배제.</p></span></button>
       <button class="fchip" data-f="e_chg11">등락률&lt;11%<span class="pop"><b>등락률 절댓값 &lt; 11%</b><p>이미 급등한 종목 추격매수 방지. 하락 과대낙폭도 일부 필터됩니다.</p></span></button>
       <button class="fchip" data-f="e_vol180">거래량비&lt;180%<span class="pop"><b>20일 평균 대비 거래량비 &lt; 180%</b><p>단기 과열·급등 소멸형 종목 제외. 200~300%↑ 급등일은 제외됩니다.</p></span></button>
-      <button class="fchip" data-f="e_aligned">정배열(종가&gt;5&gt;20&gt;60&gt;120)<span class="pop"><b>종가 &gt; MA5 &gt; MA20 &gt; MA60 &gt; MA120 정배열</b><p>단기·중기·장기·초장기 이평선이 우상향 순서로 정렬되고, 종가가 그 위에 있는 종목만 남깁니다.</p></span></button>
-      <button class="fchip" data-f="e_rspos">개별RS20&gt;0<span class="pop"><b>개별RS20(rs20_vs_mkt) &gt; 0</b><p>최근 20거래일 수익률이 유니버스 평균보다 높은 종목. 신고가가 아니어도 바닥에서 시장보다 먼저 반등 중인 종목을 잡습니다.</p></span></button>
       <span id="scrMktAvgRS" style="display:none;font-size:11px;color:var(--ink-3);padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);white-space:nowrap">시장평균 20일 <span id="scrMktAvgRSVal" class="num">–</span>%</span>
     </div></div>
 
@@ -4389,9 +4374,7 @@ function makeFilterFn(root,ids){
     const num=id=>{const v=$(id,root).value;return v===""?null:+v;};
     const f={chgMin:num(ids.chgMin),chgMax:num(ids.chgMax),capMin:num(ids.capMin),
       capMax:num(ids.capMax),amtMin:num(ids.amtMin),volMin:num(ids.volMin),
-      rsMin:ids.rsMin?num(ids.rsMin):null,
-      rs5Min:ids.rs5Min?num(ids.rs5Min):null,
-      sec:$(ids.sector,root).value};
+            sec:$(ids.sector,root).value};
     const cap=+r.market_cap/JO, amt=+r.trade_amount/EOK, chg=+r.change_pct;
     const vol=r.vol_ratio20_prev==null?null:+r.vol_ratio20_prev;
     const rs=r.rs20_vs_mkt==null?null:+r.rs20_vs_mkt;
@@ -4402,8 +4385,6 @@ function makeFilterFn(root,ids){
     if(f.capMax!=null&&cap>f.capMax)return false;
     if(f.amtMin!=null&&amt<f.amtMin)return false;
     if(f.volMin!=null&&(vol==null||vol<f.volMin))return false;
-    if(f.rsMin!=null&&(rs==null||rs<f.rsMin))return false;
-    if(f.rs5Min!=null&&(rs5==null||rs5<f.rs5Min))return false;
     if(f.sec&&r.sector!==f.sec)return false;
     if(on("newhigh",root)&&!(r.is_new_high_all||r.is_new_high))return false;
     if(on("nearhigh",root)&&!(r.near_high||+r.pct_from_high>=-10))return false;
@@ -4452,7 +4433,7 @@ function makeFilterFn(root,ids){
   };
 }
 const SCR_IDS={chgMin:"#fChgMin",chgMax:"#fChgMax",capMin:"#fCapMin",capMax:"#fCapMax",
-  amtMin:"#fAmtMin",volMin:"#fVolMin",rsMin:"#fRsMin",rs5Min:"#fRs5Min",sector:"#fSector"};
+  amtMin:"#fAmtMin",volMin:"#fVolMin",sector:"#fSector"};
 const FLOW_FILTER_IDS={chgMin:"#gChgMin",chgMax:"#gChgMax",capMin:"#gCapMin",capMax:"#gCapMax",
   amtMin:"#gAmtMin",volMin:"#gVolMin",sector:"#gSector"};
 const screenerFilterPass=makeFilterFn($("#v-scr"),SCR_IDS);
@@ -4576,7 +4557,7 @@ async function runScreener(){
   makeSortable('scrBody');
 }
 $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e.message));
-const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":"","#fRsMin":"","#fRs5Min":""};
+const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
   $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
