@@ -1082,6 +1082,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <tr><th>중립</th><td>위 조건에 모두 해당하지 않을 때, 또는 매집 중 지분 변화가 0 이하로 떨어졌을 때, 보유가 0일 때.</td></tr>
         <tr><th>전환 규칙</th><td>새 국면 조건이 <b>3거래일 연속</b> 충족돼야 바뀝니다(하루짜리 흔들림 제외). 예외: B1 신호는 즉시 ②매집(상승).</td></tr>
       </tbody></table>
+      <div class="note"><b>신호(B1·S2 등)</b> — 국면과 별개로, 특정한 날에 뜨는 매수·매도 표시입니다. 종목 목록의 "신호" 칸과 차트의 ▲▼에 같은 코드가 쓰입니다.</div>
+      <div id="smSigTblHost"></div>
       <div class="note">참고: 백테스트(20일 초과수익)에서 분산 진입(S1)은 이후에도 더 오르는 경향이 있어 매도 근거가 아니라 참고 표시입니다. 기준값은 <code>sm_core.py</code>와 화면 계산(<code>smSeries</code>)이 같습니다.</div>
     </details>
   </div>
@@ -1381,7 +1383,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="smhead" id="dSmHead"></div>
     <div class="chart" id="dSmPrice"></div>
     <div class="legend" style="margin:6px 0 0;flex-wrap:nowrap;white-space:nowrap"><span class="faint">배경</span><span><i class="bx" style="background:color-mix(in srgb,var(--good) 30%,transparent);border:1px solid var(--good)"></i>①매집(보합)</span><span><i class="bx" style="background:color-mix(in srgb,var(--up) 30%,transparent);border:1px solid var(--up)"></i>②매집(상승)</span><span><i class="bx" style="background:color-mix(in srgb,var(--warn) 30%,transparent);border:1px solid var(--warn)"></i>③분산(전가)</span><span><i class="bx" style="background:color-mix(in srgb,var(--down) 30%,transparent);border:1px solid var(--down)"></i>④분산(이탈)</span></div>
-    <div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span><span style="color:var(--up)">▲ 매수 신호</span><span style="color:var(--down)">▼ 매도 신호</span><span class="faint">△▽ 참고 신호</span></div>
+    <div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span></div>
+    <div id="dSmSigLeg"></div>
+    <details class="smlogic"><summary>국면·신호 읽는 법 (B1·S2 등이 무슨 뜻인가)</summary><div id="dSmGuide"></div></details>
     <div class="grid2" style="margin-top:12px">
       <div><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 누적 순매수 주식수 ÷ 상장주식수(%) · 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = 종가(최고·최저·종가 가격 표시) · 주황 점선 = 2026-08 이후 박스권 상·하단</div><div class="chart" id="dSmFlow"></div>
         <div class="legend" style="margin:6px 0 0"><span><i style="background:var(--good)"></i>스마트머니(외국인+투신+사모+연기금)</span><span><i style="background:var(--down)"></i>개인</span><span><i style="background:var(--axis)"></i>종가</span><span><i class="bx" style="border:1.5px dashed var(--warn)"></i>박스권(2026-08~) 상·하단</span></div></div>
@@ -4963,10 +4967,27 @@ function smPhaseSub(p,days,changed,prev){
   if(changed)return `<span style="color:${SM_PH_C[p]};font-weight:650">오늘 ${SM_PH_KR[prev]||"중립"}→${SM_PH_KR[p]}</span>`;
   return `<span class="faint">${SM_PH_KR[p]} ${days}일째</span>`;
 }
+/* ── 신호(B1·S2…) 설명: 범례·상세 설명·목록 안내가 같은 문구를 쓰도록 한 곳에 ── */
+const SM_SIG_INFO=[
+  ["B1","매집 돌파","▲ 매수","①매집(보합)이 <b>20일 이상</b> 이어진 뒤, 종가가 직전 20일 고가를 <b>돌파</b>하고 그날 SM이 순매수 · 거래량이 20일 평균의 <b>1.5배 이상</b>. 조용히 모으던 물량이 가격으로 드러나는 날이라 즉시 ②매집(상승)으로 전환.","백테스트 20일 초과수익 <b>+2.6%</b> (검증 구간 +5.8%)"],
+  ["S2","평단 이탈","▼ 매도","②매집(상승) 또는 ③분산(전가) 국면에서 종가가 <b>SM 평단 아래로 2일 연속</b> 내려간 시점(둘째 날에 표시). SM이 평균 매입가 밑으로 밀렸다 = 손실 구간 진입.","20일 초과수익 <b>−1.1%</b> (이후 약세)"],
+  ["S4","이익 실현","▼ 매도","SM 평단 <b>+30% 이상</b> 오른 상태에서 거래량이 20일 평균의 <b>2배 이상</b> 터지고 <b>긴 윗꼬리</b>(고가−종가가 그날 변동폭의 절반 이상)에 SM이 순매도한 날. 급등 끝자락의 차익 실현 신호.","20일 초과수익 <b>−2.5%</b> (이후 약세)"],
+  ["B2","평단 눌림","△ 참고","②매집(상승) 중 주가가 SM 평단 <b>위 0~5%</b>까지 눌렸고 최근 5일 SM 순매수 합이 0 이상 · 개인은 순매도. 평단 근처에서 다시 받쳐 주는 자리(5거래일 간격으로 1번).","−2.0% → 효과 없어 <b>참고만</b>"],
+  ["S1","분산 개시","▽ 참고","국면이 ③분산(전가)으로 <b>처음 바뀐 날</b>(3거래일 연속 조건 충족 후). 고점권에서 SM이 개인에게 넘기기 시작했다는 뜻.","+4.5% → 이후에도 더 오르는 경향이라 매도 근거 아님, <b>참고만</b>"],
+  ["S3","보유 소진","▽ 참고","SM 추정 보유가 보유 고점의 <b>절반 이하</b>로 처음 줄어든 날(고점이 상장주식수의 0.5% 이상일 때). 절반 넘게 팔았다는 뜻.","+0.7% → 효과 없어 <b>참고만</b>"]
+];
+const SM_SIG_LEG=`<div class="legend" style="margin:2px 0 0;flex-wrap:wrap;row-gap:2px"><span class="faint">신호</span>`
+  +SM_SIG_INFO.map(([c,n,m])=>{const ok=SM_SIG_OK.has(c),b=c[0]==="B";return `<span style="color:${ok?(b?"var(--up)":"var(--down)"):"var(--ink-3)"};${ok?"":"opacity:.75"}"><b>${m.split(" ")[0]}${c}</b> ${n}</span>`;}).join("")
+  +`</div><div class="note" style="margin:2px 0 0">진한 ▲▼ = 백테스트를 통과한 신호 · 흐린 △▽ = 참고용(효과 미확인) · 신호는 장 마감 후 수급이 확정되므로 <b>다음 날 시가</b> 기준으로 봅니다.</div>`;
+const SM_SIG_TABLE=`<table class="smlogic-t"><tbody>`+SM_SIG_INFO.map(([c,n,m,d,bt])=>{const ok=SM_SIG_OK.has(c),b=c[0]==="B";
+  return `<tr><th><span class="smsig ${ok?(b?"b":"s"):"r"}">${c}</span><div class="faint" style="font-size:10.5px;margin-top:3px">${m}</div></th><td><b>${n}</b> — ${d}<div class="faint" style="margin-top:2px">${bt}</div></td></tr>`;}).join("")+`</tbody></table>`;
+const SM_READ_GUIDE=`<div class="note" style="margin-top:6px"><b>차트 보는 법</b> — 검은 선 = 종가 · 보라 점선 = <b>SM 평단</b>(스마트머니가 산 평균 단가, 순매수일에만 갱신) · 배경색 = 그날의 <b>국면</b>(초록 ①매집(보합) → 빨강 ②매집(상승) → 주황 ③분산(전가) → 파랑 ④분산(이탈), 색 없음 = 중립) · 화살표 = 아래 <b>신호</b>가 뜬 날.
+  국면은 보통 ①→②→③→④ 순으로 돌고, 국면 이름 옆의 "n일째"는 그 국면에 들어온 뒤 거래일 수입니다.
+  <b>스마트머니(SM)</b> = 외국인 + 투신 + 사모 + 연기금(상세 카드에서 주체를 바꿀 수 있음).</div>`;
 function smSigHtml(sig,ago){
   if(!sig)return '<span class="faint">–</span>';
   const b=sig[0]==="B", ok=SM_SIG_OK.has(sig);
-  return `<span class="smsig ${ok?(b?"b":"s"):"r"}" title="${SM_SIG_KR[sig]}${ok?"":" — 참고(백테스트 미통과)"}">${sig}</span> <span class="faint" style="font-size:10.5px">${ago===0?"오늘":ago+"일 전"}</span>`;
+  return `<span class="smsig ${ok?(b?"b":"s"):"r"}" title="${SM_SIG_KR[sig]}${ok?"":" — 참고(백테스트 미통과)"}">${sig}</span> <b style="font-size:11px">${SM_SIG_KR[sig]}</b> <span class="faint" style="font-size:10.5px">${ago===0?"오늘":ago+"거래일 전"}</span>`;
 }
 // v_stock_chart 행 → smSeries 입력. 투신·사모·연기금·금융투자·기타법인은 누적(_cum)의 차이로 일별 값을 복원
 function smRowsFrom(rows,subj=SM_SUBJ_DEF){
@@ -4983,7 +5004,7 @@ function smRowsFrom(rows,subj=SM_SUBJ_DEF){
 function smPriceChart(host,ser,opt={}){
   host.innerHTML="";
   if(!ser.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
-  const W=opt.w||1180,H=opt.h||320,P={t:14,r:70,b:22,l:12};
+  const hw=host.clientWidth||0, W=opt.w||(hw&&hw<700?640:1180),H=opt.h||320,P={t:14,r:70,b:22,l:12};   // 휴대폰 폭에선 좌표계를 줄여 글자·화살표가 작아 보이지 않게
   const iw=W-P.l-P.r, ih=H-P.t-P.b, n=ser.length;
   const vals=ser.flatMap(z=>[z.close,z.cost]).filter(v=>v!=null&&v>0);
   let lo=Math.min(...vals),hi=Math.max(...vals);const pad=(hi-lo)*0.06||hi*0.02;lo-=pad;hi+=pad;
@@ -5009,7 +5030,8 @@ function smPriceChart(host,ser,opt={}){
   s+=`<path d="${ser.map((z,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(z.close).toFixed(1)).join("")}" fill="none" stroke="var(--ink)" stroke-width="1.5"/>`;
   ser.forEach((z,i)=>z.signals.forEach(g=>{
     const b=g[0]==="B", y=b?Y(z.close)+16:Y(z.close)-8, ok=SM_SIG_OK.has(g);
-    s+=`<text x="${X(i)}" y="${y}" font-size="${ok?12:10}" text-anchor="middle" fill="${ok?(b?"var(--up)":"var(--down)"):"var(--ink-3)"}" opacity="${ok?1:.7}">${b?(ok?"▲":"△"):(ok?"▼":"▽")}</text>`;
+    s+=`<text x="${X(i)}" y="${y}" font-size="${ok?12:10}" text-anchor="middle" fill="${ok?(b?"var(--up)":"var(--down)"):"var(--ink-3)"}" opacity="${ok?1:.7}">${b?(ok?"▲":"△"):(ok?"▼":"▽")}</text>`
+     +`<text x="${X(i)}" y="${b?y+11:y-12}" font-size="10" font-weight="${ok?700:500}" text-anchor="middle" fill="${ok?(b?"var(--up)":"var(--down)"):"var(--ink-3)"}" opacity="${ok?1:.65}">${g}</text>`;
   }));
   const last=ser.at(-1);
   if(last.cost!=null)s+=`<text x="${P.l+iw+6}" y="${Y(last.cost)+4}" font-size="11" font-weight="650" fill="var(--s3)">평단 ${N(last.cost,0)}</text>`;
@@ -5059,6 +5081,7 @@ function smHeadMark(){
   });
 }
 function renderSm(){
+  {const h=$("#smSigTblHost"); if(h&&!h._ok){h._ok=1; h.innerHTML=SM_SIG_TABLE;}}
   const rows=S.smRows||[];
   if(!rows.length){$("#smMap").innerHTML='<div class="load">아직 계산 결과가 없습니다 — Actions의 "Post Compute"(parts=smartmoney 또는 all)를 한 번 실행하세요.</div>';$("#smBody").innerHTML="";return;}
   $("#smAsOf").textContent=`${rows[0].as_of} 기준 · ${N(rows.length)}종목 · SM = 외국인+투신+사모+연기금 · 판정 120일`;
@@ -5141,7 +5164,7 @@ async function smToggle(btn){
   smPriceChart(pv.querySelector(".chart"),ser.slice(-250),{h:260});
   pv.querySelector(".chart").insertAdjacentHTML("afterend",`<div class="legend" style="margin:6px 0 0;flex-wrap:nowrap;white-space:nowrap"><span class="faint">배경</span>`
     +SM_ORDER.map(p=>`<span><i class="bx" style="background:color-mix(in srgb,${SM_PH_C[p]} 30%,transparent);border:1px solid ${SM_PH_C[p]}"></i>${SM_PH_KR[p]}</span>`).join("")+`</div>`
-    +`<div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span><span style="color:var(--up)">▲ 매수</span><span style="color:var(--down)">▼ 매도</span><span class="faint">△▽ 참고</span></div>`);
+    +`<div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>SM 평단(보라 점선)</span></div>`+SM_SIG_LEG);
 }
 
 /* ══ 종목상세 · 스마트머니 카드 ══ */
@@ -5159,6 +5182,7 @@ function smCtlInit(){
 }
 function renderSmCard(){
   smCtlInit();
+  {const lg=$("#dSmSigLeg"); if(lg&&!lg._ok){lg._ok=1; lg.innerHTML=SM_SIG_LEG; $("#dSmGuide").innerHTML=SM_READ_GUIDE+SM_SIG_TABLE;}}
   const rows=S.chart&&S.chart.rows;if(!rows||!rows.length)return;
   const sr=smRowsFrom(rows,S.smSubj.length?S.smSubj:SM_SUBJ_DEF);
   const ser=smSeries(sr,S.smW);
