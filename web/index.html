@@ -960,22 +960,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <button class="fchip" data-f="cb_consec3">연속 양매수 3일↑</button>
         <button class="fchip" data-f="cb_leadsec">주도 섹터만</button>
       </div></div>
-      <div class="qf-group"><div class="qf-lb">추세추종</div><div class="qf">
-        <button class="fchip" data-f="v4_newhigh">신고가(전체기간)</button>
-        <button class="fchip" data-f="v4_vol115">거래량비 115%↑</button>
-        <button class="fchip" data-f="v4_leadsec">주도 섹터만</button>
-      </div></div>
-      <div class="qf-group"><div class="qf-lb">전략E<br><span style="font-size:10px;font-weight:400;color:var(--ink-3)">개별RS+소멸형 배제</span></div><div class="qf">
-        <button class="fchip" data-f="e_closepos70">종가위치≥70%</button>
-        <button class="fchip" data-f="e_chg11">등락률&lt;11%</button>
-        <button class="fchip" data-f="e_vol180">거래량비&lt;180%</button>
-        <button class="fchip" data-f="e_aligned">정배열(종가&gt;5&gt;20&gt;60&gt;120)</button>
-        <button class="fchip" data-f="e_rspos">개별RS20&gt;0</button>
-      </div></div>
       <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
         <button class="btn" id="runFlowFilter">필터 적용</button>
         <button class="btn ghost" id="resetFlowFilter">초기화</button>
-        <span class="faint" style="font-size:11px">전략칩 조건 설명은 종목 후보 화면의 같은 버튼을 참고하세요</span>
+        <span class="faint" style="font-size:11px">조건 설명은 종목 후보 화면의 같은 버튼을 참고하세요</span>
       </div>
     </div>
     <div id="flowSubjGrid" class="flow-subj-grid scrlike" style="margin-top:6px"></div>
@@ -1130,6 +1118,18 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
           <input type="number" id="fCapMax" placeholder="이하" step="0.1"></div></div>
       <div class="field"><label>거래대금 ≥ (억원)</label><input type="number" id="fAmtMin"></div>
       <div class="field"><label>거래량비 ≥ (%)</label><input type="number" id="fVolMin"></div>
+      <div class="field"><label>이평선<span class="pop"><b>이동평균선 조건</b>
+        <p>종목상세의 이평선 선택과 같은 기준입니다. 정배열 전체 = 종가&gt;5&gt;20&gt;60&gt;120일선, 정배열 20일 이상 = 종가&gt;20&gt;60&gt;120, 정배열 60일 이상 = 종가&gt;60&gt;120.</p></span></label>
+        <select id="fMa"><option value="">전체</option>
+          <optgroup label="종가가 이평선 위">
+            <option value="p20">종가 &gt; 20일선</option><option value="p60">종가 &gt; 60일선</option><option value="p120">종가 &gt; 120일선</option></optgroup>
+          <optgroup label="정배열">
+            <option value="a5">정배열 전체 (종가&gt;5&gt;20&gt;60&gt;120)</option><option value="a20">정배열 20일 이상 (종가&gt;20&gt;60&gt;120)</option><option value="a60">정배열 60일 이상 (종가&gt;60&gt;120)</option></optgroup></select></div>
+      <div class="field"><label>스마트머니 국면<span class="pop"><b>스마트머니 탭과 같은 국면 기준</b>
+        <p>ETF는 국면이 계산되지 않아 중립으로 취급됩니다. 매집 전체 = ①매집(보합)+②매집(상승), 분산 전체 = ③분산(전가)+④분산(이탈).</p></span></label>
+        <select id="fPh"><option value="">전체</option>
+          <optgroup label="큰 구분"><option value="ACC,MARKUP">매집 전체</option><option value="DIST,DOWN">분산 전체</option></optgroup>
+          <optgroup label="세부"><option value="ACC">①매집(보합)</option><option value="MARKUP">②매집(상승)</option><option value="DIST">③분산(전가)</option><option value="DOWN">④분산(이탈)</option><option value="NEUTRAL">중립</option></optgroup></select></div>
       <div class="field"><label>업종</label><select id="fSector"><option value="">전체</option></select></div>
       <div class="field"><label>정렬 기준</label>
         <select id="fSort">
@@ -1155,7 +1155,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <p>값이 70 이상이면 당일 가격 범위(저가~고가) 중 상위 30% 안에서 마감했다는 뜻입니다. 낮을수록 장중 급등 후 밀려서 저가 쪽에서 마감한 '윗꼬리' 형태에 가깝습니다.</p>
         <div class="ex">예) 시가 10,000 · 고가 11,500 · 저가 9,800 · 종가 11,200원<br>→ (11,200−9,800)÷(11,500−9,800)×100 ≈ 82% → 고가권 마감(조건 충족)<br>같은 날 종가가 10,200원이었다면 ≈ 24% → 저가권 마감(조건 미충족)</div>
       </span></button>
-      <button class="fchip" data-f="aligned">정배열(종가&gt;5&gt;20&gt;60&gt;120)</button>
       <button class="fchip" data-f="rs5pos">개별RS5 우위(최근 5일 신규 전환)<span class="pop"><b>개별RS5(rs5_vs_mkt) &gt; 0</b>
         <p>최근 5거래일 수익률이 유니버스 평균보다 높은 종목만 남깁니다. 20일 기준보다 반응이 빨라, 이제 막 시장보다 강해지기 시작한 종목을 잡는 데 유용합니다.</p>
       </span></button>
@@ -1173,15 +1172,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <button class="fchip" data-f="cb_consec3">연속 양매수 3일↑</button>
       <button class="fchip" data-f="cb_leadsec">주도 섹터만</button>
     </div></div>
-    <div class="qf-group"><button class="qf-lb" data-qf-toggle aria-expanded="false">추세추종 <span class="qf-chev">▾</span></button><div class="qf hide">
-      <button class="fchip" data-f="v4_newhigh">신고가(전체기간)</button>
-    </div></div>
-    <div class="qf-group"><button class="qf-lb" data-qf-toggle aria-expanded="false">전략E<br><span style="font-size:10px;font-weight:400;color:var(--ink-3)">개별RS+소멸형 배제</span> <span class="qf-chev">▾</span></button><div class="qf hide">
-      <button class="fchip" data-f="e_chg11">등락률&lt;11%<span class="pop"><b>등락률 절댓값 &lt; 11%</b><p>이미 급등한 종목 추격매수 방지. 하락 과대낙폭도 일부 필터됩니다.</p></span></button>
-      <button class="fchip" data-f="e_vol180">거래량비&lt;180%<span class="pop"><b>20일 평균 대비 거래량비 &lt; 180%</b><p>단기 과열·급등 소멸형 종목 제외. 200~300%↑ 급등일은 제외됩니다.</p></span></button>
-      <span id="scrMktAvgRS" style="display:none;font-size:11px;color:var(--ink-3);padding:3px 8px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);white-space:nowrap">시장평균 20일 <span id="scrMktAvgRSVal" class="num">–</span>%</span>
-    </div></div>
-
     <div style="display:flex;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap">
       <button class="btn" id="runScr">조회</button>
       <button class="btn ghost" id="resetScr">초기화</button>
@@ -3472,7 +3462,7 @@ $("#flowCondToggle").onclick=()=>{
   $("#flowCondToggle").setAttribute("aria-expanded",isOpen?"true":"false");
   $("#flowCondToggle").textContent=isOpen?"상세 조건 설정 ▴":"상세 조건 설정 ▾";
 };
-// 2026-09-20: 종목후보 조건 설정 그룹(추세·가격/거래량·규모/종가베팅/추세추종/전략E)이
+// 2026-09-20: 종목후보 조건 설정 그룹(추세·가격/거래량·규모/종가베팅)이
 // 한 화면에 다 펼쳐져 있으면 너무 길어서, 그룹별로 접고 펼 수 있게 함 —
 // 디폴트는 전부 접힘(qf가 처음부터 hide 클래스). data-qf-toggle 버튼 전부에
 // 델리게이션 없이 각자 리스너를 다는 이유: 그룹 수가 적고(5개) 페이지 로드
@@ -4374,7 +4364,8 @@ function makeFilterFn(root,ids){
     const num=id=>{const v=$(id,root).value;return v===""?null:+v;};
     const f={chgMin:num(ids.chgMin),chgMax:num(ids.chgMax),capMin:num(ids.capMin),
       capMax:num(ids.capMax),amtMin:num(ids.amtMin),volMin:num(ids.volMin),
-            sec:$(ids.sector,root).value};
+            sec:$(ids.sector,root).value,
+      ma:ids.ma?$(ids.ma,root).value:"",ph:ids.ph?$(ids.ph,root).value:""};
     const cap=+r.market_cap/JO, amt=+r.trade_amount/EOK, chg=+r.change_pct;
     const vol=r.vol_ratio20_prev==null?null:+r.vol_ratio20_prev;
     const rs=r.rs20_vs_mkt==null?null:+r.rs20_vs_mkt;
@@ -4386,6 +4377,9 @@ function makeFilterFn(root,ids){
     if(f.amtMin!=null&&amt<f.amtMin)return false;
     if(f.volMin!=null&&(vol==null||vol<f.volMin))return false;
     if(f.sec&&r.sector!==f.sec)return false;
+    if(f.ma){const m={close:+r.close,ma5:r.ma5!=null?+r.ma5:null,ma20:r.ma20!=null?+r.ma20:null,ma60:r.ma60!=null?+r.ma60:null,ma120:r.ma120!=null?+r.ma120:null};
+      if(!MA_COND[f.ma](m))return false;}
+    if(f.ph&&S.dPhMap&&!f.ph.split(",").includes(S.dPhMap[r.code]||"NEUTRAL"))return false;
     if(on("newhigh",root)&&!(r.is_new_high_all||r.is_new_high))return false;
     if(on("nearhigh",root)&&!(r.near_high||+r.pct_from_high>=-10))return false;
     if(on("closepos",root)&&!(+r.close_pos_pct>=70))return false;
@@ -4417,23 +4411,11 @@ function makeFilterFn(root,ids){
     if(on("cb_consec3",root)&&!(+r.consec_both_buy>=3))return false;
     if(on("cb_nothot",root)&&st==="hot")return false;
     if(on("cb_leadsec",root)&&!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-    // ── 추세추종 세부 조건 ──────────────────────────────────────────
-    if(on("v4_newhigh",root)&&!r.is_new_high_all)return false;
-    if(on("v4_vol200",root)&&!(+r.vol_ratio20_prev>=200))return false;
-    if(on("v4_vol115",root)&&!(+r.vol_ratio20_prev>=115))return false;
-    if(on("v4_nonpers",root)&&!(+r.nonpersonal_net>0))return false;
-    if(on("v4_leadsec",root)&&!(r.sector_rs_rank&&r.sector_rs_rank<=5))return false;
-    // ── 전략E 조건 (개별RS + 소멸형 배제) ────────────────────────────
-    if(on("e_closepos70",root)&&!(+r.close_pos_pct>=70))return false;
-    if(on("e_chg11",root)&&!(Math.abs(+r.change_pct)<11))return false;
-    if(on("e_vol180",root)&&!(vol!=null&&vol<180))return false;
-    if(on("e_aligned",root)&&!(r.ma5&&r.ma20&&r.ma60&&r.ma120&&+r.close>+r.ma5&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60&&+r.ma60>+r.ma120))return false;
-    if(on("e_rspos",root)&&!(rs!=null&&rs>0))return false;
     return true;
   };
 }
 const SCR_IDS={chgMin:"#fChgMin",chgMax:"#fChgMax",capMin:"#fCapMin",capMax:"#fCapMax",
-  amtMin:"#fAmtMin",volMin:"#fVolMin",sector:"#fSector"};
+  amtMin:"#fAmtMin",volMin:"#fVolMin",sector:"#fSector",ma:"#fMa",ph:"#fPh"};
 const FLOW_FILTER_IDS={chgMin:"#gChgMin",chgMax:"#gChgMax",capMin:"#gCapMin",capMax:"#gCapMax",
   amtMin:"#gAmtMin",volMin:"#gVolMin",sector:"#gSector"};
 const screenerFilterPass=makeFilterFn($("#v-scr"),SCR_IDS);
@@ -4503,6 +4485,7 @@ $("#tdFlowBody").closest("table").querySelector("thead").innerHTML=scrThead('<th
 $("#tdTopBody").closest("table").querySelector("thead").innerHTML=scrThead('<th id="tdTopKeyHd">기준값</th>');
 $("#favBody").closest("table").querySelector("thead").innerHTML=scrThead();
 async function runScreener(){
+  if($("#fPh").value&&!S.dPhMap)await loadDetailPh();
   $("#scrBody").innerHTML='<tr><td colspan="30" class="load sk"></td></tr>';
   const date=$("#fDate").value||S.date;
   const kind=$("#fKind")?$("#fKind").value:"stock", wantStk=kind!=="etf", wantEtf=kind!=="stock";
@@ -4561,7 +4544,7 @@ const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"","#fCapMax":"","#f
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
   $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
-  $("#fSector").value="";$("#fKind").value="all";$("#fInv").value="in";
+  $("#fSector").value="";$("#fMa").value="";$("#fPh").value="";$("#fKind").value="all";$("#fInv").value="in";
   $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
 $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
 $("#resetFlowFilter").onclick=()=>{
