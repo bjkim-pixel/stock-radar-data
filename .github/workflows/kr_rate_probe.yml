@@ -1,0 +1,19 @@
+name: "[임시] 한국 금리 소스 점검"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - run: python 123_kr_rate_probe.py
+      - if: always()
+        uses: ./.github/actions/publish-report
+        with: { branch: kr-rate-probe-report, file: kr_rate_probe.md }
