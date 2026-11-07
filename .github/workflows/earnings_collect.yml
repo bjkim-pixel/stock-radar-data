@@ -1,0 +1,35 @@
+name: "[수집] 종목 실적·예상실적 | 주 1회+수동 | KIS 확정 + 네이버 컨센서스"
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: '테스트용 종목 수 제한(0=전체)'
+        default: '0'
+  schedule:
+    - cron: '40 21 * * 0'   # 일요일 21:40 UTC = 월요일 06:40 KST
+permissions:
+  contents: write
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - name: Collect
+        run: python 125_earnings_collect.py "${{ github.event.inputs.limit || '0' }}"
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: earnings-report
+          file: earnings_report.md
