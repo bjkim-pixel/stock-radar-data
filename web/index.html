@@ -4126,6 +4126,8 @@ function renderWeekly(row){
   h+=wkCorrHtml(["IXIC","KS11","TNX","WTI"].map(c=>p.items.find(x=>x.code===c)).filter(Boolean));   /* 상관관계: 나스닥·코스피·금리·유가 */
   {const ix=c=>p.items.findIndex(x=>x.code===c);
    [["TNX","#f59e0b"],["WTI","#2e7d32"],["GOLD","#c9a227"],["KS11","#7b1fa2"]].forEach(([c,col])=>{if(ix("IXIC")>=0&&ix(c)>=0)h+=wkOverlay(p.items[ix("IXIC")],p.items[ix(c)],col,n);});}
+  {const ix=c=>p.items.findIndex(x=>x.code===c);
+   if(ix("KS11")>=0&&ix("KR10")>=0)h+=wkOverlay(p.items[ix("KS11")],p.items[ix("KR10")],"#e53935",n);}   /* 코스피 × 한국 국채 10년 금리 */
   h+=p.items.map(it=>{
     const x=it.last,e20=it.e20[it.d.length-1],e50=it.e50[it.d.length-1],e100=it.e100[it.d.length-1],e200=it.e200[it.d.length-1];
     const aligned=x.c>e20&&e20>e50&&e50>e100&&e100>e200;

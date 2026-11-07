@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""주봉 추세(나스닥 종합·QQQ·코스피) — 글로벌 시황 '주봉 추세' 탭용.
+"""주봉 추세(나스닥 종합·코스피·금리·유가·금) — 글로벌 시황 '주봉 추세' 탭용.
 
 Yahoo 주봉(1wk, 전 기간)을 받아 EMA 20/50/100/200, RSI(14)와 RSI의 14주 이동평균을 계산하고
 global_pack(tab='WK') 한 행에 최근 N주만 담아 저장합니다. 200주 EMA 수렴에 긴 이력이 필요해서 2000년부터 받습니다(range=max는 Yahoo가 월·분기봉으로 뭉개서 쓰지 않음).
@@ -10,7 +10,8 @@ import requests, psycopg2
 
 # (코드, 이름, Yahoo 티커, 소수자리, 상관 계산 방식: ret=주간 수익률 / diff=주간 변화폭(금리))
 SYMS = [("IXIC", "나스닥 종합", "^IXIC", 0, "ret"), ("KS11", "코스피", "^KS11", 0, "ret"),
-        ("TNX", "미국 10년물 금리(%)", "^TNX", 2, "diff"), ("WTI", "WTI 원유(선물, $)", "CL=F", 1, "ret"), ("GOLD", "금(선물, $)", "GC=F", 0, "ret")]
+        ("TNX", "미국 10년물 금리(%)", "^TNX", 2, "diff"), ("WTI", "WTI 원유(선물, $)", "CL=F", 1, "ret"), ("GOLD", "금(선물, $)", "GC=F", 0, "ret"),
+        ("KR10", "한국 국채 10년 금리(%)", None, 3, "diff")]   # KR10 은 Yahoo 에 없어 네이버 API 사용(아래 fetch_kr10)
 KEEP = 1100         # 화면에 보낼 최근 주 수(약 21년 — 20년 보기 지원)
 EMAS = (20, 50, 100, 200)
 rep = []
@@ -39,6 +40,58 @@ def fetch(ysym):
         except Exception as ex:
             err = f"예외 {str(ex)[:80]}"
     return None, err
+
+def fetch_kr10():
+    """네이버 '한국 국채 10년'(KR10YT=RR) 일별 시세 → 주봉(월요일 기준) 시가·고가·저가·종가. 네이버가 주는 이력은 약 3~4년이라
+    이전 실행에서 저장해 둔 주봉(global_pack WK 의 KR10)과 합쳐 점점 길어지게 합니다."""
+    U = "https://api.stock.naver.com/marketindex/bond/KR10YT=RR/prices"
+    H = {"User-Agent": "Mozilla/5.0"}
+    days = {}
+    err = ""
+    for page in range(1, 80):
+        try:
+            r = requests.get(U, params={"page": page, "pageSize": 60}, headers=H, timeout=30)
+            if r.status_code != 200:
+                err = f"HTTP {r.status_code}"; break
+            js = r.json()
+        except Exception as ex:
+            err = f"예외 {str(ex)[:80]}"; break
+        if not js:
+            break
+        for x in js:
+            try:
+                days[x["localTradedAt"][:10]] = (float(x["openPrice"]), float(x["highPrice"]), float(x["lowPrice"]), float(x["closePrice"]))
+            except (KeyError, TypeError, ValueError):
+                pass
+        time.sleep(0.2)
+    if not days:
+        return None, err or "데이터 없음"
+    wk = {}
+    for d in sorted(days):
+        dt = datetime.date.fromisoformat(d); mon = (dt - datetime.timedelta(days=dt.weekday())).isoformat()
+        o, h, l, c = days[d]
+        if mon not in wk:
+            wk[mon] = [o, h, l, c]
+        else:
+            w = wk[mon]; w[1] = max(w[1], h); w[2] = min(w[2], l); w[3] = c
+    return [(k, *wk[k]) for k in sorted(wk)], None
+
+def load_old_kr10():
+    """이전에 저장한 KR10 주봉(없으면 빈 목록) — 네이버 이력보다 오래된 주를 보존."""
+    try:
+        conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"])
+        with conn.cursor() as cur:
+            cur.execute("select payload from global_pack where tab='WK'")
+            row = cur.fetchone()
+        conn.close()
+        if not row:
+            return []
+        for it in row[0].get("items", []):
+            if it.get("code") == "KR10":
+                return list(zip(it["d"], it["o"], it["h"], it["l"], it["c"]))
+    except Exception as ex:
+        log(f"  (이전 KR10 불러오기 실패: {str(ex)[:60]})")
+    return []
 
 def ema(c, n):
     k = 2.0 / (n + 1); out = []; prev = None
@@ -71,7 +124,16 @@ def r2(x):
     return None if x is None else round(x, 2)
 
 def build(code, name, ysym, dec=0, kind="ret"):
-    rows, err = fetch(ysym)
+    if code == "KR10":
+        rows, err = fetch_kr10()
+        old = load_old_kr10()
+        if old:
+            mp = {r[0]: r for r in old}
+            for r in (rows or []):
+                mp[r[0]] = r                      # 새로 받은 값이 우선
+            rows = [mp[k] for k in sorted(mp)]
+    else:
+        rows, err = fetch(ysym)
     if not rows:
         log(f"- {code}: 실패 ({err})"); return None
     # 같은 주가 중복으로 오면(현재 주 잠정봉) 마지막 값만
