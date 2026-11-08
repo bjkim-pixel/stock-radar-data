@@ -1806,12 +1806,75 @@ function niceTicks(min,max,n){
 
 /* ── 데이터 접근 ─────────────────────────────────────────────────────── */
 let LIVE=false;
-async function q(view,params=""){
-  const r=await fetch(`${CFG.url}/rest/v1/${view}?${params}`,
-    {headers:{apikey:CFG.key,Authorization:`Bearer ${CFG.key}`}});
-  if(!r.ok) throw new Error(`${view} ${r.status} ${await r.text()}`);
-  return r.json();
+/* 2026-11-08 요청 캐시: DB의 data_version()(파이프라인이 어떤 테이블이든 쓰면 바뀌는 값)이 같으면
+   같은 주소의 조회 결과를 다시 받지 않고 메모리/브라우저 저장소(IndexedDB)의 값을 씁니다.
+   · 데이터가 바뀌면 버전이 바뀌어 자동으로 새로 받음(버전은 30초마다 확인)
+   · 같은 요청이 동시에 여러 번 나가면 1번만 보냄
+   · data_version()이 없거나 실패하면 캐시 없이 예전처럼 매번 조회(동작 동일)
+   · 장중 폴링 화면(상따 가상매매 intraday_*)·AI 브리핑·기준시각은 캐시하지 않음 */
+const QC={mem:new Map(),fly:new Map(),ver:null,verAt:0,verP:null,dbP:null};
+const QC_SKIP=/^(v_data_status|intraday_|ai_brief|rpc\/data_version)/;
+const QC_VER_TTL=30000;
+const qcClone=d=>typeof structuredClone==="function"?structuredClone(d):JSON.parse(JSON.stringify(d));
+function qcVer(){
+  if(QC.verP)return QC.verP;
+  if(QC.verAt&&Date.now()-QC.verAt<QC_VER_TTL)return Promise.resolve(QC.ver);
+  QC.verP=fetch(`${CFG.url}/rest/v1/rpc/data_version`,{headers:{apikey:CFG.key,Authorization:`Bearer ${CFG.key}`}})
+    .then(r=>r.ok?r.json():null).catch(()=>null)
+    .then(v=>{QC.ver=(v==null||v==="")?null:String(v);QC.verAt=Date.now();QC.verP=null;return QC.ver;});
+  return QC.verP;
 }
+function qcDb(){
+  if(QC.dbP)return QC.dbP;
+  QC.dbP=new Promise(res=>{
+    try{
+      const rq=indexedDB.open("sr-qcache",1);
+      rq.onupgradeneeded=()=>rq.result.createObjectStore("r");
+      rq.onsuccess=()=>{const db=rq.result;res(db);
+        // 이틀 지난 항목 정리(용량 관리)
+        try{const st=db.transaction("r","readwrite").objectStore("r"),lim=Date.now()-2*864e5;
+          st.openCursor().onsuccess=e=>{const c=e.target.result;if(!c)return;if(!c.value||c.value.t<lim)c.delete();c.continue();};}catch(e){}};
+      rq.onerror=()=>res(null);rq.onblocked=()=>res(null);
+    }catch(e){res(null);}
+  });
+  return QC.dbP;
+}
+async function qcGet(k){
+  const db=await qcDb();if(!db)return null;
+  return new Promise(res=>{try{const g=db.transaction("r").objectStore("r").get(k);g.onsuccess=()=>res(g.result||null);g.onerror=()=>res(null);}catch(e){res(null);}});
+}
+async function qcPut(k,v){
+  const db=await qcDb();if(!db)return;
+  try{db.transaction("r","readwrite").objectStore("r").put(v,k);}catch(e){}
+}
+async function qNet(view,url){
+  const r=await fetch(url,{headers:{apikey:CFG.key,Authorization:`Bearer ${CFG.key}`}});
+  if(!r.ok) throw new Error(`${view} ${r.status} ${await r.text()}`);
+  return r.text();
+}
+async function q(view,params=""){
+  const url=`${CFG.url}/rest/v1/${view}?${params}`;
+  if(QC_SKIP.test(view))return JSON.parse(await qNet(view,url));
+  const ver=await qcVer();
+  const key=url+"#"+(ver==null?"-":ver);
+  if(ver!=null){const m=QC.mem.get(url);if(m&&m.v===ver)return qcClone(m.d);}
+  let p=QC.fly.get(key);
+  if(!p){
+    p=(async()=>{
+      if(ver!=null){
+        const hit=await qcGet(url);
+        if(hit&&hit.v===ver){const d=JSON.parse(hit.d);QC.mem.set(url,{v:ver,d});return d;}
+      }
+      const txt=await qNet(view,url),d=JSON.parse(txt);
+      if(ver!=null){QC.mem.set(url,{v:ver,d});qcPut(url,{v:ver,d:txt,t:Date.now()});}
+      return d;
+    })();
+    QC.fly.set(key,p);
+    p.then(()=>QC.fly.delete(key),()=>QC.fly.delete(key));
+  }
+  return qcClone(await p);
+}
+qcVer();   // 첫 화면 요청보다 먼저 버전 확인을 시작
 // 2026-09-27: 전략성과 "전략별 요약"에 마지막 계산 시각 표시용. positions는
 // 06_portfolio.py가 매 실행마다 VIRTUAL 전부 삭제 후 재생성하므로, updated_at
 // 최댓값이 곧 "이 전략의 화면이 마지막으로 언제 계산됐는지"가 된다. 오늘 하루
@@ -3287,9 +3350,17 @@ async function loadFlowStep(){
     const pct=Math.round(near/allHigh.length*100);
     $("#chipHighPos").innerHTML=`신고가근처 <b>${pct}%</b><span class="faint" style="font-size:10px"> (${near}/${allHigh.length})</span>`;
   }
+  // 2026-11-08: 종목마다 1번씩(8번) 보내던 조회를 1번으로 — 최근 10거래일을 한꺼번에 받아 종목별 최근 5일만 사용(결과 동일)
+  let fAll=[];
+  if(cand.length){
+    const d10=(S.market&&S.market.length>=10)?S.market.at(-10).trade_date:null;
+    fAll=await q("daily_flow",`select=code,trade_date,individual_net&code=in.(${cand.map(c=>c.code).join(",")})`
+      +(d10?`&trade_date=gte.${d10}`:"")+`&order=trade_date.desc`);
+  }
   const rows=await Promise.all(cand.map(async c=>{
-    const f=await q("daily_flow",
-      `select=trade_date,individual_net&code=eq.${c.code}&order=trade_date.desc&limit=5`);
+    let f=fAll.filter(x=>x.code===c.code).slice(0,5);
+    if(f.length<5)   // 최근 10거래일 안에 5일치가 없으면(신규상장·거래정지 등) 예전 방식으로 그 종목만 다시 조회
+      f=await q("daily_flow",`select=trade_date,individual_net&code=eq.${c.code}&order=trade_date.desc&limit=5`);
     return {...c,series:f.reverse().map(x=>-(+x.individual_net)/EOK)};
   }));
   $("#flowBody").innerHTML=rows.map(r=>{
@@ -7452,31 +7523,39 @@ async function boot(){
     // 2026-09-19: 시가총액 내림차순 정렬은 원하는 종목을 시총을 모르면 못 찾는다는
     // 피드백으로 원래 이름순(가나다) 정렬로 되돌림. "다음 종목" 버튼은 그대로
     // 유지 — 이제 이름순 리스트 기준으로 다음 종목으로 넘어감.
-    const stk=await q("stocks","select=code,name&security_type=eq.STOCK&order=name.asc");
+    // 2026-11-08 로딩 개선: 예전엔 아래 요청들을 하나씩 순서대로 기다렸음(약 15개 직렬).
+    // 서로 의존하지 않는 것은 동시에 시작하고, 기준일(S.date)이 필요한 것만 그 뒤에 묶어서 시작.
+    // 화면에 그리는 순서·내용은 그대로이며, 끝난 뒤의 상태 표시·주소 이동·시장 화면 진입도 예전처럼 전부 끝난 뒤에 실행.
+    const pStk=q("stocks","select=code,name&security_type=eq.STOCK&order=name.asc");
+    const pEtf=q("etf_master","select=code,name,field&order=name.asc")
+      .then(em=>{S.etfMap={};em.forEach(e=>S.etfMap[e.code]=e);})
+      .catch(e=>{S.etfMap={};console.error("etf_master",e);});
+    const pMkt=loadMarket();
+    const pIdx=loadIndex();           // 지수 차트(전체 이력) — 기준일 불필요
+    const pAmt=loadMarketAmount();    // 거래대금 차트(전체 이력) — 기준일 불필요, 자체 오류 처리
+    const stk=await pStk;
     S.codes=stk;
-    try{const em=await q("etf_master","select=code,name,field&order=name.asc");S.etfMap={};em.forEach(e=>S.etfMap[e.code]=e);}catch(e){S.etfMap={};console.error("etf_master",e);}
     $("#dSel").innerHTML=stk.map(s=>`<option value="${s.code}">${s.name}</option>`).join("");
     loadDetailSectors().catch(e=>console.error("업종 필터",e));
     $("#chipUniv").textContent=stk.length;
-    const last=await loadMarket();
+    const last=await pMkt;
     S.date=last.trade_date;
     $("#chipDate").textContent=S.date;
     $("#fDate").value=S.date;
     loadDataStatus().catch(()=>{});
     setInterval(()=>loadDataStatus().catch(()=>{}),5*60*1000); // 5분마다 "기준 시각" 갱신
-    const md=await q("market_daily",`select=regime&trade_date=eq.${S.date}&limit=1`);
-    const rg=md[0]?.regime||"–";
-    const col=rg==="RISK_ON"?"var(--up)":rg==="RISK_OFF"?"var(--down)":"var(--warn)";
-    const kr={RISK_ON:"양호",RISK_OFF:"위험",NEUTRAL:"중립"}[rg]||rg;
-    const _cr=$("#chipRegime"); if(_cr)_cr.innerHTML=`<span class="dot" style="background:${col}"></span>시장 <b>${kr}</b>`;
-    const amtOk=+last.total_amount>=+last.amt_ma20;
-    $("#mktVerdict").innerHTML=`레짐 <b>${kr}</b> · 거래대금 20일평균 ${amtOk?"상회":"하회"}`;
-    $("#fn1").innerHTML=`${kr}<small>레짐</small>`;
-    await loadIndex();
-    await loadSectors();
-    $("#fn3").innerHTML=`${S.stocks.length}<small>/${stk.length}</small>`;
-    await loadFlowStep();
-    await loadMarketAmount();
+    const pRegime=q("market_daily",`select=regime&trade_date=eq.${S.date}&limit=1`).then(md=>{
+      const rg=md[0]?.regime||"–";
+      const col=rg==="RISK_ON"?"var(--up)":rg==="RISK_OFF"?"var(--down)":"var(--warn)";
+      const kr={RISK_ON:"양호",RISK_OFF:"위험",NEUTRAL:"중립"}[rg]||rg;
+      const _cr=$("#chipRegime"); if(_cr)_cr.innerHTML=`<span class="dot" style="background:${col}"></span>시장 <b>${kr}</b>`;
+      const amtOk=+last.total_amount>=+last.amt_ma20;
+      $("#mktVerdict").innerHTML=`레짐 <b>${kr}</b> · 거래대금 20일평균 ${amtOk?"상회":"하회"}`;
+      $("#fn1").innerHTML=`${kr}<small>레짐</small>`;
+    });
+    const pSec=loadSectors().then(()=>{$("#fn3").innerHTML=`${S.stocks.length}<small>/${stk.length}</small>`;});
+    const pFlow=loadFlowStep();
+    await Promise.all([pRegime,pIdx,pSec,pFlow,pAmt,pEtf]);
     status("live",`<b>실데이터 연결됨</b> — ${S.date} 기준 · ${stk.length}종목`);
     // 2026-10-08: 업종 딥링크 — ?sector=업종명 으로 들어오면 종목후보 탭으로
     // 이동해 그 업종으로 자동 필터링. 업종별 자금흐름 데모(및 추후 수급동향

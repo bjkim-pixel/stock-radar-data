@@ -40,7 +40,8 @@ Q=[("stocks 목록","stocks?select=code,name&security_type=eq.STOCK&order=name.a
 ("v_etf_screener 오늘",f"v_etf_screener?select=*&trade_date=eq.{D}"),
 ("stock_earnings 종목1","stock_earnings?select=*&code=eq.000660&order=period.asc"),
 ("v_market_flow_periods","v_market_flow_periods?select=*"),
-("v_sector_cluster 오늘",f"v_sector_cluster?select=*&trade_date=eq.{D}")]
+("v_sector_cluster 오늘",f"v_sector_cluster?select=*&trade_date=eq.{D}"),
+("rpc data_version(캐시 버전)","rpc/data_version")]
 rows=[]
 for name,p in Q:
     for k in range(2):   # 1회차=콜드, 2회차=웜
