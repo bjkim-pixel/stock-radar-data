@@ -171,6 +171,9 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 .tl-cell{position:relative;min-height:34px;border-radius:4px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px;font-size:9.5px;font-weight:600}
 .tl-v{position:relative;z-index:2;text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 2px var(--surface)}
 .tl-cell{cursor:pointer}
+/* 2026-11-08: 자금 이동 타임라인 맨 위 "합계" 행(그날 전 업종 합) */
+.tl-grid>.tl-rl.tot{min-height:26px;color:var(--ink);border-bottom:1px solid var(--grid)}
+.tl-tot{min-height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;background:var(--surface-2)}
 .tl-cell.sel{outline:2px solid var(--ink);outline-offset:-2px}
 .tl-detail{margin:8px 0 0}
 .tl-detail .fsm-dh .dt{font-size:13px}
@@ -1111,30 +1114,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 <!-- ═══════════ 사모 추종 ═══════════ -->
 <section id="v-pe" class="hide">
-  <div class="card" style="margin-top:16px"><h3>사모펀드 추종 <span class="r" id="peAsOf"></span></h3>
-    <div class="note" style="margin:0">사모 = KIS 투자자별 매매동향의 <b>사모펀드 순매수</b>(스마트머니 4주체 중 하나)만 따로 본 화면입니다.
-      첫 차트는 <b>KOSPI 지수</b>를 한 종목처럼 보고, 매집·분산 판정과 신호(B1·S2 등)는 스마트머니 국면과 <b>같은 로직</b>을 쓰되 "SM"을 사모 하나로 바꿔 계산합니다. 장 마감 후 수급이 확정된 뒤 갱신됩니다.</div>
-  </div>
-
-  <div class="card" id="peChartCard"><h3>KOSPI 사모 매집 · 분산 차트 <span class="r" id="peRange"></span></h3>
-    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-bottom:8px">
-      <b style="font-size:13px">KOSPI</b><span class="faint" style="font-size:11px">개별 종목(STOCK) 합산 사모 순매수 · 지수 종가 기준</span>
-      <span class="faint" style="font-size:11px;margin-left:6px">판정 구간</span>
-      <label class="smck"><input type="radio" name="peW" value="120" checked>120일</label>
-      <label class="smck"><input type="radio" name="peW" value="60">60일</label>
-    </div>
-    <div class="smhead" id="peHead"><div class="load sk"></div></div>
-    <div class="chart" id="pePrice"></div>
-    <div class="legend" style="margin:6px 0 0;flex-wrap:nowrap;white-space:nowrap"><span class="faint">배경</span><span><i class="bx" style="background:color-mix(in srgb,var(--good) 30%,transparent);border:1px solid var(--good)"></i>①매집(보합)</span><span><i class="bx" style="background:color-mix(in srgb,var(--up) 30%,transparent);border:1px solid var(--up)"></i>②매집(상승)</span><span><i class="bx" style="background:color-mix(in srgb,var(--warn) 30%,transparent);border:1px solid var(--warn)"></i>③분산(전가)</span><span><i class="bx" style="background:color-mix(in srgb,var(--down) 30%,transparent);border:1px solid var(--down)"></i>④분산(이탈)</span></div>
-    <div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>KOSPI 지수</span><span><i style="background:var(--s3)"></i>사모 평단(보라 점선)</span></div>
-    <div id="peSigLeg"></div>
-    <details class="smlogic"><summary>국면·신호 읽는 법 (사모 기준)</summary><div id="peGuide"></div></details>
-    <div style="margin-top:12px"><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 사모 누적 순매수 주식수 ÷ 상장주식수(%) · 사모와 개인 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = KOSPI 지수 · 시장 전체(코스피 개별 종목 합산)의 사모 지분 변화입니다</div>
-      <div class="chart" id="peFlow"></div>
-      <div class="legend" style="margin:6px 0 0"><span><i style="background:var(--good)"></i>사모</span><span><i style="background:var(--down)"></i>개인</span><span><i style="background:var(--axis)"></i>KOSPI 지수</span></div></div>
-  </div>
-
-  <div class="card"><h3>사모 자금 이동 타임라인
+  <div class="card" style="margin-top:16px"><h3>사모 자금 이동 타임라인
     <span class="r">2026-06-01~ 전 기간 · 거래대금 상위 10개 업종 · 좌우로 밀어서 보기(업종 열 고정) · 칸 = 사모 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
     <div class="tl-tabs" id="peTlTabs"><button data-m="all" class="on">전체</button><button data-m="KOSPI">코스피</button><button data-m="KOSDAQ">코스닥</button></div>
     <div class="tl-legend">
@@ -1145,7 +1125,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
     <div class="tl-nav"><button id="peTlPrev">◀ 5일</button><button id="peTlNext">5일 ▶</button><button id="peTlLast">최근</button><span class="rng" id="peTlRng"></span></div>
     <div id="peTlBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 사모 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 날짜 아래 숫자 = 그날 사모 합</div>
+    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 사모 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 맨 위 "합계" 행 = 그날 전 업종 사모 순매수 합</div>
   </div>
 
   <div class="card" id="peTopCard"><h3>사모 매수·매도 상위 종목 <span class="r" id="peTopSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
@@ -1353,7 +1333,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
     <div class="tl-nav"><button id="tlPrev">◀ 5일</button><button id="tlNext">5일 ▶</button><button id="tlLast">최근</button><span class="rng" id="tlRng"></span></div>
     <div id="tlBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 날짜 아래 숫자 = 그날 해당 주체 합계 · 칸이 진할수록 금액이 큼</div>
+    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 맨 위 "합계" 행 = 그날 전 업종 해당 주체 순매수 합 · 칸이 진할수록 금액이 큼</div>
   </div>
 
   <div class="card"><h3>업종별 자금흐름
@@ -2955,6 +2935,7 @@ function renderFlowTimeline(){
     const topSell=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)<val(secs[b],d))b=i;});return b;});
     let h=`<div class="tl-sub">${label} 순매수</div><div class="tl-chart" id="${id}"><div class="tl-scroll"><div class="tl-inner"><div class="tl-grid" style="--nc:${dates.length};--cw:${cw}px;--lw:${lw}px"><div class="tl-corner"></div>`
       +dates.map(d=>`<div class="tl-hd" style="${wd(d)===1?"border-left:1px solid var(--grid);padding-left:2px":""}"><b>${d.slice(5).replace("-","/")}</b>${WD[wd(d)]}</div>`).join("");
+    h+=`<div class="tl-rl tot">합계<small>전 업종</small></div>`+dates.map(d=>`<div class="tl-tot ${sgn(dayTot[d]||0)}" title="그날 전 업종 ${label} 순매수 합계(억원)">${fmtC((dayTot[d]||0)/EOK)}</div>`).join("");
     secs.forEach((s,i)=>{
       h+=`<div class="tl-rl">${s}<small>${N(amtBy[s]/EOK,0)}억</small></div>`;
       dates.forEach((d,c)=>{
@@ -5048,11 +5029,9 @@ function peOpen(){
     loadFlowRawData().then(raw=>{S.peRaw=raw;peRenderTop();})
       .catch(e=>{console.error("사모 상위",e);$("#peTopBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});
   }
-  peLoadChart().catch(e=>{console.error("사모 차트",e);$("#peHead").innerHTML='<div class="load">불러오기 실패</div>';});
   setTimeout(()=>{if(S.pe_tl&&S.pe_tl.length)peDrawPaths();},100);
 }
 function peBind(){
-  $$("input[name=peW]").forEach(r=>r.onchange=()=>{S.peW=+r.value;if(S.peRows)peRenderChart();});
   $("#peTlTabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{
     S.peMkt=b.dataset.m;$$("#peTlTabs button").forEach(x=>x.classList.toggle("on",x===b));peRenderTimeline();});
   $("#peTlPrev").onclick=()=>peTlStep(-1);$("#peTlNext").onclick=()=>peTlStep(1);
@@ -5060,45 +5039,7 @@ function peBind(){
   $("#peTlBody").addEventListener("click",e=>{const cell=e.target.closest(".tl-cell");if(cell)peTlDetail(+cell.dataset.r,+cell.dataset.c);});
   $("#peTopPeriodSel").addEventListener("seg-change",e=>{S.peTopPeriod=e.detail;peRenderTop();});
   $("#peTopSortSel").addEventListener("seg-change",e=>{S.peTopSort=e.detail;peRenderTop();});
-  addEventListener("resize",()=>{clearTimeout(S._peRz);S._peRz=setTimeout(()=>{if(S.curTab!=="pe")return;if(S.peRows)peRenderChart();if(S.pe_tl&&S.pe_tl.length)peRenderTimeline();},150);});
-}
-/* ① 매집·분산 */
-async function peLoadChart(){
-  if(S.peRows){peRenderChart();return;}
-  $("#peHead").innerHTML='<div class="load sk"></div>';
-  // KOSPI 지수 종가 + 개별 종목 합산 수급(v_kospi_flow_daily) — 오늘의 종목 > KOSPI 카드와 같은 데이터(kBuild)
-  const [idx,flow]=await Promise.all([
-    q("market_daily","select=trade_date,index_close&market=eq.KOSPI&order=trade_date.asc"),
-    q("v_kospi_flow_daily","select=*&order=trade_date.asc")]);
-  const rows=kBuild(idx,flow);
-  if(!rows.length)throw new Error("데이터 없음");
-  S.peRows=rows;peRenderChart();
-}
-function peRenderChart(){
-  const rows=S.peRows;if(!rows||!rows.length){$("#peHead").innerHTML='<div class="load">데이터 없음</div>';return;}
-  {const lg=$("#peSigLeg");if(lg&&!lg._ok){lg._ok=1;lg.innerHTML=SM_SIG_LEG;$("#peGuide").innerHTML=SM_READ_GUIDE.replace("<b>SM 평단</b>(스마트머니가","<b>사모 평단</b>(사모가")
-        .replace(/<b>스마트머니\(SM\)<\/b>[^<]*<\/div>$/,"<b>사모</b>만으로 계산합니다(스마트머니 = 외국인+투신+사모+연기금 중 사모 하나). 아래 표의 'SM'도 사모로 읽으세요.</div>")+SM_SIG_TABLE.replace(/SM/g,"사모");}}
-  const sr=smRowsFrom(rows,["pe"]), ser=smSeries(sr,S.peW);
-  let i0=ser.findIndex(z=>z.date>=START_D);if(i0<0)i0=0;
-  const rs=ser.slice(i0);
-  $("#peRange").textContent=`${rs[0].date}~${rs.at(-1).date} · ${S.peW}일 판정`;
-  const z=ser.at(-1),prev=ser.at(-2)||z;
-  const findSig=kinds=>{for(let k=ser.length-1;k>=0;k--){const h=ser[k].signals.filter(g=>kinds.includes(g));if(h.length)return [h.at(-1),ser.length-1-k];}return [null,null];};
-  const [bs,ba]=findSig(["B1"]),[ss,sa]=findSig(["S2","S4"]),[rs0,ra]=findSig(["B2","S1","S3"]);
-  const tile=(l,v,sub="")=>`<div class="tile"><div class="lb">${l}</div><div class="vl" style="font-size:16px">${v}</div>${sub?`<div class="sub">${sub}</div>`:""}</div>`;
-  $("#peHead").innerHTML=`<div class="tile smbadge" style="--c:${SM_PH_C[z.phase]}"><div>${smStageHtml(z.phase)}</div>
-      <div class="vl" style="font-size:17px;color:${SM_PH_C[z.phase]}">${SM_PH_KR[z.phase]}</div>
-      <div class="sub">${z.phase!==prev.phase?`오늘 ${SM_PH_KR[prev.phase]}→${SM_PH_KR[z.phase]}`:`${z.phase_days}일째`}${z.quiet?" · 조용한 매집":""}</div></div>`
-    +tile(`사모 ${S.peW}일 지분 변화`,`<span class="${sgn(z.dW)}">${pm(z.dW,2)}%p</span>`,`20일 ${pm(z.d20,2)}%p · 개인 ${S.peW}일 ${pm(z.indW,2)}%p`)
-    +tile("사모 평단 · 괴리 (지수 환산)",z.cost!=null?`${N(z.cost,0)}`:"–",z.gap!=null?`<span class="${sgn(z.gap)}">지수 ${pm(z.gap*100,1)}%</span> · 추정 보유 ${N(z.hold_pct,2)}%`:"보유 추정 0")
-    +tile("개인 이전율 (20일)",z.transfer==null?"–":N(z.transfer*100,0)+"%","사모가 판 물량 중 개인이 받은 비율")
-    +tile("최근 신호",[bs?`${smSigHtml(bs,ba)}`:"",ss?`${smSigHtml(ss,sa)}`:""].filter(Boolean).join("<br>")||"–",
-      (rs0?`참고 ${smSigHtml(rs0,ra)} · `:"")+`20일 중 사모 순매수 ${z.buy20}일`);
-  smPriceChart($("#pePrice"),rs,{h:360});
-  const lb=rs.map(x=>String(x.date).slice(2).replace(/-/g,"/")),F0=rs[0].F,I0=rs[0].I;
-  lineChart($("#peFlow"),[{n:"사모",v:rs.map(x=>x.F-F0),c:"--good"},{n:"개인",v:rs.map(x=>x.I-I0),c:"--down"}],lb,
-    {h:300,w:580,pr:92,zero:true,labelEnds:false,monthTicks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,2)+"%",fm:v=>pm(v,2)+"%",
-     bg:{v:rs.map(x=>x.close),n:"KOSPI",ft:v=>N(v,2),marks:true}});
+  addEventListener("resize",()=>{clearTimeout(S._peRz);S._peRz=setTimeout(()=>{if(S.curTab!=="pe")return;if(S.pe_tl&&S.pe_tl.length)peRenderTimeline();},150);});
 }
 /* ② 자금 이동 타임라인 */
 async function peLoadTimeline(){
@@ -5126,7 +5067,8 @@ function peRenderTimeline(){
   const topBuy=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)>val(secs[b],d))b=i;});return b;});
   const topSell=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)<val(secs[b],d))b=i;});return b;});
   let h=`<div class="tl-sub">사모 순매수</div><div class="tl-chart" id="peTlChart"><div class="tl-scroll"><div class="tl-inner"><div class="tl-grid" style="--nc:${dates.length};--cw:${cw}px;--lw:${lw}px"><div class="tl-hd"></div>`
-    +dates.map(d=>`<div class="tl-hd" style="${wd(d)===1?"border-left:1px solid var(--grid);padding-left:2px":""}"><b>${d.slice(5).replace("-","/")}</b>${WD[wd(d)]}<small class="${sgn(dayTot[d])}">${fmtC((dayTot[d]||0)/EOK)}</small></div>`).join("");
+    +dates.map(d=>`<div class="tl-hd" style="${wd(d)===1?"border-left:1px solid var(--grid);padding-left:2px":""}"><b>${d.slice(5).replace("-","/")}</b>${WD[wd(d)]}</div>`).join("");
+  h+=`<div class="tl-rl tot">합계<small>전 업종</small></div>`+dates.map(d=>`<div class="tl-tot ${sgn(dayTot[d]||0)}" title="그날 전 업종 사모 순매수 합계(억원)">${fmtC((dayTot[d]||0)/EOK)}</div>`).join("");
   secs.forEach((sec,i)=>{
     h+=`<div class="tl-rl">${sec}<small>${N(amtBy[sec]/EOK,0)}억</small></div>`;
     dates.forEach((d,c)=>{
