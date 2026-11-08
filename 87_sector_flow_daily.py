@@ -26,7 +26,9 @@ def main():
         last = cur.fetchone()[0]
         cur.execute("select max(trade_date) from daily_price")
         end = cur.fetchone()[0]
-        frm = START if (last is None or "--full" in sys.argv) else max(START, last - datetime.timedelta(days=20))
+        cur.execute("select count(*) from sector_flow_daily where pe_net is null")
+        need_pe = cur.fetchone()[0] > 0     # pe_net 열을 새로 추가한 직후 한 번: 과거 전체를 다시 계산해 채움
+        frm = START if (last is None or need_pe or "--full" in sys.argv) else max(START, last - datetime.timedelta(days=20))
         log(f"# sector_flow_daily 갱신 ({datetime.datetime.now():%Y-%m-%d %H:%M} UTC)")
         log(f"- 계산 구간 {frm} ~ {end} (기존 마지막 {last})")
         total, d = 0, frm

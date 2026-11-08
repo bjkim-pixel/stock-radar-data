@@ -17,8 +17,10 @@ create table if not exists sector_flow_daily (
   inst_net       bigint,
   corp_other_net bigint,
   individual_net bigint,
+  pe_net         bigint,          -- 2026-11-08 사모(pe_fund) 순매수 합계 — 사모 추종 페이지용
   primary key (trade_date, market, sector)
 );
+alter table sector_flow_daily add column if not exists pe_net bigint;
 
 create or replace function refresh_sector_flow_daily(p_from date, p_to date) returns integer
 language plpgsql as $fn$
@@ -37,7 +39,8 @@ begin
          sum(f.foreign_net)::bigint,
          sum(f.inst_net)::bigint,
          sum(f.corp_other_net)::bigint,
-         sum(f.individual_net)::bigint
+         sum(f.individual_net)::bigint,
+         coalesce(sum(f.pe_net), 0)::bigint
   from days r
   join daily_price p on p.trade_date = r.trade_date
   join stocks s on s.code = p.code and s.security_type = 'STOCK' and s.market in ('KOSPI','KOSDAQ')
