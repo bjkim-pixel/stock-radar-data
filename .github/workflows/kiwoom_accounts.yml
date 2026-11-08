@@ -1,0 +1,29 @@
+name: "[수시] 키움 보유계좌수 엑셀 반영 | 수동·엑셀 푸시 | 매집 종목 페이지"
+# data/kiwoom_accounts.xlsx 를 저장소에 올리면(푸시) 자동 실행, 수동 실행도 가능. 여러 번 실행해도 안전(upsert).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["data/kiwoom_accounts.xlsx"]
+permissions:
+  contents: write
+concurrency:
+  group: kiwoom-accounts
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary openpyxl
+      - run: python 130_kiwoom_accounts_import.py | tee kiwoom_accounts_report.md
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: kiwoom-accounts-report
+          file: kiwoom_accounts_report.md

@@ -779,6 +779,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <button data-v="today">오늘의 종목</button>
     <button data-v="sm">스마트머니</button>
     <button data-v="pe">사모 추종</button>
+    <button data-v="acc">매집 종목</button>
     <button data-v="scr">종목 후보</button>
     <button data-v="fav">★ 관심</button>
     <button data-v="pair">짝꿍매매</button>
@@ -1151,6 +1152,20 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="flow-subj-sub" id="peSellLb" style="margin-top:14px">순매도 상위</div>
     <div class="tw scrlike"><table><thead id="peSellHead"></thead><tbody id="peSellBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
     <div class="note">동일 유동성 필터(시총 1천억원 이상) 적용 · 정렬이 "절대금액순"이면 순매수·순매도 금액 큰 순, "시가총액 대비 비중순"이면 순매수·순매도 금액 ÷ 시가총액이 큰 순 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 볼 수 있습니다)</div>
+  </div>
+</section>
+
+<!-- ═══════════ 매집 종목 (키움증권 회원 보유 계좌수) ═══════════ -->
+<section id="v-acc" class="hide">
+  <div class="card" style="margin-top:16px"><h3>매집 종목 <span class="r" id="kwSub">키움증권 HTS 1331 · 종목별 보유 계좌수</span></h3>
+    <div class="qf-group"><div class="qf-lb">시장</div><div class="qf seg" id="kwMktSel">
+      <button class="fchip" data-v="all" aria-pressed="true">전체</button>
+      <button class="fchip" data-v="KOSPI" aria-pressed="false">코스피</button>
+      <button class="fchip" data-v="KOSDAQ" aria-pressed="false">코스닥</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">검색</div><input id="kwSearch" type="search" placeholder="종목명·코드" style="width:150px;font-size:13px;padding:4px 8px"></div>
+    <div class="tw scrlike"><table><thead id="kwHead"></thead><tbody id="kwBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="note" style="margin-top:8px">개인(키움증권 회원)이 해당 종목을 보유한 계좌 수입니다. 6월·8월 대비 = 최근 계좌수 ÷ 6월(8월) 첫 기록 계좌수. 작을수록 개인 물량이 줄어든 종목(스마트머니 매집 가능성)이며, 이 비율이 낮을수록 진하게 표시됩니다. 머리글(6월 대비·8월 대비 등)을 누르면 오름차순 ↔ 내림차순으로 정렬됩니다. 엑셀은 저장소의 data/kiwoom_accounts.xlsx 를 갱신하면 반영됩니다.</div>
   </div>
 </section>
 
@@ -2595,8 +2610,8 @@ function go(v,detailCode){
   if(!S._keepBack)S.backAI=false;
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
-  ["proc","gm","today","flow","sm","pe","scr","fav","pair","sector","detail","perf","perf2","ai","journal"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
-  document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="sm"||v==="pe");setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
+  ["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc");setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
   // "아직 종목상세를 한 번도 안 봤으면(S.chart.code 없음) 디폴트 SK하이닉스를
@@ -2638,6 +2653,7 @@ function go(v,detailCode){
   if(v==="perf2")loadPerf2();
   if(v==="journal")jrOpen();
   if(v==="pe")peOpen();
+  if(v==="acc")kwOpen();
   if(v==="ai")aiOpen();
   if(v==="today"&&!S.flowLoaded){S.flowLoaded=true;   // 수급 카드(2026-11 수급 동향에서 이동)
     Promise.all([loadFlowLists()]).catch(()=>{});
@@ -5111,6 +5127,53 @@ const SM_SUBJ_DEF=["foreign","inv_trust","pe","pension"];
    ② 자금 이동 타임라인: sector_flow_daily.pe_net(업종×일 사모 순매수 합) — 타임라인 CSS(.tl-*)를 그대로 사용
    ③ 매수 상위 종목·시총대비 순위: 오늘의 종목/수급의 표와 같은 행 형식(scrNameCell·scrCells) */
 S.peW=120;S.peMkt="all";S.peTopPeriod="1d";S.peTopSort="amt";S._peOpen=false;
+/* ══ 매집 종목: 키움증권 회원 보유 계좌수 ══ */
+S.kw={rows:null,dates:[],mkt:"all",q:"",sort:{k:"r6",dir:1}};
+function kwMonthBase(dates,m){const a=dates.filter(d=>+d.slice(5,7)===m);return a.length?a[0]:null;}
+async function kwOpen(){
+  if(S._kwOpen)return;S._kwOpen=true;
+  $("#kwMktSel").addEventListener("seg-change",e=>{S.kw.mkt=e.detail;kwRender();});
+  $("#kwSearch").addEventListener("input",e=>{S.kw.q=e.target.value.trim().toLowerCase();kwRender();});
+  $("#kwHead").addEventListener("click",e=>{const th=e.target.closest("th[data-k]");if(!th)return;
+    const k=th.dataset.k,so=S.kw.sort;
+    S.kw.sort=so.k===k?{k,dir:-so.dir}:{k,dir:k==="name"?1:(k==="r6"||k==="r8"?1:-1)};kwRender();});
+  try{
+    const rows=await q("v_kiwoom_accounts","select=code,name,market,snaps&limit=2000");
+    const ds=new Set();rows.forEach(r=>Object.keys(r.snaps||{}).forEach(d=>ds.add(d)));
+    const dates=[...ds].sort(),last=dates[dates.length-1];
+    const d6=kwMonthBase(dates,6),d8=kwMonthBase(dates,8);
+    S.kw.dates=dates;S.kw.d6=d6;S.kw.d8=d8;
+    S.kw.rows=rows.map(r=>{const sn=r.snaps||{},cur=sn[last];
+      return {code:r.code,name:r.name||r.code,market:r.market||"",sn,cur,
+        r6:(cur&&d6&&sn[d6])?cur/sn[d6]:null,r8:(cur&&d8&&sn[d8])?cur/sn[d8]:null};});
+    $("#kwSub").textContent=`키움증권 HTS 1331 · 보유 계좌수 · 최근 ${last.slice(5).replace("-","/")} 기준 · ${rows.length}종목`;
+    kwRender();
+  }catch(e){console.error("매집 종목",e);S._kwOpen=false;
+    $("#kwBody").innerHTML=`<tr><td colspan="30" class="load">불러오기 실패 — Actions의 '키움 보유계좌수 엑셀 반영'을 한 번 실행했는지 확인</td></tr>`;}
+}
+function kwRender(){
+  const K=S.kw;if(!K.rows)return;
+  const dl=d=>`${+d.slice(5,7)}/${+d.slice(8,10)}`,last=K.dates[K.dates.length-1];
+  const col=(k,lb,tip)=>`<th data-k="${k}" class="sortable${K.sort.k===k?" active":""}"${tip?` title="${tip}"`:""}>${lb}${K.sort.k===k?(K.sort.dir>0?" ▲":" ▾"):""}</th>`;
+  // 오름차순(▲)=dir 1, 내림차순(▾)=dir -1
+  $("#kwHead").innerHTML=`<tr><th class="l">#</th>`+col("name","종목").replace("<th ",'<th style="text-align:left" ')+
+    K.dates.map(d=>col("d"+d,dl(d))).join("")+col("r6","6월 대비",`최근 ÷ ${K.d6||""} 계좌수`)+col("r8","8월 대비",`최근 ÷ ${K.d8||""} 계좌수`)+"</tr>";
+  const val=(r,k)=>k==="name"?r.name:k==="r6"?r.r6:k==="r8"?r.r8:r.sn[k.slice(1)];
+  let a=K.rows.filter(r=>(K.mkt==="all"||r.market.startsWith(K.mkt))&&(!K.q||r.name.toLowerCase().includes(K.q)||r.code.includes(K.q)));
+  const dir=K.sort.dir,k=K.sort.k;
+  a=a.slice().sort((x,y)=>{const u=val(x,k),v=val(y,k);
+    if(u==null&&v==null)return 0;if(u==null)return 1;if(v==null)return -1;   // 값 없는 종목은 항상 맨 아래
+    return k==="name"?dir*String(u).localeCompare(String(v),"ko"):dir*(u-v);});
+  const known=new Set((S.codes||[]).map(c=>c.code));
+  const rc=v=>{if(v==null)return"<td>–</td>";
+    const t=Math.max(0,Math.min(1,(1-v)/0.5));   // 100%=0, 50% 이하=최대
+    return `<td style="${t>0?`background:color-mix(in srgb,var(--up) ${Math.round(t*45)}%,transparent);`:""}font-weight:${v<=0.7?700:500}">${N(v*100,1)}%</td>`;};
+  $("#kwBody").innerHTML=a.length?a.map((r,i)=>`<tr><td class="l rank">${i+1}</td><td class="l">${known.has(r.code)?`<a class="lk nm" data-code="${r.code}">`:`<span class="nm">`}<span class="cd">${r.market.startsWith("KOSPI")?"피":"닥"}</span> ${r.name}${known.has(r.code)?"</a>":"</span>"}</td>`+
+    K.dates.map(d=>`<td${d===last?' style="font-weight:700"':""}>${r.sn[d]==null?"–":N(r.sn[d],0)}</td>`).join("")+rc(r.r6)+rc(r.r8)+"</tr>").join(""):
+    '<tr><td colspan="30" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+  $$("#kwBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+}
+
 function peOpen(){
   if(!S._peOpen){
     S._peOpen=true;
@@ -7254,7 +7317,7 @@ async function loadTdKospi(){
     $("#tdKHead").innerHTML=`<div class="load">불러오지 못했습니다${/v_kospi_flow_daily|404|PGRST|42/.test(String(e.message))?" — Actions의 'Setup KOSPI Flow View'를 먼저 실행하세요":""}: ${accEsc(e.message).slice(0,120)}</div>`;
   }
 }
-const VIEW_IDS=["proc","gm","today","flow","sm","pe","scr","fav","pair","sector","detail","perf","perf2","ai","journal"];
+const VIEW_IDS=["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal"];
 function setHash(v,code){
   const h="#"+v+(code?"/"+code:"");
   if(location.hash!==h)history.pushState(null,"",h);
