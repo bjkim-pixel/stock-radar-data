@@ -1,0 +1,23 @@
+name: "[점검] DART OpenAPI 공시 유형·응답 확인 | 수동 | 읽기 전용"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DART_API_KEY: ${{ secrets.DART_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install requests
+      - run: python 133_dart_probe.py 2>&1 | tee dart_probe_report.md
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: dart-probe-report
+          file: dart_probe_report.md
