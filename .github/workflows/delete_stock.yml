@@ -1,0 +1,32 @@
+name: "[수시] 종목 1개 삭제 | 수동 | stocks 및 code 컬럼 테이블에서 제거"
+on:
+  workflow_dispatch:
+    inputs:
+      code:
+        description: '종목 코드(6자리)'
+        required: true
+      name:
+        description: '종목명(DB의 이름과 같아야 삭제됨)'
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: delete-stock
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary
+      - run: python delete_stock.py "${{ inputs.code }}" "${{ inputs.name }}"
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: delete-stock-report
+          file: delete_stock_report.md
