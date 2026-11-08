@@ -1270,7 +1270,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
   <div class="card pair-outer">
     <h3><span id="pairStockTitle">구성 종목</span>
-      <span class="r">상위 6종목 내림차순 · 2종목씩 스와이프 · 아래로 스크롤하면 종목상세와 동일한 내용 전체</span></h3>
+      <span class="r">상위 6종목 내림차순 · 2종목씩 스와이프 · 마지막 페이지에서 7~8번째 종목을 목록으로 선택 · 아래로 스크롤하면 종목상세와 동일한 내용 전체</span></h3>
     <div style="display:flex;align-items:center;gap:8px;padding:0 9px 10px;flex-wrap:wrap">
       <span class="faint" style="font-size:11px">정렬 기준</span>
       <select id="pairStockSort" style="width:auto;font-size:12px;padding:3px 6px">
@@ -5803,7 +5803,15 @@ async function selectPairSector(sec){
   const stocks=await q("v_screener",
     `select=*&sector=eq.${encodeURIComponent(sec)}&trade_date=eq.${S.date}&order=${S.pairStockSort}.desc.nullslast&limit=6`);
   if(!stocks.length){$("#pairTrack").innerHTML='<div class="load">데이터 없음</div>';return;}
-  await renderPairCards(stocks);
+  // 7~8번째 칸: 같은 업종의 나머지 종목 목록(선택해서 비교)
+  S.pairXSel=["",""];
+  let rest=[];
+  try{
+    const all=await q("v_screener",`select=code,name,change_pct&sector=eq.${encodeURIComponent(sec)}&trade_date=eq.${S.date}&order=${S.pairStockSort}.desc.nullslast&limit=150`);
+    const top=new Set(stocks.map(x=>x.code));rest=all.filter(x=>!top.has(x.code));
+  }catch(e){rest=[];}
+  if(S.pairSector!==sec)return;
+  await renderPairCards(stocks,rest);
 }
 // 섹션 순서를 정의 — 페이지 스켈레톤과 실제 채우기(renderPairCard)가 이 순서를
 // 공유합니다. 각 섹션은 종목A 셀, 종목B 셀을 "같은 그리드 행"에 나란히 놓아
@@ -5861,13 +5869,30 @@ function pairPageSkeleton(pg){
 // 카드 뼈대(페이지 3개씩=6종목÷2)를 먼저 그려 캐러셀이 즉시 뜨게 하고, 종목별
 // 상세 데이터(v_stock_chart 전체 이력·v_stock_summary·v_stock_flow_periods)는
 // 병렬로 받아오는 대로 각 셀을 종목상세와 동일한 내용으로 채웁니다.
-async function renderPairCards(stocks){
+function pairXRender(){
+  const grid=$("#pairXGrid");if(!grid)return;
+  const sel=[...new Set((S.pairXSel||[]).filter(Boolean))];
+  grid.innerHTML=sel.length?pairPageSkeleton(sel.map(code=>({code}))).replace(/^<div class="pair-page">|<\/div>$/g,""):'<div class="load" style="grid-column:1/-1">위 목록에서 비교할 종목을 고르세요</div>';
+  sel.forEach(code=>pairLoadOne({code}));
+}
+async function renderPairCards(stocks,rest){
+  rest=rest||[];
   const pages=[];
   for(let i=0;i<stocks.length;i+=2)pages.push(stocks.slice(i,i+2));
-  $("#pairTrack").innerHTML=pages.map(pg=>pairPageSkeleton(pg)).join("");
-  setupPairCarouselNav(pages.length);
-  stocks.forEach(s=>pcEarnRender(s.code).catch(()=>{const e=$("#pcEarn_"+s.code);if(e)e.innerHTML='<div class="load">불러오기 실패</div>';}));
-  await Promise.all(stocks.map(async s=>{
+  const xHtml=rest.length?`<div class="pair-xpage" style="flex:0 0 100%;scroll-snap-align:start;min-width:0">
+      <div style="display:flex;gap:8px;padding:0 9px 12px;flex-wrap:wrap;align-items:center">
+        <span class="faint" style="font-size:11px">7~8번째 비교 종목(같은 업종)</span>
+        ${[0,1].map(i=>`<select class="pair-xsel" data-i="${i}" style="width:auto;max-width:46%;font-size:12px;padding:3px 6px"><option value="">종목 선택…</option>${rest.map(r=>`<option value="${r.code}">${r.name} (${r.change_pct==null?"–":pm(+r.change_pct,1)+"%"})</option>`).join("")}</select>`).join("")}
+      </div>
+      <div class="pair-page" id="pairXGrid" style="flex:none"><div class="load" style="grid-column:1/-1">위 목록에서 비교할 종목을 고르세요</div></div></div>`:"";
+  $("#pairTrack").innerHTML=pages.map(pg=>pairPageSkeleton(pg)).join("")+xHtml;
+  setupPairCarouselNav(pages.length+(rest.length?1:0));
+  $$("#pairTrack .pair-xsel").forEach(el=>el.onchange=()=>{S.pairXSel[+el.dataset.i]=el.value;pairXRender();});
+  stocks.forEach(s=>pairLoadOne(s));
+}
+async function pairLoadOne(s){
+  pcEarnRender(s.code).catch(()=>{const e=$("#pcEarn_"+s.code);if(e)e.innerHTML='<div class="load">불러오기 실패</div>';});
+  await (async()=>{
     try{
       const [rows,sumArr,flowRows]=await Promise.all([
         q("v_stock_chart",`select=*&code=eq.${s.code}&order=trade_date.asc`),
@@ -5879,7 +5904,7 @@ async function renderPairCards(stocks){
       const headEl=$("#pcHead_"+s.code);
       if(headEl)headEl.innerHTML='<div class="load">불러오기 실패</div>';
     }
-  }));
+  })();
 }
 // 종목상세(loadDetail/renderRangeCharts)와 동일한 구성 — 가격·이동평균, 무게/주식수,
 // 거래량, 프로그램 누적, 매물대(개인·외국인+기관), 투자자별 누적 순매수, 수급주체별
