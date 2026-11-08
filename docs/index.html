@@ -1064,9 +1064,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="tw tw-scroll tw-rank"><table><thead><tr>
       <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th class="grp">시총</th>
       <th class="opt">거래대금</th><th class="opt">거래량비</th>
-      <th>무게/주식수</th>
+      <th>무게/주식수</th><th class="grp" title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록">매집 6월</th><th title="최근 ÷ 8월 첫 기록">매집 8월</th>
       <th class="grp opt">종가위치</th><th class="opt">52주 신고가</th><th class="opt">신고가일</th><th>단계</th>
-    </tr></thead><tbody id="stkBody"><tr><td colspan="12" class="load">업종을 선택하세요</td></tr></tbody></table></div>
+    </tr></thead><tbody id="stkBody"><tr><td colspan="14" class="load">업종을 선택하세요</td></tr></tbody></table></div>
     <div class="note">종목명을 누르면 종목 상세로 이동합니다.</div>
   </div>
 </section>
@@ -1164,7 +1164,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <b>8월 대비</b> = 가장 최근 날짜 계좌수 ÷ 8월 첫 기록 <span id="kwD8"></span> 계좌수 × 100<br>
       예) 5,020 → 2,745 이면 54.7% (계좌수가 약 45% 줄어듦). <b>100%보다 작을수록 줄어든 종목</b>이고, 낮을수록 칸 배경이 진해집니다(70% 이하는 글씨도 굵게).<br>
       <b>표 보기</b> — 머리글(6월 대비·8월 대비·날짜별 계좌수·종목)을 누르면 오름차순 ▲ ↔ 내림차순 ▾ 으로 정렬됩니다. 기본은 6월 대비 오름차순입니다. 최근 날짜 값이 없는 종목은 비율이 "–"이고 정렬해도 맨 아래입니다.<br>
-      <b>업데이트 방법</b> — ① 엑셀 첫 줄에 "11월 20일"처럼 새 날짜 열을 추가해 계좌수를 채웁니다(비율 열은 안 써도 됩니다). ② GitHub 저장소 bjkim-pixel/stock-radar-data 의 <code>data/kiwoom_accounts.xlsx</code> 를 그 파일로 교체해 올립니다(Add file → Upload files, 같은 이름, main에 커밋). ③ 1~2분 뒤 자동으로 DB에 반영되고, 이 페이지는 <b>가장 최근 날짜를 자동으로 새 날짜로</b> 잡아 6월·8월 대비 비율을 다시 계산해 보여줍니다(새로고침). 같은 날짜를 다시 올리면 값이 덮어써집니다.
     </div>
   </div>
   <div class="card"><h3>매집 종목 <span class="r" id="kwSub">키움증권 HTS 1331 · 종목별 보유 계좌수</span></h3>
@@ -2882,11 +2881,12 @@ async function selectSector(sec){
       <td class="opt">${N(+r.trade_amount/EOK)}억</td>
       <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
       <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
+      ${kwCell(r.code,"r6",1,1)}${kwCell(r.code,"r8",0,1)}
       <td class="grp opt">${r.close_pos_pct==null?"–":N(+r.close_pos_pct,0)+"%"}</td>
       <td class="opt">${r.high_period==null?"–":N(+r.high_period)}</td>
       <td class="opt dim">${shortDate(r.high_period_date)}</td>
       <td>${stg(stage(r))}</td></tr>`).join("")
-    :`<tr><td colspan="12" class="load">해당 업종 종목이 없습니다</td></tr>`;
+    :`<tr><td colspan="14" class="load">해당 업종 종목이 없습니다</td></tr>`;
   $$("#stkBody a.lk").forEach(a=>a.onclick=()=>{go("detail",a.dataset.code);});
   makeSortable('stkBody');
   $("#stkOut").innerHTML=`<b>${stkShow.length}종목</b>${S.stocks.length>10?` <span class="faint">(전체 ${S.stocks.length}종목 중 상위 10)</span>`:""}`;
@@ -4629,12 +4629,38 @@ function topBuyer(row, sfx){
   if(!best)return"–";
   return`<span class="${sgn(bestAmt)}">${best.lb} ${pm(bestAmt/EOK,0)}억</span>`;
 }
+/* ══ 매집(키움 보유계좌수) 6월·8월 대비 비율 — 종목 표 공용 ══ */
+function kwBaseOf(dates,m){const a=dates.filter(d=>+d.slice(5,7)===m);return a.length?a[0]:null;}
+function kwLoadMap(){
+  if(S._kwMapP)return S._kwMapP;
+  S._kwMapP=q("v_kiwoom_accounts","select=code,snaps&limit=2000").then(rows=>{
+    const ds=new Set();rows.forEach(r=>Object.keys(r.snaps||{}).forEach(d=>ds.add(d)));
+    const dates=[...ds].sort(),last=dates[dates.length-1],d6=kwBaseOf(dates,6),d8=kwBaseOf(dates,8),m={};
+    rows.forEach(r=>{const sn=r.snaps||{},cur=sn[last];if(!cur)return;
+      m[r.code]={r6:d6&&sn[d6]?cur/sn[d6]:null,r8:d8&&sn[d8]?cur/sn[d8]:null};});
+    S.kwMap=m;kwFill();return m;
+  }).catch(e=>{console.error("매집 비율",e);S.kwMap={};kwFill();return {};});
+  return S._kwMapP;
+}
+function kwFmt(v){return v==null?"–":N(v*100,0)+"%";}
+function kwStyle(v){if(v==null)return"";const t=Math.max(0,Math.min(1,(1-v)/0.5));
+  return (t>0?`background:color-mix(in srgb,var(--up) ${Math.round(t*45)}%,transparent);`:"")+(v<=0.7?"font-weight:700;":"");}
+function kwCell(code,k,grp,nog){   // 지도가 아직 안 왔으면 빈 칸(data-kw)으로 두었다가 kwFill()이 채움
+  const v=S.kwMap?(S.kwMap[code]||{})[k]:undefined;
+  return `<td class="kwc${nog?"":" g-g1"}${grp?" grp":""}" data-kw="${k}" data-kwc="${code}" style="${S.kwMap?kwStyle(v):""}">${S.kwMap?kwFmt(v):"–"}</td>`;
+}
+function kwFill(root){
+  if(!S.kwMap)return;
+  (root||document).querySelectorAll("td.kwc[data-kwc]").forEach(td=>{
+    const v=(S.kwMap[td.dataset.kwc]||{})[td.dataset.kw];td.textContent=kwFmt(v);td.style.cssText=kwStyle(v);});
+}
 /* 종목후보 표의 종목 셀·지표 셀(종가~프로그램, 25칸) — 오늘의 종목 표들도 같이 쓰도록 공용화 */
 function scrNameCell(r){return `<td class="l">${favStar(r.code)}<a class="lk nm" data-code="${r.code}">
         ${r.market?`<span class="cd" title="${r.market}"${r.market==="ETF"?' style="color:var(--accent,#2f6fed);font-weight:700"':""}>${r.market==="KOSPI"?"피":r.market==="KOSDAQ"?"닥":r.market}</span> `:""}${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>`;}
 function scrCells(r){return `
       <td>${N(+r.close,0)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
       <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
+      ${kwCell(r.code,"r6",1)}${kwCell(r.code,"r8")}
       <td class="grp opt ${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
       <td class="opt ${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
       <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
@@ -4664,6 +4690,7 @@ function scrCells(r){return `
    윗줄에는 그룹명·단독 열, 아랫줄에는 세부(3M·1M·1W 등)만 둬서 가로 폭을 줄입니다. */
 const SCR_HD=[
   ["종가","g1"],["등락률","g1"],["무게/주식수","g1"],
+  {top:"매집",g:"g1",title:"키움증권 회원 보유 계좌수 비율 = 최근 ÷ 기준월 첫 기록. 낮을수록 개인 물량이 줄어든 종목(매집 가능성). 매집 종목 탭 참고",subs:[["6월","최근 ÷ 6월 첫 기록 계좌수"],["8월","최근 ÷ 8월 첫 기록 계좌수"]]},
   {top:"개별RS",g:"g2",subs:[["5"],["20"]]},
   {top:"1개월",g:"g3",subs:[["외+기"],["주도"]]},
   {top:"2개월",g:"g3",subs:[["외+기"],["주도"]],nogrp:1},
@@ -6083,7 +6110,9 @@ function renderPairCard(code,sum,rows,flowRow){
       <span>${sum.sector||"–"}</span>
       <span>업종RS ${sum.sector_rs_rank?sum.sector_rs_rank+"위":"–"}</span>
       <span id="pcPer_${code}" style="display:none"></span>
+      <span id="pcKw_${code}" title="키움증권 회원 보유 계좌수: 최근 ÷ 6월(8월) 첫 기록. 낮을수록 개인 물량 감소(매집 가능성)"></span>
     </div>`;
+  kwLoadMap().then(m=>{const e=$("#pcKw_"+code),v=m[code];if(e&&v)e.innerHTML=`매집 6월 <b style="${kwStyle(v.r6)}">${kwFmt(v.r6)}</b> · 8월 <b style="${kwStyle(v.r8)}">${kwFmt(v.r8)}</b>`;});
   headEl.querySelector(".pc-name").onclick=()=>{go("detail",code);};
   perFill(code,+last.close,$("#pcPer_"+code));
 
@@ -7477,7 +7506,7 @@ $("#favAddFav").onclick=()=>favAddFrom("fav");$("#favAddHold").onclick=()=>favAd
 
 // ── 표 열 묶음 토글: 종목후보·오늘의 종목·관심 표의 28개 열(순서는 그대로)을 5묶음으로 접고 펴기
 const SCR_GROUPS=[["g1","기본"],["g2","강도·매물대"],["g3","누적 수급"],["g4","거래"],["g5","당일 주체별"]];
-const SCR_COL_GROUP=["g1","g1","g1","g2","g2","g3","g3","g3","g3","g2","g3","g3","g3","g1","g4","g4","g2","g2","g4",
+const SCR_COL_GROUP=["g1","g1","g1","g1","g1","g2","g2","g3","g3","g3","g3","g2","g3","g3","g3","g1","g4","g4","g2","g2","g4",
   "g5","g5","g5","g5","g5","g5","g5","g5","g5"];
 function hgState(){try{return JSON.parse(localStorage.getItem("sr_hg")||"{}")||{};}catch(e){return {};}}
 function applyHg(){
@@ -7616,6 +7645,7 @@ async function boot(){
     $("#chipUniv").textContent=stk.length;
     const last=await pMkt;
     S.date=last.trade_date;
+    kwLoadMap();   // 종목 표의 매집 6월·8월 열(백그라운드)
     $("#chipDate").textContent=S.date;
     $("#fDate").value=S.date;
     loadDataStatus().catch(()=>{});
