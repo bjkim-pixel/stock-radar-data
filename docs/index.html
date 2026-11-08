@@ -1260,6 +1260,13 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div class="field"><label>매집(키움 계좌수)</label>
         <select id="fKw" title="선택하면 해당 기준 비율이 있는 종목만, 낮은 순(오름차순)으로 보여줍니다. 정렬 기준·방향은 무시됩니다"><option value="">사용 안 함</option><option value="r6">6월 대비 낮은 순</option><option value="r8">8월 대비 낮은 순</option></select></div>
       <div class="field"><label>배당수익률 ≥ (%)</label><input type="number" id="fDivMin" step="0.1" placeholder="예: 3" title="배당이 있는 종목만, 아래 기준으로 계산한 배당수익률이 이 값 이상인 종목"></div>
+      <div class="field"><label>공시(DART) 조건</label>
+        <select id="fDart" title="최근 N일 안에 접수된 DART 공시 조건에 맞는 종목만"><option value="">사용 안 함</option>
+          <option value="hold_up_am">운용사·연기금 5% 증가·신규</option><option value="hold_down_am">운용사·연기금 5% 감소·이탈</option>
+          <option value="ins_buy">내부자 순매수</option><option value="ins_sell">내부자 순매도</option>
+          <option value="buyback">자사주 취득 결정</option><option value="supply">공급 부담(유증·CB 등)</option></select></div>
+      <div class="field"><label>공시 기간</label>
+        <select id="fDartP"><option value="3">3일</option><option value="7" selected>7일</option><option value="14">14일</option><option value="30">30일</option></select></div>
       <div class="field"><label>배당 기준</label>
         <select id="fDivBasis" title="최근 12개월 = 최근 1년 안에 기준일이 지난 확정 배당 합계 ÷ 현재가 · 올해 예상 = 확정 + 네이버 예상 잔여 ÷ 현재가"><option value="ttm">최근 12개월 (확정)</option><option value="exp">올해 예상</option></select></div>
     </div>
@@ -1457,6 +1464,13 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <optgroup label="최근 12개월(확정)"><option value="ttm:1">1% 이상</option><option value="ttm:2">2% 이상</option><option value="ttm:3">3% 이상</option><option value="ttm:4">4% 이상</option><option value="ttm:5">5% 이상</option><option value="ttm:7">7% 이상</option></optgroup>
         <optgroup label="올해 예상"><option value="exp:2">예상 2% 이상</option><option value="exp:3">예상 3% 이상</option><option value="exp:5">예상 5% 이상</option><option value="exp:7">예상 7% 이상</option></optgroup>
       </select>
+    </div>
+    <div class="dfrow" style="margin-top:5px">
+      <select id="dDartF" class="df" title="최근 N일 안에 접수된 DART 공시 조건으로 종목 목록 좁히기"><option value="">공시(DART)</option>
+          <option value="hold_up_am">운용사·연기금 5% 증가·신규</option><option value="hold_down_am">운용사·연기금 5% 감소·이탈</option>
+          <option value="ins_buy">내부자 순매수</option><option value="ins_sell">내부자 순매도</option>
+          <option value="buyback">자사주 취득 결정</option><option value="supply">공급 부담(유증·CB 등)</option></select>
+      <select id="dDartP" class="df" title="공시 조회 기간"><option value="3">3일</option><option value="7" selected>7일</option><option value="14">14일</option><option value="30">30일</option></select>
     </div>
     <div class="dfrow" style="margin-top:5px">
       <input type="date" id="dStart" class="df dd" title="차트 시작일"><span class="faint dtl">~</span>
@@ -4753,7 +4767,7 @@ function dartEtcLine(r){
   return `<div class="dline">${dartStock(r)} <span class="${col}"><b>${DART_KIND_LB[r.kind]||r.kind}</b>${amt}${sh}</span><span class="faint">${det} · ${(r.report_nm||"").replace(/^주요사항보고서\(|\)$/g,"")} · ${dartMd(r.rcept_dt)}</span> <a class="faint" href="${dartUrl(r.rcept_no)}" target="_blank" rel="noopener">공시</a></div>`;
 }
 async function dartLoad30(){
-  if(!S._dartP)S._dartP=q("dart_filings",`select=rcept_no,rcept_dt,code,corp_name,kind,report_nm,filer,filer_type,report_tp,rt_prev,rt_now,shares_now,shares_delta,amount,detail&rcept_dt=gte.${dartDay(30)}&order=rcept_dt.desc&limit=5000`).catch(e=>{S._dartP=null;throw e;});
+  if(!S._dartP)S._dartP=q("dart_filings",`select=rcept_no,rcept_dt,code,corp_name,kind,report_nm,filer,filer_type,report_tp,rt_prev,rt_now,shares_now,shares_delta,amount,detail&rcept_dt=gte.${dartDay(30)}&order=rcept_dt.desc&limit=5000`).then(r=>{S._dartRows=r;return r;}).catch(e=>{S._dartP=null;throw e;});
   return S._dartP;
 }
 function dartRender(){
@@ -4784,6 +4798,25 @@ function dartRender(){
   body.innerHTML=html||'<div class="load">해당 기간 공시가 없습니다</div>';
   body.querySelectorAll("a.lk[data-code]").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   $("#tdDartSub").textContent=`DART 전자공시 · ${DART_KIND_LB[K.kind]||"공급 부담·기타"} ${n}건 · 최근 ${K.period}일(접수일 기준)`;
+}
+/* 공시 조건 필터(종목후보·종목상세 상단): 최근 N일 DART 공시를 종목별로 집계 */
+const DART_COND={hold_up_am:f=>f.hu>0,hold_down_am:f=>f.hd>0,ins_buy:f=>f.ins>0,ins_sell:f=>f.ins<0,buyback:f=>f.bb>0,supply:f=>f.sp>0};
+function dartFlags(days){
+  const since=dartDay(+days-1),m={};
+  (S._dartRows||[]).forEach(r=>{
+    if(r.rcept_dt<since)return;
+    const f=m[r.code]=m[r.code]||{hu:0,hd:0,ins:0,bb:0,sp:0};
+    if(r.kind==="HOLD5"&&["운용사","연기금"].includes(r.filer_type)){const i=dartHoldInfo(r);if(i.dir>0)f.hu++;else if(i.dir<0)f.hd++;}
+    else if(r.kind==="INSIDER")f.ins+=+r.shares_delta||0;
+    else if(r.kind==="BUYBACK")f.bb++;
+    else if(r.kind==="SUPPLY")f.sp++;
+  });
+  return m;
+}
+function dartCodeSet(cond,days){
+  const key=cond+"|"+days+"|"+(S._dartRows?S._dartRows.length:0);
+  if(S._dSetKey!==key){const f=dartFlags(days),fn=DART_COND[cond];S._dSet=new Set(Object.keys(f).filter(c=>fn(f[c])));S._dSetKey=key;}
+  return S._dSet;
 }
 async function dartInit(){
   if(!S.dart)S.dart={rows:null,kind:"HOLD5",period:"7",sub:"운용사"};
@@ -4932,6 +4965,7 @@ async function runScreener(){
     }
   }
   rows=rows.filter(screenerFilterPass);
+  if($("#fDart").value){await dartLoad30();const set=dartCodeSet($("#fDart").value,$("#fDartP").value);rows=rows.filter(r=>set.has(r.code));}
   const divMin=$("#fDivMin").value, divBasis=$("#fDivBasis").value==="exp"?"div_yld_e":"div_yld";
   if(divMin!==""||$("#fSort").value.startsWith("div_yld")){   // 배당수익률 필터·정렬이 켜졌을 때만 배당 데이터를 불러옴
     divAnnotate(rows,await divLoadAll(),date||new Date().toISOString().slice(0,10));
@@ -4954,7 +4988,7 @@ $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e
 const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
-  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";$("#fKw").value="";$("#fDivMin").value="";$("#fDivBasis").value="ttm";
+  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";$("#fKw").value="";$("#fDivMin").value="";$("#fDivBasis").value="ttm";$("#fDart").value="";$("#fDartP").value="7";
   $("#fSector").value="";$("#fMa").value="";$("#fPh").value="";$("#fKind").value="all";$("#fInv").value="in";
   $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
 $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
@@ -5159,6 +5193,7 @@ function dCodeList(){
   if(S.dMaF&&S.dMaMap){const f=MA_COND[S.dMaF];l=l.filter(c=>{const m=S.dMaMap[c.code];return m&&f(m);});}
   if(S.dPh&&S.dPhMap){const set=new Set(S.dPh.split(","));l=l.filter(c=>set.has(S.dPhMap[c.code]||"NEUTRAL"));}
   if(S.dKwF&&S.kwMap){const [k,t]=S.dKwF.split(":");l=l.filter(c=>{const v=(S.kwMap[c.code]||{})[k];return v!=null&&v*100<=+t;});}
+  if(S.dDartF&&S._dartRows){const set=dartCodeSet(S.dDartF,S.dDartP);l=l.filter(c=>set.has(c.code));}
   if(S.dDivF&&S.dDivMap){const [k,t]=S.dDivF.split(":");l=l.filter(c=>{const v=(S.dDivMap[c.code]||{})[k];return v!=null&&v>=+t;});}
   return l;
 }
@@ -5177,9 +5212,9 @@ function dFillSel(){
   $("#dSel").innerHTML=list.map(s=>`<option value="${s.code}">${s.name}</option>`).join("");
   if(S.chart&&S.chart.code&&list.some(c=>c.code===S.chart.code))$("#dSel").value=S.chart.code;
   const tag=[S.dSec,S.dMaF?$("#dMaF").selectedOptions[0].textContent:"",S.dPh?$("#dPh").selectedOptions[0].textContent:"",
-    S.dKwF?"매집 "+$("#dKwF").selectedOptions[0].textContent:"",S.dDivF?"배당 "+$("#dDivF").selectedOptions[0].textContent:""].filter(Boolean);
+    S.dKwF?"매집 "+$("#dKwF").selectedOptions[0].textContent:"",S.dDivF?"배당 "+$("#dDivF").selectedOptions[0].textContent:"",S.dDartF?"공시 "+$("#dDartF").selectedOptions[0].textContent+"("+S.dDartP+"일)":""].filter(Boolean);
   $("#dSel").title=tag.length?`${tag.join(" · ")} — ${list.length}종목`:"";
-  $("#dSel").style.outline=(S.dMaF||S.dSec||S.dPh||S.dKwF||S.dDivF)&&!list.length?"2px solid var(--down)":"";
+  $("#dSel").style.outline=(S.dMaF||S.dSec||S.dPh||S.dKwF||S.dDivF||S.dDartF)&&!list.length?"2px solid var(--down)":"";
 }
 async function loadDetailSectors(){
   const all=[];
@@ -5261,6 +5296,14 @@ function dFilterHandler(sel,key,loader,label){
 }
 dFilterHandler("#dKwF","dKwF",kwLoadMap,"매집 필터");
 dFilterHandler("#dDivF","dDivF",loadDetailDiv,"배당 필터");
+S.dDartF="";S.dDartP="7";
+dFilterHandler("#dDartF","dDartF",dartLoad30,"공시 필터");
+$("#dDartP").onchange=e=>{
+  S.dDartP=e.target.value;if(!S.dDartF)return;
+  dFillSel();const list=dCodeList();
+  if(!list.length){$("#dSel").innerHTML='<option value="">조건에 맞는 종목 없음</option>';return;}
+  if(!list.some(c=>c.code===S.chart.code)){S.dRangeTouched=false;loadDetail(list[0].code);}
+};
 $("#dSec").onchange=e=>{
   S.dSec=e.target.value;
   dFillSel();
