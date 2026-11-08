@@ -6396,9 +6396,23 @@ let _hashNav=false;
 const JR={rows:[],editId:null,quotes:{},delArm:null,imgCache:{},pend:[],keep:[],drop:[]};
 const jrEsc=accEsc;
 function jrAuthShow(msg){$("#jrAuth").classList.remove("hide");$("#jrMain").classList.add("hide");$("#jrAuthMsg").textContent=msg||"";}
+/* 릴레이(Render 무료 플랜)는 한동안 접속이 없으면 잠들고, 깨어나는 약 1분 동안은 CORS 헤더 없는 오류가 와서
+   브라우저에 "Failed to fetch"로만 보입니다 → 목록 조회는 자동으로 재시도하고, 저장 전에는 서버를 먼저 깨웁니다. */
+function jrNote(t){const m=$("#jrForm")&&!$("#jrForm").classList.contains("hide")?$("#jrMsg"):$("#jrList");if(m)m.innerHTML=m===$("#jrList")?`<div class="load">${t}</div>`:t;}
+async function jrFetch(method,body,qs,tries){
+  const tok=sriLS("sr_acc_token");
+  for(let i=1;;i++){
+    try{return await fetch(RELAY_HTTP_BASE+"/journal"+(qs||""),{method,headers:{"x-access-token":tok,...(body?{"content-type":"application/json"}:{})},body:body?JSON.stringify(body):undefined});}
+    catch(e){
+      if(i>=tries)throw new Error("서버에 연결하지 못했습니다(서버가 잠들어 있을 수 있습니다 — 1분 뒤 다시 시도하세요)");
+      jrNote(`서버를 깨우는 중입니다… (${i}/${tries-1}) 최대 1분 정도 걸립니다`);
+      await new Promise(r=>setTimeout(r,10000));
+    }
+  }
+}
 async function jrApi(method,body,qs){
   const tok=sriLS("sr_acc_token");
-  const r=await fetch(RELAY_HTTP_BASE+"/journal"+(qs||""),{method,headers:{"x-access-token":tok,...(body?{"content-type":"application/json"}:{})},body:body?JSON.stringify(body):undefined});
+  const r=await jrFetch(method,body,qs,method==="GET"?8:1);
   if(r.status===401){sriLS("sr_acc_token",null);jrAuthShow("토큰이 맞지 않습니다.");throw new Error("unauthorized");}
   if(r.status===503){jrAuthShow("서버에 토큰이 설정되지 않았습니다 (Render 환경변수 ACCESS_LOG_TOKEN 필요).");throw new Error("no token");}
   const j=await r.json();if(!j.ok)throw new Error(j.error||("HTTP "+r.status));return j;
@@ -6670,6 +6684,11 @@ function jrLightbox(src){
   if(!src)return;const d=document.createElement("div");d.className="jr-lb";d.innerHTML=`<img src="${src}">`;
   d.onclick=()=>d.remove();document.body.appendChild(d);
 }
+/* 작성 중인 글은 입력할 때마다 이 브라우저에 임시저장합니다(저장 실패·페이지 이탈 대비). 저장에 성공하면 지웁니다. */
+function jrDraft(d){try{if(d)localStorage.setItem("jr_draft",JSON.stringify(d));else if(d===null)localStorage.removeItem("jr_draft");else return JSON.parse(localStorage.getItem("jr_draft")||"null");}catch(_){}return null;}
+function jrDraftSave(){if(JR.editId)return;const t=$("#jrTitle").value,b=$("#jrBody").value;if(!t.trim()&&!b.trim())return;
+  jrDraft({title:t,body:b,kind:$("#jrKind").value,date:$("#jrDate").value,stock:$("#jrStock").value,price:$("#jrPrice").value,qty:$("#jrQty").value,tags:$("#jrTags").value,at:Date.now()});}
+["#jrTitle","#jrBody","#jrStock","#jrPrice","#jrQty","#jrTags"].forEach(i=>{const el=$(i);if(el)el.addEventListener("input",jrDraftSave);});
 function jrForm(r){
   JR.editId=r?r.id:null;JR.pend=[];JR.keep=r?[...(r.images||[])]:[];JR.drop=[];jrThumbs();
   $("#jrForm").classList.remove("hide");
@@ -6678,7 +6697,12 @@ function jrForm(r){
   $("#jrStock").value=r&&r.stock_code?`${r.stock_name||""} (${r.stock_code})`:"";
   $("#jrPrice").value=r&&r.price!=null?r.price:"";$("#jrQty").value=r&&r.qty!=null?r.qty:"";
   $("#jrTitle").value=r?r.title||"":"";$("#jrBody").value=r?r.body||"":"";$("#jrTags").value=r?(r.tags||[]).join(", "):"";
-  $("#jrMsg").textContent="";$("#jrTitle").focus();
+  $("#jrMsg").textContent="";
+  const dr=!r&&jrDraft();
+  if(dr){$("#jrTitle").value=dr.title||"";$("#jrBody").value=dr.body||"";$("#jrKind").value=dr.kind||"메모";if(dr.date)$("#jrDate").value=dr.date;
+    $("#jrStock").value=dr.stock||"";$("#jrPrice").value=dr.price||"";$("#jrQty").value=dr.qty||"";$("#jrTags").value=dr.tags||"";
+    $("#jrMsg").textContent="저장하지 못한 임시저장 글을 불러왔습니다.";}
+  $("#jrTitle").focus();
 }
 function jrStockParse(v){
   v=v.trim();if(!v)return{};
@@ -6693,10 +6717,12 @@ async function jrSave(){
   if(!b.title&&!b.body.trim()){$("#jrMsg").textContent="제목이나 내용을 입력하세요.";return;}
   $("#jrSave").disabled=true;$("#jrMsg").textContent="저장 중…";
   try{
+    await jrApi("GET",null,"?img=1");   // 서버가 잠들어 있으면 먼저 깨움(최대 약 70초 재시도)
+    $("#jrMsg").textContent="저장 중…";
     const sv=await jrApi("POST",b);const eid=JR.editId||(sv.row&&sv.row.id);
     for(const i of JR.drop)await jrApi("POST",{action:"img_del",img_id:i});
     for(let n=0;n<JR.pend.length;n++){$("#jrMsg").textContent=`이미지 올리는 중 ${n+1}/${JR.pend.length}…`;await jrApi("POST",{action:"img_add",entry_id:eid,data:JR.pend[n]});}
-    JR.pend=[];JR.drop=[];
+    JR.pend=[];JR.drop=[];jrDraft(null);
     $("#jrForm").classList.add("hide");const j=await jrApi("GET");JR.rows=j.rows||[];await jrQuotes();jrRender();}
   catch(e){$("#jrMsg").textContent="저장 실패: "+e.message;}
   $("#jrSave").disabled=false;
