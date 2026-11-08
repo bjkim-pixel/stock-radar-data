@@ -1,6 +1,12 @@
 name: "[점검] 사이트 요청 성능 측정 | 수동 | 읽기 전용"
 on:
   workflow_dispatch:
+    inputs:
+      task:
+        description: 'perf=요청 시간 / explain=서버 실행계획'
+        default: 'perf'
+        type: choice
+        options: [perf, explain]
 permissions:
   contents: write
 jobs:
@@ -11,11 +17,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
-      - run: pip install requests
-      - run: python 126_perf_probe.py
+      - run: pip install requests psycopg2-binary
+      - if: inputs.task != 'explain'
+        run: python 126_perf_probe.py
+      - if: inputs.task == 'explain'
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 127_explain_probe.py
       - name: Publish report
         if: always()
         uses: ./.github/actions/publish-report
         with:
-          branch: perf-probe-report
-          file: perf_probe_report.md
+          branch: ${{ inputs.task == 'explain' && 'explain-report' || 'perf-probe-report' }}
+          file: ${{ inputs.task == 'explain' && 'explain_report.md' || 'perf_probe_report.md' }}
