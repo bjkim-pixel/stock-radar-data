@@ -273,6 +273,7 @@ tbody tr.clk{cursor:pointer} tbody tr.clk:hover td{background:var(--surface-2)}
 tbody tr.row-hl>td{background:color-mix(in srgb,var(--warn) 24%,var(--surface))!important}
 tbody tr[aria-selected=true] td{background:color-mix(in srgb,var(--up) 8%,var(--surface))}
 td .nm{font-weight:600} td .cd{color:var(--ink-3);font-size:10.5px}
+.dline{font-size:12.5px;line-height:1.75;border-bottom:1px dashed var(--border);padding:1px 0}.dline .lk{cursor:pointer}
 /* 종목명 칸: 기본 6자 폭(넘으면 …), 머리글 ↔ 손잡이로 폭 조절. 폭이 넓어지면(nm-wide) 업종 표시도 함께 보임 */
 .nmt{display:inline-block;max-width:var(--nmw,6.3em);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 html:not(.nm-wide) td .cd.sc{display:none}
@@ -908,6 +909,29 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 보기, #·종목명 고정) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순</div>
   </div>
 
+  <div class="card" id="tdDartCard" style="margin-top:12px"><h3>공시 동향 <span class="r" id="tdDartSub">DART 전자공시 · 5% 대량보유·내부자·자사주</span></h3>
+    <div class="qf-group"><div class="qf-lb">종류</div><div class="qf seg" id="tdDartKindSel">
+      <button class="fchip" data-v="HOLD5" aria-pressed="true">5% 대량보유</button>
+      <button class="fchip" data-v="INSIDER" aria-pressed="false">내부자(임원·주요주주)</button>
+      <button class="fchip" data-v="BUYBACK" aria-pressed="false">자사주 취득</button>
+      <button class="fchip" data-v="ETC" aria-pressed="false">공급 부담·기타</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdDartPeriodSel">
+      <button class="fchip" data-v="30" aria-pressed="false">1개월</button>
+      <button class="fchip" data-v="14" aria-pressed="false">2주</button>
+      <button class="fchip" data-v="7" aria-pressed="true">1주</button>
+      <button class="fchip" data-v="3" aria-pressed="false">3일</button>
+    </div></div>
+    <div class="qf-group" id="tdDartSubWrap"><div class="qf-lb">보고자</div><div class="qf seg" id="tdDartSubSel">
+      <button class="fchip" data-v="all" aria-pressed="false">전체</button>
+      <button class="fchip" data-v="운용사" aria-pressed="true">운용사</button>
+      <button class="fchip" data-v="연기금" aria-pressed="false">연기금</button>
+      <button class="fchip" data-v="기타" aria-pressed="false">기타</button>
+    </div></div>
+    <div id="tdDartBody" style="margin-top:8px"><div class="load sk"></div></div>
+    <div class="note" style="margin-top:8px">출처: 금융감독원 DART(접수일 기준, 평일 저녁 갱신). 정정 공시는 원본과 중복되어 제외합니다. 비율은 보고 직전 → 보고 후 지분율(%)입니다. 종목명을 누르면 종목상세, "공시"를 누르면 DART 원문이 열립니다.</div>
+  </div>
+
   <div class="card" id="tdFlowCard" style="margin-top:12px"><h3>수급 주체별 매수 상위 종목 <span class="r" id="tdFlowSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFlowPeriodSel">
       <button class="fchip" data-v="6m" aria-pressed="false">6개월</button>
@@ -1456,6 +1480,18 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="card" id="dDivCard" style="display:none"><h3>배당<span class="r" id="dDivSrc"></span></h3>
     <div id="dDivBody"></div>
     <div class="note">확정 = 한국투자증권(예탁원) 배당일정, <b>예상(E)</b> = 네이버 증권 연간 예상 주당배당금 − 확정분. 시가배당률 = 최근 12개월 기준일 지급 합계 ÷ 현재가, 예상배당률 = 올해 예상 합계 ÷ 현재가, 배당성향 = 최근 12개월 주당배당금 ÷ 최근 4분기 EPS 합입니다. 특별배당이 섞이면 예상 값이 크게 나올 수 있습니다.</div>
+  </div>
+
+  <div class="card" id="dDartCard" style="display:none"><h3>공시 <span class="r" id="dDartSub">DART · 최근 12개월</span></h3>
+    <div id="dDartSum" class="faint" style="font-size:12px;margin-bottom:6px"></div>
+    <div class="qf seg" id="dDartKindSel" style="margin-bottom:6px">
+      <button class="fchip" data-v="all" aria-pressed="true">전체</button>
+      <button class="fchip" data-v="HOLD5" aria-pressed="false">5% 대량보유</button>
+      <button class="fchip" data-v="INSIDER" aria-pressed="false">내부자</button>
+      <button class="fchip" data-v="ETC" aria-pressed="false">자사주·공급 부담·기타</button>
+    </div>
+    <div id="dDartBody"></div>
+    <div class="note">출처: 금융감독원 DART(접수일 기준). 정정 공시는 원본과 중복되어 제외합니다. 종류별 의미는 오늘의 종목 탭의 "공시 동향"과 같습니다.</div>
   </div>
 
   <div class="card" id="dSmCard"><h3>스마트머니 국면<span class="r" id="dSmRange"></span></h3>
@@ -4001,6 +4037,7 @@ async function loadToday(){
     const scored=universe.map(r=>({r,s:computeTodayScore(r,ctx)}))
       .sort((a,b)=>b.s.total-a.s.total).slice(0,10);
     renderTodayScoreTable(scored);
+    dartInit();
   }catch(e){
     console.error(e);
     $("#todayMktNote").textContent="불러오기 실패";
@@ -4676,6 +4713,91 @@ function topBuyer(row, sfx){
   document.addEventListener("pointerup",end);document.addEventListener("pointercancel",()=>{st=null;});
   document.addEventListener("click",e=>{if(e.target.closest(".nmh"))e.stopPropagation();},true);   // 머리글 정렬 클릭으로 새지 않게
 })();
+/* ══ 공시 동향(DART): 오늘의 종목 카드 + 종목상세 카드 공용 ══ */
+const DART_KIND_LB={HOLD5:"5% 대량보유",INSIDER:"내부자",BUYBACK:"자사주 취득",SELLBACK:"자사주 처분·해지",CANCEL:"주식 소각",SUPPLY:"공급 부담",TENDER:"공개매수",MAJOR:"최대주주 변경"};
+function dartUrl(no){return "https://dart.fss.or.kr/dsaf001/main.do?rcpNo="+no;}
+function dartMd(d){return `${+d.slice(5,7)}/${+d.slice(8,10)}`;}
+function dartNm(code,fb){if(!S._nmMap||!Object.keys(S._nmMap).length){S._nmMap={};(S.codes||[]).forEach(c=>S._nmMap[c.code]=c.name);}return S._nmMap[code]||fb||code;}
+function dartDay(n){const d=new Date(S.date?S.date+"T00:00:00Z":Date.now());d.setUTCDate(d.getUTCDate()-n);return d.toISOString().slice(0,10);}
+function dartStock(r){return `<a class="lk nm" data-code="${r.code}">${dartNm(r.code,r.corp_name)}</a>`;}
+/* 5% 보고 한 줄: 신규 / 증가 / 감소 / 이탈 판정 */
+function dartHoldInfo(r){
+  const prev=r.rt_prev==null?null:+r.rt_prev,now=r.rt_now==null?null:+r.rt_now;
+  let tag="",cls="";
+  if(now==null){return {txt:"상세 없음",cls:"dim",dir:0};}
+  const f=v=>N(v,2).replace(/\.?0+$/,m=>m.includes(".")?"":m);
+  if(prev==null||prev<=0.001){tag="신규";cls="up";return {txt:`신규 ${f(now)}`,cls,dir:1};}
+  const dir=now>prev?1:now<prev?-1:0;
+  cls=dir>0?"up":dir<0?"down":"dim";
+  let t=`${f(prev)} → ${f(now)}`;
+  if(now<5&&prev>=5)t+=" (5% 이탈)";
+  else if(now<=0.001)t+=" (전량)";
+  return {txt:t,cls,dir};
+}
+function dartHoldGroups(rows){
+  const g={};rows.forEach(r=>{(g[r.filer||"(미상)"]=g[r.filer||"(미상)"]||[]).push(r);});
+  return Object.entries(g).sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0],"ko"));
+}
+function dartHoldLine(r,showFiler){
+  const i=dartHoldInfo(r),mg=(r.report_tp&&r.report_tp.includes("경영"))||(r.report_nm||"").includes("경영참여")?" · 경영권":"";
+  return `<div class="dline">${dartStock(r)} <span class="num ${i.cls}">${i.txt}</span><span class="faint"> (${dartMd(r.rcept_dt)}${mg})</span>${showFiler?` <span class="faint">· ${r.filer||""}</span>`:""} <a class="faint" href="${dartUrl(r.rcept_no)}" target="_blank" rel="noopener">공시</a></div>`;
+}
+function dartInsiderLine(r){
+  const d=+r.shares_delta||0;
+  return `<div class="dline">${dartStock(r)} <span class="${d>0?"up":d<0?"down":"dim"}">${d>0?"매수":d<0?"매도":"변동 없음"} ${N(Math.abs(d),0)}주</span>${r.rt_now!=null?`<span class="faint"> · 보유 ${N(+r.rt_now,2)}%</span>`:""}<span class="faint"> · ${r.filer||""}${r.report_tp&&r.report_tp!=="-"?" ("+r.report_tp+")":""} · ${dartMd(r.rcept_dt)}</span> <a class="faint" href="${dartUrl(r.rcept_no)}" target="_blank" rel="noopener">공시</a></div>`;
+}
+function dartEtcLine(r){
+  const amt=r.amount?` · ${fmtEokJo(+r.amount/EOK)}`:"",sh=(r.kind==="BUYBACK"&&r.shares_delta)?` · ${N(+r.shares_delta,0)}주`:"";
+  const det=r.detail&&r.detail["기간"]?` · ${String(r.detail["기간"]).replace(/20(\d\d)년 (\d+)월 (\d+)일/g,"$1.$2.$3")}`:"";
+  const col=r.kind==="BUYBACK"||r.kind==="CANCEL"||r.kind==="TENDER"?"up":(r.kind==="SUPPLY"||r.kind==="SELLBACK"?"down":"");
+  return `<div class="dline">${dartStock(r)} <span class="${col}"><b>${DART_KIND_LB[r.kind]||r.kind}</b>${amt}${sh}</span><span class="faint">${det} · ${(r.report_nm||"").replace(/^주요사항보고서\(|\)$/g,"")} · ${dartMd(r.rcept_dt)}</span> <a class="faint" href="${dartUrl(r.rcept_no)}" target="_blank" rel="noopener">공시</a></div>`;
+}
+async function dartLoad30(){
+  if(!S._dartP)S._dartP=q("dart_filings",`select=rcept_no,rcept_dt,code,corp_name,kind,report_nm,filer,filer_type,report_tp,rt_prev,rt_now,shares_now,shares_delta,amount,detail&rcept_dt=gte.${dartDay(30)}&order=rcept_dt.desc&limit=5000`).catch(e=>{S._dartP=null;throw e;});
+  return S._dartP;
+}
+function dartRender(){
+  const K=S.dart,body=$("#tdDartBody");if(!K||!K.rows)return;
+  const since=dartDay(+K.period-1),rows=K.rows.filter(r=>r.rcept_dt>=since);
+  $("#tdDartSubWrap").style.display=K.kind==="HOLD5"?"":"none";
+  let html="",n=0;
+  if(K.kind==="HOLD5"){
+    let a=rows.filter(r=>r.kind==="HOLD5");
+    if(K.sub!=="all")a=a.filter(r=>K.sub==="기타"?!["운용사","연기금"].includes(r.filer_type):r.filer_type===K.sub);
+    n=a.length;
+    html=dartHoldGroups(a).map(([f,L],gi)=>{
+      const up=L.filter(r=>dartHoldInfo(r).dir>0).length,dn=L.filter(r=>dartHoldInfo(r).dir<0).length,ex=L.filter(r=>{const i=dartHoldInfo(r);return i.txt.includes("이탈")||i.txt.includes("전량");}).length;
+      return `<details${gi<6||L.length>=3?" open":""} style="margin:6px 0"><summary style="cursor:pointer"><b>${f}</b> <span class="faint">${L.length}건</span> <span class="up">${up?"증가·신규 "+up:""}</span> <span class="down">${dn?"감소 "+dn:""}${ex?" · 이탈 "+ex:""}</span></summary><div style="padding-left:12px">${L.map(r=>dartHoldLine(r,false)).join("")}</div></details>`;
+    }).join("");
+  }else if(K.kind==="INSIDER"){
+    const a=rows.filter(r=>r.kind==="INSIDER"&&+r.shares_delta!==0).sort((x,y)=>y.rcept_dt<x.rcept_dt?-1:y.rcept_dt>x.rcept_dt?1:0);
+    n=a.length;
+    const buys=a.filter(r=>+r.shares_delta>0),sells=a.filter(r=>+r.shares_delta<0);
+    html=`<div class="faint" style="margin-bottom:4px">매수 ${buys.length}건 · 매도 ${sells.length}건 (증감 주식수가 있는 보고만)</div>`+
+      (buys.length?`<div style="margin:6px 0 2px"><b class="up">매수</b></div>`+buys.map(dartInsiderLine).join(""):"")+
+      (sells.length?`<div style="margin:8px 0 2px"><b class="down">매도</b></div>`+sells.map(dartInsiderLine).join(""):"");
+  }else if(K.kind==="BUYBACK"){
+    const a=rows.filter(r=>r.kind==="BUYBACK");n=a.length;html=a.map(dartEtcLine).join("");
+  }else{
+    const a=rows.filter(r=>!["HOLD5","INSIDER","BUYBACK"].includes(r.kind));n=a.length;html=a.map(dartEtcLine).join("");
+  }
+  body.innerHTML=html||'<div class="load">해당 기간 공시가 없습니다</div>';
+  body.querySelectorAll("a.lk[data-code]").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+  $("#tdDartSub").textContent=`DART 전자공시 · ${DART_KIND_LB[K.kind]||"공급 부담·기타"} ${n}건 · 최근 ${K.period}일(접수일 기준)`;
+}
+async function dartInit(){
+  if(!S.dart)S.dart={rows:null,kind:"HOLD5",period:"7",sub:"운용사"};
+  const K=S.dart;
+  if(!S._dartWired){
+    S._dartWired=true;
+    $("#tdDartKindSel").addEventListener("seg-change",e=>{K.kind=e.detail;dartRender();});
+    $("#tdDartPeriodSel").addEventListener("seg-change",e=>{K.period=e.detail;dartRender();});
+    $("#tdDartSubSel").addEventListener("seg-change",e=>{K.sub=e.detail;dartRender();});
+  }
+  try{K.rows=await dartLoad30();dartRender();}
+  catch(e){console.error("공시 동향",e);$("#tdDartBody").innerHTML='<div class="load">공시 데이터를 불러오지 못했습니다 (수집 전일 수 있음)</div>';}
+}
+
 /* ══ 매집(키움 보유계좌수) 6월·8월 대비 비율 — 종목 표 공용 ══ */
 function kwBaseOf(dates,m){const a=dates.filter(d=>+d.slice(5,7)===m);return a.length?a[0]:null;}
 function kwLoadMap(){
@@ -4984,7 +5106,7 @@ function renderRangeCharts(){
     volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
       {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
     try{renderMaCard();}catch(e){console.error("ma card",e);}
-    $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";
+    $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";$("#dDartCard").style.display="none";
     return;
   }
   const profIndiv=buildPriceProfile(rp,24,r=>+r.individual_net||0);
@@ -5019,6 +5141,7 @@ function renderRangeCharts(){
   try{renderMaCard();}catch(e){console.error("ma card",e);}
   try{renderEarnCard();}catch(e){console.error("earn card",e);}
   try{renderDivCard();}catch(e){console.error("div card",e);}
+  try{renderDartCard();}catch(e){console.error("dart card",e);}
   try{renderDailyFlow();}catch(e){console.error("daily flow table",e);}
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
@@ -5922,6 +6045,38 @@ function divAnnotate(rows,all,asof){
     r.div_yld=m.yld;r.div_yld_e=m.exp?m.exp.yld:null;
   });
 }
+/* 종목상세 공시 카드(DART 최근 12개월) */
+S.dDartKind="all";
+async function renderDartCard(){
+  const card=$("#dDartCard"),code=S.chart&&S.chart.code;
+  if(!code){card.style.display="none";return;}
+  let rows;
+  try{rows=await q("dart_filings",`select=rcept_no,rcept_dt,code,corp_name,kind,report_nm,filer,filer_type,report_tp,rt_prev,rt_now,shares_delta,amount,detail&code=eq.${code}&rcept_dt=gte.${dartDay(365)}&order=rcept_dt.desc&limit=300`);}
+  catch(e){rows=[];}
+  if(S.chart.code!==code)return;
+  S._dDart=rows;
+  if(!rows.length){card.style.display="none";return;}
+  card.style.display="";
+  S.dDartKind="all";[...$("#dDartKindSel").querySelectorAll(".fchip")].forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v==="all")));
+  const d90=dartDay(90),r90=rows.filter(r=>r.rcept_dt>=d90),h=r90.filter(r=>r.kind==="HOLD5"),hi=h.filter(r=>dartHoldInfo(r).dir>0).length,hd=h.filter(r=>dartHoldInfo(r).dir<0).length;
+  const ins=r90.filter(r=>r.kind==="INSIDER"),buy=ins.filter(r=>+r.shares_delta>0).reduce((a,r)=>a+ +r.shares_delta,0),sell=ins.filter(r=>+r.shares_delta<0).reduce((a,r)=>a-+r.shares_delta,0);
+  const bb=r90.filter(r=>r.kind==="BUYBACK").length,sp=r90.filter(r=>r.kind==="SUPPLY").length;
+  $("#dDartSum").innerHTML=`최근 90일 — 5% 보고 ${h.length}건 (<span class="up">증가·신규 ${hi}</span> · <span class="down">감소 ${hd}</span>) · 내부자 <span class="up">매수 ${N(buy,0)}주</span> / <span class="down">매도 ${N(sell,0)}주</span> · 자사주 취득 ${bb}건 · 공급 부담 ${sp}건`;
+  dartDetailRender();
+}
+function dartDetailRender(){
+  const rows=(S._dDart||[]).filter(r=>S.dDartKind==="all"||(S.dDartKind==="ETC"?!["HOLD5","INSIDER"].includes(r.kind):r.kind===S.dDartKind));
+  const line=r=>{
+    let c="";
+    if(r.kind==="HOLD5"){const i=dartHoldInfo(r);c=`<b>${r.filer||""}</b> <span class="faint">${r.filer_type||""}${r.report_tp?" · "+r.report_tp:""}</span> <span class="num ${i.cls}">${i.txt}</span>`;}
+    else if(r.kind==="INSIDER"){const d=+r.shares_delta||0;c=`<b>${r.filer||""}</b> <span class="faint">${r.report_tp&&r.report_tp!=="-"?r.report_tp:""}</span> <span class="${d>0?"up":d<0?"down":"dim"}">${d>0?"매수":d<0?"매도":"변동 없음"} ${N(Math.abs(d),0)}주</span>${r.rt_now!=null?`<span class="faint"> · 보유 ${N(+r.rt_now,2)}%</span>`:""}`;}
+    else{const amt=r.amount?` · ${fmtEokJo(+r.amount/EOK)}`:"";c=`<b>${DART_KIND_LB[r.kind]||r.kind}</b>${amt} <span class="faint">${(r.report_nm||"").replace(/^주요사항보고서\(|\)$/g,"")}</span>`;}
+    return `<tr><td class="l">${r.rcept_dt.slice(2).replace(/-/g,".")}</td><td class="l">${DART_KIND_LB[r.kind]||r.kind}</td><td class="l" style="white-space:normal">${c}</td><td><a class="faint" href="${dartUrl(r.rcept_no)}" target="_blank" rel="noopener">원문</a></td></tr>`;
+  };
+  $("#dDartBody").innerHTML=rows.length?`<div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">접수일</th><th class="l">종류</th><th class="l">내용</th><th></th></tr></thead><tbody>${rows.slice(0,60).map(line).join("")}</tbody></table></div>${rows.length>60?`<div class="faint" style="font-size:11px">최근 60건만 표시 (전체 ${rows.length}건)</div>`:""}`:'<div class="load">해당 공시가 없습니다</div>';
+}
+$("#dDartKindSel").addEventListener("seg-change",e=>{S.dDartKind=e.detail;dartDetailRender();});
+
 async function renderDivCard(){
   const card=$("#dDivCard"),code=S.chart&&S.chart.code;
   if(!code||S.chart.etf){card.style.display="none";return;}
@@ -7505,7 +7660,7 @@ function kRangeCharts(){
   try{renderSmCard();}catch(e){console.error("kospi sm",e);}
   $("#dSmHead").innerHTML=$("#dSmHead").innerHTML.replace(/(\d)원/g,"$1");   // 지수는 "원"이 아니라 포인트
   try{renderMaCard();}catch(e){console.error("kospi ma",e);}
-  $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";
+  $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";$("#dDartCard").style.display="none";
   try{renderDailyFlow();}catch(e){console.error("kospi daily",e);}
 }
 function kMount(){
