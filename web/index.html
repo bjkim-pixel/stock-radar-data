@@ -4701,11 +4701,13 @@ async function loadDetail(code){
     <div style="display:flex;flex-direction:column;gap:2px">
       <div class="num ${sgn(+last.change_pct)}" style="font-size:14px;font-weight:640">${pm(+last.change_pct)}%</div>
       <div class="faint num" style="font-size:12px">${sum.market_cap!=null?N(+sum.market_cap/JO,1)+"조":"–"}</div>
+      ${isEtf?"":'<div class="faint num" id="dPer" style="font-size:12px;display:none"></div>'}
     </div>
     <div style="display:flex;flex-direction:column;gap:2px">
       <div class="faint" style="font-size:12px">${sum.sector||"–"}</div>
       <div class="faint" style="font-size:12px">${isEtf?(sum.etf_field||"ETF"):"업종RS "+(sum.sector_rs_rank?sum.sector_rs_rank+"위":"–")}</div>
     </div>`;
+  if(!isEtf)perFill(code,+last.close,$("#dPer"));
   const cpb=$("#dCopyName");
   if(cpb)cpb.onclick=async()=>{
     const nm=sum.name||code;
@@ -5527,6 +5529,19 @@ function maMonthAxis(rows,idx){
 S.earnFreq="A";S.earnCache={};
 const earnEok=v=>v==null?"–":(Math.abs(v)>=10000?N(v/10000,1)+"조":N(v,0)+"억");
 const earnPct=(v,b)=>(v==null||b==null||b<=0)?null:(v-b)/b*100;
+/* 26년 추정 PER = 현재 종가 ÷ 2026 연간 예상 EPS (정수 배). EPS가 없으면 null, 0 이하(적자)면 "적자" */
+function earnPer(rows,close){
+  const r=(rows||[]).find(x=>x.freq==="A"&&x.period==="202612");
+  if(!r||r.eps==null||!(close>0))return null;
+  const e=+r.eps;
+  return e>0?Math.round(close/e)+"배":"적자";
+}
+async function perFill(code,close,el){
+  if(!el)return;
+  try{const t=earnPer(await earnRows(code),close);
+    if(t!=null){el.textContent=`26E PER ${t}`;el.title="현재 종가 ÷ 2026년 예상 EPS(네이버 컨센서스)";el.style.display="";}
+    else el.style.display="none";}catch(e){el.style.display="none";}
+}
 async function earnRows(code){
   let rows=S.earnCache[code];
   if(!rows){
@@ -5894,8 +5909,10 @@ function renderPairCard(code,sum,rows,flowRow){
       <span>시총 ${sum.market_cap!=null?N(+sum.market_cap/JO,1)+"조":"–"}</span>
       <span>${sum.sector||"–"}</span>
       <span>업종RS ${sum.sector_rs_rank?sum.sector_rs_rank+"위":"–"}</span>
+      <span id="pcPer_${code}" style="display:none"></span>
     </div>`;
   headEl.querySelector(".pc-name").onclick=()=>{go("detail",code);};
+  perFill(code,+last.close,$("#pcPer_"+code));
 
   const maxClose=Math.max(...rpUse.map(r=>+r.close));
   lineChart($("#pcPrice_"+code),[
