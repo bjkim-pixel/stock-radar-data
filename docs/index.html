@@ -1436,6 +1436,11 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       네이버가 제공하는 예상치는 올해 연간과 다음 분기 1개입니다. 증감률은 연간은 전년 대비, 분기는 전년 동기 대비입니다.</div>
   </div>
 
+  <div class="card" id="dDivCard" style="display:none"><h3>배당<span class="r" id="dDivSrc"></span></h3>
+    <div id="dDivBody"></div>
+    <div class="note">확정 = 한국투자증권(예탁원) 배당일정, <b>예상(E)</b> = 네이버 증권 연간 예상 주당배당금 − 확정분. 시가배당률 = 최근 12개월 기준일 지급 합계 ÷ 현재가, 예상배당률 = 올해 예상 합계 ÷ 현재가, 배당성향 = 최근 12개월 주당배당금 ÷ 최근 4분기 EPS 합입니다. 특별배당이 섞이면 예상 값이 크게 나올 수 있습니다.</div>
+  </div>
+
   <div class="card" id="dSmCard"><h3>스마트머니 국면<span class="r" id="dSmRange"></span></h3>
     <div id="dSmCtl" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"></div>
     <div class="smhead" id="dSmHead"></div>
@@ -4957,7 +4962,7 @@ function renderRangeCharts(){
     volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
       {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
     try{renderMaCard();}catch(e){console.error("ma card",e);}
-    $("#dEarnCard").style.display="none";
+    $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";
     return;
   }
   const profIndiv=buildPriceProfile(rp,24,r=>+r.individual_net||0);
@@ -4991,6 +4996,7 @@ function renderRangeCharts(){
   try{renderSmCard();}catch(e){console.error("smart money card",e);}
   try{renderMaCard();}catch(e){console.error("ma card",e);}
   try{renderEarnCard();}catch(e){console.error("earn card",e);}
+  try{renderDivCard();}catch(e){console.error("div card",e);}
   try{renderDailyFlow();}catch(e){console.error("daily flow table",e);}
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
@@ -5750,8 +5756,8 @@ async function perFill(code,close,el){
 async function earnRows(code){
   let rows=S.earnCache[code];
   if(!rows){
-    try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,updated_at&code=eq.${code}&order=period.asc`);}
-    catch(e){rows=[];}
+    try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,dps,updated_at&code=eq.${code}&order=period.asc`);}
+    catch(e){try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,updated_at&code=eq.${code}&order=period.asc`);}catch(e2){rows=[];}}
     S.earnCache[code]=rows;
   }
   return rows;
@@ -5774,6 +5780,82 @@ function earnTable(rows,freq,maxQ){
     row("순이익","net_income",earnEok,false)+row("EPS(원)","eps",v=>N(v,0),true)+row("BPS(원)","bps",v=>N(v,0),false)+row("ROE","roe",v=>N(v,1)+"%",false);
   const ests=list.filter(r=>r.is_est&&r.updated_at).map(r=>r.updated_at).sort();
   return {head,body,est:list.some(r=>r.is_est),n:list.length,estAt:ests.length?ests.at(-1):null};
+}
+/* ══ 배당(종목상세 카드·짝꿍매매 카드 공용): 확정 = KIS 예탁원(stock_dividends), 예상 = 네이버 연간 예상 − 확정분 ══ */
+S.divCache=S.divCache||{};
+async function divRows(code){
+  if(!S.divCache[code]){
+    try{S.divCache[code]=await q("stock_dividends",`select=record_date,divi_kind,dps,pay_date&code=eq.${code}&order=record_date.desc&limit=60`);}
+    catch(e){S.divCache[code]=[];}
+  }
+  return S.divCache[code];
+}
+function divDate(d){return d?d.slice(2).replace(/-/g,"."):"–";}
+function divAddMonths(ds,m){const d=new Date(ds+"T00:00:00Z");d.setUTCMonth(d.getUTCMonth()+m);return d.toISOString().slice(0,10);}
+/* 계산: rows=확정 배당(기준일 내림차순), er=stock_earnings 행들, close=현재가, asof=기준일(YYYY-MM-DD) */
+function divModel(rows,er,close,asof){
+  const D=rows.map(r=>({rd:r.record_date,kind:r.divi_kind,dps:+r.dps,pay:r.pay_date})).filter(r=>r.dps>0);
+  const past=D.filter(r=>r.rd<=asof),fut=D.filter(r=>r.rd>asof).sort((a,b)=>a.rd<b.rd?-1:1);
+  const since=divAddMonths(asof,-12);
+  const ttmRows=past.filter(r=>r.rd>since),ttm=ttmRows.reduce((a,r)=>a+r.dps,0);
+  const yld=close>0&&ttm>0?ttm/close*100:null;
+  // 예상: 가장 최근의 연간 예상(E) 행의 주당배당금
+  const est=(er||[]).filter(r=>r.freq==="A"&&r.is_est&&r.dps!=null&&+r.dps>0).sort((a,b)=>a.period<b.period?-1:1).at(-1);
+  let exp=null;
+  if(est){
+    const p=est.period,pEnd=divAddMonths(p.slice(0,4)+"-"+p.slice(4)+"-01",1).slice(0,10),pStart=divAddMonths(pEnd,-12);   // 결산월 말일까지(익월 1일 미만)
+    const conf=D.filter(r=>r.rd>=pStart&&r.rd<pEnd).reduce((a,r)=>a+r.dps,0);
+    const tot=Math.max(+est.dps,conf);
+    exp={period:p,total:tot,conf,rem:Math.max(0,+est.dps-conf),yld:close>0?tot/close*100:null,stale:+est.dps<conf};
+  }
+  // 배당성향: 최근 12개월 DPS ÷ 최근 4개 확정 분기 EPS 합
+  const q4=(er||[]).filter(r=>r.freq==="Q"&&!r.is_est&&r.eps!=null).sort((a,b)=>a.period<b.period?-1:1).slice(-4);
+  const eps4=q4.length===4?q4.reduce((a,r)=>a+ +r.eps,0):null;
+  const payout=ttm>0&&eps4>0?ttm/eps4*100:null;
+  const cycle=ttmRows.length>=3?"분기":ttmRows.length===2?"반기":ttmRows.length===1?"연 1회":null;
+  return {D,past,fut,ttm,yld,exp,payout,cycle,next:fut[0]||null,last:past[0]||null};
+}
+function divSummaryHtml(m){
+  const T=(lb,v,sub)=>`<div class="tile"><div class="lb">${lb}</div><div class="vl" style="font-size:16px">${v}</div>${sub?`<div class="faint" style="font-size:10px">${sub}</div>`:""}</div>`;
+  const f1=v=>v==null?"–":N(v,1)+"%";
+  return `<div class="tiles" style="margin-bottom:8px">`+
+    T("시가배당률",f1(m.yld),"최근 12개월"+(m.cycle?" · "+m.cycle:""))+
+    T("예상배당률",m.exp?f1(m.exp.yld):"–",m.exp?`${m.exp.period.slice(0,4)}년 예상 ${N(m.exp.total,0)}원`+(m.exp.stale?" (확정이 더 큼)":""):"예상치 없음")+
+    T("최근 주당배당금",m.last?N(m.last.dps,0)+"원":"–",m.last?`${m.last.kind||""} · 기준일 ${divDate(m.last.rd)}`:"")+
+    T("배당성향",m.payout==null?"–":N(m.payout,0)+"%","최근 12개월 DPS ÷ 4분기 EPS")+`</div>`;
+}
+function divSchedHtml(m){
+  const n=m.next;
+  return `<div class="faint" style="font-size:12px;margin:2px 0 8px">다음 일정: ${n?`기준일 <b>${divDate(n.rd)}</b> · ${N(n.dps,0)}원 · 지급 ${n.pay?divDate(n.pay):"미정"} <span class="tag-d">확정</span>`:"확정된 예정 배당 없음"}${m.exp&&m.exp.rem>0?` · 올해 남은 예상 <b>${N(m.exp.rem,0)}원</b> <span class="tag-d b">E</span>`:""}</div>`;
+}
+function divTableHtml(m,n){
+  const list=[...m.fut.slice().reverse(),...m.past].slice(0,n||8);
+  const rows=list.map(r=>`<tr><td class="l">${divDate(r.rd)}</td><td class="l">${r.kind||"–"}</td><td class="num">${N(r.dps,0)}원</td><td>${r.pay?divDate(r.pay):"–"}</td><td>${r.rd>(S.date||new Date().toISOString().slice(0,10))?'<span class="tag-d">예정</span>':"확정"}</td></tr>`);
+  const e=m.exp&&m.exp.rem>0?`<tr style="background:var(--surface-2)"><td class="l">${m.exp.period.slice(0,4)}년 남은 예상</td><td class="l">–</td><td class="num">${N(m.exp.rem,0)}원</td><td>–</td><td><span class="tag-d b">E</span></td></tr>`:"";
+  if(!rows.length&&!e)return "";
+  return `<div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">기준일</th><th class="l">구분</th><th>주당배당금</th><th>지급일</th><th>상태</th></tr></thead><tbody>${e}${rows.join("")}</tbody></table></div>`;
+}
+async function renderDivCard(){
+  const card=$("#dDivCard"),code=S.chart&&S.chart.code;
+  if(!code||S.chart.etf){card.style.display="none";return;}
+  const [rows,er]=await Promise.all([divRows(code),earnRows(code)]);
+  if(S.chart.code!==code)return;
+  const close=+(S.chart.rows&&S.chart.rows.at(-1)||{}).close;
+  const m=divModel(rows,er,close,S.date||new Date().toISOString().slice(0,10));
+  if(!m.D.length&&!m.exp){card.style.display="none";return;}
+  card.style.display="";
+  $("#dDivBody").innerHTML=divSummaryHtml(m)+divSchedHtml(m)+divTableHtml(m,8);
+  $("#dDivSrc").textContent=m.exp?"E = 네이버 예상":"";
+}
+async function pcDivRender(code,close){
+  const el=$("#pcDiv_"+code);if(!el)return;
+  const [rows,er]=await Promise.all([divRows(code),earnRows(code)]);
+  const m=divModel(rows,er,close,S.date||new Date().toISOString().slice(0,10));
+  if(!m.D.length&&!m.exp){el.innerHTML='<div class="load">배당 정보 없음</div>';return;}
+  const t=divTableHtml(m,6);
+  el.innerHTML=`<div style="font-size:12px;line-height:1.6">배당 <b>${m.yld==null?"–":N(m.yld,1)+"%"}</b>${m.exp?` · 예상 <b>${m.exp.yld==null?"–":N(m.exp.yld,1)+"%"}</b> <span class="tag-d b">E</span>`:""}${m.payout!=null?` · 성향 ${N(m.payout,0)}%`:""}${m.cycle?` · ${m.cycle}`:""}</div>
+    <div class="faint" style="font-size:10.5px">${m.next?`다음 기준일 ${divDate(m.next.rd)} ${N(m.next.dps,0)}원`:(m.last?`최근 ${divDate(m.last.rd)} ${N(m.last.dps,0)}원`:"")}</div>`
+    +(t?`<details style="margin-top:4px"><summary class="faint" style="font-size:11px;cursor:pointer">배당 내역</summary>${t}</details>`:"");
 }
 async function renderEarnCard(){
   const card=$("#dEarnCard"),code=S.chart&&S.chart.code;
@@ -6026,6 +6108,7 @@ async function selectPairSector(sec){
 const PAIR_SECTIONS=[
   ["head",null],
   ["earn","실적 · 예상실적"],
+  ["div","배당"],
   ["price","가격 · 이동평균"],
   ["weight","무게/주식수"],
   ["vol","거래량"],
@@ -6044,6 +6127,8 @@ function pairSectionCellHtml(id,title,code){
     return `<div class="pc-cell"><h5>${title}<span class="pc-earn-set" style="margin-left:8px">
         <button type="button" class="pbtn" data-v="A" aria-pressed="${S.earnFreq==="A"}" onclick="pcEarnToggle('A')">연간</button><button type="button" class="pbtn" data-v="Q" aria-pressed="${S.earnFreq==="Q"}" onclick="pcEarnToggle('Q')">분기</button></span></h5>
       <div class="pc-earn" id="pcEarn_${code}" data-code="${code}"><div class="load sk"></div></div></div>`;
+  if(id==="div")
+    return `<div class="pc-cell"><h5>${title}</h5><div class="pc-div" id="pcDiv_${code}" data-code="${code}"><div class="load sk"></div></div></div>`;
   if(id==="profile"||id==="profileInst")
     return `<div class="pc-cell"><h5>${title}</h5>
       <div class="chart" id="pc${pcCap(id)}_${code}"><div class="load sk"></div></div>
@@ -6146,6 +6231,7 @@ function renderPairCard(code,sum,rows,flowRow){
   kwLoadMap().then(m=>{const e=$("#pcKw_"+code),v=m[code];if(e&&v)e.innerHTML=`매집 6월 <b style="${kwStyle(v.r6)}">${kwFmt(v.r6)}</b> · 8월 <b style="${kwStyle(v.r8)}">${kwFmt(v.r8)}</b>`;});
   headEl.querySelector(".pc-name").onclick=()=>{go("detail",code);};
   perFill(code,+last.close,$("#pcPer_"+code));
+  pcDivRender(code,+last.close).catch(()=>{const e=$("#pcDiv_"+code);if(e)e.innerHTML='<div class="load">불러오기 실패</div>';});
 
   const maxClose=Math.max(...rpUse.map(r=>+r.close));
   lineChart($("#pcPrice_"+code),[
@@ -7332,7 +7418,7 @@ function kRangeCharts(){
   try{renderSmCard();}catch(e){console.error("kospi sm",e);}
   $("#dSmHead").innerHTML=$("#dSmHead").innerHTML.replace(/(\d)원/g,"$1");   // 지수는 "원"이 아니라 포인트
   try{renderMaCard();}catch(e){console.error("kospi ma",e);}
-  $("#dEarnCard").style.display="none";
+  $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";
   try{renderDailyFlow();}catch(e){console.error("kospi daily",e);}
 }
 function kMount(){

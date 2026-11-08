@@ -45,7 +45,7 @@ def naver(code,per):
             time.sleep(1.5)
         except Exception: time.sleep(1.5)
     return {}
-F=("sales","op_profit","net_income","eps","bps","roe")
+F=("sales","op_profit","net_income","eps","bps","roe","dps")
 def merge(d,key,vals,est,src):
     row=d.setdefault(key,{"is_est":est,"src":src,**{f:None for f in F}})
     for f,v in vals.items():
@@ -63,7 +63,7 @@ def build(code,full):
             if int(k[:4])<FROM_YEAR: continue
             if MODE=="est" and c.get("isConsensus")!="Y": continue
             g=lambda t:num((rows.get(t,{}).get(k) or {}).get("value"))
-            merge(out,(fq,k),{"sales":g("매출액"),"op_profit":g("영업이익"),"net_income":g("당기순이익"),"eps":g("EPS"),"roe":g("ROE")},c.get("isConsensus")=="Y","naver")
+            merge(out,(fq,k),{"sales":g("매출액"),"op_profit":g("영업이익"),"net_income":g("당기순이익"),"eps":g("EPS"),"roe":g("ROE"),"dps":g("주당배당금")},c.get("isConsensus")=="Y","naver")
     if MODE=="est": return out
     # 2) KIS 확정 실적 (네이버보다 우선: 매출·영업이익·순이익·EPS·BPS·ROE)
     ia=kis("/uapi/domestic-stock/v1/finance/income-statement","FHKST66430200",code,"0")
@@ -116,9 +116,9 @@ for i,code in enumerate(codes,1):
             if MODE=="est" or not full: ok+=1; continue     # 컨센서스 없음 / 새로 공시된 분기 없음은 정상
             raise RuntimeError("no data")
         vals=[(code,fq,k,v["is_est"],*[v[f] for f in F],v["src"]) for (fq,k),v in d.items()]
-        execute_values(cur,"""insert into stock_earnings(code,freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,src) values %s
+        execute_values(cur,"""insert into stock_earnings(code,freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,dps,src) values %s
           on conflict(code,freq,period) do update set is_est=excluded.is_est,sales=excluded.sales,op_profit=excluded.op_profit,
-          net_income=excluded.net_income,eps=excluded.eps,bps=excluded.bps,roe=excluded.roe,src=excluded.src,updated_at=now()
+          net_income=excluded.net_income,eps=excluded.eps,bps=excluded.bps,roe=excluded.roe,dps=coalesce(excluded.dps,stock_earnings.dps),src=excluded.src,updated_at=now()
           where """+COND,vals)
         ok+=1; nrows+=len(vals); est+=sum(1 for v in vals if v[3])
     except Exception as e:

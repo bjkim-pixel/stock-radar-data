@@ -1,0 +1,35 @@
+name: "[수집] 종목 배당 일정(확정) | 평일 20:20 KST | KIS 예탁원"
+# 기준일 120일 이내·예정 행만 갱신(과거 배당은 고정). KIS 호출이라 다른 KIS 배치와 같은 concurrency 그룹을 씁니다.
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: '테스트용 종목 수 제한(0=전체)'
+        default: '0'
+  schedule:
+    - cron: '20 11 * * 1-5'   # 20:20 KST 평일 (예상실적 20:10 작업 뒤)
+permissions:
+  contents: write
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - run: python 132_dividend_collect.py "${{ github.event.inputs.limit || '0' }}"
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: dividend-report
+          file: dividend_report.md

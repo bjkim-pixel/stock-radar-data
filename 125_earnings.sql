@@ -26,3 +26,5 @@ begin
   exception when undefined_object then null;
   end;
 end $$;
+
+alter table stock_earnings add column if not exists dps numeric;   -- 네이버 주당배당금(원, 예상 연간 포함)
