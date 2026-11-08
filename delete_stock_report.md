@@ -1,0 +1,12 @@
+# 종목 삭제 결과 496320 본시스템즈
+- 대상: ('496320', '본시스템즈', 'KONEX', 'STOCK', True)
+- daily_flow: 255행 삭제
+- daily_metrics: 209행 삭제
+- daily_price: 285행 삭제
+- daily_program: 285행 삭제
+- flow_cap_ratio: 1행 삭제
+- sector_override: 1행 삭제
+- smart_money_state: 1행 삭제
+- stock_earnings: 2행 삭제
+- stocks: 1행 삭제
+- 확인: 남은 stocks 행 0
