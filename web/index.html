@@ -1137,7 +1137,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 사모 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 날짜 아래 숫자 = 그날 사모 합</div>
   </div>
 
-  <div class="card" id="peTopCard"><h3>사모 매수 상위 종목 <span class="r" id="peTopSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
+  <div class="card" id="peTopCard"><h3>사모 매수·매도 상위 종목 <span class="r" id="peTopSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="peTopPeriodSel">
       <button class="fchip" data-v="6m" aria-pressed="false">6개월</button>
       <button class="fchip" data-v="3m" aria-pressed="false">3개월</button>
@@ -1151,13 +1151,11 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <button class="fchip" data-v="amt" aria-pressed="true">절대금액순</button>
       <button class="fchip" data-v="ratio">시가총액 대비 비중순</button>
     </div></div>
-    <div class="tw scrlike" style="margin-top:10px"><table><thead id="peTopHead"></thead><tbody id="peTopBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
-    <div class="note">동일 유동성 필터(시총 1천억원 이상) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 볼 수 있습니다)</div>
-  </div>
-
-  <div class="card" id="peRankCard"><h3>사모 시가총액 대비 매수·매도 순위 <span class="r" id="peRankSub"></span></h3>
-    <div id="peRankGrid" class="flow-subj-grid scrlike"></div>
-    <div class="note">기간은 위 "사모 매수 상위 종목"의 기간 선택을 따릅니다 · 순매수 거래대금 ÷ 시가총액 · 시총 1천억원 이상</div>
+    <div class="flow-subj-sub" id="peBuyLb" style="margin-top:10px">순매수 상위</div>
+    <div class="tw scrlike"><table><thead id="peTopHead"></thead><tbody id="peTopBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="flow-subj-sub" id="peSellLb" style="margin-top:14px">순매도 상위</div>
+    <div class="tw scrlike"><table><thead id="peSellHead"></thead><tbody id="peSellBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="note">동일 유동성 필터(시총 1천억원 이상) 적용 · 정렬이 "절대금액순"이면 순매수·순매도 금액 큰 순, "시가총액 대비 비중순"이면 순매수·순매도 금액 ÷ 시가총액이 큰 순 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 볼 수 있습니다)</div>
   </div>
 </section>
 
@@ -5007,7 +5005,7 @@ function peOpen(){
     S._peOpen=true;
     peBind();
     peLoadTimeline().catch(e=>{console.error("사모 타임라인",e);$("#peTlBody").innerHTML='<div class="load">불러오기 실패 — Actions의 Post Compute(sectorflow)가 사모 열을 채운 뒤 표시됩니다.</div>';});
-    loadFlowRawData().then(raw=>{S.peRaw=raw;peRenderTop();peRenderRank();})
+    loadFlowRawData().then(raw=>{S.peRaw=raw;peRenderTop();})
       .catch(e=>{console.error("사모 상위",e);$("#peTopBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});
   }
   peLoadChart().catch(e=>{console.error("사모 차트",e);$("#peHead").innerHTML='<div class="load">불러오기 실패</div>';});
@@ -5020,7 +5018,7 @@ function peBind(){
   $("#peTlPrev").onclick=()=>peTlStep(-1);$("#peTlNext").onclick=()=>peTlStep(1);
   $("#peTlLast").onclick=()=>{S.peTlScroll=1e9;const e=$("#peTlBody .tl-scroll");if(e)e.scrollLeft=1e9;};
   $("#peTlBody").addEventListener("click",e=>{const cell=e.target.closest(".tl-cell");if(cell)peTlDetail(+cell.dataset.r,+cell.dataset.c);});
-  $("#peTopPeriodSel").addEventListener("seg-change",e=>{S.peTopPeriod=e.detail;peRenderTop();peRenderRank();});
+  $("#peTopPeriodSel").addEventListener("seg-change",e=>{S.peTopPeriod=e.detail;peRenderTop();});
   $("#peTopSortSel").addEventListener("seg-change",e=>{S.peTopSort=e.detail;peRenderTop();});
   addEventListener("resize",()=>{clearTimeout(S._peRz);S._peRz=setTimeout(()=>{if(S.curTab!=="pe")return;if(S.peRows)peRenderChart();if(S.pe_tl&&S.pe_tl.length)peRenderTimeline();},150);});
 }
@@ -5166,24 +5164,21 @@ function peRowsFor(){
 }
 function peRenderTop(){
   if(!S.peRaw)return;
-  const th=$("#peTopHead");if(!th.innerHTML)th.innerHTML=scrThead('<th>순매수(억)</th><th>시총대비</th>');
+  if(!$("#peTopHead").innerHTML)$("#peTopHead").innerHTML=scrThead('<th>순매수(억)</th><th>시총대비</th>');
+  if(!$("#peSellHead").innerHTML)$("#peSellHead").innerHTML=scrThead('<th>순매도(억)</th><th>시총대비</th>');
   const plb=FLOW_PERIOD[S.peTopPeriod]||"오늘";
   $("#peTopSub").textContent=`${S.peTopPeriod==="1d"?"오늘 1일":plb+" 누적"} 기준 · 시가총액 1천억원 이상`;
-  const rows=peRowsFor().filter(r=>r.v>0).sort((a,b)=>S.peTopSort==="ratio"?(b.ratio-a.ratio):(b.v-a.v)).slice(0,10);
-  $("#peTopBody").innerHTML=rows.length?rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
+  const all=peRowsFor(),byRatio=S.peTopSort==="ratio";
+  const buy=all.filter(r=>r.v>0).sort((a,b)=>byRatio?(b.ratio-a.ratio):(b.v-a.v)).slice(0,10);
+  const sell=all.filter(r=>r.v<0).sort((a,b)=>byRatio?(a.ratio-b.ratio):(a.v-b.v)).slice(0,10);
+  const body=rows=>rows.length?rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
       <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td><td class="${sgn(r.ratio)}">${r.ratio!=null?pm(r.ratio,2)+"%":"–"}</td>${scrCells(r)}</tr>`).join("")
     :'<tr><td colspan="30" class="load">해당 없음</td></tr>';
-  $$("#peTopBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
-  makeSortable("peTopBody");
-}
-function peRenderRank(){
-  if(!S.peRaw)return;
-  const withR=peRowsFor().filter(r=>r.ratio!=null).sort((a,b)=>b.ratio-a.ratio);
-  const buy=withR.slice(0,FLOW_RANK_N),sell=withR.slice(-FLOW_RANK_N).reverse();
-  $("#peRankSub").textContent=`${FLOW_PERIOD[S.peTopPeriod]||"오늘"} 누적 · ${S.date||""}`;
-  $("#peRankGrid").innerHTML=`<div class="flow-subj-panel"><div class="flow-subj-tables">${flowSubjTableHTML(buy,"시총대비 매수순위","peRk_buy")}${flowSubjTableHTML(sell,"시총대비 매도순위","peRk_sell")}</div></div>`;
-  $$("#peRankGrid a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
-  makeSortable("peRk_buy");makeSortable("peRk_sell");
+  $("#peBuyLb").textContent=byRatio?"시총대비 매수순위":"순매수 상위";
+  $("#peSellLb").textContent=byRatio?"시총대비 매도순위":"순매도 상위";
+  $("#peTopBody").innerHTML=body(buy);$("#peSellBody").innerHTML=body(sell);
+  $$("#peTopBody a.lk,#peSellBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+  makeSortable("peTopBody");makeSortable("peSellBody");
 }
 
 // 단계 막대 ①②③④ — 현재 칸은 진하게, 지나온 칸은 옅게, 중립이면 모두 빈 칸
