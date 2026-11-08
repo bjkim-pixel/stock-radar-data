@@ -432,6 +432,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .pc-stat{font-size:10.5px;color:var(--ink-3);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
 .pc-cell h5{font-size:10px;color:var(--ink-3);font-weight:650;letter-spacing:.03em;
   margin:0 0 5px;text-transform:uppercase}
+.pc-cell h5{white-space:nowrap}
+.pc-earn-set .pbtn{padding:1px 7px;font-size:10px;min-height:0;height:auto;line-height:1.5;margin-left:3px;border-radius:999px}
 .pc-cell .pbucket{font-size:10.5px;color:var(--ink-2);line-height:1.7}
 .pc-cell table{font-size:10.5px}
 .pc-cell td,.pc-cell th{padding:5px 6px;white-space:nowrap}
@@ -1257,10 +1259,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 <section id="v-pair" class="hide">
   <div class="card" style="margin-top:16px"><h3>업종별 거래대금
     <span class="r">헤더 클릭 = 그 기준 정렬 · 같은 헤더를 다시 누르면 내림차순 ↔ 오름차순 · 기본 평균 등락률 내림차순</span></h3>
-    <div class="faint" id="pairSecLblTop" style="font-size:11px;margin:10px 0 4px">상위 5</div>
+    <div class="faint" id="pairSecLblTop" style="font-size:11px;margin:10px 0 4px">상위 10</div>
     <div class="tw tw-scroll tw-rank"><table><thead><tr id="pairSecHeadTop"></tr></thead>
       <tbody id="pairSecBodyTop"><tr><td colspan="8" class="load sk"></td></tr></tbody></table></div>
-    <div class="faint" id="pairSecLblBot" style="font-size:11px;margin:14px 0 4px">하위 5</div>
+    <div class="faint" id="pairSecLblBot" style="font-size:11px;margin:14px 0 4px">하위 10</div>
     <div class="tw tw-scroll tw-rank"><table><thead><tr id="pairSecHeadBot"></tr></thead>
       <tbody id="pairSecBodyBot"><tr><td colspan="8" class="load sk"></td></tr></tbody></table></div>
     <div class="note">행을 누르면 아래 구성 종목이 그 업종으로 바뀝니다.</div>
@@ -5525,36 +5527,58 @@ function maMonthAxis(rows,idx){
 S.earnFreq="A";S.earnCache={};
 const earnEok=v=>v==null?"–":(Math.abs(v)>=10000?N(v/10000,1)+"조":N(v,0)+"억");
 const earnPct=(v,b)=>(v==null||b==null||b<=0)?null:(v-b)/b*100;
-async function renderEarnCard(){
-  const card=$("#dEarnCard"),code=S.chart&&S.chart.code;
-  if(!code||S.chart.etf){card.style.display="none";return;}
+async function earnRows(code){
   let rows=S.earnCache[code];
   if(!rows){
     try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe&code=eq.${code}&order=period.asc`);}
     catch(e){rows=[];}
     S.earnCache[code]=rows;
   }
+  return rows;
+}
+/* 실적 표(종목상세 카드·짝꿍매매 카드 공용) — {head,body,est} 반환. maxQ=분기 표시 개수 */
+function earnTable(rows,freq,maxQ){
+  const A=freq==="A";
+  const all=rows.filter(r=>r.freq===freq).map(r=>({...r,sales:r.sales==null?null:+r.sales,op_profit:r.op_profit==null?null:+r.op_profit,
+    net_income:r.net_income==null?null:+r.net_income,eps:r.eps==null?null:+r.eps,bps:r.bps==null?null:+r.bps,roe:r.roe==null?null:+r.roe}));
+  const byP={};all.forEach(r=>byP[r.period]=r);
+  const prevOf=r=>{const y=+r.period.slice(0,4),m=r.period.slice(4);return byP[(y-1)+m];};
+  const list=A?all:all.slice(-(maxQ||9));
+  const yoy=(r,k)=>{const p=prevOf(r);return p?earnPct(r[k],p[k]):null;};
+  const g=(v)=>v==null?"":`<div class="${v>=0?"up":"down"}" style="font-size:10px">${pm(v,0)}%</div>`;
+  const head="<tr><th class=\"l\">항목</th>"+list.map(r=>`<th>${r.period.slice(0,4)}.${r.period.slice(4)}${r.is_est?' <span class="tag-d b">E</span>':""}</th>`).join("")+"</tr>";
+  const row=(lb,k,f,withG)=>"<tr><td class=\"l\">"+lb+"</td>"+list.map(r=>`<td class="num"${r.is_est?' style="background:var(--surface-2)"':""}>${r[k]==null?"–":f(r[k])}${withG?g(yoy(r,k)):""}</td>`).join("")+"</tr>";
+  const mrg=list.map(r=>r.sales>0&&r.op_profit!=null?r.op_profit/r.sales*100:null);
+  const body=row("매출액","sales",earnEok,true)+row("영업이익","op_profit",earnEok,true)+
+    "<tr><td class=\"l\">영업이익률</td>"+mrg.map((v,i)=>`<td class="num"${list[i].is_est?' style="background:var(--surface-2)"':""}>${v==null?"–":N(v,1)+"%"}</td>`).join("")+"</tr>"+
+    row("순이익","net_income",earnEok,false)+row("EPS(원)","eps",v=>N(v,0),true)+row("BPS(원)","bps",v=>N(v,0),false)+row("ROE","roe",v=>N(v,1)+"%",false);
+  return {head,body,est:list.some(r=>r.is_est),n:list.length};
+}
+async function renderEarnCard(){
+  const card=$("#dEarnCard"),code=S.chart&&S.chart.code;
+  if(!code||S.chart.etf){card.style.display="none";return;}
+  const rows=await earnRows(code);
   if(S.chart.code!==code)return;   // 그 사이 다른 종목으로 바뀐 경우
   if(!rows.length){card.style.display="none";return;}
   card.style.display="";
   $$("#dEarnSet button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===S.earnFreq)));
-  const A=S.earnFreq==="A";
-  const all=rows.filter(r=>r.freq===S.earnFreq).map(r=>({...r,sales:r.sales==null?null:+r.sales,op_profit:r.op_profit==null?null:+r.op_profit,
-    net_income:r.net_income==null?null:+r.net_income,eps:r.eps==null?null:+r.eps,bps:r.bps==null?null:+r.bps,roe:r.roe==null?null:+r.roe}));
-  const lag=A?12:3, byP={};all.forEach(r=>byP[r.period]=r);
-  const prevOf=r=>{const y=+r.period.slice(0,4),m=r.period.slice(4);return byP[(y-1)+m];};
-  const list=A?all:all.slice(-9);
-  const yoy=(r,k)=>{const p=prevOf(r);return p?earnPct(r[k],p[k]):null;};
-  const cell=(v,f)=>`<td class="num">${v==null?"–":f(v)}</td>`;
-  const g=(v)=>v==null?"":`<div class="${v>=0?"up":"down"}" style="font-size:10px">${pm(v,0)}%</div>`;
-  $("#dEarnHead").innerHTML="<tr><th class=\"l\">항목</th>"+list.map(r=>`<th>${r.period.slice(0,4)}.${r.period.slice(4)}${r.is_est?' <span class="tag-d b">E</span>':""}</th>`).join("")+"</tr>";
-  const row=(lb,k,f,withG)=>"<tr><td class=\"l\">"+lb+"</td>"+list.map(r=>`<td class="num"${r.is_est?' style="background:var(--surface-2)"':""}>${r[k]==null?"–":f(r[k])}${withG?g(yoy(r,k)):""}</td>`).join("")+"</tr>";
-  const mrg=list.map(r=>r.sales>0&&r.op_profit!=null?r.op_profit/r.sales*100:null);
-  $("#dEarnBody").innerHTML=row("매출액","sales",earnEok,true)+row("영업이익","op_profit",earnEok,true)+
-    "<tr><td class=\"l\">영업이익률</td>"+mrg.map((v,i)=>`<td class="num"${list[i].is_est?' style="background:var(--surface-2)"':""}>${v==null?"–":N(v,1)+"%"}</td>`).join("")+"</tr>"+
-    row("순이익","net_income",earnEok,false)+row("EPS(원)","eps",v=>N(v,0),true)+row("BPS(원)","bps",v=>N(v,0),false)+row("ROE","roe",v=>N(v,1)+"%",false);
-  const upd=list.some(r=>r.is_est);
-  $("#dEarnSrc").textContent=upd?"E = 컨센서스 예상":"";
+  const t=earnTable(rows,S.earnFreq,9);
+  $("#dEarnHead").innerHTML=t.head;$("#dEarnBody").innerHTML=t.body;
+  $("#dEarnSrc").textContent=t.est?"E = 컨센서스 예상":"";
+}
+/* 짝꿍매매 종목 카드의 "실적 · 예상실적" 칸 — 연간/분기 전환은 모든 카드가 함께 바뀜 */
+async function pcEarnRender(code){
+  const el=$("#pcEarn_"+code);if(!el)return;
+  const rows=await earnRows(code);
+  if(!rows.length){el.innerHTML='<div class="load">실적 데이터 없음</div>';return;}
+  const t=earnTable(rows,S.earnFreq,6);
+  el.innerHTML=`<div class="tw tw-scroll"><table class="earn-t"><thead>${t.head}</thead><tbody>${t.body}</tbody></table></div>`
+    +(t.est?'<div class="faint" style="font-size:9.5px;margin-top:3px">E = 컨센서스 예상 · 증감률 = 전년(동기) 대비</div>':"");
+}
+function pcEarnToggle(f){
+  S.earnFreq=f;
+  $$(".pc-earn-set button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===f)));
+  $$(".pc-earn").forEach(e=>pcEarnRender(e.dataset.code).catch(()=>{}));
 }
 $$("#dEarnSet button").forEach(b=>b.onclick=()=>{S.earnFreq=b.dataset.v;renderEarnCard().catch(e=>console.error(e));});
 function renderMaCard(){
@@ -5717,9 +5741,9 @@ function pairSecSorted(){
 function renderPairSectors(){
   const sorted=pairSecSorted();
   const asc=S.pairSecDir==="asc";
-  $("#pairSecLblTop").textContent=asc?"하위 5 (오름차순)":"상위 5";
-  $("#pairSecLblBot").textContent=asc?"상위 5":"하위 5";
-  const top=sorted.slice(0,5), bot=sorted.length>5?sorted.slice(-5).reverse():[];
+  $("#pairSecLblTop").textContent=asc?"하위 10 (오름차순)":"상위 10";
+  $("#pairSecLblBot").textContent=asc?"상위 10":"하위 10";
+  const top=sorted.slice(0,10), bot=sorted.length>10?sorted.slice(Math.max(10,sorted.length-10)).reverse():[];
   $("#pairSecHeadTop").innerHTML=pairSecHeadRow();
   $("#pairSecHeadBot").innerHTML=pairSecHeadRow();
   $("#pairSecBodyTop").innerHTML=pairSecBodyRows(top);
@@ -5772,6 +5796,7 @@ async function selectPairSector(sec){
 // 항목끼리는 항상 같은 줄(높이)에서 나란히 비교할 수 있습니다.
 const PAIR_SECTIONS=[
   ["head",null],
+  ["earn","실적 · 예상실적"],
   ["price","가격 · 이동평균"],
   ["weight","무게/주식수"],
   ["vol","거래량"],
@@ -5786,6 +5811,10 @@ const pcCap=s=>s[0].toUpperCase()+s.slice(1);
 function pairSectionCellHtml(id,title,code){
   if(id==="head")
     return `<div class="pc-cell pc-head" id="pcHead_${code}"><div class="load sk"></div></div>`;
+  if(id==="earn")
+    return `<div class="pc-cell"><h5>${title}<span class="pc-earn-set" style="margin-left:8px">
+        <button type="button" class="pbtn" data-v="A" aria-pressed="${S.earnFreq==="A"}" onclick="pcEarnToggle('A')">연간</button><button type="button" class="pbtn" data-v="Q" aria-pressed="${S.earnFreq==="Q"}" onclick="pcEarnToggle('Q')">분기</button></span></h5>
+      <div class="pc-earn" id="pcEarn_${code}" data-code="${code}"><div class="load sk"></div></div></div>`;
   if(id==="profile"||id==="profileInst")
     return `<div class="pc-cell"><h5>${title}</h5>
       <div class="chart" id="pc${pcCap(id)}_${code}"><div class="load sk"></div></div>
@@ -5821,6 +5850,7 @@ async function renderPairCards(stocks){
   for(let i=0;i<stocks.length;i+=2)pages.push(stocks.slice(i,i+2));
   $("#pairTrack").innerHTML=pages.map(pg=>pairPageSkeleton(pg)).join("");
   setupPairCarouselNav(pages.length);
+  stocks.forEach(s=>pcEarnRender(s.code).catch(()=>{const e=$("#pcEarn_"+s.code);if(e)e.innerHTML='<div class="load">불러오기 실패</div>';}));
   await Promise.all(stocks.map(async s=>{
     try{
       const [rows,sumArr,flowRows]=await Promise.all([
