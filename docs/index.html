@@ -171,6 +171,8 @@ nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 .tl-cell{position:relative;min-height:34px;border-radius:4px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px;font-size:9.5px;font-weight:600}
 .tl-v{position:relative;z-index:2;text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 2px var(--surface)}
 .tl-cell{cursor:pointer}
+.tl-sum{position:relative;min-height:34px;border-radius:4px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px;font-size:9.5px;font-weight:600}
+.tl-hd.tl-sh{border-left:1px solid var(--grid);padding-left:2px}
 /* 2026-11-08: 자금 이동 타임라인 맨 위 "합계" 행(그날 전 업종 합) */
 .tl-grid>.tl-rl.tot{min-height:26px;color:var(--ink);border-bottom:1px solid var(--grid)}
 .tl-tot{min-height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;background:var(--surface-2)}
@@ -1125,7 +1127,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
     <div class="tl-nav"><button id="peTlPrev">◀ 5일</button><button id="peTlNext">5일 ▶</button><button id="peTlLast">최근</button><span class="rng" id="peTlRng"></span></div>
     <div id="peTlBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 사모 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 맨 위 "합계" 행 = 그날 전 업종 사모 순매수 합</div>
+    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 사모 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 맨 위 "합계" 행 = 그날 전 업종 사모 순매수 합 · 맨 오른쪽 5일·20일·60일 = 오늘 기준 최근 5·20·60거래일 합계</div>
   </div>
 
   <div class="card" id="peTopCard"><h3>사모 매수·매도 상위 종목 <span class="r" id="peTopSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
@@ -1333,7 +1335,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     </div>
     <div class="tl-nav"><button id="tlPrev">◀ 5일</button><button id="tlNext">5일 ▶</button><button id="tlLast">최근</button><span class="rng" id="tlRng"></span></div>
     <div id="tlBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 맨 위 "합계" 행 = 그날 전 업종 해당 주체 순매수 합 · 칸이 진할수록 금액이 큼</div>
+    <div class="note" style="margin-top:8px">칸을 누르면 그날 그 업종의 종목별 순매수 · 추적 종목 기준 · 업종 아래 숫자 = 표시 기간 거래대금 · 맨 위 "합계" 행 = 그날 전 업종 해당 주체 순매수 합 · 맨 오른쪽 5일·20일·60일 = 오늘 기준 최근 5·20·60거래일 합계 · 칸이 진할수록 금액이 큼</div>
   </div>
 
   <div class="card"><h3>업종별 자금흐름
@@ -2915,6 +2917,14 @@ async function loadFlowTimeline(){
   try{S.tlRows=await getTlRows();renderFlowTimeline();}
   catch(e){$("#tlBody").innerHTML='<div class="load">불러오기 실패</div>';}
 }
+/* 자금 이동 타임라인 공용: 헤더 2줄(위=일자, 아래=요일 / 월이 바뀔 때만 "월/일") + 오늘 기준 5·20·60거래일 합계 열 */
+const TL_WINS=[[5,"5일"],[20,"20일"],[60,"60일"]];
+function tlHdCell(d,i,dates,WD,wdn){
+  const mo=i===0||d.slice(5,7)!==dates[i-1].slice(5,7);
+  return `<div class="tl-hd" style="${wdn===1?"border-left:1px solid var(--grid);padding-left:2px":""}"><b>${mo?(+d.slice(5,7))+"/"+(+d.slice(8)):(+d.slice(8))}</b>${WD[wdn]}</div>`;
+}
+const tlSumHd=()=>TL_WINS.map(([n,l],k)=>`<div class="tl-hd${k===0?" tl-sh":""}"><b>${l}</b>합계</div>`).join("");
+function tlSumWin(dates){return TL_WINS.map(([n])=>dates.slice(-n));}
 function renderFlowTimeline(){
   const host=$("#tlBody"),mk=S.tlMkt||"all",rows=S.tlRows||[],WD=["일","월","화","수","목","금","토"];
   const wd=d=>new Date(d+"T00:00:00+09:00").getDay();
@@ -2933,9 +2943,12 @@ function renderFlowTimeline(){
     const maxAbs=Math.max(1,...secs.flatMap(s=>dates.map(d=>Math.abs(val(s,d)))));
     const topBuy=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)>val(secs[b],d))b=i;});return b;});
     const topSell=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)<val(secs[b],d))b=i;});return b;});
-    let h=`<div class="tl-sub">${label} 순매수</div><div class="tl-chart" id="${id}"><div class="tl-scroll"><div class="tl-inner"><div class="tl-grid" style="--nc:${dates.length};--cw:${cw}px;--lw:${lw}px"><div class="tl-corner"></div>`
-      +dates.map(d=>`<div class="tl-hd" style="${wd(d)===1?"border-left:1px solid var(--grid);padding-left:2px":""}"><b>${d.slice(5).replace("-","/")}</b>${WD[wd(d)]}</div>`).join("");
-    h+=`<div class="tl-rl tot">합계<small>전 업종</small></div>`+dates.map(d=>`<div class="tl-tot ${sgn(dayTot[d]||0)}" title="그날 전 업종 ${label} 순매수 합계(억원)">${fmtC((dayTot[d]||0)/EOK)}</div>`).join("");
+    let h=`<div class="tl-sub">${label} 순매수</div><div class="tl-chart" id="${id}"><div class="tl-scroll"><div class="tl-inner"><div class="tl-grid" style="--nc:${dates.length+3};--cw:${cw}px;--lw:${lw}px"><div class="tl-corner"></div>`
+      +dates.map((d,i)=>tlHdCell(d,i,dates,WD,wd(d))).join("")+tlSumHd();
+    const wins=tlSumWin(dates),sumV=(s,k)=>wins[k].reduce((a,d)=>a+val(s,d),0),sumT=k=>wins[k].reduce((a,d)=>a+(dayTot[d]||0),0);
+    const sMax=wins.map((_,k)=>Math.max(1,...secs.map(s=>Math.abs(sumV(s,k)))));
+    h+=`<div class="tl-rl tot">합계<small>전 업종</small></div>`+dates.map(d=>`<div class="tl-tot ${sgn(dayTot[d]||0)}" title="그날 전 업종 ${label} 순매수 합계(억원)">${fmtC((dayTot[d]||0)/EOK)}</div>`).join("")
+      +wins.map((w,k)=>`<div class="tl-tot ${sgn(sumT(k))}" title="최근 ${TL_WINS[k][0]}거래일 전 업종 합계(억원)">${fmtC(sumT(k)/EOK)}</div>`).join("");
     secs.forEach((s,i)=>{
       h+=`<div class="tl-rl">${s}<small>${N(amtBy[s]/EOK,0)}억</small></div>`;
       dates.forEach((d,c)=>{
@@ -2943,6 +2956,8 @@ function renderFlowTimeline(){
         const cls=topBuy[c]===i?" tb":topSell[c]===i?" ts":"";
         h+=`<div class="tl-cell${cls}" data-r="${i}" data-c="${c}" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;
       });
+      wins.forEach((w,k)=>{const v=sumV(s,k),pct=Math.round(10+55*Math.abs(v)/sMax[k]);
+        h+=`<div class="tl-sum" title="${s} 최근 ${TL_WINS[k][0]}거래일 합계(억원)" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;});
     });
     return {html:h+'</div><svg class="tl-paths"></svg></div></div></div>',tops:{topBuy,topSell,id}};
   });
@@ -5066,15 +5081,20 @@ function peRenderTimeline(){
   const maxAbs=Math.max(1,...secs.flatMap(s=>dates.map(d=>Math.abs(val(s,d)))));
   const topBuy=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)>val(secs[b],d))b=i;});return b;});
   const topSell=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)<val(secs[b],d))b=i;});return b;});
-  let h=`<div class="tl-sub">사모 순매수</div><div class="tl-chart" id="peTlChart"><div class="tl-scroll"><div class="tl-inner"><div class="tl-grid" style="--nc:${dates.length};--cw:${cw}px;--lw:${lw}px"><div class="tl-hd"></div>`
-    +dates.map(d=>`<div class="tl-hd" style="${wd(d)===1?"border-left:1px solid var(--grid);padding-left:2px":""}"><b>${d.slice(5).replace("-","/")}</b>${WD[wd(d)]}</div>`).join("");
-  h+=`<div class="tl-rl tot">합계<small>전 업종</small></div>`+dates.map(d=>`<div class="tl-tot ${sgn(dayTot[d]||0)}" title="그날 전 업종 사모 순매수 합계(억원)">${fmtC((dayTot[d]||0)/EOK)}</div>`).join("");
+  let h=`<div class="tl-sub">사모 순매수</div><div class="tl-chart" id="peTlChart"><div class="tl-scroll"><div class="tl-inner"><div class="tl-grid" style="--nc:${dates.length+3};--cw:${cw}px;--lw:${lw}px"><div class="tl-hd"></div>`
+    +dates.map((d,i)=>tlHdCell(d,i,dates,WD,wd(d))).join("")+tlSumHd();
+  const wins=tlSumWin(dates),sumV=(s,k)=>wins[k].reduce((a,d)=>a+val(s,d),0),sumT=k=>wins[k].reduce((a,d)=>a+(dayTot[d]||0),0);
+  const sMax=wins.map((_,k)=>Math.max(1,...secs.map(s=>Math.abs(sumV(s,k)))));
+  h+=`<div class="tl-rl tot">합계<small>전 업종</small></div>`+dates.map(d=>`<div class="tl-tot ${sgn(dayTot[d]||0)}" title="그날 전 업종 사모 순매수 합계(억원)">${fmtC((dayTot[d]||0)/EOK)}</div>`).join("")
+    +wins.map((w,k)=>`<div class="tl-tot ${sgn(sumT(k))}" title="최근 ${TL_WINS[k][0]}거래일 전 업종 사모 합계(억원)">${fmtC(sumT(k)/EOK)}</div>`).join("");
   secs.forEach((sec,i)=>{
     h+=`<div class="tl-rl">${sec}<small>${N(amtBy[sec]/EOK,0)}억</small></div>`;
     dates.forEach((d,c)=>{
       const v=val(sec,d),pct=Math.round(10+55*Math.abs(v)/maxAbs),cls=topBuy[c]===i?" tb":topSell[c]===i?" ts":"";
       h+=`<div class="tl-cell${cls}" data-r="${i}" data-c="${c}" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;
     });
+    wins.forEach((w,k)=>{const v=sumV(sec,k),pct=Math.round(10+55*Math.abs(v)/sMax[k]);
+      h+=`<div class="tl-sum" title="${sec} 최근 ${TL_WINS[k][0]}거래일 사모 합계(억원)" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;});
   });
   host.innerHTML=h+'</div><svg class="tl-paths"></svg></div></div></div>';
   S.peTlMeta={secs,dates,mk,cw:cw+2,topBuy,topSell};
