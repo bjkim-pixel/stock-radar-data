@@ -1423,6 +1423,18 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <select id="dSel" class="df" title="종목명 (코드는 아래 종목 정보에 표시)"></select>
     </div>
     <div class="dfrow" style="margin-top:5px">
+      <select id="dKwF" class="df" title="키움증권 회원 보유 계좌수 비율(최근 ÷ 6월/8월 첫 기록)로 종목 목록 좁히기 — 낮을수록 개인 물량 감소(매집 가능성)">
+        <option value="">매집</option>
+        <optgroup label="6월 대비 (최근 ÷ 6월 첫 기록)"><option value="r6:70">6월 대비 70% 이하</option><option value="r6:80">6월 대비 80% 이하</option><option value="r6:90">6월 대비 90% 이하</option><option value="r6:99.99">6월 대비 100% 미만</option></optgroup>
+        <optgroup label="8월 대비 (최근 ÷ 8월 첫 기록)"><option value="r8:70">8월 대비 70% 이하</option><option value="r8:80">8월 대비 80% 이하</option><option value="r8:90">8월 대비 90% 이하</option><option value="r8:99.99">8월 대비 100% 미만</option></optgroup>
+      </select>
+      <select id="dDivF" class="df" title="배당수익률로 종목 목록 좁히기 (배당 정보가 있는 종목만)">
+        <option value="">배당수익률</option>
+        <optgroup label="최근 12개월(확정)"><option value="ttm:1">1% 이상</option><option value="ttm:2">2% 이상</option><option value="ttm:3">3% 이상</option><option value="ttm:4">4% 이상</option><option value="ttm:5">5% 이상</option><option value="ttm:7">7% 이상</option></optgroup>
+        <optgroup label="올해 예상"><option value="exp:2">예상 2% 이상</option><option value="exp:3">예상 3% 이상</option><option value="exp:5">예상 5% 이상</option><option value="exp:7">예상 7% 이상</option></optgroup>
+      </select>
+    </div>
+    <div class="dfrow" style="margin-top:5px">
       <input type="date" id="dStart" class="df dd" title="차트 시작일"><span class="faint dtl">~</span>
       <input type="date" id="dEnd" class="df dd" title="차트 종료일">
       <button class="btn ghost dnext" id="dNext" title="이름(가나다)순 리스트 기준 다음 종목으로 이동">다음 →</button>
@@ -5023,6 +5035,8 @@ function dCodeList(){
   let l=S.dSec?S.codes.filter(c=>(c.sector||"미분류")===S.dSec):S.codes;
   if(S.dMaF&&S.dMaMap){const f=MA_COND[S.dMaF];l=l.filter(c=>{const m=S.dMaMap[c.code];return m&&f(m);});}
   if(S.dPh&&S.dPhMap){const set=new Set(S.dPh.split(","));l=l.filter(c=>set.has(S.dPhMap[c.code]||"NEUTRAL"));}
+  if(S.dKwF&&S.kwMap){const [k,t]=S.dKwF.split(":");l=l.filter(c=>{const v=(S.kwMap[c.code]||{})[k];return v!=null&&v*100<=+t;});}
+  if(S.dDivF&&S.dDivMap){const [k,t]=S.dDivF.split(":");l=l.filter(c=>{const v=(S.dDivMap[c.code]||{})[k];return v!=null&&v>=+t;});}
   return l;
 }
 async function loadDetailMa(){
@@ -5039,9 +5053,10 @@ function dFillSel(){
   const list=dCodeList();
   $("#dSel").innerHTML=list.map(s=>`<option value="${s.code}">${s.name}</option>`).join("");
   if(S.chart&&S.chart.code&&list.some(c=>c.code===S.chart.code))$("#dSel").value=S.chart.code;
-  const tag=[S.dSec,S.dMaF?$("#dMaF").selectedOptions[0].textContent:"",S.dPh?$("#dPh").selectedOptions[0].textContent:""].filter(Boolean);
+  const tag=[S.dSec,S.dMaF?$("#dMaF").selectedOptions[0].textContent:"",S.dPh?$("#dPh").selectedOptions[0].textContent:"",
+    S.dKwF?"매집 "+$("#dKwF").selectedOptions[0].textContent:"",S.dDivF?"배당 "+$("#dDivF").selectedOptions[0].textContent:""].filter(Boolean);
   $("#dSel").title=tag.length?`${tag.join(" · ")} — ${list.length}종목`:"";
-  $("#dSel").style.outline=(S.dMaF||S.dSec||S.dPh)&&!list.length?"2px solid var(--down)":"";
+  $("#dSel").style.outline=(S.dMaF||S.dSec||S.dPh||S.dKwF||S.dDivF)&&!list.length?"2px solid var(--down)":"";
 }
 async function loadDetailSectors(){
   const all=[];
@@ -5097,6 +5112,32 @@ $("#dPh").onchange=async e=>{
   if(v&&!list.length){$("#dSel").innerHTML='<option value="">조건에 맞는 종목 없음</option>';return;}
   if(list.length&&!list.some(c=>c.code===S.chart.code)){S.dRangeTouched=false;loadDetail(list[0].code);}
 };
+/* 종목상세 상단 필터: 매집(키움 계좌수 비율)·배당수익률 — 선택 시 해당 데이터를 불러와 종목 목록을 좁힘 */
+S.dKwF="";S.dDivF="";S.dDivMap=null;
+async function loadDetailDiv(){
+  if(S.dDivMap)return;
+  const [all]=await Promise.all([divLoadAll(),S.dMaMap?null:loadDetailMa()]);
+  const rows=S.codes.map(c=>({code:c.code,close:(S.dMaMap[c.code]||{}).close}));
+  divAnnotate(rows,all,S.date||new Date().toISOString().slice(0,10));
+  const m={};rows.forEach(r=>m[r.code]={ttm:r.div_yld,exp:r.div_yld_e});
+  S.dDivMap=m;
+}
+function dFilterHandler(sel,key,loader,label){
+  $(sel).onchange=async e=>{
+    const v=e.target.value;
+    if(v){
+      e.target.disabled=true;
+      try{await loader();}catch(err){console.error(label,err);e.target.value="";e.target.disabled=false;e.target.title=label+" 데이터를 불러오지 못했습니다 — 다시 선택해 주세요";return;}
+      e.target.disabled=false;
+    }
+    S[key]=v;dFillSel();
+    const list=dCodeList();
+    if(v&&!list.length){$("#dSel").innerHTML='<option value="">조건에 맞는 종목 없음</option>';return;}
+    if(list.length&&!list.some(c=>c.code===S.chart.code)){S.dRangeTouched=false;loadDetail(list[0].code);}
+  };
+}
+dFilterHandler("#dKwF","dKwF",kwLoadMap,"매집 필터");
+dFilterHandler("#dDivF","dDivF",loadDetailDiv,"배당 필터");
 $("#dSec").onchange=e=>{
   S.dSec=e.target.value;
   dFillSel();
