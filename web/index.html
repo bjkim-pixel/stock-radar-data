@@ -5875,6 +5875,19 @@ function divSummaryHtml(m){
     T("최근 주당배당금",m.last?N(m.last.dps,0)+"원":"–",m.last?`${m.last.kind||""} · 기준일 ${divDate(m.last.rd)}`:"")+
     T("배당성향",m.payout==null?"–":N(m.payout,0)+"%","최근 12개월 DPS ÷ 4분기 EPS")+`</div>`;
 }
+/* 연도별 배당 합산(기준일의 연도 기준). 예상(E)이 있는 해는 연간 예상치(확정이 더 크면 확정)로 대체하고 헤더에 (E) 표시 */
+function divYearHtml(m){
+  const by={};m.D.forEach(r=>{const y=r.rd.slice(0,4);by[y]=(by[y]||0)+r.dps;});
+  let eY=null;
+  if(m.exp){eY=m.exp.period.slice(0,4);by[eY]=m.exp.total;}
+  const ys=Object.keys(by).sort().slice(-6);
+  if(!ys.length)return "";
+  const cell=(y,h)=>h?`<th>${y}${y===eY?' <span class="tag-d b">E</span>':""}</th>`:`<td class="num"${y===eY?' style="background:var(--surface-2)"':""}>${N(by[y],0)}</td>`;
+  const g=y=>{const p=by[String(+y-1)];if(p==null||!(p>0))return "<td>–</td>";const v=(by[y]/p-1)*100;return `<td class="${v>=0?"up":"down"}" style="font-size:11px${y===eY?";background:var(--surface-2)":""}">${pm(v,0)}%</td>`;};
+  return `<div class="tw tw-scroll" style="margin-bottom:8px"><table class="earn-t"><thead><tr><th class="l">연도별 배당 합산</th>${ys.map(y=>cell(y,1)).join("")}</tr></thead><tbody>
+    <tr><td class="l">주당배당금(원)</td>${ys.map(y=>cell(y)).join("")}</tr>
+    <tr><td class="l">전년 대비</td>${ys.map(g).join("")}</tr></tbody></table></div>`;
+}
 function divSchedHtml(m){
   const n=m.next;
   return `<div class="faint" style="font-size:12px;margin:2px 0 8px">다음 일정: ${n?`기준일 <b>${divDate(n.rd)}</b> · ${N(n.dps,0)}원 · 지급 ${n.pay?divDate(n.pay):"미정"} <span class="tag-d">확정</span>`:"확정된 예정 배당 없음"}${m.exp&&m.exp.rem>0?` · 올해 남은 예상 <b>${N(m.exp.rem,0)}원</b> <span class="tag-d b">E</span>`:""}</div>`;
@@ -5918,7 +5931,7 @@ async function renderDivCard(){
   const m=divModel(rows,er,close,S.date||new Date().toISOString().slice(0,10));
   if(!m.D.length&&!m.exp){card.style.display="none";return;}
   card.style.display="";
-  $("#dDivBody").innerHTML=divSummaryHtml(m)+divSchedHtml(m)+divTableHtml(m,8);
+  $("#dDivBody").innerHTML=divSummaryHtml(m)+divYearHtml(m)+divSchedHtml(m)+divTableHtml(m,8);
   $("#dDivSrc").textContent=m.exp?"E = 네이버 예상":"";
 }
 async function pcDivRender(code,close){
