@@ -6,6 +6,8 @@ name: "[수시] DB 테이블·뷰 생성 | 수동 | 스키마 설정"
 #   access_log — 접속 기록 테이블(92_access_log.sql)
 #   kospi_flow — 수급 일별 뷰 v_kospi_flow_daily(95_kospi_flow.sql)
 #   watchlist  — 관심·투자 종목 테이블 my_watchlist(117_watchlist.sql)
+#   data_version — 화면 요청 캐시용 데이터 버전 함수(128_data_version.sql)
+#   flow_periods_fast — v_stock_flow_periods 속도 개선(129, 결과 동일할 때만 교체 · all 에 포함 안 됨)
 #   all        — 위 전부 (drop_nxt 는 포함되지 않음)
 #   drop_nxt   — daily_price 의 NXT 컬럼 4개 삭제(120_drop_nxt_columns.sql, 되돌릴 수 없음 · all 에 포함 안 됨)
 on:
@@ -22,6 +24,8 @@ on:
           - access_log
           - kospi_flow
           - watchlist
+          - data_version
+          - flow_periods_fast
           - drop_nxt
 
 permissions:
@@ -51,6 +55,12 @@ jobs:
       - name: my_watchlist (관심·투자 종목)
         if: inputs.target == 'all' || inputs.target == 'watchlist'
         run: python 117_watchlist_setup.py
+      - name: data_version() (화면 캐시용 데이터 버전)
+        if: inputs.target == 'all' || inputs.target == 'data_version'
+        run: python 128_data_version_setup.py
+      - name: v_stock_flow_periods 속도 개선(검증 후 교체)
+        if: inputs.target == 'flow_periods_fast'
+        run: python 129_flow_periods_fast.py
       - name: daily_price NXT 컬럼 삭제 (되돌릴 수 없음)
         if: inputs.target == 'drop_nxt'
         run: |
@@ -70,3 +80,9 @@ jobs:
         with:
           branch: kospi-flow-report
           file: kospi_flow_report.md
+      - name: Publish db-setup report
+        if: always() && (inputs.target == 'data_version' || inputs.target == 'flow_periods_fast')
+        uses: ./.github/actions/publish-report
+        with:
+          branch: db-setup-report
+          file: ${{ inputs.target == 'data_version' && 'data_version_report.md' || 'flow_periods_fast_report.md' }}
