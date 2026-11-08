@@ -1351,6 +1351,16 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div id="dHead" style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-top:10px"></div>
   </div>
 
+  <div class="card" id="dEarnCard" style="display:none"><h3>실적 · 예상실적<span class="r" id="dEarnSrc"></span></h3>
+    <div class="qf seg" id="dEarnSet" style="margin-bottom:8px">
+      <button class="fchip" data-v="A" aria-pressed="true">연간</button>
+      <button class="fchip" data-v="Q">분기</button>
+    </div>
+    <div class="tw tw-scroll"><table class="earn-t"><thead id="dEarnHead"></thead><tbody id="dEarnBody"></tbody></table></div>
+    <div class="note">확정 실적은 한국투자증권, <b>예상(E)</b>은 네이버 증권 컨센서스 기준입니다. 분기는 단일 분기 값이며 매출액·영업이익·순이익은 억원(1만억원 이상은 조원) 단위입니다.
+      네이버가 제공하는 예상치는 올해 연간과 다음 분기 1개입니다. 증감률은 연간은 전년 대비, 분기는 전년 동기 대비입니다.</div>
+  </div>
+
   <div class="card" id="dSmCard"><h3>스마트머니 국면<span class="r" id="dSmRange"></span></h3>
     <div id="dSmCtl" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"></div>
     <div class="smhead" id="dSmHead"></div>
@@ -1391,16 +1401,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="tw"><table><thead><tr><th class="l">이평선</th><th>값</th><th>종가 대비</th><th>5일 기울기</th></tr></thead><tbody id="dMaBody"></tbody></table></div>
     <div class="note">정배열 = 종가 &gt; 가장 짧은 이평선 &gt; … &gt; 가장 긴 이평선 순서. 역배열 = 반대 순서. 그 외는 혼조.
       "N일 이상"은 이동평균 기간이 N일 이상인 선(5·10·20·60·120·200일 중)만으로 판정합니다. 이력이 부족한 이평선은 계산되지 않아 목록에서 빠집니다.</div>
-  </div>
-
-  <div class="card" id="dEarnCard" style="display:none"><h3>실적 · 예상실적<span class="r" id="dEarnSrc"></span></h3>
-    <div class="qf seg" id="dEarnSet" style="margin-bottom:8px">
-      <button class="fchip" data-v="A" aria-pressed="true">연간</button>
-      <button class="fchip" data-v="Q">분기</button>
-    </div>
-    <div class="tw tw-scroll"><table class="earn-t"><thead id="dEarnHead"></thead><tbody id="dEarnBody"></tbody></table></div>
-    <div class="note">확정 실적은 한국투자증권, <b>예상(E)</b>은 네이버 증권 컨센서스 기준입니다. 분기는 단일 분기 값이며 매출액·영업이익·순이익은 억원(1만억원 이상은 조원) 단위입니다.
-      네이버가 제공하는 예상치는 올해 연간과 다음 분기 1개입니다. 증감률은 연간은 전년 대비, 분기는 전년 동기 대비입니다.</div>
   </div>
 
   <div class="card" id="dWeightCard"><h3>무게/주식수 <span class="r" style="font-weight:400;font-size:11px">외+기관 순매수 ÷ 주식수 · 양수=자금유입</span></h3>
