@@ -218,8 +218,16 @@ svg.tl-paths{position:absolute;left:0;top:0;width:100%;height:100%;pointer-event
    go()가 해당 화면에서만 html.wide를 붙여 body의 가로 숨김을 풀어, 페이지 자체가 넓어질 수 있게 합니다. */
 html.wide,html.wide body{overflow-x:visible}
 #scrWrap,.scrlike{overflow:visible}
-#scrWrap table,.scrlike table{width:max-content;min-width:100%;table-layout:auto}
-#scrWrap th,#scrWrap td,.scrlike th,.scrlike td{white-space:nowrap}
+/* 2026-11-08: min-width:100%를 빼서 "열 보기"로 열을 줄여도 표가 카드 폭만큼 늘어나(셀이 넓어짐) 않고 항상 내용 폭으로 촘촘하게 유지 */
+#scrWrap table,.scrlike table{width:max-content;min-width:0;table-layout:auto}
+.tw.scrlike,#scrWrap{width:fit-content;max-width:100%}
+html.wide .tw.scrlike,html.wide #scrWrap{max-width:none}
+/* 2단 헤더: 윗줄=그룹명(여러 칸에 걸침), 아랫줄=세부(3M·1M·1W 등). 아랫줄 th는 윗줄 높이만큼 아래에 고정 */
+thead tr.h1 th,thead tr.h2 th{padding-top:3px;padding-bottom:3px;line-height:14px;box-sizing:border-box}
+thead tr.h1 th{height:21px}
+thead tr.h2 th{height:21px;top:calc(var(--stick-top,0px) + 21px);font-weight:600}
+th.gh{text-align:center;border-bottom:1px solid var(--grid);border-left:1px solid var(--border)}
+#scrWrap th,#scrWrap td,.scrlike th,.scrlike td{white-space:nowrap;padding-left:6px;padding-right:6px}
 .card:has(#scrWrap),.card:has(.scrlike){width:max-content;min-width:100%}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 th{position:sticky;top:var(--stick-top,0px);z-index:2;background:var(--surface-2);color:var(--ink-3);font-size:10.5px;
@@ -624,6 +632,7 @@ html.hg-g1 .g-g1,html.hg-g2 .g-g2,html.hg-g3 .g-g3,html.hg-g4 .g-g4,html.hg-g5 .
      모바일에서는 화면을 확대/이동해서 봅니다 — 틀고정(sticky left)도 해제 */
   #scrWrap th,#scrWrap td,.scrlike th,.scrlike td{padding:3px 4px;font-size:10px;white-space:nowrap}
   #scrWrap .dim,.scrlike .dim{font-size:9px}
+  thead tr.h2 th{top:21px}
 
   /* 2026-09-12(2): 위(#flowTrendWrap·#v-perf2 .tw)와 같은 원칙을 "오늘의 종목"
      등 나머지 폭 넓은 표에도 확대 적용 — 표마다 새 id 규칙을 또 만드는 대신
@@ -644,6 +653,8 @@ html.hg-g1 .g-g1,html.hg-g2 .g-g2,html.hg-g3 .g-g3,html.hg-g4 .g-g4,html.hg-g5 .
     position:sticky;left:0;background:var(--surface);z-index:2}
   .tw-scroll.tw-rank th:nth-child(2),.tw-scroll.tw-rank td:nth-child(2){
     position:sticky;left:0;background:var(--surface);z-index:2}
+  /* 2단 헤더의 아랫줄은 첫 th가 "첫 열"이 아니므로 좌측 고정에서 제외 */
+  .tw-scroll thead tr.h2 th:first-child,.tw-scroll.tw-rank thead tr.h2 th:nth-child(2){left:auto;background:var(--surface-2)}
 
   /* 섹션 헤더 scroll-margin: JS가 --scroll-margin 설정, 미설정 시 100px */
   .step-hd{margin:18px 0 10px;scroll-margin-top:var(--scroll-margin,100px)}
@@ -1240,19 +1251,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   </div>
 
   <div class="card"><h3>결과<span class="r" id="scrCount"></span></h3>
-    <div class="tw" id="scrWrap"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th>
-      <th>종가</th><th>등락률</th><th>무게/주식수</th>
-      <th class="grp opt">개별RS5</th><th class="opt">개별RS20</th>
-      <th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th class="opt">외+기(2m)</th><th class="opt">2m주도</th>
-      <th class="grp opt" title="현재가~조회기간 내 최고 종가 구간을 24등분한 개인 누적 순매수 합계(양수 구간만)">위쪽매물대</th>
-      <th class="grp opt" title="외+기 순매수 주식수 ÷ 상장주식수의 누적(지분 변화율) — 3개월 전(60거래일) 시점. 종목상세 수급표의 순매수/시총과 같은 값">외+기 순매수/시총 3M</th><th class="opt" title="1개월 전(20거래일) 시점">1M</th><th class="opt" title="1주 전(5거래일) 시점">1W</th>
-      <th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th>
-      <th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th>
-      <th>외국인</th><th>기관합계</th><th class="opt">금융투자</th>
-      <th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th>
-      <th class="grp opt">프로그램</th>
-    </tr></thead><tbody id="scrBody"><tr><td colspan="30" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
+    <div class="tw" id="scrWrap"><table><thead></thead><tbody id="scrBody"><tr><td colspan="30" class="load">조회를 눌러주세요</td></tr></tbody></table></div>
   </div>
 </section>
 
@@ -1509,7 +1508,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
   <div class="card"><h3>이 종목의 수급주체별 순매수 거래대금
     <span class="r">억원 · 헤더 클릭 = 그 주체 기준 정렬(다시 클릭하면 오름차순↔내림차순 전환)</span></h3>
-    <div class="tw tw-scroll" id="dFlowPeriodWrap"><table><thead><tr id="dFlowPeriodHead"></tr></thead>
+    <div class="tw tw-scroll" id="dFlowPeriodWrap"><table><thead id="dFlowPeriodHead"></thead>
       <tbody id="dFlowPeriodBody"><tr><td colspan="11" class="load sk"></td></tr></tbody></table></div>
     <div class="note"><b>외+기</b> = 아래 "수급 주체별 누적" 차트의 외국인+기관합계 값을 각 시점(오늘·1주 전·2주 전·1개월 전…6개월 전)에서 읽은 누적 순매수. <b>순매수/시총</b> = 매일 (외+기 순매수 주식수 ÷ 그날 상장주식수)를 누적한 값(일별 순매수 주식수 ÷ 그날 상장주식수를 누적한 지분 변화율. 순매수 주식수 = 순매수대금 × 거래량 ÷ 거래대금이라 주가 급락·급등의 영향을 받지 않음). 나머지 열은 기존처럼 그 기간 동안의 순매수 합계.</div>
   </div>
@@ -2039,15 +2038,29 @@ function sortVal(txt,el){
   if(!s||s==='–'||s==='-')return null;
   const n=parseFloat(s);return isNaN(n)?s.toLowerCase():n;
 }
+function theadLeaves(table){   // 2단 헤더 지원: colspan/rowspan을 풀어 "한 열짜리 th"와 그 열 번호(td 순서)를 돌려줌
+  const rows=[...table.querySelectorAll('thead tr')],occ=[],out=[];
+  rows.forEach((tr,ri)=>{
+    let ci=0;
+    [...tr.children].forEach(th=>{
+      while(occ[ri]&&occ[ri][ci])ci++;
+      const cs=th.colSpan||1,rsp=th.rowSpan||1;
+      for(let r=ri;r<ri+rsp;r++){occ[r]=occ[r]||[];for(let c=ci;c<ci+cs;c++)occ[r][c]=1;}
+      if(cs===1)out.push({th,ci});
+      ci+=cs;
+    });
+  });
+  return out;
+}
 function makeSortable(tbodyId,incLeft){   // incLeft=true: 왼쪽 글자 열(종목명·업종명 등)도 가나다순 정렬 대상
   const tbody=document.getElementById(tbodyId);
   if(!tbody)return;
-  const ths=[...tbody.closest('table').querySelectorAll('thead th')];
+  const leaves=theadLeaves(tbody.closest('table')),ths=leaves.map(x=>x.th);
   // 렌더 후 호출 시 정렬 인디케이터 초기화
   ths.forEach(h=>{h.dataset.sortDir='';h.classList.remove('active');
     if(h.dataset.sortOrig!==undefined)h.textContent=h.dataset.sortOrig;});
   // 최초 1회만 이벤트 바인딩
-  ths.forEach((th,ci)=>{
+  leaves.forEach(({th,ci})=>{
     if((th.classList.contains('l')&&!incLeft)||th.dataset.sortOrig!==undefined)return;
     th.dataset.sortOrig=th.textContent.trim();
     th.classList.add('sortable');
@@ -3419,11 +3432,14 @@ async function loadStockFlowPeriods(code){
   const isMob=window.innerWidth<=960;
   const dir=S.dFlowPeriodDir==="asc"?-1:1; // desc(기본)=b-a와 동일(dir=1), asc면 부호 반전(dir=-1)
   const sortCol=(k,suf)=>`<th class="sortable${S.dFlowPeriodSort===k?" active":""}" data-key="${k}" title="${suf}">${k==="combo"?"외+기":isMob?"순매수/시총":"순매수/시총"}${S.dFlowPeriodSort===k?(S.dFlowPeriodDir==="asc"?" ▴":" ▾"):""}</th>`;
-  $("#dFlowPeriodHead").innerHTML=`<th class="l">기간</th>`
-    +sortCol("combo","수급 주체별 누적 차트의 외국인+기관합계 누적 순매수(억원) — 각 기간 시점 기준")
-    +sortCol("ratio","그 시점까지 매일 (외국인+기관합계 순매수 주식수 ÷ 상장주식수)를 누적한 지분 변화율 (%) — 주식수 = 대금×거래량÷거래대금")
+  const sortMk=k=>S.dFlowPeriodSort===k?(S.dFlowPeriodDir==="asc"?" ▴":" ▾"):"";
+  const sortCol2=(k,lb,tt)=>`<th class="sortable${S.dFlowPeriodSort===k?" active":""}" data-key="${k}" title="${tt}">${lb}${sortMk(k)}</th>`;
+  // 2단 헤더: 윗줄 "외+기 누적" 아래에 금액·시총대비 두 칸, 나머지 주체는 두 줄 높이 한 칸
+  $("#dFlowPeriodHead").innerHTML=`<tr class="h1"><th class="l" rowspan="2">기간</th><th class="gh" colspan="2" title="수급 주체별 누적 차트의 외국인+기관합계 누적 순매수">외+기 누적</th>`
     +STOCK_FLOW_SUBJ_COLS.map(k=>
-    `<th class="sortable${S.dFlowPeriodSort===k?" active":""}" data-key="${k}" title="${STOCK_FLOW_SUBJ[k]}">${isMob?STOCK_FLOW_SUBJ_SHORT[k]:STOCK_FLOW_SUBJ[k]}${S.dFlowPeriodSort===k?(S.dFlowPeriodDir==="asc"?" ▴":" ▾"):""}</th>`).join("");
+    `<th rowspan="2" class="sortable${S.dFlowPeriodSort===k?" active":""}" data-key="${k}" title="${STOCK_FLOW_SUBJ[k]}">${isMob?STOCK_FLOW_SUBJ_SHORT[k]:STOCK_FLOW_SUBJ[k]}${sortMk(k)}</th>`).join("")+`</tr>`
+    +`<tr class="h2">`+sortCol2("combo","억원","수급 주체별 누적 차트의 외국인+기관합계 누적 순매수(억원) — 각 기간 시점 기준")
+    +sortCol2("ratio","시총대비","그 시점까지 매일 (외국인+기관합계 순매수 주식수 ÷ 상장주식수)를 누적한 지분 변화율 (%) — 주식수 = 대금×거래량÷거래대금")+`</tr>`;
   let periods=[...STOCK_FLOW_PERIOD_ROWS];
   const sv=(k,p)=>k==="combo"?((cum[p]||{}).amt||0):k==="ratio"?((cum[p]||{}).ratio||0):(+r[k+"_"+p]||0);
   if(S.dFlowPeriodSort)periods.sort((a,b)=>(sv(S.dFlowPeriodSort,b)-sv(S.dFlowPeriodSort,a))*dir);
@@ -4549,12 +4565,36 @@ function scrCells(r){return `
       <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
       <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
       <td class="grp opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td>`;}
-const SCR_TH_REST=`<th>종가</th><th>등락률</th><th>무게/주식수</th><th class="grp opt">개별RS5</th><th class="opt">개별RS20</th><th class="grp opt">외+기(1m)</th><th class="opt">1m주도</th><th class="opt">외+기(2m)</th><th class="opt">2m주도</th><th class="grp opt" title="현재가~조회기간 내 최고 종가 구간을 24등분한 개인 누적 순매수 합계(양수 구간만)">위쪽매물대</th><th class="grp opt" title="외+기 순매수 주식수 ÷ 상장주식수의 누적(지분 변화율) — 3개월 전(60거래일) 시점. 종목상세 수급표의 순매수/시총과 같은 값">외+기 순매수/시총 3M</th><th class="opt" title="1개월 전(20거래일) 시점">1M</th><th class="opt" title="1주 전(5거래일) 시점">1W</th><th class="grp">시총</th><th class="opt">거래대금</th><th class="opt">대금비중</th><th class="grp opt">52주 신고가</th><th class="opt">신고가일</th><th class="opt">거래량비</th><th>외국인</th><th>기관합계</th><th class="opt">금융투자</th><th class="opt">투신</th><th class="opt">연기금</th><th class="opt">사모</th><th class="opt">개인</th><th class="opt">기타법인</th><th class="grp opt">프로그램</th>`;
-function scrThead(extra){return `<tr><th class="l">#</th><th class="l">종목</th>${extra||""}${SCR_TH_REST}</tr>`;}
+/* 표 머리글(2단): 열 순서는 scrCells와 같은 25칸. [그룹명(윗줄), 열묶음 클래스, 세부열[[라벨,툴팁],…]] 또는 [라벨,열묶음,툴팁](=두 줄 높이 한 칸).
+   윗줄에는 그룹명·단독 열, 아랫줄에는 세부(3M·1M·1W 등)만 둬서 가로 폭을 줄입니다. */
+const SCR_HD=[
+  ["종가","g1"],["등락률","g1"],["무게/주식수","g1"],
+  {top:"개별RS",g:"g2",subs:[["5"],["20"]]},
+  {top:"1개월",g:"g3",subs:[["외+기"],["주도"]]},
+  {top:"2개월",g:"g3",subs:[["외+기"],["주도"]],nogrp:1},
+  ["위쪽매물대","g2","현재가~조회기간 내 최고 종가 구간을 24등분한 개인 누적 순매수 합계(양수 구간만)","grp"],
+  {top:"외+기 순매수/시총",g:"g3",title:"외+기 순매수 주식수 ÷ 상장주식수의 누적(지분 변화율). 종목상세 수급표의 순매수/시총과 같은 값",
+    subs:[["3M","3개월 전(60거래일) 시점"],["1M","1개월 전(20거래일) 시점"],["1W","1주 전(5거래일) 시점"]]},
+  ["시총","g1","","grp"],["거래대금","g4"],["대금비중","g4"],
+  ["52주 신고가","g2","","grp"],["신고가일","g2"],
+  ["거래량비","g4"],
+  {top:"당일 순매수",g:"g5",nogrp:1,subs:[["외국인"],["기관합계"],["금융투자"],["투신"],["연기금"],["사모"],["개인"],["기타법인"],["프로그램","","grp"]]}
+];
+function scrThead(extra){
+  const rs=h=>(h||"").replace(/<th(?=[\s>])/g,'<th rowspan="2"');
+  let r1='<th class="l g0" rowspan="2">#</th><th class="l g0" rowspan="2">종목</th>'+rs(extra),r2="";
+  SCR_HD.forEach(c=>{
+    if(Array.isArray(c)){r1+=`<th rowspan="2" class="g-${c[1]}${c[3]?" "+c[3]:""}"${c[2]?` title="${c[2]}"`:""}>${c[0]}</th>`;return;}
+    r1+=`<th class="gh g-${c.g}" colspan="${c.subs.length}"${c.title?` title="${c.title}"`:""}>${c.top}</th>`;
+    c.subs.forEach((x,k)=>{r2+=`<th class="g-${c.g}${(k===0&&!c.nogrp)||x[2]?" grp":""}"${x[1]?` title="${x[1]}"`:""}>${x[0]}</th>`;});
+  });
+  return `<tr class="h1">${r1}</tr><tr class="h2">${r2}</tr>`;
+}
 
 $("#tdFlowBody").closest("table").querySelector("thead").innerHTML=scrThead('<th>순매수(억)</th><th>시총대비</th>');
 $("#tdTopBody").closest("table").querySelector("thead").innerHTML=scrThead('<th id="tdTopKeyHd">기준값</th>');
 $("#favBody").closest("table").querySelector("thead").innerHTML=scrThead();
+$("#scrBody").closest("table").querySelector("thead").innerHTML=scrThead();
 async function runScreener(){
   if($("#fPh").value&&!S.dPhMap)await loadDetailPh();
   $("#scrBody").innerHTML='<tr><td colspan="30" class="load sk"></td></tr>';
@@ -5906,8 +5946,8 @@ function renderPairCard(code,sum,rows,flowRow){
   if(!flowRow){ftbl.innerHTML='<div class="load">데이터 없음</div>';}
   else{
     const cumPc=stockFlowCum(rows);
-    ftbl.innerHTML=`<table><thead><tr><th class="l">기간</th><th title="수급 주체별 누적 차트의 외국인+기관합계 누적 순매수(억원)">외+기</th><th title="그 시점까지 일별 순매수 주식수÷상장주식수 누적(%)">순매수/시총</th>${STOCK_FLOW_SUBJ_COLS.map(k=>
-      `<th title="${STOCK_FLOW_SUBJ[k]}">${STOCK_FLOW_SUBJ_SHORT[k]}</th>`).join("")}</tr></thead>
+    ftbl.innerHTML=`<table><thead><tr class="h1"><th class="l" rowspan="2">기간</th><th class="gh" colspan="2">외+기 누적</th>${STOCK_FLOW_SUBJ_COLS.map(k=>
+      `<th rowspan="2" title="${STOCK_FLOW_SUBJ[k]}">${STOCK_FLOW_SUBJ_SHORT[k]}</th>`).join("")}</tr><tr class="h2"><th title="수급 주체별 누적 차트의 외국인+기관합계 누적 순매수(억원)">억원</th><th title="그 시점까지 일별 순매수 주식수÷상장주식수 누적(%)">시총대비</th></tr></thead>
       <tbody>${STOCK_FLOW_PERIOD_ROWS.map(p=>{
         const cells=STOCK_FLOW_SUBJ_COLS.map(k=>{
           const raw=flowRow[k+"_"+p];
