@@ -1102,26 +1102,25 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 <section id="v-pe" class="hide">
   <div class="card" style="margin-top:16px"><h3>사모펀드 추종 <span class="r" id="peAsOf"></span></h3>
     <div class="note" style="margin:0">사모 = KIS 투자자별 매매동향의 <b>사모펀드 순매수</b>(스마트머니 4주체 중 하나)만 따로 본 화면입니다.
-      매집·분산 판정과 신호(B1·S2 등)는 스마트머니 국면과 <b>같은 로직</b>을 쓰되 "SM"을 사모 하나로 바꿔 계산합니다. 장 마감 후 수급이 확정된 뒤 갱신됩니다.</div>
+      첫 차트는 <b>KOSPI 지수</b>를 한 종목처럼 보고, 매집·분산 판정과 신호(B1·S2 등)는 스마트머니 국면과 <b>같은 로직</b>을 쓰되 "SM"을 사모 하나로 바꿔 계산합니다. 장 마감 후 수급이 확정된 뒤 갱신됩니다.</div>
   </div>
 
-  <div class="card" id="peChartCard"><h3>사모 매집 · 분산 차트 <span class="r" id="peRange"></span></h3>
+  <div class="card" id="peChartCard"><h3>KOSPI 사모 매집 · 분산 차트 <span class="r" id="peRange"></span></h3>
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-bottom:8px">
-      <input type="text" id="peStock" list="peStockList" placeholder="종목명·코드 (예: SK하이닉스)" style="flex:1;min-width:150px;max-width:260px" autocomplete="off">
-      <datalist id="peStockList"></datalist>
-      <span class="faint" style="font-size:11px">판정 구간</span>
+      <b style="font-size:13px">KOSPI</b><span class="faint" style="font-size:11px">개별 종목(STOCK) 합산 사모 순매수 · 지수 종가 기준</span>
+      <span class="faint" style="font-size:11px;margin-left:6px">판정 구간</span>
       <label class="smck"><input type="radio" name="peW" value="120" checked>120일</label>
       <label class="smck"><input type="radio" name="peW" value="60">60일</label>
     </div>
     <div class="smhead" id="peHead"><div class="load sk"></div></div>
     <div class="chart" id="pePrice"></div>
     <div class="legend" style="margin:6px 0 0;flex-wrap:nowrap;white-space:nowrap"><span class="faint">배경</span><span><i class="bx" style="background:color-mix(in srgb,var(--good) 30%,transparent);border:1px solid var(--good)"></i>①매집(보합)</span><span><i class="bx" style="background:color-mix(in srgb,var(--up) 30%,transparent);border:1px solid var(--up)"></i>②매집(상승)</span><span><i class="bx" style="background:color-mix(in srgb,var(--warn) 30%,transparent);border:1px solid var(--warn)"></i>③분산(전가)</span><span><i class="bx" style="background:color-mix(in srgb,var(--down) 30%,transparent);border:1px solid var(--down)"></i>④분산(이탈)</span></div>
-    <div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--s3)"></i>사모 평단(보라 점선)</span></div>
+    <div class="legend" style="margin:2px 0 0"><span><i style="background:var(--ink)"></i>KOSPI 지수</span><span><i style="background:var(--s3)"></i>사모 평단(보라 점선)</span></div>
     <div id="peSigLeg"></div>
     <details class="smlogic"><summary>국면·신호 읽는 법 (사모 기준)</summary><div id="peGuide"></div></details>
-    <div style="margin-top:12px"><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 사모 누적 순매수 주식수 ÷ 상장주식수(%) · 사모와 개인 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = 종가</div>
+    <div style="margin-top:12px"><div class="faint" style="font-size:11.5px;margin-bottom:4px"><b>매집/분산</b> — 구간 시작 대비 사모 누적 순매수 주식수 ÷ 상장주식수(%) · 사모와 개인 두 선이 벌어지면 매집, 좁혀지면 분산 · 회색 = KOSPI 지수 · 시장 전체(코스피 개별 종목 합산)의 사모 지분 변화입니다</div>
       <div class="chart" id="peFlow"></div>
-      <div class="legend" style="margin:6px 0 0"><span><i style="background:var(--good)"></i>사모</span><span><i style="background:var(--down)"></i>개인</span><span><i style="background:var(--axis)"></i>종가</span></div></div>
+      <div class="legend" style="margin:6px 0 0"><span><i style="background:var(--good)"></i>사모</span><span><i style="background:var(--down)"></i>개인</span><span><i style="background:var(--axis)"></i>KOSPI 지수</span></div></div>
   </div>
 
   <div class="card"><h3>사모 자금 이동 타임라인
@@ -5002,31 +5001,19 @@ const SM_SUBJ_DEF=["foreign","inv_trust","pe","pension"];
    ① 매집·분산 차트: 종목상세의 스마트머니 엔진(smSeries)에 "SM = 사모(pe_cum 일별 차분) 하나"만 넣어 계산
    ② 자금 이동 타임라인: sector_flow_daily.pe_net(업종×일 사모 순매수 합) — 타임라인 CSS(.tl-*)를 그대로 사용
    ③ 매수 상위 종목·시총대비 순위: 오늘의 종목/수급의 표와 같은 행 형식(scrNameCell·scrCells) */
-S.peW=120;S.peMkt="all";S.peTopPeriod="1d";S.peTopSort="amt";S.peCode=null;S._peOpen=false;
+S.peW=120;S.peMkt="all";S.peTopPeriod="1d";S.peTopSort="amt";S._peOpen=false;
 function peOpen(){
   if(!S._peOpen){
     S._peOpen=true;
-    const dl=$("#peStockList");
-    if(dl&&S.codes&&S.codes.length)dl.innerHTML=S.codes.map(c=>`<option value="${accEsc(c.name)} (${c.code})">`).join("");
     peBind();
-    S.peCode=(S.chart&&S.chart.code&&!(S.etfMap&&S.etfMap[S.chart.code]))?S.chart.code:"000660";
-    peStockInput();
     peLoadTimeline().catch(e=>{console.error("사모 타임라인",e);$("#peTlBody").innerHTML='<div class="load">불러오기 실패 — Actions의 Post Compute(sectorflow)가 사모 열을 채운 뒤 표시됩니다.</div>';});
     loadFlowRawData().then(raw=>{S.peRaw=raw;peRenderTop();peRenderRank();})
       .catch(e=>{console.error("사모 상위",e);$("#peTopBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});
   }
-  peLoadChart(S.peCode).catch(e=>{console.error("사모 차트",e);$("#peHead").innerHTML='<div class="load">불러오기 실패</div>';});
+  peLoadChart().catch(e=>{console.error("사모 차트",e);$("#peHead").innerHTML='<div class="load">불러오기 실패</div>';});
   setTimeout(()=>{if(S.pe_tl&&S.pe_tl.length)peDrawPaths();},100);
 }
-function peStockInput(){const c=S.codes&&S.codes.find(x=>x.code===S.peCode);$("#peStock").value=c?`${c.name} (${c.code})`:"";}
 function peBind(){
-  $("#peStock").addEventListener("change",()=>{
-    const v=$("#peStock").value.trim(),m=v.match(/\(([0-9A-Za-z]{1,12})\)\s*$/);
-    const c=m?S.codes.find(x=>x.code===m[1]):S.codes.find(x=>x.code===v||x.name===v);
-    if(!c){peStockInput();return;}
-    if(S.etfMap&&S.etfMap[c.code]){$("#peHead").innerHTML='<div class="load">ETF는 사모 수급이 집계되지 않습니다.</div>';return;}
-    S.peCode=c.code;peLoadChart(c.code).catch(e=>console.error(e));
-  });
   $$("input[name=peW]").forEach(r=>r.onchange=()=>{S.peW=+r.value;if(S.peRows)peRenderChart();});
   $("#peTlTabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{
     S.peMkt=b.dataset.m;$$("#peTlTabs button").forEach(x=>x.classList.toggle("on",x===b));peRenderTimeline();});
@@ -5038,14 +5025,15 @@ function peBind(){
   addEventListener("resize",()=>{clearTimeout(S._peRz);S._peRz=setTimeout(()=>{if(S.curTab!=="pe")return;if(S.peRows)peRenderChart();if(S.pe_tl&&S.pe_tl.length)peRenderTimeline();},150);});
 }
 /* ① 매집·분산 */
-async function peLoadChart(code){
-  if(!code)return;
+async function peLoadChart(){
+  if(S.peRows){peRenderChart();return;}
   $("#peHead").innerHTML='<div class="load sk"></div>';
-  const key="pe|"+code;
-  S._peCache=S._peCache||{};
-  let rows=S._peCache[key];
-  if(!rows){rows=await q("v_stock_chart",`select=*&code=eq.${code}&order=trade_date.asc`);S._peCache[key]=rows;}
-  if(code!==S.peCode)return;
+  // KOSPI 지수 종가 + 개별 종목 합산 수급(v_kospi_flow_daily) — 오늘의 종목 > KOSPI 카드와 같은 데이터(kBuild)
+  const [idx,flow]=await Promise.all([
+    q("market_daily","select=trade_date,index_close&market=eq.KOSPI&order=trade_date.asc"),
+    q("v_kospi_flow_daily","select=*&order=trade_date.asc")]);
+  const rows=kBuild(idx,flow);
+  if(!rows.length)throw new Error("데이터 없음");
   S.peRows=rows;peRenderChart();
 }
 function peRenderChart(){
@@ -5055,8 +5043,7 @@ function peRenderChart(){
   const sr=smRowsFrom(rows,["pe"]), ser=smSeries(sr,S.peW);
   let i0=ser.findIndex(z=>z.date>=START_D);if(i0<0)i0=0;
   const rs=ser.slice(i0);
-  const nm=(S.codes.find(c=>c.code===S.peCode)||{}).name||S.peCode;
-  $("#peRange").textContent=`${nm} · ${rs[0].date}~${rs.at(-1).date} · ${S.peW}일 판정`;
+  $("#peRange").textContent=`${rs[0].date}~${rs.at(-1).date} · ${S.peW}일 판정`;
   const z=ser.at(-1),prev=ser.at(-2)||z;
   const findSig=kinds=>{for(let k=ser.length-1;k>=0;k--){const h=ser[k].signals.filter(g=>kinds.includes(g));if(h.length)return [h.at(-1),ser.length-1-k];}return [null,null];};
   const [bs,ba]=findSig(["B1"]),[ss,sa]=findSig(["S2","S4"]),[rs0,ra]=findSig(["B2","S1","S3"]);
@@ -5065,7 +5052,7 @@ function peRenderChart(){
       <div class="vl" style="font-size:17px;color:${SM_PH_C[z.phase]}">${SM_PH_KR[z.phase]}</div>
       <div class="sub">${z.phase!==prev.phase?`오늘 ${SM_PH_KR[prev.phase]}→${SM_PH_KR[z.phase]}`:`${z.phase_days}일째`}${z.quiet?" · 조용한 매집":""}</div></div>`
     +tile(`사모 ${S.peW}일 지분 변화`,`<span class="${sgn(z.dW)}">${pm(z.dW,2)}%p</span>`,`20일 ${pm(z.d20,2)}%p · 개인 ${S.peW}일 ${pm(z.indW,2)}%p`)
-    +tile("사모 평단 · 괴리",z.cost!=null?`${N(z.cost,0)}원`:"–",z.gap!=null?`<span class="${sgn(z.gap)}">현재가 ${pm(z.gap*100,1)}%</span> · 추정 보유 ${N(z.hold_pct,2)}%`:"보유 추정 0")
+    +tile("사모 평단 · 괴리 (지수 환산)",z.cost!=null?`${N(z.cost,0)}`:"–",z.gap!=null?`<span class="${sgn(z.gap)}">지수 ${pm(z.gap*100,1)}%</span> · 추정 보유 ${N(z.hold_pct,2)}%`:"보유 추정 0")
     +tile("개인 이전율 (20일)",z.transfer==null?"–":N(z.transfer*100,0)+"%","사모가 판 물량 중 개인이 받은 비율")
     +tile("최근 신호",[bs?`${smSigHtml(bs,ba)}`:"",ss?`${smSigHtml(ss,sa)}`:""].filter(Boolean).join("<br>")||"–",
       (rs0?`참고 ${smSigHtml(rs0,ra)} · `:"")+`20일 중 사모 순매수 ${z.buy20}일`);
@@ -5073,7 +5060,7 @@ function peRenderChart(){
   const lb=rs.map(x=>String(x.date).slice(2).replace(/-/g,"/")),F0=rs[0].F,I0=rs[0].I;
   lineChart($("#peFlow"),[{n:"사모",v:rs.map(x=>x.F-F0),c:"--good"},{n:"개인",v:rs.map(x=>x.I-I0),c:"--down"}],lb,
     {h:300,w:580,pr:92,zero:true,labelEnds:false,monthTicks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,2)+"%",fm:v=>pm(v,2)+"%",
-     bg:{v:rs.map(x=>x.close),n:"종가",ft:v=>N(v)+"원",marks:true}});
+     bg:{v:rs.map(x=>x.close),n:"KOSPI",ft:v=>N(v,2),marks:true}});
 }
 /* ② 자금 이동 타임라인 */
 async function peLoadTimeline(){
