@@ -126,7 +126,8 @@ for i,code in enumerate(codes,1):
     if i%50==0: print(f"{i}/{len(codes)} ok={ok} fail={fail}",flush=True)
 cur.execute("select count(*),count(distinct code),sum(case when is_est then 1 else 0 end),pg_size_pretty(pg_total_relation_size('stock_earnings')) from stock_earnings")
 t=cur.fetchone()
-rep=f"# 실적 수집 결과 ({MODE})\n- 신규 종목 전 구간 적재 {newc}종목\n- 대상 {len(codes)}종목 · 성공 {ok} · 실패 {fail}\n- 이번 업서트 {nrows}행(예상 {est}행)\n- 테이블 총 {t[0]}행 · {t[1]}종목 · 예상 {t[2]}행 · 크기 {t[3]}\n- 실패 종목: {', '.join(failed[:60]) or '없음'}\n"
+cur.execute("select count(*) filter (where dps is not null), count(*) filter (where dps>0 and is_est and freq='A') from stock_earnings"); dd=cur.fetchone()
+rep=f"# 실적 수집 결과 ({MODE})\n- 신규 종목 전 구간 적재 {newc}종목\n- 대상 {len(codes)}종목 · 성공 {ok} · 실패 {fail}\n- 이번 업서트 {nrows}행(예상 {est}행)\n- 테이블 총 {t[0]}행 · {t[1]}종목 · 예상 {t[2]}행 · 크기 {t[3]}\n- 주당배당금(dps) 있는 행 {dd[0]} · 연간 예상 배당 있는 행 {dd[1]}\n- 실패 종목: {', '.join(failed[:60]) or '없음'}\n"
 cur.execute("select code,freq,period,is_est,sales,op_profit,net_income,eps,bps,roe from stock_earnings where code=%s order by freq,period",("000660" if "000660" in codes else codes[0],))
 rep+="\n## 샘플\n```\n"+"\n".join(str(r) for r in cur.fetchall())+"\n```\n"
 open(f"earnings_{MODE}_report.md","w",encoding="utf-8").write(rep); print(rep)
