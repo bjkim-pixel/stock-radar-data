@@ -113,7 +113,7 @@ for i,code in enumerate(codes,1):
         newc+=full
         d=build(code,full)
         if not d:
-            if MODE=="est": ok+=1; continue     # 컨센서스 없는 종목은 정상
+            if MODE=="est" or not full: ok+=1; continue     # 컨센서스 없음 / 새로 공시된 분기 없음은 정상
             raise RuntimeError("no data")
         vals=[(code,fq,k,v["is_est"],*[v[f] for f in F],v["src"]) for (fq,k),v in d.items()]
         execute_values(cur,"""insert into stock_earnings(code,freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,src) values %s
