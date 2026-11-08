@@ -1228,11 +1228,16 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
           <option value="vol_ratio20_prev">거래량비</option>
           <option value="rs5_vs_mkt">개별RS5</option>
           <option value="rs20_vs_mkt">개별RS20</option>
+          <option value="div_yld">배당수익률(최근 12개월)</option>
+          <option value="div_yld_e">배당수익률(올해 예상)</option>
         </select></div>
       <div class="field"><label>정렬 방향</label>
         <select id="fDir"><option value="desc" selected>내림차순</option><option value="asc">오름차순</option></select></div>
       <div class="field"><label>매집(키움 계좌수)</label>
         <select id="fKw" title="선택하면 해당 기준 비율이 있는 종목만, 낮은 순(오름차순)으로 보여줍니다. 정렬 기준·방향은 무시됩니다"><option value="">사용 안 함</option><option value="r6">6월 대비 낮은 순</option><option value="r8">8월 대비 낮은 순</option></select></div>
+      <div class="field"><label>배당수익률 ≥ (%)</label><input type="number" id="fDivMin" step="0.1" placeholder="예: 3" title="배당이 있는 종목만, 아래 기준으로 계산한 배당수익률이 이 값 이상인 종목"></div>
+      <div class="field"><label>배당 기준</label>
+        <select id="fDivBasis" title="최근 12개월 = 최근 1년 안에 기준일이 지난 확정 배당 합계 ÷ 현재가 · 올해 예상 = 확정 + 네이버 예상 잔여 ÷ 현재가"><option value="ttm">최근 12개월 (확정)</option><option value="exp">올해 예상</option></select></div>
     </div>
 
     <div class="qf-group"><button class="qf-lb" data-qf-toggle aria-expanded="false">추세 · 가격 · 거래량 <span class="qf-chev">▾</span></button><div class="qf hide">
@@ -4793,6 +4798,11 @@ async function runScreener(){
     }
   }
   rows=rows.filter(screenerFilterPass);
+  const divMin=$("#fDivMin").value, divBasis=$("#fDivBasis").value==="exp"?"div_yld_e":"div_yld";
+  if(divMin!==""||$("#fSort").value.startsWith("div_yld")){   // 배당수익률 필터·정렬이 켜졌을 때만 배당 데이터를 불러옴
+    divAnnotate(rows,await divLoadAll(),date||new Date().toISOString().slice(0,10));
+    if(divMin!=="")rows=rows.filter(r=>r[divBasis]!=null&&r[divBasis]>=+divMin);
+  }
   const key=$("#fSort").value, dir=$("#fDir").value==="desc"?-1:1, kwk=$("#fKw")?$("#fKw").value:"";
   if(kwk){   // 매집 필터: 비율이 있는 종목만 낮은 순
     const km=await kwLoadMap();
@@ -4810,7 +4820,7 @@ $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e
 const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
-  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";$("#fKw").value="";
+  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";$("#fKw").value="";$("#fDivMin").value="";$("#fDivBasis").value="ttm";
   $("#fSector").value="";$("#fMa").value="";$("#fPh").value="";$("#fKind").value="all";$("#fInv").value="in";
   $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
 $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
@@ -5834,6 +5844,29 @@ function divTableHtml(m,n){
   const e=m.exp&&m.exp.rem>0?`<tr style="background:var(--surface-2)"><td class="l">${m.exp.period.slice(0,4)}년 남은 예상</td><td class="l">–</td><td class="num">${N(m.exp.rem,0)}원</td><td>–</td><td><span class="tag-d b">E</span></td></tr>`:"";
   if(!rows.length&&!e)return "";
   return `<div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">기준일</th><th class="l">구분</th><th>주당배당금</th><th>지급일</th><th>상태</th></tr></thead><tbody>${e}${rows.join("")}</tbody></table></div>`;
+}
+/* ══ 종목후보 배당수익률 필터용: 전 종목 배당 한 번에 로드 → 종목별 계산 ══ */
+function divLoadAll(){
+  if(S._divAllP)return S._divAllP;
+  S._divAllP=(async()=>{
+    const divs={};
+    for(let off=0;;off+=1000){
+      const part=await q("stock_dividends",`select=code,record_date,divi_kind,dps,pay_date&order=code.asc,record_date.desc&limit=1000&offset=${off}`);
+      part.forEach(r=>(divs[r.code]=divs[r.code]||[]).push(r));
+      if(part.length<1000)break;
+    }
+    const est={};
+    try{(await q("stock_earnings","select=code,freq,period,is_est,dps&freq=eq.A&is_est=eq.true&dps=gt.0&limit=2000")).forEach(r=>(est[r.code]=est[r.code]||[]).push(r));}catch(e){console.error("예상 배당",e);}
+    return {divs,est};
+  })().catch(e=>{S._divAllP=null;throw e;});
+  return S._divAllP;
+}
+function divAnnotate(rows,all,asof){
+  rows.forEach(r=>{
+    const d=all.divs[r.code];if(!d||!(+r.close>0)){r.div_yld=null;r.div_yld_e=null;return;}
+    const m=divModel(d,all.est[r.code]||[],+r.close,asof);
+    r.div_yld=m.yld;r.div_yld_e=m.exp?m.exp.yld:null;
+  });
 }
 async function renderDivCard(){
   const card=$("#dDivCard"),code=S.chart&&S.chart.code;
