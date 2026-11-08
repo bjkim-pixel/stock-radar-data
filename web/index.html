@@ -273,6 +273,10 @@ tbody tr.clk{cursor:pointer} tbody tr.clk:hover td{background:var(--surface-2)}
 tbody tr.row-hl>td{background:color-mix(in srgb,var(--warn) 24%,var(--surface))!important}
 tbody tr[aria-selected=true] td{background:color-mix(in srgb,var(--up) 8%,var(--surface))}
 td .nm{font-weight:600} td .cd{color:var(--ink-3);font-size:10.5px}
+/* 종목명 칸: 기본 6자 폭(넘으면 …), 머리글 ↔ 손잡이로 폭 조절. 폭이 넓어지면(nm-wide) 업종 표시도 함께 보임 */
+.nmt{display:inline-block;max-width:var(--nmw,6.3em);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+html:not(.nm-wide) td .cd.sc{display:none}
+.nmh{display:inline-block;margin-left:5px;padding:0 5px;border:1px solid var(--border);border-radius:6px;font-size:10px;line-height:15px;color:var(--ink-3);background:var(--surface);cursor:ew-resize;touch-action:none;user-select:none;vertical-align:middle}
 .rank{color:var(--ink-3);font-size:10.5px}
 .ibar-wrap{display:flex;align-items:center;gap:7px;justify-content:flex-end}
 .ibar{height:7px;border-radius:4px;background:var(--s1);opacity:.85;min-width:2px}
@@ -1227,6 +1231,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         </select></div>
       <div class="field"><label>정렬 방향</label>
         <select id="fDir"><option value="desc" selected>내림차순</option><option value="asc">오름차순</option></select></div>
+      <div class="field"><label>매집(키움 계좌수)</label>
+        <select id="fKw" title="선택하면 해당 기준 비율이 있는 종목만, 낮은 순(오름차순)으로 보여줍니다. 정렬 기준·방향은 무시됩니다"><option value="">사용 안 함</option><option value="r6">6월 대비 낮은 순</option><option value="r8">8월 대비 낮은 순</option></select></div>
     </div>
 
     <div class="qf-group"><button class="qf-lb" data-qf-toggle aria-expanded="false">추세 · 가격 · 거래량 <span class="qf-chev">▾</span></button><div class="qf hide">
@@ -4629,6 +4635,25 @@ function topBuyer(row, sfx){
   if(!best)return"–";
   return`<span class="${sgn(bestAmt)}">${best.lb} ${pm(bestAmt/EOK,0)}억</span>`;
 }
+/* ══ 종목명 칸 폭 조절(↔ 손잡이) ══ */
+(function(){
+  const PRE=[6.3,11,18];let w=6.3;
+  try{const v=parseFloat(localStorage.getItem("sr_nmw"));if(v>=4&&v<=26)w=v;}catch(e){}
+  const apply=()=>{document.documentElement.style.setProperty("--nmw",w+"em");document.documentElement.classList.toggle("nm-wide",w>=10.5);
+    try{localStorage.setItem("sr_nmw",String(w));}catch(e){}};
+  apply();
+  let st=null;
+  document.addEventListener("pointerdown",e=>{const h=e.target.closest(".nmh");if(!h)return;
+    e.preventDefault();st={x:e.clientX,w,moved:false,id:e.pointerId,h};try{h.setPointerCapture(e.pointerId);}catch(_){}});
+  document.addEventListener("pointermove",e=>{if(!st||e.pointerId!==st.id)return;
+    const dx=e.clientX-st.x;if(Math.abs(dx)>4)st.moved=true;
+    if(st.moved){w=Math.max(4,Math.min(26,Math.round((st.w+dx/13)*10)/10));apply();}});
+  const end=e=>{if(!st||e.pointerId!==st.id)return;
+    if(!st.moved){w=PRE.find(x=>x>w+0.3)||PRE[0];apply();}
+    st=null;};
+  document.addEventListener("pointerup",end);document.addEventListener("pointercancel",()=>{st=null;});
+  document.addEventListener("click",e=>{if(e.target.closest(".nmh"))e.stopPropagation();},true);   // 머리글 정렬 클릭으로 새지 않게
+})();
 /* ══ 매집(키움 보유계좌수) 6월·8월 대비 비율 — 종목 표 공용 ══ */
 function kwBaseOf(dates,m){const a=dates.filter(d=>+d.slice(5,7)===m);return a.length?a[0]:null;}
 function kwLoadMap(){
@@ -4655,8 +4680,8 @@ function kwFill(root){
     const v=(S.kwMap[td.dataset.kwc]||{})[td.dataset.kw];td.textContent=kwFmt(v);td.style.cssText=kwStyle(v);});
 }
 /* 종목후보 표의 종목 셀·지표 셀(종가~프로그램, 25칸) — 오늘의 종목 표들도 같이 쓰도록 공용화 */
-function scrNameCell(r){return `<td class="l">${favStar(r.code)}<a class="lk nm" data-code="${r.code}">
-        ${r.market?`<span class="cd" title="${r.market}"${r.market==="ETF"?' style="color:var(--accent,#2f6fed);font-weight:700"':""}>${r.market==="KOSPI"?"피":r.market==="KOSDAQ"?"닥":r.market}</span> `:""}${r.sector?`<span class="cd">[${r.sector}]</span> `:""}${r.name}</a></td>`;}
+function scrNameCell(r){return `<td class="l">${favStar(r.code)}<a class="lk nm" data-code="${r.code}" title="${String(r.name).replace(/"/g,"&quot;")}${r.sector?" · "+r.sector:""}">
+        ${r.market?`<span class="cd" title="${r.market}"${r.market==="ETF"?' style="color:var(--accent,#2f6fed);font-weight:700"':""}>${r.market==="KOSPI"?"피":r.market==="KOSDAQ"?"닥":r.market}</span> `:""}${r.sector?`<span class="cd sc">[${r.sector}]</span> `:""}<span class="nmt">${r.name}</span></a></td>`;}
 function scrCells(r){return `
       <td>${N(+r.close,0)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
       <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
@@ -4704,7 +4729,7 @@ const SCR_HD=[
 ];
 function scrThead(extra){
   const rs=h=>(h||"").replace(/<th(?=[\s>])/g,'<th rowspan="2"');
-  let r1='<th class="l g0" rowspan="2">#</th><th class="l g0" rowspan="2">종목</th>'+rs(extra),r2="";
+  let r1='<th class="l g0" rowspan="2">#</th><th class="l g0" rowspan="2">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체 순환">↔</span></th>'+rs(extra),r2="";
   SCR_HD.forEach(c=>{
     if(Array.isArray(c)){r1+=`<th rowspan="2" class="g-${c[1]}${c[3]?" "+c[3]:""}"${c[2]?` title="${c[2]}"`:""}>${c[0]}</th>`;return;}
     r1+=`<th class="gh g-${c.g}" colspan="${c.subs.length}"${c.title?` title="${c.title}"`:""}>${c.top}</th>`;
@@ -4763,8 +4788,12 @@ async function runScreener(){
     }
   }
   rows=rows.filter(screenerFilterPass);
-  const key=$("#fSort").value, dir=$("#fDir").value==="desc"?-1:1;
-  rows.sort((a,b)=>((+a[key]||-Infinity)-(+b[key]||-Infinity))*dir);
+  const key=$("#fSort").value, dir=$("#fDir").value==="desc"?-1:1, kwk=$("#fKw")?$("#fKw").value:"";
+  if(kwk){   // 매집 필터: 비율이 있는 종목만 낮은 순
+    const km=await kwLoadMap();
+    rows=rows.filter(r=>km[r.code]&&km[r.code][kwk]!=null);
+    rows.sort((a,b)=>km[a.code][kwk]-km[b.code][kwk]);
+  }else rows.sort((a,b)=>((+a[key]||-Infinity)-(+b[key]||-Infinity))*dir);
   rows=rows.slice(0,+$("#fLimit").value);
   $("#scrCount").innerHTML=`조건 통과 <b>${rows.length}</b>종목`;
   $("#scrBody").innerHTML=rows.length?rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}${scrCells(r)}</tr>`).join("")
@@ -4776,7 +4805,7 @@ $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e
 const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
-  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";
+  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";$("#fKw").value="";
   $("#fSector").value="";$("#fMa").value="";$("#fPh").value="";$("#fKind").value="all";$("#fInv").value="in";
   $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
 $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
@@ -4826,12 +4855,14 @@ async function loadDetail(code){
       <div class="num ${sgn(+last.change_pct)}" style="font-size:14px;font-weight:640">${pm(+last.change_pct)}%</div>
       <div class="faint num" style="font-size:12px">${sum.market_cap!=null?N(+sum.market_cap/JO,1)+"조":"–"}</div>
       ${isEtf?"":'<div class="faint num" id="dPer" style="font-size:12px;display:none"></div>'}
+      <div class="faint num" id="dKw" style="font-size:12px" title="키움증권 회원 보유 계좌수: 최근 ÷ 6월(8월) 첫 기록. 낮을수록 개인 물량 감소(매집 가능성)"></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:2px">
       <div class="faint" style="font-size:12px">${sum.sector||"–"}</div>
       <div class="faint" style="font-size:12px">${isEtf?(sum.etf_field||"ETF"):"업종RS "+(sum.sector_rs_rank?sum.sector_rs_rank+"위":"–")}</div>
     </div>`;
   if(!isEtf)perFill(code,+last.close,$("#dPer"));
+  {const e=$("#dKw");kwLoadMap().then(m=>{const v=m[code];if(e&&v)e.innerHTML=`매집 6월 <b style="${kwStyle(v.r6)}">${kwFmt(v.r6)}</b> · 8월 <b style="${kwStyle(v.r8)}">${kwFmt(v.r8)}</b>`;});}
   const cpb=$("#dCopyName");
   if(cpb)cpb.onclick=async()=>{
     const nm=sum.name||code;
