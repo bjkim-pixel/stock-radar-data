@@ -1,0 +1,33 @@
+name: "[수집] DART 공시(5% 대량보유·내부자·자사주 등) | 평일 20:40 KST | 수동 백필 가능"
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: '조회 일수(백필은 30)'
+        default: '4'
+  schedule:
+    - cron: '40 11 * * 1-5'   # 20:40 KST 평일 (KIS 배치 뒤)
+permissions:
+  contents: write
+concurrency:
+  group: dart-collect
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      DART_API_KEY: ${{ secrets.DART_API_KEY }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - run: python 134_dart_collect.py "${{ github.event.inputs.days || '4' }}"
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: dart-report
+          file: dart_report.md
