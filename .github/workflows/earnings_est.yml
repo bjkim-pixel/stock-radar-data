@@ -1,4 +1,4 @@
-name: "[수집] 종목 예상실적(컨센서스) | 평일 매일 | 네이버"
+name: "[수집] 종목 예상실적(컨센서스) | 평일 20:10 KST | 네이버"
 # 네이버 컨센서스(isConsensus=Y)만 갱신. 확정(is_est=false) 행은 건드리지 않습니다.
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
         description: '테스트용 종목 수 제한(0=전체)'
         default: '0'
   schedule:
-    - cron: '30 9 * * 1-5'   # 18:30 KST 평일
+    - cron: '10 11 * * 1-5'   # 20:10 KST 평일(장 마감 후 다른 수집·계산 액션이 끝난 뒤)
 permissions:
   contents: write
 concurrency:
