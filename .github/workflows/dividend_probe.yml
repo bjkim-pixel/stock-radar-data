@@ -1,0 +1,32 @@
+name: "[점검] 배당 정보 소스 확인 | 수동 | 읽기 전용"
+on:
+  workflow_dispatch:
+    inputs:
+      code:
+        description: '종목 코드'
+        default: '005930'
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - run: python 131_dividend_probe.py "${{ github.event.inputs.code }}" 2>&1 | tee dividend_probe_report.md
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: dividend-probe-report
+          file: dividend_probe_report.md
