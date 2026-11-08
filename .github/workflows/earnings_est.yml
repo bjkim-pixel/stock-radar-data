@@ -1,4 +1,5 @@
-name: "[수집] 종목 실적·예상실적 | 주 1회+수동 | KIS 확정 + 네이버 컨센서스"
+name: "[수집] 종목 예상실적(컨센서스) | 평일 매일 | 네이버"
+# 네이버 컨센서스(isConsensus=Y)만 갱신. 확정(is_est=false) 행은 건드리지 않습니다.
 on:
   workflow_dispatch:
     inputs:
@@ -6,30 +7,28 @@ on:
         description: '테스트용 종목 수 제한(0=전체)'
         default: '0'
   schedule:
-    - cron: '40 21 * * 0'   # 일요일 21:40 UTC = 월요일 06:40 KST
+    - cron: '30 9 * * 1-5'   # 18:30 KST 평일
 permissions:
   contents: write
 concurrency:
-  group: kis-rest-batch
+  group: earnings-est
   cancel-in-progress: false
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
     env:
-      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
-      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
       - run: pip install psycopg2-binary requests
-      - name: Collect
-        run: python 125_earnings_collect.py "${{ github.event.inputs.limit || '0' }}"
+      - name: Collect (est)
+        run: python 125_earnings_collect.py est "${{ github.event.inputs.limit || '0' }}"
       - name: Publish report
         if: always()
         uses: ./.github/actions/publish-report
         with:
-          branch: earnings-report
-          file: earnings_report.md
+          branch: earnings-est-report
+          file: earnings_est_report.md

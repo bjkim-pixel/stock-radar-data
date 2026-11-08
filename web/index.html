@@ -5545,7 +5545,7 @@ async function perFill(code,close,el){
 async function earnRows(code){
   let rows=S.earnCache[code];
   if(!rows){
-    try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe&code=eq.${code}&order=period.asc`);}
+    try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,updated_at&code=eq.${code}&order=period.asc`);}
     catch(e){rows=[];}
     S.earnCache[code]=rows;
   }
@@ -5567,7 +5567,8 @@ function earnTable(rows,freq,maxQ){
   const body=row("매출액","sales",earnEok,true)+row("영업이익","op_profit",earnEok,true)+
     "<tr><td class=\"l\">영업이익률</td>"+mrg.map((v,i)=>`<td class="num"${list[i].is_est?' style="background:var(--surface-2)"':""}>${v==null?"–":N(v,1)+"%"}</td>`).join("")+"</tr>"+
     row("순이익","net_income",earnEok,false)+row("EPS(원)","eps",v=>N(v,0),true)+row("BPS(원)","bps",v=>N(v,0),false)+row("ROE","roe",v=>N(v,1)+"%",false);
-  return {head,body,est:list.some(r=>r.is_est),n:list.length};
+  const ests=list.filter(r=>r.is_est&&r.updated_at).map(r=>r.updated_at).sort();
+  return {head,body,est:list.some(r=>r.is_est),n:list.length,estAt:ests.length?ests.at(-1):null};
 }
 async function renderEarnCard(){
   const card=$("#dEarnCard"),code=S.chart&&S.chart.code;
@@ -5579,7 +5580,7 @@ async function renderEarnCard(){
   $$("#dEarnSet button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===S.earnFreq)));
   const t=earnTable(rows,S.earnFreq,9);
   $("#dEarnHead").innerHTML=t.head;$("#dEarnBody").innerHTML=t.body;
-  $("#dEarnSrc").textContent=t.est?"E = 컨센서스 예상":"";
+  $("#dEarnSrc").textContent=t.est?"E = 컨센서스 예상"+(t.estAt?" · "+fmtKst(t.estAt)+" 기준":""):"";
 }
 /* 짝꿍매매 종목 카드의 "실적 · 예상실적" 칸 — 연간/분기 전환은 모든 카드가 함께 바뀜 */
 async function pcEarnRender(code){
@@ -5588,7 +5589,7 @@ async function pcEarnRender(code){
   if(!rows.length){el.innerHTML='<div class="load">실적 데이터 없음</div>';return;}
   const t=earnTable(rows,S.earnFreq,6);
   el.innerHTML=`<div class="tw tw-scroll"><table class="earn-t"><thead>${t.head}</thead><tbody>${t.body}</tbody></table></div>`
-    +(t.est?'<div class="faint" style="font-size:9.5px;margin-top:3px">E = 컨센서스 예상 · 증감률 = 전년(동기) 대비</div>':"");
+    +(t.est?`<div class="faint" style="font-size:9.5px;margin-top:3px">E = 컨센서스 예상${t.estAt?" ("+fmtKst(t.estAt)+" 기준)":""} · 증감률 = 전년(동기) 대비</div>`:"");
 }
 function pcEarnToggle(f){
   S.earnFreq=f;
