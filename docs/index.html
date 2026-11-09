@@ -2527,7 +2527,12 @@ function volumeBars(host,vals,labels,opt={}){
           stroke:css("--surface"),"stroke-width":3.5,"paint-order":"stroke"});
         const dateSuffix=lb!=="오늘"?` (${labels[i]})`:"";
         const fmtV=opt.fm?opt.fm(vals[i]):opt.ft?opt.ft(vals[i]):N(vals[i]);
-        t.textContent=`${lb} ${fmtV}${dateSuffix}`;svg.appendChild(t);});
+        t.textContent=`${lb} ${fmtV}${dateSuffix}`;svg.appendChild(t);
+        if(opt.sub&&opt.sub[i]!=null&&!isNaN(opt.sub[i])){
+          const t2=el("text",{x:cx+(ta==="end"?-8:8),y:cy-23,"text-anchor":ta,
+            "font-size":10.5,"font-weight":700,fill:css("--ink-2"),
+            stroke:css("--surface"),"stroke-width":3.5,"paint-order":"stroke"});
+          t2.textContent=`${lb==="오늘"?"오늘":lb} 종가 ${N(opt.sub[i],0)}`;svg.appendChild(t2);}});
     }
   }
   // opt.refLine: 기준선 (MA20 등) — 점선으로 표시
@@ -5185,7 +5190,7 @@ function renderRangeCharts(){
   $("#dProfileInstTop").innerHTML=topBucketsHtml(profInst,5,"외국인+기관");
   const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
   volumeBars($("#dWeight"),wps,rlb,
-    {h:450,w:1180,pr:66,monthTicks:true,marks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+    {h:450,w:1180,pr:66,monthTicks:true,marks:true,sub:rp.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
     {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rp[0];
