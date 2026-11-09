@@ -6282,8 +6282,8 @@ function smxDraw(all,win,E){
     {...CW,h:cp?200:250,zero:true,monthTicks:true,ft:v=>pm(v,0)+"억",shadeFrom:m.build>0&&m.since>0?m.pk:null,
      pts:m.subj.filter(x=>!x.flat).map(x=>({i:x.own,s:m.subj.indexOf(x),c:x.c,r:4,t:x.rank?CM[x.rank]:""}))});
 }
-// 수급 주체별 누적 카드를 종목상세 맨 위(종목 선택·필터 카드 바로 아래)로
-{const top=$("#dSel").closest(".card"),mc=$("#dMinisCard");if(top&&mc&&top!==mc)top.after(mc);}
+// 수급 주체별 누적 카드를 '거래주체별 일별 순매수' 카드 바로 위로
+{const dc=$("#dDailyCard"),mc=$("#dMinisCard");if(dc&&mc)dc.before(mc);}
 $("#dSmxWin").addEventListener("seg-change",e=>{S.smxWin=e.detail;try{renderSmx();}catch(err){console.error(err);}});
 
 async function renderDivCard(){
