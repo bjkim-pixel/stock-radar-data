@@ -6634,7 +6634,7 @@ function renderPairCard(code,sum,rows,flowRow){
       refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
   const wps=rpUse.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
   volumeBars($("#pcWeight_"+code),wps,lb,
-    {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+    {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,sub:rpUse.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#pcVol_"+code),rpUse.map(r=>+r.volume),lb,
     {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rpUse[0];
@@ -7798,7 +7798,7 @@ function kRangeCharts(){
     {n:"MA5",v:rp.map(r=>r.ma5),c:"--mac1"},{n:"MA20",v:rp.map(r=>r.ma20),c:"--mac2"},{n:"MA120",v:rp.map(r=>r.ma120),c:"--mac3"}],rlb,
     {h:450,w:1180,pr:66,labelEnds:false,marks:true,monthTicks:true,fy:v=>N(v,0),fm:v=>N(v,2),ft:v=>N(v,2),refLine:maxClose,refLabel:`전고점 ${N(maxClose,2)}`});
   volumeBars($("#dWeight"),rp.map(r=>r.weight_per_share!=null?r.weight_per_share*100:null),rlb,
-    {h:450,w:1180,pr:66,monthTicks:true,marks:true,fy:v=>pm(v,2)+"%",ft:v=>pm(v,3)+"%"});
+    {h:450,w:1180,pr:66,monthTicks:true,marks:true,sub:rp.map(r=>+r.close),fy:v=>pm(v,2)+"%",ft:v=>pm(v,3)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>r.amount/1e12),rlb,
     {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v,0)+"조",ft:v=>N(v,1)+"조원"});
   const rb=rp[0],rcum=k=>rp.map(r=>(+r[k]-+rb[k])/EOK);
