@@ -5,6 +5,9 @@ on:
       limit:
         description: '테스트용 종목 수 제한(0=전체)'
         default: '0'
+      fix_small:
+        description: '소액주주 비율만 다시 채우기(true)'
+        default: 'false'
   schedule:
     - cron: '10 12 * * 1-5'   # 21:10 KST 평일
 permissions:
@@ -24,7 +27,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
       - run: pip install psycopg2-binary requests
-      - run: python 137_governance_collect.py "${{ github.event.inputs.limit || '0' }}"
+      - run: python 137_governance_collect.py "${{ github.event.inputs.limit || '0' }}" ${{ github.event.inputs.fix_small == 'true' && '--fix-small' || '' }}
       - name: Publish report
         if: always()
         uses: ./.github/actions/publish-report

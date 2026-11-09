@@ -20,7 +20,7 @@ def js(ep,**p):
     if j.get("status")=="020": raise SystemExit("DART 호출 한도 초과(020)")
     return j.get("list") or [] if j.get("status")=="000" else []
 def num(v):
-    try: return float(str(v).replace(",","").strip())
+    try: return float(str(v).replace(",","").replace("%","").strip())
     except: return None
 def d10(s):
     try: return dt.date.fromisoformat(str(s)[:10])
@@ -36,6 +36,21 @@ cur.execute("select code,rcept_no from gov_summary"); seen=dict(cur.fetchall())
 y=dt.date.today().year
 CAND=[(str(y),"11014"),(str(y),"11012"),(str(y),"11013"),(str(y-1),"11011"),(str(y-1),"11014")]
 sample={}; n_new=n_skip=n_nocorp=n_nodata=0
+if "--fix-small" in sys.argv:   # 소액주주 비율만 다시 채움(저장된 기준일에서 보고서 코드를 역산)
+    RC={(3,31):"11013",(6,30):"11012",(9,30):"11014",(12,31):"11011"}; fixed=0
+    cur.execute("select code,stlm_dt from gov_summary where stlm_dt is not null"); rows=cur.fetchall()
+    for code,stl in rows:
+        cc=CC.get(code); rc=RC.get((stl.month,stl.day))
+        if not cc or not rc: continue
+        ml=js("mrhlSttus",corp_code=cc,bsns_year=str(stl.year),reprt_code=rc)
+        if len(sample)<3 and ml: sample[code]=ml[:3]
+        sm=next((m for m in ml if "소액" in (m.get("se") or "")),ml[0] if ml else None)
+        if not sm: continue
+        cur.execute("update gov_summary set small_holders=%s,small_holders_rate=%s,small_shares_rate=%s,issued_shares=coalesce(%s,issued_shares) where code=%s",
+          (num(sm.get("shrholdr_co")),num(sm.get("shrholdr_rate")),num(sm.get("hold_stock_rate")),num(sm.get("stock_tot_co")),code)); fixed+=1
+    cur.execute("select count(*),count(small_shares_rate),count(small_holders_rate) from gov_summary")
+    rep=f"# 소액주주 보정\n- 갱신 {fixed} · API {calls}회\n- gov_summary (행, 소액주식비율 채움, 소액주주비율 채움): {cur.fetchone()}\n\n```\n"+json.dumps(sample,ensure_ascii=False,indent=1)[:3000]+"\n```\n"
+    open("gov_report.md","w",encoding="utf-8").write(rep); print(rep); sys.exit(0)
 def isCorp(n): return bool(re.search(r"\(주\)|㈜|주식회사|유한|합자|조합|재단|공사|은행|증권|펀드|투자|홀딩스|Ltd|Inc|Corp|Fund|Capital|LLC|L\.P|파트너스|코퍼레이션",n or "",re.I)) or len(nm_key(n))>=5
 for ci,code in enumerate(codes):
     if ci%25==0: print(f'{ci}/{len(codes)} {time.time()-T0:.0f}s calls={calls}',flush=True)
