@@ -1599,6 +1599,22 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note"><b>외+기</b> = 아래 "수급 주체별 누적" 차트의 외국인+기관합계 값을 각 시점(오늘·1주 전·2주 전·1개월 전…6개월 전)에서 읽은 누적 순매수. <b>순매수/시총</b> = 매일 (외+기 순매수 주식수 ÷ 그날 상장주식수)를 누적한 값(일별 순매수 주식수 ÷ 그날 상장주식수를 누적한 지분 변화율. 순매수 주식수 = 순매수대금 × 거래량 ÷ 거래대금이라 주가 급락·급등의 영향을 받지 않음). 나머지 열은 기존처럼 그 기간 동안의 순매수 합계.</div>
   </div>
 
+  <div class="card" id="dSmxCard" style="display:none"><h3>스마트머니 매집·이탈 진단 <span class="r" id="dSmxSub">외국인+기관합계 누적 기준 · 억원</span></h3>
+    <div class="qf seg" id="dSmxWin" style="margin-bottom:8px">
+      <button class="fchip" data-v="63" aria-pressed="false">3개월</button>
+      <button class="fchip" data-v="126" aria-pressed="false">6개월</button>
+      <button class="fchip" data-v="all" aria-pressed="true">전체</button>
+    </div>
+    <div id="dSmxStatus" style="margin-bottom:8px"></div>
+    <div class="tw tw-scroll" style="margin-bottom:10px"><table class="earn-t" id="dSmxTable"></table></div>
+    <div class="faint" style="font-size:11.5px;margin:4px 0"><b>A. 외+기 누적</b> — ▲ 매집 시작 저점 · ▼ 고점 · 파란 음영 = 고점 이후 · 회색 = 종가</div>
+    <div class="chart" id="dSmxA"></div>
+    <div class="faint" style="font-size:11.5px;margin:10px 0 4px"><b>B. 주체별 누적 겹쳐 보기</b> — 기간 시작 = 0 · 점 = 각 주체의 누적 고점(먼저 꺾인 주체가 먼저 이탈)</div>
+    <div id="dSmxLegend" style="font-size:11.5px;display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:4px"></div>
+    <div class="chart" id="dSmxB"></div>
+    <div class="note">기간 안에서 외국인+기관합계 누적 순매수가 가장 높았던 날을 <b>고점</b>, 그 이전 최저점을 <b>매집 시작</b>으로 봅니다. <b>회수율</b> = 고점 이후 순매도 ÷ 매집 구간 순매수. 판정: 최근 5거래일 안에 신고점 = 매집 지속 · 회수율 10% 미만 = 고점 후 정체 · 10~50%이면서 최근 20일 순매도 = 이탈 진행(순매수면 고점 후 정체) · 50% 이상 = 이탈 심화. <b>주체 고점일</b> 순서(①②…)는 고점 이후 순매도인 주체 중 누적이 먼저 꺾인 순서입니다. 기타기관 = 기관합계 − 금융투자·투신·연기금·사모(보험·은행·기타금융). 개인은 외+기 물량을 누가 받았는지 보기 위한 참고 행입니다.</div>
+  </div>
+
   <div class="card"><h3>수급 주체별 누적<span class="r">전 기간 · 억원 · 각 차트 오른쪽 끝이 오늘 · 회색 선 = 종가</span></h3>
     <div class="grid5" id="dMinis"></div>
   </div>
@@ -2275,6 +2291,11 @@ function lineChart(host,series,labels,opt={}){
   (opt.monthTicks?monthTicks(labels):[0,Math.floor(labels.length/2),labels.length-1]).forEach(i=>{
     const t=el("text",{x:X(i),y:H-6,"text-anchor":i===0?"start":i===labels.length-1?"end":"middle",
       "font-size":8.5,fill:css("--ink-3")});t.textContent=monthLabel(labels[i]);svg.appendChild(t);});
+  /* opt.shadeFrom = 인덱스: 그 이후 구간을 옅게 칠함(예: 고점 이후) */
+  if(opt.shadeFrom!=null&&opt.shadeFrom<labels.length-1){
+    svg.appendChild(el("rect",{x:X(opt.shadeFrom),y:P.t,width:X(labels.length-1)-X(opt.shadeFrom),height:H-P.t-P.b,
+      fill:css(opt.shadeColor||"--down"),"fill-opacity":.08}));
+  }
   /* opt.bg = {v:[...],n,ft}: 배경 보조선(예: 종가) — 자기 값 범위로 따로 맞춘 회색 얇은 선, 눈금·마커 없음, 툴팁에만 값 표시 */
   if(opt.bg){
     const bv=opt.bg.v.filter(v=>v!=null&&!isNaN(v));
@@ -2363,6 +2384,16 @@ function lineChart(host,series,labels,opt={}){
         t.textContent=`${(opt.marks==="each"||todayOnly)?s0.n+" ":""}${lb} ${opt.fm?opt.fm(vals[i]):N(vals[i])}${dateSuffix}`;svg.appendChild(t);});
     });
   }
+  /* opt.pts = [{i, s(시리즈 번호)|v, c, t(라벨), below, r}]: 임의 위치 마커 */
+  (opt.pts||[]).forEach(pt=>{
+    const v=pt.v!=null?pt.v:(series[pt.s||0]||{v:[]}).v[pt.i];
+    if(v==null||isNaN(v)||pt.i==null)return;
+    const c=css(pt.c||"--ink");
+    svg.appendChild(el("circle",{cx:X(pt.i),cy:Y(v),r:pt.r||4.5,fill:c,stroke:css("--surface"),"stroke-width":2}));
+    if(pt.t){const left=pt.i>labels.length*0.75;
+      const t=el("text",{x:X(pt.i)+(left?-7:7),y:Y(v)+(pt.below?15:-9),"text-anchor":left?"end":"start","font-size":10.5,"font-weight":700,fill:c,
+        stroke:css("--surface"),"stroke-width":3.5,"paint-order":"stroke"});t.textContent=pt.t;svg.appendChild(t);}
+  });
   const cross=el("line",{stroke:css("--axis"),"stroke-width":1,opacity:0});svg.appendChild(cross);
   const dots=series.map(s=>{const c=el("circle",{r:4.5,fill:css(s.c),stroke:css("--surface"),
     "stroke-width":2,opacity:0});svg.appendChild(c);return c;});
@@ -5061,7 +5092,7 @@ async function loadDetail(code){
   if(!S.dRangeTouched){$("#dStart").value=START_D<rows[0].trade_date?rows[0].trade_date:START_D;
     $("#dEnd").value=last.trade_date;}
   renderRangeCharts();
-  if(isEtf)return;   // ETF는 수급 데이터가 없어 가격·이평·거래량까지만
+  if(isEtf){$("#dSmxCard").style.display="none";return;}   // ETF는 수급 데이터가 없어 가격·이평·거래량까지만
   S.dFlowPeriodSort=null;
   loadStockFlowPeriods(code).catch(()=>{
     $("#dFlowPeriodBody").innerHTML='<tr><td colspan="10" class="load">조회 실패 (42_stock_flow_periods_program.sql 적용 여부 확인)</td></tr>';
@@ -5085,6 +5116,7 @@ async function loadDetail(code){
   const kOf={"금융투자":"fin_inv_cum","투신":"inv_trust_cum","연기금":"pension_cum","사모":"pe_cum",
     "개인":"individual_cum","기타법인":"corp_other_cum"};
   minis.forEach(m=>{if(m[2]==null)m[2]=+last[kOf[m[0]]]/EOK;});
+  try{renderSmx();}catch(e){console.error("매집·이탈 진단",e);$("#dSmxCard").style.display="none";}
   $("#dMinis").innerHTML=minis.map(([n,,lastV],i)=>
     `<div class="mini"><h4>${n}<span class="${sgn(lastV)}">${pm(lastV,0)}억</span></h4>
       <div class="chart" id="mini_${i}"></div></div>`).join("");
@@ -6119,6 +6151,74 @@ function dartDetailRender(){
   $("#dDartBody").innerHTML=rows.length?`<div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">접수일</th><th class="l">종류</th><th class="l">내용</th><th></th></tr></thead><tbody>${rows.slice(0,60).map(line).join("")}</tbody></table></div>${rows.length>60?`<div class="faint" style="font-size:11px">최근 60건만 표시 (전체 ${rows.length}건)</div>`:""}`:'<div class="load">해당 공시가 없습니다</div>';
 }
 $("#dDartKindSel").addEventListener("seg-change",e=>{S.dDartKind=e.detail;dartDetailRender();});
+
+/* ══ 스마트머니 매집·이탈 진단(종목상세): 외+기 누적의 고점·매집 시작 저점, 주체별 기여·이탈 순서 ══ */
+S.smxWin=S.smxWin||"all";
+const SMX_SUBJ=[["외국인","--s1",r=>+r.foreign_cum],["금융투자","--s3",r=>+r.fin_inv_cum],["투신","--s2",r=>+r.inv_trust_cum],
+  ["연기금","--s4",r=>+r.pension_cum],["사모","--warn",r=>+r.pe_cum],
+  ["기타기관","--ink-3",r=>+r.inst_cum-(+r.fin_inv_cum||0)-(+r.inv_trust_cum||0)-(+r.pension_cum||0)-(+r.pe_cum||0)]];
+function smxArgmax(a,from,to){let k=from;for(let i=from;i<=to;i++)if(a[i]>a[k])k=i;return k;}
+function smxArgmin(a,from,to){let k=from;for(let i=from;i<=to;i++)if(a[i]<a[k])k=i;return k;}
+function smxModel(rows){
+  const n=rows.length,L=n-1,b=rows[0];
+  const reb=f=>rows.map(r=>(f(r)-f(b))/EOK);
+  const combo=reb(r=>+r.foreign_cum+ +r.inst_cum);
+  const pk=smxArgmax(combo,0,L),tr=smxArgmin(combo,0,pk);
+  const build=combo[pk]-combo[tr],dd=combo[pk]-combo[L];
+  const back=k=>combo[L]-combo[Math.max(0,L-k)];
+  const r5=back(5),r20=back(20),since=L-pk,ratio=build>0?dd/build:null;
+  const close=rows.map(r=>+r.close),pchg=close[pk]>0?(close[L]/close[pk]-1)*100:null;
+  let st,cls;
+  if(build<=0){if(combo[L]<0){st="기간 내 순유출";cls="down";}else{st="매집 이력 없음";cls="dim";}}
+  else if(since<=5){st="매집 지속";cls="up";}
+  else if(ratio<0.1){st="고점 후 정체";cls="warn";}
+  else if(ratio<0.5){if(r20<0){st="이탈 진행";cls="down";}else{st="고점 후 정체";cls="warn";}}
+  else{st="이탈 심화";cls="down";}
+  const subj=SMX_SUBJ.map(([nm,c,f])=>{
+    const v=reb(f),own=smxArgmax(v,0,L);
+    const flat=v.every(z=>Math.abs(z)<0.5);   // 기간 내 움직임이 거의 없는 주체(예: 기타기관 0)
+    return {nm,c,v,flat,acc:v[pk]-v[tr],after:v[L]-v[pk],own,ownTail:!flat&&L-own<=5,r5:v[L]-v[Math.max(0,L-5)],r20:v[L]-v[Math.max(0,L-20)]};
+  });
+  const ind=reb(r=>+r.individual_cum);
+  const indiv={nm:"개인 (상대)",acc:ind[pk]-ind[tr],after:ind[L]-ind[pk],r5:ind[L]-ind[Math.max(0,L-5)],r20:ind[L]-ind[Math.max(0,L-20)]};
+  // 이탈 순서: 고점 이후 순매도이고 자기 고점이 최근 5일 밖인 주체를 자기 고점일 순으로
+  let rk=0,prevOwn=-1;
+  subj.filter(x=>x.after<0&&!x.ownTail&&!x.flat).sort((a,b)=>a.own-b.own).forEach(x=>{if(x.own!==prevOwn){rk++;prevOwn=x.own;}x.rank=rk;});
+  return {rows,combo,pk,tr,build,dd,ratio,r5,r20,since,pchg,st,cls,subj,indiv,close,L};
+}
+function renderSmx(){
+  const all=S.chart&&S.chart.rows,card=$("#dSmxCard");
+  if(!all||all.length<10||all[0].foreign_cum==null){card.style.display="none";return;}
+  card.style.display="";
+  const w=S.smxWin==="all"?all.length:Math.min(all.length,+S.smxWin);
+  const rows=all.slice(all.length-w),m=smxModel(rows),D=i=>rows[i].trade_date,
+    yr=rows[0].trade_date.slice(0,4)!==rows.at(-1).trade_date.slice(0,4),md=d=>yr?`${d.slice(2,4)}.${+d.slice(5,7)}.${+d.slice(8,10)}`:`${+d.slice(5,7)}/${+d.slice(8,10)}`;
+  const f0=v=>pm(v,0),CM=["","①","②","③","④","⑤","⑥"];
+  const badge=`<span class="tag-d" style="font-size:12px;padding:2px 8px;${m.cls==="up"?"background:color-mix(in srgb,var(--up) 15%,transparent);color:var(--up)":m.cls==="down"?"background:color-mix(in srgb,var(--down) 15%,transparent);color:var(--down)":m.cls==="warn"?"background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--ink)":""}">${m.st}</span>`;
+  $("#dSmxStatus").innerHTML=m.build<=0?`${badge} <span class="faint" style="font-size:12px">이 기간에는 외+기 누적이 올라간 구간이 없습니다 (기간 시작 대비 ${f0(m.combo[m.L])}억)${m.combo[m.L]<0?" — 고점이 기간 이전일 수 있으니 더 긴 기간에서 확인하세요":""}</span>`:
+    `<div style="font-size:13px">${badge} 외+기 누적 고점 <b>${md(D(m.pk))} ${f0(m.combo[m.pk])}억</b> → 오늘 <b>${f0(m.combo[m.L])}억</b>
+      <span class="${m.dd>0?"down":"up"}">(${f0(-m.dd)}억${m.ratio!=null&&m.dd>0?`, 매집분의 ${N(m.ratio*100,0)}% 회수`:""})</span></div>
+     <div class="faint" style="font-size:12px;margin-top:2px">매집 구간 ${md(D(m.tr))}→${md(D(m.pk))} ${f0(m.build)}억 · 고점 후 ${m.since}거래일 · 고점 이후 주가 <span class="${sgn(m.pchg)}">${m.pchg==null?"–":pm(m.pchg,1)+"%"}</span> · 최근 5일 <span class="${sgn(m.r5)}">${f0(m.r5)}억</span> / 20일 <span class="${sgn(m.r20)}">${f0(m.r20)}억</span></div>`;
+  const recov=x=>x.acc>0&&x.after<0?N(-x.after/x.acc*100,0)+"%":x.after>0?'<span class="up">매수중</span>':"–";
+  const td=v=>`<td class="num ${sgn(v)}">${f0(v)}</td>`;
+  const row=x=>`<tr><td class="l"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(${x.c});margin-right:4px"></i>${x.nm}</td>${td(x.acc)}${td(x.after)}<td>${recov(x)}</td>
+    <td>${x.flat?"–":x.ownTail?'<span class="up">신고점</span>':md(D(x.own))+(x.rank?` <b class="down">${CM[x.rank]||x.rank}</b>`:"")}</td>${td(x.r5)}${td(x.r20)}</tr>`;
+  const tot={acc:m.build,after:m.combo[m.L]-m.combo[m.pk],r5:m.r5,r20:m.r20};
+  $("#dSmxTable").innerHTML=`<thead><tr><th class="l">주체</th><th title="매집 시작 저점 → 외+기 고점">매집 구간<br><span class="faint" style="font-weight:400">${md(D(m.tr))}→${md(D(m.pk))}</span></th><th>고점→오늘</th><th title="고점 이후 순매도 ÷ 매집 구간 순매수">회수율</th><th title="그 주체의 누적이 가장 높았던 날 · ①②=먼저 꺾인 순서">주체 고점일</th><th>최근 5일</th><th>20일</th></tr></thead><tbody>`+
+    m.subj.map(row).join("")+
+    `<tr style="border-top:2px solid var(--border);font-weight:700"><td class="l">외+기 합계</td>${td(tot.acc)}${td(tot.after)}<td>${m.ratio==null?"–":m.dd>0?N(m.ratio*100,0)+"%":'<span class="up">매수중</span>'}</td><td>${md(D(m.pk))}</td>${td(tot.r5)}${td(tot.r20)}</tr>`+
+    `<tr class="faint"><td class="l">${m.indiv.nm}</td>${td(m.indiv.acc)}${td(m.indiv.after)}<td colspan="2" style="font-size:11px;text-align:left">${m.indiv.after>0&&tot.after<0?"← 고점 이후 개인이 물량을 받음":""}</td>${td(m.indiv.r5)}${td(m.indiv.r20)}</tr></tbody>`;
+  $("#dSmxSub").textContent=`외국인+기관합계 누적 기준 · 억원 · ${md(D(0))}~${md(D(m.L))} (${rows.length}거래일)`;
+  const labels=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
+  const pts=m.build>0?[{i:m.tr,s:0,c:"--up",t:`▲ 매집 시작 ${md(D(m.tr))} ${f0(m.combo[m.tr])}억`,below:true},{i:m.pk,s:0,c:"--up",t:`▼ 고점 ${md(D(m.pk))} ${f0(m.combo[m.pk])}억`}]:[];
+  lineChart($("#dSmxA"),[{n:"외+기 누적",v:m.combo,c:"--up"}],labels,
+    {h:230,zero:true,monthTicks:true,labelEnds:false,pts,shadeFrom:m.build>0&&m.since>0?m.pk:null,ft:v=>pm(v,0)+"억",bg:{v:m.close,n:"종가",ft:v=>N(v,0)}});
+  $("#dSmxLegend").innerHTML=m.subj.map(x=>`<span><i style="display:inline-block;width:10px;height:3px;background:var(${x.c});vertical-align:middle;margin-right:3px"></i>${x.nm} <b class="${sgn(x.v[m.L])}">${f0(x.v[m.L])}</b><span class="faint">(고점 이후 <span class="${sgn(x.after)}">${f0(x.after)}</span>)</span></span>`).join("");
+  lineChart($("#dSmxB"),m.subj.map(x=>({n:x.nm,v:x.v,c:x.c})),labels,
+    {h:250,zero:true,monthTicks:true,ft:v=>pm(v,0)+"억",shadeFrom:m.build>0&&m.since>0?m.pk:null,
+     pts:m.subj.filter(x=>!x.flat).map(x=>({i:x.own,s:m.subj.indexOf(x),c:x.c,r:4,t:x.rank?CM[x.rank]:""}))});
+}
+$("#dSmxWin").addEventListener("seg-change",e=>{S.smxWin=e.detail;try{renderSmx();}catch(err){console.error(err);}});
 
 async function renderDivCard(){
   const card=$("#dDivCard"),code=S.chart&&S.chart.code;
