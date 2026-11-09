@@ -113,6 +113,8 @@ body.nav-open #sideNav{transform:none;visibility:visible}
 #tabs button[aria-selected=true]{background:color-mix(in srgb,var(--up) 9%,var(--surface));color:var(--ink);font-weight:700;box-shadow:inset 3px 0 0 var(--up);border-bottom:0}
 .navopen{display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:16px}
 body.nav-open .navopen{display:none}
+.pg-title{font-size:18px;font-weight:800;letter-spacing:-.02em;margin:14px 0 2px;color:var(--ink)}
+@media(max-width:960px){.pg-title{font-size:16.5px;margin:10px 0 0}}
 #navScrim{display:none;position:fixed;inset:0;z-index:65;background:rgba(0,0,0,.35)}
 @media(min-width:961px){
   body.nav-open{padding-left:176px}
@@ -925,7 +927,30 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <span><span class="lb">최종 후보</span><span class="vl" id="fn5">–</span></span></div>
   </div>
 
-  <div class="card" style="margin-top:16px"><h3>기준별 강한 종목 Top 10
+  <div class="card" id="tdDartCard" style="margin-top:16px"><h3>공시 동향 <span class="r" id="tdDartSub">DART 전자공시 · 5% 대량보유·내부자·자사주</span></h3>
+    <div class="qf-group"><div class="qf-lb">종류</div><div class="qf seg" id="tdDartKindSel">
+      <button class="fchip" data-v="HOLD5" aria-pressed="true">5% 대량보유</button>
+      <button class="fchip" data-v="INSIDER" aria-pressed="false">내부자(임원·주요주주)</button>
+      <button class="fchip" data-v="BUYBACK" aria-pressed="false">자사주 취득</button>
+      <button class="fchip" data-v="ETC" aria-pressed="false">공급 부담·기타</button>
+    </div></div>
+    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdDartPeriodSel">
+      <button class="fchip" data-v="30" aria-pressed="false">1개월</button>
+      <button class="fchip" data-v="14" aria-pressed="false">2주</button>
+      <button class="fchip" data-v="7" aria-pressed="true">1주</button>
+      <button class="fchip" data-v="3" aria-pressed="false">3일</button>
+    </div></div>
+    <div class="qf-group" id="tdDartSubWrap"><div class="qf-lb">보고자</div><div class="qf seg" id="tdDartSubSel">
+      <button class="fchip" data-v="all" aria-pressed="false">전체</button>
+      <button class="fchip" data-v="운용사" aria-pressed="true">운용사</button>
+      <button class="fchip" data-v="연기금" aria-pressed="false">연기금</button>
+      <button class="fchip" data-v="기타" aria-pressed="false">기타</button>
+    </div></div>
+    <div id="tdDartBody" style="margin-top:8px"><div class="load sk"></div></div>
+    <div class="note" style="margin-top:8px">출처: 금융감독원 DART(접수일 기준, 평일 저녁 갱신). 정정 공시는 원본과 중복되어 제외합니다. 비율은 보고 직전 → 보고 후 지분율(%)입니다. 종목명을 누르면 종목상세, "공시"를 누르면 DART 원문이 열립니다.</div>
+  </div>
+
+  <div class="card" style="margin-top:12px"><h3>기준별 강한 종목 Top 10
     <span class="r">오늘 이 기준으로 가장 강했던 종목 · 칩을 여러 개 누르면 모두 만족하는 종목</span></h3>
     <div id="tdTopChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px">
       <button class="fchip on" data-crit="weight">무게/주식수</button>
@@ -951,28 +976,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 보기, #·종목명 고정) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순</div>
   </div>
 
-  <div class="card" id="tdDartCard" style="margin-top:12px"><h3>공시 동향 <span class="r" id="tdDartSub">DART 전자공시 · 5% 대량보유·내부자·자사주</span></h3>
-    <div class="qf-group"><div class="qf-lb">종류</div><div class="qf seg" id="tdDartKindSel">
-      <button class="fchip" data-v="HOLD5" aria-pressed="true">5% 대량보유</button>
-      <button class="fchip" data-v="INSIDER" aria-pressed="false">내부자(임원·주요주주)</button>
-      <button class="fchip" data-v="BUYBACK" aria-pressed="false">자사주 취득</button>
-      <button class="fchip" data-v="ETC" aria-pressed="false">공급 부담·기타</button>
-    </div></div>
-    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdDartPeriodSel">
-      <button class="fchip" data-v="30" aria-pressed="false">1개월</button>
-      <button class="fchip" data-v="14" aria-pressed="false">2주</button>
-      <button class="fchip" data-v="7" aria-pressed="true">1주</button>
-      <button class="fchip" data-v="3" aria-pressed="false">3일</button>
-    </div></div>
-    <div class="qf-group" id="tdDartSubWrap"><div class="qf-lb">보고자</div><div class="qf seg" id="tdDartSubSel">
-      <button class="fchip" data-v="all" aria-pressed="false">전체</button>
-      <button class="fchip" data-v="운용사" aria-pressed="true">운용사</button>
-      <button class="fchip" data-v="연기금" aria-pressed="false">연기금</button>
-      <button class="fchip" data-v="기타" aria-pressed="false">기타</button>
-    </div></div>
-    <div id="tdDartBody" style="margin-top:8px"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">출처: 금융감독원 DART(접수일 기준, 평일 저녁 갱신). 정정 공시는 원본과 중복되어 제외합니다. 비율은 보고 직전 → 보고 후 지분율(%)입니다. 종목명을 누르면 종목상세, "공시"를 누르면 DART 원문이 열립니다.</div>
-  </div>
 
   <div class="card" id="tdFlowCard" style="margin-top:12px"><h3>수급 주체별 매수 상위 종목 <span class="r" id="tdFlowSub">오늘 1일 기준 · 시가총액 1천억원 이상</span></h3>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFlowPeriodSel">
@@ -2817,6 +2820,10 @@ function navSync(){
   const cur=($$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")||{}).dataset;
   $$("#tabs .ng").forEach(g=>g.classList.toggle("has-cur",!!(cur&&g.querySelector(`button[data-v="${cur.v}"]`))));
 }
+
+/* 각 페이지 맨 위에 페이지 이름 표시(좌측 내비 라벨과 동일) */
+$$("#tabs button[data-v]").forEach(b=>{const sec=document.getElementById("v-"+b.dataset.v);
+  if(sec&&!sec.querySelector(":scope>.pg-title")){const h=document.createElement("h1");h.className="pg-title";h.textContent=b.textContent.trim();sec.prepend(h);}});
 (function navInit(){
   let shut={};try{shut=JSON.parse(localStorage.getItem("sr_ng")||"{}");}catch(e){}
   $$("#tabs .ng").forEach(g=>{
