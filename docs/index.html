@@ -1566,7 +1566,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="chart" id="dVolume"></div>
   </div>
 
-  <div class="card"><h3>프로그램 누적 순매수<span class="r" id="dPgtrRange">2025-09-01~오늘 · 억원</span></h3>
+  <div class="card" id="dPgtrCard"><h3>프로그램 누적 순매수<span class="r" id="dPgtrRange">2025-09-01~오늘 · 억원</span></h3>
     <div class="legend">
       <span><i style="background:var(--ma3)"></i>프로그램</span></div>
     <div class="chart" id="dPgtr"></div>
@@ -5211,7 +5211,7 @@ function renderRangeCharts(){
       refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
   if(S.chart.etf){
     volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
-      {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+      {bg:rp.map(r=>+r.close),h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
     try{renderMaCard();}catch(e){console.error("ma card",e);}
     $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";$("#dDartCard").style.display="none";
     return;
@@ -5228,7 +5228,7 @@ function renderRangeCharts(){
   volumeBars($("#dWeight"),wps,rlb,
     {h:450,w:1180,pr:66,monthTicks:true,marks:true,sub:rp.map(r=>+r.close),bg:rp.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
-    {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+    {bg:rp.map(r=>+r.close),h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rp[0];
   // 프로그램도 다른 수급주체와 동일하게 "선택 구간 시작 대비 누적"으로 표시
   // (rcum과 같은 방식 — v_stock_chart.pgtr_cum은 상장 이후 전체 누적이라
@@ -6285,6 +6285,8 @@ function smxDraw(all,win,E){
 // 수급 주체별 누적 카드를 '거래주체별 일별 순매수' 카드 바로 위로
 {const dc=$("#dDailyCard"),mc=$("#dMinisCard");if(dc&&mc)dc.before(mc);}
 // 무게/주식수 차트를 수급 주체별 누적 카드 안, 외국인+기관합계 미니차트 위로(카드 테두리 없이 블록으로)
+{const pc=$("#dPgtrCard"),mg=$("#dMinis");if(pc&&mg){pc.style.cssText="border:none;box-shadow:none;padding:0;margin:12px 0 0;background:none";mg.after(pc);}}
+{const vc=$("#dVolCard"),ec=$("#dEarnCard");if(vc&&ec)ec.before(vc);}
 {const wc=$("#dWeightCard"),mg=$("#dMinis");if(wc&&mg){wc.style.cssText="border:none;box-shadow:none;padding:0;margin:0 0 12px;background:none";mg.before(wc);}}
 $("#dSmxWin").addEventListener("seg-change",e=>{S.smxWin=e.detail;try{renderSmx();}catch(err){console.error(err);}});
 
@@ -6735,7 +6737,7 @@ function renderPairCard(code,sum,rows,flowRow){
   volumeBars($("#pcWeight_"+code),wps,lb,
     {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,sub:rpUse.map(r=>+r.close),bg:rpUse.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#pcVol_"+code),rpUse.map(r=>+r.volume),lb,
-    {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+    {bg:rpUse.map(r=>+r.close),h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rpUse[0];
   const rpgtr=rpUse.map(r=>r.pgtr_cum!=null&&rb.pgtr_cum!=null?(+r.pgtr_cum-+rb.pgtr_cum)/EOK:null);
   lineChart($("#pcPgtr_"+code),[{n:"프로그램",v:rpgtr,c:"--ma3"}],lb,
