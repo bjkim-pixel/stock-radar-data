@@ -1623,7 +1623,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note">기간 안에서 외국인+기관합계 누적 순매수가 가장 높았던 날을 <b>고점</b>, 그 이전 최저점을 <b>매집 시작</b>으로 봅니다. <b>회수율</b> = 고점 이후 순매도 ÷ 매집 구간 순매수. 판정: 최근 5거래일 안에 신고점 = 매집 지속 · 회수율 10% 미만 = 고점 후 정체 · 10~50%이면서 최근 20일 순매도 = 이탈 진행(순매수면 고점 후 정체) · 50% 이상 = 이탈 심화. <b>주체 고점일</b> 순서(①②…)는 고점 이후 순매도인 주체 중 누적이 먼저 꺾인 순서입니다. 기타기관 = 기관합계 − 금융투자·투신·연기금·사모(보험·은행·기타금융). 개인은 외+기 물량을 누가 받았는지 보기 위한 참고 행입니다.</div>
   </div>
 
-  <div class="card"><h3>수급 주체별 누적<span class="r">전 기간 · 억원 · 각 차트 오른쪽 끝이 오늘 · 회색 선 = 종가</span></h3>
+  <div class="card" id="dMinisCard"><h3>수급 주체별 누적<span class="r">전 기간 · 억원 · 각 차트 오른쪽 끝이 오늘 · 회색 선 = 종가</span></h3>
     <div class="grid5" id="dMinis"></div>
   </div>
 
@@ -2349,7 +2349,7 @@ function lineChart(host,series,labels,opt={}){
     let d="",pen=false;
     s.v.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}
       d+=`${pen?"L":"M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`;pen=true;});
-    if(d)svg.appendChild(el("path",{d,fill:"none",stroke:css(s.c),"stroke-width":LINE_W,
+    if(d)svg.appendChild(el("path",{d,fill:"none",stroke:css(s.c),"stroke-width":s.w||LINE_W,
       "stroke-linecap":"round","stroke-linejoin":"round",opacity:s.o??1}));});
   if(opt.labelEnds!==false){
     const li=labels.length-1;
@@ -2402,6 +2402,23 @@ function lineChart(host,series,labels,opt={}){
       const t=el("text",{x:X(pt.i)+(left?-7:7),y:Y(v)+(pt.below?15:-9),"text-anchor":left?"end":"start","font-size":10.5,"font-weight":700,fill:c,
         stroke:css("--surface"),"stroke-width":3.5,"paint-order":"stroke"});t.textContent=pt.t;svg.appendChild(t);}
   });
+  /* opt.ext = {close:[...]}: 첫 시리즈의 최고·최저점에 날짜·값·그날 종가를 두 줄로 표시(소형 미니차트용) */
+  if(opt.ext){
+    const v0=series[0].v,valid=v0.map((v,i)=>({v,i})).filter(o=>o.v!=null&&!isNaN(o.v));
+    if(valid.length>1){
+      const hi=valid.reduce((a,b)=>b.v>a.v?b:a),lo=valid.reduce((a,b)=>b.v<a.v?b:a);
+      [[hi,"최고",css("--up"),-1],[lo,"최저",css("--down"),1]].forEach(([o,lb,c,dir])=>{
+        const cx=X(o.i),cy=Y(o.v),end=o.i>labels.length*0.55,tx=cx+(end?-5:5),sz=opt.extSz||8;
+        svg.appendChild(el("circle",{cx,cy,r:3,fill:c,stroke:css("--surface"),"stroke-width":1.5}));
+        const l1=`${lb} ${opt.fm?opt.fm(o.v):N(o.v,0)} ${labels[o.i]}`,cl=opt.ext.close&&opt.ext.close[o.i];
+        const l2=cl!=null&&!isNaN(cl)?`종가 ${N(cl,0)}`:"";
+        const y1=dir<0?Math.max(P.t+sz,cy-4-(l2?sz+1:0)):Math.min(H-P.b-(l2?sz+2:0)-1,cy+sz+3);
+        [[l1,y1,c],[l2,y1+sz+1,css("--ink-2")]].forEach(([tx2,yy,cc])=>{if(!tx2)return;
+          const t=el("text",{x:tx,y:yy,"text-anchor":end?"end":"start","font-size":sz,"font-weight":700,fill:cc,
+            stroke:css("--surface"),"stroke-width":3,"paint-order":"stroke"});t.textContent=tx2;svg.appendChild(t);});
+      });
+    }
+  }
   const cross=el("line",{stroke:css("--axis"),"stroke-width":1,opacity:0});svg.appendChild(cross);
   const dots=series.map(s=>{const c=el("circle",{r:4.5,fill:css(s.c),stroke:css("--surface"),
     "stroke-width":2,opacity:0});svg.appendChild(c);return c;});
@@ -2518,6 +2535,16 @@ function volumeBars(host,vals,labels,opt={}){
       tip.style.left=Math.min(rc.width-160,Math.max(0,X(i)/W*rc.width-40))+"px";tip.style.top="4px";});
     r.addEventListener("pointerleave",()=>tip.style.opacity=0);
     svg.appendChild(r);});
+  // opt.bg: 회색 보조선(종가) — 자기 범위로 맞춘 얇은 선
+  if(opt.bg){
+    const bv=opt.bg.filter(v=>v!=null&&!isNaN(v));
+    if(bv.length>1){
+      let bmin=Math.min(...bv),bmax=Math.max(...bv);if(bmax===bmin){bmax+=1;bmin-=1;}
+      const Yb=v=>P.t+4+(bmax-v)/(bmax-bmin)*(H-P.t-P.b-8);let d="",pen=false;
+      opt.bg.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}d+=`${pen?"L":"M"}${X(i).toFixed(1)},${Yb(v).toFixed(1)}`;pen=true;});
+      svg.appendChild(el("path",{d,fill:"none",stroke:css("--ink-3"),"stroke-width":1.2,opacity:.7,"stroke-linecap":"round","stroke-linejoin":"round","pointer-events":"none"}));
+    }
+  }
   // opt.marks: 최고·최저·오늘 표시 (lineChart와 동일 스타일)
   if(opt.marks){
     const valid2=vals.map((v,i)=>({v,i})).filter(o=>o.v!=null&&!isNaN(o.v));
@@ -5144,7 +5171,7 @@ async function loadDetail(code){
     if(myReqId!==S_detailReqId)return;
     const closes=rows.map(r=>+r.close);   // 2026-10-27: 각 차트 뒤에 종가(회색)를 함께 표시
     minis.forEach(([n,arr],i)=>lineChart($("#mini_"+i),
-      [{n,v:arr,c:"--s1"}],lb,{h:110,w:300,pr:8,pl:38,zero:true,labelEnds:false,
+      [{n,v:arr,c:"--s1",w:1}],lb,{h:130,w:300,pr:8,pl:38,zero:true,labelEnds:false,ext:{close:closes},extSz:10,fm:v=>pm(v,0)+"억",
         fy:v=>N(v,0),ft:v=>pm(v,0)+"억",bg:{v:closes,n:"종가",ft:v=>N(v)+"원"}}));
   });
 }
@@ -5199,7 +5226,7 @@ function renderRangeCharts(){
   $("#dProfileInstTop").innerHTML=topBucketsHtml(profInst,5,"외국인+기관");
   const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
   volumeBars($("#dWeight"),wps,rlb,
-    {h:450,w:1180,pr:66,monthTicks:true,marks:true,sub:rp.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+    {h:450,w:1180,pr:66,monthTicks:true,marks:true,sub:rp.map(r=>+r.close),bg:rp.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
     {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rp[0];
@@ -6255,6 +6282,8 @@ function smxDraw(all,win,E){
     {...CW,h:cp?200:250,zero:true,monthTicks:true,ft:v=>pm(v,0)+"억",shadeFrom:m.build>0&&m.since>0?m.pk:null,
      pts:m.subj.filter(x=>!x.flat).map(x=>({i:x.own,s:m.subj.indexOf(x),c:x.c,r:4,t:x.rank?CM[x.rank]:""}))});
 }
+// 수급 주체별 누적 카드를 종목상세 맨 위(종목 선택·필터 카드 바로 아래)로
+{const top=$("#dSel").closest(".card"),mc=$("#dMinisCard");if(top&&mc&&top!==mc)top.after(mc);}
 $("#dSmxWin").addEventListener("seg-change",e=>{S.smxWin=e.detail;try{renderSmx();}catch(err){console.error(err);}});
 
 async function renderDivCard(){
@@ -6702,7 +6731,7 @@ function renderPairCard(code,sum,rows,flowRow){
       refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
   const wps=rpUse.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
   volumeBars($("#pcWeight_"+code),wps,lb,
-    {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,sub:rpUse.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+    {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,sub:rpUse.map(r=>+r.close),bg:rpUse.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#pcVol_"+code),rpUse.map(r=>+r.volume),lb,
     {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rpUse[0];
@@ -7866,7 +7895,7 @@ function kRangeCharts(){
     {n:"MA5",v:rp.map(r=>r.ma5),c:"--mac1"},{n:"MA20",v:rp.map(r=>r.ma20),c:"--mac2"},{n:"MA120",v:rp.map(r=>r.ma120),c:"--mac3"}],rlb,
     {h:450,w:1180,pr:66,labelEnds:false,marks:true,monthTicks:true,fy:v=>N(v,0),fm:v=>N(v,2),ft:v=>N(v,2),refLine:maxClose,refLabel:`전고점 ${N(maxClose,2)}`});
   volumeBars($("#dWeight"),rp.map(r=>r.weight_per_share!=null?r.weight_per_share*100:null),rlb,
-    {h:450,w:1180,pr:66,monthTicks:true,marks:true,sub:rp.map(r=>+r.close),fy:v=>pm(v,2)+"%",ft:v=>pm(v,3)+"%"});
+    {h:450,w:1180,pr:66,monthTicks:true,marks:true,sub:rp.map(r=>+r.close),bg:rp.map(r=>+r.close),fy:v=>pm(v,2)+"%",ft:v=>pm(v,3)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>r.amount/1e12),rlb,
     {h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v,0)+"조",ft:v=>N(v,1)+"조원"});
   const rb=rp[0],rcum=k=>rp.map(r=>(+r[k]-+rb[k])/EOK);
