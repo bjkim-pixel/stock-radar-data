@@ -6221,6 +6221,7 @@ async function renderGovCards(){
   }
   // ── 주요주주
   const base=ow.filter(r=>r.nm!=="계"&&r.stock_knd==="보통주"),tot=ow.find(r=>r.nm==="계"&&r.stock_knd==="보통주");
+  {const ownNm=new Set(base.map(r=>r.nm.replace(/\s+/g,"")));mj=mj.filter(r=>!ownNm.has((r.repror||"").replace(/\s+/g,"")));}   // 최대주주·특수관계인 표와 중복되는 보고자는 5% 목록에서 제외
   const hasAny=base.length||mj.length||sm.length;
   if(!hasAny){oc.style.display="none";return;}
   oc.style.display="";$("#dOwnSub").textContent=`DART · 기준 ${sy||"–"}`;
