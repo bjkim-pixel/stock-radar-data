@@ -37,7 +37,8 @@ y=dt.date.today().year
 CAND=[(str(y),"11014"),(str(y),"11012"),(str(y),"11013"),(str(y-1),"11011"),(str(y-1),"11014")]
 sample={}; n_new=n_skip=n_nocorp=n_nodata=0
 def isCorp(n): return bool(re.search(r"\(주\)|㈜|주식회사|유한|합자|조합|재단|공사|은행|증권|펀드|투자|홀딩스|Ltd|Inc|Corp|Fund|Capital|LLC|L\.P|파트너스|코퍼레이션",n or "",re.I)) or len(nm_key(n))>=5
-for code in codes:
+for ci,code in enumerate(codes):
+    if ci%25==0: print(f'{ci}/{len(codes)} {time.time()-T0:.0f}s calls={calls}',flush=True)
     cc=CC.get(code)
     if not cc: n_nocorp+=1; continue
     ex=None
