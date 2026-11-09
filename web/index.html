@@ -6276,7 +6276,7 @@ function pcSmxInit(code,rows){
   S.pcSmx[code]={rows,win:S.pcSmx[code]?S.pcSmx[code].win:"all"};
   host.innerHTML=`<div class="qf seg pcsw" style="margin-bottom:6px">${[["63","3개월"],["126","6개월"],["all","전체"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${S.pcSmx[code].win===v}">${l}</button>`).join("")}</div>
     <div class="pcs-st" style="margin-bottom:6px"></div>
-    <div class="tw tw-scroll pc-tw" style="margin-bottom:8px"><table class="earn-t pcs-tb"></table></div>
+    <div class="tw tw-scroll pc-tw pcs-tb-w" style="margin-bottom:8px"><table class="earn-t pcs-tb"></table></div>
     <div class="chart pcs-a"></div>
     <div class="pcs-lg" style="font-size:10.5px;display:flex;flex-wrap:wrap;gap:3px 10px;margin:6px 0 2px"></div>
     <div class="chart pcs-b"></div>`;
@@ -6284,10 +6284,22 @@ function pcSmxInit(code,rows){
     S.pcSmx[code].win=b.dataset.v;host.querySelectorAll(".pcsw .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));pcSmxDraw(code);});
   pcSmxDraw(code);
 }
+// 짝꿍 비교: 두 종목의 상태 요약·표·범례 높이를 맞춰 아래 차트의 시작 위치가 같게 한다
+function pcSmxAlign(){
+  document.querySelectorAll(".pair-page,#pairXGrid").forEach(pg=>{
+    [".pcs-st",".pcs-tb-w",".pcs-lg"].forEach(sel=>{
+      const els=[...pg.querySelectorAll(sel)];if(els.length<2)return;
+      els.forEach(e=>e.style.minHeight="");
+      const h=Math.max(...els.map(e=>e.offsetHeight));
+      els.forEach(e=>e.style.minHeight=h+"px");
+    });
+  });
+}
 function pcSmxDraw(code){
   const host=$("#pcSmx_"+code),st=S.pcSmx[code];if(!host||!st)return;
   try{smxDraw(st.rows,st.win,{compact:true,status:host.querySelector(".pcs-st"),table:host.querySelector(".pcs-tb"),a:host.querySelector(".pcs-a"),legend:host.querySelector(".pcs-lg"),b:host.querySelector(".pcs-b")});}
   catch(e){console.error(e);host.querySelector(".pcs-st").innerHTML='<div class="load">그리기 실패</div>';}
+  pcSmxAlign();setTimeout(pcSmxAlign,300);
 }
 async function pcDivRender(code,close){
   const el=$("#pcDiv_"+code);if(!el)return;
