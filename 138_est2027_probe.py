@@ -1,38 +1,40 @@
 # -*- coding: utf-8 -*-
-"""2027 예상실적 소스 점검(읽기 전용): 네이버 finance/annual 컬럼·컨센서스 여부, KIS 종목추정실적, DB에 저장된 연간 예상 분포."""
-import os,sys,json,time,importlib,requests,psycopg2,collections
-NH={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36","Referer":"https://m.stock.naver.com/"}
-CODES=["005930","000660","192820","161890","373220"]
-print("# 1. 네이버 모바일 finance/annual")
-for c in CODES:
-    for host in ["https://m.stock.naver.com/api/stock","https://api.stock.naver.com/stock"]:
+"""2027 예상실적 소스 점검 2차(읽기 전용): KIS 종목추정실적 커버리지 전체, FnGuide·와이즈리포트 연간 컨센서스 열."""
+import os,sys,re,json,time,importlib,requests,psycopg2,collections
+UA={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"}
+print("# A. FnGuide 메인(Financial Highlight 연간 열)")
+for c in ["005930","192820","161890"]:
+    for url in [f"https://comp.fnguide.com/SVO2/ASP/SVD_Main.asp?pGB=1&gicode=A{c}&cID=&MenuYn=Y&ReportGB=&NewMenuID=101&stkGb=701",
+                f"https://comp.fnguide.com/SVO2/ASP/SVD_Finance.asp?pGB=1&gicode=A{c}&cID=&MenuYn=Y&ReportGB=D&NewMenuID=103&stkGb=701"]:
         try:
-            r=requests.get(f"{host}/{c}/finance/annual",headers=NH,timeout=20); j=r.json().get("financeInfo") or {}
-            cols=[(t["key"],t.get("isConsensus"),t.get("title")) for t in j.get("trTitleList",[])]
-            rows={x["title"]:x["columns"] for x in j.get("rowList",[])}
-            print(c,host.split('/')[2],r.status_code,cols)
-            last=cols[-1][0] if cols else None
-            if last: print("   마지막 열",last,{t:(rows[t].get(last) or {}).get("value") for t in ["매출액","영업이익","당기순이익","EPS","주당배당금"] if t in rows})
-        except Exception as e: print(c,host,"ERR",e)
-        time.sleep(0.2)
-print("\n# 2. 네이버 PC 메인(기업실적분석 표 헤더)")
-try:
-    r=requests.get("https://finance.naver.com/item/main.naver?code=005930",headers={"User-Agent":NH["User-Agent"]},timeout=20); r.encoding="euc-kr"
-    import re
-    t=r.text; i=t.find("기업실적분석"); seg=t[i:i+6000] if i>0 else ""
-    print("http",r.status_code,"len",len(t)); print(re.findall(r"20\d\d\.\d\d(?:\(E\))?",seg)[:12])
-except Exception as e: print("ERR",e)
-print("\n# 3. KIS 종목추정실적(FHKST668300C0)")
-try:
-    tok=importlib.import_module("72_kis_token").get_token_cached(); K=os.environ["KIS_APP_KEY"]; S=os.environ["KIS_APP_SECRET"]
-    for c in ["005930","192820"]:
-        r=requests.get("https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/estimate-perform",params={"SHT_CD":c},
-           headers={"Content-Type":"application/json; charset=utf-8","authorization":f"Bearer {tok}","appkey":K,"appsecret":S,"tr_id":"HHKST668300C0","custtype":"P"},timeout=20)
-        print(c,r.status_code,r.text[:2500]); time.sleep(0.3)
-except Exception as e: print("KIS ERR",e)
-print("\n# 4. DB 연간 예상 기간 분포")
-try:
-    cur=psycopg2.connect(os.environ["SUPABASE_DB_URL"]).cursor()
-    cur.execute("select period,count(*),count(sales),count(op_profit),count(eps) from stock_earnings where freq='A' and is_est group by period order by period"); print(cur.fetchall())
-    cur.execute("select freq,period,sales,op_profit,eps,updated_at from stock_earnings where code='000660' and is_est order by freq,period"); print(cur.fetchall())
-except Exception as e: print("DB ERR",e)
+            r=requests.get(url,headers=UA,timeout=25); t=r.text
+            print(c,r.status_code,len(t),url.split("/")[-1][:20],sorted(set(re.findall(r"20\d\d/\d\d(?:\(E\))?",t)))[:14])
+        except Exception as e: print(c,"ERR",e)
+        time.sleep(0.4)
+print("\n# B. 와이즈리포트(네이버 기업현황)")
+for c in ["005930","192820"]:
+    for url in [f"https://navercomp.wisereport.co.kr/v2/company/c1010001.aspx?cmp_cd={c}",
+                f"https://navercomp.wisereport.co.kr/v2/company/ajax/cF1001.aspx?cmp_cd={c}&fin_typ=0&freq_typ=Y&encparam=&id="]:
+        try:
+            r=requests.get(url,headers={**UA,"Referer":"https://navercomp.wisereport.co.kr/"},timeout=25); t=r.text
+            print(c,r.status_code,len(t),url.split("/")[-1][:30],sorted(set(re.findall(r"20\d\d/\d\d(?:\(E\))?",t)))[:14])
+        except Exception as e: print(c,"ERR",e)
+        time.sleep(0.4)
+print("\n# C. KIS 종목추정실적 커버리지(DB 전 종목)")
+tok=importlib.import_module("72_kis_token").get_token_cached(); K=os.environ["KIS_APP_KEY"]; S=os.environ["KIS_APP_SECRET"]
+cur=psycopg2.connect(os.environ["SUPABASE_DB_URL"]).cursor(); cur.execute("select code from stocks where is_active and security_type='STOCK' order by code"); codes=[r[0] for r in cur.fetchall()]
+H=lambda:{"Content-Type":"application/json; charset=utf-8","authorization":f"Bearer {tok}","appkey":K,"appsecret":S,"tr_id":"HHKST668300C0","custtype":"P"}
+cnt=collections.Counter(); samp={}
+for i,c in enumerate(codes):
+    time.sleep(0.12)
+    try:
+        j=requests.get("https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/estimate-perform",params={"SHT_CD":c},headers=H(),timeout=20).json()
+    except Exception as e: cnt["err"]+=1; continue
+    o4=j.get("output4") or []; o2=j.get("output2") or []
+    has27=any("2027" in (x.get("dt") or "") for x in o4)
+    key="2027있음" if has27 and o2 and (o2[0].get("data5") not in (None,"","0.0")) else ("열만있음" if o4 else "비어있음")
+    cnt[key]+=1
+    if len(samp)<4 or (key=="비어있음" and "empty" not in samp): samp[c if key!="비어있음" else "empty"]=(key,j.get("output1",{}).get("name1"),j.get("output1",{}).get("estdate"),o4[-2:])
+print(dict(cnt),len(codes)); print(samp)
+for c in ["005930","000660"]:
+    j=requests.get("https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/estimate-perform",params={"SHT_CD":c},headers=H(),timeout=20).json(); print(c,json.dumps(j,ensure_ascii=False)[:900])
