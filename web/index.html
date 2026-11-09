@@ -93,6 +93,38 @@ nav button{background:none;border:none;padding:8px 15px;font-size:13px;font-weig
   margin-bottom:-1px;font-family:inherit}
 nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--up)}
 
+/* ── 좌측 구조형 내비게이션(2026-11-09): 시황·수급·종목·관리 그룹, 맨 위 버튼으로 펴기/접기 ── */
+#sideNav{position:fixed;left:0;top:0;bottom:0;width:176px;z-index:70;background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .18s ease;visibility:hidden}
+body.nav-open #sideNav{transform:none;visibility:visible}
+#navToggle{display:flex;align-items:center;gap:8px;width:100%;flex:none;padding:12px 12px;border:0;border-bottom:1px solid var(--border);
+  background:var(--surface-2);color:var(--ink);font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;text-align:left}
+#navToggle .nc{margin-left:auto;font-size:10.5px;font-weight:500;color:var(--ink-3)}
+#tabs{display:block;max-width:none;margin:0;padding:6px 8px 24px;overflow-y:auto;overflow-x:hidden;border:0;flex:1}
+#tabs .ng{margin-top:8px}
+#tabs .ngh{display:flex;align-items:center;justify-content:space-between;padding:7px 10px 5px;font-size:11px;font-weight:750;letter-spacing:.06em;color:var(--ink-3);cursor:pointer;user-select:none}
+#tabs .ngh::after{content:"▾";font-size:10px;transition:transform .15s}
+#tabs .ng.shut .ngh::after{transform:rotate(-90deg)}
+#tabs .ng.shut .ngi{display:none}
+#tabs .ng.has-cur .ngh{color:var(--ink)}
+#tabs button{display:block;width:100%;text-align:left;padding:9px 12px 9px 16px;font-size:13px;font-weight:550;border:0;border-radius:8px;margin:1px 0;
+  color:var(--ink-2);white-space:nowrap;background:none;cursor:pointer;font-family:inherit;border-bottom:0}
+#tabs button:hover{background:var(--surface-2)}
+#tabs button[aria-selected=true]{background:color-mix(in srgb,var(--up) 9%,var(--surface));color:var(--ink);font-weight:700;box-shadow:inset 3px 0 0 var(--up);border-bottom:0}
+.navopen{display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:16px}
+body.nav-open .navopen{display:none}
+#navScrim{display:none;position:fixed;inset:0;z-index:65;background:rgba(0,0,0,.35)}
+@media(min-width:961px){
+  body.nav-open{padding-left:176px}
+  body.nav-open header::before{width:calc(var(--pw,100%) - 176px)}
+}
+@media(max-width:960px){
+  body.nav-open #navScrim{display:block}
+  #sideNav{width:min(240px,78vw);box-shadow:4px 0 18px rgba(0,0,0,.18)}
+  #tabs button{padding:12px 14px 12px 18px;font-size:14px}
+  #navToggle{padding:15px 14px}
+}
+
 .funnel{position:sticky;top:68px;z-index:45;background:var(--surface);
   border:1px solid var(--border);border-radius:var(--r);padding:11px 14px;margin:14px 0 18px;
   display:flex;gap:0;overflow-x:auto}
@@ -768,6 +800,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 <header>
   <div class="hbar">
+    <button class="icon-btn navopen" id="navOpen" type="button" aria-label="메뉴 열기" title="메뉴 열기">☰</button>
     <div class="brand" id="brandHome" style="cursor:pointer" title="새로고침"><b>STOCK RADAR</b></div>
     <div class="hmeta">
       <span class="chip opt">유니버스 <b id="chipUniv">–</b></span>
@@ -775,25 +808,34 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <span style="display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap"><span class="chip">기준 <b id="chipDate">–</b> <span id="chipAsOf" class="faint" style="font-weight:400"></span></span><button class="chip" id="btnAccess" aria-label="접속 기록" style="cursor:pointer;font-family:inherit;padding:4px 6px"><span style="display:inline-block;width:8px">&nbsp;</span></button></span>
     </div>
   </div>
-  <nav id="tabs">
-    <button aria-selected="true" data-v="proc">시장</button>
-    <button data-v="gm">글로벌 시황</button>
-    <button data-v="ai">AI 브리핑</button>
-    <button data-v="sector">업종·테마</button>
-    <button data-v="flow">수급 동향</button>
-    <button data-v="today">오늘의 종목</button>
-    <button data-v="sm">스마트머니</button>
-    <button data-v="pe">사모 추종</button>
-    <button data-v="acc">매집 종목</button>
-    <button data-v="scr">종목 후보</button>
-    <button data-v="fav">★ 관심</button>
-    <button data-v="pair">짝꿍매매</button>
-    <button data-v="detail">종목 상세</button>
-    <button data-v="perf">전략 성과</button>
-    <button data-v="perf2">전략 성과2</button>
-    <button data-v="journal">투자일지</button>
-  </nav>
 </header>
+
+<aside id="sideNav" aria-label="메뉴">
+  <button id="navToggle" type="button" aria-expanded="true" title="메뉴 접기"><span class="ni">☰</span><span class="nt">메뉴</span><span class="nc">접기 ◀</span></button>
+  <nav id="tabs">
+    <div class="ng" data-g="mkt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">시황</div><div class="ngi">
+      <button aria-selected="true" data-v="proc">시장</button>
+      <button data-v="gm">글로벌 시황</button>
+      <button data-v="ai">AI 브리핑</button>
+      <button data-v="sector">업종·테마</button></div></div>
+    <div class="ng" data-g="flow"><div class="ngh" role="button" tabindex="0" aria-expanded="true">수급</div><div class="ngi">
+      <button data-v="flow">수급 동향</button>
+      <button data-v="sm">스마트머니</button>
+      <button data-v="pe">사모 추종</button>
+      <button data-v="acc">매집 종목</button></div></div>
+    <div class="ng" data-g="stock"><div class="ngh" role="button" tabindex="0" aria-expanded="true">종목</div><div class="ngi">
+      <button data-v="today">오늘의 종목</button>
+      <button data-v="scr">종목 후보</button>
+      <button data-v="fav">★ 관심</button>
+      <button data-v="pair">짝꿍매매</button>
+      <button data-v="detail">종목 상세</button></div></div>
+    <div class="ng" data-g="mgmt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">관리</div><div class="ngi">
+      <button data-v="perf">전략 성과</button>
+      <button data-v="perf2">전략 성과2</button>
+      <button data-v="journal">투자일지</button></div></div>
+  </nav>
+</aside>
+<div id="navScrim"></div>
 
 <div class="wrap">
 <div class="asof" id="asofBar"></div>
@@ -2763,7 +2805,34 @@ const STAGE={birth:"추세 탄생",grow:"추세 성장",hot:"추세 과열",die:
 const stg=k=>`<span class="st ${k}">${STAGE[k]}</span>`;
 
 /* ══ 탭 ══ */
-$$("#tabs button").forEach(b=>b.onclick=()=>go(b.dataset.v));
+$$("#tabs button").forEach(b=>b.onclick=()=>{go(b.dataset.v);if(matchMedia("(max-width:960px)").matches)navSet(false);});
+/* 좌측 내비 열기/닫기: 데스크톱은 기본 열림(선택 기억), 모바일은 기본 닫힘 + 항목을 누르면 닫힘 */
+function navSet(open,save){
+  document.body.classList.toggle("nav-open",!!open);
+  const t=$("#navToggle");if(t){t.setAttribute("aria-expanded",String(!!open));}
+  if(save!==false&&!matchMedia("(max-width:960px)").matches){try{localStorage.setItem("sr_nav",open?"1":"0");}catch(e){}}
+  setTimeout(setPageW,220);
+}
+function navSync(){
+  const cur=($$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")||{}).dataset;
+  $$("#tabs .ng").forEach(g=>g.classList.toggle("has-cur",!!(cur&&g.querySelector(`button[data-v="${cur.v}"]`))));
+}
+(function navInit(){
+  let shut={};try{shut=JSON.parse(localStorage.getItem("sr_ng")||"{}");}catch(e){}
+  $$("#tabs .ng").forEach(g=>{
+    if(shut[g.dataset.g])g.classList.add("shut");
+    const h=g.querySelector(".ngh"),tg=()=>{g.classList.toggle("shut");h.setAttribute("aria-expanded",String(!g.classList.contains("shut")));
+      shut[g.dataset.g]=g.classList.contains("shut");try{localStorage.setItem("sr_ng",JSON.stringify(shut));}catch(e){}};
+    h.onclick=tg;h.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();tg();}};
+  });
+  $("#navToggle").onclick=()=>navSet(!document.body.classList.contains("nav-open"));
+  $("#navOpen").onclick=()=>navSet(true);
+  $("#navScrim").onclick=()=>navSet(false);
+  addEventListener("keydown",e=>{if(e.key==="Escape"&&matchMedia("(max-width:960px)").matches&&document.body.classList.contains("nav-open"))navSet(false);});
+  let saved=null;try{saved=localStorage.getItem("sr_nav");}catch(e){}
+  navSet(!matchMedia("(max-width:960px)").matches&&saved!=="0",false);
+  navSync();
+})();
 /* 화면에 가까워졌을 때(스크롤로 근처까지 내려왔을 때) 한 번만 불러오는 도우미 — 무거운 카드를 첫 화면 로딩에서 빼기 위함.
    요소가 숨겨진 탭 안에 있으면 그 탭이 열려 화면에 보일 때 비로소 동작합니다. */
 function lazyNear(el,fn,margin){
@@ -2787,6 +2856,7 @@ function go(v,detailCode){
   if(!S._keepBack)S.backAI=false;
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
+  if(typeof navSync==="function")navSync();
   ["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc");setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
