@@ -6158,23 +6158,26 @@ S.earnFreq="A";S.earnCache={};
 const earnEok=v=>v==null?"–":(Math.abs(v)>=10000?N(v/10000,1)+"조":N(v,0)+"억");
 const earnPct=(v,b)=>(v==null||b==null||b<=0)?null:(v-b)/b*100;
 /* 26년 추정 PER = 현재 종가 ÷ 2026 연간 예상 EPS (정수 배). EPS가 없으면 null, 0 이하(적자)면 "적자" */
-function earnPer(rows,close){
-  const r=(rows||[]).find(x=>x.freq==="A"&&x.period==="202612");
+function earnPer(rows,close,period){
+  const r=(rows||[]).find(x=>x.freq==="A"&&x.period===(period||"202612"));
   if(!r||r.eps==null||!(close>0))return null;
   const e=+r.eps;
   return e>0?Math.round(close/e)+"배":"적자";
 }
 async function perFill(code,close,el){
   if(!el)return;
-  try{const t=earnPer(await earnRows(code),close);
-    if(t!=null){el.textContent=`26E PER ${t}`;el.title="현재 종가 ÷ 2026년 예상 EPS(네이버 컨센서스)";el.style.display="";}
+  try{const rows=await earnRows(code),t=earnPer(rows,close),t27=earnPer(rows,close,"202712");
+    const r27=(rows||[]).find(x=>x.freq==="A"&&x.period==="202712");
+    const by=r27&&r27.src==="kis_est"?` (증권사 1곳 추정${r27.est_by?" · "+r27.est_by:""}${r27.est_date?" "+r27.est_date.slice(2).replace(/-/g,"."):""})`:"(예상)";
+    const parts=[];if(t!=null)parts.push(`26E PER ${t}`);if(t27!=null)parts.push(`27E PER ${t27}`);
+    if(parts.length){el.textContent=parts.join(" · ");el.title="현재 종가 ÷ 연간 예상 EPS — 26E: 네이버 컨센서스 / 27E: 한국투자증권 API"+by;el.style.display="";}
     else el.style.display="none";}catch(e){el.style.display="none";}
 }
 async function earnRows(code){
   let rows=S.earnCache[code];
   if(!rows){
-    try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,dps,updated_at&code=eq.${code}&order=period.asc`);}
-    catch(e){try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,updated_at&code=eq.${code}&order=period.asc`);}catch(e2){rows=[];}}
+    try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,dps,src,est_by,est_date,updated_at&code=eq.${code}&order=period.asc`);}
+    catch(e){try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,dps,updated_at&code=eq.${code}&order=period.asc`);}catch(e1){try{rows=await q("stock_earnings",`select=freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,updated_at&code=eq.${code}&order=period.asc`);}catch(e2){rows=[];}}}
     S.earnCache[code]=rows;
   }
   return rows;
@@ -6189,14 +6192,16 @@ function earnTable(rows,freq,maxQ){
   const list=A?all:all.slice(-(maxQ||9));
   const yoy=(r,k)=>{const p=prevOf(r);return p?earnPct(r[k],p[k]):null;};
   const g=(v)=>v==null?"":`<div class="${v>=0?"up":"down"}" style="font-size:10px">${pm(v,0)}%</div>`;
-  const head="<tr><th class=\"l\">항목</th>"+list.map(r=>`<th>${r.period.slice(0,4)}.${r.period.slice(4)}${r.is_est?' <span class="tag-d b">E</span>':""}</th>`).join("")+"</tr>";
+  const head="<tr><th class=\"l\">항목</th>"+list.map(r=>`<th>${r.period.slice(0,4)}.${r.period.slice(4)}${r.is_est?' <span class="tag-d b"'+(r.src==="kis_est"?' title="증권사 1곳(KIS) 추정"':'')+'>E</span>':""}${r.src==="kis_est"?'<div class="faint" style="font-size:9px;font-weight:500">1곳 추정</div>':""}</th>`).join("")+"</tr>";
   const row=(lb,k,f,withG)=>"<tr><td class=\"l\">"+lb+"</td>"+list.map(r=>`<td class="num"${r.is_est?' style="background:var(--surface-2)"':""}>${r[k]==null?"–":f(r[k])}${withG?g(yoy(r,k)):""}</td>`).join("")+"</tr>";
   const mrg=list.map(r=>r.sales>0&&r.op_profit!=null?r.op_profit/r.sales*100:null);
   const body=row("매출액","sales",earnEok,true)+row("영업이익","op_profit",earnEok,true)+
     "<tr><td class=\"l\">영업이익률</td>"+mrg.map((v,i)=>`<td class="num"${list[i].is_est?' style="background:var(--surface-2)"':""}>${v==null?"–":N(v,1)+"%"}</td>`).join("")+"</tr>"+
     row("순이익","net_income",earnEok,false)+row("EPS(원)","eps",v=>N(v,0),true)+row("BPS(원)","bps",v=>N(v,0),false)+row("ROE","roe",v=>N(v,1)+"%",false);
   const ests=list.filter(r=>r.is_est&&r.updated_at).map(r=>r.updated_at).sort();
-  return {head,body,est:list.some(r=>r.is_est),n:list.length,estAt:ests.length?ests.at(-1):null};
+  const k=list.find(r=>r.src==="kis_est");
+  const kisNote=k?`${k.period.slice(0,4)}E = 증권사 1곳(KIS) 추정${k.est_by?" · "+k.est_by:""}${k.est_date?" "+k.est_date.slice(2).replace(/-/g,"."):""}`:"";
+  return {head,body,est:list.some(r=>r.is_est),n:list.length,estAt:ests.length?ests.at(-1):null,kisNote};
 }
 /* ══ 배당(종목상세 카드·짝꿍매매 카드 공용): 확정 = KIS 예탁원(stock_dividends), 예상 = 네이버 연간 예상 − 확정분 ══ */
 S.divCache=S.divCache||{};
@@ -6520,7 +6525,7 @@ async function renderEarnCard(){
   $$("#dEarnSet button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===S.earnFreq)));
   const t=earnTable(rows,S.earnFreq,9);
   $("#dEarnHead").innerHTML=t.head;$("#dEarnBody").innerHTML=t.body;
-  $("#dEarnSrc").textContent=t.est?"E = 컨센서스 예상"+(t.estAt?" · "+fmtKst(t.estAt)+" 기준":""):"";
+  $("#dEarnSrc").textContent=t.est?"E = 컨센서스 예상"+(t.estAt?" · "+fmtKst(t.estAt)+" 기준":"")+(t.kisNote?" · "+t.kisNote:""):"";
 }
 /* 짝꿍매매 종목 카드의 "실적 · 예상실적" 칸 — 연간/분기 전환은 모든 카드가 함께 바뀜 */
 async function pcEarnRender(code){
@@ -6529,7 +6534,7 @@ async function pcEarnRender(code){
   if(!rows.length){el.innerHTML='<div class="load">실적 데이터 없음</div>';return;}
   const t=earnTable(rows,S.earnFreq,6);
   el.innerHTML=`<div class="tw tw-scroll"><table class="earn-t"><thead>${t.head}</thead><tbody>${t.body}</tbody></table></div>`
-    +(t.est?`<div class="faint" style="font-size:9.5px;margin-top:3px">E = 컨센서스 예상${t.estAt?" ("+fmtKst(t.estAt)+" 기준)":""} · 증감률 = 전년(동기) 대비</div>`:"");
+    +(t.est?`<div class="faint" style="font-size:9.5px;margin-top:3px">E = 컨센서스 예상${t.estAt?" ("+fmtKst(t.estAt)+" 기준)":""}${t.kisNote?" · "+t.kisNote:""} · 증감률 = 전년(동기) 대비</div>`:"");
 }
 function pcEarnToggle(f){
   S.earnFreq=f;
