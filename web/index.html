@@ -1515,6 +1515,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       </select>
     </div>
     <div class="dfrow" style="margin-top:5px">
+      <select id="dPr26" class="df" title="26E PER = 현재 종가 ÷ 연간 예상 EPS · 적자·예상치 없는 종목은 제외 · 두 PER를 함께 고르면 둘 다 있는 종목만, 정렬은 26E 기준"><option value="">26E PER순</option><option value="desc">26E PER 내림차순 (높은 순)</option><option value="asc">26E PER 오름차순 (낮은 순)</option></select>
+      <select id="dPr27" class="df" title="27E PER = 현재 종가 ÷ 연간 예상 EPS · 적자·예상치 없는 종목은 제외 · 두 PER를 함께 고르면 둘 다 있는 종목만, 정렬은 26E 기준"><option value="">27E PER순</option><option value="desc">27E PER 내림차순 (높은 순)</option><option value="asc">27E PER 오름차순 (낮은 순)</option></select>
       <select id="dGrS" class="df" title="26E 매출액 증감률(2026 예상 ÷ 2025 확정 − 1)이 기준 이상인 종목만 · 3개 조건을 함께 고르면 모두 만족하는 종목 · 작년 값이 0 이하이거나 예상치가 없으면 제외"><option value="">26E 매출액 증감률</option><option value="0">0%↑ (성장)</option><option value="10">10%↑</option><option value="20">20%↑</option><option value="30">30%↑</option><option value="50">50%↑</option><option value="100">100%↑</option></select>
       <select id="dGrO" class="df" title="26E 영업이익 증감률(2026 예상 ÷ 2025 확정 − 1)이 기준 이상인 종목만 · 3개 조건을 함께 고르면 모두 만족하는 종목 · 작년 값이 0 이하이거나 예상치가 없으면 제외"><option value="">26E 영업이익 증감률</option><option value="0">0%↑ (성장)</option><option value="10">10%↑</option><option value="20">20%↑</option><option value="30">30%↑</option><option value="50">50%↑</option><option value="100">100%↑</option></select>
       <select id="dGrE" class="df" title="26E EPS 증감률(2026 예상 ÷ 2025 확정 − 1)이 기준 이상인 종목만 · 3개 조건을 함께 고르면 모두 만족하는 종목 · 작년 값이 0 이하이거나 예상치가 없으면 제외"><option value="">26E EPS 증감률</option><option value="0">0%↑ (성장)</option><option value="10">10%↑</option><option value="20">20%↑</option><option value="30">30%↑</option><option value="50">50%↑</option><option value="100">100%↑</option></select>
@@ -5362,12 +5364,15 @@ const MA_COND={
   a20:m=>m.ma20!=null&&m.ma60!=null&&m.ma120!=null&&m.close>m.ma20&&m.ma20>m.ma60&&m.ma60>m.ma120,
   a60:m=>m.ma60!=null&&m.ma120!=null&&m.close>m.ma60&&m.ma60>m.ma120};
 function grActive(){return[["sales",S.dGrS],["op_profit",S.dGrO],["eps",S.dGrE]].filter(([k,v])=>v!==""&&v!=null&&v!==undefined).map(([k,v])=>[k,+v]);}
+function perActive(){return[["p26",S.dPr26],["p27",S.dPr27]].filter(([k,v])=>v);}
 function dCodeList(){
   let l=S.dSec?S.codes.filter(c=>(c.sector||"미분류")===S.dSec):S.codes;
   if(S.dMaF&&S.dMaMap){const f=MA_COND[S.dMaF];l=l.filter(c=>{const m=S.dMaMap[c.code];return m&&f(m);});}
   if(S.dPh&&S.dPhMap){const set=new Set(S.dPh.split(","));l=l.filter(c=>set.has(S.dPhMap[c.code]||"NEUTRAL"));}
   if(S.dKwF&&S.kwMap){const [k,t]=S.dKwF.split(":");l=l.filter(c=>{const v=(S.kwMap[c.code]||{})[k];return v!=null&&v*100<=+t;});}
-  {const act=grActive();if(act.length&&S.grMap){l=l.filter(c=>{const m=S.grMap[c.code]||{};return act.every(([k,t])=>m[k]!=null&&m[k]>=t);});const k0=act[0][0];l.sort((a,b)=>S.grMap[b.code][k0]-S.grMap[a.code][k0]);}}
+  {const pa=perActive();if(pa.length&&S.perMap){l=l.filter(c=>{const m=S.perMap[c.code]||{};return pa.every(([k])=>m[k]!=null);});
+    const [k0,d0]=pa[0];l.sort((a,b)=>d0==="desc"?S.perMap[b.code][k0]-S.perMap[a.code][k0]:S.perMap[a.code][k0]-S.perMap[b.code][k0]);}}
+  {const act=grActive();if(act.length&&S.grMap){l=l.filter(c=>{const m=S.grMap[c.code]||{};return act.every(([k,t])=>m[k]!=null&&m[k]>=t);});if(!perActive().length){const k0=act[0][0];l.sort((a,b)=>S.grMap[b.code][k0]-S.grMap[a.code][k0]);}}}
   if(S.dSmxF&&S.smxMap){const set=new Set(S.dSmxF.split(","));l=l.filter(c=>{const x=(S.smxMap[c.code]||{})[S.dSmxW];return x&&set.has(x.st);});}
   if(S.dDartF&&S._dartRows){const set=dartCodeSet(S.dDartF,S.dDartP);l=l.filter(c=>set.has(c.code));}
   if(S.dDivF&&S.dDivMap){const [k,t]=S.dDivF.split(":");l=l.filter(c=>{const v=(S.dDivMap[c.code]||{})[k];return v!=null&&v>=+t;});}
@@ -5385,14 +5390,15 @@ async function loadDetailMa(){
 }
 function dFillSel(){
   const list=dCodeList();
-  const gAct=grActive(),GL={sales:"매",op_profit:"영",eps:"E"};
-  $("#dSel").innerHTML=list.map(s=>{const m=gAct.length&&S.grMap?S.grMap[s.code]||{}:null;
-    return `<option value="${s.code}">${s.name}${m?` (${gAct.map(([k])=>GL[k]+" "+pm(m[k],0)+"%").join(" / ")})`:""}</option>`;}).join("");
+  const gAct=grActive(),GL={sales:"매",op_profit:"영",eps:"E"},pAct=perActive();
+  $("#dSel").innerHTML=list.map(s=>{const m=gAct.length&&S.grMap?S.grMap[s.code]||{}:null,pm2=pAct.length&&S.perMap?S.perMap[s.code]||{}:null;
+    const bits=[...(pm2?pAct.map(([k])=>(k==="p26"?"26E PER ":"27E PER ")+N(pm2[k],1)+"배"):[]),...(m?gAct.map(([k])=>GL[k]+" "+pm(m[k],0)+"%"):[])];
+    return `<option value="${s.code}">${s.name}${bits.length?` (${bits.join(" / ")})`:""}</option>`;}).join("");
   if(S.chart&&S.chart.code&&list.some(c=>c.code===S.chart.code))$("#dSel").value=S.chart.code;
   const tag=[S.dSec,S.dMaF?$("#dMaF").selectedOptions[0].textContent:"",S.dPh?$("#dPh").selectedOptions[0].textContent:"",
-    S.dKwF?"매집 "+$("#dKwF").selectedOptions[0].textContent:"",S.dDivF?"배당 "+$("#dDivF").selectedOptions[0].textContent:"",S.dGrS!==""?"매출액 증감률 "+S.dGrS+"%↑":"",S.dGrO!==""?"영업이익 증감률 "+S.dGrO+"%↑":"",S.dGrE!==""?"EPS 증감률 "+S.dGrE+"%↑":"",S.dSmxF?"진단 "+$("#dSmxF").selectedOptions[0].textContent+"("+$("#dSmxW").selectedOptions[0].textContent+")":"",S.dDartF?"공시 "+$("#dDartF").selectedOptions[0].textContent+"("+S.dDartP+"일)":""].filter(Boolean);
+    S.dKwF?"매집 "+$("#dKwF").selectedOptions[0].textContent:"",S.dDivF?"배당 "+$("#dDivF").selectedOptions[0].textContent:"",S.dPr26?"26E PER "+(S.dPr26==="desc"?"내림차순":"오름차순"):"",S.dPr27?"27E PER "+(S.dPr27==="desc"?"내림차순":"오름차순"):"",S.dGrS!==""?"매출액 증감률 "+S.dGrS+"%↑":"",S.dGrO!==""?"영업이익 증감률 "+S.dGrO+"%↑":"",S.dGrE!==""?"EPS 증감률 "+S.dGrE+"%↑":"",S.dSmxF?"진단 "+$("#dSmxF").selectedOptions[0].textContent+"("+$("#dSmxW").selectedOptions[0].textContent+")":"",S.dDartF?"공시 "+$("#dDartF").selectedOptions[0].textContent+"("+S.dDartP+"일)":""].filter(Boolean);
   $("#dSel").title=tag.length?`${tag.join(" · ")} — ${list.length}종목`:"";
-  $("#dSel").style.outline=(S.dMaF||S.dSec||S.dPh||S.dKwF||S.dDivF||S.dDartF||S.dSmxF||grActive().length)&&!list.length?"2px solid var(--down)":"";
+  $("#dSel").style.outline=(S.dMaF||S.dSec||S.dPh||S.dKwF||S.dDivF||S.dDartF||S.dSmxF||grActive().length||perActive().length)&&!list.length?"2px solid var(--down)":"";
 }
 async function loadDetailSectors(){
   const all=[];
@@ -5484,6 +5490,19 @@ async function loadDetailGr(){
     ["sales","op_profit","eps"].forEach(k=>{const x=a[k]==null?null:+a[k],y=b[k]==null?null:+b[k];m[c][k]=(x!=null&&y!=null&&x>0)?(y/x-1)*100:null;});}
   S.grMap=m;
 }
+/* 26E/27E PER = 현재 종가(v_screener 기준일) ÷ 연간 예상 EPS(2026 네이버 컨센서스 / 2027 KIS 1곳 추정) — EPS ≤ 0 은 제외 */
+async function loadDetailPer(){
+  if(S.perMap)return;
+  await loadDetailMa();
+  const rows=await q("stock_earnings","select=code,period,eps&freq=eq.A&period=in.(202612,202712)&limit=5000");
+  const m={};
+  rows.forEach(r=>{const c=S.dMaMap&&S.dMaMap[r.code];const px=c?c.close:null,e=r.eps==null?null:+r.eps;
+    (m[r.code]=m[r.code]||{})[r.period==="202612"?"p26":"p27"]=(px>0&&e>0)?px/e:null;});
+  S.perMap=m;
+}
+S.dPr26=S.dPr27="";
+dFilterHandler("#dPr26","dPr26",loadDetailPer,"26E PER");
+dFilterHandler("#dPr27","dPr27",loadDetailPer,"27E PER");
 S.dGrS=S.dGrO=S.dGrE="";
 dFilterHandler("#dGrS","dGrS",loadDetailGr,"매출액 증감률");
 dFilterHandler("#dGrO","dGrO",loadDetailGr,"영업이익 증감률");
