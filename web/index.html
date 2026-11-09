@@ -2500,22 +2500,24 @@ function volumeBars(host,vals,labels,opt={}){
   const valid=vals.filter(v=>v!=null&&!isNaN(v));
   if(!valid.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
   const hasBipolar=valid.some(v=>v<0);
+  // opt.bgPanel: 종가선을 위쪽 별도 패널로 분리(막대와 겹쳐 안 보이는 문제 방지)
+  const panel=!!(opt.bgPanel&&opt.bg),T=panel?P.t+Math.round((H-P.t-P.b)*0.38)+12:P.t;
   let max,Y,y0label;
   if(hasBipolar){
     const absMax=Math.max(...valid.map(v=>Math.abs(v)))*1.08||1;
     max=absMax;
-    Y=v=>P.t+(absMax-v)/(2*absMax)*(H-P.t-P.b);
+    Y=v=>T+(absMax-v)/(2*absMax)*(H-T-P.b);
     y0label=absMax;
   }else{
     max=Math.max(...valid)*1.08||1;
-    Y=v=>P.t+(max-v)/max*(H-P.t-P.b);
+    Y=v=>T+(max-v)/max*(H-T-P.b);
     y0label=max;
   }
   const X=i=>P.l+i*(W-P.l-P.r)/Math.max(1,labels.length-1);
   const bw=Math.max(1,(W-P.l-P.r)/labels.length-1);
   const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img"});
   (hasBipolar?[-max,0,max]:niceTicks(0,max,3)).forEach(v=>{
-    const y=Y(v);if(y<P.t||y>H-P.b)return;
+    const y=Y(v);if(y<T||y>H-P.b)return;
     svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:y,y2:y,stroke:css("--grid"),"stroke-width":1}));
     const t=el("text",{x:P.l-7,y:y+3.5,"text-anchor":"end","font-size":10,fill:css("--ink-3")});
     t.textContent=opt.fy?opt.fy(v):N(v,0);svg.appendChild(t);});
@@ -2540,9 +2542,16 @@ function volumeBars(host,vals,labels,opt={}){
     const bv=opt.bg.filter(v=>v!=null&&!isNaN(v));
     if(bv.length>1){
       let bmin=Math.min(...bv),bmax=Math.max(...bv);if(bmax===bmin){bmax+=1;bmin-=1;}
-      const Yb=v=>P.t+4+(bmax-v)/(bmax-bmin)*(H-P.t-P.b-8);let d="",pen=false;
+      const Yb=panel?(v=>P.t+3+(bmax-v)/(bmax-bmin)*(T-P.t-18)):(v=>P.t+4+(bmax-v)/(bmax-bmin)*(H-P.t-P.b-8));let d="",pen=false;
+      if(panel){
+        const tx=(x,y,a,str)=>{const t=el("text",{x,y,"text-anchor":a,"font-size":9.5,fill:css("--ink-3")});t.textContent=str;svg.appendChild(t);};
+        svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:T-8,y2:T-8,stroke:css("--grid"),"stroke-width":1}));
+        tx(P.l-7,Yb(bmax)+3.5,"end",N(bmax,0));tx(P.l-7,Yb(bmin)+3.5,"end",N(bmin,0));
+        const lastI=opt.bg.length-1;const lv=opt.bg[lastI];
+        if(lv!=null&&!isNaN(lv))tx(W-P.r+4,Yb(lv)+3.5,"start","종가 "+N(lv,0));
+      }
       opt.bg.forEach((v,i)=>{if(v==null||isNaN(v)){pen=false;return;}d+=`${pen?"L":"M"}${X(i).toFixed(1)},${Yb(v).toFixed(1)}`;pen=true;});
-      svg.appendChild(el("path",{d,fill:"none",stroke:css("--ink-3"),"stroke-width":1.2,opacity:.7,"stroke-linecap":"round","stroke-linejoin":"round","pointer-events":"none"}));
+      svg.appendChild(el("path",{d,fill:"none",stroke:css(panel?"--ink-2":"--ink-3"),"stroke-width":panel?1.6:1.2,opacity:panel?.95:.7,"stroke-linecap":"round","stroke-linejoin":"round","pointer-events":"none"}));
     }
   }
   // opt.marks: 최고·최저·오늘 표시 (lineChart와 동일 스타일)
@@ -5211,7 +5220,7 @@ function renderRangeCharts(){
       refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
   if(S.chart.etf){
     volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
-      {bg:rp.map(r=>+r.close),h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+      {bg:rp.map(r=>+r.close),bgPanel:true,h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
     try{renderMaCard();}catch(e){console.error("ma card",e);}
     $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";$("#dDartCard").style.display="none";
     return;
@@ -5228,7 +5237,7 @@ function renderRangeCharts(){
   volumeBars($("#dWeight"),wps,rlb,
     {h:450,w:1180,pr:66,monthTicks:true,marks:true,sub:rp.map(r=>+r.close),bg:rp.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
-    {bg:rp.map(r=>+r.close),h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+    {bg:rp.map(r=>+r.close),bgPanel:true,h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rp[0];
   // 프로그램도 다른 수급주체와 동일하게 "선택 구간 시작 대비 누적"으로 표시
   // (rcum과 같은 방식 — v_stock_chart.pgtr_cum은 상장 이후 전체 누적이라
@@ -6737,7 +6746,7 @@ function renderPairCard(code,sum,rows,flowRow){
   volumeBars($("#pcWeight_"+code),wps,lb,
     {h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,sub:rpUse.map(r=>+r.close),bg:rpUse.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#pcVol_"+code),rpUse.map(r=>+r.volume),lb,
-    {bg:rpUse.map(r=>+r.close),h:160,w:700,pr:40,pl:8,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+    {bg:rpUse.map(r=>+r.close),bgPanel:true,h:230,w:700,pr:56,pl:44,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rpUse[0];
   const rpgtr=rpUse.map(r=>r.pgtr_cum!=null&&rb.pgtr_cum!=null?(+r.pgtr_cum-+rb.pgtr_cum)/EOK:null);
   lineChart($("#pcPgtr_"+code),[{n:"프로그램",v:rpgtr,c:"--ma3"}],lb,
