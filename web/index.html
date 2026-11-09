@@ -1411,8 +1411,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <span class="r" id="gmAsOf">추세가 오르는 시장·업종·테마 찾기</span></h3>
     <div style="display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;margin:4px 0 10px">
     <div class="qf seg" id="gmTabSel" style="margin:0">
-      <button class="fchip" data-v="US" aria-pressed="true">미국 주식</button>
-      <button class="fchip" data-v="KR" aria-pressed="false">한국 주식</button>
+      <button class="fchip" data-v="US" aria-pressed="false">미국 주식</button>
+      <button class="fchip" data-v="KR" aria-pressed="true">한국 주식</button>
       <button class="fchip" data-v="GL" aria-pressed="false">글로벌 주식</button>
       <button class="fchip" data-v="WK" aria-pressed="false">주봉 추세</button>
     </div>
@@ -4264,7 +4264,7 @@ function renderTodayFlow(raw){
    국면 = 1M·3M 초과수익 부호: 주도(+,+) · 개선(1M+, 3M−) · 약화(1M−, 3M+) · 소외(−,−).
    카드: 기간 시작가 점선, 기간 최고가 빨간 점, 숫자 = 당일 등락률(마이너스는 괄호).
    당일 상승 상위 3개는 붉은 배경, 하락 상위 3개는 푸른 배경. 카드를 누르면 크게 보기. */
-S.gm={tab:"US",packs:{},big:null,bigN:126,allN:null};
+S.gm={tab:"KR",packs:{},big:null,bigN:126,allN:null};
 const GM_PER_LBL={252:"1년",126:"6개월",63:"3개월",21:"1개월",ytd:"연초 이후"};
 const GM_PH={lead:"주도",impr:"개선",weak:"약화",lag:"소외"};
 const gmF=v=>v==null?"–":(v<0?`(${Math.abs(v).toFixed(2)})`:v.toFixed(2));
