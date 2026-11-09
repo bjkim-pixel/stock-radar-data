@@ -1267,6 +1267,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
           <option value="buyback">자사주 취득 결정</option><option value="supply">공급 부담(유증·CB 등)</option></select></div>
       <div class="field"><label>공시 기간</label>
         <select id="fDartP"><option value="3">3일</option><option value="7" selected>7일</option><option value="14">14일</option><option value="30">30일</option></select></div>
+      <div class="field"><label>스마트머니 진단 (외+기)</label>
+        <select id="fSmx" title="종목상세 '스마트머니 매집·이탈 진단' 카드와 같은 판정 — 매 평일 20:50 갱신"><option value="">사용 안 함</option><option value="CONT">매집 지속 (고점이 최근 5일 이내)</option><option value="STALL">고점 후 정체</option><option value="LEAVE">이탈 진행</option><option value="HEAVY">이탈 심화 (매집분 50%↑ 회수)</option><option value="LEAVE,HEAVY">이탈 전체 (진행+심화)</option><option value="OUT">기간 내 순유출</option></select></div>
+      <div class="field"><label>진단 기간</label>
+        <select id="fSmxW"><option value="63">3개월</option><option value="126">6개월</option><option value="all" selected>전체</option></select></div>
       <div class="field"><label>배당 기준</label>
         <select id="fDivBasis" title="최근 12개월 = 최근 1년 안에 기준일이 지난 확정 배당 합계 ÷ 현재가 · 올해 예상 = 확정 + 네이버 예상 잔여 ÷ 현재가"><option value="ttm">최근 12개월 (확정)</option><option value="exp">올해 예상</option></select></div>
     </div>
@@ -1464,6 +1468,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <optgroup label="최근 12개월(확정)"><option value="ttm:1">1% 이상</option><option value="ttm:2">2% 이상</option><option value="ttm:3">3% 이상</option><option value="ttm:4">4% 이상</option><option value="ttm:5">5% 이상</option><option value="ttm:7">7% 이상</option></optgroup>
         <optgroup label="올해 예상"><option value="exp:2">예상 2% 이상</option><option value="exp:3">예상 3% 이상</option><option value="exp:5">예상 5% 이상</option><option value="exp:7">예상 7% 이상</option></optgroup>
       </select>
+    </div>
+    <div class="dfrow" style="margin-top:5px">
+      <select id="dSmxF" class="df" title="스마트머니 매집·이탈 진단(외국인+기관합계 누적) 상태로 종목 목록 좁히기"><option value="">매집·이탈 진단</option><option value="CONT">매집 지속 (고점이 최근 5일 이내)</option><option value="STALL">고점 후 정체</option><option value="LEAVE">이탈 진행</option><option value="HEAVY">이탈 심화 (매집분 50%↑ 회수)</option><option value="LEAVE,HEAVY">이탈 전체 (진행+심화)</option><option value="OUT">기간 내 순유출</option></select>
+      <select id="dSmxW" class="df" title="진단 기간"><option value="63">3개월</option><option value="126">6개월</option><option value="all" selected>전체</option></select>
     </div>
     <div class="dfrow" style="margin-top:5px">
       <select id="dDartF" class="df" title="최근 N일 안에 접수된 DART 공시 조건으로 종목 목록 좁히기"><option value="">공시(DART)</option>
@@ -5001,6 +5009,7 @@ async function runScreener(){
     }
   }
   rows=rows.filter(screenerFilterPass);
+  if($("#fSmx").value){const mp=await smxLoadMap(),w=$("#fSmxW").value,set=new Set($("#fSmx").value.split(","));rows=rows.filter(r=>{const x=(mp[r.code]||{})[w];return x&&set.has(x.st);});}
   if($("#fDart").value){await dartLoad30();const set=dartCodeSet($("#fDart").value,$("#fDartP").value);rows=rows.filter(r=>set.has(r.code));}
   const divMin=$("#fDivMin").value, divBasis=$("#fDivBasis").value==="exp"?"div_yld_e":"div_yld";
   if(divMin!==""||$("#fSort").value.startsWith("div_yld")){   // 배당수익률 필터·정렬이 켜졌을 때만 배당 데이터를 불러옴
@@ -5024,7 +5033,7 @@ $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e
 const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
-  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";$("#fKw").value="";$("#fDivMin").value="";$("#fDivBasis").value="ttm";$("#fDart").value="";$("#fDartP").value="7";
+  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";$("#fKw").value="";$("#fDivMin").value="";$("#fDivBasis").value="ttm";$("#fDart").value="";$("#fDartP").value="7";$("#fSmx").value="";$("#fSmxW").value="all";
   $("#fSector").value="";$("#fMa").value="";$("#fPh").value="";$("#fKind").value="all";$("#fInv").value="in";
   $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
 $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
@@ -5230,6 +5239,7 @@ function dCodeList(){
   if(S.dMaF&&S.dMaMap){const f=MA_COND[S.dMaF];l=l.filter(c=>{const m=S.dMaMap[c.code];return m&&f(m);});}
   if(S.dPh&&S.dPhMap){const set=new Set(S.dPh.split(","));l=l.filter(c=>set.has(S.dPhMap[c.code]||"NEUTRAL"));}
   if(S.dKwF&&S.kwMap){const [k,t]=S.dKwF.split(":");l=l.filter(c=>{const v=(S.kwMap[c.code]||{})[k];return v!=null&&v*100<=+t;});}
+  if(S.dSmxF&&S.smxMap){const set=new Set(S.dSmxF.split(","));l=l.filter(c=>{const x=(S.smxMap[c.code]||{})[S.dSmxW];return x&&set.has(x.st);});}
   if(S.dDartF&&S._dartRows){const set=dartCodeSet(S.dDartF,S.dDartP);l=l.filter(c=>set.has(c.code));}
   if(S.dDivF&&S.dDivMap){const [k,t]=S.dDivF.split(":");l=l.filter(c=>{const v=(S.dDivMap[c.code]||{})[k];return v!=null&&v>=+t;});}
   return l;
@@ -5249,9 +5259,9 @@ function dFillSel(){
   $("#dSel").innerHTML=list.map(s=>`<option value="${s.code}">${s.name}</option>`).join("");
   if(S.chart&&S.chart.code&&list.some(c=>c.code===S.chart.code))$("#dSel").value=S.chart.code;
   const tag=[S.dSec,S.dMaF?$("#dMaF").selectedOptions[0].textContent:"",S.dPh?$("#dPh").selectedOptions[0].textContent:"",
-    S.dKwF?"매집 "+$("#dKwF").selectedOptions[0].textContent:"",S.dDivF?"배당 "+$("#dDivF").selectedOptions[0].textContent:"",S.dDartF?"공시 "+$("#dDartF").selectedOptions[0].textContent+"("+S.dDartP+"일)":""].filter(Boolean);
+    S.dKwF?"매집 "+$("#dKwF").selectedOptions[0].textContent:"",S.dDivF?"배당 "+$("#dDivF").selectedOptions[0].textContent:"",S.dSmxF?"진단 "+$("#dSmxF").selectedOptions[0].textContent+"("+$("#dSmxW").selectedOptions[0].textContent+")":"",S.dDartF?"공시 "+$("#dDartF").selectedOptions[0].textContent+"("+S.dDartP+"일)":""].filter(Boolean);
   $("#dSel").title=tag.length?`${tag.join(" · ")} — ${list.length}종목`:"";
-  $("#dSel").style.outline=(S.dMaF||S.dSec||S.dPh||S.dKwF||S.dDivF||S.dDartF)&&!list.length?"2px solid var(--down)":"";
+  $("#dSel").style.outline=(S.dMaF||S.dSec||S.dPh||S.dKwF||S.dDivF||S.dDartF||S.dSmxF)&&!list.length?"2px solid var(--down)":"";
 }
 async function loadDetailSectors(){
   const all=[];
@@ -5333,6 +5343,14 @@ function dFilterHandler(sel,key,loader,label){
 }
 dFilterHandler("#dKwF","dKwF",kwLoadMap,"매집 필터");
 dFilterHandler("#dDivF","dDivF",loadDetailDiv,"배당 필터");
+S.dSmxF="";S.dSmxW="all";
+dFilterHandler("#dSmxF","dSmxF",smxLoadMap,"매집·이탈 진단 필터");
+$("#dSmxW").onchange=e=>{
+  S.dSmxW=e.target.value;if(!S.dSmxF)return;
+  dFillSel();const list=dCodeList();
+  if(!list.length){$("#dSel").innerHTML='<option value="">조건에 맞는 종목 없음</option>';return;}
+  if(!list.some(c=>c.code===S.chart.code)){S.dRangeTouched=false;loadDetail(list[0].code);}
+};
 S.dDartF="";S.dDartP="7";
 dFilterHandler("#dDartF","dDartF",dartLoad30,"공시 필터");
 $("#dDartP").onchange=e=>{
@@ -6191,16 +6209,30 @@ function smxModel(rows){
   subj.filter(x=>x.after<0&&!x.ownTail&&!x.flat).sort((a,b)=>a.own-b.own).forEach(x=>{if(x.own!==prevOwn){rk++;prevOwn=x.own;}x.rank=rk;});
   return {rows,combo,pk,tr,build,dd,ratio,r5,r20,since,pchg,st,cls,subj,indiv,close,L};
 }
+async function smxLoadMap(){
+  if(S.smxMap)return S.smxMap;
+  const m={};
+  for(let off=0;off<60000;off+=1000){
+    const part=await q("smx_state",`select=code,win,st,build_eok,now_eok,ratio,peak_date,since,r20_eok,as_of&order=code.asc,win.asc&limit=1000&offset=${off}`);
+    part.forEach(r=>{(m[r.code]=m[r.code]||{})[r.win]=r;});
+    if(part.length<1000)break;
+  }
+  S.smxMap=m;return m;
+}
 function renderSmx(){
   const all=S.chart&&S.chart.rows,card=$("#dSmxCard");
   if(!all||all.length<10||all[0].foreign_cum==null){card.style.display="none";return;}
   card.style.display="";
-  const w=S.smxWin==="all"?all.length:Math.min(all.length,+S.smxWin);
+  smxDraw(all,S.smxWin,{status:$("#dSmxStatus"),table:$("#dSmxTable"),sub:$("#dSmxSub"),a:$("#dSmxA"),legend:$("#dSmxLegend"),b:$("#dSmxB")});
+}
+function smxDraw(all,win,E){
+  const cp=E.compact,CW=cp?{w:700,pr:40,pl:8}:{};
+  const w=win==="all"?all.length:Math.min(all.length,+win);
   const rows=all.slice(all.length-w),m=smxModel(rows),D=i=>rows[i].trade_date,
     yr=rows[0].trade_date.slice(0,4)!==rows.at(-1).trade_date.slice(0,4),md=d=>yr?`${d.slice(2,4)}.${+d.slice(5,7)}.${+d.slice(8,10)}`:`${+d.slice(5,7)}/${+d.slice(8,10)}`;
   const f0=v=>pm(v,0),CM=["","①","②","③","④","⑤","⑥"];
   const badge=`<span class="tag-d" style="font-size:12px;padding:2px 8px;${m.cls==="up"?"background:color-mix(in srgb,var(--up) 15%,transparent);color:var(--up)":m.cls==="down"?"background:color-mix(in srgb,var(--down) 15%,transparent);color:var(--down)":m.cls==="warn"?"background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--ink)":""}">${m.st}</span>`;
-  $("#dSmxStatus").innerHTML=m.build<=0?`${badge} <span class="faint" style="font-size:12px">이 기간에는 외+기 누적이 올라간 구간이 없습니다 (기간 시작 대비 ${f0(m.combo[m.L])}억)${m.combo[m.L]<0?" — 고점이 기간 이전일 수 있으니 더 긴 기간에서 확인하세요":""}</span>`:
+  E.status.innerHTML=m.build<=0?`${badge} <span class="faint" style="font-size:12px">이 기간에는 외+기 누적이 올라간 구간이 없습니다 (기간 시작 대비 ${f0(m.combo[m.L])}억)${m.combo[m.L]<0?" — 고점이 기간 이전일 수 있으니 더 긴 기간에서 확인하세요":""}</span>`:
     `<div style="font-size:13px">${badge} 외+기 누적 고점 <b>${md(D(m.pk))} ${f0(m.combo[m.pk])}억</b> → 오늘 <b>${f0(m.combo[m.L])}억</b>
       <span class="${m.dd>0?"down":"up"}">(${f0(-m.dd)}억${m.ratio!=null&&m.dd>0?`, 매집분의 ${N(m.ratio*100,0)}% 회수`:""})</span></div>
      <div class="faint" style="font-size:12px;margin-top:2px">매집 구간 ${md(D(m.tr))}→${md(D(m.pk))} ${f0(m.build)}억 · 고점 후 ${m.since}거래일 · 고점 이후 주가 <span class="${sgn(m.pchg)}">${m.pchg==null?"–":pm(m.pchg,1)+"%"}</span> · 최근 5일 <span class="${sgn(m.r5)}">${f0(m.r5)}억</span> / 20일 <span class="${sgn(m.r20)}">${f0(m.r20)}억</span></div>`;
@@ -6209,18 +6241,18 @@ function renderSmx(){
   const row=x=>`<tr><td class="l"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(${x.c});margin-right:4px"></i>${x.nm}</td>${td(x.acc)}${td(x.after)}<td>${recov(x)}</td>
     <td>${x.flat?"–":x.ownTail?'<span class="up">신고점</span>':md(D(x.own))+(x.rank?` <b class="down">${CM[x.rank]||x.rank}</b>`:"")}</td>${td(x.r5)}${td(x.r20)}</tr>`;
   const tot={acc:m.build,after:m.combo[m.L]-m.combo[m.pk],r5:m.r5,r20:m.r20};
-  $("#dSmxTable").innerHTML=`<thead><tr><th class="l">주체</th><th title="매집 시작 저점 → 외+기 고점">매집 구간<br><span class="faint" style="font-weight:400">${md(D(m.tr))}→${md(D(m.pk))}</span></th><th>고점→오늘</th><th title="고점 이후 순매도 ÷ 매집 구간 순매수">회수율</th><th title="그 주체의 누적이 가장 높았던 날 · ①②=먼저 꺾인 순서">주체 고점일</th><th>최근 5일</th><th>20일</th></tr></thead><tbody>`+
+  E.table.innerHTML=`<thead><tr><th class="l">주체</th><th title="매집 시작 저점 → 외+기 고점">매집 구간<br><span class="faint" style="font-weight:400">${md(D(m.tr))}→${md(D(m.pk))}</span></th><th>고점→오늘</th><th title="고점 이후 순매도 ÷ 매집 구간 순매수">회수율</th><th title="그 주체의 누적이 가장 높았던 날 · ①②=먼저 꺾인 순서">주체 고점일</th><th>최근 5일</th><th>20일</th></tr></thead><tbody>`+
     m.subj.map(row).join("")+
     `<tr style="border-top:2px solid var(--border);font-weight:700"><td class="l">외+기 합계</td>${td(tot.acc)}${td(tot.after)}<td>${m.ratio==null?"–":m.dd>0?N(m.ratio*100,0)+"%":'<span class="up">매수중</span>'}</td><td>${md(D(m.pk))}</td>${td(tot.r5)}${td(tot.r20)}</tr>`+
     `<tr class="faint"><td class="l">${m.indiv.nm}</td>${td(m.indiv.acc)}${td(m.indiv.after)}<td colspan="2" style="font-size:11px;text-align:left">${m.indiv.after>0&&tot.after<0?"← 고점 이후 개인이 물량을 받음":""}</td>${td(m.indiv.r5)}${td(m.indiv.r20)}</tr></tbody>`;
-  $("#dSmxSub").textContent=`외국인+기관합계 누적 기준 · 억원 · ${md(D(0))}~${md(D(m.L))} (${rows.length}거래일)`;
+  if(E.sub)E.sub.textContent=`외국인+기관합계 누적 기준 · 억원 · ${md(D(0))}~${md(D(m.L))} (${rows.length}거래일)`;
   const labels=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
   const pts=m.build>0?[{i:m.tr,s:0,c:"--up",t:`▲ 매집 시작 ${md(D(m.tr))} ${f0(m.combo[m.tr])}억`,below:true},{i:m.pk,s:0,c:"--up",t:`▼ 고점 ${md(D(m.pk))} ${f0(m.combo[m.pk])}억`}]:[];
-  lineChart($("#dSmxA"),[{n:"외+기 누적",v:m.combo,c:"--up"}],labels,
-    {h:230,zero:true,monthTicks:true,labelEnds:false,pts,shadeFrom:m.build>0&&m.since>0?m.pk:null,ft:v=>pm(v,0)+"억",bg:{v:m.close,n:"종가",ft:v=>N(v,0)}});
-  $("#dSmxLegend").innerHTML=m.subj.map(x=>`<span><i style="display:inline-block;width:10px;height:3px;background:var(${x.c});vertical-align:middle;margin-right:3px"></i>${x.nm} <b class="${sgn(x.v[m.L])}">${f0(x.v[m.L])}</b><span class="faint">(고점 이후 <span class="${sgn(x.after)}">${f0(x.after)}</span>)</span></span>`).join("");
-  lineChart($("#dSmxB"),m.subj.map(x=>({n:x.nm,v:x.v,c:x.c})),labels,
-    {h:250,zero:true,monthTicks:true,ft:v=>pm(v,0)+"억",shadeFrom:m.build>0&&m.since>0?m.pk:null,
+  lineChart(E.a,[{n:"외+기 누적",v:m.combo,c:"--up"}],labels,
+    {...CW,h:cp?190:230,zero:true,monthTicks:true,labelEnds:false,pts,shadeFrom:m.build>0&&m.since>0?m.pk:null,ft:v=>pm(v,0)+"억",bg:{v:m.close,n:"종가",ft:v=>N(v,0)}});
+  E.legend.innerHTML=m.subj.map(x=>`<span><i style="display:inline-block;width:10px;height:3px;background:var(${x.c});vertical-align:middle;margin-right:3px"></i>${x.nm} <b class="${sgn(x.v[m.L])}">${f0(x.v[m.L])}</b><span class="faint">(고점 이후 <span class="${sgn(x.after)}">${f0(x.after)}</span>)</span></span>`).join("");
+  lineChart(E.b,m.subj.map(x=>({n:x.nm,v:x.v,c:x.c})),labels,
+    {...CW,h:cp?200:250,zero:true,monthTicks:true,ft:v=>pm(v,0)+"억",shadeFrom:m.build>0&&m.since>0?m.pk:null,
      pts:m.subj.filter(x=>!x.flat).map(x=>({i:x.own,s:m.subj.indexOf(x),c:x.c,r:4,t:x.rank?CM[x.rank]:""}))});
 }
 $("#dSmxWin").addEventListener("seg-change",e=>{S.smxWin=e.detail;try{renderSmx();}catch(err){console.error(err);}});
@@ -6236,6 +6268,26 @@ async function renderDivCard(){
   card.style.display="";
   $("#dDivBody").innerHTML=divSummaryHtml(m)+divYearHtml(m)+divSchedHtml(m)+divTableHtml(m,8);
   $("#dDivSrc").textContent=m.exp?"E = 네이버 예상":"";
+}
+S.pcSmx=S.pcSmx||{};
+function pcSmxInit(code,rows){
+  const host=$("#pcSmx_"+code);if(!host)return;
+  if(!rows||rows.length<10||rows[0].foreign_cum==null){host.innerHTML='<div class="load">데이터 없음</div>';return;}
+  S.pcSmx[code]={rows,win:S.pcSmx[code]?S.pcSmx[code].win:"all"};
+  host.innerHTML=`<div class="qf seg pcsw" style="margin-bottom:6px">${[["63","3개월"],["126","6개월"],["all","전체"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${S.pcSmx[code].win===v}">${l}</button>`).join("")}</div>
+    <div class="pcs-st" style="margin-bottom:6px"></div>
+    <div class="tw tw-scroll pc-tw" style="margin-bottom:8px"><table class="earn-t pcs-tb"></table></div>
+    <div class="chart pcs-a"></div>
+    <div class="pcs-lg" style="font-size:10.5px;display:flex;flex-wrap:wrap;gap:3px 10px;margin:6px 0 2px"></div>
+    <div class="chart pcs-b"></div>`;
+  host.querySelectorAll(".pcsw .fchip").forEach(b=>b.onclick=()=>{
+    S.pcSmx[code].win=b.dataset.v;host.querySelectorAll(".pcsw .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));pcSmxDraw(code);});
+  pcSmxDraw(code);
+}
+function pcSmxDraw(code){
+  const host=$("#pcSmx_"+code),st=S.pcSmx[code];if(!host||!st)return;
+  try{smxDraw(st.rows,st.win,{compact:true,status:host.querySelector(".pcs-st"),table:host.querySelector(".pcs-tb"),a:host.querySelector(".pcs-a"),legend:host.querySelector(".pcs-lg"),b:host.querySelector(".pcs-b")});}
+  catch(e){console.error(e);host.querySelector(".pcs-st").innerHTML='<div class="load">그리기 실패</div>';}
 }
 async function pcDivRender(code,close){
   const el=$("#pcDiv_"+code);if(!el)return;
@@ -6507,6 +6559,7 @@ const PAIR_SECTIONS=[
   ["profileInst","외국인+기관 매물대 · 억원"],
   ["flow4","투자자별 누적 순매수 · 억원"],
   ["flowTable","수급주체별 순매수 거래대금 · 억원"],
+  ["smx","스마트머니 매집·이탈 진단 · 억원"],
   ["minis","수급 주체별 누적(전 기간)"],
 ];
 const pcCap=s=>s[0].toUpperCase()+s.slice(1);
@@ -6526,6 +6579,8 @@ function pairSectionCellHtml(id,title,code){
   if(id==="flowTable")
     return `<div class="pc-cell"><h5>${title}</h5>
       <div class="tw pc-tw" id="pcFlowTable_${code}"><div class="load sk"></div></div></div>`;
+  if(id==="smx")
+    return `<div class="pc-cell"><h5>${title}</h5><div id="pcSmx_${code}" data-code="${code}"><div class="load sk"></div></div></div>`;
   if(id==="minis")
     return `<div class="pc-cell"><h5>${title}</h5><div class="grid5" id="pcMinis_${code}"></div></div>`;
   if(id==="flow4")
@@ -6596,7 +6651,7 @@ function renderPairCard(code,sum,rows,flowRow){
   if(!headEl)return;
   if(!rows.length){
     headEl.innerHTML='<div class="load">데이터 없음</div>';
-    ["pcPrice_","pcWeight_","pcVol_","pcPgtr_","pcProfile_","pcProfileInst_","pcFlow4_"].forEach(p=>{
+    ["pcPrice_","pcWeight_","pcVol_","pcPgtr_","pcProfile_","pcProfileInst_","pcFlow4_","pcSmx_"].forEach(p=>{
       const el=$("#"+p+code);if(el)el.innerHTML='<div class="load">데이터 없음</div>';});
     const ft=$("#pcFlowTable_"+code);if(ft)ft.innerHTML='<div class="load">데이터 없음</div>';
     return;
@@ -6621,6 +6676,7 @@ function renderPairCard(code,sum,rows,flowRow){
   kwLoadMap().then(m=>{const e=$("#pcKw_"+code),v=m[code];if(e&&v)e.innerHTML=`매집 6월 <b style="${kwStyle(v.r6)}">${kwFmt(v.r6)}</b> · 8월 <b style="${kwStyle(v.r8)}">${kwFmt(v.r8)}</b>`;});
   headEl.querySelector(".pc-name").onclick=()=>{go("detail",code);};
   perFill(code,+last.close,$("#pcPer_"+code));
+  try{pcSmxInit(code,rows);}catch(e){console.error("짝꿍 진단",e);}
   pcDivRender(code,+last.close).catch(()=>{const e=$("#pcDiv_"+code);if(e)e.innerHTML='<div class="load">불러오기 실패</div>';});
 
   const maxClose=Math.max(...rpUse.map(r=>+r.close));

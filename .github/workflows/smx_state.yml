@@ -1,0 +1,28 @@
+name: "[계산] 스마트머니 매집·이탈 진단 상태 | 평일 20:50 KST | 종목후보·종목상세 필터용"
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '50 11 * * 1-5'   # 20:50 KST 평일
+permissions:
+  contents: write
+concurrency:
+  group: smx-state
+  cancel-in-progress: false
+jobs:
+  calc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary
+      - run: python 135_smx_state.py
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: smx-report
+          file: smx_report.md
