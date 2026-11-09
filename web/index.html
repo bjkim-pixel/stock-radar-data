@@ -1504,6 +1504,16 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note">확정 = 한국투자증권(예탁원) 배당일정, <b>예상(E)</b> = 네이버 증권 연간 예상 주당배당금 − 확정분. 시가배당률 = 최근 12개월 기준일 지급 합계 ÷ 현재가, 예상배당률 = 올해 예상 합계 ÷ 현재가, 배당성향 = 최근 12개월 주당배당금 ÷ 최근 4분기 EPS 합입니다. 특별배당이 섞이면 예상 값이 크게 나올 수 있습니다.</div>
   </div>
 
+  <div class="card" id="dBoardCard" style="display:none"><h3>이사회 <span class="r" id="dBoardSub">사내이사·기타비상무이사 · DART</span></h3>
+    <div id="dBoardBody"></div>
+    <div class="note">사외이사(독립이사)·감사·미등기 임원은 제외했습니다. <b>개인 직접보유</b>는 최대주주·특수관계인 표에 이름이 있을 때만 나오며, 지주회사 등 법인을 통한 지배력은 아래 "주요주주" 카드의 최대주주(법인) 지분으로 확인하세요. 보고서가 분기·반기·사업보고서 주기로 나오므로 갱신은 그 주기입니다.</div>
+  </div>
+
+  <div class="card" id="dOwnCard" style="display:none"><h3>주요주주 <span class="r" id="dOwnSub">DART</span></h3>
+    <div id="dOwnBody"></div>
+    <div class="note">최대주주 및 특수관계인 = 정기보고서 기준(기준일 표시). 5% 이상 대량보유자 = 대량보유상황보고서 중 보고자별 최신 건(5% 미만으로 내려간 보고자는 제외). 소액주주 = 발행주식 총수의 1% 미만 보유 주주. 자기주식 = 보통주 기말 보유수량 ÷ 발행주식 총수.</div>
+  </div>
+
   <div class="card" id="dDartCard" style="display:none"><h3>공시 <span class="r" id="dDartSub">DART · 최근 12개월</span></h3>
     <div id="dDartSum" class="faint" style="font-size:12px;margin-bottom:6px"></div>
     <div class="qf seg" id="dDartKindSel" style="margin-bottom:6px">
@@ -5257,6 +5267,7 @@ function renderRangeCharts(){
   try{renderMaCard();}catch(e){console.error("ma card",e);}
   try{renderEarnCard();}catch(e){console.error("earn card",e);}
   try{renderDivCard();}catch(e){console.error("div card",e);}
+  try{renderGovCards();}catch(e){console.error("gov card",e);}
   try{renderDartCard();}catch(e){console.error("dart card",e);}
   try{renderDailyFlow();}catch(e){console.error("daily flow table",e);}
 }
@@ -6181,6 +6192,53 @@ function divAnnotate(rows,all,asof){
 }
 /* 종목상세 공시 카드(DART 최근 12개월) */
 S.dDartKind="all";
+const escH=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function renderGovCards(){
+  const code=S.chart&&S.chart.code,bc=$("#dBoardCard"),oc=$("#dOwnCard");
+  if(!code){bc.style.display="none";oc.style.display="none";return;}
+  let bd=[],ow=[],mj=[],sm=[];
+  try{[bd,ow,mj,sm]=await Promise.all([
+    q("gov_board",`select=nm,birth_ym,ofcps,kind,fte,chrg_job,main_career,tenure_end,own_shares,own_rate,stlm_dt&code=eq.${code}&order=nm.asc`),
+    q("gov_owner",`select=nm,relate,stock_knd,shares,rate,shares_beg,rate_beg,is_corp,stlm_dt&code=eq.${code}&order=shares.desc.nullslast`),
+    q("gov_major",`select=repror,rcept_dt,shares,rate,rate_chg,reason&code=eq.${code}&order=rate.desc`),
+    q("gov_summary",`select=*&code=eq.${code}`)]);}catch(e){console.error("지배구조",e);}
+  if(S.chart.code!==code)return;
+  const sy=(sm[0]||{}).stlm_dt;
+  // ── 이사회
+  if(!bd.length)bc.style.display="none";else{
+    bc.style.display="";$("#dBoardSub").textContent=`사내이사·기타비상무이사 ${bd.length}명 · 기준 ${sy||"–"}`;
+    const rank=m=>/대표|회장/.test(m.ofcps||"")?0:/부회장|사장/.test(m.ofcps||"")?1:2;
+    $("#dBoardBody").innerHTML=bd.slice().sort((a,b)=>rank(a)-rank(b)||(a.birth_ym||"").localeCompare(b.birth_ym||"")).map(m=>{
+      const car=(m.main_career||"").split(/\n+/).map(x=>x.trim()).filter(Boolean),yr=(m.birth_ym||"").match(/\d{4}/);
+      const own=m.own_shares!=null?`<span class="faint">개인 직접보유</span> <b>${N(m.own_shares,0)}주</b>${m.own_rate!=null?` <span class="faint">(${N(m.own_rate,2)}%)</span>`:""}`:'<span class="faint">개인 직접보유 –</span>';
+      return `<div style="padding:8px 0;border-top:1px solid var(--border)">
+        <div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline"><b style="font-size:14px">${escH(m.nm)}</b>${yr?`<span class="faint">${yr[0]}년생</span>`:""}
+          <span style="font-size:12.5px">${escH(m.ofcps||"")}</span>
+          <span class="tag-d" style="font-size:10.5px">${escH(m.kind)}</span><span class="tag-d" style="font-size:10.5px">${escH(m.fte||"")}</span></div>
+        ${m.chrg_job?`<div class="faint" style="font-size:12px;margin-top:2px">담당 ${escH(m.chrg_job.replace(/\s+/g," "))}</div>`:""}
+        ${car.length?`<div style="font-size:12px;margin-top:2px;color:var(--ink-2)">${car.map(escH).join(" · ")}</div>`:""}
+        <div style="font-size:12px;margin-top:3px">${own}${m.tenure_end&&m.tenure_end!=="-"?` <span class="faint">· 임기 ${escH(m.tenure_end)}</span>`:""}</div></div>`;}).join("");
+  }
+  // ── 주요주주
+  const base=ow.filter(r=>r.nm!=="계"&&r.stock_knd==="보통주"),tot=ow.find(r=>r.nm==="계"&&r.stock_knd==="보통주");
+  const hasAny=base.length||mj.length||sm.length;
+  if(!hasAny){oc.style.display="none";return;}
+  oc.style.display="";$("#dOwnSub").textContent=`DART · 기준 ${sy||"–"}`;
+  const top=base.find(r=>/최대주주/.test(r.relate||""))||base[0];
+  const s0=sm[0]||{};
+  let h="";
+  if(top)h+=`<div style="font-size:13px;margin-bottom:6px">최대주주 <b>${escH(top.nm)}</b>${top.is_corp?' <span class="tag-d" style="font-size:10.5px">법인</span>':""} <b>${N(top.rate,2)}%</b>${tot&&tot.rate!=null?` · 특수관계인 합계 <b>${N(tot.rate,2)}%</b>`:""}${top.rate_beg!=null&&tot&&tot.rate_beg!=null&&Math.abs(tot.rate-tot.rate_beg)>=0.005?` <span class="faint">(기초 ${N(tot.rate_beg,2)}% → ${pm(tot.rate-tot.rate_beg,2)}%p)</span>`:""}</div>`;
+  const chips=[];
+  if(s0.small_shares_rate!=null)chips.push(`소액주주 <b>${N(s0.small_shares_rate,2)}%</b>${s0.small_holders!=null?` <span class="faint">(${N(s0.small_holders,0)}명)</span>`:""}`);
+  if(s0.treasury_shares!=null)chips.push(`자기주식 <b>${N(s0.treasury_shares,0)}주</b>${s0.treasury_rate!=null?` <span class="faint">(${N(s0.treasury_rate,2)}%)</span>`:""}`);
+  if(chips.length)h+=`<div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;margin-bottom:8px">${chips.map(c=>`<span>${c}</span>`).join("")}</div>`;
+  if(base.length)h+=`<div class="tw tw-scroll" style="margin-bottom:8px"><table class="earn-t"><thead><tr><th class="l">최대주주 및 특수관계인</th><th>관계</th><th>주식수</th><th>지분율</th></tr></thead><tbody>`+
+    base.map(r=>`<tr><td class="l">${escH(r.nm)}${r.is_corp?' <span class="faint">법인</span>':""}</td><td>${escH(r.relate||"")}</td><td class="num">${N(r.shares,0)}</td><td class="num">${N(r.rate,2)}%</td></tr>`).join("")+
+    (tot?`<tr style="border-top:2px solid var(--border);font-weight:700"><td class="l">합계(보통주)</td><td></td><td class="num">${N(tot.shares,0)}</td><td class="num">${N(tot.rate,2)}%</td></tr>`:"")+`</tbody></table></div>`;
+  if(mj.length)h+=`<div style="font-size:12px;font-weight:650;margin:6px 0 3px">5% 이상 대량보유자</div><div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">보유자</th><th>지분율</th><th>변동</th><th>주식수</th><th>보고일</th><th class="l">사유</th></tr></thead><tbody>`+
+    mj.map(r=>`<tr><td class="l">${escH(r.repror)}</td><td class="num">${N(r.rate,2)}%</td><td class="num ${sgn(r.rate_chg)}">${r.rate_chg==null?"–":pm(r.rate_chg,2)+"%p"}</td><td class="num">${N(r.shares,0)}</td><td>${escH(r.rcept_dt||"")}</td><td class="l" style="white-space:normal;min-width:120px">${escH((r.reason||"").slice(0,40))}</td></tr>`).join("")+`</tbody></table></div>`;
+  $("#dOwnBody").innerHTML=h;
+}
 async function renderDartCard(){
   const card=$("#dDartCard"),code=S.chart&&S.chart.code;
   if(!code){card.style.display="none";return;}
