@@ -172,6 +172,10 @@ setInterval(() => {
 // ① 재배포 시 구/신 인스턴스가 잠깐 겹치는 구간, ② 사용자가 같은 계정으로 HTS·MTS
 // 실시간 시세를 볼 때 이 몫까지 함께 소모될 수 있어, 41에 딱 맞추지 않고 여유를 둔다.
 const KIS_SUB_SLOT_LIMIT = 36;
+// 2026-11-10: 전략성과2(상따) 실시간 연동 일시 중단 — 내 종목(프론트 요청) 슬롯을 최대한 확보하기 위해
+// 상따 "후보" 시세·프로그램매매 구독을 하지 않는다(신규 진입 신호도 멈춤). 이미 보유 중인 상따 포지션은
+// 청산 판단이 필요하므로 시세·프로그램매매 구독을 유지한다. 재개: Render 환경변수 SANGTTA_LIVE_PAUSED=0.
+const SANGTTA_LIVE_PAUSED = process.env.SANGTTA_LIVE_PAUSED !== '0';
 const KIS_PROGRAM_SUB_RESERVE = 8;   // 여유가 있을 때 프로그램매매용으로 남겨두는 슬롯
 let _subTrimLoggedAt = 0;
 function wantedCodes() {
@@ -182,7 +186,7 @@ function wantedCodes() {
   const mandatory = w.size;
   const budget = Math.max(mandatory, KIS_SUB_SLOT_LIMIT - KIS_PROGRAM_SUB_RESERVE);
   let trimmed = 0;
-  for (const code of sangttaCandidates) {                      // 모멘텀 순위 순서대로 들어있음
+  for (const code of (SANGTTA_LIVE_PAUSED ? [] : sangttaCandidates)) {  // 모멘텀 순위 순서대로 들어있음
     if (w.size >= budget) { trimmed++; continue; }
     w.add(code);
   }
@@ -332,7 +336,7 @@ function programTradeWantedCodes() {
     w.add(code);
   }
   let n = 0;
-  for (const code of sangttaCandidates) {           // 그다음 상위 후보
+  for (const code of (SANGTTA_LIVE_PAUSED ? [] : sangttaCandidates)) { // 그다음 상위 후보
     if (w.size >= budget || n >= SANGTTA_PROGRAM_SUB_TOP_N) break;
     if (!w.has(code)) { w.add(code); n++; }
   }

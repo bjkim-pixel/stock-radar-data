@@ -2290,6 +2290,7 @@ function reconcileLiveSubscription(){
   // 아직 연결 전이면 onopen 핸들러가 S.liveSubscribed 전체를 구독 요청함
 }
 function setSwingLiveCodes(codes){ S.swingWanted=new Set(codes); reconcileLiveSubscription(); }
+const FAV_LIVE_MAX=25;   // KIS 슬롯 36 중 보유·청산용 여유를 남기는 상한
 function setFavLiveCodes(codes){ S.favWanted=new Set(codes); reconcileLiveSubscription(); }
 // 내 종목 표: 종가·등락률 셀을 KIS 실시간 체결가로 덮어쓴다(전략성과2와 같은 릴레이 웹소켓 사용)
 function updateFavLive(code,m){
@@ -2297,7 +2298,8 @@ function updateFavLive(code,m){
   $$(`#favBody td[data-fclose="${code}"]`).forEach(c=>{c.textContent=N(+m.price,0);c.dataset.sortVal=m.price;c.title="KIS 실시간 체결가";});
   $$(`#favBody td[data-fchg="${code}"]`).forEach(c=>{if(m.changePct==null)return;c.className=sgn(+m.changePct);c.textContent=pm(+m.changePct,1)+"%";c.dataset.sortVal=m.changePct;c.title="KIS 실시간 등락률";});
 }
-function setSangttaLiveCodes(codes){ S.sangttaWanted=new Set(codes); reconcileLiveSubscription(); }
+const SANGTTA_LIVE_PAUSED=true;   // 2026-11-10: 전략성과2 실시간 웹소켓 연동 일시 중단(내 종목 우선) — false로 바꾸면 재개
+function setSangttaLiveCodes(codes){ S.sangttaWanted=new Set(SANGTTA_LIVE_PAUSED?[]:codes); reconcileLiveSubscription(); }
 
 /* ══ 테이블 정렬 ═══════════════════════════════════════════════════ */
 function sortVal(txt,el){
@@ -8340,10 +8342,10 @@ async function loadFav(){
       if(r)return `<tr><td class="l rank">${n}</td>${nameCell(r)}${scrCells(r)}</tr>`;
       return `<tr><td class="l rank">${n}</td><td class="l">${holdBtn(c)}${favStar(c)}<a class="lk nm" data-code="${c}">${accEsc(codeName(c))}</a>${tags(c)}${thTags(c)}<span class="fav-rm" data-rm="${c}" title="내 종목에서 제외">✕</span></td><td colspan="28" class="faint" style="text-align:left">오늘 기준 데이터 없음</td></tr>`;}).join("");
     $$("#favBody tr").forEach(tr=>{const rm=tr.querySelector(".fav-rm"),t=tr.children;if(!rm||t.length<6)return;t[2].dataset.fclose=rm.dataset.rm;t[3].dataset.fchg=rm.dataset.rm;});
-    {const shown=codes.filter(c=>byCode[c]&&!(S.etfMap||{})[c]);   // 주식만, 슬롯 보호를 위해 투자→관심→나머지 순으로 최대 15종목
+    {const shown=codes.filter(c=>byCode[c]&&!(S.etfMap||{})[c]);   // 주식만, 슬롯 보호를 위해 투자→관심→나머지 순으로 최대 25종목
      const pri=[...shown.filter(c=>holds.includes(c)),...shown.filter(c=>!holds.includes(c)&&favs.includes(c)),...shown.filter(c=>!holds.includes(c)&&!favs.includes(c))];
-     setFavLiveCodes(pri.slice(0,15));
-     $("#favNote").insertAdjacentHTML("beforeend",` · 종가·등락률은 <b>KIS 실시간</b>(상위 ${Math.min(15,pri.length)}종목${pri.length>15?", 나머지는 전일 기준":""})`);}
+     setFavLiveCodes(pri.slice(0,FAV_LIVE_MAX));
+     $("#favNote").insertAdjacentHTML("beforeend",` · 종가·등락률은 <b>KIS 실시간</b>(상위 ${Math.min(FAV_LIVE_MAX,pri.length)}종목${pri.length>FAV_LIVE_MAX?", 나머지는 전일 기준":""})`);}
     $$("#favBody .fav-rm").forEach(x=>x.onclick=e=>{e.stopPropagation();favRemove(x.dataset.rm);});
     $$("#favBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
     $$("#favBody .tg.act").forEach(a=>a.onclick=()=>favShowEv(a.dataset.ev));
