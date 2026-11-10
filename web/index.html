@@ -71,6 +71,7 @@ b{font-weight:640}
 .tg.th-t{background:color-mix(in srgb,#3b82f6 16%,transparent);color:#3b82f6}
 .th-note{display:flex;gap:6px;align-items:center;font-size:12px;margin:3px 0}.th-nt{flex:1;word-break:break-all}
 #favThemeCard .th-nDel{padding:1px 7px!important;font-size:11px!important}
+.fav-rm{cursor:pointer;color:var(--ink-3);margin-left:6px;font-size:12px}.fav-rm:hover{color:var(--warn)}
 .th-x{cursor:pointer;font-style:normal;color:var(--ink-3)}.th-x:hover{color:var(--warn)}
 .hold{cursor:pointer;margin-right:4px;user-select:none;font-size:.95em;opacity:.35;filter:grayscale(1)}
 .hold.on{opacity:1;filter:none}
@@ -8294,7 +8295,7 @@ async function loadFav(){
   if(!$("#favAddList").children.length&&S.codes&&S.codes.length)$("#favAddList").innerHTML=S.codes.map(c=>`<option value="${accEsc(c.name)} (${c.code})">`).join("")
     +Object.values(S.etfMap||{}).map(c=>`<option value="${accEsc(c.name)} (${c.code})">`).join("");   /* ETF·인버스·레버리지도 담을 수 있게 */
   const ai=await favAiLoad();
-  const aiCodes=ai.picks.map(p=>p.code);
+  const hideL=favHide(),aiCodes=ai.picks.map(p=>p.code).filter(c=>!hideL.includes(c));
   const kindsOf=c=>({fav:favs.includes(c),hold:holds.includes(c),ai:aiCodes.includes(c)});
   let codes;
   const ths=thList();
@@ -8314,7 +8315,7 @@ async function loadFav(){
     th:"단체상승 테마로 묶은 종목 · 위 버튼으로 관심(내 종목)에 한꺼번에 추가·제외",
     ai:`최신 AI 브리핑(${ai.date||"–"}) 추천 종목 · 성과는 AI 브리핑 탭 하단`})[tab]
     +" · ☆ 관심 · 💼 투자 · 이 브라우저에 저장되고, 투자일지 토큰이 있으면 서버에도 동기화되어 <b>AI 브리핑이 매수·보유·매도 의견</b>을 달아줍니다"
-    +(ai.mineDate?` · 최근 의견 ${ai.mineDate} ${ai.mineRound===0?"장중":ai.mineRound===1?"16시":"18시"} 브리핑`:"");
+    +(favHide().length?` · <a id="favHideRs" style="cursor:pointer;text-decoration:underline">숨긴 AI추천 ${favHide().length}개 복원</a>`:"")+(ai.mineDate?` · 최근 의견 ${ai.mineDate} ${ai.mineRound===0?"장중":ai.mineRound===1?"16시":"18시"} 브리핑`:"");
   if(!codes.length){body.innerHTML='<tr><td colspan="30" class="load">'+(tab==="ai"?"최신 AI 브리핑에 추천 종목이 없습니다":"아직 담은 종목이 없습니다 — 위 입력창이나 종목 이름 앞의 ☆·💼를 눌러 보세요")+"</td></tr>";return;}
   try{
     const raw=await loadFlowRawData();
@@ -8328,12 +8329,14 @@ async function loadFav(){
     let n=0;
     body.innerHTML=codes.map(c=>{const r=byCode[c];n++;
       if(r)return `<tr><td class="l rank">${n}</td>${nameCell(r)}${scrCells(r)}</tr>`;
-      return `<tr><td class="l rank">${n}</td><td class="l">${holdBtn(c)}${favStar(c)}<a class="lk nm" data-code="${c}">${accEsc(codeName(c))}</a>${tags(c)}</td><td colspan="28" class="faint" style="text-align:left">오늘 기준 데이터 없음</td></tr>`;}).join("");
+      return `<tr><td class="l rank">${n}</td><td class="l">${holdBtn(c)}${favStar(c)}<a class="lk nm" data-code="${c}">${accEsc(codeName(c))}</a>${tags(c)}${thTags(c)}<span class="fav-rm" data-rm="${c}" title="내 종목에서 제외">✕</span></td><td colspan="28" class="faint" style="text-align:left">오늘 기준 데이터 없음</td></tr>`;}).join("");
+    $$("#favBody .fav-rm").forEach(x=>x.onclick=e=>{e.stopPropagation();favRemove(x.dataset.rm);});
     $$("#favBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
     $$("#favBody .tg.act").forEach(a=>a.onclick=()=>favShowEv(a.dataset.ev));
     makeSortable("favBody");
   }catch(e){body.innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';}
 }
+document.addEventListener("click",e=>{if(e.target.id==="favHideRs"){try{localStorage.removeItem("sr_fav_hide");}catch(x){}loadFav();}});
 $$("#favTabs button").forEach(b=>b.onclick=()=>{S.favTab=b.dataset.t;loadFav();});
 function favAddFrom(kind){
   const v=$("#favAddIn").value.trim();if(!v)return;
@@ -8360,6 +8363,15 @@ function thFavSet(id,on){
   $$(".fav[data-fav]").forEach(x=>{const o=a.includes(x.dataset.fav);x.classList.toggle("on",o);x.textContent=o?"★":"☆";});
   wlPushSoon();wlSyncMsg(on?`관심에 ${n}종목 추가`:`관심에서 ${n}종목 제외`);
   loadFav();
+}
+function favHide(){try{const a=JSON.parse(localStorage.getItem("sr_fav_hide")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
+function favRemove(code){ // 이유(관심·투자·AI추천)와 상관없이 내 종목에서 제외 — AI추천은 이 브라우저에서만 숨김
+  const wr=(k,a)=>{try{localStorage.setItem(k,JSON.stringify(a));}catch(e){}};
+  wr("sr_fav",favList().filter(c=>c!==code));wr("sr_hold",holdList().filter(c=>c!==code));
+  if(((S.favAi||{}).picks||[]).some(p=>p.code===code)&&!favHide().includes(code))wr("sr_fav_hide",[...favHide(),code]);
+  $$(`.fav[data-fav="${code}"]`).forEach(x=>{x.classList.remove("on");x.textContent="☆";});
+  $$(`.hold[data-hold="${code}"]`).forEach(x=>x.classList.remove("on"));
+  wlPushSoon();wlSyncMsg(`${codeName(code)} 내 종목에서 제외`);loadFav();
 }
 function thFind(id){return thList().find(t=>t.id===id);}
 function thUpd(id,fn){const a=thList(),t=a.find(x=>x.id===id);if(!t)return;fn(t);thSave(a);thRender();thPairInit();}
