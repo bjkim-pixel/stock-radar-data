@@ -4399,7 +4399,7 @@ function gmSparkLabels(v,mx,mn,last,X,Y,W,H,it,big){
 /* 가로축 눈금: 짧은 기간(≤30일)은 주 시작 M/D, 그 외는 월 시작 M월. 라벨 간격이 좁으면 N개 건너뛰어 겹치지 않게 */
 function gmAxis(p,n,big){
   const ds=p.dates.slice(-n); if(ds.length<5)return "";
-  const W=big?560:140, gap=big?44:30, N1=ds.length-1, weekly=ds.length<=30;
+  const W=big?560:140, gap=big?22:9, N1=ds.length-1, weekly=ds.length<=30;   // 월 눈금을 건너뛰지 않고 매달 표시
   let t=[];
   for(let i=1;i<ds.length;i++){
     const a=ds[i-1], b=ds[i];
