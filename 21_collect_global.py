@@ -794,9 +794,9 @@ def collect_mktcap(conn):
             f = 10 ** round(math.log10(float(top[1]) / top_mv))
             log(f"- 시장 시총 {mk} {d} 상태 {status} · 종목 {n} · 합계 {tot * f / 1e12:,.0f}조원 (환산 ×{f:g}, 기준 {top[0]})")
             if status == "CLOSE" and n > 100:
-                rows.append((f"KRMC:{mk}", d, tot * f))
+                rows.append((f"KRMC:{mk}", d, tot * f / 1e8))   # 억원(열 정밀도 한도 때문에 원 단위는 넘침)
             if dprev and n > 100:
-                rows.append((f"KRMC:{mk}", dprev, tprev * f))
+                rows.append((f"KRMC:{mk}", dprev, tprev * f / 1e8))
                 log(f"  · {mk} 전일({dprev}) 확정 시총 {tprev * f / 1e12:,.0f}조원")
         except Exception as ex:
             log(f"- ⚠ 시장 시총 수집 실패({mk}): {str(ex)[:100]}")
@@ -870,11 +870,11 @@ def load_all(conn):
                 act = S.get("KRMC:" + mk) or {}
                 ix = S.get("IDX:" + mk) or {}
                 if d in act:
-                    return act[d]
+                    return act[d] * 1e8
                 if not act or d not in ix:
                     return None
                 a = min(act, key=lambda x: abs((x - d).days))
-                return act[a] * ix[d] / ix[a] if a in ix and ix[a] else None
+                return act[a] * 1e8 * ix[d] / ix[a] if a in ix and ix[a] else None
             cur.execute("select trade_date, sum(market_cap) from daily_price where code = any(%s) and market_cap > 0 and trade_date >= %s group by 1", (list(TOP5), frm))
             for d, a in cur.fetchall():
                 t = total_at("KOSPI", d)
