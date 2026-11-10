@@ -921,6 +921,11 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 
 
+  <div class="card" style="margin-top:12px"><h3>선물 투자자별 순매수 <span class="r" id="futTrendNote">코스피200 선물 · 억원 · 거래일 기준</span></h3>
+    <div class="tw"><table><thead><tr id="futTrendHead"></tr></thead>
+      <tbody id="futTrendBody"><tr><td colspan="4" class="load sk"></td></tr></tbody></table></div>
+  </div>
+
   <div id="tdKWrap" style="margin-top:12px"><div class="card"><h3>KOSPI <span class="r" id="tdKNote">불러오는 중…</span></h3><div class="load sk"></div></div></div>
 
 
@@ -2900,6 +2905,7 @@ function procEnter(){
   if(S.procEntered)return;S.procEntered=true;
   ensureTodayMarket().catch(e=>console.error("시장 요약",e));
   loadFlowTrends().catch(()=>{});
+  loadFutTrends().catch(()=>{});
   loadMarketInvestor().catch(e=>{$("#mktInvBody").innerHTML='<tr><td colspan="4" class="load">데이터 없음</td></tr>';});
   lazyNear($("#tdKWrap"),()=>loadTdKospi().catch(e=>console.error("KOSPI 카드",e)));
 }
@@ -3749,6 +3755,24 @@ async function loadMarketInvestor(){
   const NM=[["KOSPI","코스피"],["KOSDAQ","코스닥"],["FUT","선물"]];
   const c=(v,f)=>v==null?`<td class="${f||""}">-</td>`:`<td class="${sgn(+v)} ${f||""}">${pm(+v,0)}</td>`;
   $("#mktInvBody").innerHTML=NM.map(([k,n])=>{const r=by[k]||{};return `<tr><td class="l">${n}</td>${c(r.personal)}${c(r.foreign_net,"mi-f")}${c(r.inst)}</tr>`;}).join("");
+}
+// 선물(코스피200) 투자자별 순매수 — market_investor_daily(FUT) 일별 값을 기간별(거래일 수)로 합산. 기간 정의는 시장 전체 표와 동일(125/60/40/20/10/5/1거래일)
+const FUT_SUBJ=[["foreign_net","외국인"],["inst","기관합계"],["personal","개인"]],FUT_DAYS={"6m":125,"3m":60,"2m":40,"1m":20,"2w":10,"1w":5,"1d":1};
+async function loadFutTrends(){
+  const body=$("#futTrendBody");if(!body)return;
+  if(!S.futRows)S.futRows=await q("market_investor_daily","select=trade_date,foreign_net,inst,personal&market=eq.FUT&order=trade_date.desc&limit=130");
+  const rows=S.futRows;
+  if(!rows.length){body.innerHTML='<tr><td colspan="4" class="load">데이터 없음</td></tr>';return;}
+  const dir=S.futDir==="asc"?-1:1,sum=(k,n)=>rows.slice(0,n).reduce((a,r)=>a+(+r[k]||0),0);
+  $("#futTrendHead").innerHTML='<th class="l">기간</th>'+FUT_SUBJ.map(([k,n])=>`<th class="sortable${S.futSort===k?" active":""}" data-key="${k}">${n}${S.futSort===k?(S.futDir==="asc"?" ▴":" ▾"):""}</th>`).join("");
+  let per=[...FLOW_PERIOD_ROWS];
+  if(S.futSort)per.sort((a,b)=>(sum(S.futSort,FUT_DAYS[b])-sum(S.futSort,FUT_DAYS[a]))*dir);
+  body.innerHTML=per.map(p=>{const n=FUT_DAYS[p],part=rows.length<n;
+    return `<tr><td class="l">${FLOW_PERIOD[p]}${part?`<span class="faint" title="수집된 ${rows.length}거래일치만 합산"> *</span>`:""}</td>`+FUT_SUBJ.map(([k])=>{const v=sum(k,n);return `<td class="${sgn(v)}">${pm(v,0)}</td>`;}).join("")+"</tr>";}).join("");
+  $("#futTrendNote").textContent=`코스피200 선물 · 억원 · ${rows.at(-1).trade_date}~${rows[0].trade_date} (${rows.length}거래일)`;
+  $$("#futTrendHead th.sortable").forEach(th=>th.onclick=()=>{
+    if(S.futSort===th.dataset.key)S.futDir=S.futDir==="asc"?"desc":"asc";else{S.futSort=th.dataset.key;S.futDir="desc";}
+    loadFutTrends();});
 }
 async function loadFlowTrends(){
   if(!S.flowTrendRow)S.flowTrendRow=(await q("v_market_flow_periods","select=*"))[0];
