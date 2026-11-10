@@ -743,73 +743,104 @@ def rnd(x):
     a = abs(x)
     return round(x, 0 if a >= 10000 else 2 if a >= 10 else 4)
 
+def _num(v):
+    return float(str(v).replace(",", ""))
+
 def collect_mktcap(conn):
-    """코스피·코스닥 전체 시가총액(원) 스냅샷 → global_series_daily 'KRMC:{시장}'. 네이버 모바일 시가총액순 목록(보통주만) 합계.
-    장 마감(CLOSE) 상태일 때만 저장하고, 날짜는 네이버 지수 시세의 거래일을 쓴다. 과거분은 load_all이 지수 비율로 환산한다."""
+    """코스피·코스닥 전체 시가총액(억원) → global_series_daily 'KRMC:{시장}'(실측) / 'KRMCE:{시장}'(지수 비율 환산 추정).
+    DB에 과거분을 저장해 두고, 새로 필요한 날(마감 후 당일·빠진 전일)이 있을 때만 네이버 시가총액순 목록(보통주 합계)을 받는다.
+    - 장 마감(CLOSE) 후 당일 값이 아직 없으면 → 당일 실측 저장
+    - 전일 값이 비어 있으면 → 현재 목록에서 전일 시총을 역산해 저장(장중에도 가능)
+    - 둘 다 있으면 목록을 받지 않는다(페이지 1장으로 상태만 확인)"""
     H = {"User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36", "Accept": "application/json"}
+    def page(mk, pg):
+        return requests.get(f"https://m.stock.naver.com/api/stocks/marketValue/{mk}?page={pg}&pageSize=100", headers=H, timeout=20).json()
     rows = []
     for mk in ("KOSPI", "KOSDAQ"):
         try:
             px = requests.get(f"https://m.stock.naver.com/api/index/{mk}/price?pageSize=2&page=1", headers=H, timeout=20).json()
             d = datetime.date.fromisoformat(px[0]["localTradedAt"][:10])
             dprev = datetime.date.fromisoformat(px[1]["localTradedAt"][:10]) if len(px) > 1 else None
-            tot, tprev, n, pg, status, ref = 0.0, 0.0, 0, 1, None, None
+            with conn.cursor() as cur:
+                cur.execute("select trade_date from global_series_daily where symbol = %s", (f"KRMC:{mk}",))
+                have = {r[0] for r in cur.fetchall()}
+            j1 = page(mk, 1)
+            status = j1.get("marketStatus")
+            need_today = status == "CLOSE" and d not in have
+            need_prev = bool(dprev) and dprev not in have
+            if not (need_today or need_prev):
+                log(f"- 시장 시총 {mk}: 저장분 최신(오늘 {d} 상태 {status}) — 목록 수집 생략")
+                continue
+            tot, tprev, n, pg, top_mv, cur_j = 0.0, 0.0, 0, 1, None, j1
+            with conn.cursor() as cur:
+                cur.execute("select p.code, p.market_cap from daily_price p join stocks s on s.code=p.code where s.market=%s and p.market_cap>0 and p.trade_date=(select max(trade_date) from daily_price) order by p.market_cap desc limit 1", (mk,))
+                top = cur.fetchone()
             while pg < 60:
-                j = requests.get(f"https://m.stock.naver.com/api/stocks/marketValue/{mk}?page={pg}&pageSize=100", headers=H, timeout=20).json()
+                j = cur_j if pg == 1 else page(mk, pg)
                 st = j.get("stocks") or []
                 if not st:
                     break
-                status = j.get("marketStatus")
                 for x in st:
                     if x.get("stockEndType") != "stock":
                         continue
                     try:
-                        mv = float(str(x.get("marketValue")).replace(",", ""))
+                        mv = _num(x.get("marketValue"))
                     except ValueError:
                         continue
                     tot += mv; n += 1
-                    # 전일 시총 = 현재 시총 × 전일종가 ÷ 현재가 (주식수 불변 가정) — 장중에도 "어제 확정" 총액을 구할 수 있다
+                    if top and x.get("itemCode") == top[0]:
+                        top_mv = mv
+                    # 전일 시총 = 현재 시총 × 전일종가 ÷ 현재가 (주식수 불변 가정)
                     try:
-                        cp = float(str(x.get("closePrice")).replace(",", "")); df = float(str(x.get("compareToPreviousClosePrice")).replace(",", ""))
+                        cp, df = _num(x.get("closePrice")), _num(x.get("compareToPreviousClosePrice"))
                         nm = ((x.get("compareToPreviousPrice") or {}).get("name") or "").upper()
                         if nm in ("FALLING", "LOWER_LIMIT"): df = -df
                         elif nm not in ("RISING", "UPPER_LIMIT"): df = 0.0
                         tprev += mv * (cp - df) / cp if cp else mv
                     except (ValueError, TypeError):
                         tprev += mv
-                    if x.get("itemCode") == "005930":
-                        ref = mv
                 pg += 1
-            # 단위 환산: 삼성전자(코스피) 또는 DB 시총 1위 종목과 DB 시가총액(원)을 비교해 10의 거듭제곱 배율을 추정
-            with conn.cursor() as cur:
-                cur.execute("select p.code, p.market_cap from daily_price p join stocks s on s.code=p.code where s.market=%s and p.market_cap>0 and p.trade_date=(select max(trade_date) from daily_price) order by p.market_cap desc limit 1", (mk,))
-                top = cur.fetchone()
-            top_mv = None
-            j1 = requests.get(f"https://m.stock.naver.com/api/stocks/marketValue/{mk}?page=1&pageSize=100", headers=H, timeout=20).json()
-            for x in j1.get("stocks", []):
-                if top and x.get("itemCode") == top[0]:
-                    top_mv = float(str(x.get("marketValue")).replace(",", ""))
-            if not top or not top_mv:
-                log(f"- ⚠ 시총 단위 확인 실패({mk})"); continue
-            f = 10 ** round(math.log10(float(top[1]) / top_mv))
-            log(f"- 시장 시총 {mk} {d} 상태 {status} · 종목 {n} · 합계 {tot * f / 1e12:,.0f}조원 (환산 ×{f:g}, 기준 {top[0]})")
-            if status == "CLOSE" and n > 100:
-                rows.append((f"KRMC:{mk}", d, tot * f / 1e8))   # 억원(열 정밀도 한도 때문에 원 단위는 넘침)
-            if dprev and n > 100:
-                with conn.cursor() as cur:   # 이미 저장된(마감 실측) 값은 역산값으로 덮어쓰지 않는다
-                    cur.execute("select 1 from global_series_daily where symbol = %s and trade_date = %s", (f"KRMC:{mk}", dprev))
-                    have = cur.fetchone() is not None
-                if not have:
-                    rows.append((f"KRMC:{mk}", dprev, tprev * f / 1e8))
-                log(f"  · {mk} 전일({dprev}) 확정 시총 {tprev * f / 1e12:,.0f}조원")
+            if not top or not top_mv or n < 100:
+                log(f"- ⚠ 시장 시총 {mk} 단위/종목수 확인 실패(종목 {n})"); continue
+            f = 10 ** round(math.log10(float(top[1]) / top_mv))   # 네이버 단위 → 원 환산 배율(10의 거듭제곱)
+            if need_today:
+                rows.append((f"KRMC:{mk}", d, tot * f / 1e8))
+            if need_prev:
+                rows.append((f"KRMC:{mk}", dprev, tprev * f / 1e8))
+            log(f"- 시장 시총 {mk}: 종목 {n} · 오늘 {d}({status}) {tot * f / 1e12:,.0f}조원{' 저장' if need_today else ''} · 전일 {dprev} {tprev * f / 1e12:,.0f}조원{' 저장' if need_prev else ''}")
         except Exception as ex:
             log(f"- ⚠ 시장 시총 수집 실패({mk}): {str(ex)[:100]}")
     if rows:
         upsert_series(conn, rows)
 
+def backfill_mktcap_est(conn):
+    """실측이 없는 과거 거래일은 가장 가까운 실측일 총액 × 지수 비율로 환산해 'KRMCE:{시장}'에 한 번만 저장(이미 있는 날은 건드리지 않음)."""
+    out = []
+    with conn.cursor() as cur:
+        for mk in ("KOSPI", "KOSDAQ"):
+            cur.execute("select trade_date, close from global_series_daily where symbol = %s", (f"KRMC:{mk}",))
+            act = {d: float(c) for d, c in cur.fetchall()}
+            if not act:
+                continue
+            cur.execute("select trade_date, close from global_series_daily where symbol = %s", (f"KRMCE:{mk}",))
+            est = {d for d, _ in cur.fetchall()}
+            cur.execute("""select trade_date, index_close from market_daily where market = %s and index_close is not null and trade_date >= %s
+                           and extract(isodow from trade_date) between 1 and 5""", (mk, BACKFILL_FROM - datetime.timedelta(days=15)))
+            ix = {d: float(c) for d, c in cur.fetchall()}
+            for d in ix:
+                if d in act or d in est:
+                    continue
+                a = min(act, key=lambda x: abs((x - d).days))
+                if a in ix and ix[a]:
+                    out.append((f"KRMCE:{mk}", d, act[a] * ix[d] / ix[a]))
+    if out:
+        upsert_series(conn, out)
+        log(f"- 시장 시총 추정(지수 비율 환산) 과거분 저장 {len(out)}행")
+
 def load_all(conn):
     try:
         collect_mktcap(conn)
+        backfill_mktcap_est(conn)
     except Exception as ex:
         conn.rollback(); log(f"- ⚠ 시장 시총 단계 실패: {str(ex)[:100]}")
     with conn.cursor() as cur:
@@ -870,15 +901,11 @@ def load_all(conn):
             conn.rollback(); log(f"- ⚠ 거래대금 비중 계산 실패: {str(ex)[:120]}")
         # 시가총액 비중(%) — 분모 = 시장 전체 시총(KRMC 실측 스냅샷, 없는 날은 가장 가까운 실측일 × 지수 비율로 환산)
         try:
-            def total_at(mk, d):
-                act = S.get("KRMC:" + mk) or {}
-                ix = S.get("IDX:" + mk) or {}
-                if d in act:
-                    return act[d] * 1e8
-                if not act or d not in ix:
-                    return None
-                a = min(act, key=lambda x: abs((x - d).days))
-                return act[a] * 1e8 * ix[d] / ix[a] if a in ix and ix[a] else None
+            def total_at(mk, d):   # 실측(KRMC) 우선, 없으면 DB에 저장된 추정(KRMCE) — 억원 → 원
+                v = (S.get("KRMC:" + mk) or {}).get(d)
+                if v is None:
+                    v = (S.get("KRMCE:" + mk) or {}).get(d)
+                return v * 1e8 if v is not None else None
             cur.execute("select trade_date, sum(market_cap) from daily_price where code = any(%s) and market_cap > 0 and trade_date >= %s group by 1", (list(TOP5), frm))
             for d, a in cur.fetchall():
                 t = total_at("KOSPI", d)
