@@ -6596,6 +6596,8 @@ function smxDraw(all,win,E){
 }
 // 수급 주체별 누적 카드를 '거래주체별 일별 순매수' 카드 바로 위로
 {const dc=$("#dDailyCard"),mc=$("#dMinisCard");if(dc&&mc)dc.before(mc);}
+// 스마트머니 매집·이탈 진단 → 수급 주체별 누적 순서로 주요주주 카드 바로 아래로
+{const oc=$("#dOwnCard"),sc=$("#dSmxCard"),mc=$("#dMinisCard");if(oc&&sc&&mc){oc.after(sc);sc.after(mc);}}
 // 무게/주식수 차트를 수급 주체별 누적 카드 안, 외국인+기관합계 미니차트 위로(카드 테두리 없이 블록으로)
 {const pc=$("#dPgtrCard"),mg=$("#dMinis");if(pc&&mg){pc.style.cssText="border:none;box-shadow:none;padding:0;margin:12px 0 0;background:none";mg.after(pc);}}
 {const vc=$("#dVolCard"),ec=$("#dEarnCard");if(vc&&ec)ec.before(vc);}
