@@ -76,18 +76,29 @@ for c in ["o", "h", "l", "c", "chg", "amt", "cap"] + fcols:
     df[c] = pd.to_numeric(df[c], errors="coerce")
 df["d"] = pd.to_datetime(df["d"])
 df = df.sort_values(["code", "d"]).reset_index(drop=True)
+# 데이터 품질: 시가·고가·저가가 0 이하인 행(수집 누락) → 결측 처리, 월별 건수 보고
+bad = df[(df["o"] <= 0) | (df["h"] <= 0) | (df["l"] <= 0) | (df["h"] < df["l"])]
+P(f"- 시가·고가·저가 0 또는 역전 행: {len(bad):,}건 · 월별 " + ", ".join(f"{k} {v}" for k, v in bad.groupby(bad["d"].dt.strftime("%y-%m")).size().items()))
+for c in ("o", "h", "l"):
+    df.loc[df[c] <= 0, c] = np.nan
+df.loc[df["h"] < df["l"], ["h", "l"]] = np.nan
+jump = df[(df["chg"].abs() > 30.5)]
+P(f"- 등락률 ±30% 초과 행(권리락·분할 의심): {len(jump)}건 → 검증에서 제외")
 g = df.groupby("code", sort=False)
 COST = 0.25   # 왕복 비용 가정(%) — 세금·수수료·체결 오차
 for k in (1, 3, 5):
     df[f"r{k}"] = (g["c"].shift(-k) / df["c"] - 1) * 100                 # 당일 종가 매수 → k일 뒤 종가
     df[f"q{k}"] = (g["c"].shift(-k) / g["o"].shift(-1) - 1) * 100         # 다음 날 시가 매수 → k일 뒤 종가
 df["gap"] = (g["o"].shift(-1) / df["c"] - 1) * 100
+df["badfwd"] = g["chg"].transform(lambda s: s.abs().shift(-1).rolling(5, min_periods=1).max().shift(-4)) > 30.5   # 이후 5일 안에 가격 불연속
+for k in (1, 3, 5):
+    df["x%d" % k] = df[f"r{k}"] - df.groupby("d")[f"r{k}"].transform("mean")   # 같은 날 전체 평균 대비 초과수익
 # 5일 내 +5% 도달 vs -3% 이탈(먼저 닿는 쪽, 같은 날이면 손절로 계산)
 H5 = np.column_stack([g["h"].shift(-k).values for k in range(1, 6)]); L5 = np.column_stack([g["l"].shift(-k).values for k in range(1, 6)])
 c0 = df["c"].values[:, None]
 up = (H5 / c0 - 1) * 100 >= 5; dn = (L5 / c0 - 1) * 100 <= -3
 fu = np.where(up.any(1), up.argmax(1), 99); fd = np.where(dn.any(1), dn.argmax(1), 99)
-valid5 = ~np.isnan(H5).any(1)
+valid5 = ~(np.isnan(H5).any(1) | np.isnan(L5).any(1))
 df["tp"] = np.where(valid5, (fu < fd).astype(float), np.nan); df["sl"] = np.where(valid5, ((fd <= fu) & (fd < 99)).astype(float), np.nan)
 # 요인
 df["amt20"] = g["amt"].transform(lambda s: s.shift(1).rolling(20, min_periods=10).mean())
@@ -124,12 +135,14 @@ P(f"- 수익률은 비용 차감 전(%). 왕복 비용 가정 {COST}%를 빼고 
 P(f"- 익절·손절: 5거래일 안에 +5%에 먼저 닿으면 익절, -3%에 먼저 닿으면 손절(같은 날이면 손절로 계산)")
 
 def row(name, s):
-    s = s.dropna(subset=["r5"])
+    s = s[(~s["badfwd"].fillna(False)) & (s["chg"].abs() <= 30.5)].dropna(subset=["r5"])
     if len(s) < 30:
-        return f"| {name} | {len(s)} | 표본 부족 | | | | | | | |"
+        return f"| {name} | {len(s)} | 표본 부족 | | | | | | | | | |"
+    dm = s.groupby("d")["x3"].mean(); t = dm.mean() / (dm.std(ddof=1) / np.sqrt(len(dm))) if len(dm) > 5 and dm.std(ddof=1) > 0 else np.nan
     return (f"| {name} | {len(s):,} | {s['r1'].mean():+.2f} | {s['r3'].mean():+.2f} | {s['r5'].mean():+.2f} | {s['r3'].median():+.2f} | {(s['r3']>COST).mean()*100:.0f}% "
-            f"| {s['gap'].mean():+.2f} | {s['q3'].mean():+.2f} | {s['tp'].mean()*100:.0f}%/{s['sl'].mean()*100:.0f}% |")
-HD = "| 조건 | 건수 | r1 | r3 | r5 | r3 중앙 | r3 승률 | 익일 갭 | q3 | 익절/손절 |\n|---|---|---|---|---|---|---|---|---|---|"
+            f"| {s['x3'].mean():+.2f} | {t:+.1f} | {s['gap'].mean():+.2f} | {s['q3'].mean():+.2f} | {s['tp'].mean()*100:.0f}%/{s['sl'].mean()*100:.0f}% |")
+P("- 초과 r3 = 같은 날 전체 종목 평균 r3를 뺀 값(시장 영향 제거). t = 일별 평균 초과수익의 t값(대략 2 이상이면 우연으로 보기 어려움)")
+HD = "| 조건 | 건수 | r1 | r3 | r5 | r3 중앙 | r3 승률 | 초과 r3 | t | 익일 갭 | q3 | 익절/손절 |\n|---|---|---|---|---|---|---|---|---|---|---|---|"
 
 def study(title, base):
     P(f"\n### {title}"); P(HD)
@@ -162,10 +175,29 @@ def study(title, base):
     P(row("B: A + 같은 업종 동반 상승 20% 이상", combo[combo["sec_ratio"] >= 0.2]))
     P(row("C: A + 외+기 연속 순매수 2일 이상", combo[combo["consec"] >= 2]))
     P(row("D: A + 거래대금 1.5배 이상", combo[combo["amtx"] >= 1.5]))
+    E = C[(C["box"] > 0.3) & (C["disp"] >= 100) & (C["sm5cap"] >= 20)]
+    P(row("E: 지수 박스 하단 아님 + 20일선 위 + 외+기 5일 누적 +20bp", E))
+    P(row("F: E + 시총 2조 이하", E[E["cap"] <= 2e12]))
+    P(row("G: E + 거래대금 1.5배 이상", E[E["amtx"] >= 1.5]))
+    P(row("H: E + 종가 위치 50~80%", E[E["pos"].between(0.5, 0.8)]))
+    P(row("I: 지수 박스 하단 아님 + 20일선 위(수급 조건 없음)", C[(C["box"] > 0.3) & (C["disp"] >= 100)]))
+    P(row("J: 지수 박스 하단 + 외+기 5일 누적 +20bp", C[(C["box"] <= 0.3) & (C["sm5cap"] >= 20)]))
+    P("\n손절·익절 폭 비교(후보 전체, 5거래일 내 먼저 닿는 쪽)\n")
+    P("| 익절/손절 폭 | 익절률 | 손절률 | 미결 | 건당 기대(%) |\n|---|---|---|---|---|")
+    V = C[(~C["badfwd"].fillna(False))].dropna(subset=["r5"]); idx = V.index.values
+    for tp_, sl_ in [(5, 3), (5, 5), (7, 5), (10, 5), (10, 7), (3, 3)]:
+        u = (H5[idx] / c0[idx] - 1) * 100 >= tp_; dnn = (L5[idx] / c0[idx] - 1) * 100 <= -sl_
+        ok = ~(np.isnan(H5[idx]).any(1) | np.isnan(L5[idx]).any(1))
+        a = np.where(u.any(1), u.argmax(1), 99); b = np.where(dnn.any(1), dnn.argmax(1), 99)
+        win = (a < b) & ok; lose = (b <= a) & (b < 99) & ok; none = ok & ~win & ~lose
+        ev = (win.sum() * tp_ - lose.sum() * sl_ + V["r5"].values[none].sum()) / max(1, ok.sum())
+        P(f"| +{tp_}% / -{sl_}% | {win.sum()/ok.sum()*100:.0f}% | {lose.sum()/ok.sum()*100:.0f}% | {none.sum()/ok.sum()*100:.0f}% | {ev:+.2f} |")
     return cand
 
 c_all = study("3-1. 전체 기간", df)
 c_box = study("3-2. 2026-08 이후(횡보 구간)", df[df["d"] >= BOX0])
+study("3-2a. 횡보 구간 앞 절반(2026-08~09)", df[(df["d"] >= BOX0) & (df["d"] < pd.Timestamp("2026-10-01"))])
+study("3-2b. 횡보 구간 뒤 절반(2026-10~11)", df[df["d"] >= pd.Timestamp("2026-10-01")])
 # 월별 안정성: 후보군과 조합 A의 r3 월별 평균
 P("\n### 3-3. 월별 안정성(r3 평균, 건수)")
 df["ym"] = df["d"].dt.strftime("%y-%m")
