@@ -1,0 +1,34 @@
+name: "[계산] 국면 전환 전략(횡보장 전략 페이지) | 장마감 수집·계산 직후 + 평일 16:25·18:25 KST | 상태·신호·모의 성과"
+# 수급 신호는 전일까지 값만 쓰므로 16시대 실행 결과가 그대로 확정치입니다(20시 마감 전에 검토 가능).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '25 7 * * 1-5'    # 16:25 KST
+    - cron: '25 9 * * 1-5'    # 18:25 KST
+permissions:
+  contents: write
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+jobs:
+  calc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests pandas numpy
+      - name: NXT(20시 마감) 표시 갱신 — 실패해도 계속
+        run: python 148_nxt_flag.py || echo "NXT 표시 갱신 실패(계속 진행)"
+      - run: python 147_sw_engine.py 2>sw_err.txt || (tail -c 2000 sw_err.txt; exit 1)
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: sw-engine-report
+          file: sw_engine_report.md
