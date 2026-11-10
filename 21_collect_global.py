@@ -791,6 +791,11 @@ def load_all(conn):
                 if (("KOSDAQ", d) in tot) and a:
                     S.setdefault("KRV:KQ_SEMI", {})[d] = float(a) / tot[("KOSDAQ", d)] * 100
             log(f"- 거래대금 비중: 코스피 대형5 {len(S.get('KRV:KOSPI_TOP5', {}))}일 · 코스닥 반도체 {len(S.get('KRV:KQ_SEMI', {}))}일 (최근일 종목수 {rows[-1][2] if rows else 0})")
+            for k in ('KRV:KOSPI_TOP5', 'KRV:KQ_SEMI'):
+                sr = S.get(k) or {}
+                if sr:
+                    ds = sorted(sr)[-3:]
+                    log(f"  · {k}: " + ", ".join(f"{d} {sr[d]:.1f}%" for d in ds))
         except Exception as ex:
             conn.rollback(); log(f"- ⚠ 거래대금 비중 계산 실패: {str(ex)[:120]}")
     return S, H
