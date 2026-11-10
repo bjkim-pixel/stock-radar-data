@@ -1,0 +1,25 @@
+name: "[수시] 시장별 투자자(코스피·코스닥·선물) 과거분 채우기 | 수동"
+on:
+  workflow_dispatch:
+    inputs:
+      days: {description: "오늘부터 거슬러 올라갈 달력일 수", default: "200"}
+permissions:
+  contents: write
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install requests psycopg2-binary
+      - run: python 141_market_investor_backfill.py ${{ inputs.days }} --report investor_backfill_report.md
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: investor-backfill-report
+          file: investor_backfill_report.md
