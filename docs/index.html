@@ -1410,9 +1410,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   </div>
   <div class="card" style="margin-top:12px"><h3>① 선별 매수 <span class="r" id="swPickNote"></span></h3>
     <div class="note" style="margin-bottom:8px">당일 +3% 이상 · 거래대금 50억 이상 · 20일선 위 · 시총 2조 이하 · 전일까지 5일 외+기 순매수가 시총의 0.2% 이상 → <b>당일 종가 매수, 3거래일 보유</b>. 코스피가 20일 박스의 30% 위일 때만 삽니다.</div>
-    <div class="tw"><table><thead><tr><th class="l">구분</th><th class="l">종목</th><th>마감</th><th>종가</th><th>등락</th><th>거래대금</th><th>시총</th><th>5일 외+기/시총</th><th>진입일</th><th>진입가</th><th>남은 보유일</th><th>하루 변동폭</th></tr></thead>
-      <tbody id="swPickBody"><tr><td colspan="12" class="load sk"></td></tr></tbody></table></div>
-    <div class="note" style="margin-top:6px">마감 = 20시(대체거래소 NXT 거래 가능) 또는 15:30(정규장만). 하루 변동폭 = 최근 20일 하루 등락폭 평균 — 손절 폭을 정할 때 참고하세요. 고정 -3% 손절은 백테스트에서 10번 중 6번 먼저 걸렸습니다.</div>
+    <div class="tw"><table><thead><tr><th class="l">구분</th><th class="l">종목</th><th>마감</th><th>종가</th><th>등락</th><th>거래대금</th><th>시총</th><th>5일 외+기/시총</th><th>진입일</th><th>진입가</th><th>남은 보유일</th><th>비상 손절가(-10%)</th><th>하루 변동폭</th></tr></thead>
+      <tbody id="swPickBody"><tr><td colspan="13" class="load sk"></td></tr></tbody></table></div>
+    <div class="note" style="margin-top:6px">마감 = 20시(대체거래소 NXT 거래 가능) 또는 15:30(정규장만). <b>기본 규칙은 손절 없이 3거래일 뒤 종가 청산</b>입니다. 과거 1,097건에서 손절을 붙인 13가지 규칙 모두 평균 수익을 낮췄습니다(검증 구간 건당: 손절 없음 +2.96% · -3% 손절 +0.98% · -10% 손절 +2.43%). 비상 손절가(-10%)는 큰 손실만 막는 용도로, 최악의 거래를 -18.0%에서 -10.5%로 줄였습니다. 하루 변동폭 = 최근 20일 하루 등락폭 평균.</div>
   </div>
   <div class="card" style="margin-top:12px"><h3>② 반등 매도 인버스 <span class="r">코스피가 60일선 아래 + 3일간 4% 이상 반등 → KODEX 인버스 5거래일</span></h3>
     <div id="swInv"><div class="load sk"></div></div>
@@ -8475,8 +8475,8 @@ async function loadSw(){
   const nmc=r=>`<a class="lk nm" data-code="${r.code}">${escH(codeName(r.code))}</a>`;
   $("#swPickBody").innerHTML=P.length?P.map(r=>`<tr><td class="l">${r.kind==="new"?(t.gate_open?'<b class="up">오늘 매수</b>':'조건 충족(보류)'):"보유 중"}</td><td class="l">${nmc(r)}</td><td>${nx(r)}</td>
     <td>${N(+r.close,0)}</td><td class="${sgn(+r.chg)}">${pm(+r.chg,1)}%</td><td>${N(+r.amt_eok,0)}억</td><td>${N(+r.cap_eok,0)}억</td><td class="${sgn(+r.sm5_pct)}">${pm(+r.sm5_pct,2)}%</td>
-    <td class="dim">${shortDate(r.entry_date)}</td><td>${N(+r.entry_close,0)}</td><td>${t.gate_open?r.days_left+"일":"–"}</td><td>${r.vol20==null?"–":N(+r.vol20,1)+"%"}</td></tr>`).join("")
-    :'<tr><td colspan="12" class="load">오늘 조건을 충족하거나 보유 중인 종목이 없습니다</td></tr>';
+    <td class="dim">${shortDate(r.entry_date)}</td><td>${N(+r.entry_close,0)}</td><td>${t.gate_open?r.days_left+"일":"–"}</td><td>${r.entry_close?N(+r.entry_close*0.9,0):"–"}</td><td>${r.vol20==null?"–":N(+r.vol20,1)+"%"}</td></tr>`).join("")
+    :'<tr><td colspan="13" class="load">오늘 조건을 충족하거나 보유 중인 종목이 없습니다</td></tr>';
   // ② 인버스
   const sigs=dy.filter(r=>r.inv_signal).slice(-8).reverse();
   $("#swInv").innerHTML=`<div class="note">${t.inv_hold?`<b>보유 중</b> · 남은 ${t.inv_left}거래일`:"현재 보유 없음"} · 코스피 ${N(+t.kospi,0)} / 60일선 ${N(+t.ma60,0)} · 최근 3일 ${pm(+t.ret3,1)}% (기준 +4.0%)</div>
