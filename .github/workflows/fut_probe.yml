@@ -1,0 +1,23 @@
+name: "[점검] 선물 투자자 이력 소스 | 수동 | 읽기 전용"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install requests psycopg2-binary
+      - run: python 140_fut_probe.py 2>&1 | tee fut_probe_report.md
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: fut-probe-report
+          file: fut_probe_report.md
