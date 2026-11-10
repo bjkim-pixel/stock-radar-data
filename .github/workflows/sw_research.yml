@@ -1,0 +1,25 @@
+name: "[점검] 횡보장 전략 연구용 백테스트 | 수동 | 읽기 전용"
+on:
+  workflow_dispatch:
+    inputs:
+      script: {description: "실행할 스크립트", default: "145_sw_absret_bt.py"}
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary pandas numpy
+      - run: python "${{ inputs.script }}" 2>sw_err.txt | tee sw_research_report.md; echo "---" >> sw_research_report.md; grep -v "UserWarning\|pandas only supports\|read_sql\|^ *$" sw_err.txt | tail -c 2500 >> sw_research_report.md || true
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: sw-research-report
+          file: sw_research_report.md
