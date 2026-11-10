@@ -157,6 +157,8 @@ KR_DESC = {
     "KOSPI": "코스피 · 한국 대형주 시장 전체", "KOSPI_DD": "1년 고점 대비 낙폭(%) · 조정의 깊이",
     "KOSPI_DISP": "코스피÷20일선 · 100 위 과열, 아래 침체", "KOSDAQ": "코스닥 · 중소형·성장주 시장",
     "KQKS": "코스닥÷코스피 · 오르면 중소형 강세",
+    "KOSPI_TOP5_CAP": "삼성전자·삼성전자우·삼성전기·SK하이닉스·SK스퀘어 시가총액 ÷ 코스피 전체 시가총액(보통주 합계) · 오르면 대형주 쏠림",
+    "KQ_SEMI_CAP": "코스닥 반도체 업종(추적 종목) 시가총액 ÷ 코스닥 전체 시가총액 · 과거분은 지수 비율로 환산한 추정치",
     "KOSPI_TOP5": "삼성전자·삼성전자우·삼성전기·SK하이닉스·SK스퀘어 거래대금 ÷ 코스피 전체 거래대금 · 오르면 대형 반도체·삼성 쏠림",
     "KQ_SEMI": "코스닥 반도체 업종(추적 종목) 거래대금 ÷ 코스닥 전체 거래대금 · 오르면 반도체 쏠림", "KRW": "원/달러 · 오르면 원화 약세(외국인 매도 압력)",
     "CR_CREDIT_TOTAL": "빚내서 주식 산 돈(신용거래융자) 전체 · 급증 = 과열, 급감 = 강제청산·투매",
@@ -741,7 +743,58 @@ def rnd(x):
     a = abs(x)
     return round(x, 0 if a >= 10000 else 2 if a >= 10 else 4)
 
+def collect_mktcap(conn):
+    """코스피·코스닥 전체 시가총액(원) 스냅샷 → global_series_daily 'KRMC:{시장}'. 네이버 모바일 시가총액순 목록(보통주만) 합계.
+    장 마감(CLOSE) 상태일 때만 저장하고, 날짜는 네이버 지수 시세의 거래일을 쓴다. 과거분은 load_all이 지수 비율로 환산한다."""
+    H = {"User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36", "Accept": "application/json"}
+    rows = []
+    for mk in ("KOSPI", "KOSDAQ"):
+        try:
+            px = requests.get(f"https://m.stock.naver.com/api/index/{mk}/price?pageSize=1&page=1", headers=H, timeout=20).json()
+            d = datetime.date.fromisoformat(px[0]["localTradedAt"][:10])
+            tot, n, pg, status, ref = 0.0, 0, 1, None, None
+            while pg < 60:
+                j = requests.get(f"https://m.stock.naver.com/api/stocks/marketValue/{mk}?page={pg}&pageSize=100", headers=H, timeout=20).json()
+                st = j.get("stocks") or []
+                if not st:
+                    break
+                status = j.get("marketStatus")
+                for x in st:
+                    if x.get("stockEndType") != "stock":
+                        continue
+                    try:
+                        mv = float(str(x.get("marketValue")).replace(",", ""))
+                    except ValueError:
+                        continue
+                    tot += mv; n += 1
+                    if x.get("itemCode") == "005930":
+                        ref = mv
+                pg += 1
+            # 단위 환산: 삼성전자(코스피) 또는 DB 시총 1위 종목과 DB 시가총액(원)을 비교해 10의 거듭제곱 배율을 추정
+            with conn.cursor() as cur:
+                cur.execute("select p.code, p.market_cap from daily_price p join stocks s on s.code=p.code where s.market=%s and p.market_cap>0 and p.trade_date=(select max(trade_date) from daily_price) order by p.market_cap desc limit 1", (mk,))
+                top = cur.fetchone()
+            top_mv = None
+            j1 = requests.get(f"https://m.stock.naver.com/api/stocks/marketValue/{mk}?page=1&pageSize=100", headers=H, timeout=20).json()
+            for x in j1.get("stocks", []):
+                if top and x.get("itemCode") == top[0]:
+                    top_mv = float(str(x.get("marketValue")).replace(",", ""))
+            if not top or not top_mv:
+                log(f"- ⚠ 시총 단위 확인 실패({mk})"); continue
+            f = 10 ** round(math.log10(float(top[1]) / top_mv))
+            log(f"- 시장 시총 {mk} {d} 상태 {status} · 종목 {n} · 합계 {tot * f / 1e12:,.0f}조원 (환산 ×{f:g}, 기준 {top[0]})")
+            if status == "CLOSE" and n > 100:
+                rows.append((f"KRMC:{mk}", d, tot * f))
+        except Exception as ex:
+            log(f"- ⚠ 시장 시총 수집 실패({mk}): {str(ex)[:100]}")
+    if rows:
+        upsert_series(conn, rows)
+
 def load_all(conn):
+    try:
+        collect_mktcap(conn)
+    except Exception as ex:
+        conn.rollback(); log(f"- ⚠ 시장 시총 단계 실패: {str(ex)[:100]}")
     with conn.cursor() as cur:
         cur.execute("select symbol, trade_date, close from global_series_daily where trade_date >= %s order by trade_date",
                     (BACKFILL_FROM - datetime.timedelta(days=15),))
@@ -798,6 +851,35 @@ def load_all(conn):
                     log(f"  · {k}: " + ", ".join(f"{d} {sr[d]:.1f}%" for d in ds))
         except Exception as ex:
             conn.rollback(); log(f"- ⚠ 거래대금 비중 계산 실패: {str(ex)[:120]}")
+        # 시가총액 비중(%) — 분모 = 시장 전체 시총(KRMC 실측 스냅샷, 없는 날은 가장 가까운 실측일 × 지수 비율로 환산)
+        try:
+            def total_at(mk, d):
+                act = S.get("KRMC:" + mk) or {}
+                ix = S.get("IDX:" + mk) or {}
+                if d in act:
+                    return act[d]
+                if not act or d not in ix:
+                    return None
+                a = min(act, key=lambda x: abs((x - d).days))
+                return act[a] * ix[d] / ix[a] if a in ix and ix[a] else None
+            cur.execute("select trade_date, sum(market_cap) from daily_price where code = any(%s) and market_cap > 0 and trade_date >= %s group by 1", (list(TOP5), frm))
+            for d, a in cur.fetchall():
+                t = total_at("KOSPI", d)
+                if t and a:
+                    S.setdefault("KRV:KOSPI_TOP5_CAP", {})[d] = float(a) / t * 100
+            cur.execute("""select p.trade_date, sum(p.market_cap) from daily_price p join stocks s on s.code = p.code join v_stock_sector vs on vs.code = p.code
+                           where s.market = 'KOSDAQ' and s.security_type = 'STOCK' and vs.sector = '반도체' and p.market_cap > 0 and p.trade_date >= %s group by 1""", (frm,))
+            for d, a in cur.fetchall():
+                t = total_at("KOSDAQ", d)
+                if t and a:
+                    S.setdefault("KRV:KQ_SEMI_CAP", {})[d] = float(a) / t * 100
+            for k in ("KRV:KOSPI_TOP5_CAP", "KRV:KQ_SEMI_CAP"):
+                sr = S.get(k) or {}
+                if sr:
+                    ds = sorted(sr)[-3:]
+                    log(f"  · {k}: {len(sr)}일 · " + ", ".join(f"{d} {sr[d]:.1f}%" for d in ds))
+        except Exception as ex:
+            conn.rollback(); log(f"- ⚠ 시총 비중 계산 실패: {str(ex)[:120]}")
     return S, H
 
 def item(cal, series, name, bench_al, kind="px", sym=None):
@@ -879,6 +961,7 @@ def build_kr(S, H, etf_codes, theme_of):
                 it["d_"] = KR_DESC[key.split(":", 1)[1]]
             items[key] = it; idx.append(key)
     put("index:KOSPI", item(cal, ks, "KOSPI", None))
+    put("index:KOSPI_TOP5_CAP", item(cal, S.get("KRV:KOSPI_TOP5_CAP") or {}, "KOSPI 대형5 시가총액 비중(%)", None, "lvl"))
     # 고점대비 (252일 최고 대비 %)
     ksl = align(cal, ks)
     dd, ds = {}, {}
@@ -892,6 +975,7 @@ def build_kr(S, H, etf_codes, theme_of):
     put("index:KOSPI_DD", item(cal, dd, "KOSPI 고점대비", None, "lvlpct"))
     put("index:KOSPI_DISP", item(cal, ds, "KOSPI 이격도(20일)", None, "lvl"))
     put("index:KOSDAQ", item(cal, kq, "KOSDAQ", None))
+    put("index:KQ_SEMI_CAP", item(cal, S.get("KRV:KQ_SEMI_CAP") or {}, "KOSDAQ 반도체 시가총액 비중(%)", None, "lvl"))
     for mk in ("KOSPI", "KOSDAQ"):
         if items.get("index:" + mk) and H.get("KRIDX:" + mk):
             items["index:" + mk]["h"] = H["KRIDX:" + mk]; items["index:" + mk]["hn"] = "시가총액 상위 5"
