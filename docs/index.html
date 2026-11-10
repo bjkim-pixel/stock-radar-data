@@ -58,6 +58,12 @@ b{font-weight:640}
 .fav-add{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:2px 0 8px}
 .fav-add input{flex:1 1 160px;min-width:130px;max-width:260px}
 .fav-add .btn{padding:5px 10px;font-size:12px}
+.th-box{border:1px solid var(--border);border-radius:10px;padding:10px;margin:8px 0}
+.th-hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}.th-hd b{font-size:14px;margin-right:4px}
+.th-hd .btn,.th-row .btn{padding:4px 9px;font-size:11.5px}.th-hd .th-cmp{margin-left:auto}
+.th-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:5px 0}.th-row input{font-size:12px;padding:3px 6px;width:auto}
+.th-chip{display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border);font-size:12px}
+.th-x{cursor:pointer;font-style:normal;color:var(--ink-3)}.th-x:hover{color:var(--warn)}
 .hold{cursor:pointer;margin-right:4px;user-select:none;font-size:.95em;opacity:.35;filter:grayscale(1)}
 .hold.on{opacity:1;filter:none}
 .tg{display:inline-block;font-size:9.5px;line-height:1;padding:2px 4px;border-radius:3px;margin-left:3px;vertical-align:1px;font-weight:600;white-space:nowrap}
@@ -1368,6 +1374,16 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note" id="favNote"></div>
     <div class="tw scrlike" style="margin-top:8px"><table><thead></thead><tbody id="favBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
   </div>
+  <div class="card" id="favThemeCard"><h3>단체상승 테마 <span class="r" id="thCount"></span></h3>
+    <div class="note" style="margin-bottom:8px">같이 오른 종목을 테마로 묶고 상승일을 기록합니다. <b>짝꿍매매로 비교</b>를 누르면 테마 종목의 수급주체·무게/주식수·스마트머니 진단을 나란히 볼 수 있습니다. (이 브라우저에 저장)</div>
+    <div class="fav-add">
+      <input type="text" id="thName" placeholder="새 테마 이름 (예: 방산, 로봇)" maxlength="30" style="max-width:220px">
+      <input type="date" id="thDate" title="단체상승일(선택)" style="max-width:150px">
+      <button class="btn ghost" id="thAdd" type="button">+ 테마 만들기</button>
+      <button class="btn ghost" id="thBackup" type="button" title="테마 데이터를 JSON으로 복사/붙여넣기">백업·복원</button>
+    </div>
+    <div id="thList"></div>
+  </div>
   <div class="card hide" id="favEvCard"><h3 id="favEvTitle">AI 의견 근거</h3><div id="favEv"></div></div>
 </section>
 
@@ -1386,6 +1402,11 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="card pair-outer">
     <h3><span id="pairStockTitle">구성 종목</span>
       <span class="r">상위 6종목 내림차순 · 2종목씩 스와이프 · 마지막 페이지에서 7~8번째 종목을 목록으로 선택 · 아래로 스크롤하면 종목상세와 동일한 내용 전체</span></h3>
+    <div style="display:flex;align-items:center;gap:8px;padding:0 9px 8px;flex-wrap:wrap">
+      <span class="faint" style="font-size:11px">단체상승 테마로 비교</span>
+      <select id="pairThemeSel" style="width:auto;font-size:12px;padding:3px 6px"><option value="">업종 기준(기본)</option></select>
+      <span class="faint" id="pairThemeNote" style="font-size:11px"></span>
+    </div>
     <div style="display:flex;align-items:center;gap:8px;padding:0 9px 10px;flex-wrap:wrap">
       <span class="faint" style="font-size:11px">정렬 기준</span>
       <select id="pairStockSort" style="width:auto;font-size:12px;padding:3px 6px">
@@ -6746,6 +6767,8 @@ async function loadPairSectors(){
     pss.value=S.pairStockSort;
     pss.onchange=()=>{S.pairStockSort=pss.value;if(S.pairSector)selectPairSector(S.pairSector);};
   }
+  thPairInit();
+  if(S.pairTheme){await pairThemeRender();return;}
   if(S.pairSectorRows.length){
     const sortedTop=pairSecSorted();
     const keep=S.pairSector&&S.pairSectorRows.some(s=>s.sector===S.pairSector);
@@ -6757,6 +6780,7 @@ const PAIR_SORT_LABEL={change_pct:"등락률",weight_per_share:"무게/주식수
   consec_both_buy:"연속 양매수일",vol_ratio20_prev:"거래량비"};
 async function selectPairSector(sec){
   S.pairSector=sec;
+  if(S.pairTheme){S.pairTheme="";const ts=$("#pairThemeSel");if(ts)ts.value="";const tn=$("#pairThemeNote");if(tn)tn.textContent="";}
   $$("#pairSecBodyTop tr[data-sec],#pairSecBodyBot tr[data-sec]").forEach(t=>
     t.toggleAttribute("aria-selected",t.dataset.sec===sec));
   const sortLbl=PAIR_SORT_LABEL[S.pairStockSort]||S.pairStockSort;
@@ -8254,6 +8278,7 @@ function favShowEv(code){
   $("#favEvCard").scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 async function loadFav(){
+  thRender();
   const body=$("#favBody"),favs=favList(),holds=holdList();
   const tab=S.favTab;
   $$("#favTabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
@@ -8301,6 +8326,113 @@ function favAddFrom(kind){
   wlPushSoon();
 }
 $("#favAddFav").onclick=()=>favAddFrom("fav");$("#favAddHold").onclick=()=>favAddFrom("hold");
+
+// ── 단체상승 테마(관심종목): 테마명·상승일·종목을 localStorage(sr_themes)에 저장 → 짝꿍매매로 비교
+function thList(){try{const a=JSON.parse(localStorage.getItem("sr_themes")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
+function thSave(a){try{localStorage.setItem("sr_themes",JSON.stringify(a));}catch(e){}}
+function thFind(id){return thList().find(t=>t.id===id);}
+function thUpd(id,fn){const a=thList(),t=a.find(x=>x.id===id);if(!t)return;fn(t);thSave(a);thRender();thPairInit();}
+function thCodeFromInput(v){
+  const m=/\((\w{6})\)\s*$/.exec(v),q2=v.trim();
+  return m?m[1]:((S.codes||[]).find(c=>c.name===q2||c.code===q2)||Object.values(S.etfMap||{}).find(c=>c.name===q2||c.code===q2)||{}).code;
+}
+function thRender(){
+  const host=$("#thList");if(!host)return;
+  const a=thList();$("#thCount").textContent=a.length?`${a.length}개 테마`:"";
+  if(!$("#thMemList")){const dl=document.createElement("datalist");dl.id="thMemList";document.body.appendChild(dl);}
+  if(!$("#thMemList").children.length&&S.codes&&S.codes.length)$("#thMemList").innerHTML=S.codes.map(c=>`<option value="${accEsc(c.name)} (${c.code})">`).join("");
+  host.innerHTML=a.length?a.map(t=>`<div class="th-box" data-id="${t.id}">
+    <div class="th-hd"><b>${accEsc(t.name)}</b><span class="faint">종목 ${t.codes.length}</span>
+      <button class="btn ghost th-cmp" type="button">짝꿍매매로 비교</button>
+      <button class="btn ghost th-flow" type="button">상승일 수급</button>
+      <button class="btn ghost th-del" type="button">삭제</button></div>
+    <div class="th-row"><span class="faint">상승일</span>${(t.dates||[]).slice().sort().map(d=>`<span class="th-chip" data-d="${d}">${d}<i class="th-x">×</i></span>`).join("")||'<span class="faint">없음</span>'}
+      <input type="date" class="th-dIn"><button class="btn ghost th-dAdd" type="button">+ 날짜</button></div>
+    <div class="th-row"><span class="faint">종목</span>${t.codes.map(c=>`<span class="th-chip" data-c="${c}"><a class="lk" data-code="${c}">${accEsc(codeName(c))}</a><i class="th-x">×</i></span>`).join("")||'<span class="faint">없음</span>'}
+      <input type="text" class="th-mIn" list="thMemList" placeholder="종목 추가" autocomplete="off"><button class="btn ghost th-mAdd" type="button">+ 종목</button>
+      <button class="btn ghost th-fromFav" type="button" title="관심종목 전체를 이 테마에 추가">관심 전부 추가</button></div>
+    <div class="th-row"><input type="text" class="th-memo" placeholder="메모 (상승 사유·특징)" value="${accEsc(t.memo||"")}" style="flex:1;min-width:160px"></div>
+    <div class="th-fl"></div></div>`).join(""):'<div class="load">아직 테마가 없습니다 — 위에서 이름을 입력해 만드세요</div>';
+  $$("#thList .th-box").forEach(b=>{
+    const id=b.dataset.id;
+    b.querySelector(".th-cmp").onclick=()=>thCompare(id);
+    b.querySelector(".th-flow").onclick=()=>thFlow(id,b.querySelector(".th-fl"));
+    b.querySelector(".th-del").onclick=()=>{if(confirm("테마를 삭제할까요?")){thSave(thList().filter(t=>t.id!==id));thRender();thPairInit();}};
+    b.querySelector(".th-dAdd").onclick=()=>{const v=b.querySelector(".th-dIn").value;if(v)thUpd(id,t=>{t.dates=[...new Set([...(t.dates||[]),v])];});};
+    b.querySelector(".th-mAdd").onclick=()=>{const c=thCodeFromInput(b.querySelector(".th-mIn").value);if(!c){alert("목록에서 종목을 선택해 주세요");return;}thUpd(id,t=>{if(!t.codes.includes(c))t.codes.push(c);});};
+    b.querySelector(".th-mIn").onkeydown=e=>{if(e.key==="Enter")b.querySelector(".th-mAdd").click();};
+    b.querySelector(".th-fromFav").onclick=()=>thUpd(id,t=>{t.codes=[...new Set([...t.codes,...favList()])];});
+    b.querySelector(".th-memo").onchange=e=>{const a2=thList(),t=a2.find(x=>x.id===id);if(t){t.memo=e.target.value;thSave(a2);}};
+    b.querySelectorAll(".th-chip[data-d] .th-x").forEach(x=>x.onclick=()=>thUpd(id,t=>{t.dates=t.dates.filter(d=>d!==x.parentNode.dataset.d);}));
+    b.querySelectorAll(".th-chip[data-c] .th-x").forEach(x=>x.onclick=()=>thUpd(id,t=>{t.codes=t.codes.filter(c=>c!==x.parentNode.dataset.c);}));
+    b.querySelectorAll(".th-chip a.lk").forEach(x=>x.onclick=()=>go("detail",x.dataset.code));
+  });
+}
+// 상승일 기준 주체별 순매수(억원): 각 상승일마다 종목별 등락률·외국인·기관·기타법인·개인 + 합계 → 주도 주체 표시
+async function thFlow(id,host){
+  const t=thFind(id);if(!t)return;
+  if(!t.codes.length||!(t.dates||[]).length){host.innerHTML='<div class="note">종목과 상승일을 먼저 추가하세요</div>';return;}
+  host.innerHTML='<div class="load sk"></div>';
+  try{
+    const list=t.codes.join(","),KEYS=[["foreign_net","외국인"],["inst_net","기관"],["corp_other_net","기타법인"],["individual_net","개인"]];
+    let html="";
+    for(const d of t.dates.slice().sort()){
+      const [fl,px]=await Promise.all([
+        q("daily_flow",`select=code,foreign_net,inst_net,corp_other_net,individual_net&trade_date=eq.${d}&code=in.(${list})`),
+        q("v_sector_stocks",`select=code,change_pct&trade_date=eq.${d}&code=in.(${list})`).catch(()=>[])]);
+      if(!fl.length&&!px.length){html+=`<div class="faint" style="margin:8px 0 2px">${d} — 데이터 없음(휴장일이거나 보관 기간 밖)</div>`;continue;}
+      const fm={},pm_={};fl.forEach(f=>fm[f.code]=f);px.forEach(p=>pm_[p.code]=p);
+      const tot=KEYS.map(([k])=>t.codes.reduce((a,c)=>a+(+((fm[c]||{})[k])||0),0));
+      const lead=KEYS[tot.indexOf(Math.max(...tot))][1];
+      const cells=v=>{const mx=Math.max(...v);return v.map(x=>`<td class="${sgn(x)}${x===mx&&mx>0?" hl":""}">${pm(x/EOK,0)}</td>`).join("");};
+      html+=`<div class="faint" style="margin:10px 0 2px">${d} · 합계 기준 주도 주체 <b>${lead}</b> (억원)</div>
+      <div class="tw"><table><thead><tr><th class="l">종목</th><th>등락</th>${KEYS.map(k=>`<th>${k[1]}</th>`).join("")}</tr></thead><tbody>`
+      +t.codes.map(c=>{const v=KEYS.map(([k])=>+((fm[c]||{})[k])||0),cp=pm_[c]?+pm_[c].change_pct:null;
+        return `<tr><td class="l"><a class="lk nm" data-code="${c}">${accEsc(codeName(c))}</a></td><td class="${sgn(cp)}">${cp==null?"–":pm(cp,1)+"%"}</td>${cells(v)}</tr>`;}).join("")
+      +`<tr><td class="l"><b>합계</b></td><td></td>${cells(tot)}</tr></tbody></table></div>`;
+    }
+    host.innerHTML=html;
+    host.querySelectorAll("a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+  }catch(e){host.innerHTML='<div class="load">불러오기 실패</div>';}
+}
+function thCompare(id){
+  const t=thFind(id);if(!t)return;
+  if(t.codes.length<2){alert("비교하려면 종목이 2개 이상 필요합니다");return;}
+  S.pairTheme=id;go("pair");
+  if(S.pairLoaded)pairThemeRender();
+}
+function thPairInit(){
+  const sel=$("#pairThemeSel");if(!sel)return;
+  const a=thList().filter(t=>t.codes.length>=2);
+  sel.innerHTML='<option value="">업종 기준(기본)</option>'+a.map(t=>`<option value="${t.id}">${accEsc(t.name)} (${t.codes.length})</option>`).join("");
+  sel.value=S.pairTheme&&a.some(t=>t.id===S.pairTheme)?S.pairTheme:"";
+  if(!sel._bound){sel._bound=true;sel.onchange=()=>{S.pairTheme=sel.value;if(S.pairTheme)pairThemeRender();else if(S.pairSector)selectPairSector(S.pairSector);};}
+}
+async function pairThemeRender(){
+  const t=thFind(S.pairTheme);if(!t){S.pairTheme="";return;}
+  S._pairReady=true;thPairInit();
+  const codes=t.codes.slice(0,10);
+  $("#pairStockTitle").textContent=`테마 · ${t.name} (${codes.length}종목)`;
+  $("#pairThemeNote").textContent=(t.dates||[]).length?`상승일 ${t.dates.slice().sort().join(", ")}`:"";
+  $("#pairTrack").innerHTML='<div class="load sk"></div>';$("#pairDots").innerHTML="";
+  let stocks=await q("v_screener",`select=*&code=in.(${codes.join(",")})&trade_date=eq.${S.date}`);
+  if(S.pairTheme!==t.id)return;
+  const ord=Object.fromEntries(codes.map((c,i)=>[c,i]));stocks.sort((a,b)=>ord[a.code]-ord[b.code]);
+  if(!stocks.length){$("#pairTrack").innerHTML='<div class="load">데이터 없음</div>';return;}
+  await renderPairCards(stocks,[]);
+}
+$("#thAdd").onclick=()=>{
+  const n=$("#thName").value.trim();if(!n)return;
+  const d=$("#thDate").value,a=thList();
+  a.unshift({id:"t"+Date.now().toString(36),name:n,dates:d?[d]:[],codes:[],memo:""});thSave(a);
+  $("#thName").value="";$("#thDate").value="";thRender();thPairInit();
+};
+$("#thBackup").onclick=()=>{
+  const cur=JSON.stringify(thList());
+  const v=prompt("현재 테마 데이터입니다. 복사해 보관하거나, 다른 기기의 데이터를 붙여넣어 덮어쓸 수 있습니다.",cur);
+  if(v==null||v===cur)return;
+  try{const a=JSON.parse(v);if(!Array.isArray(a))throw 0;thSave(a);thRender();thPairInit();}catch(e){alert("형식이 올바르지 않습니다");}
+};
 
 // ── 표 열 묶음 토글: 종목후보·오늘의 종목·관심 표의 28개 열(순서는 그대로)을 5묶음으로 접고 펴기
 const SCR_GROUPS=[["g1","기본"],["g2","강도·매물대"],["g3","누적 수급"],["g4","거래"],["g5","당일 주체별"]];
