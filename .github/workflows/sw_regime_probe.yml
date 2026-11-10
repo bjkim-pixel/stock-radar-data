@@ -1,0 +1,23 @@
+name: "[점검] 횡보장 전략 — 지수 박스 위치별 대응 검증 | 수동 | 읽기 전용"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary pandas numpy
+      - run: python 144_sw_regime_probe.py 2>sw_err.txt | tee sw_regime_report.md; echo "---" >> sw_regime_report.md; grep -v "UserWarning\|pandas only supports\|read_sql\|^ *$" sw_err.txt | tail -c 1500 >> sw_regime_report.md || true
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: sw-regime-report
+          file: sw_regime_report.md
