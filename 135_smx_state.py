@@ -29,17 +29,17 @@ def model(rows):
     elif ratio<0.1: st="STALL"
     elif ratio<0.5: st="LEAVE" if r20<0 else "STALL"
     else: st="HEAVY"
-    return st,build,combo[L],ratio,rows[pk][0],since,r20
+    return st,build,combo[L],ratio,rows[pk][0],since,r20,combo[pk]
 out=[]; cnt=collections.Counter()
 for code,rs in by.items():
     for wn,w in WINS:
         sub=rs[-w:] if w else rs
         if len(sub)<10: continue
-        st,b,now,ratio,pd_,since,r20=model(sub)
-        out.append((code,wn,sub[-1][0],st,round(b,1),round(now,1),None if ratio is None else round(ratio,4),pd_,since,round(r20,1)))
+        st,b,now,ratio,pd_,since,r20,pke=model(sub)
+        out.append((code,wn,sub[-1][0],st,round(b,1),round(now,1),None if ratio is None else round(ratio,4),pd_,since,round(r20,1),round(pke,1)))
         cnt[(wn,st)]+=1
 cur.execute("delete from smx_state")
-execute_values(cur,"insert into smx_state(code,win,as_of,st,build_eok,now_eok,ratio,peak_date,since,r20_eok) values %s",out,page_size=2000)
+execute_values(cur,"insert into smx_state(code,win,as_of,st,build_eok,now_eok,ratio,peak_date,since,r20_eok,peak_eok) values %s",out,page_size=2000)
 lines=["# smx_state 갱신",f"- 종목 {len(by)} · 행 {len(out)}"]
 for wn,_ in WINS: lines.append(f"- {wn}: "+", ".join(f"{k[1]} {v}" for k,v in sorted(cnt.items()) if k[0]==wn))
 cur.execute("select * from smx_state where code='005930' order by win"); lines+= ["- 005930: "+str(r) for r in cur]

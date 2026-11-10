@@ -13,6 +13,7 @@ create table if not exists public.smx_state (
   updated_at timestamptz not null default now(),
   primary key (code, win)
 );
+alter table public.smx_state add column if not exists peak_eok numeric;  -- 외+기 누적 고점 금액(억, 기간 첫날=0 기준)
 do $$
 begin
   alter table public.smx_state enable row level security;
