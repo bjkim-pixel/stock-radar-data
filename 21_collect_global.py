@@ -750,9 +750,10 @@ def collect_mktcap(conn):
     rows = []
     for mk in ("KOSPI", "KOSDAQ"):
         try:
-            px = requests.get(f"https://m.stock.naver.com/api/index/{mk}/price?pageSize=1&page=1", headers=H, timeout=20).json()
+            px = requests.get(f"https://m.stock.naver.com/api/index/{mk}/price?pageSize=2&page=1", headers=H, timeout=20).json()
             d = datetime.date.fromisoformat(px[0]["localTradedAt"][:10])
-            tot, n, pg, status, ref = 0.0, 0, 1, None, None
+            dprev = datetime.date.fromisoformat(px[1]["localTradedAt"][:10]) if len(px) > 1 else None
+            tot, tprev, n, pg, status, ref = 0.0, 0.0, 0, 1, None, None
             while pg < 60:
                 j = requests.get(f"https://m.stock.naver.com/api/stocks/marketValue/{mk}?page={pg}&pageSize=100", headers=H, timeout=20).json()
                 st = j.get("stocks") or []
@@ -767,6 +768,15 @@ def collect_mktcap(conn):
                     except ValueError:
                         continue
                     tot += mv; n += 1
+                    # 전일 시총 = 현재 시총 × 전일종가 ÷ 현재가 (주식수 불변 가정) — 장중에도 "어제 확정" 총액을 구할 수 있다
+                    try:
+                        cp = float(str(x.get("closePrice")).replace(",", "")); df = float(str(x.get("compareToPreviousClosePrice")).replace(",", ""))
+                        nm = ((x.get("compareToPreviousPrice") or {}).get("name") or "").upper()
+                        if nm in ("FALLING", "LOWER_LIMIT"): df = -df
+                        elif nm not in ("RISING", "UPPER_LIMIT"): df = 0.0
+                        tprev += mv * (cp - df) / cp if cp else mv
+                    except (ValueError, TypeError):
+                        tprev += mv
                     if x.get("itemCode") == "005930":
                         ref = mv
                 pg += 1
@@ -785,6 +795,9 @@ def collect_mktcap(conn):
             log(f"- 시장 시총 {mk} {d} 상태 {status} · 종목 {n} · 합계 {tot * f / 1e12:,.0f}조원 (환산 ×{f:g}, 기준 {top[0]})")
             if status == "CLOSE" and n > 100:
                 rows.append((f"KRMC:{mk}", d, tot * f))
+            if dprev and n > 100:
+                rows.append((f"KRMC:{mk}", dprev, tprev * f))
+                log(f"  · {mk} 전일({dprev}) 확정 시총 {tprev * f / 1e12:,.0f}조원")
         except Exception as ex:
             log(f"- ⚠ 시장 시총 수집 실패({mk}): {str(ex)[:100]}")
     if rows:
