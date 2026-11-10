@@ -796,7 +796,11 @@ def collect_mktcap(conn):
             if status == "CLOSE" and n > 100:
                 rows.append((f"KRMC:{mk}", d, tot * f / 1e8))   # 억원(열 정밀도 한도 때문에 원 단위는 넘침)
             if dprev and n > 100:
-                rows.append((f"KRMC:{mk}", dprev, tprev * f / 1e8))
+                with conn.cursor() as cur:   # 이미 저장된(마감 실측) 값은 역산값으로 덮어쓰지 않는다
+                    cur.execute("select 1 from global_series_daily where symbol = %s and trade_date = %s", (f"KRMC:{mk}", dprev))
+                    have = cur.fetchone() is not None
+                if not have:
+                    rows.append((f"KRMC:{mk}", dprev, tprev * f / 1e8))
                 log(f"  · {mk} 전일({dprev}) 확정 시총 {tprev * f / 1e12:,.0f}조원")
         except Exception as ex:
             log(f"- ⚠ 시장 시총 수집 실패({mk}): {str(ex)[:100]}")
