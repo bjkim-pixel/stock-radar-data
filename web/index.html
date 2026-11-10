@@ -8340,6 +8340,15 @@ function thList(){try{const a=JSON.parse(localStorage.getItem("sr_themes")||"[]"
 function thSave(a){try{localStorage.setItem("sr_themes",JSON.stringify(a));}catch(e){}}
 function thNotes(t){if(!Array.isArray(t.notes))t.notes=[];if(t.memo){t.notes.push({id:"m"+t.id,d:"",t:t.memo});t.memo="";}return t.notes;}
 function thTags(c){return thList().filter(t=>t.codes.includes(c)).map(t=>`<span class="tg th-t" title="단체상승 테마">${accEsc(t.name)}</span>`).join("");}
+function thFavSet(id,on){
+  const t=thFind(id);if(!t||!t.codes.length)return;
+  const cur=favList(),a=on?[...new Set([...cur,...t.codes])]:cur.filter(c=>!t.codes.includes(c));
+  const n=on?a.length-cur.length:cur.length-a.length;
+  try{localStorage.setItem("sr_fav",JSON.stringify(a));}catch(e){}
+  $$(".fav[data-fav]").forEach(x=>{const o=a.includes(x.dataset.fav);x.classList.toggle("on",o);x.textContent=o?"★":"☆";});
+  wlPushSoon();wlSyncMsg(on?`관심에 ${n}종목 추가`:`관심에서 ${n}종목 제외`);
+  loadFav();
+}
 function thFind(id){return thList().find(t=>t.id===id);}
 function thUpd(id,fn){const a=thList(),t=a.find(x=>x.id===id);if(!t)return;fn(t);thSave(a);thRender();thPairInit();}
 function thCodeFromInput(v){
@@ -8356,6 +8365,7 @@ function thRender(){
       <button class="btn ghost th-cmp" type="button">짝꿍매매로 비교</button>
       <button class="btn ghost th-flow" type="button">상승일 수급</button>
       <button class="btn ghost th-del" type="button">삭제</button></div>
+    <div class="th-row"><span class="faint">내 종목</span><button class="btn ghost th-favAdd" type="button">테마 종목 → 관심에 추가</button><button class="btn ghost th-favDel" type="button">테마 종목 관심에서 제외</button></div>
     <div class="th-row"><span class="faint">상승일</span>${(t.dates||[]).slice().sort().map(d=>`<span class="th-chip" data-d="${d}">${d}<i class="th-x">×</i></span>`).join("")||'<span class="faint">없음</span>'}
       <input type="date" class="th-dIn"><button class="btn ghost th-dAdd" type="button">+ 날짜</button></div>
     <div class="th-row"><span class="faint">종목</span>${t.codes.map(c=>`<span class="th-chip" data-c="${c}"><a class="lk" data-code="${c}">${accEsc(codeName(c))}</a><i class="th-x">×</i></span>`).join("")||'<span class="faint">없음</span>'}
@@ -8368,6 +8378,8 @@ function thRender(){
     const id=b.dataset.id;
     b.querySelector(".th-cmp").onclick=()=>thCompare(id);
     b.querySelector(".th-flow").onclick=()=>thFlow(id,b.querySelector(".th-fl"));
+    b.querySelector(".th-favAdd").onclick=()=>thFavSet(id,true);
+    b.querySelector(".th-favDel").onclick=()=>thFavSet(id,false);
     b.querySelector(".th-del").onclick=()=>{if(confirm("테마를 삭제할까요?")){thSave(thList().filter(t=>t.id!==id));thRender();thPairInit();}};
     b.querySelector(".th-dAdd").onclick=()=>{const v=b.querySelector(".th-dIn").value;if(v)thUpd(id,t=>{t.dates=[...new Set([...(t.dates||[]),v])];});};
     b.querySelector(".th-mAdd").onclick=()=>{const c=thCodeFromInput(b.querySelector(".th-mIn").value);if(!c){alert("목록에서 종목을 선택해 주세요");return;}thUpd(id,t=>{if(!t.codes.includes(c))t.codes.push(c);});};
