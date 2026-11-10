@@ -845,6 +845,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <button data-v="scr">종목 후보</button>
       <button data-v="fav">★ 관심</button>
       <button data-v="pair">짝꿍매매</button>
+      <button data-v="sw">국면 전략</button>
       <button data-v="detail">종목 상세</button></div></div>
     <div class="ng" data-g="mgmt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">관리</div><div class="ngi">
       <button data-v="perf">전략 성과</button>
@@ -1400,6 +1401,31 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div id="thList"></div>
   </div>
   <div class="card hide" id="favEvCard"><h3 id="favEvTitle">AI 의견 근거</h3><div id="favEv"></div></div>
+</section>
+
+<section id="v-sw" class="hide">
+  <div class="card" style="margin-top:16px"><h3>오늘의 국면과 행동 <span class="r" id="swAsOf"></span></h3>
+    <div id="swState"><div class="load sk"></div></div>
+    <div class="note" id="swAct" style="margin-top:10px"></div>
+  </div>
+  <div class="card" style="margin-top:12px"><h3>① 선별 매수 <span class="r" id="swPickNote"></span></h3>
+    <div class="note" style="margin-bottom:8px">당일 +3% 이상 · 거래대금 50억 이상 · 20일선 위 · 시총 2조 이하 · 전일까지 5일 외+기 순매수가 시총의 0.2% 이상 → <b>당일 종가 매수, 3거래일 보유</b>. 코스피가 20일 박스의 30% 위일 때만 삽니다.</div>
+    <div class="tw"><table><thead><tr><th class="l">구분</th><th class="l">종목</th><th>마감</th><th>종가</th><th>등락</th><th>거래대금</th><th>시총</th><th>5일 외+기/시총</th><th>진입일</th><th>진입가</th><th>남은 보유일</th><th>하루 변동폭</th></tr></thead>
+      <tbody id="swPickBody"><tr><td colspan="12" class="load sk"></td></tr></tbody></table></div>
+    <div class="note" style="margin-top:6px">마감 = 20시(대체거래소 NXT 거래 가능) 또는 15:30(정규장만). 하루 변동폭 = 최근 20일 하루 등락폭 평균 — 손절 폭을 정할 때 참고하세요. 고정 -3% 손절은 백테스트에서 10번 중 6번 먼저 걸렸습니다.</div>
+  </div>
+  <div class="card" style="margin-top:12px"><h3>② 반등 매도 인버스 <span class="r">코스피가 60일선 아래 + 3일간 4% 이상 반등 → KODEX 인버스 5거래일</span></h3>
+    <div id="swInv"><div class="load sk"></div></div>
+  </div>
+  <div class="card" style="margin-top:12px"><h3>모의 성과 <span class="r">2026-08-03 = 100 · 비용 포함 · 종가 체결 가정</span></h3>
+    <div class="chart-wrap"><div id="swEq"></div></div>
+    <div class="tw" style="margin-top:8px"><table><thead><tr><th class="l">구간</th><th>① 선별 매수</th><th>② 인버스</th><th>③ ①50%+②50%</th><th>④ 국면 전환 바스켓</th><th>코스피</th></tr></thead><tbody id="swPerfBody"></tbody></table></div>
+    <div class="note" style="margin-top:6px"><b>2026-11-09까지는 규칙을 만들 때 쓴 과거 데이터(사후 검증)</b>이고, 11-10부터가 실제 추적입니다. 과거 구간 성과는 여러 전략 중 좋은 것을 고른 결과라 실제는 이보다 낮을 수 있습니다. 화면의 값은 정해진 규칙으로 계산한 참고값이며 투자 권유가 아닙니다.</div>
+  </div>
+  <div class="card" style="margin-top:12px"><h3>④ 국면 전환 바스켓(보조) <span class="r" id="swBkNote"></span></h3>
+    <div class="note" style="margin-bottom:8px">시총 2조 이하 중 외국인 20일 누적 순매수(시총 대비) 상위 15종목 · 5거래일마다 교체 · 코스피가 60일선 아래면 바스켓 50% + KODEX 인버스 50%.</div>
+    <div class="tw"><table><thead><tr><th class="l">종목</th><th>마감</th><th>종가</th><th>등락</th><th>시총</th><th>외국인 20일/시총</th><th>5일 외+기/시총</th></tr></thead><tbody id="swBkBody"></tbody></table></div>
+  </div>
 </section>
 
 <section id="v-pair" class="hide">
@@ -2968,6 +2994,7 @@ function go(v,detailCode){
     loadFlowRawData().then(initTdFlowCard).catch(e=>{console.error("수급 상위",e);S._tdFlowInit=false;$("#tdFlowBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});}
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);}).finally(()=>{tdFitSoon();setTimeout(tdFit,2500);});}
   if(v==='today')tdFitSoon();
+  if(v==="sw")loadSw().catch(e=>{console.error("국면 전략",e);});
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
   if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadHeatmap();loadFlowSectorMap().catch(()=>{});loadFlowTimeline().catch(()=>{});loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
   redraw(detailJustLoaded);
@@ -8417,6 +8444,62 @@ function favAddFrom(kind){
 }
 $("#favAddFav").onclick=()=>favAddFrom("fav");$("#favAddHold").onclick=()=>favAddFrom("hold");
 
+
+// ── 국면 전략 페이지: sw_daily(상태·신호·모의 성과) + sw_picks(조건 충족·보유 종목). 계산은 147_sw_engine.py(Actions)
+async function loadSw(){
+  const [dy,pk]=await Promise.all([
+    q("sw_daily","select=*&order=trade_date.asc"),
+    q("sw_picks","select=*&order=trade_date.desc,kind.asc,weight.desc&limit=400")]);
+  if(!dy.length){$("#swState").innerHTML='<div class="load">아직 계산된 데이터가 없습니다</div>';return;}
+  const t=dy.at(-1),d=t.trade_date,pos=t.pos20==null?null:+t.pos20*100;
+  $("#swAsOf").textContent=`${d} 종가 기준`;
+  const zone=pos==null?"–":pos<0?"하단 이탈":pos<=20?"하단권":pos<80?"중간":pos<=100?"상단권":"상단 돌파";
+  const kpi=(l,v,sub,c)=>`<div class="tile"><div class="lb">${l}</div><div class="vl ${c||""}" style="font-size:18px">${v}</div><div class="sub">${sub||""}</div></div>`;
+  $("#swState").innerHTML=`<div class="tiles">`+
+    kpi("코스피",N(+t.kospi,2),`3일 ${pm(+t.ret3,1)}%`,sgn(+t.ret3))+
+    kpi("큰 추세",t.trend_down?"하락 추세":"상승 추세",`60일선 ${N(+t.ma60,0)} ${t.trend_down?"아래":"위"}`,t.trend_down?"down":"up")+
+    kpi("20일 박스 위치",`${zone} ${pos==null?"":N(pos,0)+"%"}`,`${N(+t.box_lo,0)} ~ ${N(+t.box_hi,0)}`)+
+    kpi("① 선별 매수",t.gate_open?"매수 허용":"매수 보류",t.gate_open?`조건 충족 ${t.n_new}종목 · 보유 ${t.n_hold}`:`지수 위치 30% 이하 · 조건 충족 ${t.n_new}종목`,t.gate_open?"up":"")+
+    kpi("② 인버스",t.inv_signal?"신규 신호":t.inv_hold?"보유 중":"신호 없음",t.inv_hold?`남은 보유 ${t.inv_left}거래일`:t.trend_down?"3일 +4% 이상 반등 시 발생":"상승 추세에서는 사지 않음",t.inv_hold?"down":"")+`</div>`;
+  const acts=[];
+  if(t.gate_open)acts.push(t.n_new?`<b>① 오늘 조건을 충족한 ${t.n_new}종목</b>이 종가 매수 대상입니다(3거래일 보유).`:"① 매수는 허용 상태지만 오늘 조건을 충족한 종목이 없습니다.");
+  else acts.push("<b>① 신규 매수 보류</b> — 코스피가 20일 박스의 30% 아래입니다. 이 구간의 매수는 과거에 손실이었습니다. 보유분도 규칙상 정리합니다.");
+  if(t.inv_signal)acts.push("<b>② 오늘 인버스 신규 신호</b> — 하락 추세에서 3일간 4% 이상 반등했습니다. KODEX 인버스 종가 매수, 5거래일 보유.");
+  else if(t.inv_hold)acts.push(`② 인버스 보유 중 — ${t.inv_left}거래일 남았습니다.`);
+  else acts.push(t.trend_down?"② 인버스 신호 없음 — 반등이 나오면 발생합니다.":"② 상승 추세(60일선 위)에서는 인버스를 사지 않습니다.");
+  $("#swAct").innerHTML=acts.join("<br>");
+  // ① 종목 표
+  const P=pk.filter(r=>r.trade_date===d&&(r.kind==="new"||r.kind==="hold"));
+  $("#swPickNote").textContent=t.gate_open?`조건 충족 ${t.n_new} · 보유 ${t.n_hold}종목`:"매수 보류 중 — 아래는 참고용";
+  const nx=r=>r.nxt_ok==null?"–":r.nxt_ok?'<span class="tg" style="background:color-mix(in srgb,#1baf7a 18%,transparent);color:#1baf7a">20시</span>':'<span class="tg" style="background:var(--surface-2);color:var(--ink-3)">15:30</span>';
+  const nmc=r=>`<a class="lk nm" data-code="${r.code}">${escH(codeName(r.code))}</a>`;
+  $("#swPickBody").innerHTML=P.length?P.map(r=>`<tr><td class="l">${r.kind==="new"?(t.gate_open?'<b class="up">오늘 매수</b>':'조건 충족(보류)'):"보유 중"}</td><td class="l">${nmc(r)}</td><td>${nx(r)}</td>
+    <td>${N(+r.close,0)}</td><td class="${sgn(+r.chg)}">${pm(+r.chg,1)}%</td><td>${N(+r.amt_eok,0)}억</td><td>${N(+r.cap_eok,0)}억</td><td class="${sgn(+r.sm5_pct)}">${pm(+r.sm5_pct,2)}%</td>
+    <td class="dim">${shortDate(r.entry_date)}</td><td>${N(+r.entry_close,0)}</td><td>${t.gate_open?r.days_left+"일":"–"}</td><td>${r.vol20==null?"–":N(+r.vol20,1)+"%"}</td></tr>`).join("")
+    :'<tr><td colspan="12" class="load">오늘 조건을 충족하거나 보유 중인 종목이 없습니다</td></tr>';
+  // ② 인버스
+  const sigs=dy.filter(r=>r.inv_signal).slice(-8).reverse();
+  $("#swInv").innerHTML=`<div class="note">${t.inv_hold?`<b>보유 중</b> · 남은 ${t.inv_left}거래일`:"현재 보유 없음"} · 코스피 ${N(+t.kospi,0)} / 60일선 ${N(+t.ma60,0)} · 최근 3일 ${pm(+t.ret3,1)}% (기준 +4.0%)</div>
+    <div class="faint" style="font-size:11px;margin:8px 0 2px">최근 신호일</div><div class="tw"><table><thead><tr><th class="l">신호일</th><th>코스피</th><th>직전 3일</th><th>구분</th></tr></thead><tbody>`+
+    (sigs.map(r=>`<tr><td class="l">${r.trade_date}</td><td>${N(+r.kospi,0)}</td><td class="up">${pm(+r.ret3,1)}%</td><td>${r.is_live?"실제 추적":"사후 검증"}</td></tr>`).join("")||'<tr><td colspan="4" class="load">신호 없음</td></tr>')+`</tbody></table></div>
+    <div class="note" style="margin-top:6px">인버스 ETF 참고: KODEX 인버스(지수 1배, 거래대금 가장 많음) · KODEX 200선물인버스2X · SOL SK하이닉스선물단일종목인버스2X · PLUS 삼성전자선물단일종목인버스2X(거래대금 적음). 2배 상품은 오래 들고 있으면 지수가 제자리여도 값이 줄어듭니다.</div>`;
+  // 모의 성과
+  const lb=dy.map(r=>r.trade_date);
+  lineChart($("#swEq"),[{n:"③ 결합",v:dy.map(r=>+r.eq3),c:"--s1",w:2.4},{n:"① 선별 매수",v:dy.map(r=>+r.eq1),c:"--s2"},{n:"② 인버스",v:dy.map(r=>+r.eq2),c:"--s3"},{n:"④ 바스켓",v:dy.map(r=>+r.eq4),c:"--s4"},{n:"코스피",v:dy.map(r=>+r.eqk),c:"--ink-3"}],lb,
+    {h:250,w:1100,pr:70,marks:"today-each",fy:v=>N(v,0),ft:v=>N(v,1),fm:v=>N(v,1)});
+  const K=["eq1","eq2","eq3","eq4","eqk"],ret=(a,b)=>K.map(k=>{const v=(+b[k]/(a?+a[k]:100)-1)*100;return `<td class="${sgn(v)}">${pm(v,1)}%</td>`;}).join("");
+  const rows=[];const months=[...new Set(dy.map(r=>r.trade_date.slice(0,7)))];
+  months.forEach(m=>{const i0=dy.findIndex(r=>r.trade_date.startsWith(m)),xs=dy.filter(r=>r.trade_date.startsWith(m));rows.push(`<tr><td class="l">${m}</td>${ret(i0>0?dy[i0-1]:null,xs.at(-1))}</tr>`);});
+  const iL=dy.findIndex(r=>r.is_live);
+  rows.push(`<tr><td class="l"><b>사후 검증 구간(~11-09)</b></td>${ret(null,iL>0?dy[iL-1]:dy.at(-1))}</tr>`);
+  rows.push(iL>=0?`<tr><td class="l"><b>실제 추적(11-10~, ${dy.length-iL}거래일)</b></td>${ret(iL>0?dy[iL-1]:null,dy.at(-1))}</tr>`:'<tr><td class="l"><b>실제 추적(11-10~)</b></td><td colspan="5" class="faint">아직 없음 — 11-10 종가부터 쌓입니다</td></tr>');
+  $("#swPerfBody").innerHTML=rows.join("");
+  // ④ 바스켓
+  const B=pk.filter(r=>r.trade_date===d&&r.kind==="basket").sort((a,b)=>(+b.fo20_pct)-(+a.fo20_pct));
+  $("#swBkNote").textContent=t.trend_down?"하락 추세 — 바스켓 50% + 인버스 50%":"상승 추세 — 바스켓 100%";
+  $("#swBkBody").innerHTML=B.map(r=>`<tr><td class="l">${nmc(r)}</td><td>${nx(r)}</td><td>${N(+r.close,0)}</td><td class="${sgn(+r.chg)}">${pm(+r.chg,1)}%</td><td>${N(+r.cap_eok,0)}억</td><td class="${sgn(+r.fo20_pct)}">${pm(+r.fo20_pct,2)}%</td><td class="${sgn(+r.sm5_pct)}">${pm(+r.sm5_pct,2)}%</td></tr>`).join("")||'<tr><td colspan="7" class="load">데이터 없음</td></tr>';
+  $$("#v-sw a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+}
 // ── 단체상승 테마(관심종목): 테마명·상승일·종목을 localStorage(sr_themes)에 저장 → 짝꿍매매로 비교
 function thList(){try{const a=JSON.parse(localStorage.getItem("sr_themes")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
 function thSave(a){try{localStorage.setItem("sr_themes",JSON.stringify(a));}catch(e){}}
