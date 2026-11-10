@@ -25,6 +25,10 @@ for k in range(days):
         except Exception as e:
             skipped+=1
     conn.commit(); time.sleep(0.1)
+# 휴장일(주식 시세가 없는 날)로 저장된 행 정리 — 네이버가 휴장일에도 값을 돌려줄 수 있음
+cur.execute("select count(*) from market_investor_daily where trade_date not in (select distinct trade_date from daily_price)"); nh=cur.fetchone()[0]
+cur.execute("delete from market_investor_daily where trade_date not in (select distinct trade_date from daily_price)"); conn.commit()
+lines.append(f"- 휴장일 행 삭제 {nh}")
 lines.append(f"- 저장 {saved} · 건너뜀 {skipped}")
 cur.execute("select market,count(*),min(trade_date),max(trade_date) from market_investor_daily group by 1 order by 1"); lines+=[f"- {r}" for r in cur]
 rep=sys.argv[sys.argv.index("--report")+1] if "--report" in sys.argv else None
