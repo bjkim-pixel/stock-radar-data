@@ -42,3 +42,10 @@ begin
     end;
   end loop;
 end $$;
+
+-- 단체상승 테마(관심종목 페이지) 서버 보관 — 릴레이 서버(service key)만 읽고 씀. 브라우저(anon)는 접근 불가
+create table if not exists public.my_themes (id text primary key, payload jsonb not null, updated_at timestamptz not null default now());
+alter table public.my_themes enable row level security;
+do $$ begin
+  begin revoke all on public.my_themes from anon, authenticated; exception when undefined_object then null; end;
+end $$;

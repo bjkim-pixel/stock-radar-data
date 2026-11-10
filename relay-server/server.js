@@ -3098,6 +3098,43 @@ function handleWatchlist(req, res) {
   res.writeHead(405); res.end(); return true;
 }
 
+/* ── 단체상승 테마(관심종목 페이지) — 브라우저에 있던 테마 묶음을 서버에 통째로 보관(기기 간 동기화). 투자일지와 같은 토큰 ──
+   my_themes 테이블의 id='all' 한 행에 { ts, themes:[{id,name,dates,codes,notes}] } 를 저장. 최신 ts 쪽이 이긴다(판단은 브라우저가 함). */
+function handleThemes(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path !== '/themes') return false;
+  accessCors(req, res, 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+  if (!ACCESS_LOG_TOKEN) { json(503, { ok: false, error: 'token not configured' }); return true; }
+  if (!tokenOk(req)) { json(401, { ok: false, error: 'unauthorized' }); return true; }
+  if (req.method === 'GET') {
+    fetch(`${SUPABASE_URL}/rest/v1/my_themes?id=eq.all&select=payload`,
+      { headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` } })
+      .then(async r => { if (!r.ok) throw new Error(`db ${r.status}`); const a = await r.json(); json(200, { ok: true, payload: (a[0] && a[0].payload) || null }); })
+      .catch(e => json(500, { ok: false, error: e.message }));
+    return true;
+  }
+  if (req.method === 'POST') {
+    readBody(req, 5e5).then(async raw => {
+      let b; try { b = JSON.parse(raw); } catch (_) { json(400, { ok: false, error: 'invalid JSON' }); return; }
+      if (!b || !Array.isArray(b.themes)) { json(400, { ok: false, error: 'themes required' }); return; }
+      const themes = b.themes.slice(0, 200).map(t => ({
+        id: _cut(t && t.id, 40), name: _cut(t && t.name, 60),
+        dates: (Array.isArray(t && t.dates) ? t.dates : []).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 200),
+        codes: (Array.isArray(t && t.codes) ? t.codes : []).map(c => String(c)).filter(c => /^[0-9A-Za-z]{1,12}$/.test(c)).slice(0, 100),
+        notes: (Array.isArray(t && t.notes) ? t.notes : []).slice(0, 300).map(n => ({ id: _cut(n && n.id, 40), d: _cut(n && n.d, 12), t: _cut(n && n.t, 500) })),
+      })).filter(t => t.id && t.name);
+      const payload = { ts: Number(b.ts) || Date.now(), themes };
+      await sbWrite('my_themes?id=eq.all', 'DELETE');
+      await sbWrite('my_themes', 'POST', [{ id: 'all', payload }]);
+      json(200, { ok: true, saved: themes.length, ts: payload.ts });
+    }).catch(e => json(500, { ok: false, error: e.message }));
+    return true;
+  }
+  res.writeHead(405); res.end(); return true;
+}
+
 function handleAccessLog(req, res) {
   const path = (req.url || '').split('?')[0];
   if (path === '/visit-log') {
@@ -3132,7 +3169,7 @@ function handleAccessLog(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;

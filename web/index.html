@@ -1391,7 +1391,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="tw scrlike" style="margin-top:8px"><table><thead></thead><tbody id="favBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
   </div>
   <div class="card" id="favThemeCard"><h3>단체상승 테마 <span class="r" id="thCount"></span></h3>
-    <div class="note" style="margin-bottom:8px">같이 오른 종목을 테마로 묶고 상승일을 기록합니다. <b>짝꿍매매로 비교</b>를 누르면 테마 종목의 수급주체·무게/주식수·스마트머니 진단을 나란히 볼 수 있습니다. (이 브라우저에 저장)</div>
+    <div class="note" style="margin-bottom:8px">같이 오른 종목을 테마로 묶고 상승일을 기록합니다. <b>짝꿍매매로 비교</b>를 누르면 테마 종목의 수급주체·무게/주식수·스마트머니 진단을 나란히 볼 수 있습니다. </div>
+    <div class="faint" id="thSync" style="font-size:11px;margin-bottom:6px"></div>
     <div class="fav-add">
       <input type="text" id="thName" placeholder="새 테마 이름" maxlength="30" style="width:130px">
       <input type="date" id="thDate" title="단체상승일(선택)" style="width:135px">
@@ -8378,7 +8379,7 @@ function favShowEv(code){
   $("#favEvCard").scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 async function loadFav(){
-  thRender();
+  thRender();if(!S._thPulled){S._thPulled=true;thPull();}
   const body=$("#favBody"),favs=favList(),holds=holdList();
   const tab=S.favTab;
   $$("#favTabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
@@ -8502,7 +8503,35 @@ async function loadSw(){
 }
 // ── 단체상승 테마(관심종목): 테마명·상승일·종목을 localStorage(sr_themes)에 저장 → 짝꿍매매로 비교
 function thList(){try{const a=JSON.parse(localStorage.getItem("sr_themes")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
-function thSave(a){try{localStorage.setItem("sr_themes",JSON.stringify(a));}catch(e){}}
+function thSave(a,noPush){try{localStorage.setItem("sr_themes",JSON.stringify(a));if(!noPush)localStorage.setItem("sr_themes_ts",String(Date.now()));}catch(e){}if(!noPush)thPushSoon();}
+// 서버 동기화(릴레이 /themes, 투자일지 토큰): 묶음 전체를 저장하고 최신 시각(ts) 쪽이 이긴다
+function thTs(){try{return +localStorage.getItem("sr_themes_ts")||0;}catch(e){return 0;}}
+function thMsg(m){const el=$("#thSync");if(el)el.textContent=m;}
+let _thPushT=null;function thPushSoon(){clearTimeout(_thPushT);_thPushT=setTimeout(thPush,1200);}
+async function thPush(){
+  const tok=sriLS("sr_acc_token");if(!tok){thMsg("이 브라우저에만 저장 — 투자일지 탭에서 토큰을 입력하면 서버에도 저장됩니다");return;}
+  try{
+    const r=await fetch(RELAY_HTTP_BASE+"/themes",{method:"POST",headers:{"x-access-token":tok,"content-type":"application/json"},body:JSON.stringify({ts:thTs()||Date.now(),themes:thList()})});
+    if(r.status===404){thMsg("서버가 아직 테마 저장을 지원하지 않습니다(릴레이 서버 배포 필요) — 이 브라우저에만 저장");return;}
+    if(r.status===401){thMsg("토큰이 맞지 않습니다 — 이 브라우저에만 저장");return;}
+    const j=await r.json();if(!j.ok)throw new Error(j.error||r.status);
+    thMsg(`서버에 저장됨 ✓ (${j.saved}개 테마)`);
+  }catch(e){thMsg("서버 저장 실패: "+String(e.message).slice(0,60)+" — 이 브라우저에는 저장됨");}
+}
+async function thPull(){
+  const tok=sriLS("sr_acc_token");if(!tok){thMsg("이 브라우저에만 저장 — 투자일지 탭에서 토큰을 입력하면 서버에도 저장됩니다");return;}
+  try{
+    const r=await fetch(RELAY_HTTP_BASE+"/themes",{headers:{"x-access-token":tok}});
+    if(r.status===404){thMsg("서버가 아직 테마 저장을 지원하지 않습니다(릴레이 서버 배포 필요) — 이 브라우저에만 저장");return;}
+    if(!r.ok)return;const j=await r.json();if(!j.ok)return;
+    const sv=j.payload,lt=thTs(),loc=thList();
+    if(sv&&Array.isArray(sv.themes)&&(+sv.ts>lt||(!loc.length&&sv.themes.length))){
+      thSave(sv.themes,true);try{localStorage.setItem("sr_themes_ts",String(+sv.ts||Date.now()));}catch(e){}
+      thRender();thPairInit();thMsg(`서버에서 불러옴 ✓ (${sv.themes.length}개 테마)`);
+    }else if(loc.length&&(!sv||lt>+sv.ts)){if(!lt){try{localStorage.setItem("sr_themes_ts",String(Date.now()));}catch(e){}}await thPush();}
+    else thMsg(`서버와 같음 ✓ (${loc.length}개 테마)`);
+  }catch(e){}
+}
 function thNotes(t){if(!Array.isArray(t.notes))t.notes=[];if(t.memo){t.notes.push({id:"m"+t.id,d:"",t:t.memo});t.memo="";}return t.notes;}
 function thTags(c){return thList().filter(t=>t.codes.includes(c)).map(t=>`<span class="tg th-t" title="단체상승 테마">${accEsc(t.name)}</span>`).join("");}
 function thFavSet(id,on){
