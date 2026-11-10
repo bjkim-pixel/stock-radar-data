@@ -5073,21 +5073,21 @@ function kwFill(root){
 /* 종목후보 표의 종목 셀·지표 셀(종가~프로그램, 25칸) — 오늘의 종목 표들도 같이 쓰도록 공용화 */
 function scrNameCell(r){return `<td class="l">${favStar(r.code)}<a class="lk nm" data-code="${r.code}" title="${String(r.name).replace(/"/g,"&quot;")}${r.sector?" · "+r.sector:""}">
         ${r.market?`<span class="cd" title="${r.market}"${r.market==="ETF"?' style="color:var(--accent,#2f6fed);font-weight:700"':""}>${r.market==="KOSPI"?"피":r.market==="KOSDAQ"?"닥":r.market}</span> `:""}${r.sector?`<span class="cd sc">[${r.sector}]</span> `:""}<span class="nmt">${r.name}</span></a></td>`;}
-function scrCells(r){return `
-      <td>${N(+r.close,0)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
-      <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>
-      ${kwCell(r.code,"r6",1)}${kwCell(r.code,"r8")}
-      <td class="grp opt ${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
-      <td class="opt ${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>
-      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
-      <td class="opt">${topBuyer(r,"1m")}</td>
-      <td class="opt ${sgn((+r.foreign_2m||0)+(+r.inst_2m||0))}">${(r.foreign_2m==null&&r.inst_2m==null)?"–":pm(((+r.foreign_2m||0)+(+r.inst_2m||0))/EOK,0)+"억"}</td>
-      <td class="opt">${topBuyer(r,"2m")}</td>
-      <td class="grp opt" data-sort-val="${r.above_high_supply_eok??''}">${fmtEokJo(r.above_high_supply_eok)}</td>
-      <td class="grp opt ${sgn(+r.r_3m)}" title="외+기 누적 순매수 ÷ 3개월 전(60거래일 전) 시가총액${r.a_3m==null?"":" · 누적 "+pm(+r.a_3m/EOK,0)+"억"}">${r.r_3m==null?"–":pm(+r.r_3m,2)+"%"}</td>
+function scrCellChunks(r){return [
+`      <td>${N(+r.close,0)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
+      <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>`,
+`      ${kwCell(r.code,"r6",1)}${kwCell(r.code,"r8")}`,
+`      <td class="grp opt ${pctlSgn(r.rs5_pctl==null?null:+r.rs5_pctl)}" title="${r.rs5_vs_mkt==null?"":pm(+r.rs5_vs_mkt,1)+"%p"}">${pctlLabel(r.rs5_pctl==null?null:+r.rs5_pctl)}</td>
+      <td class="opt ${pctlSgn(r.rs20_pctl==null?null:+r.rs20_pctl)}" title="${r.rs20_vs_mkt==null?"":pm(+r.rs20_vs_mkt,1)+"%p"}">${pctlLabel(r.rs20_pctl==null?null:+r.rs20_pctl)}</td>`,
+`      <td class="grp opt ${sgn((+r.foreign_1m||0)+(+r.inst_1m||0))}">${(r.foreign_1m==null&&r.inst_1m==null)?"–":pm(((+r.foreign_1m||0)+(+r.inst_1m||0))/EOK,0)+"억"}</td>
+      <td class="opt">${topBuyer(r,"1m")}</td>`,
+`      <td class="opt ${sgn((+r.foreign_2m||0)+(+r.inst_2m||0))}">${(r.foreign_2m==null&&r.inst_2m==null)?"–":pm(((+r.foreign_2m||0)+(+r.inst_2m||0))/EOK,0)+"억"}</td>
+      <td class="opt">${topBuyer(r,"2m")}</td>`,
+`      <td class="grp opt" data-sort-val="${r.above_high_supply_eok??''}">${fmtEokJo(r.above_high_supply_eok)}</td>`,
+`      <td class="grp opt ${sgn(+r.r_3m)}" title="외+기 누적 순매수 ÷ 3개월 전(60거래일 전) 시가총액${r.a_3m==null?"":" · 누적 "+pm(+r.a_3m/EOK,0)+"억"}">${r.r_3m==null?"–":pm(+r.r_3m,2)+"%"}</td>
       <td class="opt ${sgn(+r.r_1m)}" title="외+기 누적 순매수 ÷ 1개월 전(20거래일 전) 시가총액${r.a_1m==null?"":" · 누적 "+pm(+r.a_1m/EOK,0)+"억"}">${r.r_1m==null?"–":pm(+r.r_1m,2)+"%"}</td>
-      <td class="opt ${sgn(+r.r_1w)}" title="외+기 누적 순매수 ÷ 1주 전(5거래일 전) 시가총액${r.a_1w==null?"":" · 누적 "+pm(+r.a_1w/EOK,0)+"억"}">${r.r_1w==null?"–":pm(+r.r_1w,2)+"%"}</td>
-      <td class="grp">${N(+r.market_cap/JO,1)}조</td>
+      <td class="opt ${sgn(+r.r_1w)}" title="외+기 누적 순매수 ÷ 1주 전(5거래일 전) 시가총액${r.a_1w==null?"":" · 누적 "+pm(+r.a_1w/EOK,0)+"억"}">${r.r_1w==null?"–":pm(+r.r_1w,2)+"%"}</td>`,
+`      <td class="grp">${N(+r.market_cap/JO,1)}조</td>
       <td class="opt">${N(+r.trade_amount/EOK,0)}억</td>
       <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,0)+"%"}</td>
       <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,0)}</td>
@@ -5101,7 +5101,11 @@ function scrCells(r){return `
       <td class="opt ${sgn(+r.pe_net)}">${flowAmtRankCell(r.pe_net,r.pe_rank,r.pe_total)}</td>
       <td class="opt ${sgn(+r.individual_net)}">${flowAmtRankCell(r.individual_net,r.individual_rank,r.individual_total)}</td>
       <td class="opt ${sgn(+r.corp_other_net)}">${flowAmtRankCell(r.corp_other_net,r.corp_other_rank,r.corp_other_total)}</td>
-      <td class="grp opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td>`;}
+      <td class="grp opt ${sgn(+r.pgtr_net_amt)}">${r.pgtr_net_amt==null?"–":pm(+r.pgtr_net_amt/EOK,0)+"억"}</td>`];}
+const SCR_ORD_DEF=[0,1,2,3,4,5,6,7];
+// 내 종목 표: 기본 → 외+기 1개월·2개월 → 외+기 순매수/시총 → 위쪽매물대 → 매집 → 개별RS → 나머지
+const SCR_ORD_FAV=[0,3,4,6,5,1,2,7];
+function scrCells(r,ord){const c=scrCellChunks(r);return (ord||SCR_ORD_DEF).map(i=>c[i]).join("");}
 /* 표 머리글(2단): 열 순서는 scrCells와 같은 25칸. [그룹명(윗줄), 열묶음 클래스, 세부열[[라벨,툴팁],…]] 또는 [라벨,열묶음,툴팁](=두 줄 높이 한 칸).
    윗줄에는 그룹명·단독 열, 아랫줄에는 세부(3M·1M·1W 등)만 둬서 가로 폭을 줄입니다. */
 const SCR_HD=[
@@ -5118,10 +5122,11 @@ const SCR_HD=[
   ["거래량비","g4"],
   {top:"당일 순매수",g:"g5",nogrp:1,subs:[["외국인"],["기관합계"],["금융투자"],["투신"],["연기금"],["사모"],["개인"],["기타법인"],["프로그램","","grp"]]}
 ];
-function scrThead(extra){
+function scrThead(extra,ord){
   const rs=h=>(h||"").replace(/<th(?=[\s>])/g,'<th rowspan="2"');
   let r1='<th class="l g0" rowspan="2">#</th><th class="l g0" rowspan="2">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체 순환">↔</span></th>'+rs(extra),r2="";
-  SCR_HD.forEach(c=>{
+  const hch=[[0,1,2],[3],[4],[5],[6],[7],[8],SCR_HD.map((_,i)=>i).slice(9)];
+  (ord||SCR_ORD_DEF).flatMap(k=>hch[k]).map(i=>SCR_HD[i]).forEach(c=>{
     if(Array.isArray(c)){r1+=`<th rowspan="2" class="g-${c[1]}${c[3]?" "+c[3]:""}"${c[2]?` title="${c[2]}"`:""}>${c[0]}</th>`;return;}
     r1+=`<th class="gh g-${c.g}" colspan="${c.subs.length}"${c.title?` title="${c.title}"`:""}>${c.top}</th>`;
     c.subs.forEach((x,k)=>{r2+=`<th class="g-${c.g}${(k===0&&!c.nogrp)||x[2]?" grp":""}"${x[1]?` title="${x[1]}"`:""}>${x[0]}</th>`;});
@@ -5131,7 +5136,7 @@ function scrThead(extra){
 
 $("#tdFlowBody").closest("table").querySelector("thead").innerHTML=scrThead('<th>순매수(억)</th><th>시총대비</th>');
 $("#tdTopBody").closest("table").querySelector("thead").innerHTML=scrThead('<th id="tdTopKeyHd">기준값</th>');
-$("#favBody").closest("table").querySelector("thead").innerHTML=scrThead();
+$("#favBody").closest("table").querySelector("thead").innerHTML=scrThead("",SCR_ORD_FAV);
 $("#scrBody").closest("table").querySelector("thead").innerHTML=scrThead();
 async function runScreener(){
   if($("#fPh").value&&!S.dPhMap)await loadDetailPh();
@@ -8339,7 +8344,7 @@ async function loadFav(){
     const nameCell=(r)=>scrNameCell(r).replace(favStar(r.code),holdBtn(r.code)+favStar(r.code)).replace(/<\/td>$/,tags(r.code)+thTags(r.code)+`<span class="fav-rm" data-rm="${r.code}" title="내 종목에서 제외(관심·투자·AI추천 모두)">✕</span></td>`);
     let n=0;
     body.innerHTML=codes.map(c=>{const r=byCode[c];n++;
-      if(r)return `<tr><td class="l rank">${n}</td>${nameCell(r)}${scrCells(r)}</tr>`;
+      if(r)return `<tr><td class="l rank">${n}</td>${nameCell(r)}${scrCells(r,SCR_ORD_FAV)}</tr>`;
       return `<tr><td class="l rank">${n}</td><td class="l">${holdBtn(c)}${favStar(c)}<a class="lk nm" data-code="${c}">${accEsc(codeName(c))}</a>${tags(c)}${thTags(c)}<span class="fav-rm" data-rm="${c}" title="내 종목에서 제외">✕</span></td><td colspan="28" class="faint" style="text-align:left">오늘 기준 데이터 없음</td></tr>`;}).join("");
     $$("#favBody tr").forEach(tr=>{const rm=tr.querySelector(".fav-rm"),t=tr.children;if(!rm||t.length<6)return;t[2].dataset.fclose=rm.dataset.rm;t[3].dataset.fchg=rm.dataset.rm;});
     {const shown=codes.filter(c=>byCode[c]&&!(S.etfMap||{})[c]);   // 주식만, 슬롯 보호를 위해 투자→관심→나머지 순으로 최대 25종목
@@ -8503,6 +8508,7 @@ $("#thBackup").onclick=()=>{
 const SCR_GROUPS=[["g1","기본"],["g2","강도·매물대"],["g3","누적 수급"],["g4","거래"],["g5","당일 주체별"]];
 const SCR_COL_GROUP=["g1","g1","g1","g1","g1","g2","g2","g3","g3","g3","g3","g2","g3","g3","g3","g1","g4","g4","g2","g2","g4",
   "g5","g5","g5","g5","g5","g5","g5","g5","g5"];
+const SCR_COL_GROUP_FAV=(()=>{const L=[3,2,2,2,2,1,3,15],ch=[];let o=0;L.forEach(n=>{ch.push(SCR_COL_GROUP.slice(o,o+n));o+=n;});return SCR_ORD_FAV.flatMap(k=>ch[k]);})();
 function hgState(){try{return JSON.parse(localStorage.getItem("sr_hg")||"{}")||{};}catch(e){return {};}}
 function applyHg(){
   const st=hgState();
@@ -8513,8 +8519,9 @@ function tagScrTable(t){
   t.querySelectorAll("tr").forEach(tr=>{
     if(tr.dataset.gt)return;
     const c=tr.children;if(c.length<30||tr.querySelector("[colspan]"))return;
-    const base=c.length-SCR_COL_GROUP.length;
-    for(let i=0;i<SCR_COL_GROUP.length;i++)c[base+i].classList.add("g-"+SCR_COL_GROUP[i]);
+    const G=t.querySelector("#favBody")?SCR_COL_GROUP_FAV:SCR_COL_GROUP;
+    const base=c.length-G.length;
+    for(let i=0;i<G.length;i++)c[base+i].classList.add("g-"+G[i]);
     tr.dataset.gt="1";
   });
 }
