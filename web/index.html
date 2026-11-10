@@ -8336,7 +8336,7 @@ async function loadFav(){
     const tags=c=>{const k=kindsOf(c),m=(ai.mine||{})[c];
       return (k.hold?'<span class="tg hold-t">투자</span>':"")+(k.ai?'<span class="tg ai-t">AI추천</span>':"")
         +(m?`<span class="tg act ${ACT_CLS[m.action]||"hld"}" data-ev="${c}" title="${accEsc(m.opinion||"")}">${accEsc(m.action)}</span>`:"");};
-    const nameCell=(r)=>scrNameCell(r).replace(favStar(r.code),holdBtn(r.code)+favStar(r.code)).replace(/<\/td>$/,tags(r.code)+thTags(r.code)+"</td>");
+    const nameCell=(r)=>scrNameCell(r).replace(favStar(r.code),holdBtn(r.code)+favStar(r.code)).replace(/<\/td>$/,tags(r.code)+thTags(r.code)+`<span class="fav-rm" data-rm="${r.code}" title="내 종목에서 제외(관심·투자·AI추천 모두)">✕</span></td>`);
     let n=0;
     body.innerHTML=codes.map(c=>{const r=byCode[c];n++;
       if(r)return `<tr><td class="l rank">${n}</td>${nameCell(r)}${scrCells(r)}</tr>`;
