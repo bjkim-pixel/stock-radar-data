@@ -2339,6 +2339,7 @@ function makeSortable(tbodyId,incLeft){   // incLeft=true: 왼쪽 글자 열(종
     th.dataset.sortOrig=th.textContent.trim();
     th.classList.add('sortable');
     th.onclick=()=>{
+      try{smxFill();}catch(e){}   // 외+기 수급 고점 열은 비동기로 채워지므로 정렬 직전에 값을 확정
       const asc=th.dataset.sortDir!=='desc';
       ths.forEach(h=>{h.dataset.sortDir='';h.classList.remove('active');
         if(h.dataset.sortOrig!==undefined)h.textContent=h.dataset.sortOrig;});
@@ -5120,7 +5121,7 @@ const SCR_HD=[
     subs:[["3M","3개월 전(60거래일) 시점"],["1M","1개월 전(20거래일) 시점"],["1W","1주 전(5거래일) 시점"]]},
   ["시총","g1","","grp"],["거래대금","g4"],["대금비중","g4"],
   ["52주 신고가","g2","","grp"],["신고가일","g2"],
-  {top:"외+기 고점",g:"g3",title:"종목후보의 스마트머니 기간 선택(3개월/6개월/전체) 기준 — 외+기 누적 순매수의 고점 금액·날짜, 고점 대비 현재 차이, 고점 이후 회수율(매집분 대비)",subs:[["금액(억)","외+기 누적 고점(기간 첫날=0)"],["고점일"],["현재-고점(억)","오늘 누적 − 고점 누적"],["회수율","고점 이후 순매도 ÷ 매집분"]]},
+  {top:"외+기 수급 고점",g:"g3",title:"종목후보의 스마트머니 기간 선택(3개월/6개월/전체) 기준 — 외+기 누적 순매수의 고점 금액·날짜, 고점 대비 현재 차이, 고점 이후 회수율(매집분 대비)",subs:[["금액(억)","외+기 누적 고점(기간 첫날=0)"],["고점일"],["현재-고점(억)","오늘 누적 − 고점 누적"],["회수율","고점 이후 순매도 ÷ 매집분"]]},
   ["거래량비","g4"],
   {top:"당일 순매수",g:"g5",nogrp:1,subs:[["외국인"],["기관합계"],["금융투자"],["투신"],["연기금"],["사모"],["개인"],["기타법인"],["프로그램","","grp"]]}
 ];
@@ -6486,7 +6487,7 @@ function smxFill(){
     let t="–",v="",c="";
     if(ok){const k=td.dataset.smx,dd=(+x.now_eok)-(+x.peak_eok);
       if(k==="peak"){t=pm(+x.peak_eok,0);v=x.peak_eok;c=sgn(+x.peak_eok);}
-      else if(k==="date"){t=shortDate(x.peak_date);v=x.peak_date;}
+      else if(k==="date"){t=shortDate(x.peak_date);v=+String(x.peak_date).replace(/-/g,"");}
       else if(k==="dd"){t=pm(dd,0);v=dd;c=sgn(dd);}
       else if(x.ratio!=null){t=N(+x.ratio*100,0)+"%";v=x.ratio;}}
     td.textContent=t;td.dataset.sortVal=v;
