@@ -156,7 +156,9 @@ US_DESC = {
 KR_DESC = {
     "KOSPI": "코스피 · 한국 대형주 시장 전체", "KOSPI_DD": "1년 고점 대비 낙폭(%) · 조정의 깊이",
     "KOSPI_DISP": "코스피÷20일선 · 100 위 과열, 아래 침체", "KOSDAQ": "코스닥 · 중소형·성장주 시장",
-    "KQKS": "코스닥÷코스피 · 오르면 중소형 강세", "KRW": "원/달러 · 오르면 원화 약세(외국인 매도 압력)",
+    "KQKS": "코스닥÷코스피 · 오르면 중소형 강세",
+    "KOSPI_TOP5": "삼성전자·삼성전자우·삼성전기·SK하이닉스·SK스퀘어 거래대금 ÷ 코스피 전체 거래대금 · 오르면 대형 반도체·삼성 쏠림",
+    "KQ_SEMI": "코스닥 반도체 업종(추적 종목) 거래대금 ÷ 코스닥 전체 거래대금 · 오르면 반도체 쏠림", "KRW": "원/달러 · 오르면 원화 약세(외국인 매도 압력)",
     "CR_CREDIT_TOTAL": "빚내서 주식 산 돈(신용거래융자) 전체 · 급증 = 과열, 급감 = 강제청산·투매",
     "CR_CREDIT_KOSPI": "유가증권시장 신용융자 잔고", "CR_CREDIT_KOSDAQ": "코스닥 신용융자 잔고 · 개인 비중 높아 변동 큼",
     "CR_UNPAID": "돈 없이 산 주식 대금(미수금) · 3거래일 안에 못 메우면 반대매매",
@@ -768,6 +770,29 @@ def load_all(conn):
                     L.append({"c": c, "n": nm, "w": None, "ch": float(ch) if ch is not None else None, "x": None})
         except Exception as ex:
             conn.rollback(); log(f"- ⚠ 인덱스 시총 상위 조회 실패: {str(ex)[:100]}")
+        # 거래대금 비중(%) — 분모 = 시장 전체 거래대금(market_daily.index_amount, KIS 지수 누적거래대금)
+        #  ① 코스피: 삼성전자·삼성전자우·삼성전기·SK하이닉스·SK스퀘어 합계 ÷ 코스피 전체
+        #  ② 코스닥: 반도체 업종(추적 종목) 합계 ÷ 코스닥 전체
+        try:
+            frm = BACKFILL_FROM - datetime.timedelta(days=15)
+            cur.execute("select market, trade_date, index_amount from market_daily where trade_date >= %s and index_amount > 0 and market in ('KOSPI','KOSDAQ')", (frm,))
+            tot = {}
+            for mk, d, a in cur.fetchall():
+                tot[(mk, d)] = float(a)
+            TOP5 = ("005930", "005935", "009150", "000660", "402340")
+            cur.execute("select trade_date, sum(trade_amount), count(*) from daily_price where code = any(%s) and trade_date >= %s group by 1", (list(TOP5), frm))
+            for d, a, n in cur.fetchall():
+                if (("KOSPI", d) in tot) and a:
+                    S.setdefault("KRV:KOSPI_TOP5", {})[d] = float(a) / tot[("KOSPI", d)] * 100
+            cur.execute("""select p.trade_date, sum(p.trade_amount), count(*) from daily_price p join stocks s on s.code = p.code join v_stock_sector vs on vs.code = p.code
+                           where s.market = 'KOSDAQ' and s.security_type = 'STOCK' and vs.sector = '반도체' and p.trade_date >= %s group by 1""", (frm,))
+            rows = cur.fetchall()
+            for d, a, n in rows:
+                if (("KOSDAQ", d) in tot) and a:
+                    S.setdefault("KRV:KQ_SEMI", {})[d] = float(a) / tot[("KOSDAQ", d)] * 100
+            log(f"- 거래대금 비중: 코스피 대형5 {len(S.get('KRV:KOSPI_TOP5', {}))}일 · 코스닥 반도체 {len(S.get('KRV:KQ_SEMI', {}))}일 (최근일 종목수 {rows[-1][2] if rows else 0})")
+        except Exception as ex:
+            conn.rollback(); log(f"- ⚠ 거래대금 비중 계산 실패: {str(ex)[:120]}")
     return S, H
 
 def item(cal, series, name, bench_al, kind="px", sym=None):
@@ -866,6 +891,8 @@ def build_kr(S, H, etf_codes, theme_of):
         if items.get("index:" + mk) and H.get("KRIDX:" + mk):
             items["index:" + mk]["h"] = H["KRIDX:" + mk]; items["index:" + mk]["hn"] = "시가총액 상위 5"
     put("index:KQKS", item(cal, {d: kq[d] / ks[d] for d in kq if d in ks and ks[d]}, "KOSDAQ / KOSPI", None, "ratio"))
+    put("index:KOSPI_TOP5", item(cal, S.get("KRV:KOSPI_TOP5") or {}, "KOSPI 대형5 거래대금 비중(%)", None, "lvl"))
+    put("index:KQ_SEMI", item(cal, S.get("KRV:KQ_SEMI") or {}, "KOSDAQ 반도체 거래대금 비중(%)", None, "lvl"))
     put("index:KRW", item(cal, S.get("FX:KRW") or {}, "원/달러", None))
     for mk in ("KOSPI", "KOSDAQ"):
         adv, dec = S.get(f"KRB:{mk}_ADV") or {}, S.get(f"KRB:{mk}_DEC") or {}
