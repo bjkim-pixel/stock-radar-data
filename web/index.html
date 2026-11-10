@@ -2129,7 +2129,7 @@ const S={date:null,sectors:[],sector:null,stocks:[],market:[],flowCache:{},chart
   pairStockSort:"change_pct",
   liveWs:null,liveSubscribed:new Set(),livePrices:{},liveReconnectTimer:null,liveReconnectDelay:2000,
   dbPeak:{},
-  swingWanted:new Set(),sangttaWanted:new Set(),   // "전략성과"/"전략성과2" 탭이 각각 원하는 실시간 구독 코드 — reconcileLiveSubscription()이 합쳐서 실제 구독
+  swingWanted:new Set(),sangttaWanted:new Set(),favWanted:new Set(),   // "전략성과"/"전략성과2" 탭이 각각 원하는 실시간 구독 코드 — reconcileLiveSubscription()이 합쳐서 실제 구독
   i2Live:{},i2NameOf:{},i2LiveRenderPending:false,curTab:null};
 
 /* ══ KIS 실시간 시세 릴레이 연결 (보유 중 표 전용) ═══════════════════════ */
@@ -2257,6 +2257,7 @@ function ensureLiveConn(){
     if(m.type!=="price"||!m.code) return;
     S.livePrices[m.code]=m;
     updateLiveCell(m.code,m);
+    if(S.favWanted.has(m.code)) updateFavLive(m.code,m);
     if(m.sangtta) updateI2Live(m.code,m);
   };
   ws.onclose=()=>{
@@ -2273,7 +2274,7 @@ function ensureLiveConn(){
 // 서로의 구독을 덮어쓰지 않도록, 원하는 코드 집합을 따로 들고 있다가
 // 합집합으로만 실제 구독을 갱신한다.
 function reconcileLiveSubscription(){
-  const want=new Set([...S.swingWanted,...S.sangttaWanted]);
+  const want=new Set([...S.swingWanted,...S.sangttaWanted,...S.favWanted]);
   const cur=S.liveSubscribed;
   const toAdd=[...want].filter(c=>!cur.has(c));
   const toRemove=[...cur].filter(c=>!want.has(c));
@@ -2289,6 +2290,13 @@ function reconcileLiveSubscription(){
   // 아직 연결 전이면 onopen 핸들러가 S.liveSubscribed 전체를 구독 요청함
 }
 function setSwingLiveCodes(codes){ S.swingWanted=new Set(codes); reconcileLiveSubscription(); }
+function setFavLiveCodes(codes){ S.favWanted=new Set(codes); reconcileLiveSubscription(); }
+// 내 종목 표: 종가·등락률 셀을 KIS 실시간 체결가로 덮어쓴다(전략성과2와 같은 릴레이 웹소켓 사용)
+function updateFavLive(code,m){
+  if(m.price==null)return;
+  $$(`#favBody td[data-fclose="${code}"]`).forEach(c=>{c.textContent=N(+m.price,0);c.dataset.sortVal=m.price;c.title="KIS 실시간 체결가";});
+  $$(`#favBody td[data-fchg="${code}"]`).forEach(c=>{if(m.changePct==null)return;c.className=sgn(+m.changePct);c.textContent=pm(+m.changePct,1)+"%";c.dataset.sortVal=m.changePct;c.title="KIS 실시간 등락률";});
+}
 function setSangttaLiveCodes(codes){ S.sangttaWanted=new Set(codes); reconcileLiveSubscription(); }
 
 /* ══ 테이블 정렬 ═══════════════════════════════════════════════════ */
@@ -2895,6 +2903,7 @@ function procEnter(){
 function go(v,detailCode){
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
   if(cur&&cur!==v)S.prevView=cur;
+  if(S.curTab==='fav'&&v!=='fav'&&S.favWanted.size)setFavLiveCodes([]);
   S.curTab=v;
   if(!S._keepBack)S.backAI=false;
   if(typeof aiBackShow==="function")aiBackShow();
@@ -8330,6 +8339,11 @@ async function loadFav(){
     body.innerHTML=codes.map(c=>{const r=byCode[c];n++;
       if(r)return `<tr><td class="l rank">${n}</td>${nameCell(r)}${scrCells(r)}</tr>`;
       return `<tr><td class="l rank">${n}</td><td class="l">${holdBtn(c)}${favStar(c)}<a class="lk nm" data-code="${c}">${accEsc(codeName(c))}</a>${tags(c)}${thTags(c)}<span class="fav-rm" data-rm="${c}" title="내 종목에서 제외">✕</span></td><td colspan="28" class="faint" style="text-align:left">오늘 기준 데이터 없음</td></tr>`;}).join("");
+    $$("#favBody tr").forEach(tr=>{const rm=tr.querySelector(".fav-rm"),t=tr.children;if(!rm||t.length<6)return;t[2].dataset.fclose=rm.dataset.rm;t[3].dataset.fchg=rm.dataset.rm;});
+    {const shown=codes.filter(c=>byCode[c]&&!(S.etfMap||{})[c]);   // 주식만, 슬롯 보호를 위해 투자→관심→나머지 순으로 최대 15종목
+     const pri=[...shown.filter(c=>holds.includes(c)),...shown.filter(c=>!holds.includes(c)&&favs.includes(c)),...shown.filter(c=>!holds.includes(c)&&!favs.includes(c))];
+     setFavLiveCodes(pri.slice(0,15));
+     $("#favNote").insertAdjacentHTML("beforeend",` · 종가·등락률은 <b>KIS 실시간</b>(상위 ${Math.min(15,pri.length)}종목${pri.length>15?", 나머지는 전일 기준":""})`);}
     $$("#favBody .fav-rm").forEach(x=>x.onclick=e=>{e.stopPropagation();favRemove(x.dataset.rm);});
     $$("#favBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
     $$("#favBody .tg.act").forEach(a=>a.onclick=()=>favShowEv(a.dataset.ev));
