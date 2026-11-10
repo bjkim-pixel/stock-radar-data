@@ -1005,7 +1005,6 @@ def build_kr(S, H, etf_codes, theme_of):
                 it["d_"] = KR_DESC[key.split(":", 1)[1]]
             items[key] = it; idx.append(key)
     put("index:KOSPI", item(cal, ks, "KOSPI", None))
-    put("index:KOSPI_TOP5_CAP", item(cal, S.get("KRV:KOSPI_TOP5_CAP") or {}, "KOSPI 대형5 시가총액 비중(%)", None, "lvl"))
     # 고점대비 (252일 최고 대비 %)
     ksl = align(cal, ks)
     dd, ds = {}, {}
@@ -1019,13 +1018,14 @@ def build_kr(S, H, etf_codes, theme_of):
     put("index:KOSPI_DD", item(cal, dd, "KOSPI 고점대비", None, "lvlpct"))
     put("index:KOSPI_DISP", item(cal, ds, "KOSPI 이격도(20일)", None, "lvl"))
     put("index:KOSDAQ", item(cal, kq, "KOSDAQ", None))
-    put("index:KQ_SEMI_CAP", item(cal, S.get("KRV:KQ_SEMI_CAP") or {}, "KOSDAQ 반도체 시가총액 비중(%)", None, "lvl"))
     for mk in ("KOSPI", "KOSDAQ"):
         if items.get("index:" + mk) and H.get("KRIDX:" + mk):
             items["index:" + mk]["h"] = H["KRIDX:" + mk]; items["index:" + mk]["hn"] = "시가총액 상위 5"
     put("index:KQKS", item(cal, {d: kq[d] / ks[d] for d in kq if d in ks and ks[d]}, "KOSDAQ / KOSPI", None, "ratio"))
     put("index:KOSPI_TOP5", item(cal, S.get("KRV:KOSPI_TOP5") or {}, "KOSPI 대형5 거래대금 비중(%)", None, "lvl"))
     put("index:KQ_SEMI", item(cal, S.get("KRV:KQ_SEMI") or {}, "KOSDAQ 반도체 거래대금 비중(%)", None, "lvl"))
+    put("index:KOSPI_TOP5_CAP", item(cal, S.get("KRV:KOSPI_TOP5_CAP") or {}, "KOSPI 대형5 시가총액 비중(%)", None, "lvl"))
+    put("index:KQ_SEMI_CAP", item(cal, S.get("KRV:KQ_SEMI_CAP") or {}, "KOSDAQ 반도체 시가총액 비중(%)", None, "lvl"))
     put("index:KRW", item(cal, S.get("FX:KRW") or {}, "원/달러", None))
     for mk in ("KOSPI", "KOSDAQ"):
         adv, dec = S.get(f"KRB:{mk}_ADV") or {}, S.get(f"KRB:{mk}_DEC") or {}
