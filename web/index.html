@@ -63,6 +63,11 @@ b{font-weight:640}
 .th-hd .btn,.th-row .btn{padding:4px 9px;font-size:11.5px}.th-hd .th-cmp{margin-left:auto}
 .th-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:5px 0}.th-row input{font-size:12px;padding:3px 6px;width:auto}
 .th-chip{display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border);font-size:12px}
+#favThemeCard .btn{min-height:0!important;padding:3px 9px!important;font-size:11.5px!important;line-height:1.5}
+#favThemeCard input[type=text],#favThemeCard input[type=date]{width:auto;min-height:0!important;padding:3px 7px!important;font-size:12px!important}
+#favThemeCard .th-memo{width:100%!important;flex:1 1 100%}
+#favThemeCard .th-box{padding:8px 10px;margin:6px 0}#favThemeCard .th-hd{gap:5px;margin-bottom:3px}#favThemeCard .th-row{gap:4px;margin:3px 0}
+#favThemeCard .fav-add{gap:5px;margin:0 0 6px}
 .th-x{cursor:pointer;font-style:normal;color:var(--ink-3)}.th-x:hover{color:var(--warn)}
 .hold{cursor:pointer;margin-right:4px;user-select:none;font-size:.95em;opacity:.35;filter:grayscale(1)}
 .hold.on{opacity:1;filter:none}
@@ -1377,8 +1382,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="card" id="favThemeCard"><h3>단체상승 테마 <span class="r" id="thCount"></span></h3>
     <div class="note" style="margin-bottom:8px">같이 오른 종목을 테마로 묶고 상승일을 기록합니다. <b>짝꿍매매로 비교</b>를 누르면 테마 종목의 수급주체·무게/주식수·스마트머니 진단을 나란히 볼 수 있습니다. (이 브라우저에 저장)</div>
     <div class="fav-add">
-      <input type="text" id="thName" placeholder="새 테마 이름 (예: 방산, 로봇)" maxlength="30" style="max-width:220px">
-      <input type="date" id="thDate" title="단체상승일(선택)" style="max-width:150px">
+      <input type="text" id="thName" placeholder="새 테마 이름" maxlength="30" style="width:130px">
+      <input type="date" id="thDate" title="단체상승일(선택)" style="width:135px">
       <button class="btn ghost" id="thAdd" type="button">+ 테마 만들기</button>
       <button class="btn ghost" id="thBackup" type="button" title="테마 데이터를 JSON으로 복사/붙여넣기">백업·복원</button>
     </div>
@@ -8362,7 +8367,8 @@ function thRender(){
     b.querySelector(".th-mAdd").onclick=()=>{const c=thCodeFromInput(b.querySelector(".th-mIn").value);if(!c){alert("목록에서 종목을 선택해 주세요");return;}thUpd(id,t=>{if(!t.codes.includes(c))t.codes.push(c);});};
     b.querySelector(".th-mIn").onkeydown=e=>{if(e.key==="Enter")b.querySelector(".th-mAdd").click();};
     b.querySelector(".th-fromFav").onclick=()=>thUpd(id,t=>{t.codes=[...new Set([...t.codes,...favList()])];});
-    b.querySelector(".th-memo").onchange=e=>{const a2=thList(),t=a2.find(x=>x.id===id);if(t){t.memo=e.target.value;thSave(a2);}};
+    {const mi=b.querySelector(".th-memo"),sv=()=>{const a2=thList(),t=a2.find(x=>x.id===id);if(t){t.memo=mi.value;thSave(a2);}};
+      mi.oninput=sv;mi.onchange=sv;mi.onblur=sv;}
     b.querySelectorAll(".th-chip[data-d] .th-x").forEach(x=>x.onclick=()=>thUpd(id,t=>{t.dates=t.dates.filter(d=>d!==x.parentNode.dataset.d);}));
     b.querySelectorAll(".th-chip[data-c] .th-x").forEach(x=>x.onclick=()=>thUpd(id,t=>{t.codes=t.codes.filter(c=>c!==x.parentNode.dataset.c);}));
     b.querySelectorAll(".th-chip a.lk").forEach(x=>x.onclick=()=>go("detail",x.dataset.code));
