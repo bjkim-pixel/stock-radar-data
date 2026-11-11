@@ -5409,6 +5409,11 @@ async function loadDetail(code){
   // 조회 기간(이력 전체) 최고가·최저가와 그 날짜 — 시고저가가 0인 날은 제외, 없으면 종가로 대신
   const hl=(()=>{let H=null,Lw=null;rows.forEach(r=>{const h=+r.high>0?+r.high:+r.close,l=+r.low>0?+r.low:+r.close;if(!(h>0)||!(l>0))return;
     if(!H||h>H.v)H={v:h,d:r.trade_date};if(!Lw||l<Lw.v)Lw={v:l,d:r.trade_date};});return {H,L:Lw};})();
+  // 무게/주식수(등락률×거래량÷상장주식수)가 가장 컸던 날: 종가·날짜와, 그날 순매수가 가장 컸던 거래주체(누적값의 하루 차이로 일별 값 계산)
+  const wt=(()=>{if(isEtf)return null;let k=-1,m=0;rows.forEach((r,i)=>{const w=+r.weight_per_share;if(r.weight_per_share!=null&&w>m){m=w;k=i;}});if(k<0)return null;
+    const dv=c=>(+rows[k][c]||0)-(k?(+rows[k-1][c]||0):0),inst=dv("inst_cum"),fi=dv("fin_inv_cum"),it=dv("inv_trust_cum"),pn=dv("pension_cum"),pe=dv("pe_cum");
+    const cand=[["외국인",dv("foreign_cum")],["금융투자",fi],["투신",it],["연기금",pn],["사모",pe],["기타기관",inst-fi-it-pn-pe],["기타법인",dv("corp_other_cum")],["개인",dv("individual_cum")]].sort((x,y)=>y[1]-x[1]);
+    return {w:m*100,close:+rows[k].close,d:rows[k].trade_date,who:cand[0][0],amt:cand[0][1]};})();
   $("#dHead").innerHTML=`
     <div><div style="font-size:18px;font-weight:680">${holdBtn(code)}${favStar(code,"big")}${isEtf?'<span class="cd" style="color:var(--accent,#2f6fed);font-weight:700">ETF</span> ':""}${sum.name||code}<button type="button" class="btn ghost" id="dCopyName" title="종목명 복사" style="margin-left:8px;padding:1px 8px;font-size:11px;font-weight:500;vertical-align:middle">복사</button>
       <span class="faint" style="font-size:11.5px;font-weight:400">${code} · ${sum.market||""}</span></div>
@@ -5423,6 +5428,7 @@ async function loadDetail(code){
     ${hl.H?`<div style="display:flex;flex-direction:column;gap:2px" title="이력 ${rows[0].trade_date} ~ ${last.trade_date} 중 장중 최고가·최저가">
       <div class="num up" style="font-size:12px">최고 <b>${N(hl.H.v,0)}</b> <span style="font-size:11px">${shortDate(hl.H.d)}</span></div>
       <div class="num down" style="font-size:12px">최저 <b>${N(hl.L.v,0)}</b> <span style="font-size:11px">${shortDate(hl.L.d)}</span></div>
+      ${wt?`<div class="num" style="font-size:12px;color:#f26a00" title="무게/주식수(등락률×거래량÷상장주식수)가 가장 컸던 날 — 종가, 그날 순매수가 가장 컸던 거래주체">무게 <b>${pm(wt.w,1)}%</b> <span style="font-size:11px">${shortDate(wt.d)} · 종가 ${N(wt.close,0)} · ${wt.who} ${pm(wt.amt/EOK,0)}억</span></div>`:""}
     </div>`:""}
     <div style="display:flex;flex-direction:column;gap:2px">
       <div class="faint" style="font-size:12px">${sum.sector||"–"}</div>
