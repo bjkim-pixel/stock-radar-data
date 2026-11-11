@@ -14,6 +14,7 @@ create table if not exists public.smx_state (
   primary key (code, win)
 );
 alter table public.smx_state add column if not exists peak_eok numeric;  -- 외+기 누적 고점 금액(억, 기간 첫날=0 기준)
+alter table public.smx_state add column if not exists lead_nm text, add column if not exists lead_trend text, add column if not exists lead_eok numeric;  -- 주도 세력 · 추세(UP/SLOW/DOWN/REBUY/RESUME/TURN/FLAT) · 매집 구간 순매수(억)
 do $$
 begin
   alter table public.smx_state enable row level security;

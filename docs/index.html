@@ -1416,6 +1416,11 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <tbody id="swPickBody"><tr><td colspan="13" class="load sk"></td></tr></tbody></table></div>
     <div class="note" style="margin-top:6px">마감 = 20시(대체거래소 NXT 거래 가능) 또는 15:30(정규장만). <b>기본 규칙은 손절 없이 3거래일 뒤 종가 청산</b>입니다. 과거 1,097건에서 손절을 붙인 13가지 규칙 모두 평균 수익을 낮췄습니다(검증 구간 건당: 손절 없음 +2.96% · -3% 손절 +0.98% · -10% 손절 +2.43%). 비상 손절가(-10%)는 큰 손실만 막는 용도로, 최악의 거래를 -18.0%에서 -10.5%로 줄였습니다. 하루 변동폭 = 최근 20일 하루 등락폭 평균.</div>
   </div>
+  <div class="card" style="margin-top:12px"><h3>① 신호 종목 결과 <span class="r">조건 충족 종목을 종가에 사서 3거래일 뒤 종가에 판 기록</span></h3>
+    <div id="swTrSum"><div class="load sk"></div></div>
+    <div class="tw" style="margin-top:8px"><table><thead><tr><th class="l">진입일</th><th class="l">종목</th><th>진입가</th><th>청산일</th><th>청산가</th><th>수익률</th><th>구분</th></tr></thead><tbody id="swTrBody"></tbody></table></div>
+    <div class="note" style="margin-top:6px">매수 허용일(코스피 20일 박스 위치 30% 초과)에 조건을 충족한 종목만 기록합니다. 수익률은 왕복 비용 0.25%를 뺀 값이며, 3거래일이 안 지난 건은 최근 종가 기준 "보유 중"입니다. 11-10 이전은 과거 데이터로 다시 계산한 사후 검증, 11-10부터는 실제 추적입니다.</div>
+  </div>
   <div class="card" style="margin-top:12px"><h3>② 반등 매도 인버스 <span class="r">코스피가 60일선 아래 + 3일간 4% 이상 반등 → KODEX 인버스 5거래일</span></h3>
     <div id="swInv"><div class="load sk"></div></div>
   </div>
@@ -2291,6 +2296,7 @@ function ensureLiveConn(){
     S.livePrices[m.code]=m;
     updateLiveCell(m.code,m);
     if(S.favWanted.has(m.code)) updateFavLive(m.code,m);
+    if(S.swLiveWanted&&S.swLiveWanted.has(m.code)) updateSwLive(m.code,m);
     if(m.sangtta) updateI2Live(m.code,m);
   };
   ws.onclose=()=>{
@@ -2307,7 +2313,7 @@ function ensureLiveConn(){
 // 서로의 구독을 덮어쓰지 않도록, 원하는 코드 집합을 따로 들고 있다가
 // 합집합으로만 실제 구독을 갱신한다.
 function reconcileLiveSubscription(){
-  const want=new Set([...S.swingWanted,...S.sangttaWanted,...S.favWanted]);
+  const want=new Set([...S.swingWanted,...S.sangttaWanted,...S.favWanted,...(S.swLiveWanted||[])]);
   const cur=S.liveSubscribed;
   const toAdd=[...want].filter(c=>!cur.has(c));
   const toRemove=[...cur].filter(c=>!want.has(c));
@@ -2330,6 +2336,14 @@ function updateFavLive(code,m){
   if(m.price==null)return;
   $$(`#favBody td[data-fclose="${code}"]`).forEach(c=>{c.textContent=N(+m.price,0);c.dataset.sortVal=m.price;c.title="KIS 실시간 체결가";});
   $$(`#favBody td[data-fchg="${code}"]`).forEach(c=>{if(m.changePct==null)return;c.className=sgn(+m.changePct);c.textContent=pm(+m.changePct,1)+"%";c.dataset.sortVal=m.changePct;c.title="KIS 실시간 등락률";});
+}
+// 국면 전략 표(①·④): 종가·등락 셀을 KIS 실시간 체결가로 덮어쓴다. 화면을 떠나면 구독 해제
+const SW_LIVE_MAX=20;
+function setSwLiveCodes(codes){ S.swLiveWanted=new Set(codes.slice(0,SW_LIVE_MAX)); reconcileLiveSubscription(); }
+function updateSwLive(code,m){
+  if(m.price==null)return;
+  $$(`#v-sw td[data-sclose="${code}"]`).forEach(c=>{c.textContent=N(+m.price,0);c.title="KIS 실시간 체결가";});
+  $$(`#v-sw td[data-schg="${code}"]`).forEach(c=>{if(m.changePct==null)return;c.className=sgn(+m.changePct);c.textContent=pm(+m.changePct,1)+"%";c.title="KIS 실시간 등락률";});
 }
 const SANGTTA_LIVE_PAUSED=true;   // 2026-11-10: 전략성과2 실시간 웹소켓 연동 일시 중단(내 종목 우선) — false로 바꾸면 재개
 function setSangttaLiveCodes(codes){ S.sangttaWanted=new Set(SANGTTA_LIVE_PAUSED?[]:codes); reconcileLiveSubscription(); }
@@ -2941,6 +2955,7 @@ function go(v,detailCode){
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
   if(cur&&cur!==v)S.prevView=cur;
   if(S.curTab==='fav'&&v!=='fav'&&S.favWanted.size)setFavLiveCodes([]);
+  if(S.curTab==='sw'&&v!=='sw'&&S.swLiveWanted&&S.swLiveWanted.size)setSwLiveCodes([]);
   S.curTab=v;
   if(!S._keepBack)S.backAI=false;
   if(typeof aiBackShow==="function")aiBackShow();
@@ -5146,7 +5161,7 @@ function scrCellChunks(r){return [
       <td class="opt">${r.amt_cap_pct==null?"–":N(+r.amt_cap_pct,0)+"%"}</td>
       <td class="grp opt">${r.high_period==null?"–":N(+r.high_period,0)}</td>
       <td class="opt dim">${shortDate(r.high_period_date)}</td>`,
-`      <td class="grp opt" data-smx="peak" data-code="${r.code}">–</td><td class="opt dim" data-smx="date" data-code="${r.code}">–</td><td class="opt" data-smx="dd" data-code="${r.code}">–</td><td class="opt" data-smx="rec" data-code="${r.code}">–</td>`,
+`      <td class="grp opt" data-smx="peak" data-code="${r.code}">–</td><td class="opt dim" data-smx="date" data-code="${r.code}">–</td><td class="opt" data-smx="dd" data-code="${r.code}">–</td><td class="opt" data-smx="rec" data-code="${r.code}">–</td><td class="opt" data-smx="lead" data-code="${r.code}">–</td><td class="opt" data-smx="ltr" data-code="${r.code}">–</td>`,
 `      <td class="opt">${r.vol_ratio20_prev==null?"–":N(+r.vol_ratio20_prev,0)+"%"}</td>
       <td class="${sgn(+r.foreign_net)}">${flowAmtRankCell(r.foreign_net,r.foreign_rank,r.foreign_total)}</td>
       <td class="${sgn(+r.inst_net)}">${flowAmtRankCell(r.inst_net,r.inst_rank,r.inst_total)}</td>
@@ -5174,7 +5189,7 @@ const SCR_HD=[
     subs:[["3M","3개월 전(60거래일) 시점"],["1M","1개월 전(20거래일) 시점"],["1W","1주 전(5거래일) 시점"]]},
   ["시총","g1","","grp"],["거래대금","g4"],["대금비중","g4"],
   ["52주 신고가","g2","","grp"],["신고가일","g2"],
-  {top:"외+기 수급 고점",g:"g3",title:"종목후보의 스마트머니 기간 선택(3개월/6개월/전체) 기준 — 외+기 누적 순매수의 고점 금액·날짜, 고점 대비 현재 차이, 고점 이후 회수율(매집분 대비)",subs:[["금액(억)","외+기 누적 고점(기간 첫날=0)"],["고점일"],["현재-고점(억)","오늘 누적 − 고점 누적"],["회수율","고점 이후 순매도 ÷ 매집분"]]},
+  {top:"외+기 수급 고점",g:"g3",title:"종목후보의 스마트머니 기간 선택(3개월/6개월/전체) 기준 — 외+기 누적 순매수의 고점 금액·날짜, 고점 대비 현재 차이, 고점 이후 회수율(매집분 대비)",subs:[["금액(억)","외+기 누적 고점(기간 첫날=0)"],["고점일"],["현재-고점(억)","오늘 누적 − 고점 누적"],["회수율","고점 이후 순매도 ÷ 매집분"],["주도","같은 기간 매집 구간(저점→고점)에서 순매수가 가장 큰 주체(외국인·금융투자·투신·연기금·사모·기타기관)"],["추세","주도 주체의 최근 5일·20일 순매수 방향: 매수 추세 · 매수 둔화 · 매도 추세 · 매도 후 재매수 …"]]},
   ["거래량비","g4"],
   {top:"당일 순매수",g:"g5",nogrp:1,subs:[["외국인"],["기관합계"],["금융투자"],["투신"],["연기금"],["사모"],["개인"],["기타법인"],["프로그램","","grp"]]}
 ];
@@ -6532,6 +6547,7 @@ function smxModel(rows){
   return {rows,combo,pk,tr,build,dd,ratio,r5,r20,since,pchg,st,cls,subj,indiv,close,L};
 }
 // 종목후보 등 표의 "외+기 고점" 4열 채우기 — 종목후보 '스마트머니 기간' 선택(#fSmxW)에 맞춰 smx_state 값을 넣는다
+const LEAD_TR={UP:["매수 추세","up",6],RESUME:["매수 재개","up",5],SLOW:["매수 둔화","warn",4],REBUY:["매도 후 재매수","warn",3],FLAT:["변동 없음","dim",2],TURN:["매도 전환","down",1],DOWN:["매도 추세","down",0]};
 function smxFill(){
   const cells=[...document.querySelectorAll("td[data-smx]")];if(!cells.length)return;
   if(!S.smxMap){if(!S._smxLoading){S._smxLoading=true;smxLoadMap().then(()=>{S._smxLoading=false;smxFill();}).catch(()=>{S._smxLoading=false;});}return;}
@@ -6544,9 +6560,14 @@ function smxFill(){
       if(k==="peak"){t=pm(+x.peak_eok,0);v=x.peak_eok;c=sgn(+x.peak_eok);}
       else if(k==="date"){t=shortDate(x.peak_date);v=+String(x.peak_date).replace(/-/g,"");}
       else if(k==="dd"){t=pm(dd,0);v=dd;c=sgn(dd);}
+      else if(k==="lead"||k==="ltr"){}
       else if(x.ratio!=null){t=N(+x.ratio*100,0)+"%";v=x.ratio;}}
+    if(x&&x.lead_nm&&(td.dataset.smx==="lead"||td.dataset.smx==="ltr")){
+      if(td.dataset.smx==="lead"){t=x.lead_nm;v=+x.lead_eok||0;td.title="매집 구간 순매수 "+pm(+x.lead_eok,0)+"억";}
+      else{const T=LEAD_TR[x.lead_trend]||LEAD_TR.FLAT;t=T[0];c=T[1];v=T[2];}
+    }
     td.textContent=t;td.dataset.sortVal=v;
-    td.classList.remove("up","down","dim");if(c)td.classList.add(c);
+    td.classList.remove("up","down","dim","warn");if(c)td.classList.add(c);
   });
 }
 {let pend=false;new MutationObserver(()=>{if(!pend){pend=true;requestAnimationFrame(()=>{pend=false;smxFill();});}}).observe(document.body,{childList:true,subtree:true});
@@ -6555,16 +6576,20 @@ async function smxLoadMap(){
   if(S.smxMap)return S.smxMap;
   const m={};
   for(let off=0;off<60000;off+=1000){
-    const part=await q("smx_state",`select=code,win,st,build_eok,now_eok,ratio,peak_date,since,r20_eok,as_of,peak_eok&order=code.asc,win.asc&limit=1000&offset=${off}`);
+    const part=await q("smx_state",`select=code,win,st,build_eok,now_eok,ratio,peak_date,since,r20_eok,as_of,peak_eok,lead_nm,lead_trend,lead_eok&order=code.asc,win.asc&limit=1000&offset=${off}`);
     part.forEach(r=>{(m[r.code]=m[r.code]||{})[r.win]=r;});
     if(part.length<1000)break;
   }
   S.smxMap=m;return m;
 }
-/* 주도 세력: 전체 기간 외+기 매집 구간(저점→고점)에서 순매수가 가장 큰 주체(없으면 기간 전체 순매수). 추세 = 그 주체의 최근 5일·20일 순매수 방향 */
-function renderLead(all){
+/* 주도 세력: 선택 기간(3M·6M·전체, 기본 전체) 외+기 매집 구간(저점→고점)에서 순매수가 가장 큰 주체(없으면 기간 전체 순매수). 추세 = 그 주체의 최근 5일·20일 순매수 방향 */
+S.leadWin=S.leadWin||"all";
+function renderLead(full){
   const el=$("#dLead");if(!el)return;el.style.display="none";
-  if(!all||all.length<10||all[0].foreign_cum==null)return;
+  if(!full||full.length<10||full[0].foreign_cum==null)return;
+  S._leadRows=full;
+  const all=S.leadWin==="all"?full:full.slice(-Math.min(full.length,+S.leadWin));
+  if(all.length<10)return;
   const m=smxModel(all),L=m.L;
   const cand=m.subj.filter(x=>!x.flat).map(x=>({...x,score:m.build>0?x.acc:x.v[L]})).sort((a,b)=>b.score-a.score);
   const top=cand[0];if(!top||top.score<=0)return;      // 외+기 어느 주체도 순매수 우위가 없으면 표시하지 않음
@@ -6580,9 +6605,11 @@ function renderLead(all){
   const rec=top.acc>0&&top.after<0?` · 매집분 ${N(-top.after/top.acc*100,0)}% 회수`:"";
   const sec=cand[1]&&cand[1].score>0?cand[1]:null;
   const tip=`${top.nm} 매집 구간 ${pm(top.score,0)}억 · 최근 5일 ${pm(top.r5,0)}억 / 20일 ${pm(top.r20,0)}억${rec}`;
+  const wb=[["63","3M"],["126","6M"],["all","전체"]].map(([k,t])=>`<a class="lk" data-lw="${k}" style="margin-right:6px;${S.leadWin===k?"font-weight:700;text-decoration:underline":"opacity:.6"}">${t}</a>`).join("");
   el.innerHTML=`<div title="${tip}"><span class="faint">주도</span> <b>${top.nm}</b> <b class="${cls}">${lab}</b></div>
-    <div class="faint num" style="font-size:11px" title="${tip}">${pm(top.score,0)}억 · 5일 ${pm(top.r5,0)} · 20일 ${pm(top.r20,0)}${sec?` · 2위 ${sec.nm}`:""}</div>`;
+    <div class="faint num" style="font-size:11px" title="${tip}">${pm(top.score,0)}억 · 5일 ${pm(top.r5,0)} · 20일 ${pm(top.r20,0)}${sec?` · 2위 ${sec.nm}`:""}</div><div style="font-size:11px">${wb}</div>`;
   el.style.display="flex";
+  el.querySelectorAll("a[data-lw]").forEach(a=>a.onclick=()=>{S.leadWin=a.dataset.lw;renderLead(S._leadRows);});
 }
 function renderSmx(){
   const all=S.chart&&S.chart.rows,card=$("#dSmxCard");
@@ -8476,9 +8503,10 @@ $("#favAddFav").onclick=()=>favAddFrom("fav");$("#favAddHold").onclick=()=>favAd
 
 // ── 국면 전략 페이지: sw_daily(상태·신호·모의 성과) + sw_picks(조건 충족·보유 종목). 계산은 147_sw_engine.py(Actions)
 async function loadSw(){
-  const [dy,pk]=await Promise.all([
+  const [dy,pk,tr]=await Promise.all([
     q("sw_daily","select=*&order=trade_date.asc"),
-    q("sw_picks","select=*&order=trade_date.desc,kind.asc,weight.desc&limit=400")]);
+    q("sw_picks","select=*&order=trade_date.desc,kind.asc,weight.desc&limit=400"),
+    q("sw_trades","select=*&order=entry_date.desc,amt_eok.desc&limit=2000").catch(()=>[])]);
   if(!dy.length){$("#swState").innerHTML='<div class="load">아직 계산된 데이터가 없습니다</div>';return;}
   const t=dy.at(-1),d=t.trade_date,pos=t.pos20==null?null:+t.pos20*100;
   $("#swAsOf").textContent=`${d} 종가 기준`;
@@ -8501,9 +8529,12 @@ async function loadSw(){
   const P=pk.filter(r=>r.trade_date===d&&(r.kind==="new"||r.kind==="hold"));
   $("#swPickNote").textContent=t.gate_open?`조건 충족 ${t.n_new} · 보유 ${t.n_hold}종목`:"매수 보류 중 — 아래는 참고용";
   const nx=r=>r.nxt_ok==null?"–":r.nxt_ok?'<span class="tg" style="background:color-mix(in srgb,#1baf7a 18%,transparent);color:#1baf7a">20시</span>':'<span class="tg" style="background:var(--surface-2);color:var(--ink-3)">15:30</span>';
-  const nmc=r=>`<a class="lk nm" data-code="${r.code}">${escH(codeName(r.code))}</a>`;
+  // 편중 점검: 사후 검증 구간의 종결 거래에서 종목별 누적 수익이 큰 상위 5종목
+  const TC=tr.filter(r=>r.status==="closed"&&r.ret_pct!=null),byC={};TC.forEach(r=>{byC[r.code]=(byC[r.code]||0)+(+r.ret_pct);});
+  const topC=Object.entries(byC).sort((a,b)=>b[1]-a[1]).slice(0,5).map(x=>x[0]),topSet=new Set(topC);
+  const nmc=r=>`<a class="lk nm" data-code="${r.code}">${escH(codeName(r.code))}</a>${topSet.has(r.code)?' <span class="tg" title="과거 신호 수익의 상당 부분을 만든 상위 5종목 중 하나" style="background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)">수익 쏠림</span>':""}`;
   $("#swPickBody").innerHTML=P.length?P.map(r=>`<tr><td class="l">${r.kind==="new"?(t.gate_open?'<b class="up">오늘 매수</b>':'조건 충족(보류)'):"보유 중"}</td><td class="l">${nmc(r)}</td><td>${nx(r)}</td>
-    <td>${N(+r.close,0)}</td><td class="${sgn(+r.chg)}">${pm(+r.chg,1)}%</td><td>${N(+r.amt_eok,0)}억</td><td>${N(+r.cap_eok,0)}억</td><td class="${sgn(+r.sm5_pct)}">${pm(+r.sm5_pct,2)}%</td>
+    <td data-sclose="${r.code}">${N(+r.close,0)}</td><td class="${sgn(+r.chg)}" data-schg="${r.code}">${pm(+r.chg,1)}%</td><td>${N(+r.amt_eok,0)}억</td><td>${N(+r.cap_eok,0)}억</td><td class="${sgn(+r.sm5_pct)}">${pm(+r.sm5_pct,2)}%</td>
     <td class="dim">${shortDate(r.entry_date)}</td><td>${N(+r.entry_close,0)}</td><td>${t.gate_open?r.days_left+"일":"–"}</td><td>${r.entry_close?N(+r.entry_close*0.9,0):"–"}</td><td>${r.vol20==null?"–":N(+r.vol20,1)+"%"}</td></tr>`).join("")
     :'<tr><td colspan="13" class="load">오늘 조건을 충족하거나 보유 중인 종목이 없습니다</td></tr>';
   // ② 인버스
@@ -8526,8 +8557,23 @@ async function loadSw(){
   // ④ 바스켓
   const B=pk.filter(r=>r.trade_date===d&&r.kind==="basket").sort((a,b)=>(+b.fo20_pct)-(+a.fo20_pct));
   $("#swBkNote").textContent=t.trend_down?"하락 추세 — 바스켓 50% + 인버스 50%":"상승 추세 — 바스켓 100%";
-  $("#swBkBody").innerHTML=B.map(r=>`<tr><td class="l">${nmc(r)}</td><td>${nx(r)}</td><td>${N(+r.close,0)}</td><td class="${sgn(+r.chg)}">${pm(+r.chg,1)}%</td><td>${N(+r.cap_eok,0)}억</td><td class="${sgn(+r.fo20_pct)}">${pm(+r.fo20_pct,2)}%</td><td class="${sgn(+r.sm5_pct)}">${pm(+r.sm5_pct,2)}%</td></tr>`).join("")||'<tr><td colspan="7" class="load">데이터 없음</td></tr>';
+  $("#swBkBody").innerHTML=B.map(r=>`<tr><td class="l">${nmc(r)}</td><td>${nx(r)}</td><td data-sclose="${r.code}">${N(+r.close,0)}</td><td class="${sgn(+r.chg)}" data-schg="${r.code}">${pm(+r.chg,1)}%</td><td>${N(+r.cap_eok,0)}억</td><td class="${sgn(+r.fo20_pct)}">${pm(+r.fo20_pct,2)}%</td><td class="${sgn(+r.sm5_pct)}">${pm(+r.sm5_pct,2)}%</td></tr>`).join("")||'<tr><td colspan="7" class="load">데이터 없음</td></tr>';
+  // 신호 종목 결과(3거래일 보유 기록) + 편중 점검
+  {const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null,rt=r=>+r.ret_pct,live=TC.filter(r=>r.is_live),past=TC.filter(r=>!r.is_live);
+   const win=a=>a.length?N(a.filter(r=>rt(r)>0).length/a.length*100,0)+"%":"–",avg=a=>a.length?pm(mean(a.map(rt)),2)+"%":"–";
+   const rest=TC.filter(r=>!topSet.has(r.code)),mAll=mean(TC.map(rt)),mRest=mean(rest.map(rt));
+   const names=topC.map(c=>escH(codeName(c))).join("·");
+   const warn=TC.length>=30&&mAll>0&&(mRest==null||mRest<mAll*0.5);
+   $("#swTrSum").innerHTML=`<div class="tiles">`+
+     kpi("실제 추적(11-10~)",live.length?`${live.length}건 · 평균 ${avg(live)}`:"아직 없음",live.length?`승률 ${win(live)}`:"3거래일 뒤부터 쌓입니다",live.length?sgn(mean(live.map(rt))):"")+
+     kpi("사후 검증(~11-09)",`${past.length}건 · 평균 ${avg(past)}`,`승률 ${win(past)} · 비용 0.25% 차감`,past.length?sgn(mean(past.map(rt))):"")+
+     kpi("상위 5종목 제외",TC.length?`평균 ${avg(rest)}`:"–",`전체 ${avg(TC)} · 제외: ${names||"–"}`,rest.length?sgn(mean(rest.map(rt))):"")+`</div>`+
+     (warn?`<div class="note" style="margin-top:8px;color:var(--warn)"><b>⚠ 수익 쏠림</b> — 수익이 큰 5종목(${names})을 빼면 건당 평균이 ${avg(TC)}에서 ${avg(rest)}로 줄어듭니다. 몇몇 종목이 성과를 끌어올린 구조라 앞으로 같은 결과가 나온다고 보기 어렵습니다.</div>`:"");
+   const V=tr.slice(0,60);
+   $("#swTrBody").innerHTML=V.length?V.map(r=>`<tr><td class="l">${shortDate(r.entry_date)}</td><td class="l">${nmc(r)}</td><td>${N(+r.entry_close,0)}</td><td>${shortDate(r.exit_date)}</td><td>${N(+r.exit_close,0)}</td><td class="${sgn(+r.ret_pct)}">${pm(+r.ret_pct,2)}%</td><td class="dim">${r.status==="open"?"보유 중":r.is_live?"실제 추적":"사후 검증"}</td></tr>`).join(""):'<tr><td colspan="7" class="load">기록이 없습니다(계산 엔진 다음 실행 후 표시)</td></tr>';}
   $$("#v-sw a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+  // 실시간 체결가: ① 대상(오늘 매수·보유) 우선, 남는 슬롯은 ④ 바스켓
+  setSwLiveCodes([...new Set([...P.map(r=>r.code),...B.map(r=>r.code)])]);
 }
 // ── 단체상승 테마(관심종목): 테마명·상승일·종목을 localStorage(sr_themes)에 저장 → 짝꿍매매로 비교
 function thList(){try{const a=JSON.parse(localStorage.getItem("sr_themes")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
@@ -8693,9 +8739,9 @@ $("#thBackup").onclick=()=>{
 
 // ── 표 열 묶음 토글: 종목후보·오늘의 종목·관심 표의 28개 열(순서는 그대로)을 5묶음으로 접고 펴기
 const SCR_GROUPS=[["g1","기본"],["g2","강도·매물대"],["g3","누적 수급"],["g4","거래"],["g5","당일 주체별"]];
-const SCR_COL_GROUP=["g1","g1","g1","g1","g1","g2","g2","g3","g3","g3","g3","g2","g3","g3","g3","g1","g4","g4","g2","g2","g3","g3","g3","g3","g4",
+const SCR_COL_GROUP=["g1","g1","g1","g1","g1","g2","g2","g3","g3","g3","g3","g2","g3","g3","g3","g1","g4","g4","g2","g2","g3","g3","g3","g3","g3","g3","g4",
   "g5","g5","g5","g5","g5","g5","g5","g5","g5"];
-const SCR_COL_GROUP_FAV=(()=>{const L=[3,2,2,2,2,1,3,5,4,10],ch=[];let o=0;L.forEach(n=>{ch.push(SCR_COL_GROUP.slice(o,o+n));o+=n;});return SCR_ORD_FAV.flatMap(k=>ch[k]);})();
+const SCR_COL_GROUP_FAV=(()=>{const L=[3,2,2,2,2,1,3,5,6,10],ch=[];let o=0;L.forEach(n=>{ch.push(SCR_COL_GROUP.slice(o,o+n));o+=n;});return SCR_ORD_FAV.flatMap(k=>ch[k]);})();
 function hgState(){try{return JSON.parse(localStorage.getItem("sr_hg")||"{}")||{};}catch(e){return {};}}
 function applyHg(){
   const st=hgState();
