@@ -8138,6 +8138,7 @@ async function aiRender(b){
     const m=(lb,v)=>v==null||v===""?"":`<span class="ai-kv"><span class="faint">${lb}</span> ${v}</span>`;
     return `<div class="ai-pick"><div class="ai-pick-hd"><span class="faint">${i+1}</span> ${favStar(p.code)} <a class="lk nm" data-code="${E(p.code)}">${E(p.name)}</a>
       <span class="faint" style="font-size:11px">${E(p.sector||"")}</span>
+      ${c.진입판정?`<span class="mine-act ${ACT_CLS[c.진입판정]||"hld"}" style="font-size:12px;padding:1px 8px" title="관심종목 의견과 같은 기준(추세·RS·수급·스마트머니·고점위치·업종)의 진입 판정">${E(c.진입판정)}</span><span class="faint" style="font-size:11px">점수 ${c.진입점수>0?"+":""}${c.진입점수}</span>`:""}
       <span class="ai-pick-px">당시 ${p.close!=null?N(p.close,0):"–"} <span class="${sgn(p.chg)}">${p.chg!=null?pm(p.chg,1)+"%":""}</span> · 이후 ${ret(p)}</span></div>
       <div class="ai-kvs">${m("점수",c.규칙점수)}${m("거래대금",c.거래대금억!=null?N(c.거래대금억,0)+"억":null)}${m("외국인",c.외국인오늘억!=null?pm(c.외국인오늘억,0)+"억":null)}${m("기관",c.기관오늘억!=null?pm(c.기관오늘억,0)+"억":null)}${m("외기5일",c.외기합5일억!=null?pm(c.외기합5일억,0)+"억":null)}${m("연속양매수",c.연속양매수일!=null?c.연속양매수일+"일":null)}${m("RS5/20",c.RS5백분위!=null?`${c.RS5백분위}/${c.RS20백분위}`:null)}${m("고점대비",c["고점대비%"]!=null?pm(c["고점대비%"],1)+"%":null)}${m("업종RS",c.업종RS순위!=null?c.업종RS순위+"위":null)}${m("SM",c.스마트머니국면)}</div>
       <div class="ai-pick-bd"><div><b>근거</b> ${E(p.reason)}</div><div><b class="down">리스크</b> ${E(p.risk||"-")}</div><div><b class="faint">관심 제외 조건</b> ${E(p.invalidation||"-")}</div></div></div>`;}).join("");
