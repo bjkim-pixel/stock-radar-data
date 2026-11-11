@@ -322,6 +322,7 @@ tbody tr.clk{cursor:pointer} tbody tr.clk:hover td{background:var(--surface-2)}
 tbody tr.row-hl>td{background:color-mix(in srgb,var(--warn) 24%,var(--surface))!important}
 tbody tr[aria-selected=true] td{background:color-mix(in srgb,var(--up) 8%,var(--surface))}
 td .nm{font-weight:600} td .cd{color:var(--ink-3);font-size:10.5px}
+.nx{margin-left:3px;padding:0 3px;border-radius:3px;font-size:9.5px;font-weight:600;line-height:13px;vertical-align:1px}.nx-y{color:#1baf7a;background:color-mix(in srgb,#1baf7a 16%,transparent)}.nx-n{color:var(--ink-3);background:var(--surface-2)}
 .dline{font-size:12.5px;line-height:1.75;border-bottom:1px dashed var(--border);padding:1px 0}.dline .lk{cursor:pointer}
 /* 종목명 칸: 기본 6자 폭(넘으면 …), 머리글 ↔ 손잡이로 폭 조절. 폭이 넓어지면(nm-wide) 업종 표시도 함께 보임 */
 .nmt{display:inline-block;max-width:var(--nmw,6.3em);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
@@ -2413,7 +2414,7 @@ function liveRender(){
   const mt=c=>{const m=S.liveMeta[c];return m?`${m.mk?`<span class="cd" title="${m.mk}">${m.mk==="KOSPI"?"피":m.mk==="KOSDAQ"?"닥":m.mk}</span> `:""}${m.sc?`<span class="cd sc">[${escH(m.sc)}]</span> `:""}`:"";};
   $("#liveBody").innerHTML=top.map((x,i)=>{
     const d=oldRank[x.code]?oldRank[x.code]-(i+1):null,mins=Math.floor((now-(L.since[x.code]||now))/60000);
-    return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--up) 8%,transparent)"':""}><td>${i+1}</td><td class="l">${mt(x.code)}${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':""}</td>
+    return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--up) 8%,transparent)"':""}><td>${i+1}</td><td class="l">${mt(x.code)}${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)}${nxTag(x.code)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':""}</td>
       <td class="num ${sgn(x.changePct)}">${N(x.price,0)}${x.liveAt&&now-x.liveAt<15000?' <span class="up" title="KIS 실시간 체결가">●</span>':""}</td><td class="num ${sgn(x.changePct)}">${pm(x.changePct,2)}%</td>
       <td class="num">${x.shares?fmtCap(x.shares*x.price):"–"}</td><td class="num">${x.amt?N(x.amt/1e8,0)+"억":"–"}</td><td class="num">${x.vol?N(x.vol/1e4,0)+"만":"–"}</td><td class="dim">${mins<1?"방금":mins+"분"}</td>
       <td class="${d>0?"up":d<0?"down":"dim"}">${d==null?(Object.keys(oldRank).length?"신규":"–"):d>0?"▲"+d:d<0?"▼"+(-d):"–"}</td></tr>`;}).join("");
@@ -5226,7 +5227,7 @@ function kwFill(root){
 }
 /* 종목후보 표의 종목 셀·지표 셀(종가~프로그램, 25칸) — 오늘의 종목 표들도 같이 쓰도록 공용화 */
 function scrNameCell(r){return `<td class="l">${favStar(r.code)}<a class="lk nm" data-code="${r.code}" title="${String(r.name).replace(/"/g,"&quot;")}${r.sector?" · "+r.sector:""}">
-        ${r.market?`<span class="cd" title="${r.market}"${r.market==="ETF"?' style="color:var(--accent,#2f6fed);font-weight:700"':""}>${r.market==="KOSPI"?"피":r.market==="KOSDAQ"?"닥":r.market}</span> `:""}${r.sector?`<span class="cd sc">[${r.sector}]</span> `:""}<span class="nmt">${r.name}</span></a></td>`;}
+        ${r.market?`<span class="cd" title="${r.market}"${r.market==="ETF"?' style="color:var(--accent,#2f6fed);font-weight:700"':""}>${r.market==="KOSPI"?"피":r.market==="KOSDAQ"?"닥":r.market}</span> `:""}${r.sector?`<span class="cd sc">[${r.sector}]</span> `:""}<span class="nmt">${r.name}</span></a>${nxTag(r.code)}</td>`;}
 function scrCellChunks(r){return [
 `      <td>${N(+r.close,0)}</td><td class="${sgn(+r.change_pct)}">${pm(+r.change_pct,1)}%</td>
       <td class="${sgn(+r.weight_per_share)}">${r.weight_per_share==null?"–":pm(+r.weight_per_share*100,1)+"%"}</td>`,
@@ -6632,6 +6633,19 @@ function smxModel(rows){
   return {rows,combo,pk,tr,build,dd,ratio,r5,r20,since,pchg,st,cls,subj,indiv,close,L};
 }
 // 종목후보 등 표의 "외+기 고점" 4열 채우기 — 종목후보 '스마트머니 기간' 선택(#fSmxW)에 맞춰 smx_state 값을 넣는다
+/* 거래 시간 표시: 넥 = 대체거래소(NXT) 거래 가능(20시 마감) · 정 = 정규장만(15:30 마감). stocks.nxt_ok 기준, 확인 안 된 종목은 표시 없음 */
+function nxTag(c){return `<span class="nx" data-nx="${c}"></span>`;}
+async function nxLoad(){
+  if(S.nxtMap)return S.nxtMap;if(S._nxtP)return S._nxtP;
+  S._nxtP=(async()=>{const m={};try{for(let off=0;off<6000;off+=1000){const a=await q("stocks",`select=code,nxt_ok&nxt_ok=not.is.null&order=code.asc&limit=1000&offset=${off}`);a.forEach(r=>m[r.code]=!!r.nxt_ok);if(a.length<1000)break;}}catch(e){}S.nxtMap=m;return m;})();
+  return S._nxtP;
+}
+function nxFill(){
+  const els=[...document.querySelectorAll("span.nx[data-nx]:not([data-d])")];if(!els.length)return;
+  if(!S.nxtMap){nxLoad().then(()=>nxFill());return;}
+  els.forEach(e=>{e.dataset.d="1";const v=S.nxtMap[e.dataset.nx];if(v==null)return;
+    e.textContent=v?"넥":"정";e.className="nx "+(v?"nx-y":"nx-n");e.title=v?"NXT(대체거래소) 거래 가능 — 20시까지 거래":"정규장만 거래 — 15:30 마감";});
+}
 const LEAD_TR={UP:["매수 추세","up",6],RESUME:["매수 재개","up",5],SLOW:["매수 둔화","warn",4],REBUY:["매도 후 재매수","warn",3],FLAT:["변동 없음","dim",2],TURN:["매도 전환","down",1],DOWN:["매도 추세","down",0]};
 function smxFill(){
   const cells=[...document.querySelectorAll("td[data-smx]")];if(!cells.length)return;
@@ -6655,7 +6669,7 @@ function smxFill(){
     td.classList.remove("up","down","dim","warn");if(c)td.classList.add(c);
   });
 }
-{let pend=false;new MutationObserver(()=>{if(!pend){pend=true;requestAnimationFrame(()=>{pend=false;smxFill();});}}).observe(document.body,{childList:true,subtree:true});
+{let pend=false;new MutationObserver(()=>{if(!pend){pend=true;requestAnimationFrame(()=>{pend=false;smxFill();nxFill();});}}).observe(document.body,{childList:true,subtree:true});
  document.addEventListener("change",e=>{if(e.target.id==="fSmxW")setTimeout(smxFill,0);});}
 async function smxLoadMap(){
   if(S.smxMap)return S.smxMap;
@@ -8620,7 +8634,7 @@ async function loadSw(){
   // 편중 점검: 사후 검증 구간의 종결 거래에서 종목별 누적 수익이 큰 상위 5종목
   const TC=tr.filter(r=>r.status==="closed"&&r.ret_pct!=null),byC={};TC.forEach(r=>{byC[r.code]=(byC[r.code]||0)+(+r.ret_pct);});
   const topC=Object.entries(byC).sort((a,b)=>b[1]-a[1]).slice(0,5).map(x=>x[0]),topSet=new Set(topC);
-  const nmc=r=>`<a class="lk nm" data-code="${r.code}">${escH(codeName(r.code))}</a>${topSet.has(r.code)?' <span class="tg" title="과거 신호 수익의 상당 부분을 만든 상위 5종목 중 하나" style="background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)">수익 쏠림</span>':""}`;
+  const nmc=r=>`<a class="lk nm" data-code="${r.code}">${escH(codeName(r.code))}</a>${nxTag(r.code)}${topSet.has(r.code)?' <span class="tg" title="과거 신호 수익의 상당 부분을 만든 상위 5종목 중 하나" style="background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)">수익 쏠림</span>':""}`;
   $("#swPickBody").innerHTML=P.length?P.map(r=>`<tr><td class="l">${r.kind==="new"?(t.gate_open?'<b class="up">오늘 매수</b>':'조건 충족(보류)'):"보유 중"}</td><td class="l">${nmc(r)}</td><td>${nx(r)}</td>
     <td data-sclose="${r.code}">${N(+r.close,0)}</td><td class="${sgn(+r.chg)}" data-schg="${r.code}">${pm(+r.chg,1)}%</td><td>${N(+r.amt_eok,0)}억</td><td>${N(+r.cap_eok,0)}억</td><td class="${sgn(+r.sm5_pct)}">${pm(+r.sm5_pct,2)}%</td>
     <td class="dim">${shortDate(r.entry_date)}</td><td>${N(+r.entry_close,0)}</td><td>${t.gate_open?r.days_left+"일":"–"}</td><td>${r.entry_close?N(+r.entry_close*0.9,0):"–"}</td><td>${r.vol20==null?"–":N(+r.vol20,1)+"%"}</td></tr>`).join("")
