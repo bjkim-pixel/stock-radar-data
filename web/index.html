@@ -1416,7 +1416,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="card" style="margin-top:16px"><h3>당일 상승률 TOP 20 <span class="r" id="liveStat">연결 중…</span></h3>
     <div class="qf seg" id="liveCap" style="margin-bottom:8px"><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="10000" aria-pressed="false">1조 이상</button><button class="fchip" data-v="40000" aria-pressed="false">4조 이상</button><button class="fchip" data-v="100000" aria-pressed="false">10조 이상</button></div>
     <div class="note" style="margin-bottom:8px">시가총액 기준으로 나눠 오늘 등락률 상위를 봅니다(전체 = 코스피·코스닥 전 종목, 나머지는 시총이 기준 이상인 종목만). 순위 후보는 KIS에서 8초마다 새로 받고, 후보 25종목의 가격은 KIS 실시간 체결가로 바로 갱신해 순위를 다시 매깁니다. 순위 밖으로 밀린 종목은 빠지고 새로 올라온 종목이 들어옵니다. ETF·ETN·스팩·우선주는 뺐습니다. 시총 = 상장주식수 × 현재가.</div>
-    <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목</th><th>현재가</th><th>등락률</th><th>시총</th><th>거래대금</th><th>거래량</th><th title="이 화면에서 TOP 20에 들어온 뒤 지난 시간">진입 후</th><th>변동</th></tr></thead>
+    <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체(업종 표시) 순환">↔</span></th><th>현재가</th><th>등락률</th><th>시총</th><th>거래대금</th><th>거래량</th><th title="이 화면에서 TOP 20에 들어온 뒤 지난 시간">진입 후</th><th>변동</th></tr></thead>
       <tbody id="liveBody"><tr><td colspan="9" class="load sk"></td></tr></tbody></table></div>
   </div>
   <div class="card" style="margin-top:12px"><h3>진입·이탈 기록 <span class="r">이 화면을 연 뒤</span></h3><div id="liveLog" class="note">아직 변동이 없습니다</div></div>
@@ -2359,6 +2359,7 @@ const SW_LIVE_MAX=20;
 
 /* ══ 실시간 종목: 등락률 상위 20 — 순위 후보는 릴레이 /live-top(8초), 가격은 KIS 웹소켓 체결가 ══ */
 const LIVE_TOP_N=20,LIVE_POOL=25,LIVE_EXCL=/스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/;
+S.liveMeta=S.liveMeta||{};   // code -> {mk, sc} (stocks.market · v_stock_sector.sector)
 S.live={min:0,on:false,pool:{},since:{},prev:{},log:[],timer:null,paint:0,at:0};
 function liveStart(){
   const L=S.live;if(L.on)return;L.on=true;L.pool={};L.since={};L.prev={};L.log=[];
@@ -2387,6 +2388,16 @@ function liveTick(code,m){
   if(m.accVol!=null)x.vol=+m.accVol;
   if(!L.paint)L.paint=setTimeout(()=>{L.paint=0;liveRender();},600);   // 틱이 몰려도 0.6초에 한 번만 다시 그림
 }
+async function liveMeta(codes){
+  const need=codes.filter(c=>!(c in S.liveMeta));if(!need.length)return false;
+  need.forEach(c=>S.liveMeta[c]=null);                    // 중복 조회 방지(DB에 없으면 null로 남음)
+  try{
+    const l=need.join(",");
+    const [a,b]=await Promise.all([q("stocks",`select=code,market&code=in.(${l})`),q("v_stock_sector",`select=code,sector&code=in.(${l})`).catch(()=>[])]);
+    a.forEach(r=>S.liveMeta[r.code]={mk:r.market,sc:""});b.forEach(r=>{if(S.liveMeta[r.code])S.liveMeta[r.code].sc=r.sector||"";});
+    return true;
+  }catch(e){return false;}
+}
 function liveRender(){
   const L=S.live;if(!L.on)return;
   const arr=Object.values(L.pool).filter(x=>!L.min||!x.shares||x.shares*x.price>=L.min*1e8).sort((a,b)=>b.changePct-a.changePct),top=arr.slice(0,LIVE_TOP_N),now=Date.now(),hm=t=>new Date(t).toLocaleTimeString("ko-KR",{hour12:false});
@@ -2398,9 +2409,11 @@ function liveRender(){
   }else top.forEach(x=>L.since[x.code]=now);
   const oldRank=L.prev;L.prev={};top.forEach((x,i)=>L.prev[x.code]=i+1);
   const known=new Set((S.codes||[]).map(c=>c.code));
+  liveMeta(top.map(x=>x.code)).then(ch=>{if(ch&&S.live.on)liveRender();});
+  const mt=c=>{const m=S.liveMeta[c];return m?`${m.mk?`<span class="cd" title="${m.mk}">${m.mk==="KOSPI"?"피":m.mk==="KOSDAQ"?"닥":m.mk}</span> `:""}${m.sc?`<span class="cd sc">[${escH(m.sc)}]</span> `:""}`:"";};
   $("#liveBody").innerHTML=top.map((x,i)=>{
     const d=oldRank[x.code]?oldRank[x.code]-(i+1):null,mins=Math.floor((now-(L.since[x.code]||now))/60000);
-    return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--up) 8%,transparent)"':""}><td>${i+1}</td><td class="l">${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':""}</td>
+    return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--up) 8%,transparent)"':""}><td>${i+1}</td><td class="l">${mt(x.code)}${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':""}</td>
       <td class="num ${sgn(x.changePct)}">${N(x.price,0)}${x.liveAt&&now-x.liveAt<15000?' <span class="up" title="KIS 실시간 체결가">●</span>':""}</td><td class="num ${sgn(x.changePct)}">${pm(x.changePct,2)}%</td>
       <td class="num">${x.shares?fmtCap(x.shares*x.price):"–"}</td><td class="num">${x.amt?N(x.amt/1e8,0)+"억":"–"}</td><td class="num">${x.vol?N(x.vol/1e4,0)+"만":"–"}</td><td class="dim">${mins<1?"방금":mins+"분"}</td>
       <td class="${d>0?"up":d<0?"down":"dim"}">${d==null?(Object.keys(oldRank).length?"신규":"–"):d>0?"▲"+d:d<0?"▼"+(-d):"–"}</td></tr>`;}).join("");
