@@ -835,6 +835,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <button data-v="fav">★ 관심</button>
       <button data-v="journal">투자일지</button></div></div>
     <div class="ng" data-g="mkt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">시황</div><div class="ngi">
+      <button data-v="live">실시간 종목</button>
       <button aria-selected="true" data-v="proc">시장</button>
       <button data-v="gm">글로벌 시황</button>
       <button data-v="sector">업종·테마</button></div></div>
@@ -1405,6 +1406,14 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="card hide" id="favEvCard"><h3 id="favEvTitle">AI 의견 근거</h3><div id="favEv"></div></div>
 </section>
 
+<section id="v-live" class="hide">
+  <div class="card" style="margin-top:16px"><h3>당일 상승률 TOP 20 <span class="r" id="liveStat">연결 중…</span></h3>
+    <div class="note" style="margin-bottom:8px">전체 시장(코스피·코스닥)의 오늘 등락률 상위 종목입니다. 순위 후보는 KIS 등락률순위를 8초마다 새로 받고, 후보 25종목의 가격은 KIS 실시간 체결가로 바로 갱신해 순위를 다시 매깁니다. 순위 밖으로 밀린 종목은 빠지고 새로 올라온 종목이 들어옵니다. ETF·ETN·스팩은 뺐습니다.</div>
+    <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목</th><th>현재가</th><th>등락률</th><th>거래대금</th><th>거래량</th><th title="이 화면에서 TOP 20에 들어온 뒤 지난 시간">진입 후</th><th>변동</th></tr></thead>
+      <tbody id="liveBody"><tr><td colspan="8" class="load sk"></td></tr></tbody></table></div>
+  </div>
+  <div class="card" style="margin-top:12px"><h3>진입·이탈 기록 <span class="r">이 화면을 연 뒤</span></h3><div id="liveLog" class="note">아직 변동이 없습니다</div></div>
+</section>
 <section id="v-sw" class="hide">
   <div class="card" style="margin-top:16px"><h3>오늘의 국면과 행동 <span class="r" id="swAsOf"></span></h3>
     <div id="swState"><div class="load sk"></div></div>
@@ -2297,6 +2306,7 @@ function ensureLiveConn(){
     updateLiveCell(m.code,m);
     if(S.favWanted.has(m.code)) updateFavLive(m.code,m);
     if(S.swLiveWanted&&S.swLiveWanted.has(m.code)) updateSwLive(m.code,m);
+    if(S.liveTopWanted&&S.liveTopWanted.has(m.code)) liveTick(m.code,m);
     if(m.sangtta) updateI2Live(m.code,m);
   };
   ws.onclose=()=>{
@@ -2313,7 +2323,7 @@ function ensureLiveConn(){
 // 서로의 구독을 덮어쓰지 않도록, 원하는 코드 집합을 따로 들고 있다가
 // 합집합으로만 실제 구독을 갱신한다.
 function reconcileLiveSubscription(){
-  const want=new Set([...S.swingWanted,...S.sangttaWanted,...S.favWanted,...(S.swLiveWanted||[])]);
+  const want=new Set([...S.swingWanted,...S.sangttaWanted,...S.favWanted,...(S.swLiveWanted||[]),...(S.liveTopWanted||[])]);
   const cur=S.liveSubscribed;
   const toAdd=[...want].filter(c=>!cur.has(c));
   const toRemove=[...cur].filter(c=>!want.has(c));
@@ -2339,6 +2349,56 @@ function updateFavLive(code,m){
 }
 // 국면 전략 표(①·④): 종가·등락 셀을 KIS 실시간 체결가로 덮어쓴다. 화면을 떠나면 구독 해제
 const SW_LIVE_MAX=20;
+
+/* ══ 실시간 종목: 등락률 상위 20 — 순위 후보는 릴레이 /live-top(8초), 가격은 KIS 웹소켓 체결가 ══ */
+const LIVE_TOP_N=20,LIVE_POOL=25,LIVE_EXCL=/스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/;
+S.live={on:false,pool:{},since:{},prev:{},log:[],timer:null,paint:0,at:0};
+function liveStart(){
+  const L=S.live;if(L.on)return;L.on=true;L.pool={};L.since={};L.prev={};L.log=[];
+  $("#liveBody").innerHTML='<tr><td colspan="8" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";
+  liveFetch();L.timer=setInterval(liveFetch,8000);
+}
+function liveStop(){const L=S.live;L.on=false;clearInterval(L.timer);L.timer=null;S.liveTopWanted=new Set();reconcileLiveSubscription();}
+async function liveFetch(){
+  const L=S.live;if(!L.on)return;
+  try{
+    const r=await fetch(RELAY_HTTP_BASE+"/live-top",{cache:"no-store"});const j=await r.json();
+    if(!L.on)return;
+    if(!j.ok&&!(j.rows||[]).length){$("#liveStat").textContent="순위를 받지 못했습니다 — "+(j.err||j.error||"");return;}
+    const rows=j.rows.filter(x=>!LIVE_EXCL.test(x.name||""));   // 우선주는 그대로 두고 스팩·ETF·ETN만 제외
+    const pool={};rows.slice(0,LIVE_POOL).forEach(x=>{const old=L.pool[x.code];pool[x.code]={...x,live:old&&old.liveAt>j.ts?old.price:null};if(old&&old.liveAt>j.ts){pool[x.code].price=old.price;pool[x.code].changePct=old.changePct;pool[x.code].liveAt=old.liveAt;}});
+    L.pool=pool;L.at=j.ts;
+    S.liveTopWanted=new Set(Object.keys(pool));reconcileLiveSubscription();
+    liveRender();
+  }catch(e){$("#liveStat").textContent="릴레이 서버 연결 실패 — 잠시 후 다시 시도합니다";}
+}
+function liveTick(code,m){
+  const L=S.live;if(!L.on||!L.pool[code]||m.price==null)return;
+  const x=L.pool[code];x.price=+m.price;if(m.changePct!=null)x.changePct=+m.changePct;x.liveAt=Date.now();
+  if(m.accVol!=null)x.vol=+m.accVol;
+  if(!L.paint)L.paint=setTimeout(()=>{L.paint=0;liveRender();},600);   // 틱이 몰려도 0.6초에 한 번만 다시 그림
+}
+function liveRender(){
+  const L=S.live;if(!L.on)return;
+  const arr=Object.values(L.pool).sort((a,b)=>b.changePct-a.changePct),top=arr.slice(0,LIVE_TOP_N),now=Date.now(),hm=t=>new Date(t).toLocaleTimeString("ko-KR",{hour12:false});
+  const cur=new Set(top.map(x=>x.code)),prevSet=new Set(Object.keys(L.prev));
+  if(Object.keys(L.prev).length){
+    top.forEach(x=>{if(!prevSet.has(x.code)){L.since[x.code]=now;L.log.unshift(`<span class="up">▲ 진입</span> ${escH(x.name)} ${pm(x.changePct,1)}% · ${hm(now)}`);}});
+    prevSet.forEach(c=>{if(!cur.has(c)){delete L.since[c];const x=L.pool[c]||{name:codeName(c),changePct:0};L.log.unshift(`<span class="down">▼ 이탈</span> ${escH(x.name)} ${pm(x.changePct,1)}% · ${hm(now)}`);}});
+    L.log=L.log.slice(0,30);
+  }else top.forEach(x=>L.since[x.code]=now);
+  const oldRank=L.prev;L.prev={};top.forEach((x,i)=>L.prev[x.code]=i+1);
+  const known=new Set((S.codes||[]).map(c=>c.code));
+  $("#liveBody").innerHTML=top.map((x,i)=>{
+    const d=oldRank[x.code]?oldRank[x.code]-(i+1):null,mins=Math.floor((now-(L.since[x.code]||now))/60000);
+    return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--up) 8%,transparent)"':""}><td>${i+1}</td><td class="l">${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':""}</td>
+      <td class="num ${sgn(x.changePct)}">${N(x.price,0)}${x.liveAt&&now-x.liveAt<15000?' <span class="up" title="KIS 실시간 체결가">●</span>':""}</td><td class="num ${sgn(x.changePct)}">${pm(x.changePct,2)}%</td>
+      <td class="num">${x.amt?N(x.amt/1e8,0)+"억":"–"}</td><td class="num">${x.vol?N(x.vol/1e4,0)+"만":"–"}</td><td class="dim">${mins<1?"방금":mins+"분"}</td>
+      <td class="${d>0?"up":d<0?"down":"dim"}">${d==null?(Object.keys(oldRank).length?"신규":"–"):d>0?"▲"+d:d<0?"▼"+(-d):"–"}</td></tr>`;}).join("");
+  $$("#liveBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+  $("#liveLog").innerHTML=L.log.length?L.log.map(t=>`<div>${t}</div>`).join(""):"아직 변동이 없습니다";
+  $("#liveStat").textContent=`${hm(now)} 갱신 · 후보 ${Object.keys(L.pool).length}종목 실시간 구독`;
+}
 function setSwLiveCodes(codes){ S.swLiveWanted=new Set(codes.slice(0,SW_LIVE_MAX)); reconcileLiveSubscription(); }
 function updateSwLive(code,m){
   if(m.price==null)return;
@@ -2956,12 +3016,13 @@ function go(v,detailCode){
   if(cur&&cur!==v)S.prevView=cur;
   if(S.curTab==='fav'&&v!=='fav'&&S.favWanted.size)setFavLiveCodes([]);
   if(S.curTab==='sw'&&v!=='sw'&&S.swLiveWanted&&S.swLiveWanted.size)setSwLiveCodes([]);
+  if(S.curTab==='live'&&v!=='live')liveStop();
   S.curTab=v;
   if(!S._keepBack)S.backAI=false;
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc");setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -3011,6 +3072,7 @@ function go(v,detailCode){
     loadFlowRawData().then(initTdFlowCard).catch(e=>{console.error("수급 상위",e);S._tdFlowInit=false;$("#tdFlowBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});}
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);}).finally(()=>{tdFitSoon();setTimeout(tdFit,2500);});}
   if(v==='today')tdFitSoon();
+  if(v==="live")liveStart();
   if(v==="sw")loadSw().catch(e=>{console.error("국면 전략",e);});
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
   if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadHeatmap();loadFlowSectorMap().catch(()=>{});loadFlowTimeline().catch(()=>{});loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}

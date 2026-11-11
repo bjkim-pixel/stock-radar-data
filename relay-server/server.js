@@ -3135,6 +3135,37 @@ function handleThemes(req, res) {
   res.writeHead(405); res.end(); return true;
 }
 
+/* ── 실시간 종목 페이지: 전체 시장 등락률 상위 후보(KIS 등락률순위 FHPST01700000)를 8초 캐시로 내려준다.
+   화면이 열려 있는 동안만 호출되고(요청이 올 때만 갱신), 가격 자체는 브라우저가 웹소켓으로 따로 구독해 실시간으로 갱신한다. */
+let _liveTopCache = { at: 0, rows: [], err: null }, _liveTopBusy = null;
+async function refreshLiveTop() {
+  if (_liveTopBusy) return _liveTopBusy;
+  _liveTopBusy = (async () => {
+    try {
+      const rows = await fetchChangeRateRank(30);
+      _liveTopCache = {
+        at: Date.now(), err: rows.length ? null : '순위 응답 없음',
+        rows: rows.map((o, i) => ({
+          rank: i + 1, code: o.stck_shrn_iscd || o.mksc_shrn_iscd, name: o.hts_kor_isnm || '',
+          price: safeNum(o.stck_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn),
+        })).filter(r => r.code),
+      };
+    } catch (e) { _liveTopCache = { at: Date.now(), rows: _liveTopCache.rows, err: e.message }; }
+    finally { _liveTopBusy = null; }
+  })();
+  return _liveTopBusy;
+}
+function handleLiveTop(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path !== '/live-top') return false;
+  accessCors(req, res, 'GET, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const send = () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: !_liveTopCache.err, ts: _liveTopCache.at, err: _liveTopCache.err, rows: _liveTopCache.rows })); };
+  if (Date.now() - _liveTopCache.at < 8000) { send(); return true; }
+  refreshLiveTop().then(send).catch(e => { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: e.message })); });
+  return true;
+}
+
 function handleAccessLog(req, res) {
   const path = (req.url || '').split('?')[0];
   if (path === '/visit-log') {
@@ -3169,7 +3200,7 @@ function handleAccessLog(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleLiveTop(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;
