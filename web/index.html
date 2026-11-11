@@ -809,6 +809,12 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 #gmBody td.gm-lo{background:color-mix(in srgb,var(--down) 12%,transparent)}
 .gm-ph{font-size:10px;font-weight:700;white-space:nowrap}
 .gm-ph.lead{color:var(--up)} .gm-ph.impr{color:var(--s1)} .gm-ph.weak{color:var(--ink-3)} .gm-ph.lag{color:var(--down)}
+
+/* 실시간 종목: 표 안쪽 스크롤 없이 화면 폭에 맞춰 한 번에 보이게(필요하면 손가락으로 확대·축소) */
+#v-live .tw{overflow:visible!important}
+#v-live table{width:100%;table-layout:auto}
+#v-live th,#v-live td{white-space:nowrap}
+@media(max-width:700px){#v-live table{font-size:10.5px}#v-live th,#v-live td{padding:4px 2px}#v-live .card{padding-left:8px;padding-right:8px}#v-live .faint{display:none}#v-live thead th:nth-child(7),#v-live tbody td:nth-child(7){display:none}}
 </style>
 </head>
 <body>
