@@ -156,6 +156,13 @@ def load_stocks():
                     "WHERE security_type='STOCK' ORDER BY code")
         rows = cur.fetchall()
 
+    # CODES_FILE: 지정하면 그 파일의 종목코드(줄/쉼표 구분)만 백필 (신규 종목만 돌릴 때)
+    cf = os.environ.get("CODES_FILE", "").strip()
+    if cf and os.path.exists(cf):
+        only = set(x.strip().zfill(6) for x in open(cf).read().replace(",", "\n").split() if x.strip())
+        rows = [r for r in rows if (r[0] or "").strip() in only]
+        print(f"   ▶ CODES_FILE 적용: {len(rows)}종목만 백필")
+
     # KIS는 6자리 종목코드만 받습니다. 길이가 다른 값이 섞여 있으면
     # rt_cd=2 "INVALID INPUT_FILED_SIZE [FID_INPUT_ISCD]" 로 실패합니다.
     good, bad = {}, []

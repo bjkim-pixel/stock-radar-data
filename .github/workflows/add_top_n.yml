@@ -1,0 +1,43 @@
+name: "[수시] 시총 상위 N위 종목 추가 + 백필 + 업종 매핑"
+on:
+  workflow_dispatch:
+    inputs:
+      top_n: {description: "시총 상위 N위(우선주·리츠·스팩 제외)", default: "400"}
+      start_date: {description: "백필 시작일", default: "20250901"}
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - name: 신규 종목 등록
+        run: TOP_N="${{ inputs.top_n }}" python 156_add_top_n.py | tee report.md
+      - name: 백필 (신규 종목만)
+        run: |
+          if [ -s new_codes.txt ]; then
+            CODES_FILE=new_codes.txt python 04_backfill.py "${{ inputs.start_date }}" "$(date +%Y%m%d)" 2>&1 | tail -n 60 > backfill_tail.txt
+            { echo; echo "## 백필 로그(끝부분)"; echo '```'; cat backfill_tail.txt; echo '```'; } >> report.md
+          fi
+      - name: 업종 KIS 갱신 + 매핑
+        run: |
+          python 21_sector_kis_refresh.py 2>&1 | tail -n 15 > sec_tail.txt || true
+          python 157_map_sectors.py >> report.md
+          { echo; echo "## 업종 갱신 로그"; echo '```'; cat sec_tail.txt; echo '```'; } >> report.md
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: add-top-n-report
+          file: report.md
