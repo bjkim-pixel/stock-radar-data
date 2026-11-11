@@ -322,7 +322,7 @@ tbody tr.clk{cursor:pointer} tbody tr.clk:hover td{background:var(--surface-2)}
 tbody tr.row-hl>td{background:color-mix(in srgb,var(--warn) 24%,var(--surface))!important}
 tbody tr[aria-selected=true] td{background:color-mix(in srgb,var(--up) 8%,var(--surface))}
 td .nm{font-weight:600} td .cd{color:var(--ink-3);font-size:10.5px}
-.nx{margin-left:3px;padding:0 3px;border-radius:3px;font-size:9.5px;font-weight:600;line-height:13px;vertical-align:1px}.nx-y{color:#1baf7a;background:color-mix(in srgb,#1baf7a 16%,transparent)}.nx-n{color:var(--ink-3);background:var(--surface-2)}
+.nx{display:inline-block;min-width:16px;box-sizing:border-box;margin-left:4px;padding:0 3px;border-radius:5px;font-size:9.5px;font-weight:700;line-height:14px;text-align:center;vertical-align:1px;border:1px solid transparent}.nx-y{color:#1baf7a;background:color-mix(in srgb,#1baf7a 14%,transparent);border-color:color-mix(in srgb,#1baf7a 55%,transparent)}.nx-n{color:var(--ink-3);background:var(--surface-2);border-color:var(--border)}
 .dline{font-size:12.5px;line-height:1.75;border-bottom:1px dashed var(--border);padding:1px 0}.dline .lk{cursor:pointer}
 /* 종목명 칸: 기본 6자 폭(넘으면 …), 머리글 ↔ 손잡이로 폭 조절. 폭이 넓어지면(nm-wide) 업종 표시도 함께 보임 */
 .nmt{display:inline-block;max-width:var(--nmw,6.3em);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
@@ -6633,7 +6633,7 @@ function smxModel(rows){
   return {rows,combo,pk,tr,build,dd,ratio,r5,r20,since,pchg,st,cls,subj,indiv,close,L};
 }
 // 종목후보 등 표의 "외+기 고점" 4열 채우기 — 종목후보 '스마트머니 기간' 선택(#fSmxW)에 맞춰 smx_state 값을 넣는다
-/* 거래 시간 표시: 넥 = 대체거래소(NXT) 거래 가능(20시 마감) · 정 = 정규장만(15:30 마감). stocks.nxt_ok 기준, 확인 안 된 종목은 표시 없음 */
+/* 거래 시간 표시(모서리 둥근 사각형): 20 = 대체거래소(NXT) 거래 가능(20시 마감) · 15 = 정규장만(15:30 마감). stocks.nxt_ok 기준, 확인 안 된 종목은 표시 없음 */
 function nxTag(c){return `<span class="nx" data-nx="${c}"></span>`;}
 async function nxLoad(){
   if(S.nxtMap)return S.nxtMap;if(S._nxtP)return S._nxtP;
@@ -6644,7 +6644,7 @@ function nxFill(){
   const els=[...document.querySelectorAll("span.nx[data-nx]:not([data-d])")];if(!els.length)return;
   if(!S.nxtMap){nxLoad().then(()=>nxFill());return;}
   els.forEach(e=>{e.dataset.d="1";const v=S.nxtMap[e.dataset.nx];if(v==null)return;
-    e.textContent=v?"넥":"정";e.className="nx "+(v?"nx-y":"nx-n");e.title=v?"NXT(대체거래소) 거래 가능 — 20시까지 거래":"정규장만 거래 — 15:30 마감";});
+    e.textContent=v?"20":"15";e.className="nx "+(v?"nx-y":"nx-n");e.title=v?"NXT(대체거래소) 거래 가능 — 20시까지 거래":"정규장만 거래 — 15:30 마감";});
 }
 const LEAD_TR={UP:["매수 추세","up",6],RESUME:["매수 재개","up",5],SLOW:["매수 둔화","warn",4],REBUY:["매도 후 재매수","warn",3],FLAT:["변동 없음","dim",2],TURN:["매도 전환","down",1],DOWN:["매도 추세","down",0]};
 function smxFill(){
