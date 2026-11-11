@@ -3135,34 +3135,71 @@ function handleThemes(req, res) {
   res.writeHead(405); res.end(); return true;
 }
 
-/* ── 실시간 종목 페이지: 전체 시장 등락률 상위 후보(KIS 등락률순위 FHPST01700000)를 8초 캐시로 내려준다.
-   화면이 열려 있는 동안만 호출되고(요청이 올 때만 갱신), 가격 자체는 브라우저가 웹소켓으로 따로 구독해 실시간으로 갱신한다. */
-let _liveTopCache = { at: 0, rows: [], err: null }, _liveTopBusy = null;
-async function refreshLiveTop() {
-  if (_liveTopBusy) return _liveTopBusy;
-  _liveTopBusy = (async () => {
+/* ── 실시간 종목 페이지: 등락률 상위 후보를 8초 캐시로 내려준다. 화면이 열려 있는 동안만 호출되고(요청이 올 때만 갱신),
+   가격 자체는 브라우저가 웹소켓으로 따로 구독해 실시간으로 갱신한다.
+   min=0(전체) : 전체 시장 KIS 등락률순위(FHPST01700000) 상위 30.
+   min=2000|10000|40000(억원) : 순위 API엔 시총 필터가 없어, DB 최근 시총이 min 이상인 종목만 관심종목 시세(FHKST11300006, 30종목씩)로 훑어 등락률 상위를 고른다. */
+const PREF_NAME_RE = /(우[A-C]?|우\(전환\)|[0-9]우[A-C]?)$/;
+const isPreferred = (code, name) => PREF_NAME_RE.test(name || '') || /^\d{5}[5-9]$/.test(code) || /^\d{4}[0-9A-Z][KLM]$/.test(code);
+let _liveUni = { at: 0, rows: [] };                 // [{code, cap(원)}] — DB 최근 시총 2천억↑
+async function loadLiveUniverse() {
+  if (Date.now() - _liveUni.at < 3600e3 && _liveUni.rows.length) return _liveUni.rows;
+  const d = await sbGet('daily_price?select=trade_date&order=trade_date.desc&limit=1');
+  const rows = await sbGet(`daily_price?select=code,market_cap&trade_date=eq.${d[0].trade_date}&market_cap=gte.200000000000&limit=3000`);
+  _liveUni = { at: Date.now(), rows: rows.map(r => ({ code: r.code, cap: Number(r.market_cap) })) };
+  return _liveUni.rows;
+}
+async function fetchMultiPrice(codes) {                 // 관심종목 시세 — 최대 30종목/호출
+  const q = new URLSearchParams();
+  codes.forEach((c, i) => { q.set(`FID_COND_MRKT_DIV_CODE_${i + 1}`, 'J'); q.set(`FID_INPUT_ISCD_${i + 1}`, c); });
+  await kisRestThrottle();
+  const token = await getKisRestToken();
+  const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/quotations/intstock-multprice?${q}`, { headers: kisRestHeaders(token, 'FHKST11300006') });
+  if (!res.ok) throw new Error(`multprice HTTP ${res.status}`);
+  const j = await res.json();
+  if (j.rt_cd !== '0') throw new Error(`multprice ${j.msg1 || j.rt_cd}`);
+  return j.output || [];
+}
+const _liveTop = new Map();                             // min -> {at, rows, err}
+const _liveBusy = new Map();
+function refreshLiveTop(min) {
+  if (_liveBusy.has(min)) return _liveBusy.get(min);
+  const pr = (async () => {
+    const shares = c => listedSharesMap.get(c) || 0;
     try {
-      const rows = await fetchChangeRateRank(30);
-      _liveTopCache = {
-        at: Date.now(), err: rows.length ? null : '순위 응답 없음',
-        rows: rows.map((o, i) => ({
-          rank: i + 1, code: o.stck_shrn_iscd || o.mksc_shrn_iscd, name: o.hts_kor_isnm || '',
-          price: safeNum(o.stck_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn),
-        })).filter(r => r.code),
-      };
-    } catch (e) { _liveTopCache = { at: Date.now(), rows: _liveTopCache.rows, err: e.message }; }
-    finally { _liveTopBusy = null; }
+      let rows;
+      if (!min) {
+        const r = await fetchChangeRateRank(30);
+        rows = r.map(o => ({ code: o.stck_shrn_iscd || o.mksc_shrn_iscd, name: o.hts_kor_isnm || '', price: safeNum(o.stck_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }));
+      } else {
+        const uni = (await loadLiveUniverse()).filter(u => u.cap >= min * 1e8);
+        const all = [];
+        for (let i = 0; i < uni.length; i += 30) {
+          const out = await fetchMultiPrice(uni.slice(i, i + 30).map(u => u.code));
+          out.forEach(o => all.push({ code: o.inter_shrn_iscd, name: o.inter_kor_isnm || '', price: safeNum(o.inter2_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }));
+        }
+        rows = all.filter(r => r.code && r.price > 0).sort((a, b) => b.changePct - a.changePct).slice(0, 40);
+      }
+      rows = rows.filter(r => r.code && !isPreferred(r.code, r.name)).map((r, i) => ({ ...r, rank: i + 1, shares: shares(r.code), cap: shares(r.code) * r.price }));
+      if (min) rows = rows.filter(r => !r.cap || r.cap >= min * 1e8);   // 실시간 가격으로 다시 계산한 시총이 기준 아래로 내려간 종목 제외
+      _liveTop.set(min, { at: Date.now(), err: rows.length ? null : '순위 응답 없음', rows });
+    } catch (e) { const old = _liveTop.get(min); _liveTop.set(min, { at: Date.now(), rows: old ? old.rows : [], err: e.message }); }
+    finally { _liveBusy.delete(min); }
   })();
-  return _liveTopBusy;
+  _liveBusy.set(min, pr);
+  return pr;
 }
 function handleLiveTop(req, res) {
   const path = (req.url || '').split('?')[0];
   if (path !== '/live-top') return false;
   accessCors(req, res, 'GET, OPTIONS');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
-  const send = () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: !_liveTopCache.err, ts: _liveTopCache.at, err: _liveTopCache.err, rows: _liveTopCache.rows })); };
-  if (Date.now() - _liveTopCache.at < 8000) { send(); return true; }
-  refreshLiveTop().then(send).catch(e => { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: e.message })); });
+  const m = Number(new URLSearchParams((req.url.split('?')[1]) || '').get('min')) || 0;
+  const min = [2000, 10000, 40000].includes(m) ? m : 0;
+  const send = () => { const c = _liveTop.get(min) || { at: 0, rows: [], err: '없음' }; res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: !c.err, ts: c.at, err: c.err, min, rows: c.rows })); };
+  const c = _liveTop.get(min);
+  if (c && Date.now() - c.at < 8000) { send(); return true; }
+  refreshLiveTop(min).then(send).catch(e => { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: e.message })); });
   return true;
 }
 
