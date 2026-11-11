@@ -830,10 +830,13 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 <aside id="sideNav" aria-label="메뉴">
   <button id="navToggle" type="button" aria-expanded="true" title="메뉴 접기"><span class="ni">☰</span><span class="nt">메뉴</span><span class="nc">접기 ◀</span></button>
   <nav id="tabs">
+    <div class="ng" data-g="sum"><div class="ngh" role="button" tabindex="0" aria-expanded="true">요약</div><div class="ngi">
+      <button data-v="ai">AI 브리핑</button>
+      <button data-v="fav">★ 관심</button>
+      <button data-v="journal">투자일지</button></div></div>
     <div class="ng" data-g="mkt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">시황</div><div class="ngi">
       <button aria-selected="true" data-v="proc">시장</button>
       <button data-v="gm">글로벌 시황</button>
-      <button data-v="ai">AI 브리핑</button>
       <button data-v="sector">업종·테마</button></div></div>
     <div class="ng" data-g="flow"><div class="ngh" role="button" tabindex="0" aria-expanded="true">수급</div><div class="ngi">
       <button data-v="flow">수급 동향</button>
@@ -843,14 +846,12 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="ng" data-g="stock"><div class="ngh" role="button" tabindex="0" aria-expanded="true">종목</div><div class="ngi">
       <button data-v="today">오늘의 종목</button>
       <button data-v="scr">종목 후보</button>
-      <button data-v="fav">★ 관심</button>
       <button data-v="pair">짝꿍매매</button>
       <button data-v="sw">국면 전략</button>
       <button data-v="detail">종목 상세</button></div></div>
     <div class="ng" data-g="mgmt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">관리</div><div class="ngi">
       <button data-v="perf">전략 성과</button>
-      <button data-v="perf2">전략 성과2</button>
-      <button data-v="journal">투자일지</button></div></div>
+      <button data-v="perf2">전략 성과2</button></div></div>
   </nav>
 </aside>
 <div id="navScrim"></div>
