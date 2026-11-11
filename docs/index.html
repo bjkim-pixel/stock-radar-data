@@ -5318,7 +5318,8 @@ async function loadDetail(code){
     <div style="display:flex;flex-direction:column;gap:2px">
       <div class="faint" style="font-size:12px">${sum.sector||"–"}</div>
       <div class="faint" style="font-size:12px">${isEtf?(sum.etf_field||"ETF"):"업종RS "+(sum.sector_rs_rank?sum.sector_rs_rank+"위":"–")}</div>
-    </div>`;
+    </div>
+    <div id="dLead" style="display:none;flex-direction:column;gap:2px;font-size:12px"></div>`;
   if(!isEtf)perFill(code,+last.close,$("#dPer"));
   {const e=$("#dKw");kwLoadMap().then(m=>{const v=m[code];if(e&&v)e.innerHTML=`매집 6월 <b style="${kwStyle(v.r6)}">${kwFmt(v.r6)}</b> · 8월 <b style="${kwStyle(v.r8)}">${kwFmt(v.r8)}</b>`;});}
   const cpb=$("#dCopyName");
@@ -5360,6 +5361,7 @@ async function loadDetail(code){
   const kOf={"금융투자":"fin_inv_cum","투신":"inv_trust_cum","연기금":"pension_cum","사모":"pe_cum",
     "개인":"individual_cum","기타법인":"corp_other_cum"};
   minis.forEach(m=>{if(m[2]==null)m[2]=+last[kOf[m[0]]]/EOK;});
+  try{renderLead(rows);}catch(e){console.error("주도 세력",e);}
   try{renderSmx();}catch(e){console.error("매집·이탈 진단",e);$("#dSmxCard").style.display="none";}
   $("#dMinis").innerHTML=minis.map(([n,,lastV],i)=>
     `<div class="mini"><h4>${n}<span class="${sgn(lastV)}">${pm(lastV,0)}억</span></h4>
@@ -6557,6 +6559,29 @@ async function smxLoadMap(){
     if(part.length<1000)break;
   }
   S.smxMap=m;return m;
+}
+/* 주도 세력: 전체 기간 외+기 매집 구간(저점→고점)에서 순매수가 가장 큰 주체(없으면 기간 전체 순매수). 추세 = 그 주체의 최근 5일·20일 순매수 방향 */
+function renderLead(all){
+  const el=$("#dLead");if(!el)return;el.style.display="none";
+  if(!all||all.length<10||all[0].foreign_cum==null)return;
+  const m=smxModel(all),L=m.L;
+  const cand=m.subj.filter(x=>!x.flat).map(x=>({...x,score:m.build>0?x.acc:x.v[L]})).sort((a,b)=>b.score-a.score);
+  const top=cand[0];if(!top||top.score<=0)return;      // 외+기 어느 주체도 순매수 우위가 없으면 표시하지 않음
+  const T=0.5;                                          // 억원 미만은 변동 없음으로 본다
+  let lab,cls;
+  if(top.r20>T&&top.r5>T){lab="매수 추세";cls="up";}
+  else if(top.r20>T){lab="매수 둔화";cls="warn";}
+  else if(top.r20<-T&&top.r5<-T){lab="매도 추세";cls="down";}
+  else if(top.r20<-T){lab="매도 후 재매수";cls="warn";}
+  else if(top.r5>T){lab="매수 재개";cls="up";}
+  else if(top.r5<-T){lab="매도 전환";cls="down";}
+  else{lab="변동 없음";cls="dim";}
+  const rec=top.acc>0&&top.after<0?` · 매집분 ${N(-top.after/top.acc*100,0)}% 회수`:"";
+  const sec=cand[1]&&cand[1].score>0?cand[1]:null;
+  const tip=`${top.nm} 매집 구간 ${pm(top.score,0)}억 · 최근 5일 ${pm(top.r5,0)}억 / 20일 ${pm(top.r20,0)}억${rec}`;
+  el.innerHTML=`<div title="${tip}"><span class="faint">주도</span> <b>${top.nm}</b> <b class="${cls}">${lab}</b></div>
+    <div class="faint num" style="font-size:11px" title="${tip}">${pm(top.score,0)}억 · 5일 ${pm(top.r5,0)} · 20일 ${pm(top.r20,0)}${sec?` · 2위 ${sec.nm}`:""}</div>`;
+  el.style.display="flex";
 }
 function renderSmx(){
   const all=S.chart&&S.chart.rows,card=$("#dSmxCard");
