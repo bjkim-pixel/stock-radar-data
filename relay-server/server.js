@@ -3138,14 +3138,14 @@ function handleThemes(req, res) {
 /* ── 실시간 종목 페이지: 등락률 상위 후보를 8초 캐시로 내려준다. 화면이 열려 있는 동안만 호출되고(요청이 올 때만 갱신),
    가격 자체는 브라우저가 웹소켓으로 따로 구독해 실시간으로 갱신한다.
    min=0(전체) : 전체 시장 KIS 등락률순위(FHPST01700000) 상위 30.
-   min=2000|10000|40000(억원) : 순위 API엔 시총 필터가 없어, DB 최근 시총이 min 이상인 종목만 관심종목 시세(FHKST11300006, 30종목씩)로 훑어 등락률 상위를 고른다. */
+   min=10000|40000|100000(억원: 1조·4조·10조) : 순위 API엔 시총 필터가 없어, DB 최근 시총이 min 이상인 종목만 관심종목 시세(FHKST11300006, 30종목씩)로 훑어 등락률 상위를 고른다. */
 const PREF_NAME_RE = /(우[A-C]?|우\(전환\)|[0-9]우[A-C]?)$/;
 const isPreferred = (code, name) => PREF_NAME_RE.test(name || '') || /^\d{5}[5-9]$/.test(code) || /^\d{4}[0-9A-Z][KLM]$/.test(code);
-let _liveUni = { at: 0, rows: [] };                 // [{code, cap(원)}] — DB 최근 시총 2천억↑
+let _liveUni = { at: 0, rows: [] };                 // [{code, cap(원)}] — DB 최근 시총 1조↑
 async function loadLiveUniverse() {
   if (Date.now() - _liveUni.at < 3600e3 && _liveUni.rows.length) return _liveUni.rows;
   const d = await sbGet('daily_price?select=trade_date&order=trade_date.desc&limit=1');
-  const rows = await sbGet(`daily_price?select=code,market_cap&trade_date=eq.${d[0].trade_date}&market_cap=gte.200000000000&limit=3000`);
+  const rows = await sbGet(`daily_price?select=code,market_cap&trade_date=eq.${d[0].trade_date}&market_cap=gte.1000000000000&limit=3000`);
   _liveUni = { at: Date.now(), rows: rows.map(r => ({ code: r.code, cap: Number(r.market_cap) })) };
   return _liveUni.rows;
 }
@@ -3195,7 +3195,7 @@ function handleLiveTop(req, res) {
   accessCors(req, res, 'GET, OPTIONS');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
   const m = Number(new URLSearchParams((req.url.split('?')[1]) || '').get('min')) || 0;
-  const min = [2000, 10000, 40000].includes(m) ? m : 0;
+  const min = [10000, 40000, 100000].includes(m) ? m : 0;
   const send = () => { const c = _liveTop.get(min) || { at: 0, rows: [], err: '없음' }; res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: !c.err, ts: c.at, err: c.err, min, rows: c.rows })); };
   const c = _liveTop.get(min);
   if (c && Date.now() - c.at < 8000) { send(); return true; }
