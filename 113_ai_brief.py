@@ -224,7 +224,22 @@ def build_digest(conn):
                 "업종RS순위": r.get("sector_rs_rank"), "추세추종신호": r.get("signal_type") == "V4_CANDIDATE",
                 "스마트머니국면": {"ACC": "매집·보합", "MARKUP": "매집·상승", "DIST": "분산·전가", "DOWN": "분산·이탈", "NEUTRAL": "중립"}.get(u["sm"].get("phase")),
                 "규칙점수": u["score"], "리스크": u["risk"]}
-    cands = [feat(u) for u in U[:30]]
+    # 관심종목 의견(score_mine)과 같은 절대 기준으로 진입 점수를 계산 — 추천이 "수급만 좋고 추세·위치가 나쁜" 종목으로 새지 않게 한다.
+    # (2026-11-11: 디앤디파마텍이 스윙 추천에는 오르고 관심종목 의견은 '관망'으로 갈린 사례)
+    for u in U[:80]:
+        try:
+            sc_, act_, _ev, _s, _r, _p = score_mine(u["r"], per.get(u["r"]["code"], {}), u["sm"], sec_rank, len(secs), False, None, None)
+        except Exception:
+            sc_, act_ = 0, "관망"
+        u["entry"], u["entry_act"] = sc_, act_
+    good = [u for u in U[:80] if u.get("entry_act") == "매수"]
+    if len(good) < 10:   # 진입 가능 종목이 너무 적은 날은 진입점수가 높은 순으로 보충(진입판정 필드로 구분됨)
+        rest = sorted([u for u in U[:80] if u.get("entry_act") != "매수"], key=lambda u: -u.get("entry", -99))
+        good = good + rest[:10 - len(good)]
+    log(f"- 후보 {len(U[:80])}개 중 진입판정 '매수' {sum(1 for u in U[:80] if u.get('entry_act') == '매수')}개 → 후보 {min(len(good), 30)}개")
+    cands = []
+    for u in good[:30]:
+        x = feat(u); x["진입점수"] = u.get("entry"); x["진입판정"] = u.get("entry_act"); cands.append(x)
     D["후보종목"] = cands
     top = lambda key, n=8, rev=True: [{"name": u["r"].get("name"), "code": u["r"]["code"], "업종": u["r"].get("sector"), "등락%": r1(u["r"].get("change_pct"), 2),
                                        "외기합오늘억": round(u["combo1"] / EOK)} for u in sorted(U, key=key, reverse=rev)[:n]]
@@ -476,7 +491,7 @@ def prompt_of(D, err=None):
     p = f"""너는 한국 주식 단기 스윙(보유 3~10거래일) 전문 애널리스트다. 아래 JSON은 오늘 장마감 후 우리 시스템이 계산한 데이터 전부다.
 규칙:
 1) 이 데이터에 있는 숫자·이름만 사용한다. 데이터에 없는 뉴스·실적·수치를 지어내지 않는다.
-2) picks는 반드시 "후보종목" 목록의 code에서만 정확히 5개 고른다. 규칙점수는 참고용이며 그대로 상위 5개를 고르지 말고, 업종 흐름·수급 지속성·매크로와의 정합성·리스크를 종합해 판단한다. 같은 업종에 3개 이상 몰지 않는다.
+2) picks는 반드시 "후보종목" 목록의 code에서만 정확히 5개 고른다. 규칙점수는 참고용이며 그대로 상위 5개를 고르지 말고, 업종 흐름·수급 지속성·매크로와의 정합성·리스크를 종합해 판단한다. 같은 업종에 3개 이상 몰지 않는다. 진입판정이 "매수"인 후보를 우선 고르고, "관망"·"매도" 후보는 다른 후보가 부족할 때만 고르며 그 경우 reason에 진입점수와 관망권임을 밝힌다.
 3) focus_sectors는 3개, 업종 목록의 이름 그대로 쓴다. 업종 판단(focus_sectors, avoid)의 reason에는 반드시 ①국내 수치(RS순위·오늘등락·외기합5일억·거래대금 변화)와 ②해당 업종의 "미국연계"(미국 섹터·테마의 5일·20일 수익률과 판정)를 함께 인용한다. 국내 강세+미국 강세는 '미국 동조로 지속성 근거', 국내 강세+미국 약세는 '미국과 괴리 — 지속성 주의', 국내 약세+미국 강세는 '반등 후보', 국내 약세+미국 약세는 '회피 근거'처럼 두 쪽의 관계를 한 문장에 밝힌다. 미국연계 필드가 없는 업종은 국내 근거만 쓴다. "미국_강약요약"은 us 항목과 업종 판단의 배경으로 활용한다.
 4) 금액 단위는 억원, 등락은 %. 문장은 한국어 존댓말 없이 간결한 보고서체(~임, ~함 아님, 평서문 '~다').
 5) 투자 권유가 아니라 분석 보조임을 전제로, 단정 대신 조건·근거를 분명히 쓴다.
