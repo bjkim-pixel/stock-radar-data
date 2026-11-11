@@ -8509,7 +8509,8 @@ async function loadSw(){
     q("sw_trades","select=*&order=entry_date.desc,amt_eok.desc&limit=2000").catch(()=>[])]);
   if(!dy.length){$("#swState").innerHTML='<div class="load">아직 계산된 데이터가 없습니다</div>';return;}
   const t=dy.at(-1),d=t.trade_date,pos=t.pos20==null?null:+t.pos20*100;
-  $("#swAsOf").textContent=`${d} 종가 기준`;
+  {const k=new Date(Date.now()+9*36e5),kd=k.toISOString().slice(0,10),km=k.getUTCHours()*60+k.getUTCMinutes();
+   $("#swAsOf").textContent=(d===kd&&km<15*60+40)?`${d} 장중 잠정 — 종가 확정 전이라 신호가 바뀔 수 있습니다`:`${d} 종가 기준`;}
   const zone=pos==null?"–":pos<0?"하단 이탈":pos<=20?"하단권":pos<80?"중간":pos<=100?"상단권":"상단 돌파";
   const kpi=(l,v,sub,c)=>`<div class="tile"><div class="lb">${l}</div><div class="vl ${c||""}" style="font-size:18px">${v}</div><div class="sub">${sub||""}</div></div>`;
   $("#swState").innerHTML=`<div class="tiles">`+

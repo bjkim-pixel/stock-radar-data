@@ -3,6 +3,10 @@
 보내는 경우: ① 매수 허용 전환 · ① 오늘 조건 충족 종목 · ② 인버스 신규 신호 · 데이터 점검 경고(153이 만든 sw_check_report.md).
 같은 날 같은 종류는 sw_alert_log 로 한 번만 보낸다."""
 import os, sys, json, requests, psycopg2
+import datetime as _dt
+_kst = _dt.datetime.utcnow() + _dt.timedelta(hours=9)
+if _kst.hour * 60 + _kst.minute < 15 * 60 + 45:      # 장중 계산분은 종가 전 잠정치 — 신호가 바뀔 수 있어 알리지 않는다
+    print("장중(15:45 이전) 계산분 — 알림 건너뜀"); sys.exit(0)
 topic = os.environ.get("NTFY_TOPIC", "").strip()
 conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"]); conn.autocommit = True; cur = conn.cursor()
 cur.execute("create table if not exists public.sw_alert_log(key text primary key, sent_at timestamptz not null default now())")

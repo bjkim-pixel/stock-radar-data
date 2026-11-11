@@ -17,7 +17,9 @@ else:
     if (dt.date.today() - d).days > 4: W.append(f"⚠ 가격 최신일이 {d} 입니다(4일 이상 지남)")
     if n < prev * 0.9: W.append(f"⚠ {d} 종목 수가 {n}개로 직전({prev})보다 10% 넘게 줄었습니다")
     if bad: W.append(f"⚠ {d} 시가·고가·저가가 0인 종목 {bad}개")
-    if nof > n * 0.1: W.append(f"⚠ {d} 수급 데이터가 없는 종목 {nof}개")
+    _k = dt.datetime.utcnow() + dt.timedelta(hours=9)
+    if nof > n * 0.1 and d == _k.date() and _k.hour < 19: L.append(f"- 수급 미확정 {nof}종목(저녁 19시 이전이라 정상)")
+    elif nof > n * 0.1: W.append(f"⚠ {d} 수급 데이터가 없는 종목 {nof}개")
     if nocap > n * 0.05: W.append(f"⚠ {d} 시가총액이 비어 있는 종목 {nocap}개")
     for x in r:
         if x[0].weekday() >= 5: W.append(f"⚠ 주말 날짜 {x[0]} 에 가격 행 {x[1]}개")
