@@ -8706,6 +8706,22 @@ function thCodeFromInput(v){
   const m=/\((\w{6})\)\s*$/.exec(v),q2=v.trim();
   return m?m[1]:((S.codes||[]).find(c=>c.name===q2||c.code===q2)||Object.values(S.etfMap||{}).find(c=>c.name===q2||c.code===q2)||{}).code;
 }
+/* 데이터센터 테마 시나리오표 — 네이버 블로그 "국내 AI DC 텐베거 시나리오"(2026-11-11 사용자 제공 이미지)의 종목별 목표가·근거·진행 상태를 옮긴 참고 자료.
+   POR = 시가총액 ÷ 영업이익(블로그 표기). 목표가는 작성자의 가정이며 본 사이트의 추정이 아님. [종목, [시나리오, 목표가, 배수, 근거, 상태, 상태종류]] */
+const TH_SCN=[
+ ["혜인",[["현재",7170,"1배","2027년 이익 기준 POR 2.5배, 커버리지 0곳","",""],["Base",16000,"2.2배","2027년 영업이익 280억에 POR 6배","실적 개선 중","ok"],["Bull",31000,"4.3배","데이터센터 연 50대 + 해양 200억, POR 12배","진행 중: 고속정 2차 수주","go"],["텐베거",71700,"10.0배","데이터센터 연 110대 + 해양 450억, POR 15배. 해양을 빼면 59,300원","미정: 엔진 매입·입찰 구조","tbd"]]],
+ ["자이에스앤디",[["현재",8880,"1배","2027년 이익 기준 POR 3.1배. 데이터센터 가치를 거의 안 쳐주는 가격","",""],["Base",25000,"2.8배","파주 1동과 세종만으로 2027년 영업이익 1,400억, POR 10배","계약 확정","ok"],["Bull",47200,"5.3배","동해 연 300MW + 단독 120MW, POR 10배","진행 중: 파주 2·3동 사전착공","go"],["텐베거",106700,"12.0배","2030년 정점 이익에 POR 15배. 정점 할인 12배면 86,000원","미정: 동해 분배·인력","tbd"]]],
+ ["아이크래프트",[["현재",5920,"1배","2027년 이익 기준 PER 5.9배, 잔고가 시총의 3.9배","",""],["Base",10800,"1.8배","정부 사업 2,659억 인식, 2027년 영업이익 168억","계약 확정","ok"],["Bull",25200,"4.3배","정부 물량 80% + 민간 10%, 이익률 4.5%","진행 중: 3차 예산 12/2","go"],["텐베거",62800,"10.6배","민간 18% + 차세대 단가 1.5배 + 이익률 5.5%","미정: 민간 진입","tbd"]]],
+];
+function thScenarioHtml(t){
+  if(!/데이터\s*센터|DC/i.test(t.name||""))return "";
+  const tg=(x,k)=>x?`<span class="tg" style="${k==="ok"?"background:color-mix(in srgb,#1baf7a 18%,transparent);color:#1baf7a":k==="go"?"background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)":"background:var(--surface-2);color:var(--ink-3)"}">${escH(x)}</span>`:"";
+  const rows=TH_SCN.map(([nm,L])=>{const code=((S.codes||[]).find(c=>c.name===nm)||{}).code;
+    return L.map((r,i)=>`<tr${r[0]==="텐베거"?' style="background:color-mix(in srgb,var(--accent,#2f6fed) 7%,transparent)"':""}>${i===0?`<td class="l" rowspan="${L.length}"><b>${code?`<a class="lk nm" data-code="${code}">${escH(nm)}</a>`:escH(nm)}</b></td>`:""}<td class="l">${r[0]}</td><td class="num"><b>${N(r[1],0)}원</b></td><td class="num dim">${r[2]}</td><td class="l" style="white-space:normal;min-width:170px">${escH(r[3])}</td><td class="l">${tg(r[4],r[5])}</td></tr>`).join("");}).join("");
+  return `<details class="th-scn" style="margin:8px 0" open><summary style="cursor:pointer;font-weight:600">종목별 시나리오 <span class="faint" style="font-weight:400;font-size:11.5px">현재 → Base → Bull → 텐베거 목표가</span></summary>
+    <div class="tw" style="margin-top:6px"><table><thead><tr><th class="l">종목</th><th class="l">시나리오</th><th>목표가</th><th>현재 대비</th><th class="l">근거(가정)</th><th class="l">진행 상태</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="note" style="margin-top:4px">출처: 네이버 블로그 「국내 AI DC 텐베거 시나리오」(제공받은 이미지 정리). 목표가·배수·POR은 글 작성 시점 기준 작성자의 가정이며 투자 권유가 아닙니다. 현재 대비 배수는 작성 시점 가격(혜인 7,170 · 자이에스앤디 8,880 · 아이크래프트 5,920원) 기준이라 지금 주가와 다를 수 있습니다.</div></details>`;
+}
 function thRender(){
   const host=$("#thList");if(!host)return;
   const a=thList();$("#thCount").textContent=a.length?`${a.length}개 테마`:"";
@@ -8724,6 +8740,7 @@ function thRender(){
       <button class="btn ghost th-fromFav" type="button" title="관심종목 전체를 이 테마에 추가">관심 전부 추가</button></div>
     <div class="th-notes">${thNotes(t).slice().reverse().map(n=>`<div class="th-note" data-nid="${n.id}"><span class="faint">${n.d}</span><span class="th-nt">${accEsc(n.t)}</span><button class="btn ghost th-nDel" type="button">삭제</button></div>`).join("")}</div>
     <div class="th-row"><input type="text" class="th-memo" placeholder="메모 입력 후 저장 (계속 누적됩니다)"><button class="btn ghost th-nAdd" type="button">저장</button></div>
+    ${thScenarioHtml(t)}
     <div class="th-fl"></div></div>`).join(""):'<div class="load">아직 테마가 없습니다 — 위에서 이름을 입력해 만드세요</div>';
   $$("#thList .th-box").forEach(b=>{
     const id=b.dataset.id;
@@ -8741,7 +8758,7 @@ function thRender(){
       b.querySelectorAll(".th-nDel").forEach(x=>x.onclick=()=>thUpd(id,t=>{t.notes=t.notes.filter(n=>n.id!==x.parentNode.dataset.nid);}));}
     b.querySelectorAll(".th-chip[data-d] .th-x").forEach(x=>x.onclick=()=>thUpd(id,t=>{t.dates=t.dates.filter(d=>d!==x.parentNode.dataset.d);}));
     b.querySelectorAll(".th-chip[data-c] .th-x").forEach(x=>x.onclick=()=>thUpd(id,t=>{t.codes=t.codes.filter(c=>c!==x.parentNode.dataset.c);}));
-    b.querySelectorAll(".th-chip a.lk").forEach(x=>x.onclick=()=>go("detail",x.dataset.code));
+    b.querySelectorAll(".th-chip a.lk,.th-scn a.lk").forEach(x=>x.onclick=()=>go("detail",x.dataset.code));
   });
 }
 // 상승일 기준 주체별 순매수(억원): 각 상승일마다 종목별 등락률·외국인·기관·기타법인·개인 + 합계 → 주도 주체 표시
