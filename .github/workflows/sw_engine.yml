@@ -18,6 +18,7 @@ jobs:
       KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
       KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,6 +27,13 @@ jobs:
       - name: NXT(20시 마감) 표시 갱신 — 실패해도 계속
         run: python 148_nxt_flag.py || echo "NXT 표시 갱신 실패(계속 진행)"
       - run: python 147_sw_engine.py 2>sw_err.txt || (tail -c 2000 sw_err.txt; exit 1)
+      - name: 데이터 이상 점검 — 실패해도 계속
+        run: python 153_data_check.py || echo "점검 실패(계속 진행)"
+      - name: 알림(NTFY_TOPIC 설정 시) — 실패해도 계속
+        run: python 152_sw_alert.py || echo "알림 실패(계속 진행)"
+      - name: 점검 결과를 리포트에 합치기
+        if: always()
+        run: '[ -f sw_check_report.md ] && { echo; cat sw_check_report.md; } >> sw_engine_report.md || true'
       - name: Publish report
         if: always()
         uses: ./.github/actions/publish-report

@@ -27,11 +27,19 @@ create table if not exists public.sw_picks (
   nxt_ok      boolean,              -- 대체거래소(NXT) 거래 가능 = 20시 마감
   primary key (trade_date, code, kind)
 );
+create table if not exists public.sw_trades (
+  entry_date date not null, code text not null, entry_close numeric, exit_date date, exit_close numeric,
+  ret_pct numeric,                  -- 왕복 비용 0.25% 차감 후 수익률(%)
+  status text not null,             -- closed(3거래일 경과) | open(보유 중, 최근 종가 기준)
+  is_live boolean not null default false,
+  amt_eok numeric, cap_eok numeric,
+  primary key (entry_date, code)
+);
 alter table public.stocks add column if not exists nxt_ok boolean, add column if not exists nxt_checked date;
 do $$
 declare t text;
 begin
-  foreach t in array array['sw_daily','sw_picks'] loop
+  foreach t in array array['sw_daily','sw_picks','sw_trades'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists "public read" on public.%I', t);
     execute format('create policy "public read" on public.%I for select using (true)', t);

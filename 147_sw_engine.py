@@ -57,14 +57,26 @@ for d in D[-40:]:
         picks.append((d.date(), c, "basket", None, None, f(C.at[d, c], 2), f(CHG.at[d, c], 2), f(AMT.at[d, c] / 1e8, 1), f(CAP.at[d, c] / 1e8, 0), f(sm5.at[d, c] * 100, 3), f(fo20.at[d, c] * 100, 3),
                       f(Wb.at[d, c] * 100, 2), None, f(vol20.at[d, c], 2), nxt.get(c)))
 seen = set(); picks = [p for p in picks if not ((p[0], p[1], p[2]) in seen or seen.add((p[0], p[1], p[2])))]
-wc.execute("delete from sw_daily"); wc.execute("delete from sw_picks")
+# ① 신호 종목 결과: 매수 허용일(gate)에 조건 충족한 종목을 종가에 사서 3거래일 뒤 종가에 파는 기록(왕복 비용 0.25% 차감). 아직 3거래일이 안 지났으면 open
+trades = []; HOLD_N = 3; COST = 0.25
+for d in idx:
+    i = pos[d]
+    if not gate[d]: continue
+    for c in mask.columns[mask.loc[d].values]:
+        j = i + HOLD_N; closed = j <= len(D) - 1; e = D[min(j, len(D) - 1)]
+        x, y = C.at[d, c], C.at[e, c]
+        if not (x == x and y == y and x > 0): continue
+        trades.append((d.date(), c, f(x, 2), e.date(), f(y, 2), f((y / x - 1) * 100 - COST, 2), "closed" if closed else "open", bool(d >= LIVE), f(AMT.at[d, c] / 1e8, 1), f(CAP.at[d, c] / 1e8, 0)))
+wc.execute("delete from sw_daily"); wc.execute("delete from sw_picks"); wc.execute("delete from sw_trades")
 execute_values(wc, """insert into sw_daily(trade_date,kospi,ma60,box_hi,box_lo,pos20,ret3,trend_down,gate_open,inv_signal,inv_hold,inv_left,n_new,n_hold,r1,r2,r3,r4,rk,eq1,eq2,eq3,eq4,eqk,is_live) values %s""", rows, page_size=500)
 execute_values(wc, """insert into sw_picks(trade_date,code,kind,entry_date,entry_close,close,chg,amt_eok,cap_eok,sm5_pct,fo20_pct,weight,days_left,vol20,nxt_ok) values %s""", picks, page_size=1000)
+execute_values(wc, """insert into sw_trades(entry_date,code,entry_close,exit_date,exit_close,ret_pct,status,is_live,amt_eok,cap_eok) values %s""", trades, page_size=1000)
 wconn.commit()
 d = idx[-1]; L = [f"# 국면 전환 전략 엔진", f"- 기준일 {d:%Y-%m-%d} · sw_daily {len(rows)}행 · sw_picks {len(picks)}행",
      f"- 코스피 {KS[d]:,.2f} · 60일선 {ma[60][d]:,.2f} ({'아래' if down[d] else '위'}) · 박스 {lo20[d]:,.0f}~{hi20[d]:,.0f} · 위치 {pos20[d]*100:.0f}% · 3일 {ret3[d]*100:+.1f}%",
      f"- ① 매수 허용 {'예' if gate[d] else '아니오'} · 오늘 조건 충족 {int(nnew[d])}종목 · 보유 {int(nhold[d])}종목 ‖ ② 신호 {'발생' if sig[d] else '없음'} · 보유 {'중(' + str(int(left[d])) + '일 남음)' if winv[d] > 0 else '없음'}",
      f"- 누적(2026-08-03=100): ① {E1[d]:.1f} · ② {E2[d]:.1f} · ③ {E3[d]:.1f} · ④ {E4[d]:.1f} · 코스피 {EK[d]:.1f}",
+     f"- 신호 종목 기록 {len(trades)}건 (종결 {sum(1 for t in trades if t[6]=='closed')} · 진행 {sum(1 for t in trades if t[6]=='open')})",
      f"- NXT 표시: 가능 {sum(1 for v in nxt.values() if v)} · 불가 {sum(1 for v in nxt.values() if v is False)}"]
 nm = px.drop_duplicates("code").set_index("code")["name"]
 L.append("- 오늘 조건 충족: " + (", ".join(nm.get(c, c) for c in mask.columns[mask.loc[d].values]) or "없음"))
