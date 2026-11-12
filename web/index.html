@@ -603,6 +603,11 @@ section[id^="v-"]>.card:first-child{margin-top:8px!important}
 .ai-pick-px{margin-left:auto;font-size:11.5px;color:var(--ink-2);white-space:nowrap}
 .ai-pick-bd{font-size:12px;line-height:1.6;color:var(--ink-2);margin-top:5px}
 .ai-pick-bd b{font-weight:650;margin-right:4px}
+.card.fold>h3{cursor:pointer;user-select:none}
+.card.fold>h3::before{content:"▾";display:inline-block;margin-right:6px;color:var(--ink-3);font-size:12px;transition:transform .15s}
+.card.fold.collapsed>h3::before{transform:rotate(-90deg)}
+.card.fold.collapsed>*:not(h3){display:none!important}
+.card.fold.collapsed>h3{margin-bottom:0}
 .ai-sec{border-top:1px solid var(--grid);margin-top:12px;padding-top:4px}
 .ai-sec summary{cursor:pointer;font-weight:650;font-size:13px;padding:6px 0;color:var(--ink)}
 .ai-back{position:fixed;left:12px;bottom:16px;z-index:70;box-shadow:0 4px 16px rgba(0,0,0,.25);border-radius:22px;padding:8px 16px;font-size:12.5px;font-weight:650;background:var(--ink);color:var(--surface);border:none;cursor:pointer}
@@ -7016,6 +7021,10 @@ function smxDraw(all,win,E){
 {const pc=$("#dPgtrCard"),mg=$("#dMinis");if(pc&&mg){pc.style.cssText="border:none;box-shadow:none;padding:0;margin:12px 0 0;background:none";mg.after(pc);}}
 {const vc=$("#dVolCard"),ec=$("#dEarnCard");if(vc&&ec)ec.before(vc);}
 {const wc=$("#dWeightCard"),mg=$("#dMinis");if(wc&&mg){wc.style.cssText="border:none;box-shadow:none;padding:0;margin:0 0 12px;background:none";mg.before(wc);}}
+/* 실적·배당·이사회 카드는 기본 접힘 — 제목을 누르면 펼침(종목을 바꿔도 펼침 상태 유지) */
+["#dEarnCard","#dDivCard","#dBoardCard"].forEach(id=>{const c=$(id);if(!c)return;c.classList.add("fold","collapsed");
+  const h=c.querySelector(":scope>h3");if(h){h.setAttribute("role","button");h.tabIndex=0;
+    const tg=()=>c.classList.toggle("collapsed");h.addEventListener("click",tg);h.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();tg();}});}});
 $("#dSmxWin").addEventListener("seg-change",e=>{S.smxWin=e.detail;try{renderSmx();}catch(err){console.error(err);}});
 
 async function renderDivCard(){
