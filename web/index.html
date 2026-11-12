@@ -222,6 +222,7 @@ body.nav-open .navopen{display:none}
 .tl-cell{cursor:pointer}
 .tl-sum{position:relative;min-height:34px;border-radius:4px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px;font-size:9.5px;font-weight:600}
 .tl-hd.tl-sh{border-left:1px solid var(--grid);padding-left:2px}
+#fwBody .tl-v,#fwBody .tl-tot,#fwBody .tl-sum{white-space:nowrap}#fwBody .tl-cell,#fwBody .tl-sum{align-items:center;padding-bottom:0}#fwBody .tl-rl a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 2026-11-08: 자금 이동 타임라인 맨 위 "합계" 행(그날 전 업종 합) */
 .tl-grid>.tl-rl.tot{min-height:26px;color:var(--ink);border-bottom:1px solid var(--grid)}
 .tl-tot{min-height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;background:var(--surface-2)}
@@ -850,6 +851,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="ng" data-g="flow"><div class="ngh" role="button" tabindex="0" aria-expanded="true">수급</div><div class="ngi">
       <button data-v="flow">수급 동향</button>
       <button data-v="sm">스마트머니</button>
+      <button data-v="fw">외국인 추종</button>
       <button data-v="pe">사모 추종</button>
       <button data-v="acc">매집 종목</button></div></div>
     <div class="ng" data-g="stock"><div class="ngh" role="button" tabindex="0" aria-expanded="true">종목</div><div class="ngi">
@@ -1413,6 +1415,14 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <div class="card hide" id="favEvCard"><h3 id="favEvTitle">AI 의견 근거</h3><div id="favEv"></div></div>
 </section>
 
+<section id="v-fw" class="hide">
+  <div class="card" style="margin-top:16px"><h3>외국인 추종 — 시총 TOP 50 일별 수급 <span class="r" id="fwRng">불러오는 중…</span></h3>
+    <div class="tl-tabs" id="fwTabs"><button data-s="f" class="on">외국인</button><button data-s="i">기관합계</button><button data-s="b">외국인+기관</button></div>
+    <div class="tl-legend"><span><i style="width:12px;height:10px;background:color-mix(in srgb,var(--up) 45%,transparent);border-radius:2px"></i>순매수</span><span><i style="width:12px;height:10px;background:color-mix(in srgb,var(--down) 45%,transparent);border-radius:2px"></i>순매도</span><span>단위 억원 · 색 진하기는 종목별 최대치 기준 · 좌우로 밀어서 이동</span></div>
+    <div id="fwBody"><div class="load sk"></div></div>
+    <div class="note" style="margin-top:8px">시가총액 상위 50종목(우선주·리츠·스팩 제외)을 업종별로 묶었습니다. 업종 줄은 해당 업종 TOP 50 종목의 합계이고, 종목 이름 아래는 시총과 오늘까지의 연속 순매수(+)/순매도(−) 일수입니다. 오른쪽 5·20·60일 열은 최근 거래일 합계입니다. 종목명을 누르면 종목 상세로 이동합니다.</div>
+  </div>
+</section>
 <section id="v-live" class="hide">
   <div class="card" style="margin-top:16px"><h3>당일 상승률 TOP 20 <span class="r" id="liveStat">연결 중…</span></h3>
     <div class="qf seg" id="liveCap" style="margin-bottom:8px"><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="10000" aria-pressed="false">1조 이상</button><button class="fchip" data-v="40000" aria-pressed="false">4조 이상</button><button class="fchip" data-v="100000" aria-pressed="false">10조 이상</button></div>
@@ -3075,7 +3085,7 @@ function go(v,detailCode){
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===v));
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc");setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -3126,6 +3136,7 @@ function go(v,detailCode){
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);}).finally(()=>{tdFitSoon();setTimeout(tdFit,2500);});}
   if(v==='today')tdFitSoon();
   if(v==="live")liveStart();
+  if(v==="fw")fwOpen();
   if(v==="sw")loadSw().catch(e=>{console.error("국면 전략",e);});
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
   if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadHeatmap();loadFlowSectorMap().catch(()=>{});loadFlowTimeline().catch(()=>{});loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
@@ -3521,6 +3532,70 @@ function renderFlowTimeline(){
   scs.forEach(e=>e.addEventListener("scroll",()=>{
     if(lock)return;lock=true;S.tlScroll=e.scrollLeft;scs.forEach(o=>{if(o!==e)o.scrollLeft=e.scrollLeft;});updTlRange();lock=false;
   },{passive:true}));
+}
+
+/* ── 외국인 추종: 시총 TOP 50 × 업종 × 일별 수급(외국인/기관합계/외+기) — 자금 이동 타임라인(.tl-*) 스타일 재사용 ── */
+const FW_SUBJ={f:["외국인",r=>+r.foreign_net||0],i:["기관합계",r=>+r.inst_net||0],b:["외국인+기관",r=>(+r.foreign_net||0)+(+r.inst_net||0)]};
+async function fwLoad(){
+  const last=(await q("daily_price","select=trade_date&order=trade_date.desc&limit=1"))[0].trade_date;
+  const cap=await q("daily_price",`select=code,market_cap&trade_date=eq.${last}&market_cap=not.is.null&order=market_cap.desc&limit=150`);
+  const stk=await q("stocks",`select=code,name,market&security_type=eq.STOCK&code=in.(${cap.map(x=>x.code).join(",")})`);
+  const nm=Object.fromEntries(stk.map(x=>[x.code,x]));
+  const top=cap.filter(x=>nm[x.code]&&!/(우[A-C]?|우\(전환\))$|리츠|스팩|기업인수목적/.test(nm[x.code].name)).slice(0,50);
+  const codes=top.map(x=>x.code),inl=codes.join(",");
+  const sec=Object.fromEntries((await q("v_stock_sector",`select=code,sector&code=in.(${inl})`).catch(()=>[])).map(x=>[x.code,x.sector]));
+  const d0=new Date(new Date(last+"T00:00:00+09:00").getTime()-110*864e5).toISOString().slice(0,10);
+  const flow=[];
+  for(let off=0;off<8000;off+=1000){
+    const part=await q("daily_flow",`select=code,trade_date,foreign_net,inst_net&code=in.(${inl})&trade_date=gte.${d0}&order=trade_date.asc,code.asc&limit=1000&offset=${off}`);
+    flow.push(...part);if(part.length<1000)break;
+  }
+  return {last,top:top.map(x=>({code:x.code,name:nm[x.code].name,market:nm[x.code].market,cap:+x.market_cap,sector:sec[x.code]||"미분류"})),flow};
+}
+function fwRender(){
+  const host=$("#fwBody"),D=S.fw;if(!D)return;
+  const sub=S.fwSubj||"f",[label,fn]=FW_SUBJ[sub],WD=["일","월","화","수","목","금","토"];
+  const wd=d=>new Date(d+"T00:00:00+09:00").getDay();
+  const dates=[...new Set(D.flow.map(r=>r.trade_date))].filter(d=>wd(d)>=1&&wd(d)<=5).sort();
+  if(!dates.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
+  const val={};D.flow.forEach(r=>{(val[r.code]=val[r.code]||{})[r.trade_date]=fn(r);});
+  const bySec={};D.top.forEach(t=>{(bySec[t.sector]=bySec[t.sector]||[]).push(t);});
+  const secs=Object.keys(bySec).sort((a,b)=>bySec[b].reduce((x,t)=>x+t.cap,0)-bySec[a].reduce((x,t)=>x+t.cap,0));
+  const W=host.clientWidth||360,lw=92,cw=Math.max(28,Math.floor((W-lw-2*10)/10));
+  const fmtC=v=>{const a=Math.abs(v),p=v>0?"+":v<0?"-":"";return a>=10000?p+N(a/10000,1)+"조":p+String(Math.round(a));};
+  const wins=TL_WINS.map(([n])=>dates.slice(-n));
+  const bg=(v,mx)=>`background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${Math.round(10+55*Math.abs(v)/(mx||1))}%,transparent)`;
+  let h=`<div class="tl-chart"><div class="tl-scroll"><div class="tl-inner"><div class="tl-grid" style="--nc:${dates.length+3};--cw:${cw}px;--lw:${lw}px"><div class="tl-corner"></div>`
+    +dates.map((d,i)=>tlHdCell(d,i,dates,WD,wd(d))).join("")+tlSumHd();
+  secs.forEach(sn=>{
+    const L=bySec[sn];
+    const sv=d=>L.reduce((a,t)=>a+((val[t.code]||{})[d]||0),0);
+    const sMax=Math.max(1,...dates.map(d=>Math.abs(sv(d))));
+    const sw=wins.map(w=>w.reduce((a,d)=>a+sv(d),0)),swMax=Math.max(1,...sw.map(Math.abs));
+    h+=`<div class="tl-rl tot">${sn}<small>${L.length}종목 · ${N(L.reduce((a,t)=>a+t.cap,0)/1e12,0)}조</small></div>`
+      +dates.map(d=>{const v=sv(d)/EOK;return `<div class="tl-tot ${sgn(v)}" style="${bg(v,sMax/EOK)}" title="${sn} TOP50 합계(억원)">${fmtC(v)}</div>`;}).join("")
+      +sw.map(v=>`<div class="tl-tot ${sgn(v)}" style="${bg(v,swMax)}">${fmtC(v/EOK)}</div>`).join("");
+    L.forEach(t=>{
+      const vv=val[t.code]||{},mx=Math.max(1,...dates.map(d=>Math.abs(vv[d]||0)));
+      let streak=0,sg=0;for(let k=dates.length-1;k>=0;k--){const x=vv[dates[k]];if(x==null||x===0)break;const g=x>0?1:-1;if(!sg)sg=g;if(g!==sg)break;streak++;}
+      const tw=wins.map(w=>w.reduce((a,d)=>a+(vv[d]||0),0)),twMax=Math.max(1,...tw.map(Math.abs));
+      h+=`<div class="tl-rl"><a class="lk nm" data-code="${t.code}">${t.name}</a><small>${N(t.cap/1e12,1)}조${streak?` · <span class="${sg>0?"up":"down"}">${sg>0?"+":"−"}${streak}일</span>`:""}</small></div>`
+        +dates.map(d=>{const v=vv[d]||0;return `<div class="tl-cell" style="${bg(v,mx)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;}).join("")
+        +tw.map(v=>`<div class="tl-sum" style="${bg(v,twMax)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`).join("");
+    });
+  });
+  host.innerHTML=h+'</div></div></div></div>';
+  const sc=$("#fwBody .tl-scroll");
+  requestAnimationFrame(()=>{sc.scrollLeft=S.fwScroll==null?1e9:S.fwScroll;});
+  sc.addEventListener("scroll",()=>{S.fwScroll=sc.scrollLeft;},{passive:true});
+  $("#fwRng").textContent=`${label} 순매수 · ${dates[0].slice(2).replace(/-/g,".")}~${dates.at(-1).slice(2).replace(/-/g,".")} · ${dates.length}거래일`;
+}
+async function fwOpen(){
+  if(!S._fwBound){S._fwBound=true;$$("#fwTabs button").forEach(b=>b.onclick=()=>{S.fwSubj=b.dataset.s;$$("#fwTabs button").forEach(x=>x.classList.toggle("on",x===b));fwRender();});
+    let rz;addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(S.fw&&!$("#v-fw").classList.contains("hide"))fwRender();},150);});}
+  if(S.fw&&Date.now()-S.fwAt<10*60*1000){fwRender();return;}
+  try{S.fw=await fwLoad();S.fwAt=Date.now();fwRender();}
+  catch(e){console.error("외국인 추종",e);$("#fwBody").innerHTML='<div class="load">불러오기 실패</div>';}
 }
 function updTlRange(){
   const m=S.tlMeta,sc=$("#tlBody .tl-scroll");if(!m||!sc)return;
