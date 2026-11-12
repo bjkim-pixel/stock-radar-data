@@ -1,0 +1,25 @@
+name: "[점검] KIS 호가·체결강도 필드 확인 | 수동 | 읽기 전용"
+on:
+  workflow_dispatch:
+    inputs:
+      code:
+        description: '종목 코드'
+        default: '005930'
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - name: Probe KIS quote
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 161_quote_probe.py "${{ github.event.inputs.code }}" 2>&1
