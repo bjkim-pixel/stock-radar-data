@@ -1436,6 +1436,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 </section>
 <section id="v-live" class="hide">
   <div class="card" style="margin-top:16px"><h3><span id="liveTitle">당일 상승률 TOP 20</span> <span class="r" id="liveStat">연결 중…</span></h3>
+    <details id="lfBox" style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600">조회 조건 <span class="faint" style="font-weight:400;font-size:11px">종목상세와 같은 조건 · 선택한 조건을 모두 만족하는 종목만 표시</span> <span id="lfCnt" class="up" style="font-size:11px"></span></summary><div id="lfRows" style="margin-top:6px"></div></details>
     <div class="qf seg" id="liveSide" style="margin-bottom:6px"><button class="fchip" data-v="up" aria-pressed="true">상승률</button><button class="fchip" data-v="down" aria-pressed="false">하락률</button></div>
     <div class="qf seg" id="liveCap" style="margin-bottom:8px"><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="10000" aria-pressed="false">1조 이상</button><button class="fchip" data-v="40000" aria-pressed="false">4조 이상</button><button class="fchip" data-v="100000" aria-pressed="false">10조 이상</button></div>
     <div class="note" style="margin-bottom:8px">시가총액 기준으로 나눠 오늘 등락률 상위를 봅니다(전체 = 코스피·코스닥 전 종목, 나머지는 시총이 기준 이상인 종목만). 순위 후보는 KIS에서 8초마다 새로 받고, 후보 25종목의 가격은 KIS 실시간 체결가로 바로 갱신해 순위를 다시 매깁니다. 순위 밖으로 밀린 종목은 빠지고 새로 올라온 종목이 들어옵니다. ETF·ETN·스팩·우선주는 뺐습니다. 시총 = 상장주식수 × 현재가.</div>
@@ -2393,6 +2394,7 @@ const LIVE_TOP_N=20,LIVE_POOL=25,LIVE_EXCL=/스팩|ETN|KODEX|TIGER|KBSTAR|ARIRAN
 S.liveMeta=S.liveMeta||{};   // code -> {mk, sc} (stocks.market · v_stock_sector.sector)
 S.live={min:0,on:false,pool:{},since:{},prev:{},log:[],timer:null,paint:0,at:0};
 function liveStart(){
+  try{lfBuild();lfSyncSectors();}catch(e){console.error("조회 조건 UI",e);}
   try{kwLoadMap();smxLoadMap().then(()=>smxFill()).catch(()=>{});}catch(e){}
   const L=S.live;if(L.on)return;L.on=true;L.pool={};L.since={};L.prev={};L.log=[];
   $("#liveBody").innerHTML='<tr><td colspan="13" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";
@@ -2402,13 +2404,63 @@ const fmtCap=v=>v>=1e12?N(v/1e12,1)+"조":N(v/1e8,0)+"억";
 $("#liveSide").addEventListener("seg-change",e=>{const L=S.live;L.side=e.detail==="down"?"down":"up";L.pool={};L.since={};L.prev={};L.log=[];$("#liveTitle").textContent=L.side==="down"?"당일 하락률 TOP 20":"당일 상승률 TOP 20";$("#liveBody").innerHTML='<tr><td colspan="13" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
 $("#liveCap").addEventListener("seg-change",e=>{const L=S.live;L.min=+e.detail;L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="13" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
 function liveStop(){const L=S.live;L.on=false;clearInterval(L.timer);L.timer=null;S.liveTopWanted=new Set();reconcileLiveSubscription();}
+/* ── 실시간 종목 조회 조건: 종목상세 상단 조회 조건과 같은 판정(독립 상태) ── */
+S.lf={};
+const LF_DEF=[ // [상세 select id, 상태 키, 데이터 로더]
+  ["dSec","sec",async()=>{}],["dMaF","ma",()=>loadDetailMa()],["dPh","ph",()=>loadDetailPh()],["dKwF","kw",()=>kwLoadMap()],["dDivF","div",()=>loadDetailDiv()],
+  ["dGrS","grS",()=>loadDetailGr()],["dGrO","grO",()=>loadDetailGr()],["dGrE","grE",()=>loadDetailGr()],
+  ["dDartF","dart",()=>dartLoad30()],["dDartP","dartP",async()=>{}],["dSmxF","smx",()=>smxLoadMap()],["dSmxW","smxW",async()=>{}]];
+function lfActive(){const f=S.lf;return !!(f.sec||f.ma||f.ph||f.kw||f.div||f.grS||f.grO||f.grE||f.dart||f.smx);}
+function lfPass(code){
+  const f=S.lf;
+  if(f.sec){const c=(S.codes||[]).find(x=>x.code===code);const sc=(c&&c.sector)||(S.liveMeta[code]||{}).sc||"미분류";if(sc!==f.sec)return false;}
+  if(f.ma){const m=S.dMaMap&&S.dMaMap[code];if(!m||!MA_COND[f.ma](m))return false;}
+  if(f.ph){const set=new Set(f.ph.split(","));if(!set.has((S.dPhMap||{})[code]||"NEUTRAL"))return false;}
+  if(f.kw){const [k,t]=f.kw.split(":"),v=((S.kwMap||{})[code]||{})[k];if(v==null||v*100>+t)return false;}
+  if(f.div){const [k,t]=f.div.split(":"),v=((S.dDivMap||{})[code]||{})[k];if(v==null||v<+t)return false;}
+  for(const [k,key] of [["sales","grS"],["op_profit","grO"],["eps","grE"]]){if(f[key]!==""&&f[key]!=null){const v=((S.grMap||{})[code]||{})[k];if(v==null||v<+f[key])return false;}}
+  if(f.smx){const set=new Set(f.smx.split(",")),x=((S.smxMap||{})[code]||{})[f.smxW||"all"];if(!(x&&set.has(x.st)))return false;}
+  if(f.dart){if(!dartCodeSet(f.dart,f.dartP||"7").has(code))return false;}
+  return true;
+}
+function lfBuild(){
+  const host=$("#lfRows");if(!host||host.dataset.built)return;host.dataset.built="1";
+  const rows=[["dSec","dMaF","dPh"],["dKwF","dDivF"],["dGrS","dGrO","dGrE"],["dDartF","dDartP","dSmxF","dSmxW"]];
+  rows.forEach((ids,ri)=>{
+    const row=document.createElement("div");row.className="dfrow";if(ri)row.style.marginTop="5px";
+    ids.forEach(id=>{
+      const src=$("#"+id);if(!src)return;
+      const n=src.cloneNode(true);n.id="lf_"+id;n.value=(id==="dSmxW")?"all":(id==="dDartP"?"7":"");
+      const def=LF_DEF.find(x=>x[0]===id);
+      n.onchange=async e=>{
+        const v=e.target.value;
+        if(v&&def[2]){e.target.disabled=true;try{await def[2]();}catch(err){console.error("조회 조건",id,err);e.target.value="";e.target.disabled=false;e.target.title="데이터를 불러오지 못했습니다 — 다시 선택해 주세요";return;}e.target.disabled=false;}
+        S.lf[def[1]]=v;lfChanged();
+      };
+      row.appendChild(n);
+    });
+    host.appendChild(row);
+  });
+  const b=document.createElement("button");b.className="btn ghost";b.textContent="조건 해제";b.style.cssText="margin-top:6px;min-height:30px;height:30px;font-size:11.5px";
+  b.onclick=()=>{S.lf={smxW:"all",dartP:"7"};host.querySelectorAll("select").forEach(x=>{x.value=x.id==="lf_dSmxW"?"all":x.id==="lf_dDartP"?"7":"";});lfChanged();};
+  host.appendChild(b);
+}
+function lfSyncSectors(){const a=$("#dSec"),b=$("#lf_dSec");if(a&&b&&a.options.length>1&&b.options.length<=1){const v=b.value;b.innerHTML=a.innerHTML;b.value=v;}}
+function lfChanged(){
+  const n=["sec","ma","ph","kw","div","grS","grO","grE","dart","smx"].filter(k=>S.lf[k]!==""&&S.lf[k]!=null&&S.lf[k]!==undefined).length;
+  $("#lfCnt").textContent=n?`· ${n}개 적용 중`:"";
+  const L=S.live;if(L.on){L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="13" class="load sk"></td></tr>';liveFetch();}
+}
 async function liveFetch(){
   const L=S.live;if(!L.on)return;
   try{
     const r=await fetch(RELAY_HTTP_BASE+"/live-top?min="+L.min+"&side="+(L.side||"up"),{cache:"no-store"});const j=await r.json();
     if(!L.on||j.min!==L.min||(j.side||"up")!==(L.side||"up"))return;
     if(!j.ok&&!(j.rows||[]).length){$("#liveStat").textContent="순위를 받지 못했습니다 — "+(j.err||j.error||"");return;}
-    const rows=j.rows.filter(x=>!LIVE_EXCL.test(x.name||""));   // ETF·ETN·스팩 제외(우선주는 서버가 제외)
+    let rows=j.rows.filter(x=>!LIVE_EXCL.test(x.name||""));   // ETF·ETN·스팩 제외(우선주는 서버가 제외)
+    const nAll=rows.length;
+    if(lfActive()){rows=rows.filter(x=>lfPass(x.code));}
+    L.cand=nAll;
     const pool={};rows.slice(0,LIVE_POOL).forEach(x=>{const old=L.pool[x.code];pool[x.code]={...x,live:old&&old.liveAt>j.ts?old.price:null};if(old&&old.liveAt>j.ts){pool[x.code].price=old.price;pool[x.code].changePct=old.changePct;pool[x.code].liveAt=old.liveAt;}});
     L.pool=pool;L.at=j.ts;
     S.liveTopWanted=new Set(Object.keys(pool));reconcileLiveSubscription();
@@ -2455,7 +2507,7 @@ function liveRender(){
   if(!top.length)$("#liveBody").innerHTML='<tr><td colspan="13" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#liveBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   $("#liveLog").innerHTML=L.log.length?L.log.map(t=>`<div>${t}</div>`).join(""):"아직 변동이 없습니다";
-  $("#liveStat").textContent=`${hm(now)} 갱신 · 후보 ${Object.keys(L.pool).length}종목 실시간 구독`;
+  $("#liveStat").textContent=`${hm(now)} 갱신 · 후보 ${Object.keys(L.pool).length}종목 실시간 구독`+(lfActive()?` · 조건 충족 ${arr.length}/${L.cand||"?"}`:"");
 }
 function setSwLiveCodes(codes){ S.swLiveWanted=new Set(codes.slice(0,SW_LIVE_MAX)); reconcileLiveSubscription(); }
 function updateSwLive(code,m){
