@@ -3023,11 +3023,11 @@ function profileChart(host,buckets,opt={}){
 // 매물대 가격 범위: 전체 기간 최저~최고가 아니라 "현재가 기준" 아래/위 비율로
 // 잡음(2026-09-08 결정) — 주가가 상승하며 만날 수 있는 매물대를 더 세분화해서
 // 보기 위해, 위쪽(저항 구간)에 더 넓은 비중을 둠.
-const PRICE_PROFILE_DOWN_PCT=0.10;  // 현재가 기준 아래로 10%까지
-const PRICE_PROFILE_UP_PCT=0.90;    // 현재가 기준 위로 90%까지
+const PRICE_PROFILE_DOWN_PCT=0.30;  // 현재가 기준 아래로 30%까지
+const PRICE_PROFILE_UP_PCT=0.70;    // 현재가 기준 위로 70%까지
 // rows(v_stock_chart 행 배열)에서 종가를 bucketCount개 가격 구간으로 나눠 구간별
 // valueFn(row) 합계(원→억원)를 만듭니다. 기본 valueFn은 개인 순매수(individual_net).
-// 가격 범위는 전체 기간 최저~최고가 아니라 현재가 기준 -10%~+90%(위 상수)로 고정.
+// 가격 범위는 전체 기간 최저~최고가 아니라 현재가 기준 -30%~+70%(위 상수)로 고정.
 // 그 범위를 벗어나는 종가는 가장 가까운 끝 구간(0번 또는 마지막)에 합산(clamp)됨.
 // 반환 배열은 가격 높은 구간이 먼저 오도록 정렬(=profileChart에서 위쪽에 그려짐).
 function buildPriceProfile(rows,bucketCount=24,valueFn=r=>+r.individual_net||0){
@@ -8184,7 +8184,7 @@ async function loadStrategyCandidates(){
                         box-sizing:border-box;padding:10px;border:1px solid var(--border);border-radius:10px;cursor:pointer"
                  data-code="${r.code}">
                 <div><b style="font-size:11.5px">${nameOf[r.code]||r.code}</b>${detail?`<div class="faint" style="font-size:10px;font-weight:400;white-space:normal;line-height:1.4;margin-top:2px">${detail}</div>`:""}</div>
-                <div class="faint" style="font-size:10px;margin:8px 0 2px">개인 순매수 매물대 <span style="font-weight:400">· 종목상세와 같은 기준(현재가 -10%~+90%)</span></div>
+                <div class="faint" style="font-size:10px;margin:8px 0 2px">개인 순매수 매물대 <span style="font-weight:400">· 종목상세와 같은 기준(현재가 -30%~+70%)</span></div>
                 <div class="chart" id="candProf_${strat}_${r.code}" style="min-height:40px"><div class="faint" style="font-size:10px">불러오는 중…</div></div>
               </div>`;
             }).join("")}</div>`
