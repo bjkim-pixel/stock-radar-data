@@ -133,3 +133,22 @@ ws.onmessage = (e) => {
   `KIS_REST_BASE`/`KIS_WS_URL`을 모의투자 도메인으로 교체하세요.
 - `approval_key`는 24시간 유효해서 12시간마다 자동 재발급 + 웹소켓 재연결합니다.
 - 현재는 실시간 체결가(H0STCNT0)만 지원합니다. 호가(H0STASP0) 등은 필요 시 추가.
+
+
+## 매매 보안 기반 (`trade.js`, 2026-11-12)
+
+KIS 매매 기능의 보안 층입니다. 주문 코드는 아직 없고(3단계), 주문이 반드시 거쳐야 하는 검증만 있습니다.
+브라우저는 KIS 키를 갖지 않으며, 모든 `/trade/*` 요청은 서버에서 아래를 확인합니다.
+
+| 항목 | 동작 |
+|---|---|
+| 로그인 토큰 | `Authorization: Bearer <Supabase 토큰>` 을 `/auth/v1/user` 로 검증(서명·만료), 이메일이 `ALLOWED_EMAIL` 과 같아야 함. 결과 60초 캐시 |
+| 거래 PIN | `POST /trade/session {pin}` — `TRADE_PIN_HASH`(PBKDF2)와 비교. 5회 틀리면 30분 잠금. 통과하면 15분(사용할 때마다 연장, 최대 4시간) 세션을 발급, 이후 요청은 `x-trade-session` 헤더 |
+| 재전송 방어 | 모든 POST 본문에 `nonce`(12~64자 1회용)와 `ts`(ms) 필수. 같은 nonce 재사용·±30초 밖 시각 거부. `GET /trade/status` 의 `now` 로 시계 차이를 보정 |
+| 긴급 정지 | `TRADING_ENABLED=0` 이면 전부 정지, `REAL_TRADING_ENABLED=0` 이면 실전 정지. 화면의 정지 버튼은 `POST /trade/kill`(로그인만), 해제는 `POST /trade/resume`(PIN 세션 필요). 정지 중에도 보유 종목 매도·취소는 허용 |
+| 한도 | `checkLimits()` — 1회 금액·1일 누적·동시 보유 종목, `guard()` — 시간대·스위치. 주문 API가 호출 |
+| 감사·알림 | 모든 요청(거부 포함)을 `trade_audit` 에 기록(PIN·토큰 원문 제외), PIN 실패·세션 열림·정지/해제·허용 안 된 계정은 텔레그램·웹푸시(+ `NTFY_TOPIC` 있으면 ntfy) |
+
+- PIN 해시는 사이트의 `pin-hash.html` 에서 만듭니다(브라우저 안에서만 계산, 전송 없음).
+- 시험: `cd relay-server && npm test` (Supabase 호출은 가짜로 대체)
+- 알려진 한계: 세션·PIN 잠금·nonce 는 메모리에 있어 서버 재시작 시 초기화됩니다(재시작 후엔 PIN 다시 입력, 잠금도 풀림).

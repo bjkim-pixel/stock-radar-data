@@ -3259,7 +3259,14 @@ function handleAccessLog(req, res) {
   return false;
 }
 
+/* ── 매매 보안 기반(1단계): 로그인 토큰·거래 PIN·재전송 방어·긴급 정지·한도·감사 — relay-server/trade.js ── */
+const trade = require('./trade').createTrade({
+  env: process.env, sbWrite, clientIp, allowedOrigins: ALLOWED_ORIGINS,
+  notify: (text, opts) => notifyAll(text, opts),
+});
+
 const server = http.createServer((req, res) => {
+  if (trade.handle(req, res)) return;
   if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleLiveTop(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {

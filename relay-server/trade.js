@@ -1,0 +1,348 @@
+'use strict';
+/* ════════════════════════════════════════════════════════════════════════
+   매매 보안 기반 (2026-11-12 · 매매 1단계)
+   ────────────────────────────────────────────────────────────────────────
+   브라우저는 KIS 키를 갖지 않고, 이 모듈이 요청마다 아래를 서버에서 강제합니다.
+     1) 로그인 토큰   — Supabase /auth/v1/user 로 서명·만료를 검증하고, 이메일이 ALLOWED_EMAIL 과 같아야 통과
+     2) 거래 PIN      — PBKDF2 해시와 비교(원문은 어디에도 저장 안 함). 5회 틀리면 30분 잠금. 통과하면 15분 거래 세션 발급
+     3) 재전송 방어   — POST 마다 1회용 nonce + 시각(±30초). 같은 nonce 재사용·오래된 요청 거부
+     4) 긴급 정지     — TRADING_ENABLED / REAL_TRADING_ENABLED 환경변수 + 화면의 정지 버튼(메모리 플래그)
+     5) 한도          — 1회 금액 · 1일 누적 · 동시 보유 종목 수 · 매수 허용 시간대 (checkLimits / guard)
+     6) 감사 기록     — 모든 요청(거부 포함)을 Supabase trade_audit 에 남기고, 중요 이벤트는 폰 알림
+   이 단계에는 주문 코드가 없습니다. 주문(3단계)은 여기 authz/guard/checkLimits 를 거쳐야만 나갑니다.
+   ════════════════════════════════════════════════════════════════════════ */
+const crypto = require('crypto');
+const { promisify } = require('util');
+const pbkdf2 = promisify(crypto.pbkdf2);
+
+const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
+const teq = (a, b) => {
+  a = Buffer.from(String(a)); b = Buffer.from(String(b));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+const numEnv = (v, d) => (v !== undefined && v !== '' && isFinite(+v)) ? +v : d;
+
+/* ── PIN 해시: pbkdf2$반복수$salt(base64)$hash(base64) — web/pin-hash.html 과 같은 형식 ── */
+async function hashPin(pin, iter = 210000) {
+  const salt = crypto.randomBytes(16);
+  const h = await pbkdf2(String(pin), salt, iter, 32, 'sha256');
+  return `pbkdf2$${iter}$${salt.toString('base64')}$${h.toString('base64')}`;
+}
+async function verifyHash(pin, stored) {
+  const m = /^pbkdf2\$(\d{5,7})\$([A-Za-z0-9+/=]+)\$([A-Za-z0-9+/=]+)$/.exec(String(stored || '').trim());
+  if (!m) return false;
+  const iter = +m[1];
+  if (iter < 100000 || iter > 2000000) return false;
+  const want = Buffer.from(m[3], 'base64');
+  if (want.length < 16) return false;
+  const got = await pbkdf2(String(pin), Buffer.from(m[2], 'base64'), iter, want.length, 'sha256');
+  return got.length === want.length && crypto.timingSafeEqual(got, want);
+}
+
+function parseHours(s) {
+  const m = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(String(s || '').trim());
+  if (!m) return [8 * 60, 20 * 60];
+  return [+m[1] * 60 + +m[2], +m[3] * 60 + +m[4]];
+}
+
+function loadConfig(env) {
+  return {
+    supabaseUrl: env.SUPABASE_URL || 'https://frurnmrwuopvttoqdvgj.supabase.co',
+    anonKey: env.SUPABASE_ANON_KEY || '',
+    allowedEmail: String(env.ALLOWED_EMAIL || '').trim().toLowerCase(),
+    pinHash: String(env.TRADE_PIN_HASH || '').trim(),
+    enabled: env.TRADING_ENABLED === '1',
+    realEnabled: env.REAL_TRADING_ENABLED === '1',
+    sessionMs: numEnv(env.TRADE_SESSION_MIN, 15) * 60000,
+    sessionMaxMs: numEnv(env.TRADE_SESSION_MAX_HOURS, 4) * 3600000,
+    maxSessions: 3,
+    pinMaxFails: numEnv(env.PIN_MAX_FAILS, 5),
+    pinLockMs: numEnv(env.PIN_LOCK_MIN, 30) * 60000,
+    replayMs: numEnv(env.REPLAY_WINDOW_SEC, 30) * 1000,
+    hours: parseHours(env.TRADE_HOURS || '08:00-20:00'),      // KST, 신규 매수 허용 시간대
+    ntfyTopic: String(env.NTFY_TOPIC || '').trim(),
+    limits: {
+      REAL:    { order: numEnv(env.MAX_ORDER_KRW, 500000),     day: numEnv(env.MAX_DAILY_KRW, 2000000),     positions: numEnv(env.MAX_POSITIONS, 5) },
+      VIRTUAL: { order: numEnv(env.VIRTUAL_MAX_ORDER_KRW, 5000000), day: numEnv(env.VIRTUAL_MAX_DAILY_KRW, 20000000), positions: numEnv(env.VIRTUAL_MAX_POSITIONS, 10) },
+    },
+  };
+}
+
+/* 한도 검사(순수 함수). mode: 'REAL'|'VIRTUAL', orderKrw: 이번 주문 금액, dayKrw: 오늘 이미 낸 매수 금액,
+   positions: 현재 보유 종목 수, isNewPosition: 이번 주문이 새 종목인지 */
+function checkLimits(limits, { mode, orderKrw, dayKrw = 0, positions = 0, isNewPosition = true }) {
+  const L = limits[mode === 'REAL' ? 'REAL' : 'VIRTUAL'];
+  if (!isFinite(orderKrw) || orderKrw <= 0) return { ok: false, error: 'invalid amount' };
+  if (orderKrw > L.order) return { ok: false, error: `1회 주문 한도 초과 (${L.order.toLocaleString('ko-KR')}원)` };
+  if (dayKrw + orderKrw > L.day) return { ok: false, error: `1일 누적 한도 초과 (${L.day.toLocaleString('ko-KR')}원)` };
+  if (isNewPosition && positions >= L.positions) return { ok: false, error: `동시 보유 종목 한도 초과 (${L.positions}종목)` };
+  return { ok: true };
+}
+
+const SECRET_KEY = /pin|token|secret|key|password|authorization|appkey|account/i;
+function scrub(o, depth = 0) {
+  if (o == null || depth > 3) return o == null ? null : String(o).slice(0, 100);
+  if (typeof o === 'string') return o.slice(0, 300);
+  if (typeof o !== 'object') return o;
+  if (Array.isArray(o)) return o.slice(0, 20).map(v => scrub(v, depth + 1));
+  const out = {};
+  for (const k of Object.keys(o).slice(0, 30)) out[k] = SECRET_KEY.test(k) ? '[숨김]' : scrub(o[k], depth + 1);
+  return out;
+}
+
+function createTrade(deps = {}) {
+  const env = deps.env || process.env;
+  const now = deps.now || Date.now;
+  const doFetch = deps.fetch || fetch;
+  const clientIp = deps.clientIp || (req => (req.socket && req.socket.remoteAddress) || '');
+  const allowedOrigins = deps.allowedOrigins || [];
+  const cfg = loadConfig(env);
+
+  const state = { halted: false, pinFails: 0, pinLockUntil: 0 };
+  const sessions = new Map();     // sid -> { uid, exp, abs }
+  const nonces = new Map();       // nonce -> 만료시각
+  const userCache = new Map();    // sha(token) -> { res, exp }
+  const ipHits = new Map();       // ip -> [ts...]
+  const auditThrottle = new Map();
+  let pinChain = Promise.resolve();   // PIN 검사를 한 줄로 세워 동시 시도로 횟수 제한을 우회하지 못하게 함
+
+  const sweep = () => {
+    const t = now();
+    for (const [k, v] of sessions) if (v.exp <= t || v.abs <= t) sessions.delete(k);
+    for (const [k, v] of nonces) if (v <= t) nonces.delete(k);
+    for (const [k, v] of userCache) if (v.exp <= t) userCache.delete(k);
+    for (const [k, v] of ipHits) { const a = v.filter(x => t - x < 60000); if (a.length) ipHits.set(k, a); else ipHits.delete(k); }
+    for (const [k, v] of auditThrottle) if (t - v > 60000) auditThrottle.delete(k);
+  };
+  const timer = setInterval(sweep, 60000); if (timer.unref) timer.unref();
+
+  /* ── 알림 · 감사 ── */
+  async function alert(text, title = '매매 보안') {
+    try { if (deps.notify) await deps.notify(text, { title, tag: 'trade-security' }); } catch (_) {}
+    if (cfg.ntfyTopic) {
+      try {
+        await doFetch('https://ntfy.sh/', { method: 'POST', body: JSON.stringify({ topic: cfg.ntfyTopic, title, message: text, priority: 4, tags: ['warning'] }), signal: AbortSignal.timeout(4000) });
+      } catch (_) {}
+    }
+  }
+  async function audit(event, ok, detail, req, mode) {
+    const row = { event, ok: !!ok, mode: mode || null, ip: req ? clientIp(req) : null, ua: req ? String(req.headers['user-agent'] || '').slice(0, 200) : null, detail: scrub(detail) };
+    console.log(`[trade] ${event} ${ok ? 'ok' : 'DENY'} ${row.ip || ''}`);
+    try { if (deps.sbWrite) await deps.sbWrite('trade_audit', 'POST', [row]); }
+    catch (e) { if (!/42P01|PGRST205|does not exist/.test(String(e.message))) console.warn('[trade] 감사 기록 실패:', e.message); }
+  }
+  /* 인증 실패처럼 반복될 수 있는 기록은 IP·사유별로 분당 1회만 */
+  function auditOnce(event, detail, req) {
+    const k = event + '|' + (req ? clientIp(req) : '');
+    if (auditThrottle.has(k)) return false;
+    auditThrottle.set(k, now());
+    audit(event, false, detail, req);
+    return true;
+  }
+
+  /* ── 로그인 토큰 검증 ── */
+  async function verifyUser(req) {
+    const m = /^Bearer\s+([A-Za-z0-9._~+/=-]{20,4096})$/.exec(String(req.headers.authorization || ''));
+    if (!m) return { ok: false, status: 401, error: 'unauthorized' };
+    if (!cfg.allowedEmail || !cfg.anonKey) return { ok: false, status: 503, error: 'trading not configured' };
+    const tok = m[1], key = sha(tok), c = userCache.get(key);
+    if (c && c.exp > now()) return c.res;
+    let r;
+    try {
+      r = await doFetch(`${cfg.supabaseUrl}/auth/v1/user`, { headers: { apikey: cfg.anonKey, Authorization: `Bearer ${tok}` }, signal: AbortSignal.timeout(5000) });
+    } catch (_) { return { ok: false, status: 503, error: 'auth service unavailable' }; }
+    if (r.status === 401 || r.status === 403) return { ok: false, status: 401, error: 'unauthorized' };
+    if (!r.ok) return { ok: false, status: 503, error: 'auth service unavailable' };
+    let u; try { u = await r.json(); } catch (_) { return { ok: false, status: 503, error: 'auth service unavailable' }; }
+    const email = String((u && u.email) || '').toLowerCase();
+    if (!u || !u.id || !email || u.is_anonymous === true) return { ok: false, status: 401, error: 'unauthorized' };
+    if (!teq(email, cfg.allowedEmail)) return { ok: false, status: 403, error: 'forbidden', wrongUser: true };
+    const res = { ok: true, user: { id: String(u.id), email } };
+    if (userCache.size > 200) userCache.clear();
+    userCache.set(key, { res, exp: now() + 60000 });   // 최대 60초 캐시 — 로그아웃/폐기 반영은 최대 1분 늦을 수 있음
+    return res;
+  }
+
+  /* ── 거래 세션 ── */
+  function openSession(uid) {
+    const t = now(), sid = crypto.randomBytes(32).toString('hex');
+    sweep();
+    while (sessions.size >= cfg.maxSessions) sessions.delete(sessions.keys().next().value);
+    sessions.set(sid, { uid, exp: t + cfg.sessionMs, abs: t + cfg.sessionMaxMs });
+    return sid;
+  }
+  function getSession(sid, uid) {
+    if (!/^[0-9a-f]{64}$/.test(String(sid || ''))) return null;
+    const s = sessions.get(sid), t = now();
+    if (!s || s.exp <= t || s.abs <= t || s.uid !== uid) { if (s && (s.exp <= t || s.abs <= t)) sessions.delete(sid); return null; }
+    s.exp = Math.min(t + cfg.sessionMs, s.abs);   // 쓸 때마다 15분 연장(최대 4시간)
+    return s;
+  }
+  const sessionTtlSec = s => Math.max(0, Math.round((s.exp - now()) / 1000));
+
+  /* 로그인(+선택: 거래 세션) 통과 여부. 주문 API는 반드시 session:true 로 호출 */
+  async function authz(req, { session = false } = {}) {
+    const u = await verifyUser(req);
+    if (!u.ok) return u;
+    if (session) {
+      const s = getSession(req.headers['x-trade-session'], u.user.id);
+      if (!s) return { ok: false, status: 401, error: 'pin required' };
+      return { ...u, session: s };
+    }
+    return u;
+  }
+
+  /* ── PIN ── */
+  function checkPin(pin) {
+    const run = async () => {
+      const t = now();
+      if (t < state.pinLockUntil) return { ok: false, status: 423, error: 'pin locked', retrySec: Math.ceil((state.pinLockUntil - t) / 1000) };
+      if (!cfg.pinHash) return { ok: false, status: 503, error: 'pin not configured' };
+      const good = typeof pin === 'string' && pin.length >= 4 && pin.length <= 64 && await verifyHash(pin, cfg.pinHash);
+      if (good) { state.pinFails = 0; return { ok: true }; }
+      state.pinFails++;
+      if (state.pinFails >= cfg.pinMaxFails) {
+        state.pinFails = 0; state.pinLockUntil = now() + cfg.pinLockMs;
+        return { ok: false, status: 423, error: 'pin locked', locked: true, retrySec: Math.round(cfg.pinLockMs / 1000) };
+      }
+      return { ok: false, status: 401, error: 'invalid pin', left: cfg.pinMaxFails - state.pinFails };
+    };
+    const p = pinChain.then(run, run);
+    pinChain = p.catch(() => {});
+    return p;
+  }
+
+  /* ── 재전송 방어: POST 본문에 nonce(12~64자) + ts(ms) 필수 ── */
+  function checkReplay(body) {
+    const nonce = String((body && body.nonce) || ''), ts = Number(body && body.ts);
+    if (!/^[A-Za-z0-9_-]{12,64}$/.test(nonce) || !isFinite(ts)) return 'bad request';
+    if (Math.abs(now() - ts) > cfg.replayMs) return 'expired';
+    if (nonces.has(nonce)) return 'replay';
+    nonces.set(nonce, now() + cfg.replayMs * 2 + 1000);
+    return null;
+  }
+
+  /* ── 주문 전 점검(3단계 이후 주문 코드가 호출) ── */
+  const inHours = () => {
+    const d = new Date(now() + 9 * 3600e3), m = d.getUTCHours() * 60 + d.getUTCMinutes();
+    return m >= cfg.hours[0] && m < cfg.hours[1];
+  };
+  /* kind: 'buy' | 'sell' | 'cancel'. 긴급 정지·시간대는 신규 매수에만 적용(보유 종목 매도·취소는 정지 중에도 허용) */
+  function guard(kind, mode) {
+    if (!cfg.enabled) return { ok: false, error: 'trading disabled' };
+    if (mode === 'REAL' && !cfg.realEnabled) return { ok: false, error: 'real trading disabled' };
+    if (kind === 'buy' && state.halted) return { ok: false, error: 'halted' };
+    if (kind === 'buy' && !inHours()) return { ok: false, error: 'outside trading hours' };
+    return { ok: true };
+  }
+
+  /* ── HTTP ── */
+  function cors(req, res) {
+    const o = req.headers.origin;
+    res.setHeader('Access-Control-Allow-Origin', (o && allowedOrigins.includes(o)) ? o : (allowedOrigins[0] || ''));
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'content-type, authorization, x-trade-session');
+    res.setHeader('Vary', 'Origin');
+  }
+  const json = (res, code, o) => { res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(o)); };
+  function readJson(req, max = 8192) {
+    return new Promise((resolve, reject) => {
+      let n = 0; const chunks = [];
+      req.on('data', c => { n += c.length; if (n > max) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
+      req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch (_) { reject(new Error('bad json')); } });
+      req.on('error', reject);
+    });
+  }
+  function rate(ip) {
+    const t = now(), a = (ipHits.get(ip) || []).filter(x => t - x < 60000);
+    if (a.length >= 120) { ipHits.set(ip, a); return false; }
+    a.push(t); ipHits.set(ip, a); return true;
+  }
+  const statusBody = (a) => ({
+    ok: true, now: now(),
+    enabled: cfg.enabled, realEnabled: cfg.realEnabled, halted: state.halted,
+    pinConfigured: !!cfg.pinHash, pinLockedSec: Math.max(0, Math.ceil((state.pinLockUntil - now()) / 1000)),
+    session: a.session ? { active: true, ttlSec: sessionTtlSec(a.session) } : { active: false },
+    limits: cfg.limits, hours: cfg.hours,
+  });
+
+  async function run(req, res, path) {
+    const ip = clientIp(req);
+    if (!rate(ip)) return json(res, 429, { ok: false, error: 'too many requests' });
+    const origin = req.headers.origin;
+    if (req.method === 'POST' && origin && !allowedOrigins.includes(origin)) return json(res, 403, { ok: false, error: 'forbidden origin' });
+
+    const needSession = path === '/trade/resume' || path === '/trade/ping';
+    // 상태 조회는 세션이 있으면 그 정보도 함께 돌려줌(없어도 통과)
+    const a = await authz(req, { session: needSession });
+    if (!a.ok) {
+      if (a.wrongUser) { if (auditOnce('login_wrong_user', { path }, req)) alert('허용되지 않은 계정이 매매 API에 접근했습니다.'); }
+      else if (a.status === 401 && !needSession) auditOnce('login_invalid', { path }, req);
+      return json(res, a.status, { ok: false, error: a.error });
+    }
+    if (path === '/trade/status' && req.method === 'GET') {
+      const sess = getSession(req.headers['x-trade-session'], a.user.id);
+      return json(res, 200, statusBody({ session: sess }));
+    }
+    if (path === '/trade/ping' && req.method === 'GET') {
+      return json(res, 200, { ok: true, ttlSec: sessionTtlSec(a.session) });
+    }
+    if (req.method !== 'POST') return json(res, 404, { ok: false, error: 'not found' });
+
+    let body;
+    try { body = await readJson(req); } catch (e) { return json(res, 400, { ok: false, error: 'bad request' }); }
+    const bad = checkReplay(body);
+    if (bad) { auditOnce('replay_reject', { path, reason: bad }, req); return json(res, 400, { ok: false, error: bad }); }
+
+    if (path === '/trade/session') {
+      const r = await checkPin(body.pin);
+      if (!r.ok) {
+        audit('pin_fail', false, { left: r.left, locked: !!r.locked }, req);
+        if (r.locked) alert(`거래 PIN을 ${cfg.pinMaxFails}회 틀려 ${Math.round(cfg.pinLockMs / 60000)}분간 잠겼습니다.`);
+        else if (r.status === 401) alert(`거래 PIN 오류 (남은 시도 ${r.left}회)`);
+        return json(res, r.status, { ok: false, error: r.error, ...(r.left != null ? { left: r.left } : {}), ...(r.retrySec ? { retrySec: r.retrySec } : {}) });
+      }
+      const sid = openSession(a.user.id);
+      audit('session_open', true, {}, req);
+      alert('거래 세션이 열렸습니다. 본인이 아니면 긴급 정지를 누르세요.', '매매 세션');
+      return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000) });
+    }
+    if (path === '/trade/lock') {
+      sessions.delete(String(req.headers['x-trade-session'] || ''));
+      audit('session_close', true, {}, req);
+      return json(res, 200, { ok: true });
+    }
+    if (path === '/trade/kill') {
+      state.halted = true;
+      audit('kill', true, {}, req);
+      alert('긴급 정지: 신규 매수가 막혔습니다. (보유 종목 매도·취소는 가능)');
+      return json(res, 200, { ok: true, halted: true });
+    }
+    if (path === '/trade/resume') {
+      state.halted = false;
+      audit('resume', true, {}, req);
+      alert('긴급 정지가 해제되었습니다.');
+      return json(res, 200, { ok: true, halted: false });
+    }
+    return json(res, 404, { ok: false, error: 'not found' });
+  }
+
+  function handle(req, res) {
+    const path = (req.url || '').split('?')[0];
+    if (!path.startsWith('/trade/')) return false;
+    cors(req, res);
+    if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+    run(req, res, path).catch(e => {
+      console.error('[trade] 처리 오류:', e && e.message);
+      if (!res.headersSent) json(res, 500, { ok: false, error: 'server error' });
+    });
+    return true;
+  }
+
+  if (!cfg.allowedEmail) console.warn('[trade] ALLOWED_EMAIL 미설정 — 매매 API는 모든 요청을 거부합니다.');
+  if (!cfg.pinHash) console.warn('[trade] TRADE_PIN_HASH 미설정 — 거래 세션을 열 수 없습니다.');
+
+  return { handle, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
+}
+
+module.exports = { createTrade, hashPin, verifyHash, checkLimits, loadConfig, scrub };

@@ -835,6 +835,17 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 @media(max-width:700px){#v-live table{font-size:10.5px}#v-live th,#v-live td{padding:4px 2px}#v-live .card{padding-left:8px;padding-right:8px}#v-live .faint{display:none}#v-live thead th:nth-child(8),#v-live tbody td:nth-child(8),#v-live thead th:nth-child(9),#v-live tbody tr:not(.lv2) td:nth-child(9){display:none}#v-live thead th:nth-child(n+11),#v-live tbody tr:not(.lv2) td:nth-child(n+11){display:none}#v-live tbody tr.lv2{display:table-row}}
 #v-live thead th:nth-child(n+11),#v-live tbody tr:not(.lv2) td:nth-child(n+11){display:none}#v-live tr.lv2{display:table-row}#v-live tr.lv2 td{padding:0 4px 5px;font-size:11px;border-top:none;white-space:normal}#v-live tr.lv2 .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}#v-live tr.lv2 .lvs{margin-right:8px}#v-live tr.lv2 .kwc{padding:0 3px;border-radius:3px}
 .ldl{display:block;font-size:10px;line-height:1.35;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin-top:1px}.ldl .lvl{color:var(--ink-3);font-size:9.5px;margin-right:2px}.ldl .lvs{margin-right:7px}.ldl .kwc{padding:0 3px;border-radius:3px}
+
+/* 로그인 창 */
+#authBack{position:fixed;inset:0;z-index:9999;background:var(--page);display:flex;align-items:center;justify-content:center;padding:16px}
+#authForm{width:100%;max-width:340px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px 18px;display:flex;flex-direction:column;gap:12px}
+#authForm .ah{font-size:16px}
+#authForm label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink-2)}
+#authForm input{height:44px;font-size:16px;padding:0 10px;border:1px solid var(--axis);border-radius:8px;background:var(--page);color:var(--ink);font-family:inherit}
+#authForm .btn{min-height:44px}
+#authForm small{color:var(--ink-3);font-size:11px}
+#authMsg{min-height:16px;font-size:12px;color:var(--crit)}
+#btnAuth{cursor:pointer;font-family:inherit;padding:4px 7px;font-size:11px}
 </style>
 </head>
 <body>
@@ -848,7 +859,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="hmeta">
       <span class="chip opt">유니버스 <b id="chipUniv">–</b></span>
       <span class="chip opt" id="chipHighPos" title="유니버스 종목 중 52주 신고가 -10% 이내 비율">신고가근처 <b>–</b></span>
-      <span style="display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap"><span class="chip">기준 <b id="chipDate">–</b> <span id="chipAsOf" class="faint" style="font-weight:400"></span></span><button class="chip" id="btnAccess" aria-label="접속 기록" style="cursor:pointer;font-family:inherit;padding:4px 6px"><span style="display:inline-block;width:8px">&nbsp;</span></button></span>
+      <span style="display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap"><span class="chip">기준 <b id="chipDate">–</b> <span id="chipAsOf" class="faint" style="font-weight:400"></span></span><button class="chip" id="btnAccess" aria-label="접속 기록" style="cursor:pointer;font-family:inherit;padding:4px 6px"><span style="display:inline-block;width:8px">&nbsp;</span></button><button class="chip" id="btnAuth" type="button" aria-label="로그인">로그인</button></span>
     </div>
   </div>
 </header>
@@ -2118,6 +2129,71 @@ function niceTicks(min,max,n){
   return out;
 }
 
+/* ══ 로그인 (2026-11-12 · 매매 1단계) ═════════════════════════════════════
+   Supabase Auth(이메일+비밀번호, 가입 차단)로 로그인하면 사용자 토큰으로 DB를 읽습니다.
+   · 보안은 서버가 강제합니다(DB 읽기 권한 잠금 SQL + relay 토큰 검증). 이 화면은 입구일 뿐입니다.
+   · 잠금 전에는 로그인 없이도 예전처럼 동작하고, 잠금 후 401이 오면 로그인 창이 자동으로 뜹니다.
+   · 토큰은 만료 1분 전에 자동 갱신하고, 로그아웃하면 브라우저에 저장된 조회 캐시도 지웁니다. */
+const AUTH={s:null,rp:null,shown:false};
+(function(){try{const j=JSON.parse(localStorage.getItem("sr_auth")||"null");if(j&&j.access_token&&j.refresh_token)AUTH.s=j;}catch(_){}})();
+function authSave(s){AUTH.s=s;try{if(s)localStorage.setItem("sr_auth",JSON.stringify(s));else localStorage.removeItem("sr_auth");}catch(_){}}
+function authSess(j){return {access_token:j.access_token,refresh_token:j.refresh_token,expires_at:+j.expires_at||Math.floor(Date.now()/1000)+(+j.expires_in||3600),email:(j.user&&j.user.email)||""};}
+async function authCall(path,body){
+  const r=await fetch(`${CFG.url}/auth/v1/${path}`,{method:"POST",headers:{apikey:CFG.key,"content-type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw Object.assign(new Error(j.error_description||j.msg||j.message||("HTTP "+r.status)),{status:r.status});
+  return j;
+}
+async function authLogin(email,pw){authSave(authSess(await authCall("token?grant_type=password",{email,password:pw})));}
+function authRefresh(){
+  if(AUTH.rp)return AUTH.rp;
+  AUTH.rp=(async()=>{
+    try{authSave(authSess(await authCall("token?grant_type=refresh_token",{refresh_token:AUTH.s.refresh_token})));}
+    catch(e){if(e.status>=400&&e.status<500)authSave(null);throw e;}   // 서버가 거절(만료·폐기)한 경우만 세션 삭제 — 네트워크 오류는 유지
+    finally{AUTH.rp=null;}
+  })();
+  return AUTH.rp;
+}
+/* 로그인 토큰(없으면 null). 만료 60초 전이면 먼저 갱신. */
+async function authTok(){
+  if(!AUTH.s)return null;
+  if(AUTH.s.expires_at-60<Date.now()/1000){try{await authRefresh();}catch(_){}}
+  return AUTH.s?AUTH.s.access_token:null;
+}
+async function authHdr(){const t=await authTok();return {apikey:CFG.key,Authorization:`Bearer ${t||CFG.key}`};}
+async function authLogout(){
+  try{if(AUTH.s)fetch(`${CFG.url}/auth/v1/logout`,{method:"POST",headers:{apikey:CFG.key,Authorization:`Bearer ${AUTH.s.access_token}`}}).catch(()=>{});}catch(_){}
+  authSave(null);
+  try{await new Promise(res=>{const rq=indexedDB.deleteDatabase("sr-qcache");rq.onsuccess=rq.onerror=rq.onblocked=()=>res();setTimeout(res,800);});}catch(_){}
+  location.reload();
+}
+/* DB가 401/403을 돌려줬을 때 호출. 세션 없음 → 로그인 창. 세션 있음: 401(토큰 폐기·만료)이면 세션을 지우고 로그인 창,
+   403(로그인은 됐지만 권한 없음)이면 로그아웃시키지 않고 오류만 남김(무한 반복 방지). */
+function authNeed(status){
+  if(AUTH.s){if(status!==401)return;authSave(null);}
+  authShow();
+}
+function authShow(msg){
+  if(AUTH.shown){const m=document.getElementById("authMsg");if(m&&msg)m.textContent=msg;return;}
+  AUTH.shown=true;
+  const d=document.createElement("div");d.id="authBack";
+  d.innerHTML=`<form id="authForm" autocomplete="on"><b class="ah">STOCK RADAR 로그인</b>
+    <label>이메일<input id="authEmail" type="email" name="username" autocomplete="username" inputmode="email" required></label>
+    <label>비밀번호<input id="authPw" type="password" name="password" autocomplete="current-password" required></label>
+    <div id="authMsg" role="alert">${msg||""}</div>
+    <button class="btn" id="authGo" type="submit">로그인</button>
+    <small>데이터는 로그인한 사용자에게만 보입니다.</small></form>`;
+  document.body.appendChild(d);
+  const f=d.querySelector("#authForm");
+  f.addEventListener("submit",async e=>{
+    e.preventDefault();const b=d.querySelector("#authGo"),m=d.querySelector("#authMsg");
+    b.disabled=true;m.textContent="확인 중…";
+    try{await authLogin(d.querySelector("#authEmail").value.trim(),d.querySelector("#authPw").value);location.reload();}
+    catch(x){m.textContent=(x.status===400||x.status===401||/invalid/i.test(x.message))?"이메일 또는 비밀번호가 맞지 않습니다.":("로그인 실패: "+x.message);b.disabled=false;}
+  });
+  setTimeout(()=>{const i=d.querySelector("#authEmail");if(i)i.focus();},50);
+}
+
 /* ── 데이터 접근 ─────────────────────────────────────────────────────── */
 let LIVE=false;
 /* 2026-11-08 요청 캐시: DB의 data_version()(파이프라인이 어떤 테이블이든 쓰면 바뀌는 값)이 같으면
@@ -2133,7 +2209,7 @@ const qcClone=d=>typeof structuredClone==="function"?structuredClone(d):JSON.par
 function qcVer(){
   if(QC.verP)return QC.verP;
   if(QC.verAt&&Date.now()-QC.verAt<QC_VER_TTL)return Promise.resolve(QC.ver);
-  QC.verP=fetch(`${CFG.url}/rest/v1/rpc/data_version`,{headers:{apikey:CFG.key,Authorization:`Bearer ${CFG.key}`}})
+  QC.verP=authHdr().then(h=>fetch(`${CFG.url}/rest/v1/rpc/data_version`,{headers:h}))
     .then(r=>r.ok?r.json():null).catch(()=>null)
     .then(v=>{QC.ver=(v==null||v==="")?null:String(v);QC.verAt=Date.now();QC.verP=null;return QC.ver;});
   return QC.verP;
@@ -2162,7 +2238,8 @@ async function qcPut(k,v){
   try{db.transaction("r","readwrite").objectStore("r").put(v,k);}catch(e){}
 }
 async function qNet(view,url){
-  const r=await fetch(url,{headers:{apikey:CFG.key,Authorization:`Bearer ${CFG.key}`}});
+  const r=await fetch(url,{headers:await authHdr()});
+  if(r.status===401||r.status===403)authNeed(r.status);
   if(!r.ok) throw new Error(`${view} ${r.status} ${await r.text()}`);
   return r.text();
 }
@@ -9317,6 +9394,11 @@ async function boot(){
   }
   setStickyOffset();
 }
+(function(){const b=document.getElementById("btnAuth");if(!b)return;
+  b.textContent=AUTH.s?"로그아웃":"로그인";
+  b.title=AUTH.s&&AUTH.s.email?AUTH.s.email:"";
+  b.addEventListener("click",()=>{if(AUTH.s){if(confirm("로그아웃할까요?"))authLogout();}else authShow();});
+})();
 boot();
 addEventListener("resize",()=>{clearTimeout(window._t);window._t=setTimeout(redraw,250);});
 
