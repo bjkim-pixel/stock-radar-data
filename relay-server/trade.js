@@ -13,6 +13,8 @@
    ════════════════════════════════════════════════════════════════════════ */
 const crypto = require('crypto');
 const { createPaper } = require('./paper');
+const { createLive } = require('./live');
+const { createKisOrder } = require('./kis-order');
 const { promisify } = require('util');
 const pbkdf2 = promisify(crypto.pbkdf2);
 
@@ -372,6 +374,16 @@ function createTrade(deps = {}) {
     : null;
   if (paper && !deps.skipLoop) paper.start();
 
+  /* ── 실전매매(6단계) — REAL_TRADING_ENABLED=1 과 계좌 환경변수가 있어야 동작. 주문 코드는 kis-order.js 에만 있음 ── */
+  const acctRaw = String(env.KIS_ACCOUNT_NO || '').replace(/\s/g, '');
+  const account = { cano: acctRaw.split('-')[0], prdt: String(env.KIS_ACCOUNT_PRDT || acctRaw.split('-')[1] || '').trim() };
+  const kisOrder = (deps.kisGet && deps.kisPost) ? createKisOrder({ kisGet: deps.kisGet, kisPost: deps.kisPost, account }) : null;
+  const live = (paper && kisOrder)
+    ? createLive({ now, sbGet: deps.sbGet, sbWrite: deps.sbWrite, getQuote, guard, alert, isOpenDay, kis: kisOrder,
+      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.REAL, enabled: () => cfg.enabled && cfg.realEnabled })
+    : null;
+  if (live && !deps.skipLoop) live.start();
+
   /* ── HTTP ── */
   function cors(req, res) {
     const o = req.headers.origin;
@@ -399,7 +411,7 @@ function createTrade(deps = {}) {
     enabled: cfg.enabled, realEnabled: cfg.realEnabled, halted: state.halted,
     pinConfigured: !!cfg.pinHash, pinLockedSec: Math.max(0, Math.ceil((state.pinLockUntil - now()) / 1000)),
     session: a.session ? { active: true, ttlSec: sessionTtlSec(a.session) } : { active: false },
-    limits: cfg.limits, hours: cfg.hours,
+    limits: cfg.limits, hours: cfg.hours, accountConfigured: !!(kisOrder && kisOrder.configured()),
   });
 
   async function run(req, res, path) {
@@ -409,7 +421,7 @@ function createTrade(deps = {}) {
     const origin = req.headers.origin;
     if (req.method === 'POST' && origin && !allowedOrigins.includes(origin)) return json(res, 403, { ok: false, error: 'forbidden origin' });
 
-    const needSession = path === '/trade/resume' || path === '/trade/ping' || path.startsWith('/trade/paper/');
+    const needSession = path === '/trade/resume' || path === '/trade/ping' || path.startsWith('/trade/paper/') || path.startsWith('/trade/live/');
     // 상태 조회는 세션이 있으면 그 정보도 함께 돌려줌(없어도 통과)
     const a = await authz(req, { session: needSession });
     if (!a.ok) {
@@ -438,6 +450,12 @@ function createTrade(deps = {}) {
       const r = await paper.report(sp.get('from') || null, sp.get('to') || null);
       return json(res, r.ok ? 200 : (r.status || 500), r);
     }
+    if (path.startsWith('/trade/live/') && req.method === 'GET') {
+      if (!live) return json(res, 503, { ok: false, error: 'live unavailable' });
+      const sp = new URL(req.url, 'http://x').searchParams;
+      const r = path === '/trade/live/state' ? await live.state() : path === '/trade/live/report' ? await live.report(sp.get('from') || null, sp.get('to') || null) : path === '/trade/live/probe' ? await live.probe() : { ok: false, status: 404, error: 'not found' };
+      return json(res, r.ok ? 200 : (r.status || 500), r);
+    }
     if (path === '/trade/ping' && req.method === 'GET') {
       return json(res, 200, { ok: true, ttlSec: sessionTtlSec(a.session) });
     }
@@ -460,6 +478,16 @@ function createTrade(deps = {}) {
       await audit('session_open', true, {}, req);
       alert('거래 세션이 열렸습니다. 본인이 아니면 긴급 정지를 누르세요.', '매매 세션');
       return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000) });
+    }
+    if (path === '/trade/live/order' || path === '/trade/live/cancel' || path === '/trade/live/plan') {
+      if (!live) return json(res, 503, { ok: false, error: 'live unavailable' });
+      const kind = path.slice('/trade/live/'.length);
+      const r = kind === 'order' ? await live.place(body) : kind === 'cancel' ? await live.cancel(body.id) : await live.editPlan(body);
+      const detail = kind === 'order' ? { code: body.code, side: body.side, type: body.type, price: body.price, qty: body.qty, status: r.order && r.order.status, error: r.error }
+        : kind === 'cancel' ? { id: body.id, error: r.error } : { code: body.code, stop: body.stop, error: r.error };
+      audit(r.ok ? 'live_' + kind : 'live_reject', !!r.ok, detail, req, 'REAL');
+      if (r.ok && kind === 'order') alert(`[실전] 주문 ${r.order.status === 'open' ? '접수' : '확인 중'}: ${body.code} ${body.side === 'buy' ? '매수' : '매도'} ${body.qty}주 ${body.type === 'market' ? '시장가' : body.price + '원'}`);
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, order: r.order });
     }
     if (path === '/trade/paper/plan') {
       if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
@@ -514,7 +542,7 @@ function createTrade(deps = {}) {
   if (!cfg.allowedEmail) console.warn('[trade] ALLOWED_EMAIL 미설정 — 매매 API는 모든 요청을 거부합니다.');
   if (!cfg.pinHash) console.warn('[trade] TRADE_PIN_HASH 미설정 — 거래 세션을 열 수 없습니다.');
 
-  return { handle, paper, getQuote, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
+  return { handle, paper, live, getQuote, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
 }
 
 module.exports = { createTrade, hashPin, verifyHash, checkLimits, loadConfig, scrub };

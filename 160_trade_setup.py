@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""매매 보안 기반 DB 설정 — 인자: trade_security | lock_data | unlock_data | paper_trading
+"""매매 보안 기반 DB 설정 — 인자: trade_security | lock_data | unlock_data | paper_trading | live_trading
    trade_security : 160_trade_security.sql (trade_audit 테이블 + is_owner())  — 기존 화면에 영향 없음
    lock_data      : 161_lock_data_to_login.sql (anon 읽기 차단, 로그인한 주인만 읽기)
    unlock_data    : 161_unlock_data.sql (잠금 되돌리기)
    paper_trading  : 162_paper_trading.sql (가상매매 테이블 5개 — relay 만 접근)
+   live_trading   : 163_live_trading.sql (실전매매 기록 테이블 4개 — relay 만 접근)
    여러 번 실행해도 안전. 실행 후 anon/주인/타인 권한을 실제로 시험해서 결과를 출력(이메일은 일부만 표시)."""
 import os, sys, json, psycopg2
 
-FILES = {"trade_security": "160_trade_security.sql", "lock_data": "161_lock_data_to_login.sql", "unlock_data": "161_unlock_data.sql", "paper_trading": "162_paper_trading.sql"}
+FILES = {"trade_security": "160_trade_security.sql", "lock_data": "161_lock_data_to_login.sql", "unlock_data": "161_unlock_data.sql", "paper_trading": "162_paper_trading.sql", "live_trading": "163_live_trading.sql"}
 target = sys.argv[1] if len(sys.argv) > 1 else ""
 if target not in FILES: sys.exit("대상: " + " | ".join(FILES))
 url = os.environ.get("SUPABASE_DB_URL", "")
@@ -45,6 +46,9 @@ def probe(role, email, query):
     finally:
         c.rollback(); c.close()
 
+if target == "live_trading":
+    for t in ("live_orders", "live_fills", "live_plans", "live_events"):
+        print(f"· {t}  anon 읽기(차단이어야 정상):", probe("anon", None, f"select count(*) from public.{t}"), "| 주인 로그인 읽기(차단이어야 정상):", probe("authenticated", owner, f"select count(*) from public.{t}"))
 if target == "paper_trading":
     for t in ("paper_orders", "paper_fills", "paper_positions", "paper_events", "paper_book_snaps"):
         print(f"· {t}  anon 읽기(차단이어야 정상):", probe("anon", None, f"select count(*) from public.{t}"), "| 주인 로그인 읽기(차단이어야 정상):", probe("authenticated", owner, f"select count(*) from public.{t}"))

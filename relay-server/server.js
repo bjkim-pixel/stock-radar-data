@@ -3276,6 +3276,21 @@ const trade = require('./trade').createTrade({
     if (j.rt_cd !== '0') throw new Error(`KIS ${trId} ${j.msg_cd || ''}`);
     return j;
   },
+  /* 실전 주문 전용(kis-order.js 만 사용). 자동 재시도 없음 — 응답을 못 받으면 code='UNKNOWN'(주문이 들어갔을 수도 있음),
+     KIS 가 처리를 거부하면 code='REJECT'(주문 안 됨). 요청 본문(계좌번호 포함)은 로그에 남기지 않음 */
+  kisPost: async (path, trId, body) => {
+    await kisRestThrottle();
+    const token = await getKisRestToken();
+    let res, text;
+    try {
+      res = await fetch(`${KIS_REST_BASE}${path}`, { method: 'POST', headers: kisRestHeaders(token, trId), body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+      text = await res.text();
+    } catch (e) { const err = new Error(`KIS ${trId} 응답 없음: ${e.message}`); err.code = 'UNKNOWN'; throw err; }
+    let j = null; try { j = JSON.parse(text); } catch (_) {}
+    if (!j) { const err = new Error(`KIS ${trId} HTTP ${res.status} 해석 불가`); err.code = 'UNKNOWN'; throw err; }
+    if (j.rt_cd !== '0') { const err = new Error(`${j.msg1 || 'KIS 거부'} (${j.msg_cd || res.status})`); err.code = 'REJECT'; err.msgCd = j.msg_cd; throw err; }
+    return j;
+  },
 });
 
 const server = http.createServer((req, res) => {

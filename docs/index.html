@@ -8932,7 +8932,7 @@ async function loadTdKospi(){
     $("#tdKHead").innerHTML=`<div class="load">불러오지 못했습니다${/v_kospi_flow_daily|404|PGRST|42/.test(String(e.message))?" — Actions의 'Setup KOSPI Flow View'를 먼저 실행하세요":""}: ${accEsc(e.message).slice(0,120)}</div>`;
   }
 }
-/* ══ 매매 페이지 (2026-11-12 · 매매 2~3단계: 가상 주문은 relay 의 자체 체결 시뮬레이터, 실전 주문은 6단계 전까지 비활성) ═══════════════════════
+/* ══ 매매 페이지 (2026-11-13 · 매매 2~6단계: 가상 = relay 자체 체결 시뮬레이터(/trade/paper), 실전 = KIS 실제 계좌(/trade/live, REAL_TRADING_ENABLED=1 일 때만) ═══════════════════════
    · 메뉴: 매매 › 가상매매 / 실제매매(같은 화면, 모드만 다름)
    · 입장: 로그인 → 거래 PIN(relay /trade/session) → 15분 세션(쓸 때마다 연장)
    · 시세·호가: relay /trade/quote (KIS 실전 시세, 3초마다) · 추천가·목표가·매물대: 종목상세와 같은 계산(DB 수급 이력)
@@ -8940,6 +8940,7 @@ async function loadTdKospi(){
 const TRD={q:[],cur:null,mode:"VIRTUAL",sess:null,off:0,st:null,quote:null,data:null,poll:null,stPoll:null,busy:false,buy:0,qty:0,amt:0,stopPct:5,target:0,coef:1,plan:null,planDirty:false};
 const trdEsc=v=>String(v==null?"":v).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const trdNm=c=>((S.codes||[]).find(x=>x.code===c)||{}).name||c;
+const trdBase=()=>TRD.mode==="REAL"?"/trade/live":"/trade/paper";
 TRD.type="limit";TRD.ps=null;TRD.hq={};TRD.pe={};
 try{TRD.q=(JSON.parse(localStorage.getItem("sr_trade_q")||"[]")||[]).filter(c=>/^\d{6}$/.test(c)).slice(0,10);}catch(_){}
 try{TRD.sess=sessionStorage.getItem("sr_trade_sess");}catch(_){}
@@ -9053,7 +9054,7 @@ async function trdEnter(){
   TRD.mode=S.tradeMode==="REAL"?"REAL":"VIRTUAL";
   if(TRD.pane&&TRD.pane!=="order")setTimeout(()=>trdTab(TRD.pane),0);
   $("#trdBand").className="trd-band "+(TRD.mode==="REAL"?"real":"virt");
-  $("#trdBandTx").innerHTML=TRD.mode==="REAL"?"<b>실전</b> · 실제 계좌 (주문은 6단계부터 가능)":"<b>가상</b> · 자체 체결 시뮬레이터 (실제 주문은 나가지 않음)";
+  $("#trdBandTx").innerHTML=TRD.mode==="REAL"?"<b>실전</b> · KIS 실제 계좌 — 주문이 실제로 체결됩니다":"<b>가상</b> · 자체 체결 시뮬레이터 (실제 주문은 나가지 않음)";
   trdRenderQ();
   {const h=$("#v-trade>.pg-title");if(h)h.textContent=TRD.mode==="REAL"?"실제매매":"가상매매";}
   if(!AUTH.s){$("#trdPinRow").classList.add("hide");trdGateMsg('로그인이 필요합니다. <button class="btn" id="trdLogin" type="button">로그인</button>');$("#trdLogin").onclick=()=>authShow();return;}
@@ -9234,7 +9235,7 @@ function trdRenderProf(){
     trdProfHtml(D.profIndiv.filter(b=>b.hi>cur),cur,"var(--down)","개인 순매수 매물대 (현재가 위 = 저항)")+
     `<div style="height:10px"></div>`+trdProfHtml(D.profInst.filter(b=>b.lo<cur),cur,"var(--up)","외국인+기관 순매수 매물대 (현재가 아래 = 지지)");
 }
-const TRD_ERR={"trading disabled":"서버에서 매매 기능이 꺼져 있습니다(Render 환경변수 TRADING_ENABLED=1 필요)","halted":"긴급 정지 중이라 신규 매수를 할 수 없습니다","outside trading hours":"신규 매수 가능 시간이 아닙니다","real trading disabled":"실전 매매는 아직 꺼져 있습니다","paper tables missing":"가상매매 DB 테이블이 아직 없습니다 — Actions › [수시] DB 테이블·뷰 생성 › paper_trading 실행","paper store unavailable":"가상매매 저장소에 연결하지 못했습니다","paper unavailable":"서버에 가상매매 기능이 없습니다","too many requests":"요청이 너무 많습니다. 잠시 뒤 다시 시도하세요","expired":"요청 시각이 서버와 맞지 않습니다. 다시 시도하세요","replay":"중복 요청입니다. 다시 시도하세요","unauthorized":"로그인이 필요합니다"};
+const TRD_ERR={"trading disabled":"서버에서 매매 기능이 꺼져 있습니다(Render 환경변수 TRADING_ENABLED=1 필요)","halted":"긴급 정지 중이라 신규 매수를 할 수 없습니다","outside trading hours":"신규 매수 가능 시간이 아닙니다","real trading disabled":"실전 매매는 아직 꺼져 있습니다","paper tables missing":"가상매매 DB 테이블이 아직 없습니다 — Actions › [수시] DB 테이블·뷰 생성 › paper_trading 실행","paper store unavailable":"가상매매 저장소에 연결하지 못했습니다","paper unavailable":"서버에 가상매매 기능이 없습니다","too many requests":"요청이 너무 많습니다. 잠시 뒤 다시 시도하세요","expired":"요청 시각이 서버와 맞지 않습니다. 다시 시도하세요","replay":"중복 요청입니다. 다시 시도하세요","unauthorized":"로그인이 필요합니다","live unavailable":"서버에 실전매매 기능이 없습니다","live tables missing":"실전매매 DB 테이블이 아직 없습니다 — Actions › [수시] DB 테이블·뷰 생성 › live_trading 실행","account not configured":"실전 계좌가 연결되지 않았습니다(KIS_ACCOUNT_NO)"};
 const trdErrTx=e=>TRD_ERR[e&&e.message]||(e&&e.message)||"실패";
 function trdBasis(Q){return TRD.type==="market"?((Q.asks.find(x=>x.p>0)||{}).p||Q.price):trdFloor(TRD.buy||0);}
 const trdSteps=()=>(TRD.edited&&TRD.edited.length?TRD.edited:(TRD.plan?TRD.plan.steps:[]));
@@ -9250,7 +9251,8 @@ function trdRenderOrder(){
   $("#trdOrderW").innerHTML=m.concat((TRD.fixNote?[TRD.fixNote]:[]).concat(w).map(x=>`<div class="trd-wn">${trdEsc(x)}</div>`)).join("");
   const st=TRD.st||{},P=TRD.ps,steps=trdSteps(),sumQ=steps.reduce((a,x)=>a+x.q,0);
   let why="";
-  if(TRD.mode!=="VIRTUAL")why="실전 주문은 6단계에서 활성화됩니다";
+  if(TRD.mode==="REAL"&&!st.realEnabled)why="실전 매매 스위치가 꺼져 있습니다(Render REAL_TRADING_ENABLED=1 필요)";
+  else if(TRD.mode==="REAL"&&P&&P.account===false)why="실전 계좌가 연결되지 않았습니다(Render KIS_ACCOUNT_NO 환경변수 필요)";
   else if(!st.enabled)why="서버에서 매매 기능이 꺼져 있습니다(TRADING_ENABLED=1 필요)";
   else if(st.halted)why="긴급 정지 중입니다";
   else if(P&&P.market&&!P.market.open)why="지금은 주문할 수 없습니다 — "+P.market.reason;
@@ -9260,9 +9262,9 @@ function trdRenderOrder(){
   else if(TRD.ordering)why="주문 처리 중…";
   const armed=TRD.arm&&TRD.arm.key===trdOrderKey()&&Date.now()-TRD.arm.t<4000;
   const b=$("#trdBtn");b.disabled=!!why;b.style.opacity=why?".5":"";b.style.cursor=why?"not-allowed":"";
-  b.textContent=armed?`한 번 더 누르면 주문됩니다 · ${mkt?"시장가":N(price)+"원"} × ${N(qty)}주`:(TRD.mode==="REAL"?"실전":"가상")+` ${mkt?"시장가 ":""}매수 주문`+(price>0&&qty>0?` · ${mkt?"":N(price)+"원 × "}${N(qty)}주`:"");
-  $("#trdMkt").innerHTML=why&&TRD.mode==="VIRTUAL"?`<div class="trd-wn" style="margin:0 0 8px">${trdEsc(why)}</div>`:"";
-  $("#trdBtnNote").textContent=TRD.mode==="VIRTUAL"?"가상 주문은 실제 호가로 체결을 계산해 우리 DB에만 기록합니다. 체결되면 약 5초 안에 익절 단계 주문이 걸리고 손절 감시가 시작됩니다.":"실전 주문은 6단계에서 활성화됩니다.";
+  b.textContent=armed?(TRD.mode==="REAL"?"실전 — 한 번 더 누르면 실제 계좌로 주문됩니다 · ":"한 번 더 누르면 주문됩니다 · ")+`${mkt?"시장가":N(price)+"원"} × ${N(qty)}주`:(TRD.mode==="REAL"?"실전":"가상")+` ${mkt?"시장가 ":""}매수 주문`+(price>0&&qty>0?` · ${mkt?"":N(price)+"원 × "}${N(qty)}주`:"");
+  $("#trdMkt").innerHTML=why?`<div class="trd-wn" style="margin:0 0 8px">${trdEsc(why)}</div>`:"";
+  $("#trdBtnNote").textContent=TRD.mode==="VIRTUAL"?"가상 주문은 실제 호가로 체결을 계산해 우리 DB에만 기록합니다. 체결되면 약 5초 안에 익절 단계 주문이 걸리고 손절 감시가 시작됩니다.":`실전 주문은 KIS 실제 계좌로 나갑니다. 체결은 5초마다 체결조회로 확인하고, 익절·손절 주문은 서버가 자동으로 냅니다.${st.limits&&st.limits.REAL?` 한도: 1회 ${trdFmtAmt(st.limits.REAL.order)} · 1일 ${trdFmtAmt(st.limits.REAL.day)} · ${st.limits.REAL.positions}종목`:""}`;
 }
 function trdBtnClick(){
   const b=$("#trdBtn");if(b.disabled||TRD.ordering)return;
@@ -9273,7 +9275,7 @@ function trdBtnClick(){
   const cid=TRD.arm.cid;TRD.arm=null;trdSubmitBuy(cid);
 }
 async function trdSubmitBuy(cid){
-  const Q=TRD.quote;if(!Q||TRD.mode!=="VIRTUAL")return;
+  const Q=TRD.quote;if(!Q)return;
   const basis=trdBasis(Q),qty=Math.floor(TRD.qty);
   const body={code:TRD.cur,name:trdNm(TRD.cur),side:"buy",type:TRD.type,qty,
     plan:{stopPct:TRD.stopPct,stop:trdStopPrice(basis,TRD.stopPct),target:TRD.target||null,steps:trdSteps().map(s=>({n:s.n,p:s.p,q:s.q}))}};
@@ -9281,9 +9283,10 @@ async function trdSubmitBuy(cid){
   if(cid)body.cid=cid;
   TRD.ordering=true;trdRenderOrder();
   try{
-    const r=await trdApi("/trade/paper/order",{method:"POST",body});
+    const r=await trdApi(trdBase()+"/order",{method:"POST",body});
     const o=r.order,f=r.fills||[],avg=f.length?f.reduce((a,x)=>a+x.amount,0)/f.reduce((a,x)=>a+x.qty,0):null;
-    TRD.msg={ok:true,t:Date.now(),text:o.status==="filled"?`가상 매수 체결: ${N(o.filled)}주 평균 ${N(avg,0)}원`:o.filled>0?`일부 체결 ${N(o.filled)}/${N(o.qty)}주 (평균 ${N(avg,0)}원), 나머지는 대기`:`주문 접수: ${N(o.qty)}주 지정가 대기 중 (내 앞 대기 ${N(o.queueAhead)}주)`};
+    const R=TRD.mode==="REAL"?"실전":"가상";
+    TRD.msg={ok:true,t:Date.now(),text:o.status==="unknown"?"실전 주문 응답을 받지 못해 체결조회로 확인 중입니다. 같은 주문을 다시 내지 마세요.":TRD.mode==="REAL"&&o.status==="open"?`실전 주문 접수(주문번호 확인됨): ${N(o.qty)}주 — 체결은 5초 안에 반영됩니다`:o.status==="filled"?`${R} 매수 체결: ${N(o.filled)}주 평균 ${N(avg,0)}원`:o.filled>0?`일부 체결 ${N(o.filled)}/${N(o.qty)}주 (평균 ${N(avg,0)}원), 나머지는 대기`:`주문 접수: ${N(o.qty)}주 지정가 대기 중 (내 앞 대기 ${N(o.queueAhead)}주)`};
   }catch(e){
     if(e.status===401&&e.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");TRD.ordering=false;return;}
     TRD.msg={ok:false,t:Date.now(),text:"주문 실패: "+trdErrTx(e)};
@@ -9293,8 +9296,7 @@ async function trdSubmitBuy(cid){
 
 /* ── 보유·미체결·체결 (가상) ── */
 async function trdLoadState(){
-  if(TRD.mode!=="VIRTUAL"){TRD.ps=null;trdRenderHold();return;}
-  try{TRD.ps=await trdApi("/trade/paper/state");TRD.psErr=null;}
+  try{TRD.ps=await trdApi(trdBase()+"/state");TRD.psErr=null;}
   catch(e){TRD.ps=null;TRD.psErr=e;if(e.status===401||e.status===403){trdStop();trdEnter();return;}}
   trdRenderHold();if(TRD.quote)trdRenderOrder();
 }
@@ -9321,20 +9323,21 @@ function trdPeHtml(p){
 function trdRenderHold(){
   const box=$("#trdHold");
   if(box.contains(document.activeElement)&&/INPUT/.test(document.activeElement.tagName))return;   // 입력 중엔 다시 그리지 않음
-  if(TRD.mode!=="VIRTUAL"){box.innerHTML='<div class="load">실전 계좌 조회는 6단계에서 연결됩니다.</div>';$("#trdOpen").innerHTML="";$("#trdFills").innerHTML="";$("#trdPl").textContent="";return;}
   const P=TRD.ps;
+  if(P&&P.account===false){box.innerHTML='<div class="load">실전 계좌가 연결되지 않았습니다. Render 환경변수 KIS_ACCOUNT_NO(계좌번호 8자리-상품코드 2자리)를 넣고 재배포하세요.</div>';$("#trdOpen").innerHTML="";$("#trdFills").innerHTML="";$("#trdPl").textContent="";return;}
   if(!P){box.innerHTML='<div class="load">'+(TRD.psErr?trdEsc(trdErrTx(TRD.psErr)):"불러오는 중…")+"</div>";$("#trdOpen").innerHTML="";$("#trdFills").innerHTML="";return;}
   const px=c=>(c===TRD.cur&&TRD.quote?TRD.quote.price:null)||(P.positions.find(x=>x.code===c)||{}).last||null;
-  $("#trdPl").textContent=`오늘 실현손익 ${trdSgn(P.realizedToday)}원 · 오늘 매수 ${trdFmtAmt(P.dayBuyKrw)}`+(P.limits?` / 한도 ${trdFmtAmt(P.limits.day)}`:"");
+  $("#trdPl").textContent=(P.real&&P.cash!=null?`예수금 ${trdFmtAmt(P.cash)} · `:"")+`오늘 실현손익 ${trdSgn(P.realizedToday)}원 · 오늘 매수 ${trdFmtAmt(P.dayBuyKrw)}`+(P.limits?` / 한도 ${trdFmtAmt(P.limits.day)}`:"");
   // 자동 매도 감시 상태
   const en=P.engine||{},age=en.lastTick?Math.round((P.now-en.lastTick)/1000):null,planned=P.positions.some(p=>p.plan);
   let eng="";
   if(planned){
     if(!en.enabled)eng='<div class="trd-wn">서버 매매 기능이 꺼져 있어 자동 매도(손절·익절)도 멈춰 있습니다.</div>';
-    else if(P.market&&P.market.open)eng=age!=null&&age<=30?`<div class="trd-ok">자동 매도 감시 중 · ${age}초 전 확인</div>`:`<div class="trd-wn">자동 매도 감시가 ${age==null?"아직 시작되지 않았습니다":age+"초째 멈춰 있습니다"} — 서버 상태를 확인하세요</div>`;
+    else if(P.market&&P.market.open)eng=age!=null&&age<=30?`<div class="trd-ok">자동 매도 감시 중 · ${age}초 전 확인${P.real&&P.engine.lastSync?` · 체결조회 ${Math.round((P.now-P.engine.lastSync)/1000)}초 전`:""}</div>`:`<div class="trd-wn">자동 매도 감시가 ${age==null?"아직 시작되지 않았습니다":age+"초째 멈춰 있습니다"} — 서버 상태를 확인하세요</div>`;
     else eng=`<div class="sub">장이 닫혀 있어 감시 대기 중 (${trdEsc(P.market?P.market.reason:"")}). 다음 거래일 첫 시세에서 익절 주문을 다시 걸고 손절 감시를 시작합니다.</div>`;
   }
-  box.innerHTML=eng+(P.positions.length?P.positions.map(p=>{
+  const probe=P.real?`<div class="trd-sell" style="margin:0 0 6px"><button type="button" class="chip" data-probe="1">계좌 연결 점검</button><span class="faint" style="font-size:11.5px">${trdEsc(TRD.probeTx||"")}</span></div>`:"";
+  box.innerHTML=probe+eng+(P.positions.length?P.positions.map(p=>{
     const cp=px(p.code),pl=cp?(cp-p.avg)*p.qty:null,pc=cp?(cp/p.avg-1)*100:null,cls=pl>0?"up":pl<0?"down":"dim",q=TRD.hq[p.code]||{},armed=TRD.sellArm&&TRD.sellArm.code===p.code&&Date.now()-TRD.sellArm.t<4000;
     const st=p.plan&&p.plan.steps||[];
     const pl2=p.plan?`<div class="sub">자동 매도: 손절 <b class="down">${p.stop?N(p.stop)+"원":"없음"}</b>${p.stop&&cp?` (현재가 대비 ${N((p.stop/cp-1)*100,1)}%)`:""}${p.plan.stopped?" · 손절 실행됨":""}${st.length?" · 익절 "+st.map(s=>`${s.n}) ${N(s.p)}${s.sold?` <span class="up">✓${s.sold}</span>`:""}`).join(" "):" · 익절 단계 없음"}</div>`:'<div class="sub">자동 매도 계획 없음 — 계획 수정으로 손절·익절을 넣으세요</div>';
@@ -9344,7 +9347,7 @@ function trdRenderHold(){
       ${editing?trdPeHtml(p):`<div class="trd-sell"><input data-hq="${p.code}" inputmode="numeric" placeholder="수량 ${p.avail??p.qty}" value="${q.qty||""}"><input data-hp="${p.code}" inputmode="numeric" placeholder="비우면 시장가" value="${q.price||""}"><button type="button" class="btn ghost" data-sell="${p.code}">${armed?"한 번 더 누르면 매도":"매도"}</button><button type="button" class="chip" data-pe-open="${p.code}">계획 수정</button></div>`}</div>`;
   }).join(""):'<div class="faint" style="font-size:12.5px">보유 종목이 없습니다.</div>');
   const open=P.orders.filter(o=>o.status==="open"||o.status==="partial");
-  $("#trdOpen").innerHTML=open.length?open.map(o=>{const auto=TRD_RSN(o.reason);return `<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${trdEsc(o.name||trdNm(o.code))} ${o.type==="market"?"시장가":N(o.price)+"원"}${auto?` <span class="trd-w" style="background:var(--surface-2);color:var(--ink-2)">${auto} · 자동</span>`:""}</span>${auto?"":`<button type="button" class="chip" data-ccl="${o.id}">취소</button>`}</div><div class="sub num">${N(o.filled)}/${N(o.qty)}주 체결 · 내 앞 대기 약 ${N(o.queueAhead)}주 · ${trdTm(o.ts)}</div></div>`;}).join(""):'<div class="faint" style="font-size:12.5px">미체결 주문이 없습니다.</div>';
+  $("#trdOpen").innerHTML=open.length?open.map(o=>{const auto=TRD_RSN(o.reason);return `<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${trdEsc(o.name||trdNm(o.code))} ${o.type==="market"?"시장가":N(o.price)+"원"}${auto?` <span class="trd-w" style="background:var(--surface-2);color:var(--ink-2)">${auto} · 자동</span>`:""}</span>${auto||o.status==="unknown"||o.status==="pending"||o.cancelReq?"":`<button type="button" class="chip" data-ccl="${o.id}">취소</button>`}</div><div class="sub num">${N(o.filled)}/${N(o.qty)}주 체결${o.queueAhead!=null?` · 내 앞 대기 약 ${N(o.queueAhead)}주`:""}${o.status==="unknown"?' · <b class="down">접수 확인 중</b>':o.status==="pending"?" · 전송 중":""}${o.cancelReq?" · 취소 요청됨":""} · ${trdTm(o.ts)}</div></div>`;}).join(""):'<div class="faint" style="font-size:12.5px">미체결 주문이 없습니다.</div>';
   $("#trdFills").innerHTML=P.fills.length?P.fills.map(f=>`<div class="trd-hr"><div class="top"><span><b class="${f.side==="buy"?"up":"down"}">${f.side==="buy"?"매수":"매도"}</b> ${trdEsc(trdNm(f.code))} ${N(f.price)}원 × ${N(f.qty)}주</span><span class="num ${f.realized>0?"up":f.realized<0?"down":"dim"}">${f.realized==null?"":trdSgn(f.realized)+"원"}</span></div><div class="sub">${trdTm(f.ts)}${TRD_RSN(f.reason)?" · "+TRD_RSN(f.reason)+" (자동)":""}</div></div>`).join(""):'<div class="faint" style="font-size:12.5px">오늘 체결이 없습니다.</div>';
 }
 async function trdPeSave(code){
@@ -9355,7 +9358,7 @@ async function trdPeSave(code){
   if(bad){e.msg=`${N(bad.p)}원은 호가 단위에 맞지 않습니다 (${N(trdFloor(bad.p))}원 등)`;trdRenderHold();return;}
   const stop=num(e.stop);
   if(!(stop>0)){e.msg="손절가를 입력하세요";trdRenderHold();return;}
-  try{await trdApi("/trade/paper/plan",{method:"POST",body:{code,stop:trdFloor(stop),steps}});delete TRD.pe[code];TRD.msg={ok:true,t:Date.now(),text:"계획을 저장했습니다. 약 5초 안에 익절 주문을 새 가격으로 다시 겁니다."};}
+  try{await trdApi(trdBase()+"/plan",{method:"POST",body:{code,stop:trdFloor(stop),steps}});delete TRD.pe[code];TRD.msg={ok:true,t:Date.now(),text:"계획을 저장했습니다. 약 5초 안에 익절 주문을 새 가격으로 다시 겁니다."};}
   catch(e2){if(e2.status===401&&e2.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");return;}e.msg="저장 실패: "+trdErrTx(e2);}
   await trdLoadState();if(TRD.quote)trdRenderOrder();
 }
@@ -9375,10 +9378,9 @@ function trdTab(p){
 }
 async function trdLoadReport(){
   const box=p=>$(p==="rep"?"#trdPaneRep":"#trdPaneHist");
-  if(TRD.mode!=="VIRTUAL"){["rep","hist"].forEach(p=>box(p).innerHTML='<div class="card"><div class="load">실전 계좌의 수익률·내역은 6단계에서 연결됩니다.</div></div>');return;}
   const P=trdPeriod(),q=(P.from?`from=${P.from}&to=${P.to}`:"");
   box(TRD.pane).innerHTML=trdPerBar(P)+'<div class="card"><div class="load">불러오는 중…</div></div>';
-  try{TRD.rep=await trdApi("/trade/paper/report"+(q?"?"+q:""));TRD.repP=P;}
+  try{TRD.rep=await trdApi(trdBase()+"/report"+(q?"?"+q:""));TRD.repP=P;}
   catch(e){if(e.status===401&&e.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");return;}box(TRD.pane).innerHTML=trdPerBar(P)+`<div class="card"><div class="load">${trdEsc(trdErrTx(e))}</div></div>`;return;}
   trdRenderReport();
 }
@@ -9395,8 +9397,8 @@ function trdMonthChart(M){
   const line=M.map((x,i)=>`${xs(i)},${y0-x.cum*sc}`).join(" ");
   return `<div class="trd-scroll"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="월별 실현손익과 누적 손익"><line x1="0" x2="${W}" y1="${y0}" y2="${y0}" stroke="var(--axis)"/>${bars}<polyline points="${line}" fill="none" stroke="var(--ink-2)" stroke-width="2"/>${M.map((x,i)=>`<circle cx="${xs(i)}" cy="${y0-x.cum*sc}" r="3" fill="var(--ink-2)"/>`).join("")}</svg></div><div class="faint" style="font-size:11px">막대 = 월별 실현손익, 선 = 누적 손익 (전체 기간)</div>`;
 }
-const TRD_ST={open:"접수",partial:"부분 체결",filled:"체결",cancelled:"취소",rejected:"거부"};
-const TRD_NOTE={expired:"장 마감 소멸",stop:"손절로 취소",resync:"수량 재배분",plan_edit:"계획 수정",manual_sell:"수동 매도로 취소",no_plan:"계획 없음",user:"직접 취소"};
+const TRD_ST={pending:"전송 중",unknown:"접수 확인 중",open:"접수",partial:"부분 체결",filled:"체결",cancelled:"취소",rejected:"거부"};
+const TRD_NOTE={not_found:"접수 안 됨(체결조회에 없음)",expired:"장 마감 소멸",stop:"손절로 취소",resync:"수량 재배분",plan_edit:"계획 수정",manual_sell:"수동 매도로 취소",no_plan:"계획 없음",user:"직접 취소"};
 function trdRenderReport(){
   const R=TRD.rep,P=TRD.repP;if(!R)return;
   const S2=R.summary,T=R.stats,SL=R.slippage;
@@ -9412,7 +9414,7 @@ function trdRenderReport(){
       ${card("손익비",T.payoff==null?"–":N(T.payoff,2)+" : 1",T.payoff!=null&&T.payoff<2?"down":"")}${card("손절로 끝난 비율",T.stopRate==null?"–":N(T.stopRate,1)+"%")}${card("평균 보유",T.avgHoldDays==null?"–":N(T.avgHoldDays,1)+"일")}</div></div>
     <div class="card"><h3>종목별 수익</h3>${R.codes.length?`<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>매수</th><th>매도</th><th>실현손익</th><th>%</th><th>평가손익</th><th>횟수</th></tr></thead><tbody>${R.codes.map(c=>`<tr><td>${trdEsc(c.name||trdNm(c.code))}</td><td>${trdFmtAmt(c.buyAmt)}</td><td>${trdFmtAmt(c.sellAmt)}</td><td class="${trdCls(c.realized)}">${trdSgn(c.realized)}</td><td class="${trdCls(c.realizedPct)}">${trdPct(c.realizedPct)}</td><td class="${trdCls(c.unrealized)}">${c.qty?trdSgn(c.unrealized):"–"}</td><td>${N(c.trades)}</td></tr>`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">이 기간 체결이 없습니다.</div>'}</div>
     <div class="card"><h3>체결 품질 <span class="r faint" style="font-size:11px">가상 체결 검증용</span></h3>${SL.rows.length?`<table class="trd-tb"><thead><tr><th>구분</th><th>주문</th><th>평균 불리</th><th>최대</th><th>금액</th></tr></thead><tbody>${SL.rows.map(x=>`<tr><td>${x.kind}</td><td>${N(x.orders)}</td><td>${N(x.avgPct,2)}%</td><td>${N(x.worstPct,2)}%</td><td>${trdFmtAmt(x.krw)}</td></tr>`).join("")}</tbody></table>`:'<div class="faint" style="font-size:12.5px">시장가·손절 체결이 아직 없습니다.</div>'}
-      <div class="faint" style="font-size:11.5px;margin-top:6px">지정가 체결률 ${SL.limitFillRate==null?"–":N(SL.limitFillRate,1)+"%"} · 지정가 첫 체결까지 평균 ${SL.limitDelayMin==null?"–":N(SL.limitDelayMin,1)+"분"}<br>불리 = 시장가는 주문 순간 상대 1호가, 손절은 손절가보다 나쁘게 체결된 정도. 6단계 실전과 비교해 시뮬레이터 정확도를 확인합니다.</div></div>`;
+      <div class="faint" style="font-size:11.5px;margin-top:6px">지정가 체결률 ${SL.limitFillRate==null?"–":N(SL.limitFillRate,1)+"%"} · 지정가 첫 체결까지 평균 ${SL.limitDelayMin==null?"–":N(SL.limitDelayMin,1)+"분"}<br>불리 = 시장가는 주문 순간 상대 1호가, 손절은 손절가보다 나쁘게 체결된 정도. 6단계 실전과 비교해 시뮬레이터 정확도를 확인합니다.</div></div>`+(R.shadow?`<div class="card"><h3>가상 대비 실제 체결 <span class="r faint" style="font-size:11px">같은 순간 호가로 계산한 가상 체결가와 비교</span></h3><div class="trd-sum"><div><div class="k">비교한 주문(시장가·손절)</div><div class="v">${N(R.shadow.orders)}</div></div><div><div class="k">실제가 더 불리한 정도(평균)</div><div class="v ${R.shadow.avgDiffPct>0?"down":""}">${R.shadow.avgDiffPct==null?"–":N(R.shadow.avgDiffPct,2)+"%"}</div></div></div><div class="faint" style="font-size:11.5px;margin-top:6px">0%에 가까울수록 가상매매 결과를 실전과 같다고 볼 수 있습니다. 양수면 실제 체결이 가상보다 나빴다는 뜻입니다.</div></div>`:"");
   const rj=R.rejects||[];
   $("#trdPaneHist").innerHTML=trdPerBar(P)+`
     <div class="card"><h3>주문 내역 <span class="r faint" style="font-size:11px">${N(R.orders.length)}건</span><button type="button" class="chip" data-csv="1" style="margin-left:auto">CSV 내려받기</button></h3>${R.orders.length?R.orders.map(o=>`<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${trdEsc(o.name||trdNm(o.code))} ${o.type==="market"?"시장가":N(o.price)+"원"} × ${N(o.qty)}주</span><span class="faint" style="font-size:12px">${TRD_ST[o.status]||o.status}${o.note&&TRD_NOTE[o.note]?" · "+TRD_NOTE[o.note]:""}</span></div><div class="sub num">${new Date(o.ts).toLocaleString("ko-KR",{hour12:false})} · ${trdEsc(o.source)} · 체결 ${N(o.filled)}주${o.avg?" @ "+N(o.avg,0)+"원":""}</div></div>`).join(""):'<div class="faint" style="font-size:12.5px">이 기간 주문이 없습니다.</div>'}</div>
@@ -9430,8 +9432,8 @@ async function trdSell(code){
   if(!(qty>=1)||qty>(p.avail??p.qty)){TRD.msg={ok:false,t:Date.now(),text:"매도 수량이 보유 수량을 넘었거나 올바르지 않습니다"};trdRenderOrder();return;}
   const body={code,name:p.name,side:"sell",type:pr?"limit":"market",qty,cid:"s"+Date.now().toString(36)+Math.random().toString(36).slice(2,8)};if(pr)body.price=pr;
   try{
-    const r=await trdApi("/trade/paper/order",{method:"POST",body});
-    TRD.msg={ok:true,t:Date.now(),text:r.order.status==="filled"?`가상 매도 체결: ${N(r.order.filled)}주`:r.order.filled>0?`일부 체결 ${N(r.order.filled)}/${N(r.order.qty)}주, 나머지 대기`:"매도 주문 접수(대기)"};
+    const r=await trdApi(trdBase()+"/order",{method:"POST",body});
+    TRD.msg={ok:true,t:Date.now(),text:r.order.status==="unknown"?"실전 매도 응답을 받지 못해 체결조회로 확인 중입니다. 같은 주문을 다시 내지 마세요.":r.order.status==="filled"?`${TRD.mode==="REAL"?"실전":"가상"} 매도 체결: ${N(r.order.filled)}주`:r.order.filled>0?`일부 체결 ${N(r.order.filled)}/${N(r.order.qty)}주, 나머지 대기`:"매도 주문 접수(대기)"};
     TRD.hq[code]={};
   }catch(e){
     if(e.status===401&&e.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");return;}
@@ -9440,7 +9442,7 @@ async function trdSell(code){
   await trdLoadState();if(TRD.quote)trdRenderOrder();
 }
 async function trdCancel(id){
-  try{await trdApi("/trade/paper/cancel",{method:"POST",body:{id}});}
+  try{await trdApi(trdBase()+"/cancel",{method:"POST",body:{id}});}
   catch(e){TRD.msg={ok:false,t:Date.now(),text:"취소 실패: "+trdErrTx(e)};}
   await trdLoadState();if(TRD.quote)trdRenderOrder();
 }
@@ -9497,6 +9499,7 @@ document.addEventListener("click",e=>{
   if((el=t.closest("[data-rpo]"))){if(el.disabled)return;TRD.rp.off=Math.min(0,TRD.rp.off+ +el.dataset.rpo);return trdLoadReport();}
   if(t.closest("[data-rpr]"))return trdLoadReport();
   if(t.closest("[data-csv]"))return trdCsv();
+  if(t.closest("[data-probe]")){TRD.probeTx="점검 중…";trdRenderHold();trdApi("/trade/live/probe").then(r=>{TRD.probeTx=!r.configured?"계좌 환경변수가 없습니다":`잔고 ${r.balance.ok?"정상("+r.balance.positions+"종목, 필드 "+((r.balance.rowKeys||[]).length||"-")+"개)":"실패: "+r.balance.error} · 체결조회 ${r.daily.ok?"정상("+r.daily.rows+"건)":"실패: "+r.daily.error}`;TRD.probe=r;}).catch(e=>{TRD.probeTx="점검 실패: "+trdErrTx(e);}).finally(()=>trdRenderHold());return;}
   if((el=t.closest("[data-pe-open]"))){const p=TRD.ps&&TRD.ps.positions.find(x=>x.code===el.dataset.peOpen);if(p){trdPeInit(p);trdRenderHold();}return;}
   if((el=t.closest("[data-pe-close]"))){delete TRD.pe[el.dataset.peClose];trdRenderHold();return;}
   if((el=t.closest("[data-pe-save]")))return trdPeSave(el.dataset.peSave);

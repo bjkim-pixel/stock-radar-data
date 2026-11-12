@@ -185,3 +185,19 @@ KIS 모의투자를 쓰지 않습니다. 시세·호가는 실전 API 읽기 전
 `GET /trade/paper/report?from=YYYY-MM-DD&to=YYYY-MM-DD` (거래 세션 필요, 날짜 생략 = 전체) — `paper-report.js` 순수 계산.
 기간 요약(실현·평가·합계·실현 수익률·같은 기간 코스피), 월별 실현손익·누적, 매매 통계(보유 0→0 = 1회: 승률·평균 이익/손실·손익비·손절 비율·평균 보유일), 종목별 수익, 체결 품질(시장가·손절의 기준가 대비 불리 %, 지정가 체결률·첫 체결까지 시간), 주문 내역(출처: 직접·자동 익절·자동 손절·장 시작 재접수), 거부된 요청(trade_audit).
 슬리피지 기준가는 주문마다 `paper_orders.ref_price` 에 저장(손절 = 손절가, 시장가 = 주문 순간 상대 1호가, 지정가 = 지정가).
+
+## 실전매매 (매매 6단계 · `live.js` + `kis-order.js`)
+
+KIS 주문 API 를 부르는 코드는 `kis-order.js` 하나뿐입니다. 규격은 KIS 공식 예제 저장소(koreainvestment/open-trading-api)로 확인: 현금 주문 `order-cash` 매수 TTTC0012U·매도 TTTC0011U, 취소 `order-rvsecncl` TTTC0013U(02·잔량 전부), 일별 주문체결 `inquire-daily-ccld` TTTC0081R, 잔고 `inquire-balance` TTTC8434R. 주문 요청은 자동 재시도하지 않습니다.
+
+| 경로 | 설명 |
+|---|---|
+| `GET /trade/live/state` | 잔고(KIS)·우리 주문·오늘 체결·예수금·감시 상태 |
+| `POST /trade/live/order` · `/cancel` · `/plan` | 가상과 같은 형식. 실전 한도(1회 50만·1일 200만·5종목) 적용 |
+| `GET /trade/live/report` | 가상과 같은 리포트 + `shadow`(같은 순간 호가로 계산한 가상 체결가 대비 실제 체결 차이) |
+| `GET /trade/live/probe` | 계좌 연결 점검: 잔고·체결조회 응답의 필드 이름과 건수만(값·계좌번호 없음) |
+
+- 켜는 조건: `TRADING_ENABLED=1` + `REAL_TRADING_ENABLED=1` + `KIS_ACCOUNT_NO` + Actions `live_trading` 테이블 생성.
+- 주문 전 DB 기록 → KIS 주문. 응답을 못 받으면 '접수 확인 중'으로 두고 체결조회로 같은 종목·방향·수량·시각의 주문을 찾아 연결(60초 안에 없으면 접수 안 됨 + 알림). 확인 중인 주문이 있는 종목은 새 주문·자동 매도를 내지 않음.
+- 손절: 걸린 매도 취소 → 잔고 재조회 → 실제 매도 가능 수량만 시장가 매도(취소 실패분은 빼고, 다음 주기 재시도). 익절 재배분은 취소가 체결조회로 확인된 다음 주기에 새 주문.
+- 계획 없는 보유 종목(HTS 매수 등)은 자동 매도하지 않음. 장 마감 후 15:40 까지 종가 단일가 체결을 받아 두고 남은 주문을 소멸 처리.
