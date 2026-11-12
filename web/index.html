@@ -2652,6 +2652,20 @@ function lineChart(host,series,labels,opt={}){
           txt(x0+3,yl+11,"start","박스권 "+String(labels[seg[0].i]).replace(/\//g,"-")+"~",c,9);
         }
       }
+      /* opt.bg.bands / opt.bg.pts: 종가선(자기 축) 기준 가격대 띠·날짜 점 — 가격 축이 따로인 차트(외+기 누적 등)용 */
+      if(opt.bg.bands)opt.bg.bands.forEach(b=>{
+        const hi=Math.min(b.hi,bmax),lo=Math.max(b.lo,bmin);if(!(hi>lo))return;
+        const y1=Yb(hi),y2=Yb(lo),c=css(b.c||"--warn");
+        svg.appendChild(el("rect",{x:P.l,y:y1,width:W-P.l-P.r,height:Math.max(2,y2-y1),fill:c,"fill-opacity":.13}));
+        [y1,y2].forEach(y=>svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:y,y2:y,stroke:c,"stroke-width":.8,"stroke-dasharray":"2 3",opacity:.7})));
+        if(b.label){const t=el("text",{x:P.l+4,y:y1+11,"text-anchor":"start","font-size":9.5,"font-weight":700,fill:c,stroke:css("--surface"),"stroke-width":3,"paint-order":"stroke"});t.textContent=b.label;svg.appendChild(t);}
+      });
+      if(opt.bg.pts)opt.bg.pts.forEach(o=>{
+        const v=opt.bg.v[o.i];if(v==null||isNaN(v))return;
+        const c=css(o.c||"--ink"),left=o.i>labels.length*0.75,x=X(o.i),y=Yb(v);
+        svg.appendChild(el("circle",{cx:x,cy:y,r:4.2,fill:c,stroke:css("--surface"),"stroke-width":1.8}));
+        if(o.t){const t=el("text",{x:x+(left?-7:7),y:y+(o.below?14:-7),"text-anchor":left?"end":"start","font-size":9.5,"font-weight":700,fill:c,stroke:css("--surface"),"stroke-width":3,"paint-order":"stroke"});t.textContent=o.t;svg.appendChild(t);}
+      });
       if(opt.bg.marks&&pts.length>1){
         const hi=pts.reduce((a,b)=>b.v>a.v?b:a),lo=pts.reduce((a,b)=>b.v<a.v?b:a),td=pts.at(-1);
         const m=new Map();
@@ -2776,13 +2790,6 @@ function lineChart(host,series,labels,opt={}){
         stroke:css("--up"),strokeDasharray:"4 3","stroke-width":1.2,opacity:.8}));
       const rt=el("text",{x:P.l-7,y:ry-3,"text-anchor":"end","font-size":9.5,"font-weight":600,fill:css("--up")});
       rt.textContent=opt.refLabel||(opt.ft?opt.ft(opt.refLine):N(opt.refLine,0));svg.appendChild(rt);}}
-  /* opt.pts = [{i,v,label,c,dy}]: 특정 날짜·가격에 찍는 점 + 글자(예: 외+기 고점일) */
-  if(opt.pts)opt.pts.forEach(o=>{
-    if(o.i==null||o.i<0||o.i>=labels.length||o.v==null||o.v<min||o.v>max)return;
-    const x=X(o.i),y=Y(o.v),c=css(o.c||"--ink"),left=o.i>labels.length*0.75;
-    svg.appendChild(el("circle",{cx:x,cy:y,r:5,fill:c,stroke:css("--surface"),"stroke-width":2}));
-    const t=el("text",{x:x+(left?-9:9),y:y+(o.dy??-8),"text-anchor":left?"end":"start","font-size":10.5,"font-weight":700,fill:c,stroke:css("--surface"),"stroke-width":3.2,"paint-order":"stroke"});
-    t.textContent=o.label;svg.appendChild(t);});
   host.appendChild(svg);
 }
 
@@ -5717,8 +5724,8 @@ function renderRangeCharts(){
     pb.filter(b=>b.lo>=cur&&b.v>0).sort((a,b)=>b.v-a.v).slice(0,2).forEach((b,k)=>ovl.bands.push({lo:b.lo,hi:b.hi,c:k?"--warn":"--down",label:`개인 매물대 ${k+1}위 ${N(b.v,0)}억`}));
     if(rp.length>=10&&rp[0].foreign_cum!=null){const m=smxModel(rp);
       if(m.build>0){const md=i=>String(rp[i].trade_date).slice(5).replace("-","/");
-        ovl.pts.push({i:m.tr,v:+rp[m.tr].close,label:"매집 시작 "+md(m.tr),c:"--s1",dy:16});
-        ovl.pts.push({i:m.pk,v:+rp[m.pk].close,label:"외+기 고점 "+md(m.pk),c:"--up",dy:-9});}}
+        ovl.pts.push({i:m.tr,v:+rp[m.tr].close,t:"매집 시작 "+md(m.tr),c:"--s1",below:true});
+        ovl.pts.push({i:m.pk,v:+rp[m.pk].close,t:"외+기 고점 "+md(m.pk),c:"--up"});}}
   }catch(e){console.error("가격차트 덧그림",e);}}
   lineChart($("#dPrice"),[
     {n:"종가",v:rp.map(r=>+r.close),c:"--ink"},
@@ -6984,8 +6991,16 @@ function smxDraw(all,win,E){
   if(E.sub)E.sub.textContent=`외국인+기관합계 누적 기준 · 억원 · ${md(D(0))}~${md(D(m.L))} (${rows.length}거래일)`;
   const labels=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
   const pts=m.build>0?[{i:m.tr,s:0,c:"--up",t:`▲ 매집 시작 ${md(D(m.tr))} ${f0(m.combo[m.tr])}억`,below:true},{i:m.pk,s:0,c:"--up",t:`▼ 고점 ${md(D(m.pk))} ${f0(m.combo[m.pk])}억`}]:[];
+  /* 종가선(회색)에 개인 매물대 상위 2곳 띠 + 외+기 매집 시작·고점일 종가 점 (종목상세 가격 차트와 같은 표시) */
+  const bgx={v:m.close,n:"종가",ft:v=>N(v,0)};
+  try{
+    if(rows.every(r=>r.individual_net!=null)){
+      const cur=m.close[m.L],pb=buildPriceProfile(rows,24,r=>+r.individual_net||0);
+      bgx.bands=pb.filter(b=>b.lo>=cur&&b.v>0).sort((a,b)=>b.v-a.v).slice(0,2).map((b,k)=>({lo:b.lo,hi:b.hi,c:k?"--warn":"--down",label:`개인 매물대 ${k+1}위 ${N(b.v,0)}억`}));}
+    if(m.build>0)bgx.pts=[{i:m.tr,c:"--ink-3",t:`종가 ${N(m.close[m.tr],0)}`},{i:m.pk,c:"--ink-3",t:`종가 ${N(m.close[m.pk],0)}`}];
+  }catch(e){console.error("외+기 누적 덧그림",e);}
   lineChart(E.a,[{n:"외+기 누적",v:m.combo,c:"--up"}],labels,
-    {...CW,h:cp?190:230,zero:true,monthTicks:true,labelEnds:false,pts,shadeFrom:m.build>0&&m.since>0?m.pk:null,ft:v=>pm(v,0)+"억",bg:{v:m.close,n:"종가",ft:v=>N(v,0)}});
+    {...CW,h:cp?190:230,zero:true,monthTicks:true,labelEnds:false,pts,shadeFrom:m.build>0&&m.since>0?m.pk:null,ft:v=>pm(v,0)+"억",bg:bgx});
   E.legend.innerHTML=m.subj.map(x=>`<span><i style="display:inline-block;width:10px;height:3px;background:var(${x.c});vertical-align:middle;margin-right:3px"></i>${x.nm} <b class="${sgn(x.v[m.L])}">${f0(x.v[m.L])}</b><span class="faint">(고점 이후 <span class="${sgn(x.after)}">${f0(x.after)}</span>)</span></span>`).join("");
   lineChart(E.b,m.subj.map(x=>({n:x.nm,v:x.v,c:x.c})),labels,
     {...CW,h:cp?200:250,zero:true,monthTicks:true,ft:v=>pm(v,0)+"억",shadeFrom:m.build>0&&m.since>0?m.pk:null,
