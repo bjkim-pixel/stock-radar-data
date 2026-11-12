@@ -1435,7 +1435,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   </div>
 </section>
 <section id="v-live" class="hide">
-  <div class="card" style="margin-top:16px"><h3>당일 상승률 TOP 20 <span class="r" id="liveStat">연결 중…</span></h3>
+  <div class="card" style="margin-top:16px"><h3><span id="liveTitle">당일 상승률 TOP 20</span> <span class="r" id="liveStat">연결 중…</span></h3>
+    <div class="qf seg" id="liveSide" style="margin-bottom:6px"><button class="fchip" data-v="up" aria-pressed="true">상승률</button><button class="fchip" data-v="down" aria-pressed="false">하락률</button></div>
     <div class="qf seg" id="liveCap" style="margin-bottom:8px"><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="10000" aria-pressed="false">1조 이상</button><button class="fchip" data-v="40000" aria-pressed="false">4조 이상</button><button class="fchip" data-v="100000" aria-pressed="false">10조 이상</button></div>
     <div class="note" style="margin-bottom:8px">시가총액 기준으로 나눠 오늘 등락률 상위를 봅니다(전체 = 코스피·코스닥 전 종목, 나머지는 시총이 기준 이상인 종목만). 순위 후보는 KIS에서 8초마다 새로 받고, 후보 25종목의 가격은 KIS 실시간 체결가로 바로 갱신해 순위를 다시 매깁니다. 순위 밖으로 밀린 종목은 빠지고 새로 올라온 종목이 들어옵니다. ETF·ETN·스팩·우선주는 뺐습니다. 시총 = 상장주식수 × 현재가.</div>
     <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체(업종 표시) 순환">↔</span></th><th>현재가</th><th>등락률</th><th>시총</th><th>거래대금</th><th>거래량</th><th title="이 화면에서 TOP 20에 들어온 뒤 지난 시간">진입 후</th><th>변동</th><th title="종목상세의 주도 세력 — 매집 구간(저점→고점)에서 외+기 순매수가 가장 큰 주체(전체 기간)">주도</th><th title="주도 주체의 최근 5일·20일 순매수 방향">추세</th><th title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록 (낮을수록 개인 물량 감소)">매집 6월</th><th title="최근 ÷ 8월 첫 기록">8월</th></tr></thead>
@@ -2398,13 +2399,14 @@ function liveStart(){
   liveFetch();L.timer=setInterval(liveFetch,8000);
 }
 const fmtCap=v=>v>=1e12?N(v/1e12,1)+"조":N(v/1e8,0)+"억";
+$("#liveSide").addEventListener("seg-change",e=>{const L=S.live;L.side=e.detail==="down"?"down":"up";L.pool={};L.since={};L.prev={};L.log=[];$("#liveTitle").textContent=L.side==="down"?"당일 하락률 TOP 20":"당일 상승률 TOP 20";$("#liveBody").innerHTML='<tr><td colspan="13" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
 $("#liveCap").addEventListener("seg-change",e=>{const L=S.live;L.min=+e.detail;L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="13" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
 function liveStop(){const L=S.live;L.on=false;clearInterval(L.timer);L.timer=null;S.liveTopWanted=new Set();reconcileLiveSubscription();}
 async function liveFetch(){
   const L=S.live;if(!L.on)return;
   try{
-    const r=await fetch(RELAY_HTTP_BASE+"/live-top?min="+L.min,{cache:"no-store"});const j=await r.json();
-    if(!L.on||j.min!==L.min)return;
+    const r=await fetch(RELAY_HTTP_BASE+"/live-top?min="+L.min+"&side="+(L.side||"up"),{cache:"no-store"});const j=await r.json();
+    if(!L.on||j.min!==L.min||(j.side||"up")!==(L.side||"up"))return;
     if(!j.ok&&!(j.rows||[]).length){$("#liveStat").textContent="순위를 받지 못했습니다 — "+(j.err||j.error||"");return;}
     const rows=j.rows.filter(x=>!LIVE_EXCL.test(x.name||""));   // ETF·ETN·스팩 제외(우선주는 서버가 제외)
     const pool={};rows.slice(0,LIVE_POOL).forEach(x=>{const old=L.pool[x.code];pool[x.code]={...x,live:old&&old.liveAt>j.ts?old.price:null};if(old&&old.liveAt>j.ts){pool[x.code].price=old.price;pool[x.code].changePct=old.changePct;pool[x.code].liveAt=old.liveAt;}});
@@ -2431,7 +2433,7 @@ async function liveMeta(codes){
 }
 function liveRender(){
   const L=S.live;if(!L.on)return;
-  const arr=Object.values(L.pool).filter(x=>!L.min||!x.shares||x.shares*x.price>=L.min*1e8).sort((a,b)=>b.changePct-a.changePct),top=arr.slice(0,LIVE_TOP_N),now=Date.now(),hm=t=>new Date(t).toLocaleTimeString("ko-KR",{hour12:false});
+  const arr=Object.values(L.pool).filter(x=>!L.min||!x.shares||x.shares*x.price>=L.min*1e8).sort((a,b)=>(L.side==="down"?a.changePct-b.changePct:b.changePct-a.changePct)),top=arr.slice(0,LIVE_TOP_N),now=Date.now(),hm=t=>new Date(t).toLocaleTimeString("ko-KR",{hour12:false});
   const cur=new Set(top.map(x=>x.code)),prevSet=new Set(Object.keys(L.prev));
   if(Object.keys(L.prev).length){
     top.forEach(x=>{if(!prevSet.has(x.code)){L.since[x.code]=now;L.log.unshift(`<span class="up">▲ 진입</span> ${escH(x.name)} ${pm(x.changePct,1)}% · ${hm(now)}`);}});
@@ -2444,7 +2446,7 @@ function liveRender(){
   const mt=c=>{const m=S.liveMeta[c];return m?`${m.mk?`<span class="cd" title="${m.mk}">${m.mk==="KOSPI"?"피":m.mk==="KOSDAQ"?"닥":m.mk}</span> `:""}${m.sc?`<span class="cd sc">[${escH(m.sc)}]</span> `:""}`:"";};
   $("#liveBody").innerHTML=top.map((x,i)=>{
     const d=oldRank[x.code]?oldRank[x.code]-(i+1):null,mins=Math.floor((now-(L.since[x.code]||now))/60000);
-    return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--up) 8%,transparent)"':""}><td>${i+1}</td><td class="l">${mt(x.code)}${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)}${nxTag(x.code)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':""}</td>
+    return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--${L.side==="down"?"down":"up"}) 8%,transparent)"':""}><td>${i+1}</td><td class="l">${mt(x.code)}${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)}${nxTag(x.code)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':x.changePct<=-29?' <span class="tg">하한가권</span>':""}</td>
       <td class="num ${sgn(x.changePct)}">${N(x.price,0)}${x.liveAt&&now-x.liveAt<15000?' <span class="up" title="KIS 실시간 체결가">●</span>':""}</td><td class="num ${sgn(x.changePct)}">${pm(x.changePct,2)}%</td>
       <td class="num">${x.shares?fmtCap(x.shares*x.price):"–"}</td><td class="num">${x.amt?N(x.amt/1e8,0)+"억":"–"}</td><td class="num">${x.vol?N(x.vol/1e4,0)+"만":"–"}</td><td class="dim">${mins<1?"방금":mins+"분"}</td>
       <td class="${d>0?"up":d<0?"down":"dim"}">${d==null?(Object.keys(oldRank).length?"신규":"–"):d>0?"▲"+d:d<0?"▼"+(-d):"–"}</td>
