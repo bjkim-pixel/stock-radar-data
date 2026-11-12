@@ -4088,7 +4088,7 @@ async function loadMarketInvestor(){
   if(!d){$("#mktInvBody").innerHTML='<tr><td colspan="4" class="load">데이터 없음</td></tr>';return;}
   $("#mktInvDate").textContent=d+" 기준 · 억원 · 순매수";
   const NM=[["KOSPI","코스피"],["KOSDAQ","코스닥"],["FUT","선물"]];
-  const c=(v,f)=>v==null?`<td class="${f||""}">-</td>`:`<td class="${sgn(+v)} ${f||""}">${pm(+v,0)}</td>`;
+  const c=(v,f)=>v==null?`<td class="${f||""}">-</td>`:`<td class="${sgn(+v)} ${f||""}">${pm(+v,0)}억</td>`;
   $("#mktInvBody").innerHTML=NM.map(([k,n])=>{const r=by[k]||{};return `<tr><td class="l">${n}</td>${c(r.personal)}${c(r.foreign_net,"mi-f")}${c(r.inst)}</tr>`;}).join("");
 }
 // 선물(코스피200) 투자자별 순매수 — market_investor_daily(FUT) 일별 값을 기간별(거래일 수)로 합산. 기간 정의는 시장 전체 표와 동일(125/60/40/20/10/5/1거래일)
