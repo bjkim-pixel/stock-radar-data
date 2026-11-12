@@ -9237,7 +9237,8 @@ function trdRenderQuote(){
     return side==="a"?`<div class="trd-r a${pick}" data-px="${x.p}"><span class="n f">${x.p?trdFmtAmt(amt):""}</span><span class="n"><i style="width:${w}%"></i>${x.q?N(x.q):""}</span><span class="p">${x.p?N(x.p):""}</span><span></span><span></span></div>`
       :`<div class="trd-r b${pick}" data-px="${x.p}"><span></span><span></span><span class="p">${x.p?N(x.p):""}</span><span class="n"><i style="width:${w}%"></i>${x.q?N(x.q):""}</span><span class="n f">${x.p?trdFmtAmt(amt):""}</span></div>`;};
   const sa=asks.reduce((a,x)=>a+x.p*x.q,0),sb=bids.reduce((a,x)=>a+x.p*x.q,0);
-  $("#trdBook").innerHTML=`<div class="trd-r h"><span class="n">금액</span><span class="n">매도잔량</span><span class="p">호가</span><span class="n">매수잔량</span><span class="n">금액</span></div>
+  const empty=!asks.some(x=>x.p>0)&&!bids.some(x=>x.p>0);
+  $("#trdBook").innerHTML=(empty?`<div class="trd-wn" style="margin-bottom:6px">호가 데이터가 비어 있습니다 — 정규장 호가는 08:30 동시호가부터 표시되고, 09:00~15:30 에 실시간으로 채워집니다. 그 시간인데도 비어 있으면 Render 로그의 KIS 오류를 확인하세요.</div>`:"")+`<div class="trd-r h"><span class="n">금액</span><span class="n">매도잔량</span><span class="p">호가</span><span class="n">매수잔량</span><span class="n">금액</span></div>
     ${asks.map(x=>row(x,"a")).join("")}${bids.map(x=>row(x,"b")).join("")}
     <div class="trd-sum"><span>매도 10단계 <b class="down">${trdFmtAmt(sa)}</b></span><span>매수 10단계 <b class="up">${trdFmtAmt(sb)}</b>${sa>0?` (${N(sb/sa,2)}배)`:""}</span></div>`;
 }
