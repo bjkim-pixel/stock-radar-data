@@ -275,3 +275,49 @@ test('IP: cf-connecting-ip 우선, 없으면 X-Forwarded-For 맨 오른쪽(앞�
   await ipOf({ 'cf-connecting-ip': '5.5.5.5', 'x-forwarded-for': '6.6.6.6' });
   assert.deepEqual(seen, ['1.2.3.4', '5.5.5.5']);
 });
+
+/* ── 2단계: 시세·호가 조회 ── */
+function fakeKis(calls) {
+  return async (path, trId, params) => {
+    calls.push(trId);
+    if (trId === 'FHKST01010100') return { output: { stck_prpr: '206,500', prdy_vrss: '500', prdy_ctrt: '0.24', prdy_vrss_sign: '2', stck_oprc: '208500', stck_hgpr: '214000', stck_lwpr: '206000', stck_sdpr: '206000', stck_mxpr: '267500', stck_llam: '144500', acml_vol: '19721557', acml_tr_pbmn: '4126896638615', aspr_unit: '500', vi_cls_code: 'N', temp_stop_yn: 'N', mrkt_warn_cls_code: '02', short_over_yn: 'Y', iscd_stat_cls_code: '55' } };
+    if (trId === 'FHKST01010200') {
+      const o1 = { aspr_acpt_hour: '200000', total_askp_rsqn: '178320', total_bidp_rsqn: '119718' };
+      for (let i = 1; i <= 10; i++) { o1['askp' + i] = String(206500 + (i - 1) * 500); o1['bidp' + i] = String(206000 - (i - 1) * 500); o1['askp_rsqn' + i] = String(100 * i); o1['bidp_rsqn' + i] = String(1000 - 50 * i); }
+      return { output1: o1, output2: { vi_cls_code: 'Y' } };
+    }
+    return { output: [{ tday_rltv: '114.83' }] };
+  };
+}
+test('시세: 로그인 필요, 코드 형식 검증, 필드 변환', async () => {
+  const calls = [];
+  const c = await boot({}, { kisGet: fakeKis(calls) });
+  assert.equal((await c.call('GET', '/trade/quote?code=005930', { token: null })).status, 401);
+  assert.equal((await c.call('GET', '/trade/quote?code=abc')).status, 400);
+  assert.equal((await c.call('GET', '/trade/quote')).status, 400);
+  const r = await c.call('GET', '/trade/quote?code=005930');
+  assert.equal(r.status, 200);
+  const b = r.body;
+  assert.equal(b.price, 206500); assert.equal(b.upper, 267500); assert.equal(b.lower, 144500); assert.equal(b.tick, 500);
+  assert.equal(b.strength, 114.83); assert.equal(b.vi, true);
+  assert.deepEqual(b.warnings.sort(), ['단기과열', '투자경고']);
+  assert.equal(b.asks.length, 10); assert.equal(b.bids.length, 10);
+  assert.deepEqual(b.asks[0], { p: 206500, q: 100 }); assert.deepEqual(b.bids[0], { p: 206000, q: 950 });
+  assert.equal(b.totalAsk, 178320); assert.equal(b.totalBid, 119718);
+  await c.close();
+});
+
+test('시세: 1.5초 캐시·동시 요청 1번, 체결강도는 5초 캐시, KIS 오류는 502', async () => {
+  const calls = [];
+  const c = await boot({}, { kisGet: fakeKis(calls) });
+  await Promise.all([c.call('GET', '/trade/quote?code=005930'), c.call('GET', '/trade/quote?code=005930')]);
+  assert.equal(calls.filter(x => x === 'FHKST01010200').length, 1);
+  clock += 2000;
+  await c.call('GET', '/trade/quote?code=005930');
+  assert.equal(calls.filter(x => x === 'FHKST01010200').length, 2);
+  assert.equal(calls.filter(x => x === 'FHKST01010300').length, 1);   // 5초 안이라 체결강도는 재조회 안 함
+  await c.close();
+  const c2 = await boot({}, { kisGet: async () => { throw new Error('KIS down'); } });
+  assert.equal((await c2.call('GET', '/trade/quote?code=005930')).status, 502);
+  await c2.close();
+});

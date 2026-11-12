@@ -3266,6 +3266,16 @@ function handleAccessLog(req, res) {
 const trade = require('./trade').createTrade({
   env: process.env, sbWrite, sbGet: SUPABASE_SERVICE_KEY ? sbGet : null, allowedOrigins: ALLOWED_ORIGINS,
   notify: (text, opts) => notifyAll(text, opts),
+  // KIS 시세 조회(읽기 전용): 기존 REST 토큰·호출 간격 제한을 그대로 사용
+  kisGet: async (path, trId, params) => {
+    await kisRestThrottle();
+    const token = await getKisRestToken();
+    const res = await fetch(`${KIS_REST_BASE}${path}?${new URLSearchParams(params)}`, { headers: kisRestHeaders(token, trId), signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`KIS ${trId} ${res.status}`);
+    const j = await res.json();
+    if (j.rt_cd !== '0') throw new Error(`KIS ${trId} ${j.msg_cd || ''}`);
+    return j;
+  },
 });
 
 const server = http.createServer((req, res) => {

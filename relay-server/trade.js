@@ -277,6 +277,71 @@ function createTrade(deps = {}) {
     return { ok: true };
   }
 
+  /* ── 시세·호가 조회(읽기 전용) — KIS 실전 시세 API. 응답 필드는 2026-11-12 실제 응답으로 확인(161_quote_probe.py) ── */
+  const quoteCache = new Map();   // code -> { t, v, p }
+  let strengthCache = new Map();  // code -> { t, v }
+  const n = v => { const x = Number(String(v == null ? '' : v).replace(/,/g, '')); return Number.isFinite(x) ? x : 0; };
+  const STAT_WARN = { '51': '관리종목', '52': '투자위험', '53': '투자경고', '54': '투자주의', '58': '거래정지', '59': '단기과열' };
+  const MRKT_WARN = { '01': '투자주의', '02': '투자경고', '03': '투자위험' };
+  function stockWarnings(o) {
+    const w = new Set();
+    if (o.temp_stop_yn === 'Y') w.add('거래정지');
+    if (o.mang_issu_cls_code === 'Y') w.add('관리종목');
+    if (o.sltr_yn === 'Y') w.add('정리매매');
+    if (o.short_over_yn === 'Y') w.add('단기과열');
+    if (o.invt_caful_yn === 'Y') w.add('투자유의');
+    if (MRKT_WARN[o.mrkt_warn_cls_code]) w.add(MRKT_WARN[o.mrkt_warn_cls_code]);
+    if (STAT_WARN[o.iscd_stat_cls_code]) w.add(STAT_WARN[o.iscd_stat_cls_code]);
+    return [...w];
+  }
+  async function fetchQuote(code) {
+    if (!deps.kisGet) throw new Error('kis unavailable');
+    const P = { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code };
+    const base = '/uapi/domestic-stock/v1/quotations/';
+    const [pr, ask] = await Promise.all([
+      deps.kisGet(base + 'inquire-price', 'FHKST01010100', P),
+      deps.kisGet(base + 'inquire-asking-price-exp-ccn', 'FHKST01010200', P),
+    ]);
+    const o = pr.output || {}, a = ask.output1 || {}, a2 = ask.output2 || {};
+    const asks = [], bids = [];
+    for (let i = 1; i <= 10; i++) {
+      asks.push({ p: n(a['askp' + i]), q: n(a['askp_rsqn' + i]) });
+      bids.push({ p: n(a['bidp' + i]), q: n(a['bidp_rsqn' + i]) });
+    }
+    const t = now();
+    let st = strengthCache.get(code);
+    if (!st || t - st.t > 5000) {       // 체결강도는 5초에 한 번만(KIS 호출 절약)
+      let v = null;
+      try {
+        const c = await deps.kisGet(base + 'inquire-ccnl', 'FHKST01010300', P);
+        const r0 = Array.isArray(c.output) ? c.output[0] : null;
+        if (r0 && r0.tday_rltv != null && r0.tday_rltv !== '') v = n(r0.tday_rltv);
+      } catch (_) {}
+      st = { t, v }; strengthCache.set(code, st);
+      if (strengthCache.size > 100) strengthCache = new Map([...strengthCache].slice(-50));
+    }
+    return {
+      ok: true, code, ts: t,
+      price: n(o.stck_prpr), change: n(o.prdy_vrss), changePct: n(o.prdy_ctrt), sign: String(o.prdy_vrss_sign || ''),
+      open: n(o.stck_oprc), high: n(o.stck_hgpr), low: n(o.stck_lwpr), prevClose: n(o.stck_sdpr),
+      upper: n(o.stck_mxpr), lower: n(o.stck_llam), vol: n(o.acml_vol), amt: n(o.acml_tr_pbmn),
+      tick: n(o.aspr_unit) || null, strength: st.v,
+      vi: (o.vi_cls_code === 'Y' || a2.vi_cls_code === 'Y'), warnings: stockWarnings(o),
+      hour: String(a.aspr_acpt_hour || ''), asks, bids,
+      totalAsk: n(a.total_askp_rsqn), totalBid: n(a.total_bidp_rsqn),
+    };
+  }
+  function getQuote(code) {
+    const t = now(), c = quoteCache.get(code);
+    if (c && c.p) return c.p;                               // 같은 종목 동시 요청은 한 번만
+    if (c && t - c.t < 1500) return Promise.resolve(c.v);   // 1.5초 캐시
+    const p = fetchQuote(code).then(v => { quoteCache.set(code, { t: now(), v, p: null }); return v; },
+      e => { quoteCache.delete(code); throw e; });
+    quoteCache.set(code, { t: c ? c.t : 0, v: c ? c.v : null, p });
+    if (quoteCache.size > 100) quoteCache.clear();
+    return p;
+  }
+
   /* ── HTTP ── */
   function cors(req, res) {
     const o = req.headers.origin;
@@ -325,6 +390,12 @@ function createTrade(deps = {}) {
     if (path === '/trade/status' && req.method === 'GET') {
       const sess = getSession(req.headers['x-trade-session'], a.user.id);
       return json(res, 200, statusBody({ session: sess }));
+    }
+    if (path === '/trade/quote' && req.method === 'GET') {
+      const code = new URL(req.url, 'http://x').searchParams.get('code') || '';
+      if (!/^\d{6}$/.test(code)) return json(res, 400, { ok: false, error: 'bad code' });
+      try { return json(res, 200, await getQuote(code)); }
+      catch (e) { console.warn('[trade] 시세 조회 실패', code, e && e.message); return json(res, 502, { ok: false, error: 'quote unavailable' }); }
     }
     if (path === '/trade/ping' && req.method === 'GET') {
       return json(res, 200, { ok: true, ttlSec: sessionTtlSec(a.session) });

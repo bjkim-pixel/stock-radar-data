@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/trade.test.js"
+    "test": "node --test test/trade.test.js && node test/trade-calc.test.js"
   },
   "engines": {
     "node": ">=18"
