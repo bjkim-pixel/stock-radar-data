@@ -221,7 +221,9 @@ body.nav-open .navopen{display:none}
 .tl-v{position:relative;z-index:2;text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 2px var(--surface)}
 .tl-cell{cursor:pointer}
 .tl-sum{position:relative;min-height:34px;border-radius:4px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px;font-size:9.5px;font-weight:600}
-.tl-hd.tl-sh{border-left:1px solid var(--grid);padding-left:2px}
+.tl-hd.tl-sh{padding-left:2px}
+/* 5일·20일·60일 합계 열: 얇은 검은색 테두리 */
+.sumc{box-shadow:inset 0 0 0 1px var(--ink)}
 #fwBody .tl-v,#fwBody .tl-tot,#fwBody .tl-sum{white-space:nowrap}#fwBody .tl-cell,#fwBody .tl-sum{align-items:center;padding-bottom:0}#fwBody .tl-rl a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fwBody .tl-grid>.tl-rl.fw-sec{background:var(--surface-2);border-radius:6px 0 0 0;min-height:40px;padding:4px 4px 4px 8px;font-size:13.5px;font-weight:800;color:var(--ink)}
 #fwBody .tl-grid>.tl-rl.fw-sec small{font-size:10px;font-weight:500}
@@ -3584,7 +3586,7 @@ function tlHdCell(d,i,dates,WD,wdn){
   const mo=i===0||d.slice(5,7)!==dates[i-1].slice(5,7);
   return `<div class="tl-hd" style="${wdn===1?"border-left:1px solid var(--grid);padding-left:2px":""}"><b>${mo?(+d.slice(5,7))+"/"+(+d.slice(8)):(+d.slice(8))}</b>${WD[wdn]}</div>`;
 }
-const tlSumHd=()=>TL_WINS.map(([n,l],k)=>`<div class="tl-hd${k===0?" tl-sh":""}"><b>${l}</b>합계</div>`).join("");
+const tlSumHd=()=>TL_WINS.map(([n,l],k)=>`<div class="tl-hd sumc${k===0?" tl-sh":""}"><b>${l}</b>합계</div>`).join("");
 function tlSumWin(dates){return TL_WINS.map(([n])=>dates.slice(-n));}
 function renderFlowTimeline(){
   const host=$("#tlBody"),mk=S.tlMkt||"all",rows=S.tlRows||[],WD=["일","월","화","수","목","금","토"];
@@ -3609,7 +3611,7 @@ function renderFlowTimeline(){
     const wins=tlSumWin(dates),sumV=(s,k)=>wins[k].reduce((a,d)=>a+val(s,d),0),sumT=k=>wins[k].reduce((a,d)=>a+(dayTot[d]||0),0);
     const sMax=wins.map((_,k)=>Math.max(1,...secs.map(s=>Math.abs(sumV(s,k)))));
     h+=`<div class="tl-rl tot">합계<small>전 업종</small></div>`+dates.map(d=>`<div class="tl-tot ${sgn(dayTot[d]||0)}" title="그날 전 업종 ${label} 순매수 합계(억원)">${fmtC((dayTot[d]||0)/EOK)}</div>`).join("")
-      +wins.map((w,k)=>`<div class="tl-tot ${sgn(sumT(k))}" title="최근 ${TL_WINS[k][0]}거래일 전 업종 합계(억원)">${fmtC(sumT(k)/EOK)}</div>`).join("");
+      +wins.map((w,k)=>`<div class="tl-tot sumc ${sgn(sumT(k))}" title="최근 ${TL_WINS[k][0]}거래일 전 업종 합계(억원)">${fmtC(sumT(k)/EOK)}</div>`).join("");
     secs.forEach((s,i)=>{
       h+=`<div class="tl-rl">${s}<small>${N(amtBy[s]/EOK,0)}억</small></div>`;
       dates.forEach((d,c)=>{
@@ -3618,7 +3620,7 @@ function renderFlowTimeline(){
         h+=`<div class="tl-cell${cls}" data-r="${i}" data-c="${c}" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;
       });
       wins.forEach((w,k)=>{const v=sumV(s,k),pct=Math.round(10+55*Math.abs(v)/sMax[k]);
-        h+=`<div class="tl-sum" title="${s} 최근 ${TL_WINS[k][0]}거래일 합계(억원)" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;});
+        h+=`<div class="tl-sum sumc" title="${s} 최근 ${TL_WINS[k][0]}거래일 합계(억원)" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;});
     });
     return {html:h+'</div><svg class="tl-paths"></svg></div></div></div>',tops:{topBuy,topSell,id}};
   });
@@ -3675,14 +3677,14 @@ function fwRender(){
     const sw=wins.map(w=>w.reduce((a,d)=>a+sv(d),0)),swMax=Math.max(1,...sw.map(Math.abs));
     h+=`<div class="fw-gap"></div><div class="tl-rl fw-sec">${sn}<small>${L.length}종목 · ${N(L.reduce((a,t)=>a+t.cap,0)/1e12,0)}조</small></div>`
       +dates.map(d=>{const v=sv(d)/EOK;return `<div class="tl-tot fw-st ${sgn(v)}" style="${bg(v,sMax/EOK)}" title="${sn} TOP100 합계(억원)">${fmtC(v)}</div>`;}).join("")
-      +sw.map(v=>`<div class="tl-tot fw-st ${sgn(v)}" style="${bg(v,swMax)}">${fmtC(v/EOK)}</div>`).join("");
+      +sw.map(v=>`<div class="tl-tot sumc fw-st ${sgn(v)}" style="${bg(v,swMax)}">${fmtC(v/EOK)}</div>`).join("");
     L.forEach((t,ti)=>{
       const vv=val[t.code]||{},mx=Math.max(1,...dates.map(d=>Math.abs(vv[d]||0)));
       let streak=0,sg=0;for(let k=dates.length-1;k>=0;k--){const x=vv[dates[k]];if(x==null||x===0)break;const g=x>0?1:-1;if(!sg)sg=g;if(g!==sg)break;streak++;}
       const tw=wins.map(w=>w.reduce((a,d)=>a+(vv[d]||0),0)),twMax=Math.max(1,...tw.map(Math.abs));
       h+=`<div class="tl-rl fw-s"><span><span class="rk">${ti+1}</span><a class="lk nm" data-code="${t.code}">${t.name}</a></span><small>${N(t.cap/1e12,1)}조${streak?` · <span class="${sg>0?"up":"down"}">${sg>0?"+":"−"}${streak}일</span>`:""}</small></div>`
         +dates.map(d=>{const v=vv[d]||0;return `<div class="tl-cell" style="${bg(v,mx)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;}).join("")
-        +tw.map(v=>`<div class="tl-sum" style="${bg(v,twMax)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`).join("");
+        +tw.map(v=>`<div class="tl-sum sumc" style="${bg(v,twMax)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`).join("");
     });
   });
   host.innerHTML=h+'</div></div></div></div>';
@@ -6181,7 +6183,7 @@ function peRenderTimeline(){
   const wins=tlSumWin(dates),sumV=(s,k)=>wins[k].reduce((a,d)=>a+val(s,d),0),sumT=k=>wins[k].reduce((a,d)=>a+(dayTot[d]||0),0);
   const sMax=wins.map((_,k)=>Math.max(1,...secs.map(s=>Math.abs(sumV(s,k)))));
   h+=`<div class="tl-rl tot">합계<small>전 업종</small></div>`+dates.map(d=>`<div class="tl-tot ${sgn(dayTot[d]||0)}" title="그날 전 업종 사모 순매수 합계(억원)">${fmtC((dayTot[d]||0)/EOK)}</div>`).join("")
-    +wins.map((w,k)=>`<div class="tl-tot ${sgn(sumT(k))}" title="최근 ${TL_WINS[k][0]}거래일 전 업종 사모 합계(억원)">${fmtC(sumT(k)/EOK)}</div>`).join("");
+    +wins.map((w,k)=>`<div class="tl-tot sumc ${sgn(sumT(k))}" title="최근 ${TL_WINS[k][0]}거래일 전 업종 사모 합계(억원)">${fmtC(sumT(k)/EOK)}</div>`).join("");
   secs.forEach((sec,i)=>{
     h+=`<div class="tl-rl">${sec}<small>${N(amtBy[sec]/EOK,0)}억</small></div>`;
     dates.forEach((d,c)=>{
@@ -6189,7 +6191,7 @@ function peRenderTimeline(){
       h+=`<div class="tl-cell${cls}" data-r="${i}" data-c="${c}" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;
     });
     wins.forEach((w,k)=>{const v=sumV(sec,k),pct=Math.round(10+55*Math.abs(v)/sMax[k]);
-      h+=`<div class="tl-sum" title="${sec} 최근 ${TL_WINS[k][0]}거래일 사모 합계(억원)" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;});
+      h+=`<div class="tl-sum sumc" title="${sec} 최근 ${TL_WINS[k][0]}거래일 사모 합계(억원)" style="background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${pct}%,transparent)"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;});
   });
   host.innerHTML=h+'</div><svg class="tl-paths"></svg></div></div></div>';
   S.peTlMeta={secs,dates,mk,cw:cw+2,topBuy,topSell};
