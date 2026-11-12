@@ -1361,7 +1361,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div class="field"><label>공시 기간</label>
         <select id="fDartP"><option value="3">3일</option><option value="7" selected>7일</option><option value="14">14일</option><option value="30">30일</option></select></div>
       <div class="field"><label>스마트머니 진단 (외+기)</label>
-        <select id="fSmx" title="종목상세 '스마트머니 매집·이탈 진단' 카드와 같은 판정 — 매 평일 20:50 갱신"><option value="">사용 안 함</option><option value="CONT">매집 지속 (고점이 최근 5일 이내)</option><option value="STALL">고점 후 정체</option><option value="LEAVE">이탈 진행</option><option value="HEAVY">이탈 심화 (매집분 50%↑ 회수)</option><option value="LEAVE,HEAVY">이탈 전체 (진행+심화)</option><option value="OUT">기간 내 순유출</option></select></div>
+        <select id="fSmx" title="종목상세 '스마트머니 매집·이탈 진단' 카드와 같은 판정 — 매 평일 20:50 갱신"><option value="">사용 안 함</option><option value="CONT,STALL">매집 전체 (지속+고점 후 정체)</option><option value="CONT">└ 매집 지속 (고점이 최근 5일 이내)</option><option value="STALL">└ 고점 후 정체</option><option value="LEAVE,HEAVY,OUT">이탈 전체 (진행+심화+순유출)</option><option value="LEAVE">└ 이탈 진행</option><option value="HEAVY">└ 이탈 심화 (매집분 50%↑ 회수)</option><option value="OUT">└ 기간 내 순유출</option></select></div>
       <div class="field"><label>진단 기간</label>
         <select id="fSmxW"><option value="63">3개월</option><option value="126">6개월</option><option value="all" selected>전체</option></select></div>
       <div class="field"><label>배당 기준</label>
