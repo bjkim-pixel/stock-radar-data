@@ -2222,9 +2222,12 @@ function broadcastToSubscribers(code, payload) {
 // ----------------------------------------------------------------------------
 // 3) 보유 종목 조회 (Supabase) — 프론트엔드가 안 열려있어도 알림은 계속 돌게 함
 // ----------------------------------------------------------------------------
+// 2026-11-12: DB 읽기가 "로그인한 주인만"으로 잠긴 뒤(161_lock_data_to_login.sql) anon 키로는 읽을 수 없으므로
+// 서버 전용 service 키로 읽는다. service 키가 없을 때만 예전처럼 anon 키(잠금 전 환경 호환).
 async function sbGet(path) {
+  const key = SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY;
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
   });
   if (!res.ok) throw new Error(`${path} ${res.status} ${await res.text().catch(() => '')}`);
   return res.json();
