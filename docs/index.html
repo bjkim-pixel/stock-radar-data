@@ -5721,7 +5721,7 @@ function renderRangeCharts(){
   const ovl={bands:[],pts:[]};
   if(!S.chart.etf){try{
     const cur=+rp.at(-1).close,pb=buildPriceProfile(rp,24,r=>+r.individual_net||0);
-    pb.filter(b=>b.lo>=cur&&b.v>0).sort((a,b)=>b.v-a.v).slice(0,2).forEach((b,k)=>ovl.bands.push({lo:b.lo,hi:b.hi,c:k?"--warn":"--down",label:`개인 매물대 ${k+1}위 ${N(b.v,0)}억`}));
+    pb.filter(b=>b.lo>=cur&&b.v>0).sort((a,b)=>b.v-a.v).slice(0,2).forEach((b,k)=>ovl.bands.push({lo:b.lo,hi:b.hi,c:k?"--warn":"--down",label:`개인 매물대 ${k+1}위 ${N(b.lo,0)}~${N(b.hi,0)}원 · ${N(b.v,0)}억`}));
     if(rp.length>=10&&rp[0].foreign_cum!=null){const m=smxModel(rp);
       if(m.build>0){const md=i=>String(rp[i].trade_date).slice(5).replace("-","/");
         ovl.pts.push({i:m.tr,v:+rp[m.tr].close,t:"매집 시작 "+md(m.tr),c:"--s1",below:true});
@@ -6996,7 +6996,7 @@ function smxDraw(all,win,E){
   try{
     if(rows.every(r=>r.individual_net!=null)){
       const cur=m.close[m.L],pb=buildPriceProfile(rows,24,r=>+r.individual_net||0);
-      bgx.bands=pb.filter(b=>b.lo>=cur&&b.v>0).sort((a,b)=>b.v-a.v).slice(0,2).map((b,k)=>({lo:b.lo,hi:b.hi,c:k?"--warn":"--down",label:`개인 매물대 ${k+1}위 ${N(b.v,0)}억`}));}
+      bgx.bands=pb.filter(b=>b.lo>=cur&&b.v>0).sort((a,b)=>b.v-a.v).slice(0,2).map((b,k)=>({lo:b.lo,hi:b.hi,c:k?"--warn":"--down",label:`개인 매물대 ${k+1}위 ${N(b.lo,0)}~${N(b.hi,0)}원 · ${N(b.v,0)}억`}));}
     if(m.build>0)bgx.pts=[{i:m.tr,c:"--ink-3",t:`종가 ${N(m.close[m.tr],0)}`},{i:m.pk,c:"--ink-3",t:`종가 ${N(m.close[m.pk],0)}`}];
   }catch(e){console.error("외+기 누적 덧그림",e);}
   lineChart(E.a,[{n:"외+기 누적",v:m.combo,c:"--up"}],labels,
