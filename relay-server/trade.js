@@ -9,9 +9,10 @@
      4) 긴급 정지     — TRADING_ENABLED / REAL_TRADING_ENABLED 환경변수 + 화면의 정지 버튼(메모리 플래그)
      5) 한도          — 1회 금액 · 1일 누적 · 동시 보유 종목 수 · 매수 허용 시간대 (checkLimits / guard)
      6) 감사 기록     — 모든 요청(거부 포함)을 Supabase trade_audit 에 남기고, 중요 이벤트는 폰 알림
-   이 단계에는 주문 코드가 없습니다. 주문(3단계)은 여기 authz/guard/checkLimits 를 거쳐야만 나갑니다.
+   KIS 주문 API 를 부르는 코드는 없습니다(실전 주문은 6단계). 가상 주문(paper.js)은 여기 authz/guard/checkLimits 를 거쳐야만 처리됩니다.
    ════════════════════════════════════════════════════════════════════════ */
 const crypto = require('crypto');
+const { createPaper } = require('./paper');
 const { promisify } = require('util');
 const pbkdf2 = promisify(crypto.pbkdf2);
 
@@ -342,6 +343,35 @@ function createTrade(deps = {}) {
     return p;
   }
 
+  /* ── 휴장일 조회(KIS chk-holiday, 하루 한 번만 — 호출 부하를 줄이라는 KIS 안내). 모르면 null → 시세 갱신 여부로 판단 ── */
+  const holidayCache = new Map();   // 'YYYY-MM-DD' -> { v: true|false|null, t }
+  async function isOpenDay(day) {
+    const c = holidayCache.get(day);
+    if (c && (c.v !== null || now() - c.t < 600000)) return c.v;
+    let v = null;
+    try {
+      if (deps.kisGet) {
+        const d8 = day.replace(/-/g, '');
+        const r = await deps.kisGet('/uapi/domestic-stock/v1/quotations/chk-holiday', 'CTCA0903R', { BASS_DT: d8, CTX_AREA_NK: '', CTX_AREA_FK: '' });
+        const row = (r.output || []).find(x => x.bass_dt === d8);
+        if (row && row.opnd_yn) v = row.opnd_yn === 'Y';
+      }
+    } catch (e) { console.warn('[trade] 휴장일 조회 실패:', e && e.message); }
+    holidayCache.set(day, { v, t: now() });
+    if (holidayCache.size > 10) holidayCache.delete(holidayCache.keys().next().value);
+    return v;
+  }
+
+  /* ── 가상매매(자체 체결 시뮬레이터) ── */
+  const paper = (deps.sbGet && deps.sbWrite)
+    ? createPaper({
+      now, sbGet: deps.sbGet, sbWrite: deps.sbWrite, getQuote, guard, alert, isOpenDay,
+      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.VIRTUAL, enabled: () => cfg.enabled,
+      fees: { buy: numEnv(env.PAPER_FEE_BUY_PCT, 0), sell: numEnv(env.PAPER_FEE_SELL_PCT, 0) },
+    })
+    : null;
+  if (paper && !deps.skipLoop) paper.start();
+
   /* ── HTTP ── */
   function cors(req, res) {
     const o = req.headers.origin;
@@ -379,7 +409,7 @@ function createTrade(deps = {}) {
     const origin = req.headers.origin;
     if (req.method === 'POST' && origin && !allowedOrigins.includes(origin)) return json(res, 403, { ok: false, error: 'forbidden origin' });
 
-    const needSession = path === '/trade/resume' || path === '/trade/ping';
+    const needSession = path === '/trade/resume' || path === '/trade/ping' || path.startsWith('/trade/paper/');
     // 상태 조회는 세션이 있으면 그 정보도 함께 돌려줌(없어도 통과)
     const a = await authz(req, { session: needSession });
     if (!a.ok) {
@@ -396,6 +426,11 @@ function createTrade(deps = {}) {
       if (!/^\d{6}$/.test(code)) return json(res, 400, { ok: false, error: 'bad code' });
       try { return json(res, 200, await getQuote(code)); }
       catch (e) { console.warn('[trade] 시세 조회 실패', code, e && e.message); return json(res, 502, { ok: false, error: 'quote unavailable' }); }
+    }
+    if (path === '/trade/paper/state' && req.method === 'GET') {
+      if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
+      const r = await paper.state();
+      return json(res, r.ok ? 200 : (r.status || 500), r);
     }
     if (path === '/trade/ping' && req.method === 'GET') {
       return json(res, 200, { ok: true, ttlSec: sessionTtlSec(a.session) });
@@ -419,6 +454,17 @@ function createTrade(deps = {}) {
       await audit('session_open', true, {}, req);
       alert('거래 세션이 열렸습니다. 본인이 아니면 긴급 정지를 누르세요.', '매매 세션');
       return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000) });
+    }
+    if (path === '/trade/paper/order' || path === '/trade/paper/cancel') {
+      if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
+      const isOrder = path === '/trade/paper/order';
+      const r = isOrder ? await paper.place(body, req) : await paper.cancel(body.id);
+      if (!r.ok) {
+        audit('paper_reject', false, { path, error: r.error, code: body.code, side: body.side, type: body.type, qty: body.qty, price: body.price }, req, 'VIRTUAL');
+        return json(res, r.status || 400, { ok: false, error: r.error });
+      }
+      audit(isOrder ? 'paper_order' : 'paper_cancel', true, isOrder ? { code: r.order.code, side: r.order.side, type: r.order.type, price: r.order.price, qty: r.order.qty, filled: r.order.filled } : { id: r.order.id }, req, 'VIRTUAL');
+      return json(res, 200, r);
     }
     if (path === '/trade/lock') {
       sessions.delete(String(req.headers['x-trade-session'] || ''));
@@ -456,7 +502,7 @@ function createTrade(deps = {}) {
   if (!cfg.allowedEmail) console.warn('[trade] ALLOWED_EMAIL 미설정 — 매매 API는 모든 요청을 거부합니다.');
   if (!cfg.pinHash) console.warn('[trade] TRADE_PIN_HASH 미설정 — 거래 세션을 열 수 없습니다.');
 
-  return { handle, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
+  return { handle, paper, getQuote, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
 }
 
 module.exports = { createTrade, hashPin, verifyHash, checkLimits, loadConfig, scrub };

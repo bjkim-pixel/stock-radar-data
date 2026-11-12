@@ -11,6 +11,7 @@ name: "[수시] DB 테이블·뷰 생성 | 수동 | 스키마 설정"
 #   trade_security — 매매 보안 1/2: 감사 기록 테이블 + 소유자 확인 함수(160, 화면 영향 없음 · all 에 포함 안 됨)
 #   lock_data  — 매매 보안 2/2: 데이터 읽기를 로그인한 주인에게만 허용(161 · all 에 포함 안 됨 · 로그인 확인 후 실행)
 #   unlock_data — 위 잠금 되돌리기(all 에 포함 안 됨)
+#   paper_trading — 가상매매 테이블 5개(162, relay 전용 · all 에 포함 안 됨)
 #   all        — 위 전부 (drop_nxt 는 포함되지 않음)
 #   drop_nxt   — daily_price 의 NXT 컬럼 4개 삭제(120_drop_nxt_columns.sql, 되돌릴 수 없음 · all 에 포함 안 됨)
 on:
@@ -33,6 +34,7 @@ on:
           - trade_security
           - lock_data
           - unlock_data
+          - paper_trading
 
 permissions:
   contents: write
@@ -93,5 +95,5 @@ jobs:
           branch: db-setup-report
           file: ${{ inputs.target == 'data_version' && 'data_version_report.md' || 'flow_periods_fast_report.md' }}
       - name: 매매 보안 (감사 테이블·소유자 함수 / 데이터 잠금 / 잠금 해제)
-        if: inputs.target == 'trade_security' || inputs.target == 'lock_data' || inputs.target == 'unlock_data'
+        if: inputs.target == 'trade_security' || inputs.target == 'lock_data' || inputs.target == 'unlock_data' || inputs.target == 'paper_trading'
         run: python 160_trade_setup.py ${{ inputs.target }}
