@@ -1636,7 +1636,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
           <option value="ins_buy">내부자 순매수</option><option value="ins_sell">내부자 순매도</option>
           <option value="buyback">자사주 취득 결정</option><option value="supply">공급 부담(유증·CB 등)</option></select>
       <select id="dDartP" class="df" style="flex:.6 1 0" title="공시 조회 기간"><option value="3">3일</option><option value="7" selected>7일</option><option value="14">14일</option><option value="30">30일</option></select>
-      <select id="dSmxF" class="df" style="flex:1.5 1 0" title="스마트머니 매집·이탈 진단(외국인+기관합계 누적) 상태로 종목 목록 좁히기"><option value="">매집·이탈 진단</option><option value="CONT">매집 지속 (고점이 최근 5일 이내)</option><option value="STALL">고점 후 정체</option><option value="LEAVE">이탈 진행</option><option value="HEAVY">이탈 심화 (매집분 50%↑ 회수)</option><option value="LEAVE,HEAVY">이탈 전체 (진행+심화)</option><option value="OUT">기간 내 순유출</option></select>
+      <select id="dSmxF" class="df" style="flex:1.5 1 0" title="스마트머니 매집·이탈 진단(외국인+기관합계 누적) 상태로 종목 목록 좁히기"><option value="">매집·이탈 진단</option><option value="CONT,STALL">매집 전체 (지속+고점 후 정체)</option><option value="CONT">└ 매집 지속 (고점이 최근 5일 이내)</option><option value="STALL">└ 고점 후 정체</option><option value="LEAVE,HEAVY,OUT">이탈 전체 (진행+심화+순유출)</option><option value="LEAVE">└ 이탈 진행</option><option value="HEAVY">└ 이탈 심화 (매집분 50%↑ 회수)</option><option value="OUT">└ 기간 내 순유출</option></select>
       <select id="dSmxW" class="df" style="flex:.7 1 0" title="진단 기간"><option value="63">3개월</option><option value="126">6개월</option><option value="all" selected>전체</option></select>
     </div>
     <div class="dfrow" style="margin-top:5px">
