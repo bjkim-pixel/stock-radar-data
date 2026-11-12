@@ -1678,6 +1678,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="note">최대주주 및 특수관계인 = 정기보고서 기준(기준일 표시). 5% 이상 대량보유자 = 대량보유상황보고서 중 보고자별 최신 건(5% 미만으로 내려간 보고자는 제외). 소액주주 = 발행주식 총수의 1% 미만 보유 주주. 자기주식 = 보통주 기말 보유수량 ÷ 발행주식 총수.</div>
   </div>
 
+  <div class="card" id="dMajorCard" style="display:none"><h3>5% 이상 대량보유자 <span class="r" id="dMajorSub">DART 대량보유상황보고</span></h3>
+    <div id="dMajorBody"></div>
+  </div>
+
   <div class="card" id="dDartCard" style="display:none"><h3>공시 <span class="r" id="dDartSub">DART · 최근 12개월</span></h3>
     <div id="dDartSum" class="faint" style="font-size:12px;margin-bottom:6px"></div>
     <div class="qf seg" id="dDartKindSel" style="margin-bottom:6px">
@@ -6757,7 +6761,7 @@ S.dDartKind="all";
 const escH=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 async function renderGovCards(){
   const code=S.chart&&S.chart.code,bc=$("#dBoardCard"),oc=$("#dOwnCard");
-  if(!code){bc.style.display="none";oc.style.display="none";return;}
+  if(!code){bc.style.display="none";oc.style.display="none";$("#dMajorCard").style.display="none";return;}
   let bd=[],ow=[],mj=[],sm=[];
   try{[bd,ow,mj,sm]=await Promise.all([
     q("gov_board",`select=nm,birth_ym,ofcps,kind,fte,chrg_job,main_career,tenure_end,own_shares,own_rate,stlm_dt&code=eq.${code}&order=nm.asc`),
@@ -6784,12 +6788,13 @@ async function renderGovCards(){
   // ── 주요주주
   const base=ow.filter(r=>r.nm!=="계"&&r.stock_knd==="보통주"),tot=ow.find(r=>r.nm==="계"&&r.stock_knd==="보통주");
   {const ownNm=new Set(base.map(r=>r.nm.replace(/\s+/g,"")));mj=mj.filter(r=>!ownNm.has((r.repror||"").replace(/\s+/g,"")));}   // 최대주주·특수관계인 표와 중복되는 보고자는 5% 목록에서 제외
-  const hasAny=base.length||mj.length||sm.length;
-  if(!hasAny){oc.style.display="none";return;}
-  oc.style.display="";$("#dOwnSub").textContent=`DART · 기준 ${sy||"–"}`;
+  const hasOwn=base.length||sm.length,mcard=$("#dMajorCard");
+  mcard.style.display=mj.length?"":"none";oc.style.display=hasOwn?"":"none";
+  if(!hasOwn&&!mj.length)return;
+  $("#dOwnSub").textContent=`DART · 기준 ${sy||"–"}`;
   const top=base.find(r=>/최대주주/.test(r.relate||""))||base[0];
   const s0=sm[0]||{};
-  let h="";
+  let h="",hm="";
   if(top)h+=`<div style="font-size:13px;margin-bottom:6px">최대주주 <b>${escH(top.nm)}</b>${top.is_corp?' <span class="tag-d" style="font-size:10.5px">법인</span>':""} <b>${N(top.rate,2)}%</b>${tot&&tot.rate!=null?` · 특수관계인 합계 <b>${N(tot.rate,2)}%</b>`:""}${top.rate_beg!=null&&tot&&tot.rate_beg!=null&&Math.abs(tot.rate-tot.rate_beg)>=0.005?` <span class="faint">(기초 ${N(tot.rate_beg,2)}% → ${pm(tot.rate-tot.rate_beg,2)}%p)</span>`:""}</div>`;
   const chips=[];
   if(s0.small_shares_rate!=null)chips.push(`소액주주 <b>${N(s0.small_shares_rate,2)}%</b>${s0.small_holders!=null?` <span class="faint">(${N(s0.small_holders,0)}명)</span>`:""}`);
@@ -6798,9 +6803,9 @@ async function renderGovCards(){
   if(base.length)h+=`<div class="tw tw-scroll" style="margin-bottom:8px"><table class="earn-t"><thead><tr><th class="l">최대주주 및 특수관계인</th><th>관계</th><th>주식수</th><th>지분율</th></tr></thead><tbody>`+
     base.map(r=>`<tr><td class="l">${escH(r.nm)}${r.is_corp?' <span class="faint">법인</span>':""}</td><td>${escH(r.relate||"")}</td><td class="num">${N(r.shares,0)}</td><td class="num">${N(r.rate,2)}%</td></tr>`).join("")+
     (tot?`<tr style="border-top:2px solid var(--border);font-weight:700"><td class="l">합계(보통주)</td><td></td><td class="num">${N(tot.shares,0)}</td><td class="num">${N(tot.rate,2)}%</td></tr>`:"")+`</tbody></table></div>`;
-  if(mj.length)h+=`<div style="font-size:12px;font-weight:650;margin:6px 0 3px">5% 이상 대량보유자</div><div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">보유자</th><th>지분율</th><th>변동</th><th>주식수</th><th>보고일</th><th class="l">사유</th></tr></thead><tbody>`+
+  if(mj.length)hm+=`<div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">보유자</th><th>지분율</th><th>변동</th><th>주식수</th><th>보고일</th><th class="l">사유</th></tr></thead><tbody>`+
     mj.map(r=>`<tr><td class="l">${escH(r.repror)}</td><td class="num">${N(r.rate,2)}%</td><td class="num ${sgn(r.rate_chg)}">${r.rate_chg==null?"–":pm(r.rate_chg,2)+"%p"}</td><td class="num">${N(r.shares,0)}</td><td>${escH(r.rcept_dt||"")}</td><td class="l" style="white-space:normal;min-width:120px">${escH((r.reason||"").slice(0,40))}</td></tr>`).join("")+`</tbody></table></div>`;
-  $("#dOwnBody").innerHTML=h;
+  $("#dOwnBody").innerHTML=h;$("#dMajorBody").innerHTML=hm;
 }
 async function renderDartCard(){
   const card=$("#dDartCard"),code=S.chart&&S.chart.code;
@@ -7026,13 +7031,13 @@ function smxDraw(all,win,E){
 // 스마트머니 매집·이탈 진단 → 수급 주체별 누적 순서로 주요주주 카드 바로 아래로
 // 최종 순서: 주요주주(5% 대량보유자 포함) → 공시 → 스마트머니 매집·이탈 진단 → 수급 주체별 누적 → 개인 매물대 → 외국인+기관 매물대
 {const oc=$("#dOwnCard"),dc=$("#dDartCard"),sc=$("#dSmxCard"),mc=$("#dMinisCard"),p1=$("#dProfile")&&$("#dProfile").closest(".card"),p2=$("#dProfileInst")&&$("#dProfileInst").closest(".card");
- if(oc&&dc&&sc&&mc&&p1&&p2){oc.after(dc);dc.after(sc);sc.after(mc);mc.after(p1);p1.after(p2);const vpc=$("#dVolProfCard");if(vpc)p2.after(vpc);}}
+ if(oc&&dc&&sc&&mc&&p1&&p2){oc.after(dc);const mjc=$("#dMajorCard");if(mjc)oc.after(mjc);dc.after(sc);sc.after(mc);mc.after(p1);p1.after(p2);const vpc=$("#dVolProfCard");if(vpc)p2.after(vpc);}}
 // 무게/주식수 차트를 수급 주체별 누적 카드 안, 외국인+기관합계 미니차트 위로(카드 테두리 없이 블록으로)
 {const pc=$("#dPgtrCard"),mg=$("#dMinis");if(pc&&mg){pc.style.cssText="border:none;box-shadow:none;padding:0;margin:12px 0 0;background:none";mg.after(pc);}}
 {const vc=$("#dVolCard"),ec=$("#dEarnCard");if(vc&&ec)ec.before(vc);}
 {const wc=$("#dWeightCard"),mg=$("#dMinis");if(wc&&mg){wc.style.cssText="border:none;box-shadow:none;padding:0;margin:0 0 12px;background:none";mg.before(wc);}}
-/* 실적·배당·이사회 카드는 기본 접힘 — 제목을 누르면 펼침(종목을 바꿔도 펼침 상태 유지) */
-["#dEarnCard","#dDivCard","#dBoardCard"].forEach(id=>{const c=$(id);if(!c)return;c.classList.add("fold","collapsed");
+/* 실적·배당·이사회·주요주주 카드는 기본 접힘 — 제목을 누르면 펼침(종목을 바꿔도 펼침 상태 유지) */
+["#dEarnCard","#dDivCard","#dBoardCard","#dOwnCard"].forEach(id=>{const c=$(id);if(!c)return;c.classList.add("fold","collapsed");
   const h=c.querySelector(":scope>h3");if(h){h.setAttribute("role","button");h.tabIndex=0;
     const tg=()=>c.classList.toggle("collapsed");h.addEventListener("click",tg);h.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();tg();}});}});
 $("#dSmxWin").addEventListener("seg-change",e=>{S.smxWin=e.detail;try{renderSmx();}catch(err){console.error(err);}});
