@@ -455,6 +455,12 @@ function createTrade(deps = {}) {
       alert('거래 세션이 열렸습니다. 본인이 아니면 긴급 정지를 누르세요.', '매매 세션');
       return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000) });
     }
+    if (path === '/trade/paper/plan') {
+      if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
+      const r = await paper.editPlan(body);
+      audit(r.ok ? 'paper_plan' : 'paper_reject', r.ok, { path, code: body.code, error: r.error, stop: body.stop, stopPct: body.stopPct, steps: Array.isArray(body.steps) ? body.steps.length : 0 }, req, 'VIRTUAL');
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
+    }
     if (path === '/trade/paper/order' || path === '/trade/paper/cancel') {
       if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
       const isOrder = path === '/trade/paper/order';
