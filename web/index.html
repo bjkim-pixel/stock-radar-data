@@ -2036,6 +2036,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div class="card"><h3>진입 전 점검표</h3><div id="trdCheck"></div></div>
       <div class="card"><div id="trdMkt"></div><button type="button" class="btn" id="trdBtn" disabled style="width:100%">매수 주문</button>
         <div id="trdBtnNote" class="faint" style="margin-top:6px;font-size:12px;text-align:center"></div></div>
+      <div id="trdDetail"></div>
     </div>
     <div class="card"><h3>보유 <span class="r faint" id="trdPl" style="font-size:11px"></span></h3><div id="trdHold"></div></div>
     <div class="card"><h3>미체결 주문</h3><div id="trdOpen"></div></div>
@@ -3387,7 +3388,7 @@ function go(v,detailCode){
   if(S.curTab==='fav'&&v!=='fav'&&S.favWanted.size)setFavLiveCodes([]);
   if(S.curTab==='sw'&&v!=='sw'&&S.swLiveWanted&&S.swLiveWanted.size)setSwLiveCodes([]);
   if(S.curTab==='live'&&v!=='live')liveStop();
-  if(S.curTab==='trade'&&v!=='trade')trdStop();
+  if(S.curTab==='trade'&&v!=='trade'){trdStop();trdDetailDetach();}
   S.curTab=v;
   if(!S._keepBack)S.backAI=false;
   if(typeof aiBackShow==="function")aiBackShow();
@@ -5912,7 +5913,7 @@ async function loadDetail(code){
 // ETF 상세: 수급 기반 카드는 숨기고 가격·이평선·거래량 카드만 보여줌
 function setDetailEtfMode(on){
   const keep=new Set([$("#dPriceCard"),$("#dMaCard"),$("#dVolCard"),$("#dSel").closest(".card")]);
-  $$("#v-detail .card").forEach(c=>{
+  $$("#v-detail .card,#trdDetail .card").forEach(c=>{
     if(c.parentElement&&c.parentElement.closest(".card"))return;   // 카드 안의 작은 타일은 제외
     if(!keep.has(c))c.style.display=on?"none":"";
   });
@@ -9097,6 +9098,22 @@ function trdOpenMain(){
   clearInterval(TRD.stPoll);TRD.stPoll=setInterval(()=>{
     trdRefreshStatus().then(()=>{if(!TRD.sess){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");}else trdRenderStatus();}).catch(e=>{if(e.status===401||e.status===403){trdStop();trdEnter();}});},45000);
 }
+/* 매매 화면 맨 아래에 종목상세 화면(#v-detail)의 내용을 그대로 옮겨 붙임 — 같은 요소·같은 loadDetail() 을 쓰므로 종목상세와 내용이 항상 같음.
+   매매 화면을 떠나거나 종목상세로 갈 때(go) 원래 자리로 되돌림. 종목 고르기용 필터 줄은 매매 대기 목록이 대신하므로 숨김 */
+function trdDetailAttach(){
+  const box=$("#trdDetail"),src=$("#v-detail");if(!box||!src||box.dataset.on||S.curTab!=="trade")return;
+  [...src.children].slice(1).forEach(el=>box.appendChild(el));
+  box.dataset.on="1";
+  box.querySelectorAll(".dfrow").forEach(r=>{if(r.querySelector("select"))r.style.display="none";});
+  const nx=$("#dNext");if(nx)nx.style.display="none";
+}
+function trdDetailDetach(){
+  const box=$("#trdDetail"),src=$("#v-detail");if(!box||!src||!box.dataset.on)return;
+  [...box.children].forEach(el=>src.appendChild(el));
+  delete box.dataset.on;
+  src.querySelectorAll(".dfrow").forEach(r=>{r.style.display="";});
+  const nx=$("#dNext");if(nx)nx.style.display="";
+}
 function trdStop(){clearInterval(TRD.poll);clearInterval(TRD.stPoll);clearInterval(TRD.psPoll);TRD.poll=TRD.stPoll=TRD.psPoll=null;}
 function trdRenderStatus(){
   const st=TRD.st||{},h=$("#trdHalt");
@@ -9148,6 +9165,7 @@ async function trdSelect(code,keep){
   await trdPollOnce();
   if(TRD.cur!==req)return;
   trdCalcRec();trdRenderAll();
+  if(S.curTab==="trade"){trdDetailAttach();loadDetail(code).catch(e=>console.error("trade detail",e));}
   clearInterval(TRD.poll);TRD.poll=setInterval(()=>{if(!document.hidden&&S.curTab==="trade")trdPollOnce().then(()=>{if(TRD.cur===req)trdRenderQuote();});},3000);
 }
 async function trdPollOnce(){
