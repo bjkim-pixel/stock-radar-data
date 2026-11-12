@@ -2449,6 +2449,7 @@ function lfSyncSectors(){const a=$("#dSec"),b=$("#lf_dSec");if(a&&b&&a.options.l
 function lfChanged(){
   const n=["sec","ma","ph","kw","div","grS","grO","grE","dart","smx"].filter(k=>S.lf[k]!==""&&S.lf[k]!=null&&S.lf[k]!==undefined).length;
   $("#lfCnt").textContent=n?`· ${n}개 적용 중`:"";
+  document.querySelectorAll("#v-live [data-smx]").forEach(e=>delete e.dataset.sw);smxFill();
   const L=S.live;if(L.on){L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="13" class="load sk"></td></tr>';liveFetch();}
 }
 async function liveFetch(){
@@ -2503,7 +2504,7 @@ function liveRender(){
       <td class="num">${x.shares?fmtCap(x.shares*x.price):"–"}</td><td class="num">${x.amt?N(x.amt/1e8,0)+"억":"–"}</td><td class="num">${x.vol?N(x.vol/1e4,0)+"만":"–"}</td><td class="dim">${mins<1?"방금":mins+"분"}</td>
       <td class="${d>0?"up":d<0?"down":"dim"}">${d==null?(Object.keys(oldRank).length?"신규":"–"):d>0?"▲"+d:d<0?"▼"+(-d):"–"}</td>
       <td data-smx="lead" data-code="${x.code}">–</td><td data-smx="ltr" data-code="${x.code}">–</td>${kwCell(x.code,"r6",false,true)}${kwCell(x.code,"r8",false,true)}</tr>
-      <tr class="lv2"><td colspan="9" class="l"><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${x.code}">–</span> <span data-smx="ltr" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">매집 6월</span><span class="kwc" data-kw="r6" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r6):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r6):"–"}</span></span><span class="lvs"><span class="lvl">8월</span><span class="kwc" data-kw="r8" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r8):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r8):"–"}</span></span></td></tr>`;}).join("");
+      <tr class="lv2"><td colspan="9" class="l"><span class="lvs"><span class="lvl">외+기 합계</span><span data-smx="st" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${x.code}">–</span> <span data-smx="ltr" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">매집 6월</span><span class="kwc" data-kw="r6" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r6):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r6):"–"}</span></span><span class="lvs"><span class="lvl">8월</span><span class="kwc" data-kw="r8" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r8):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r8):"–"}</span></span></td></tr>`;}).join("");
   if(!top.length)$("#liveBody").innerHTML='<tr><td colspan="13" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#liveBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   $("#liveLog").innerHTML=L.log.length?L.log.map(t=>`<div>${t}</div>`).join(""):"아직 변동이 없습니다";
@@ -6841,15 +6842,18 @@ function nxFill(){
   els.forEach(e=>{e.dataset.d="1";const v=S.nxtMap[e.dataset.nx];if(v==null)return;
     e.textContent=v?"20":"15";e.className="nx "+(v?"nx-y":"nx-n");e.title=v?"NXT(대체거래소) 거래 가능 — 20시까지 거래":"정규장만 거래 — 15:30 마감";});
 }
+const SMX_ST={CONT:["매집 지속","up"],STALL:["고점 후 정체","warn"],LEAVE:["이탈 진행","down"],HEAVY:["이탈 심화","down"],OUT:["순유출","down"],NONE:["매집 이력 없음","dim"]};
 const LEAD_TR={UP:["매수 추세","up",6],RESUME:["매수 재개","up",5],SLOW:["매수 둔화","warn",4],REBUY:["매도 후 재매수","warn",3],FLAT:["변동 없음","dim",2],TURN:["매도 전환","down",1],DOWN:["매도 추세","down",0]};
 function smxFill(){
   const cells=[...document.querySelectorAll("td[data-smx],span[data-smx]")];if(!cells.length)return;
   if(!S.smxMap){if(!S._smxLoading){S._smxLoading=true;smxLoadMap().then(()=>{S._smxLoading=false;smxFill();}).catch(()=>{S._smxLoading=false;});}return;}
-  const w=($("#fSmxW")||{}).value||"all";
+  const w0=($("#fSmxW")||{}).value||"all";
   cells.forEach(td=>{
+    const w=td.closest("#v-live")?((S.lf&&S.lf.smxW)||"all"):w0;   // 실시간 종목은 조회 조건의 진단 기간을 따른다
     if(td.dataset.sw===w)return;td.dataset.sw=w;
     const x=(S.smxMap[td.dataset.code]||{})[w],ok=x&&x.peak_eok!=null&&x.st!=="NONE"&&x.st!=="OUT";
     let t="–",v="",c="";
+    if(td.dataset.smx==="st"){const T=SMX_ST[x&&x.st];if(T){t=T[0];c=T[1];}td.textContent=t;td.title="외국인+기관합계 누적 기준 진단("+({"63":"3개월","126":"6개월","all":"전체"}[w])+") — 주도 세력 한 주체의 추세와 다를 수 있음";td.classList.remove("up","down","dim","warn");if(c)td.classList.add(c);return;}
     if(ok){const k=td.dataset.smx,dd=(+x.now_eok)-(+x.peak_eok);
       if(k==="peak"){t=pm(+x.peak_eok,0);v=x.peak_eok;c=sgn(+x.peak_eok);}
       else if(k==="date"){t=shortDate(x.peak_date);v=+String(x.peak_date).replace(/-/g,"");}
@@ -6921,7 +6925,7 @@ function renderLead(full){
   const tip=`${top.nm} 매집 구간 ${pm(top.score,0)}억 · 최근 5일 ${pm(top.r5,0)}억 / 20일 ${pm(top.r20,0)}억${rec}`;
   const wb=[["63","3M"],["126","6M"],["all","전체"]].map(([k,t])=>`<a class="lk" data-lw="${k}" style="margin-right:6px;${S.leadWin===k?"font-weight:700;text-decoration:underline":"opacity:.6"}">${t}</a>`).join("");
   el.innerHTML=`<div title="${tip}"><span class="faint">주도</span> <b>${top.nm}</b> <b class="${cls}">${lab}</b></div>
-    <div class="faint num" style="font-size:11px" title="${tip}">${pm(top.score,0)}억 · 5일 ${pm(top.r5,0)} · 20일 ${pm(top.r20,0)}${sec?` · 2위 ${sec.nm}`:""}</div><div style="font-size:11px">${wb}</div>`;
+    <div class="faint num" style="font-size:11px" title="${tip}">${pm(top.score,0)}억 · 5일 ${pm(top.r5,0)} · 20일 ${pm(top.r20,0)}${sec?` · 2위 ${sec.nm}`:""}</div><div class="faint" style="font-size:11px" title="외국인+기관합계 누적 기준(아래 매집·이탈 진단 카드와 동일). 주도 세력 한 주체의 추세와 다를 수 있습니다">외+기 합계 <b class="${m.cls}">${m.st}</b></div><div style="font-size:11px">${wb}</div>`;
   el.style.display="flex";
   el.querySelectorAll("a[data-lw]").forEach(a=>a.onclick=()=>{S.leadWin=a.dataset.lw;renderLead(S._leadRows);});
 }
