@@ -6950,20 +6950,30 @@ function renderLead(full){
   const cand=m.subj.filter(x=>!x.flat).map(x=>({...x,score:m.build>0?x.acc:x.v[L]})).sort((a,b)=>b.score-a.score);
   const top=cand[0];if(!top||top.score<=0)return;      // 외+기 어느 주체도 순매수 우위가 없으면 표시하지 않음
   const T=0.5;                                          // 억원 미만은 변동 없음으로 본다
-  let lab,cls;
-  if(top.r20>T&&top.r5>T){lab="매수 추세";cls="up";}
-  else if(top.r20>T){lab="매수 둔화";cls="warn";}
-  else if(top.r20<-T&&top.r5<-T){lab="매도 추세";cls="down";}
-  else if(top.r20<-T){lab="매도 후 재매수";cls="warn";}
-  else if(top.r5>T){lab="매수 재개";cls="up";}
-  else if(top.r5<-T){lab="매도 전환";cls="down";}
-  else{lab="변동 없음";cls="dim";}
+  const trd=x=>{
+    if(x.r20>T&&x.r5>T)return["매수 추세","up"];
+    if(x.r20>T)return["매수 둔화","warn"];
+    if(x.r20<-T&&x.r5<-T)return["매도 추세","down"];
+    if(x.r20<-T)return["매도 후 재매수","warn"];
+    if(x.r5>T)return["매수 재개","up"];
+    if(x.r5<-T)return["매도 전환","down"];
+    return["변동 없음","dim"];};
+  const [lab,cls]=trd(top);
+  /* 최근 주도(60거래일): 전체 매집액 1위가 1년 전 고점 때 주체일 수 있어, 최근 60거래일 순매수가 가장 큰 주체를 따로 본다 */
+  const RW=60,rcand=m.subj.filter(x=>!x.flat).map(x=>({...x,rc:x.v[L]-x.v[Math.max(0,L-RW)]})).sort((a,b)=>b.rc-a.rc);
+  const rtop=rcand[0]&&rcand[0].rc>T?rcand[0]:null;
+  const swap=rtop&&rtop.nm!==top.nm;
+  const pkAgo=m.build>0?Math.round((new Date(all[L].trade_date)-new Date(all[m.pk].trade_date))/2629800000):0;   // 고점 후 경과 개월
+  const oldChip=pkAgo>=6?` <span class="tag-d" style="font-size:10.5px;padding:1px 6px" title="외+기 누적 고점이 ${pkAgo}개월 전입니다 — 지금 주도와 다를 수 있어요">고점 ${pkAgo}개월 전</span>`:"";
+  let rline="";
+  if(swap){const [rl,rcl]=trd(rtop);rline=`<div title="최근 ${RW}거래일 순매수가 가장 큰 주체 (${rtop.nm} ${pm(rtop.rc,0)}억 · 5일 ${pm(rtop.r5,0)} / 20일 ${pm(rtop.r20,0)})"><span class="faint">최근 주도(${RW}일)</span> <b>${rtop.nm}</b> <b class="${rcl}">${rl}</b> <span class="tag-d up" style="font-size:10.5px;padding:1px 6px">주도 교체</span></div><div class="faint num" style="font-size:11px">${pm(rtop.rc,0)}억 · 5일 ${pm(rtop.r5,0)} · 20일 ${pm(rtop.r20,0)}</div>`;}
+  else if(rtop&&pkAgo>=6)rline=`<div class="faint" style="font-size:11px">최근 ${RW}일도 ${rtop.nm}이 주도 (${pm(rtop.rc,0)}억)</div>`;
   const rec=top.acc>0&&top.after<0?` · 매집분 ${N(-top.after/top.acc*100,0)}% 회수`:"";
   const sec=cand[1]&&cand[1].score>0?cand[1]:null;
   const tip=`${top.nm} 매집 구간 ${pm(top.score,0)}억 · 최근 5일 ${pm(top.r5,0)}억 / 20일 ${pm(top.r20,0)}억${rec}`;
   const wb=[["63","3M"],["126","6M"],["all","전체"]].map(([k,t])=>`<a class="lk" data-lw="${k}" style="margin-right:6px;${S.leadWin===k?"font-weight:700;text-decoration:underline":"opacity:.6"}">${t}</a>`).join("");
-  el.innerHTML=`<div title="${tip}"><span class="faint">주도</span> <b>${top.nm}</b> <b class="${cls}">${lab}</b></div>
-    <div class="faint num" style="font-size:11px" title="${tip}">${pm(top.score,0)}억 · 5일 ${pm(top.r5,0)} · 20일 ${pm(top.r20,0)}${sec?` · 2위 ${sec.nm}`:""}</div><div class="faint" style="font-size:11px" title="외국인+기관합계 누적 기준(아래 매집·이탈 진단 카드와 동일). 주도 세력 한 주체의 추세와 다를 수 있습니다">외+기 합계 <b class="${m.cls}">${m.st}</b></div><div style="font-size:11px">${wb}</div>`;
+  el.innerHTML=`<div title="${tip}"><span class="faint">${swap||pkAgo>=6?"주도(누적)":"주도"}</span> <b>${top.nm}</b> <b class="${cls}">${lab}</b>${oldChip}</div>
+    <div class="faint num" style="font-size:11px" title="${tip}">${pm(top.score,0)}억 · 5일 ${pm(top.r5,0)} · 20일 ${pm(top.r20,0)}${sec?` · 2위 ${sec.nm}`:""}</div><div class="faint" style="font-size:11px" title="외국인+기관합계 누적 기준(아래 매집·이탈 진단 카드와 동일). 주도 세력 한 주체의 추세와 다를 수 있습니다">외+기 합계 <b class="${m.cls}">${m.st}</b></div>${rline}<div style="font-size:11px">${wb}</div>`;
   el.style.display="flex";
   el.querySelectorAll("a[data-lw]").forEach(a=>a.onclick=()=>{S.leadWin=a.dataset.lw;renderLead(S._leadRows);});
 }
