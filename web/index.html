@@ -223,12 +223,11 @@ body.nav-open .navopen{display:none}
 .tl-sum{position:relative;min-height:34px;border-radius:4px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px;font-size:9.5px;font-weight:600}
 .tl-hd.tl-sh{border-left:1px solid var(--grid);padding-left:2px}
 #fwBody .tl-v,#fwBody .tl-tot,#fwBody .tl-sum{white-space:nowrap}#fwBody .tl-cell,#fwBody .tl-sum{align-items:center;padding-bottom:0}#fwBody .tl-rl a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#fwBody .tl-grid>.tl-rl.fw-sec{background:var(--surface-2);border-top:2px solid var(--ink);border-radius:6px 0 0 0;min-height:40px;padding:4px 4px 4px 8px;font-size:13.5px;font-weight:800;color:var(--ink)}
+#fwBody .tl-grid>.tl-rl.fw-sec{background:var(--surface-2);border-radius:6px 0 0 0;min-height:40px;padding:4px 4px 4px 8px;font-size:13.5px;font-weight:800;color:var(--ink)}
 #fwBody .tl-grid>.tl-rl.fw-sec small{font-size:10px;font-weight:500}
-#fwBody .fw-st{border-top:2px solid var(--ink);min-height:40px;border-radius:0;font-size:11px;font-weight:700;background:var(--surface-2)}
+#fwBody .fw-st{min-height:40px;border-radius:0;font-size:11px;font-weight:700;background:var(--surface-2)}
 #fwBody .tl-grid>.tl-rl.fw-s{padding-left:12px;border-left:3px solid var(--grid);margin-left:5px;font-size:12px}
-#fwBody .tl-grid>.tl-rl.fw-s.t3{border-left-color:var(--ink);font-weight:700;font-size:12.5px}
-#fwBody .tl-grid>.tl-rl.fw-s:not(.t3){font-weight:500;font-size:11px;opacity:.8}
+#fwBody .tl-grid>.tl-rl.fw-s{font-weight:600;font-size:12px}
 #fwBody .tl-rl>span{display:flex;align-items:baseline;white-space:nowrap;overflow:hidden}
 #fwBody .tl-rl .rk{display:inline-block;min-width:13px;margin-right:3px;font-size:9.5px;font-weight:700;color:var(--ink-3)}
 #fwBody .fw-gap{grid-column:1/-1;height:10px}
@@ -1426,11 +1425,11 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 </section>
 
 <section id="v-fw" class="hide">
-  <div class="card" style="margin-top:16px"><h3>외국인 추종 — 시총 TOP 50 일별 수급 <span class="r" id="fwRng">불러오는 중…</span></h3>
+  <div class="card" style="margin-top:16px"><h3>외국인 추종 — 시총 TOP 100 일별 수급 <span class="r" id="fwRng">불러오는 중…</span></h3>
     <div class="tl-tabs" id="fwTabs"><button data-s="f" class="on">외국인</button><button data-s="i">기관합계</button><button data-s="b">외국인+기관</button></div>
     <div class="tl-legend"><span><i style="width:12px;height:10px;background:color-mix(in srgb,var(--up) 45%,transparent);border-radius:2px"></i>순매수</span><span><i style="width:12px;height:10px;background:color-mix(in srgb,var(--down) 45%,transparent);border-radius:2px"></i>순매도</span><span>단위 억원 · 색 진하기는 종목별 최대치 기준 · 좌우로 밀어서 이동</span></div>
     <div id="fwBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">시가총액 상위 50종목(우선주·리츠·스팩 제외)을 업종별로 묶었습니다. 업종 줄은 해당 업종 TOP 50 종목의 합계이고, 종목은 업종 안에서 시총 큰 순서이며 상위 3종목(굵은 선)만 먼저 보이고 나머지는 "나머지 N종목 보기"로 펼칩니다. 종목 이름 아래는 시총과 오늘까지의 연속 순매수(+)/순매도(−) 일수입니다. 오른쪽 5·20·60일 열은 최근 거래일 합계입니다. 종목명을 누르면 종목 상세로 이동합니다.</div>
+    <div class="note" style="margin-top:8px">시가총액 상위 100종목(우선주·리츠·스팩 제외)을 업종별로 묶었습니다. 업종 줄은 해당 업종 TOP 100 종목의 합계이고, 종목은 업종 안에서 시총 큰 순서이며 이름 앞 숫자는 업종 내 시총 순위입니다. 종목 이름 아래는 시총과 오늘까지의 연속 순매수(+)/순매도(−) 일수입니다. 오른쪽 5·20·60일 열은 최근 거래일 합계입니다. 종목명을 누르면 종목 상세로 이동합니다.</div>
   </div>
 </section>
 <section id="v-live" class="hide">
@@ -3544,19 +3543,19 @@ function renderFlowTimeline(){
   },{passive:true}));
 }
 
-/* ── 외국인 추종: 시총 TOP 50 × 업종 × 일별 수급(외국인/기관합계/외+기) — 자금 이동 타임라인(.tl-*) 스타일 재사용 ── */
+/* ── 외국인 추종: 시총 TOP 100 × 업종 × 일별 수급(외국인/기관합계/외+기) — 자금 이동 타임라인(.tl-*) 스타일 재사용 ── */
 const FW_SUBJ={f:["외국인",r=>+r.foreign_net||0],i:["기관합계",r=>+r.inst_net||0],b:["외국인+기관",r=>(+r.foreign_net||0)+(+r.inst_net||0)]};
 async function fwLoad(){
   const last=(await q("daily_price","select=trade_date&order=trade_date.desc&limit=1"))[0].trade_date;
-  const cap=await q("daily_price",`select=code,market_cap&trade_date=eq.${last}&market_cap=not.is.null&order=market_cap.desc&limit=150`);
+  const cap=await q("daily_price",`select=code,market_cap&trade_date=eq.${last}&market_cap=not.is.null&order=market_cap.desc&limit=250`);
   const stk=await q("stocks",`select=code,name,market&security_type=eq.STOCK&code=in.(${cap.map(x=>x.code).join(",")})`);
   const nm=Object.fromEntries(stk.map(x=>[x.code,x]));
-  const top=cap.filter(x=>nm[x.code]&&!/(우[A-C]?|우\(전환\))$|리츠|스팩|기업인수목적/.test(nm[x.code].name)).slice(0,50);
+  const top=cap.filter(x=>nm[x.code]&&!/(우[A-C]?|우\(전환\))$|리츠|스팩|기업인수목적/.test(nm[x.code].name)).slice(0,100);
   const codes=top.map(x=>x.code),inl=codes.join(",");
   const sec=Object.fromEntries((await q("v_stock_sector",`select=code,sector&code=in.(${inl})`).catch(()=>[])).map(x=>[x.code,x.sector]));
   const d0=new Date(new Date(last+"T00:00:00+09:00").getTime()-110*864e5).toISOString().slice(0,10);
   const flow=[];
-  for(let off=0;off<8000;off+=1000){
+  for(let off=0;off<14000;off+=1000){
     const part=await q("daily_flow",`select=code,trade_date,foreign_net,inst_net&code=in.(${inl})&trade_date=gte.${d0}&order=trade_date.asc,code.asc&limit=1000&offset=${off}`);
     flow.push(...part);if(part.length<1000)break;
   }
@@ -3583,22 +3582,18 @@ function fwRender(){
     const sMax=Math.max(1,...dates.map(d=>Math.abs(sv(d))));
     const sw=wins.map(w=>w.reduce((a,d)=>a+sv(d),0)),swMax=Math.max(1,...sw.map(Math.abs));
     h+=`<div class="fw-gap"></div><div class="tl-rl fw-sec">${sn}<small>${L.length}종목 · ${N(L.reduce((a,t)=>a+t.cap,0)/1e12,0)}조</small></div>`
-      +dates.map(d=>{const v=sv(d)/EOK;return `<div class="tl-tot fw-st ${sgn(v)}" style="${bg(v,sMax/EOK)}" title="${sn} TOP50 합계(억원)">${fmtC(v)}</div>`;}).join("")
+      +dates.map(d=>{const v=sv(d)/EOK;return `<div class="tl-tot fw-st ${sgn(v)}" style="${bg(v,sMax/EOK)}" title="${sn} TOP100 합계(억원)">${fmtC(v)}</div>`;}).join("")
       +sw.map(v=>`<div class="tl-tot fw-st ${sgn(v)}" style="${bg(v,swMax)}">${fmtC(v/EOK)}</div>`).join("");
-    const openAll=(S.fwOpenSec||{})[sn];
     L.forEach((t,ti)=>{
-      if(ti===3&&L.length>3&&!openAll)h+=`<div class="fw-more" data-s="${sn}" style="width:${W-8}px;justify-self:start">▾ 나머지 ${L.length-3}종목 보기</div>`;
-      if(ti>=3&&!openAll)return;
       const vv=val[t.code]||{},mx=Math.max(1,...dates.map(d=>Math.abs(vv[d]||0)));
       let streak=0,sg=0;for(let k=dates.length-1;k>=0;k--){const x=vv[dates[k]];if(x==null||x===0)break;const g=x>0?1:-1;if(!sg)sg=g;if(g!==sg)break;streak++;}
       const tw=wins.map(w=>w.reduce((a,d)=>a+(vv[d]||0),0)),twMax=Math.max(1,...tw.map(Math.abs));
-      h+=`<div class="tl-rl fw-s${ti<3?" t3":""}"><span><span class="rk">${ti+1}</span><a class="lk nm" data-code="${t.code}">${t.name}</a></span><small>${N(t.cap/1e12,1)}조${streak?` · <span class="${sg>0?"up":"down"}">${sg>0?"+":"−"}${streak}일</span>`:""}</small></div>`
+      h+=`<div class="tl-rl fw-s"><span><span class="rk">${ti+1}</span><a class="lk nm" data-code="${t.code}">${t.name}</a></span><small>${N(t.cap/1e12,1)}조${streak?` · <span class="${sg>0?"up":"down"}">${sg>0?"+":"−"}${streak}일</span>`:""}</small></div>`
         +dates.map(d=>{const v=vv[d]||0;return `<div class="tl-cell" style="${bg(v,mx)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;}).join("")
         +tw.map(v=>`<div class="tl-sum" style="${bg(v,twMax)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`).join("");
     });
   });
   host.innerHTML=h+'</div></div></div></div>';
-  host.querySelectorAll(".fw-more").forEach(e=>e.onclick=()=>{(S.fwOpenSec=S.fwOpenSec||{})[e.dataset.s]=true;fwRender();});
   const sc=$("#fwBody .tl-scroll");
   requestAnimationFrame(()=>{sc.scrollLeft=S.fwScroll==null?1e9:S.fwScroll;});
   sc.addEventListener("scroll",()=>{S.fwScroll=sc.scrollLeft;},{passive:true});
