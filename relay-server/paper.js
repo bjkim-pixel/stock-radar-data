@@ -10,6 +10,7 @@
    · 호가 10단계는 09:00·12:00·15:10(보유·미체결 종목)과 사람 주문·체결·손절 시점에만 저장, 14일 뒤 삭제
    ════════════════════════════════════════════════════════════════════════ */
 const E = require('./paper-engine');
+const { computeReport } = require('./paper-report');
 
 const MISSING = /42P01|PGRST205|does not exist/;
 const SLOTS = [['open', 9 * 60], ['noon', 12 * 60], ['close', 15 * 60 + 10]];
@@ -47,7 +48,7 @@ function createPaper(deps) {
   const fees = deps.fees || { buy: 0, sell: 0 };   // % — 기본 0(수수료·세금 무시), 체결 행에 fee 를 따로 저장해 나중에 재계산 가능
   const orders = new Map(), positions = new Map(), lastPx = new Map();
   let fills = [];                                   // 오늘 체결(최신이 앞)
-  const snapDone = new Set(), cids = new Map(), warned = new Map();
+  const snapDone = new Set(), cids = new Map(), warned = new Map(), reopen = new Set();   // reopen: 전날 소멸한 익절 주문을 다시 거는 종목(내역에 '장 시작 재접수'로 표시)
   const dirty = { orders: new Map(), fills: new Map(), pos: new Map() };
   const hb = { day: '', open: false, close: false, lastTick: 0, restartPending: false };
   let loaded = false, missing = false, ticking = false, lastPurge = '', persistAlerted = false;
@@ -90,13 +91,13 @@ function createPaper(deps) {
     id: o.id, created_at: new Date(o.createdAt).toISOString(), updated_at: new Date(o.updatedAt).toISOString(), code: o.code, name: o.name || null,
     side: o.side, type: o.type, price: o.price == null ? null : o.price, qty: o.qty, filled_qty: o.filled, avg_price: o.filled ? o.avg : null, status: o.status,
     queue_ahead: Math.round(o.queueAhead || 0), last_vol: o.lastVol == null ? null : Math.round(o.lastVol), low_seen: o.lowSeen, high_seen: o.highSeen,
-    reason: o.reason || 'manual', plan: o.plan || null, note: o.note || null,
+    reason: o.reason || 'manual', plan: o.plan || null, note: o.note || null, ref_price: o.refPrice || null,
   });
   const fromOrder = r => ({
     id: r.id, createdAt: Date.parse(r.created_at), updatedAt: Date.parse(r.updated_at), code: r.code, name: r.name, side: r.side, type: r.type,
     price: r.price == null ? null : +r.price, qty: +r.qty, filled: +r.filled_qty || 0, avg: r.avg_price == null ? 0 : +r.avg_price, status: r.status,
     queueAhead: +r.queue_ahead || 0, lastVol: r.last_vol == null ? null : +r.last_vol, lowSeen: r.low_seen == null ? null : +r.low_seen, highSeen: r.high_seen == null ? null : +r.high_seen,
-    reason: r.reason, plan: r.plan, note: r.note,
+    reason: r.reason, plan: r.plan, note: r.note, refPrice: r.ref_price == null ? null : +r.ref_price,
   });
   const posRow = p => ({ code: p.code, name: p.name || null, qty: p.qty, avg_price: p.avg, opened_at: new Date(p.openedAt).toISOString(), updated_at: new Date(p.updatedAt).toISOString(), plan: p.plan || null });
   const fromPos = r => ({ code: r.code, name: r.name, qty: +r.qty, avg: +r.avg_price, openedAt: Date.parse(r.opened_at), updatedAt: Date.parse(r.updated_at), plan: r.plan, lowSeen: null });
@@ -212,12 +213,14 @@ function createPaper(deps) {
 
   const bad = (status, error) => ({ ok: false, status, error });
   /* 주문 1건 생성(잠금 안에서만 호출). 즉시 체결분까지 반영 */
-  async function createOrder({ code, name, side, type, price, qty, reason, plan, q }) {
+  async function createOrder({ code, name, side, type, price, qty, reason, plan, q, ref, note }) {
     const sub = E.submit({ side, type, price, qty }, q);
     if (sub.reject) return bad(409, sub.reject);
     const t = now();
     const o = { id: `o${t.toString(36)}${rnd()}`, createdAt: t, updatedAt: t, code, name: name || null, side, type, price: type === 'limit' ? price : null, qty, filled: 0, avg: 0, status: 'open',
-      queueAhead: sub.state.queueAhead, lastVol: sub.state.lastVol, lowSeen: sub.state.lowSeen, highSeen: sub.state.highSeen, reason: reason || 'manual', plan: plan || null, note: null };
+      queueAhead: sub.state.queueAhead, lastVol: sub.state.lastVol, lowSeen: sub.state.lowSeen, highSeen: sub.state.highSeen, reason: reason || 'manual', plan: plan || null, note: note || null,
+      // 슬리피지 기준가: 손절은 손절가, 시장가는 주문 순간 상대 1호가, 지정가는 지정가
+      refPrice: ref || (type === 'limit' ? price : ((side === 'buy' ? q.asks : q.bids).find(l => l.p > 0) || {}).p || q.price) };
     try { await W('paper_orders', 'POST', [orderRow(o)]); } catch (e) { console.warn('[paper] 주문 저장 실패:', e.message); return bad(503, '주문을 저장하지 못했습니다'); }
     orders.set(o.id, o);
     const f = applyFills(o, sub.fills);
@@ -331,7 +334,7 @@ function createPaper(deps) {
     for (const o of openFor(code, o => o.side === 'sell')) cancelOrder(o, 'stop');
     const qty = pos.qty - remainOf(openFor(code, o => o.side === 'sell'));   // 취소가 안 된 매도분은 빼고(실전 어댑터에서 취소 실패 대비)
     if (qty <= 0) return true;
-    const r = await createOrder({ code, name: pos.name, side: 'sell', type: 'market', price: null, qty, reason: 'stop', q });
+    const r = await createOrder({ code, name: pos.name, side: 'sell', type: 'market', price: null, qty, reason: 'stop', q, ref: sp });
     if (!r.ok) { notify(`손절 매도 실패(${r.error}) — 다음 주기에 다시 시도: ${pos.name || code}`, 'stopfail|' + code); return true; }   // 손절 조건이면 익절 주문은 다시 걸지 않음
     const s = E.summarize(r.fills.map(f => ({ p: f.price, q: f.qty })));
     const realized = r.fills.reduce((a, f) => a + (f.realized || 0), 0);
@@ -351,17 +354,18 @@ function createPaper(deps) {
       if (mine.length === 1 && mine[0].price === st.p && mine[0].qty - mine[0].filled === w) continue;   // 그대로 유지(대기 순서 보존)
       for (const o of mine) cancelOrder(o, 'resync');
       if (w > 0) {
-        const r = await createOrder({ code, name: pos.name, side: 'sell', type: 'limit', price: st.p, qty: w, reason: 'tp' + st.n, q });
+        const r = await createOrder({ code, name: pos.name, side: 'sell', type: 'limit', price: st.p, qty: w, reason: 'tp' + st.n, q, note: reopen.has(code) ? 'reopen' : null });
         if (!r.ok) { notify(`익절 ${st.n}단계 주문을 걸지 못했습니다(${r.error}): ${pos.name || code}`, `tpfail|${code}|${st.n}`); continue; }
         if (r.fills.length) event('tp', code, { step: st.n, qty: r.fills.reduce((a, f) => a + f.qty, 0), price: st.p, immediate: true });
       }
     }
+    reopen.delete(code);
   }
   /* 장 마감(15:30)이 지난 당일 주문과 지난 날짜의 주문은 소멸 */
   function expireOld() {
     const t = kst(), cut = t.min >= CLOSE_MIN ? Infinity : Date.parse(t.day + 'T00:00:00+09:00');
     let n = 0;
-    for (const o of orders.values()) if (isOpen(o) && (o.createdAt < cut)) { cancelOrder(o, 'expired'); n++; }
+    for (const o of orders.values()) if (isOpen(o) && (o.createdAt < cut)) { cancelOrder(o, 'expired'); n++; if (isTp(o)) reopen.add(o.code); }
     return n;
   }
 
@@ -384,6 +388,31 @@ function createPaper(deps) {
       dayBuyKrw: Math.round(dayBuyKrw()), realizedToday: Math.round(todayFills.reduce((a, f) => a + (f.realized || 0), 0)),
       limits: deps.limits || null,
     };
+  }
+
+  /* ── 성과 리포트(5단계): 기간 'YYYY-MM-DD'(KST, 포함) ── */
+  async function report(from, to) {
+    if (!(await init())) return bad(503, missing ? 'paper tables missing' : 'paper store unavailable');
+    const D = /^\d{4}-\d{2}-\d{2}$/;
+    if ((from && !D.test(from)) || (to && !D.test(to))) return bad(400, 'bad date');
+    const iso = (d, end) => encodeURIComponent(new Date(Date.parse(d + 'T00:00:00+09:00') + (end ? 86400e3 : 0)).toISOString());
+    const kFrom = from ? new Date(Date.parse(from) - 10 * 86400e3).toISOString().slice(0, 10) : null;
+    try {
+      const [fl, od, kp, rj] = await Promise.all([
+        deps.sbGet('paper_fills?select=*&order=ts.asc&limit=20000'),
+        deps.sbGet('paper_orders?select=*&order=created_at.desc&limit=5000'),
+        deps.sbGet(`market_daily?select=trade_date,index_close&market=eq.KOSPI${kFrom ? '&trade_date=gte.' + kFrom : ''}${to ? '&trade_date=lte.' + to : ''}&order=trade_date.asc&limit=2000`).catch(() => []),
+        deps.sbGet(`trade_audit?select=ts,detail&event=eq.paper_reject${from ? '&ts=gte.' + iso(from) : ''}${to ? '&ts=lt.' + iso(to, true) : ''}&order=ts.desc&limit=200`).catch(() => []),
+      ]);
+      const pos = [];
+      for (const p of positions.values()) {
+        let last = (lastPx.get(p.code) || {}).price || null;
+        if (!last) { try { last = (await deps.getQuote(p.code)).price || null; } catch (_) {} }
+        pos.push({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last });
+      }
+      const rejects = rj.map(r => ({ ts: Date.parse(r.ts), error: r.detail && r.detail.error, code: r.detail && r.detail.code, side: r.detail && r.detail.side, qty: r.detail && r.detail.qty, price: r.detail && r.detail.price }));
+      return computeReport({ fills: fl.map(fromFill), orders: od.map(fromOrder), positions: pos, kospi: kp, rejects, from, to });
+    } catch (e) { console.warn('[paper] 리포트 실패:', e.message); return bad(502, '리포트를 만들지 못했습니다'); }
   }
 
   /* ── 장중 루프: 체결 판단 → 손절 → 익절 주문 맞추기 → 호가 스냅 ── */
@@ -451,7 +480,7 @@ function createPaper(deps) {
   function start(ms = 5000) { if (timer) return; timer = setInterval(() => { tick(); }, ms); if (timer.unref) timer.unref(); }
   function stop() { if (timer) clearInterval(timer); timer = null; }
 
-  return { place, cancel, editPlan, state, tick, start, stop, init, _orders: orders, _positions: positions, _dirty: dirty };
+  return { place, cancel, editPlan, state, report, tick, start, stop, init, _orders: orders, _positions: positions, _dirty: dirty };
 }
 
 module.exports = { createPaper, allocSteps };

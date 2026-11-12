@@ -432,6 +432,12 @@ function createTrade(deps = {}) {
       const r = await paper.state();
       return json(res, r.ok ? 200 : (r.status || 500), r);
     }
+    if (path === '/trade/paper/report' && req.method === 'GET') {
+      if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
+      const sp = new URL(req.url, 'http://x').searchParams;
+      const r = await paper.report(sp.get('from') || null, sp.get('to') || null);
+      return json(res, r.ok ? 200 : (r.status || 500), r);
+    }
     if (path === '/trade/ping' && req.method === 'GET') {
       return json(res, 200, { ok: true, ttlSec: sessionTtlSec(a.session) });
     }

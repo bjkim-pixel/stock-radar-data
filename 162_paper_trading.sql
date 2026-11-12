@@ -30,6 +30,7 @@ create table if not exists paper_orders (
   plan         jsonb,          -- 매수 주문에 붙인 자동 매도 계획(손절·익절 단계)
   note         text
 );
+alter table paper_orders add column if not exists ref_price numeric;   -- 5단계: 슬리피지 기준가(손절가 / 주문 순간 상대 1호가 / 지정가)
 create index if not exists idx_paper_orders_status on paper_orders (status);
 create index if not exists idx_paper_orders_created on paper_orders (created_at desc);
 

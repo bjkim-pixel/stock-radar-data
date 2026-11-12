@@ -908,6 +908,15 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .trd-sell{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center}.trd-sell input{width:96px;font-size:14px;padding:5px 6px;min-height:34px}
 .trd-sell .btn{padding:6px 12px;font-size:12.5px;min-height:34px}
 .trd-pe{border:1px dashed var(--border);border-radius:8px;padding:8px;margin-top:6px}.trd-pe label{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-3);margin-bottom:6px}.trd-pe label input{width:120px;font-size:14px;padding:5px 6px}
+.trd-tabs{display:flex;gap:4px;margin:0 0 10px;border-bottom:1px solid var(--border);overflow-x:auto}
+.trd-tabs button{border:0;background:none;color:var(--ink-3);font:inherit;font-size:13.5px;font-weight:650;padding:9px 12px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;min-height:40px}
+.trd-tabs button.on{color:var(--ink);border-bottom-color:var(--ink)}
+.trd-per{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.trd-per .chip.on{border-color:var(--ink);background:var(--surface-3)}
+.trd-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.trd-sum>div{background:var(--surface-2);border-radius:8px;padding:8px 10px}.trd-sum .k{font-size:11.5px;color:var(--ink-3)}.trd-sum .v{font-size:17px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.trd-tb{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}.trd-tb th{font-size:11px;color:var(--ink-3);font-weight:600;text-align:right;padding:5px 6px;border-bottom:1px solid var(--border)}
+.trd-tb td{text-align:right;padding:6px;border-bottom:1px solid var(--grid)}.trd-tb th:first-child,.trd-tb td:first-child{text-align:left}
+.trd-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .trd-ok{font-size:12.5px;color:#1b7f3b;margin-top:4px}:root[data-theme="dark"] .trd-ok{color:#5fd07f}
 #tcBar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;gap:8px;align-items:center;justify-content:center;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -4px 14px rgba(0,0,0,.12)}
 #tcBar.hide{display:none}
@@ -2002,6 +2011,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div id="trdPinRow" class="hide"><input id="trdPin" type="password" inputmode="numeric" autocomplete="off" placeholder="거래 PIN" aria-label="거래 PIN"><button type="button" class="btn" id="trdPinGo">확인</button></div>
   </div>
   <div id="trdMain" class="hide">
+    <div class="trd-tabs" id="trdTabs" role="tablist"><button type="button" data-tp="order" class="on">주문·보유</button><button type="button" data-tp="rep">수익률</button><button type="button" data-tp="hist">주문·체결 내역</button></div>
+    <div id="trdPaneOrder">
     <div class="card"><h3>매매 대기 목록 <span class="r faint" style="font-size:11px">최대 10종목 · 이 브라우저에만 저장</span></h3><div id="trdQ" class="trd-q"></div></div>
     <div id="trdEmpty" class="card hide"><div class="load">종목 표에서 체크박스로 종목을 고른 뒤 "매매로 보내기"를 누르거나, 종목 상세 화면의 "매매로 보내기" 버튼을 쓰세요.</div></div>
     <div id="trdStock" class="hide">
@@ -2029,6 +2040,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="card"><h3>보유 <span class="r faint" id="trdPl" style="font-size:11px"></span></h3><div id="trdHold"></div></div>
     <div class="card"><h3>미체결 주문</h3><div id="trdOpen"></div></div>
     <div class="card"><h3>오늘 체결</h3><div id="trdFills"></div></div>
+    </div>
+    <div id="trdPaneRep" class="hide"></div>
+    <div id="trdPaneHist" class="hide"></div>
   </div>
 </section>
 <section id="v-journal" class="hide">
@@ -9037,6 +9051,7 @@ async function trdRefreshStatus(){
 function trdGateMsg(html){const g=$("#trdGate");g.classList.remove("hide");$("#trdMain").classList.add("hide");$("#trdGateMsg").innerHTML=html;}
 async function trdEnter(){
   TRD.mode=S.tradeMode==="REAL"?"REAL":"VIRTUAL";
+  if(TRD.pane&&TRD.pane!=="order")setTimeout(()=>trdTab(TRD.pane),0);
   $("#trdBand").className="trd-band "+(TRD.mode==="REAL"?"real":"virt");
   $("#trdBandTx").innerHTML=TRD.mode==="REAL"?"<b>실전</b> · 실제 계좌 (주문은 6단계부터 가능)":"<b>가상</b> · 자체 체결 시뮬레이터 (실제 주문은 나가지 않음)";
   trdRenderQ();
@@ -9344,6 +9359,71 @@ async function trdPeSave(code){
   catch(e2){if(e2.status===401&&e2.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");return;}e.msg="저장 실패: "+trdErrTx(e2);}
   await trdLoadState();if(TRD.quote)trdRenderOrder();
 }
+/* ── 수익률 · 주문·체결 내역 (5단계) ── */
+TRD.pane="order";TRD.rp={mode:"month",off:0};TRD.rep=null;
+function trdPeriod(){
+  const d=new Date(Date.now()+9*3600e3),y=d.getUTCFullYear(),m=d.getUTCMonth(),R=TRD.rp,pad=n=>String(n).padStart(2,"0");
+  if(R.mode==="all")return {from:null,to:null,label:"전체"};
+  if(R.mode==="year"){const yy=y+R.off;return {from:`${yy}-01-01`,to:`${yy}-12-31`,label:`${yy}년`};}
+  const t=new Date(Date.UTC(y,m+R.off,1)),yy=t.getUTCFullYear(),mm=t.getUTCMonth()+1,last=new Date(Date.UTC(yy,mm,0)).getUTCDate();
+  return {from:`${yy}-${pad(mm)}-01`,to:`${yy}-${pad(mm)}-${pad(last)}`,label:`${yy}년 ${mm}월`};
+}
+function trdTab(p){
+  TRD.pane=p;$$("#trdTabs button").forEach(b=>b.classList.toggle("on",b.dataset.tp===p));
+  $("#trdPaneOrder").classList.toggle("hide",p!=="order");$("#trdPaneRep").classList.toggle("hide",p!=="rep");$("#trdPaneHist").classList.toggle("hide",p!=="hist");
+  if(p!=="order")trdLoadReport();
+}
+async function trdLoadReport(){
+  const box=p=>$(p==="rep"?"#trdPaneRep":"#trdPaneHist");
+  if(TRD.mode!=="VIRTUAL"){["rep","hist"].forEach(p=>box(p).innerHTML='<div class="card"><div class="load">실전 계좌의 수익률·내역은 6단계에서 연결됩니다.</div></div>');return;}
+  const P=trdPeriod(),q=(P.from?`from=${P.from}&to=${P.to}`:"");
+  box(TRD.pane).innerHTML=trdPerBar(P)+'<div class="card"><div class="load">불러오는 중…</div></div>';
+  try{TRD.rep=await trdApi("/trade/paper/report"+(q?"?"+q:""));TRD.repP=P;}
+  catch(e){if(e.status===401&&e.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");return;}box(TRD.pane).innerHTML=trdPerBar(P)+`<div class="card"><div class="load">${trdEsc(trdErrTx(e))}</div></div>`;return;}
+  trdRenderReport();
+}
+function trdPerBar(P){
+  const R=TRD.rp,b=(m,t)=>`<button type="button" class="chip${R.mode===m?" on":""}" data-rpm="${m}">${t}</button>`;
+  return `<div class="trd-per">${b("month","월별")}${b("year","연도별")}${b("all","전체")}${R.mode!=="all"?`<button type="button" class="chip" data-rpo="-1" aria-label="이전">◀</button><b style="font-size:13px">${P.label}</b><button type="button" class="chip" data-rpo="1" aria-label="다음"${R.off>=0?" disabled":""}>▶</button>`:""}<button type="button" class="chip" data-rpr="1" style="margin-left:auto">새로고침</button></div>`;
+}
+const trdWon=v=>v==null?"–":trdSgn(v)+"원",trdPct=v=>v==null?"–":(v>0?"+":"")+N(v,2)+"%",trdCls=v=>v>0?"up":v<0?"down":"dim";
+function trdMonthChart(M){
+  if(!M.length)return '<div class="faint" style="font-size:12.5px">매도 체결이 아직 없습니다.</div>';
+  const W=Math.max(320,M.length*44),H=170,pad=24,mx=Math.max(1,...M.map(x=>Math.abs(x.realized)),...M.map(x=>Math.abs(x.cum))),y0=H/2,sc=(H/2-pad)/mx,bw=Math.min(28,W/M.length*0.6);
+  const xs=i=>(i+0.5)*W/M.length;
+  const bars=M.map((x,i)=>`<rect x="${xs(i)-bw/2}" y="${x.realized>=0?y0-x.realized*sc:y0}" width="${bw}" height="${Math.max(1,Math.abs(x.realized)*sc)}" fill="var(--${x.realized>=0?"up":"down"})" opacity=".8"><title>${x.month} 실현 ${trdWon(x.realized)} · 누적 ${trdWon(x.cum)}</title></rect><text x="${xs(i)}" y="${H-4}" text-anchor="middle" font-size="10" fill="var(--ink-3)">${x.month.slice(2).replace("-",".")}</text>`).join("");
+  const line=M.map((x,i)=>`${xs(i)},${y0-x.cum*sc}`).join(" ");
+  return `<div class="trd-scroll"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="월별 실현손익과 누적 손익"><line x1="0" x2="${W}" y1="${y0}" y2="${y0}" stroke="var(--axis)"/>${bars}<polyline points="${line}" fill="none" stroke="var(--ink-2)" stroke-width="2"/>${M.map((x,i)=>`<circle cx="${xs(i)}" cy="${y0-x.cum*sc}" r="3" fill="var(--ink-2)"/>`).join("")}</svg></div><div class="faint" style="font-size:11px">막대 = 월별 실현손익, 선 = 누적 손익 (전체 기간)</div>`;
+}
+const TRD_ST={open:"접수",partial:"부분 체결",filled:"체결",cancelled:"취소",rejected:"거부"};
+const TRD_NOTE={expired:"장 마감 소멸",stop:"손절로 취소",resync:"수량 재배분",plan_edit:"계획 수정",manual_sell:"수동 매도로 취소",no_plan:"계획 없음",user:"직접 취소"};
+function trdRenderReport(){
+  const R=TRD.rep,P=TRD.repP;if(!R)return;
+  const S2=R.summary,T=R.stats,SL=R.slippage;
+  const card=(k,v,c)=>`<div><div class="k">${k}</div><div class="v ${c||""}">${v}</div></div>`;
+  $("#trdPaneRep").innerHTML=trdPerBar(P)+`
+    <div class="card"><h3>기간 요약 <span class="r faint" style="font-size:11px">수수료·세금 차감 전</span></h3><div class="trd-sum">
+      ${card("실현손익",trdWon(S2.realized),trdCls(S2.realized))}${card("평가손익(지금 보유)",trdWon(S2.unrealized),trdCls(S2.unrealized))}${card("합계",trdWon(S2.total),trdCls(S2.total))}
+      ${card("실현 수익률",trdPct(S2.retPct),trdCls(S2.retPct))}${card("같은 기간 코스피",trdPct(S2.kospiPct),trdCls(S2.kospiPct))}${card("매수 / 매도",trdFmtAmt(S2.buyAmt)+" / "+trdFmtAmt(S2.sellAmt))}</div>
+      <div class="faint" style="font-size:11px;margin-top:6px">실현 수익률 = 실현손익 ÷ 판 주식의 매수원가 · 체결 ${N(S2.fills)}건${S2.fee?` · 수수료·세금 설정분 ${trdFmtAmt(S2.fee)}`:""}</div></div>
+    <div class="card"><h3>월별 손익</h3>${trdMonthChart(R.monthly)}</div>
+    <div class="card"><h3>매매 통계 <span class="r faint" style="font-size:11px">보유 0→0 을 한 번으로</span></h3><div class="trd-sum">
+      ${card("매매 횟수",N(T.trades))}${card("승률",T.winRate==null?"–":N(T.winRate,1)+"%")}${card("평균 이익",trdWon(T.avgWin),"up")}${card("평균 손실",trdWon(T.avgLoss),"down")}
+      ${card("손익비",T.payoff==null?"–":N(T.payoff,2)+" : 1",T.payoff!=null&&T.payoff<2?"down":"")}${card("손절로 끝난 비율",T.stopRate==null?"–":N(T.stopRate,1)+"%")}${card("평균 보유",T.avgHoldDays==null?"–":N(T.avgHoldDays,1)+"일")}</div></div>
+    <div class="card"><h3>종목별 수익</h3>${R.codes.length?`<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>매수</th><th>매도</th><th>실현손익</th><th>%</th><th>평가손익</th><th>횟수</th></tr></thead><tbody>${R.codes.map(c=>`<tr><td>${trdEsc(c.name||trdNm(c.code))}</td><td>${trdFmtAmt(c.buyAmt)}</td><td>${trdFmtAmt(c.sellAmt)}</td><td class="${trdCls(c.realized)}">${trdSgn(c.realized)}</td><td class="${trdCls(c.realizedPct)}">${trdPct(c.realizedPct)}</td><td class="${trdCls(c.unrealized)}">${c.qty?trdSgn(c.unrealized):"–"}</td><td>${N(c.trades)}</td></tr>`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">이 기간 체결이 없습니다.</div>'}</div>
+    <div class="card"><h3>체결 품질 <span class="r faint" style="font-size:11px">가상 체결 검증용</span></h3>${SL.rows.length?`<table class="trd-tb"><thead><tr><th>구분</th><th>주문</th><th>평균 불리</th><th>최대</th><th>금액</th></tr></thead><tbody>${SL.rows.map(x=>`<tr><td>${x.kind}</td><td>${N(x.orders)}</td><td>${N(x.avgPct,2)}%</td><td>${N(x.worstPct,2)}%</td><td>${trdFmtAmt(x.krw)}</td></tr>`).join("")}</tbody></table>`:'<div class="faint" style="font-size:12.5px">시장가·손절 체결이 아직 없습니다.</div>'}
+      <div class="faint" style="font-size:11.5px;margin-top:6px">지정가 체결률 ${SL.limitFillRate==null?"–":N(SL.limitFillRate,1)+"%"} · 지정가 첫 체결까지 평균 ${SL.limitDelayMin==null?"–":N(SL.limitDelayMin,1)+"분"}<br>불리 = 시장가는 주문 순간 상대 1호가, 손절은 손절가보다 나쁘게 체결된 정도. 6단계 실전과 비교해 시뮬레이터 정확도를 확인합니다.</div></div>`;
+  const rj=R.rejects||[];
+  $("#trdPaneHist").innerHTML=trdPerBar(P)+`
+    <div class="card"><h3>주문 내역 <span class="r faint" style="font-size:11px">${N(R.orders.length)}건</span><button type="button" class="chip" data-csv="1" style="margin-left:auto">CSV 내려받기</button></h3>${R.orders.length?R.orders.map(o=>`<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${trdEsc(o.name||trdNm(o.code))} ${o.type==="market"?"시장가":N(o.price)+"원"} × ${N(o.qty)}주</span><span class="faint" style="font-size:12px">${TRD_ST[o.status]||o.status}${o.note&&TRD_NOTE[o.note]?" · "+TRD_NOTE[o.note]:""}</span></div><div class="sub num">${new Date(o.ts).toLocaleString("ko-KR",{hour12:false})} · ${trdEsc(o.source)} · 체결 ${N(o.filled)}주${o.avg?" @ "+N(o.avg,0)+"원":""}</div></div>`).join(""):'<div class="faint" style="font-size:12.5px">이 기간 주문이 없습니다.</div>'}</div>
+    <div class="card"><h3>거부된 요청</h3>${rj.length?rj.map(x=>`<div class="trd-hr"><div class="top"><span>${trdEsc(x.code?trdNm(x.code):"")} ${x.side==="buy"?"매수":x.side==="sell"?"매도":""} ${x.qty?N(x.qty)+"주":""}</span><span class="faint" style="font-size:12px">${new Date(x.ts).toLocaleString("ko-KR",{hour12:false})}</span></div><div class="sub down">${trdEsc(TRD_ERR[x.error]||x.error||"")}</div></div>`).join(""):'<div class="faint" style="font-size:12.5px">거부된 요청이 없습니다.</div>'}</div>`;
+}
+function trdCsv(){
+  const R=TRD.rep;if(!R)return;
+  const rows=[["시각","종목코드","종목","구분","유형","주문가","주문수량","체결수량","평균체결가","상태","출처","비고"]].concat(R.orders.map(o=>[new Date(o.ts).toLocaleString("ko-KR",{hour12:false}),o.code,o.name||"",o.side==="buy"?"매수":"매도",o.type==="market"?"시장가":"지정가",o.price??"",o.qty,o.filled,o.avg?Math.round(o.avg):"",TRD_ST[o.status]||o.status,o.source,TRD_NOTE[o.note]||o.note||""]));
+  const csv="﻿"+rows.map(r=>r.map(v=>{const t=String(v);return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t;}).join(",")).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=`가상매매_주문내역_${TRD.repP.from||"전체"}.csv`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
+}
 async function trdSell(code){
   const p=TRD.ps&&TRD.ps.positions.find(x=>x.code===code);if(!p)return;
   const q=TRD.hq[code]||{},qty=q.qty?Math.floor(+String(q.qty).replace(/,/g,"")):p.qty,pr=q.price?Math.floor(+String(q.price).replace(/,/g,"")):0;
@@ -9412,6 +9492,11 @@ document.addEventListener("click",e=>{
   if(t.closest("#trdBtn"))return trdBtnClick();
   if((el=t.closest("[data-hpick]"))){const c=el.dataset.hpick;if(!TRD.q.includes(c)){trdQAdd([c]);trdRenderQ();}return trdSelect(c);}
   if((el=t.closest("[data-ccl]")))return trdCancel(el.dataset.ccl);
+  if((el=t.closest("[data-tp]")))return trdTab(el.dataset.tp);
+  if((el=t.closest("[data-rpm]"))){TRD.rp={mode:el.dataset.rpm,off:0};return trdLoadReport();}
+  if((el=t.closest("[data-rpo]"))){if(el.disabled)return;TRD.rp.off=Math.min(0,TRD.rp.off+ +el.dataset.rpo);return trdLoadReport();}
+  if(t.closest("[data-rpr]"))return trdLoadReport();
+  if(t.closest("[data-csv]"))return trdCsv();
   if((el=t.closest("[data-pe-open]"))){const p=TRD.ps&&TRD.ps.positions.find(x=>x.code===el.dataset.peOpen);if(p){trdPeInit(p);trdRenderHold();}return;}
   if((el=t.closest("[data-pe-close]"))){delete TRD.pe[el.dataset.peClose];trdRenderHold();return;}
   if((el=t.closest("[data-pe-save]")))return trdPeSave(el.dataset.peSave);
