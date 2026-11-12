@@ -2036,6 +2036,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div class="card"><h3>진입 전 점검표</h3><div id="trdCheck"></div></div>
       <div class="card"><div id="trdMkt"></div><button type="button" class="btn" id="trdBtn" disabled style="width:100%">매수 주문</button>
         <div id="trdBtnNote" class="faint" style="margin-top:6px;font-size:12px;text-align:center"></div></div>
+      <button type="button" class="btn ghost" id="trdDetBtn" style="width:100%;margin:0 0 10px">종목 상세 펼치기 ▾</button>
       <div id="trdDetail"></div>
     </div>
     <div class="card"><h3>보유 <span class="r faint" id="trdPl" style="font-size:11px"></span></h3><div id="trdHold"></div></div>
@@ -9107,6 +9108,16 @@ function trdDetailAttach(){
   box.querySelectorAll(".dfrow").forEach(r=>{if(r.querySelector("select"))r.style.display="none";});
   const nx=$("#dNext");if(nx)nx.style.display="none";
 }
+function trdDetailShow(code){
+  if(S.curTab!=="trade")return;
+  trdDetailAttach();TRD.detFor=code;loadDetail(code).catch(e=>console.error("trade detail",e));
+}
+function trdDetailToggle(){
+  TRD.detOpen=!TRD.detOpen;
+  $("#trdDetBtn").textContent=TRD.detOpen?"종목 상세 접기 ▴":"종목 상세 펼치기 ▾";
+  if(TRD.detOpen){if(TRD.cur)trdDetailShow(TRD.cur);}else trdDetailDetach();
+}
+{const b=$("#trdDetBtn");if(b)b.onclick=trdDetailToggle;}
 function trdDetailDetach(){
   const box=$("#trdDetail"),src=$("#v-detail");if(!box||!src||!box.dataset.on)return;
   [...box.children].forEach(el=>src.appendChild(el));
@@ -9165,7 +9176,7 @@ async function trdSelect(code,keep){
   await trdPollOnce();
   if(TRD.cur!==req)return;
   trdCalcRec();trdRenderAll();
-  if(S.curTab==="trade"){trdDetailAttach();loadDetail(code).catch(e=>console.error("trade detail",e));}
+  if(TRD.detOpen)trdDetailShow(code);
   clearInterval(TRD.poll);TRD.poll=setInterval(()=>{if(!document.hidden&&S.curTab==="trade")trdPollOnce().then(()=>{if(TRD.cur===req)trdRenderQuote();});},3000);
 }
 async function trdPollOnce(){
