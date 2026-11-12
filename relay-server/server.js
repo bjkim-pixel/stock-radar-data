@@ -3264,7 +3264,7 @@ function handleAccessLog(req, res) {
 
 /* ── 매매 보안 기반(1단계): 로그인 토큰·거래 PIN·재전송 방어·긴급 정지·한도·감사 — relay-server/trade.js ── */
 const trade = require('./trade').createTrade({
-  env: process.env, sbWrite, clientIp, allowedOrigins: ALLOWED_ORIGINS,
+  env: process.env, sbWrite, sbGet: SUPABASE_SERVICE_KEY ? sbGet : null, allowedOrigins: ALLOWED_ORIGINS,
   notify: (text, opts) => notifyAll(text, opts),
 });
 

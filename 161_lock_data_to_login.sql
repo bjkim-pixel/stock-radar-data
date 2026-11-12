@@ -33,7 +33,22 @@ begin
       execute format('drop policy if exists "read_only_anon" on public.%I', r.relname);
       execute format('drop policy if exists "read_owner" on public.%I', r.relname);
       execute format('create policy "read_owner" on public.%I for select to authenticated using ((select public.is_owner()))', r.relname);
+      -- 제한(RESTRICTIVE) 정책: 예전부터 있던 다른 읽기 정책(예: to public using (true))이 남아 있어도
+      -- 반드시 이 조건과 AND 로 묶이므로, 주인이 아닌 로그인 계정은 어떤 정책으로도 읽을 수 없음
+      execute format('drop policy if exists "owner_only" on public.%I', r.relname);
+      execute format('create policy "owner_only" on public.%I as restrictive for select to authenticated using ((select public.is_owner()))', r.relname);
     end if;
+  end loop;
+end $$;
+
+-- 이미 잠근 뒤 다시 실행하는 경우(anon 권한이 이미 없어 위 반복에서 빠짐): 기록된 테이블에 제한 정책 보강
+do $$
+declare r record;
+begin
+  for r in select relname from public._anon_lock_list where relkind in ('r','p') loop
+    if to_regclass(format('public.%I', r.relname)) is null then continue; end if;
+    execute format('drop policy if exists "owner_only" on public.%I', r.relname);
+    execute format('create policy "owner_only" on public.%I as restrictive for select to authenticated using ((select public.is_owner()))', r.relname);
   end loop;
 end $$;
 

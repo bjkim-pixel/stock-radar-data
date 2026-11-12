@@ -18,6 +18,7 @@ begin
       execute format('drop policy if exists "read_only_anon" on public.%I', r.relname);
       execute format('create policy "read_only_anon" on public.%I for select to anon, authenticated using (true)', r.relname);
       execute format('drop policy if exists "read_owner" on public.%I', r.relname);
+      execute format('drop policy if exists "owner_only" on public.%I', r.relname);
     end if;
   end loop;
   drop table public._anon_lock_list;

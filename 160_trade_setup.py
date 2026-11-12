@@ -49,8 +49,16 @@ if target in ("lock_data", "unlock_data", "trade_security"):
     probe_q = "select count(*) from public.stocks"
     print("· 로그인 없음(anon)   stocks 읽기:", probe("anon", None, probe_q))
     print("· 주인 로그인         stocks 읽기:", probe("authenticated", owner, probe_q))
-    print("· 다른 계정 로그인    stocks 읽기:", probe("authenticated", "other@invalid.example", probe_q))
+    print("· 다른 계정 로그인    stocks 읽기(잠금 후 0이어야 정상):", probe("authenticated", "other@invalid.example", probe_q))
     print("· 로그인 없음(anon)   data_version():", probe("anon", None, "select public.data_version()"))
     print("· 주인 로그인         data_version():", probe("authenticated", owner, "select public.data_version()"))
     if target != "unlock_data":
         print("· 주인 로그인         access_log 읽기(차단이어야 정상):", probe("authenticated", owner, "select count(*) from public.access_log"))
+    if target == "lock_data":
+        cur.execute("""select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+                       join public._anon_lock_list l on l.relname=c.relname
+                       where n.nspname='public' and c.relkind='v'
+                         and not coalesce((select option_value='true' from pg_options_to_table(c.reloptions) where option_name='security_invoker'), false)""")
+        dv = [r[0] for r in cur.fetchall()]
+        print(f"· 참고: 소유자 권한으로 실행되는 뷰 {len(dv)}개(로그인한 다른 계정이 있으면 이 뷰로는 읽힘 — 회원가입이 꺼져 있으면 영향 없음): {', '.join(dv[:15])}")
+

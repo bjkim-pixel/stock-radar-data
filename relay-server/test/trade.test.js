@@ -213,3 +213,65 @@ test('IP당 분당 120회 초과 시 429', async () => {
   assert.equal(last.status, 429);
   await c.close();
 });
+
+/* ── 검토(2026-11-12) 이후 추가 ── */
+async function bootWith(rowsByQuery, extra = {}) {
+  return boot({ TRADE_HOURS: '00:00-23:59' }, {
+    sbGet: async (q) => {
+      for (const [k, v] of Object.entries(rowsByQuery)) if (q.includes(k)) { if (v instanceof Error) throw v; return v; }
+      return [];
+    },
+    ...extra,
+  });
+}
+
+test('재시작 복구: 마지막 기록이 kill이면 정지 상태로 시작', async () => {
+  const c = await bootWith({ 'in.(kill,resume)': [{ event: 'kill', ts: new Date(clock).toISOString() }] });
+  await c.t.ready();
+  assert.equal(c.t.guard('buy', 'VIRTUAL').error, 'halted');
+  await c.close();
+});
+
+test('재시작 복구: 30분 안의 PIN 5회 실패는 잠금 유지', async () => {
+  const ts = new Date(clock - 5 * 60000).toISOString();
+  const c = await bootWith({ 'in.(pin_fail,session_open)': Array.from({ length: 5 }, () => ({ event: 'pin_fail', ts })) });
+  await c.t.ready();
+  assert.equal((await open(c)).status, 423);
+  await c.close();
+});
+
+test('재시작 복구: 실패 3회 기록 후 재시작해도 남은 시도는 2회', async () => {
+  const ts = new Date(clock - 60000).toISOString();
+  const c = await bootWith({ 'in.(pin_fail,session_open)': [{ event: 'pin_fail', ts }, { event: 'pin_fail', ts }, { event: 'pin_fail', ts }] });
+  await c.t.ready();
+  const r = await open(c, '000000');
+  assert.equal(r.body.left, 1);
+  await c.close();
+});
+
+test('재시작 복구 실패(DB 오류)면 안전하게 신규 매수 정지 + 알림', async () => {
+  const c = await bootWith({ 'in.(kill,resume)': new Error('db 500') });
+  await c.t.ready();
+  assert.equal(c.t.guard('buy', 'VIRTUAL').error, 'halted');
+  assert.ok(c.alerts.some(a => /정지했습니다/.test(a)));
+  await c.close();
+});
+
+test('해제(resume) 기록을 못 남기면 해제하지 않음', async () => {
+  let fail = false;
+  const c = await boot({ TRADE_HOURS: '00:00-23:59' }, { sbWrite: async () => { if (fail) throw new Error('db down'); } });
+  assert.equal((await c.call('POST', '/trade/kill')).status, 200);
+  const { body } = await open(c);
+  fail = true;
+  assert.equal((await c.call('POST', '/trade/resume', { session: body.session })).status, 503);
+  assert.equal(c.t.guard('buy', 'VIRTUAL').error, 'halted');
+  await c.close();
+});
+
+test('IP: cf-connecting-ip 우선, 없으면 X-Forwarded-For 맨 오른쪽(앞쪽 위조 무시)', async () => {
+  const seen = [];
+  const ipOf = (h) => createTrade({ env: {}, sbWrite: async (_t, _m, rows) => seen.push(rows[0].ip) }).audit('x', true, {}, { headers: h });
+  await ipOf({ 'x-forwarded-for': '6.6.6.6, 1.2.3.4' });
+  await ipOf({ 'cf-connecting-ip': '5.5.5.5', 'x-forwarded-for': '6.6.6.6' });
+  assert.deepEqual(seen, ['1.2.3.4', '5.5.5.5']);
+});

@@ -94,7 +94,14 @@ function createTrade(deps = {}) {
   const env = deps.env || process.env;
   const now = deps.now || Date.now;
   const doFetch = deps.fetch || fetch;
-  const clientIp = deps.clientIp || (req => (req.socket && req.socket.remoteAddress) || '');
+  // IP: Cloudflare 가 덮어쓰는 cf-connecting-ip 우선, 없으면 X-Forwarded-For 의 맨 오른쪽 값(프록시가 붙인 값).
+  // X-Forwarded-For 맨 앞 값은 요청자가 마음대로 넣을 수 있어 IP별 제한 우회에 쓰일 수 있음
+  const clientIp = deps.clientIp || (req => {
+    const cf = String(req.headers['cf-connecting-ip'] || '').trim();
+    if (cf) return cf.slice(0, 64);
+    const xff = String(req.headers['x-forwarded-for'] || '').split(',').map(x => x.trim()).filter(Boolean);
+    return String(xff.length ? xff[xff.length - 1] : ((req.socket && req.socket.remoteAddress) || '')).replace(/^::ffff:/, '').slice(0, 64);
+  });
   const allowedOrigins = deps.allowedOrigins || [];
   const cfg = loadConfig(env);
 
@@ -128,9 +135,43 @@ function createTrade(deps = {}) {
   async function audit(event, ok, detail, req, mode) {
     const row = { event, ok: !!ok, mode: mode || null, ip: req ? clientIp(req) : null, ua: req ? String(req.headers['user-agent'] || '').slice(0, 200) : null, detail: scrub(detail) };
     console.log(`[trade] ${event} ${ok ? 'ok' : 'DENY'} ${row.ip || ''}`);
-    try { if (deps.sbWrite) await deps.sbWrite('trade_audit', 'POST', [row]); }
+    try { if (deps.sbWrite) { await deps.sbWrite('trade_audit', 'POST', [row]); return true; } }
     catch (e) { if (!/42P01|PGRST205|does not exist/.test(String(e.message))) console.warn('[trade] 감사 기록 실패:', e.message); }
+    return false;
   }
+
+  /* ── 재시작 복구: 긴급 정지·PIN 잠금은 메모리에만 있으면 서버 재시작(배포·절전 해제) 때 풀려 버리므로
+        감사 기록에서 되살린다. 기록을 못 읽으면 안전 쪽(신규 매수 정지)으로 시작하고 알림. ── */
+  let ready = Promise.resolve();
+  async function restore() {
+    if (!deps.sbGet) return;
+    let lastErr;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const k = await deps.sbGet('trade_audit?select=event,ts&event=in.(kill,resume)&order=ts.desc&limit=1');
+        state.halted = !!(k[0] && k[0].event === 'kill');
+        const since = new Date(now() - cfg.pinLockMs).toISOString();
+        const rows = await deps.sbGet(`trade_audit?select=event,ts&event=in.(pin_fail,session_open)&ts=gte.${encodeURIComponent(since)}&order=ts.asc&limit=500`);
+        let fails = 0, lockUntil = 0;
+        for (const r of rows) {
+          if (r.event === 'session_open') { fails = 0; continue; }
+          fails++;
+          if (fails >= cfg.pinMaxFails) { fails = 0; lockUntil = Date.parse(r.ts) + cfg.pinLockMs; }
+        }
+        state.pinFails = fails; state.pinLockUntil = Math.max(state.pinLockUntil, lockUntil);
+        if (state.halted) console.log('[trade] 재시작 복구: 긴급 정지 상태 유지');
+        return;
+      } catch (e) {
+        lastErr = e;
+        if (/42P01|PGRST205|does not exist/.test(String(e.message))) return;   // 감사 테이블 없음 = 아직 설정 전
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+    state.halted = true;
+    console.warn('[trade] 재시작 복구 실패 — 안전을 위해 신규 매수 정지로 시작:', lastErr && lastErr.message);
+    alert('서버 재시작 후 매매 상태를 읽지 못해 신규 매수를 정지했습니다. 확인 후 해제하세요.');
+  }
+  if (deps.sbGet && !deps.skipRestore) ready = restore();
   /* 인증 실패처럼 반복될 수 있는 기록은 IP·사유별로 분당 1회만 */
   function auditOnce(event, detail, req) {
     const k = event + '|' + (req ? clientIp(req) : '');
@@ -267,6 +308,7 @@ function createTrade(deps = {}) {
   });
 
   async function run(req, res, path) {
+    await ready;
     const ip = clientIp(req);
     if (!rate(ip)) return json(res, 429, { ok: false, error: 'too many requests' });
     const origin = req.headers.origin;
@@ -297,13 +339,13 @@ function createTrade(deps = {}) {
     if (path === '/trade/session') {
       const r = await checkPin(body.pin);
       if (!r.ok) {
-        audit('pin_fail', false, { left: r.left, locked: !!r.locked }, req);
+        await audit('pin_fail', false, { left: r.left, locked: !!r.locked }, req);
         if (r.locked) alert(`거래 PIN을 ${cfg.pinMaxFails}회 틀려 ${Math.round(cfg.pinLockMs / 60000)}분간 잠겼습니다.`);
         else if (r.status === 401) alert(`거래 PIN 오류 (남은 시도 ${r.left}회)`);
         return json(res, r.status, { ok: false, error: r.error, ...(r.left != null ? { left: r.left } : {}), ...(r.retrySec ? { retrySec: r.retrySec } : {}) });
       }
       const sid = openSession(a.user.id);
-      audit('session_open', true, {}, req);
+      await audit('session_open', true, {}, req);
       alert('거래 세션이 열렸습니다. 본인이 아니면 긴급 정지를 누르세요.', '매매 세션');
       return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000) });
     }
@@ -314,13 +356,14 @@ function createTrade(deps = {}) {
     }
     if (path === '/trade/kill') {
       state.halted = true;
-      audit('kill', true, {}, req);
-      alert('긴급 정지: 신규 매수가 막혔습니다. (보유 종목 매도·취소는 가능)');
-      return json(res, 200, { ok: true, halted: true });
+      const saved = await audit('kill', true, {}, req);
+      alert('긴급 정지: 신규 매수가 막혔습니다. (보유 종목 매도·취소는 가능)' + (saved ? '' : ' ⚠ 기록 저장 실패 — 서버 재시작 시 Render 의 TRADING_ENABLED=0 으로 막으세요'));
+      return json(res, 200, { ok: true, halted: true, saved });
     }
     if (path === '/trade/resume') {
+      const saved = await audit('resume', true, {}, req);
+      if (!saved) return json(res, 503, { ok: false, error: 'audit unavailable' });   // 해제 기록이 안 남으면 재시작 때 다시 정지되므로 해제하지 않음
       state.halted = false;
-      audit('resume', true, {}, req);
       alert('긴급 정지가 해제되었습니다.');
       return json(res, 200, { ok: true, halted: false });
     }
@@ -342,7 +385,7 @@ function createTrade(deps = {}) {
   if (!cfg.allowedEmail) console.warn('[trade] ALLOWED_EMAIL 미설정 — 매매 API는 모든 요청을 거부합니다.');
   if (!cfg.pinHash) console.warn('[trade] TRADE_PIN_HASH 미설정 — 거래 세션을 열 수 없습니다.');
 
-  return { handle, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
+  return { handle, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
 }
 
 module.exports = { createTrade, hashPin, verifyHash, checkLimits, loadConfig, scrub };
