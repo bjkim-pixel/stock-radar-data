@@ -1737,6 +1737,14 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div id="dProfileInstTop"></div>
   </div>
 
+  <div class="card" id="dVolProfCard"><h3>전체 매물대 (거래량)<span class="r" id="dVolProfRange">2025-09-01~오늘 · 거래량 비중</span></h3>
+    <div class="legend">
+      <span><i style="background:var(--up)"></i>현재가 위(저항)</span><span><i style="background:var(--down)"></i>현재가 아래(지지)</span></div>
+    <div class="chart" id="dVolProf"></div>
+    <div class="note">상용 주식 앱의 매물대와 같은 방식입니다. 선택한 기간의 <b>하루 거래량을 그날 저가~고가에 걸쳐 가격대별로 나눠</b> 쌓은 것으로, 매수·매도 구분 없이 <b>그 가격대에서 얼마나 거래됐는지</b>를 보여줍니다(막대=전체 거래량 대비 %). 굵게 표시된 가격대가 <b>현재가</b> 구간입니다. 위 개인·외국인+기관 매물대는 순매수 금액만 보는 별개 지표입니다.</div>
+    <div id="dVolProfSum" class="note" style="font-weight:650"></div>
+  </div>
+
   <div class="card" id="dFlowCard"><h3>투자자별 누적 순매수<span class="r" id="dFlowRange">2025-09-01~오늘 · 억원</span></h3>
     <div class="legend">
       <span><i style="background:var(--s1)"></i>외국인</span>
@@ -2825,6 +2833,7 @@ function volumeBars(host,vals,labels,opt={}){
    v>=0(순매수)=--up, v<0(순매도)=--down. opt.hideNeg=true면 순매도 구간은 막대 없이
    가격대 라벨만 표시(요청: 순매도는 안 보이게). cur=true면 "현재가" 구간으로 굵게 표시. */
 function profileChart(host,buckets,opt={}){
+  const vFmt=opt.fv||null;   // 값 표시 포맷(기본은 억원) — 거래량 매물대용
   host.innerHTML="";
   if(!buckets.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
   const W=opt.w||1180,H=opt.h||480,P={t:16,r:opt.pr??140,b:8,l:opt.pl??84};
@@ -2847,10 +2856,10 @@ function profileChart(host,buckets,opt={}){
     if(shown(b)){
       const w=Math.max(1.5,X(b.v)-P.l);
       const bar=el("rect",{x:P.l,y,width:w,height:h,rx:2,
-        fill:css(b.v>=0?"--up":"--down"),opacity:b.cur?1:.78});
+        fill:css(opt.colorFn?opt.colorFn(b):(b.v>=0?"--up":"--down")),opacity:b.cur?1:.78});
       bar.addEventListener("pointerenter",()=>{
         tip.innerHTML=`<b>${b.label}${b.cur?" · 현재가":""}</b>`+
-          `<div class="row"><span>${opt.subj||"순매수"}</span><b class="${sgn(b.v)}">${pm(b.v,1)}억</b></div>`;
+          `<div class="row"><span>${opt.subj||"순매수"}</span><b class="${sgn(b.v)}">${vFmt?vFmt(b.v):pm(b.v,1)+"억"}</b></div>`;
         tip.style.opacity=1;const rc=svg.getBoundingClientRect();
         tip.style.left=Math.min(rc.width-160,Math.max(0,(P.l+w/2)/W*rc.width-56))+"px";
         tip.style.top=Math.max(0,(y+h/2)/H*rc.height-40)+"px";});
@@ -2860,7 +2869,7 @@ function profileChart(host,buckets,opt={}){
       const fmtAmt=v=>Math.abs(v)>=10000?N(Math.round(v/10000),0)+"조원":N(Math.round(v),0)+"억원";
       const vt=el("text",{x:Math.min(W-P.r,P.l+w)+6,y:y+h/2+3.5,"font-size":9.5,
         fill:css("--ink"),"font-weight":b.cur?700:500});
-      vt.textContent=fmtAmt(b.v)+(b.cur?" ◀현재가":"");
+      vt.textContent=(vFmt?vFmt(b.v):fmtAmt(b.v))+(b.cur?" ◀현재가":"");
       svg.appendChild(vt);
     }else if(b.cur){
       const ct=el("text",{x:P.l+6,y:y+h/2+3.5,"font-size":9.5,fill:css("--ink-3"),"font-weight":700});
@@ -2876,7 +2885,7 @@ function profileChart(host,buckets,opt={}){
   // ">="로 바꿔 현재가 바로 위 구간부터 전부 포함시킴.
   const curB=buckets.find(b=>b.cur);
   let sumEl=null;
-  if(curB){
+  if(curB&&!opt.noSum){
     // 2026-10-26: opt.aboveSum(aboveSupply 결과)가 있으면 종목후보 "위쪽매물대"와 같은 정의로 표시 —
     // 현재가~이력 최고 종가를 24등분한 구간별 순매수 중 양수 구간만 합산(현재가보다 높은 종가만).
     // 없으면(전략성과 미니 차트 등) 예전처럼 차트 구간 중 현재가 구간 위쪽만 합산.
@@ -2923,6 +2932,24 @@ function buildPriceProfile(rows,bucketCount=24,valueFn=r=>+r.individual_net||0){
     const bLo=lo+i*size,bHi=lo+(i+1)*size;
     return {lo:bLo,hi:bHi,label:`${N(bLo,0)}~${N(bHi,0)}`,v,cur:i===curIdx};
   }).reverse();
+}
+// 거래량 매물대(상용 앱 방식): 하루 거래량을 그날 저가~고가에 균등 분산해 가격대별로 쌓고, 전체 거래량 대비 %로 반환.
+// 가격 범위는 기간 내 최저 저가~최고 고가를 n등분. 반환은 높은 가격대가 먼저(차트 위쪽).
+function buildVolProfile(rows,n=30){
+  const R=rows.map(r=>{const c=+r.close,h=+r.high>0?+r.high:c,l=+r.low>0?+r.low:c;return{c,h:Math.max(h,l,c),l:Math.min(h,l,c),v:+r.volume||0};}).filter(r=>r.c>0&&r.v>0);
+  if(!R.length)return null;
+  const lo=Math.min(...R.map(r=>r.l)),hi=Math.max(...R.map(r=>r.h));
+  const span=(hi-lo)||Math.max(1,lo*0.02),size=span/n,cur=+rows.at(-1).close;
+  const b=Array.from({length:n},()=>0);
+  R.forEach(r=>{
+    if(r.h-r.l<size*0.02){b[Math.min(n-1,Math.max(0,Math.floor((r.c-lo)/size)))]+=r.v;return;}
+    const i0=Math.min(n-1,Math.floor((r.l-lo)/size)),i1=Math.min(n-1,Math.floor((r.h-lo)/size));
+    for(let i=i0;i<=i1;i++){const a=Math.max(r.l,lo+i*size),z=Math.min(r.h,lo+(i+1)*size);if(z>a)b[i]+=r.v*(z-a)/(r.h-r.l);}
+  });
+  const tot=b.reduce((a,v)=>a+v,0)||1,curIdx=Math.min(n-1,Math.max(0,Math.floor((cur-lo)/size)));
+  const out=b.map((v,i)=>({lo:lo+i*size,hi:lo+(i+1)*size,label:`${N(lo+i*size,0)}~${N(lo+(i+1)*size,0)}`,v:v/tot*100,cur:i===curIdx}));
+  const above=out.filter(x=>x.lo>=cur).reduce((a,x)=>a+x.v,0),below=out.filter(x=>x.hi<=cur).reduce((a,x)=>a+x.v,0);
+  return {buckets:out.reverse(),above,below,cur,tot};
 }
 // 종목후보의 "위쪽매물대"(05_metrics.sql overhead_high)와 같은 계산: 현재가보다 높은 종가일의 valueFn 합계를
 // 현재가~최근 400일 최고 종가 구간 24등분 후 양수 구간만 더함(억원). 최고가가 현재가 이하면 0.
@@ -5530,6 +5557,7 @@ function renderRangeCharts(){
       fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원",
       refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`});
   if(S.chart.etf){
+    {const vc_=$("#dVolProfCard");if(vc_)vc_.style.display="none";}
     volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
       {bg:rp.map(r=>+r.close),bgPanel:true,h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
     try{renderMaCard();}catch(e){console.error("ma card",e);}
@@ -5544,6 +5572,15 @@ function renderRangeCharts(){
   profileChart($("#dProfileInst"),profInst,
     {h:480,w:1180,pr:150,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"외국인+기관 순매수",aboveSum:aboveSupply(rows,r=>(+r.foreign_net||0)+(+r.inst_net||0))});
   $("#dProfileInstTop").innerHTML=topBucketsHtml(profInst,5,"외국인+기관");
+  try{
+    const vp=buildVolProfile(rp,30),vr=$("#dVolProfRange");
+    if(vr)vr.textContent=`${rangeTxt} · 거래량 비중`;
+    if(vp){
+      profileChart($("#dVolProf"),vp.buckets,{h:520,w:1180,pr:80,pl:84,fx:v=>N(v,0)+"%",fv:v=>N(v,1)+"%",subj:"거래량 비중",noSum:true,
+        colorFn:b=>b.cur?"--ink-3":(b.lo>=vp.cur?"--up":"--down")});
+      $("#dVolProfSum").innerHTML=`현재가 위 ${N(vp.above,1)}% · 현재가 아래 ${N(vp.below,1)}% (현재가 구간 ${N(100-vp.above-vp.below,1)}%)`;
+    }else{$("#dVolProf").innerHTML='<div class="load">데이터 없음</div>';$("#dVolProfSum").textContent="";}
+  }catch(e){console.error("volprof",e);}
   const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
   volumeBars($("#dWeight"),wps,rlb,
     {h:450,w:1180,pr:66,monthTicks:true,marks:true,sub:rp.map(r=>+r.close),bg:rp.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
@@ -6764,7 +6801,7 @@ function smxDraw(all,win,E){
 // 스마트머니 매집·이탈 진단 → 수급 주체별 누적 순서로 주요주주 카드 바로 아래로
 // 최종 순서: 주요주주(5% 대량보유자 포함) → 공시 → 스마트머니 매집·이탈 진단 → 수급 주체별 누적 → 개인 매물대 → 외국인+기관 매물대
 {const oc=$("#dOwnCard"),dc=$("#dDartCard"),sc=$("#dSmxCard"),mc=$("#dMinisCard"),p1=$("#dProfile")&&$("#dProfile").closest(".card"),p2=$("#dProfileInst")&&$("#dProfileInst").closest(".card");
- if(oc&&dc&&sc&&mc&&p1&&p2){oc.after(dc);dc.after(sc);sc.after(mc);mc.after(p1);p1.after(p2);}}
+ if(oc&&dc&&sc&&mc&&p1&&p2){oc.after(dc);dc.after(sc);sc.after(mc);mc.after(p1);p1.after(p2);const vpc=$("#dVolProfCard");if(vpc)p2.after(vpc);}}
 // 무게/주식수 차트를 수급 주체별 누적 카드 안, 외국인+기관합계 미니차트 위로(카드 테두리 없이 블록으로)
 {const pc=$("#dPgtrCard"),mg=$("#dMinis");if(pc&&mg){pc.style.cssText="border:none;box-shadow:none;padding:0;margin:12px 0 0;background:none";mg.after(pc);}}
 {const vc=$("#dVolCard"),ec=$("#dEarnCard");if(vc&&ec)ec.before(vc);}
