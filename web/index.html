@@ -825,8 +825,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 #v-live .tw{overflow:visible!important}
 #v-live table{width:100%;table-layout:auto}
 #v-live th,#v-live td{white-space:nowrap}
-@media(max-width:700px){#v-live table{font-size:10.5px}#v-live th,#v-live td{padding:4px 2px}#v-live .card{padding-left:8px;padding-right:8px}#v-live .faint{display:none}#v-live thead th:nth-child(7),#v-live tbody td:nth-child(7),#v-live thead th:nth-child(8),#v-live tbody tr:not(.lv2) td:nth-child(8){display:none}#v-live thead th:nth-child(n+10),#v-live tbody tr:not(.lv2) td:nth-child(n+10){display:none}#v-live tbody tr.lv2{display:table-row}}
-#v-live thead th:nth-child(n+10),#v-live tbody tr:not(.lv2) td:nth-child(n+10){display:none}#v-live tr.lv2{display:table-row}#v-live tr.lv2 td{padding:0 4px 5px;font-size:11px;border-top:none;white-space:normal}#v-live tr.lv2 .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}#v-live tr.lv2 .lvs{margin-right:8px}#v-live tr.lv2 .kwc{padding:0 3px;border-radius:3px}
+@media(max-width:700px){#v-live table{font-size:10.5px}#v-live th,#v-live td{padding:4px 2px}#v-live .card{padding-left:8px;padding-right:8px}#v-live .faint{display:none}#v-live thead th:nth-child(8),#v-live tbody td:nth-child(8),#v-live thead th:nth-child(9),#v-live tbody tr:not(.lv2) td:nth-child(9){display:none}#v-live thead th:nth-child(n+11),#v-live tbody tr:not(.lv2) td:nth-child(n+11){display:none}#v-live tbody tr.lv2{display:table-row}}
+#v-live thead th:nth-child(n+11),#v-live tbody tr:not(.lv2) td:nth-child(n+11){display:none}#v-live tr.lv2{display:table-row}#v-live tr.lv2 td{padding:0 4px 5px;font-size:11px;border-top:none;white-space:normal}#v-live tr.lv2 .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}#v-live tr.lv2 .lvs{margin-right:8px}#v-live tr.lv2 .kwc{padding:0 3px;border-radius:3px}
 .ldl{display:block;font-size:10px;line-height:1.35;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin-top:1px}.ldl .lvl{color:var(--ink-3);font-size:9.5px;margin-right:2px}.ldl .lvs{margin-right:7px}.ldl .kwc{padding:0 3px;border-radius:3px}
 </style>
 </head>
@@ -1440,7 +1440,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="qf seg" id="liveSide" style="margin-bottom:6px"><button class="fchip" data-v="up" aria-pressed="true">상승률</button><button class="fchip" data-v="down" aria-pressed="false">하락률</button></div>
     <div class="qf seg" id="liveCap" style="margin-bottom:8px"><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="10000" aria-pressed="false">1조 이상</button><button class="fchip" data-v="40000" aria-pressed="false">4조 이상</button><button class="fchip" data-v="100000" aria-pressed="false">10조 이상</button></div>
     <div class="note" style="margin-bottom:8px">시가총액 기준으로 나눠 오늘 등락률 상위를 봅니다(전체 = 코스피·코스닥 전 종목, 나머지는 시총이 기준 이상인 종목만). 순위 후보는 KIS에서 8초마다 새로 받고, 후보 25종목의 가격은 KIS 실시간 체결가로 바로 갱신해 순위를 다시 매깁니다. 순위 밖으로 밀린 종목은 빠지고 새로 올라온 종목이 들어옵니다. ETF·ETN·스팩·우선주는 뺐습니다. 시총 = 상장주식수 × 현재가.</div>
-    <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체(업종 표시) 순환">↔</span></th><th>현재가</th><th>등락률</th><th>시총</th><th>거래대금</th><th>거래량</th><th title="이 화면에서 TOP 20에 들어온 뒤 지난 시간">진입 후</th><th>변동</th><th title="종목상세의 주도 세력 — 매집 구간(저점→고점)에서 외+기 순매수가 가장 큰 주체(전체 기간)">주도</th><th title="주도 주체의 최근 5일·20일 순매수 방향">추세</th><th title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록 (낮을수록 개인 물량 감소)">매집 6월</th><th title="최근 ÷ 8월 첫 기록">8월</th></tr></thead>
+    <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체(업종 표시) 순환">↔</span></th><th>현재가</th><th title="현재가가 전일 종가 대비 몇 % 올랐는지(등락률)">전일종가</th><th title="현재가가 오늘 시가 대비 몇 % 올랐는지">당일시가</th><th>시총</th><th>거래대금</th><th>거래량</th><th title="이 화면에서 TOP 20에 들어온 뒤 지난 시간">진입 후</th><th>변동</th><th title="종목상세의 주도 세력 — 매집 구간(저점→고점)에서 외+기 순매수가 가장 큰 주체(전체 기간)">주도</th><th title="주도 주체의 최근 5일·20일 순매수 방향">추세</th><th title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록 (낮을수록 개인 물량 감소)">매집 6월</th><th title="최근 ÷ 8월 첫 기록">8월</th></tr></thead>
       <tbody id="liveBody"><tr><td colspan="13" class="load sk"></td></tr></tbody></table></div>
   </div>
   <div class="card" style="margin-top:12px"><h3>진입·이탈 기록 <span class="r">이 화면을 연 뒤</span></h3><div id="liveLog" class="note">아직 변동이 없습니다</div></div>
@@ -2462,7 +2462,7 @@ async function liveFetch(){
     const nAll=rows.length;
     if(lfActive()){rows=rows.filter(x=>lfPass(x.code));}
     L.cand=nAll;
-    const pool={};rows.slice(0,LIVE_POOL).forEach(x=>{const old=L.pool[x.code];pool[x.code]={...x,live:old&&old.liveAt>j.ts?old.price:null};if(old&&old.liveAt>j.ts){pool[x.code].price=old.price;pool[x.code].changePct=old.changePct;pool[x.code].liveAt=old.liveAt;}});
+    const pool={};rows.slice(0,LIVE_POOL).forEach(x=>{const old=L.pool[x.code];pool[x.code]={...x,live:old&&old.liveAt>j.ts?old.price:null};if(old&&old.liveAt>j.ts){pool[x.code].price=old.price;pool[x.code].changePct=old.changePct;pool[x.code].liveAt=old.liveAt;if(old.open>0)pool[x.code].open=old.open;}});
     L.pool=pool;L.at=j.ts;
     S.liveTopWanted=new Set(Object.keys(pool));reconcileLiveSubscription();
     liveRender();
@@ -2470,7 +2470,7 @@ async function liveFetch(){
 }
 function liveTick(code,m){
   const L=S.live;if(!L.on||!L.pool[code]||m.price==null)return;
-  const x=L.pool[code];x.price=+m.price;if(m.changePct!=null)x.changePct=+m.changePct;x.liveAt=Date.now();
+  const x=L.pool[code];x.price=+m.price;if(m.changePct!=null)x.changePct=+m.changePct;if(m.open>0)x.open=+m.open;x.liveAt=Date.now();
   if(m.accVol!=null)x.vol=+m.accVol;
   if(!L.paint)L.paint=setTimeout(()=>{L.paint=0;liveRender();},600);   // 틱이 몰려도 0.6초에 한 번만 다시 그림
 }
@@ -2501,10 +2501,11 @@ function liveRender(){
     const d=oldRank[x.code]?oldRank[x.code]-(i+1):null,mins=Math.floor((now-(L.since[x.code]||now))/60000);
     return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--${L.side==="down"?"down":"up"}) 8%,transparent)"':""}><td>${i+1}</td><td class="l">${mt(x.code)}${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)}${nxTag(x.code)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':x.changePct<=-29?' <span class="tg">하한가권</span>':""}</td>
       <td class="num ${sgn(x.changePct)}">${N(x.price,0)}${x.liveAt&&now-x.liveAt<15000?' <span class="up" title="KIS 실시간 체결가">●</span>':""}</td><td class="num ${sgn(x.changePct)}">${pm(x.changePct,2)}%</td>
+      <td class="num ${x.open>0?sgn(x.price-x.open):"dim"}" title="${x.open>0?"시가 "+N(x.open,0):""}">${x.open>0?pm((x.price/x.open-1)*100,2)+"%":"–"}</td>
       <td class="num">${x.shares?fmtCap(x.shares*x.price):"–"}</td><td class="num">${x.amt?N(x.amt/1e8,0)+"억":"–"}</td><td class="num">${x.vol?N(x.vol/1e4,0)+"만":"–"}</td><td class="dim">${mins<1?"방금":mins+"분"}</td>
       <td class="${d>0?"up":d<0?"down":"dim"}">${d==null?(Object.keys(oldRank).length?"신규":"–"):d>0?"▲"+d:d<0?"▼"+(-d):"–"}</td>
       <td data-smx="lead" data-code="${x.code}">–</td><td data-smx="ltr" data-code="${x.code}">–</td>${kwCell(x.code,"r6",false,true)}${kwCell(x.code,"r8",false,true)}</tr>
-      <tr class="lv2"><td colspan="9" class="l"><span class="lvs"><span class="lvl">외+기 합계</span><span data-smx="st" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${x.code}">–</span> <span data-smx="ltr" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">매집 6월</span><span class="kwc" data-kw="r6" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r6):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r6):"–"}</span></span><span class="lvs"><span class="lvl">8월</span><span class="kwc" data-kw="r8" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r8):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r8):"–"}</span></span></td></tr>`;}).join("");
+      <tr class="lv2"><td colspan="10" class="l"><span class="lvs"><span class="lvl">외+기 합계</span><span data-smx="st" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${x.code}">–</span> <span data-smx="ltr" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">매집 6월</span><span class="kwc" data-kw="r6" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r6):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r6):"–"}</span></span><span class="lvs"><span class="lvl">8월</span><span class="kwc" data-kw="r8" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r8):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r8):"–"}</span></span></td></tr>`;}).join("");
   if(!top.length)$("#liveBody").innerHTML='<tr><td colspan="13" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#liveBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   $("#liveLog").innerHTML=L.log.length?L.log.map(t=>`<div>${t}</div>`).join(""):"아직 변동이 없습니다";

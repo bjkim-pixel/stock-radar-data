@@ -2189,6 +2189,7 @@ function handleKisMessage(text) {
       sign: rec[F_SIGN] || null,
       time: rec[F_TIME] || null,
     };
+    { const op = Number(rec[7]); if (Number.isFinite(op) && op > 0) payload.open = op; }   // H0STCNT0 8번째 필드 = 주식 시가
     if (dayHigh) {
       // 프론트 "전략성과" 표의 "고점"/"고점시각" 컬럼을 시세와 같은 틱으로 즉시 갱신하기 위한 필드.
       payload.dayHigh = dayHigh.high;
@@ -3181,12 +3182,17 @@ function refreshLiveTop(min, side = 'up') {
       if (!min) {
         const r = side === 'down' ? await fetchFallRateRank(30) : await fetchChangeRateRank(30);
         rows = r.map(o => ({ code: o.stck_shrn_iscd || o.mksc_shrn_iscd, name: o.hts_kor_isnm || '', price: safeNum(o.stck_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }));
+        try {   // 순위 응답에는 시가가 없어 멀티시세로 보강(1회 호출)
+          const ids = rows.map(r => r.code).filter(Boolean).slice(0, 30);
+          const mp = new Map((await fetchMultiPrice(ids)).map(o => [o.inter_shrn_iscd, safeNum(o.inter2_oprc)]));
+          rows.forEach(r => { const op = mp.get(r.code); if (op > 0) r.open = op; });
+        } catch (_) { /* 시가 없이 진행 */ }
       } else {
         const uni = (await loadLiveUniverse()).filter(u => u.cap >= min * 1e8);
         const all = [];
         for (let i = 0; i < uni.length; i += 30) {
           const out = await fetchMultiPrice(uni.slice(i, i + 30).map(u => u.code));
-          out.forEach(o => all.push({ code: o.inter_shrn_iscd, name: o.inter_kor_isnm || '', price: safeNum(o.inter2_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }));
+          out.forEach(o => all.push({ code: o.inter_shrn_iscd, name: o.inter_kor_isnm || '', price: safeNum(o.inter2_prpr), open: safeNum(o.inter2_oprc), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }));
         }
         const okAll = all.filter(r => r.code && r.price > 0);
         rows = okAll.slice().sort((a, b) => b.changePct - a.changePct).slice(0, 40);
