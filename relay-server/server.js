@@ -3264,7 +3264,7 @@ function handleAccessLog(req, res) {
 
 /* ── 매매 보안 기반(1단계): 로그인 토큰·거래 PIN·재전송 방어·긴급 정지·한도·감사 — relay-server/trade.js ── */
 const trade = require('./trade').createTrade({
-  env: process.env, sbWrite, sbGet: SUPABASE_SERVICE_KEY ? sbGet : null, allowedOrigins: ALLOWED_ORIGINS,
+  env: { ...process.env, SUPABASE_URL, SUPABASE_ANON_KEY }, sbWrite, sbGet: SUPABASE_SERVICE_KEY ? sbGet : null, allowedOrigins: ALLOWED_ORIGINS,
   notify: (text, opts) => notifyAll(text, opts),
   // KIS 시세 조회(읽기 전용): 기존 REST 토큰·호출 간격 제한을 그대로 사용
   kisGet: async (path, trId, params) => {
