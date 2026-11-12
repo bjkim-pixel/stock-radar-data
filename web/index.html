@@ -223,6 +223,16 @@ body.nav-open .navopen{display:none}
 .tl-sum{position:relative;min-height:34px;border-radius:4px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px;font-size:9.5px;font-weight:600}
 .tl-hd.tl-sh{border-left:1px solid var(--grid);padding-left:2px}
 #fwBody .tl-v,#fwBody .tl-tot,#fwBody .tl-sum{white-space:nowrap}#fwBody .tl-cell,#fwBody .tl-sum{align-items:center;padding-bottom:0}#fwBody .tl-rl a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fwBody .tl-grid>.tl-rl.fw-sec{background:var(--surface-2);border-top:2px solid var(--ink);border-radius:6px 0 0 0;min-height:40px;padding:4px 4px 4px 8px;font-size:13.5px;font-weight:800;color:var(--ink)}
+#fwBody .tl-grid>.tl-rl.fw-sec small{font-size:10px;font-weight:500}
+#fwBody .fw-st{border-top:2px solid var(--ink);min-height:40px;border-radius:0;font-size:11px;font-weight:700;background:var(--surface-2)}
+#fwBody .tl-grid>.tl-rl.fw-s{padding-left:12px;border-left:3px solid var(--grid);margin-left:5px;font-size:12px}
+#fwBody .tl-grid>.tl-rl.fw-s.t3{border-left-color:var(--ink);font-weight:700;font-size:12.5px}
+#fwBody .tl-grid>.tl-rl.fw-s:not(.t3){font-weight:500;font-size:11px;opacity:.8}
+#fwBody .tl-rl>span{display:flex;align-items:baseline;white-space:nowrap;overflow:hidden}
+#fwBody .tl-rl .rk{display:inline-block;min-width:13px;margin-right:3px;font-size:9.5px;font-weight:700;color:var(--ink-3)}
+#fwBody .fw-gap{grid-column:1/-1;height:10px}
+#fwBody .fw-more{grid-column:1/-1;position:sticky;left:0;font-size:11.5px;color:var(--ink-3);padding:5px 12px;cursor:pointer;border-left:3px solid var(--grid);margin-left:5px;background:var(--surface)}
 /* 2026-11-08: 자금 이동 타임라인 맨 위 "합계" 행(그날 전 업종 합) */
 .tl-grid>.tl-rl.tot{min-height:26px;color:var(--ink);border-bottom:1px solid var(--grid)}
 .tl-tot{min-height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;background:var(--surface-2)}
@@ -1420,7 +1430,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="tl-tabs" id="fwTabs"><button data-s="f" class="on">외국인</button><button data-s="i">기관합계</button><button data-s="b">외국인+기관</button></div>
     <div class="tl-legend"><span><i style="width:12px;height:10px;background:color-mix(in srgb,var(--up) 45%,transparent);border-radius:2px"></i>순매수</span><span><i style="width:12px;height:10px;background:color-mix(in srgb,var(--down) 45%,transparent);border-radius:2px"></i>순매도</span><span>단위 억원 · 색 진하기는 종목별 최대치 기준 · 좌우로 밀어서 이동</span></div>
     <div id="fwBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">시가총액 상위 50종목(우선주·리츠·스팩 제외)을 업종별로 묶었습니다. 업종 줄은 해당 업종 TOP 50 종목의 합계이고, 종목 이름 아래는 시총과 오늘까지의 연속 순매수(+)/순매도(−) 일수입니다. 오른쪽 5·20·60일 열은 최근 거래일 합계입니다. 종목명을 누르면 종목 상세로 이동합니다.</div>
+    <div class="note" style="margin-top:8px">시가총액 상위 50종목(우선주·리츠·스팩 제외)을 업종별로 묶었습니다. 업종 줄은 해당 업종 TOP 50 종목의 합계이고, 종목은 업종 안에서 시총 큰 순서이며 상위 3종목(굵은 선)만 먼저 보이고 나머지는 "나머지 N종목 보기"로 펼칩니다. 종목 이름 아래는 시총과 오늘까지의 연속 순매수(+)/순매도(−) 일수입니다. 오른쪽 5·20·60일 열은 최근 거래일 합계입니다. 종목명을 누르면 종목 상세로 이동합니다.</div>
   </div>
 </section>
 <section id="v-live" class="hide">
@@ -3561,7 +3571,7 @@ function fwRender(){
   const val={};D.flow.forEach(r=>{(val[r.code]=val[r.code]||{})[r.trade_date]=fn(r);});
   const bySec={};D.top.forEach(t=>{(bySec[t.sector]=bySec[t.sector]||[]).push(t);});
   const secs=Object.keys(bySec).sort((a,b)=>bySec[b].reduce((x,t)=>x+t.cap,0)-bySec[a].reduce((x,t)=>x+t.cap,0));
-  const W=host.clientWidth||360,lw=92,cw=Math.max(28,Math.floor((W-lw-2*10)/10));
+  const W=host.clientWidth||360,lw=108,cw=Math.max(28,Math.floor((W-lw-2*10)/10));
   const fmtC=v=>{const a=Math.abs(v),p=v>0?"+":v<0?"-":"";return a>=10000?p+N(a/10000,1)+"조":p+String(Math.round(a));};
   const wins=TL_WINS.map(([n])=>dates.slice(-n));
   const bg=(v,mx)=>`background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${Math.round(10+55*Math.abs(v)/(mx||1))}%,transparent)`;
@@ -3572,19 +3582,23 @@ function fwRender(){
     const sv=d=>L.reduce((a,t)=>a+((val[t.code]||{})[d]||0),0);
     const sMax=Math.max(1,...dates.map(d=>Math.abs(sv(d))));
     const sw=wins.map(w=>w.reduce((a,d)=>a+sv(d),0)),swMax=Math.max(1,...sw.map(Math.abs));
-    h+=`<div class="tl-rl tot">${sn}<small>${L.length}종목 · ${N(L.reduce((a,t)=>a+t.cap,0)/1e12,0)}조</small></div>`
-      +dates.map(d=>{const v=sv(d)/EOK;return `<div class="tl-tot ${sgn(v)}" style="${bg(v,sMax/EOK)}" title="${sn} TOP50 합계(억원)">${fmtC(v)}</div>`;}).join("")
-      +sw.map(v=>`<div class="tl-tot ${sgn(v)}" style="${bg(v,swMax)}">${fmtC(v/EOK)}</div>`).join("");
-    L.forEach(t=>{
+    h+=`<div class="fw-gap"></div><div class="tl-rl fw-sec">${sn}<small>${L.length}종목 · ${N(L.reduce((a,t)=>a+t.cap,0)/1e12,0)}조</small></div>`
+      +dates.map(d=>{const v=sv(d)/EOK;return `<div class="tl-tot fw-st ${sgn(v)}" style="${bg(v,sMax/EOK)}" title="${sn} TOP50 합계(억원)">${fmtC(v)}</div>`;}).join("")
+      +sw.map(v=>`<div class="tl-tot fw-st ${sgn(v)}" style="${bg(v,swMax)}">${fmtC(v/EOK)}</div>`).join("");
+    const openAll=(S.fwOpenSec||{})[sn];
+    L.forEach((t,ti)=>{
+      if(ti===3&&L.length>3&&!openAll)h+=`<div class="fw-more" data-s="${sn}" style="width:${W-8}px;justify-self:start">▾ 나머지 ${L.length-3}종목 보기</div>`;
+      if(ti>=3&&!openAll)return;
       const vv=val[t.code]||{},mx=Math.max(1,...dates.map(d=>Math.abs(vv[d]||0)));
       let streak=0,sg=0;for(let k=dates.length-1;k>=0;k--){const x=vv[dates[k]];if(x==null||x===0)break;const g=x>0?1:-1;if(!sg)sg=g;if(g!==sg)break;streak++;}
       const tw=wins.map(w=>w.reduce((a,d)=>a+(vv[d]||0),0)),twMax=Math.max(1,...tw.map(Math.abs));
-      h+=`<div class="tl-rl"><a class="lk nm" data-code="${t.code}">${t.name}</a><small>${N(t.cap/1e12,1)}조${streak?` · <span class="${sg>0?"up":"down"}">${sg>0?"+":"−"}${streak}일</span>`:""}</small></div>`
+      h+=`<div class="tl-rl fw-s${ti<3?" t3":""}"><span><span class="rk">${ti+1}</span><a class="lk nm" data-code="${t.code}">${t.name}</a></span><small>${N(t.cap/1e12,1)}조${streak?` · <span class="${sg>0?"up":"down"}">${sg>0?"+":"−"}${streak}일</span>`:""}</small></div>`
         +dates.map(d=>{const v=vv[d]||0;return `<div class="tl-cell" style="${bg(v,mx)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;}).join("")
         +tw.map(v=>`<div class="tl-sum" style="${bg(v,twMax)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`).join("");
     });
   });
   host.innerHTML=h+'</div></div></div></div>';
+  host.querySelectorAll(".fw-more").forEach(e=>e.onclick=()=>{(S.fwOpenSec=S.fwOpenSec||{})[e.dataset.s]=true;fwRender();});
   const sc=$("#fwBody .tl-scroll");
   requestAnimationFrame(()=>{sc.scrollLeft=S.fwScroll==null?1e9:S.fwScroll;});
   sc.addEventListener("scroll",()=>{S.fwScroll=sc.scrollLeft;},{passive:true});
