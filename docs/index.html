@@ -2039,7 +2039,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
           <div class="card trd-bk">
             <div class="trd-tabs" id="trdBkTabs" role="tablist"><button type="button" data-bt="book" class="on">호가</button><button type="button" data-bt="chart">차트</button><button type="button" data-bt="mem">거래원</button><button type="button" data-bt="inv">투자자</button></div>
             <div data-bp="book"><div id="trdSes" class="trd-ses"></div><div class="faint" style="font-size:11px;margin:2px 0 6px">호가 클릭 = 매수가 입력</div><div id="trdBook" class="trd-book"></div><div id="trdQp" class="faint" style="font-size:11.5px;margin-top:6px"></div>
-              <details class="trd-cn" open><summary>체결강도란? <span id="trdCnNow"></span></summary><div class="trd-cnb">
+              <details class="trd-cn"><summary>체결강도란? <span id="trdCnNow"></span></summary><div class="trd-cnb">
                 <p><b>정의</b> — 오늘 체결된 주식 중 <b>매수 쪽 체결량이 매도 쪽 체결량의 몇 %</b>인지 보여주는 값입니다. 체결강도 = 매수 체결량 ÷ 매도 체결량 × 100 (당일 누적).</p>
                 <p><b>의미</b> — 100%면 매수·매도 체결이 같고, <b class="up">100%를 넘으면 사려는 쪽이 호가를 올려 체결(매수 우세)</b>, <b class="down">100% 아래면 팔려는 쪽이 호가를 내려 체결(매도 우세)</b>입니다. 보통 120% 이상이면 강한 매수세, 80% 이하면 강한 매도세로 봅니다.</p>
                 <p><b>계산·갱신</b> — 한국투자증권 체결 데이터의 당일 누적 체결강도(KIS 주식체결 ‘체결강도’ 필드)를 그대로 씁니다. 장중에는 체결이 들어올 때마다(웹소켓), 그 전에는 5초마다 받아 온 값으로 갱신합니다. 매수/매도 구분은 체결가가 매도호가에 닿으면 매수, 매수호가에 닿으면 매도로 KIS가 분류한 값입니다.</p>
