@@ -29,9 +29,14 @@ t('목표가 대체: 첫 매물대부터 여력 초과',()=>{
   const p=prof([86000,88500,500],[88500,91000,10]);
   const r=m.trdTarget({cur:85000,prof:p,capEok:50});assert.equal(r.mode,'blocked');assert.equal(r.target,85900);   // 86,000 바로 아래(100원 단위)
 });
-t('목표가 대체: 위쪽 매물대 없음→전고점',()=>{
-  const r=m.trdTarget({cur:85000,prof:prof([86000,88500,0],[80000,85000,50]),capEok:10,prevHigh:92345});assert.equal(r.mode,'no-supply');assert.equal(r.target,92300);
-  const r2=m.trdTarget({cur:85000,prof:[],capEok:10,prevHigh:80000});assert.equal(r2.target,null);
+t('목표가 대체: 위쪽 매물대 없음→손익비 1:3(손절 5% × 3 = +15%), 전고점이 더 높으면 전고점',()=>{
+  const r=m.trdTarget({cur:85000,prof:prof([86000,88500,0],[80000,85000,50]),capEok:10,prevHigh:92345});assert.equal(r.mode,'no-supply');assert.equal(r.target,97700);   // 85,000 × 1.15 = 97,750 → 호가 내림
+  assert.ok(r.top.rr&&r.top.stopPct===5&&r.top.rrN===3);
+  const r2=m.trdTarget({cur:85000,prof:[],capEok:10,prevHigh:80000});assert.equal(r2.target,97700);
+  const r3=m.trdTarget({cur:85000,prof:[],capEok:10,prevHigh:120000});assert.equal(r3.target,120000);   // 전고점이 더 높으면 전고점
+  const r4=m.trdTarget({cur:68800,prof:[],capEok:10,prevHigh:69700,stopPct:5,rr:3});assert.equal(r4.target,79100);   // 삼성E&A 예: 68,800 신고가
+  const r5=m.trdTarget({cur:68800,prof:[],capEok:10,prevHigh:69700,stopPct:4,rr:3});assert.equal(r5.target,77000);
+  const r6=m.trdTarget({cur:68800,prof:[],capEok:10,prevHigh:69700,upper:75000});assert.equal(r6.target,75000);   // 상한가 제한
 });
 t('목표가: 상한가 제한·현재가 이하는 없음',()=>{
   const r=m.trdTarget({cur:85000,prof:prof([96500,99000,10]),capEok:1000,prevHigh:120000,upper:110500});assert.equal(r.mode,'no-supply');assert.equal(r.target,110500);
@@ -45,11 +50,17 @@ t('손절',()=>{
 t('익절 5단계(예시: 50,000→60,000, 100주)',()=>{
   const r=m.trdPlan(50000,60000,100);assert.deepEqual(r.steps.map(s=>s.p),[52000,54000,56000,58000,60000]);assert.deepEqual(r.steps.map(s=>s.q),[20,20,20,20,20]);assert.equal(r.note,'');
 });
+t('익절 1단계는 최소 +3%: 68,800 → 79,100',()=>{
+  const r=m.trdPlan(68800,79100,10);assert.equal(r.steps[0].p,70900);assert.ok(r.steps[0].p>=68800*1.03);assert.equal(r.steps.at(-1).p,79100);
+  assert.ok(r.steps.every((x,i)=>!i||x.p>r.steps[i-1].p));assert.ok(/최소 \+3%/.test(r.note));
+  const lo=m.trdPlan(10350,11000,10);assert.ok(lo.steps[0].p>=10350*1.03);assert.equal(lo.steps.at(-1).p,11000);   // 단계 간격이 좁아도 1단계 하한
+  const near=m.trdPlan(10000,10200,10);assert.equal(near.steps[0].p,10040);   // 목표가가 +3% 미만이면 하한을 못 씀 → 기존 등분
+});
 t('익절: 나머지 수량은 마지막 단계, 5주 미만은 단계 축소',()=>{
   const r=m.trdPlan(50000,60000,103);assert.deepEqual(r.steps.map(s=>s.q),[20,20,20,20,23]);
-  const r2=m.trdPlan(50000,60000,3);assert.equal(r2.n,3);assert.deepEqual(r2.steps.map(s=>s.q),[1,1,1]);assert.ok(/3단계/.test(r2.note));
+  const r2=m.trdPlan(50000,60000,3);assert.equal(r2.n,5);assert.deepEqual(r2.steps.map(s=>s.q),[1,1,1,0,0]);assert.ok(/1주씩/.test(r2.note));   // 낮은 단계부터 1주씩
   assert.equal(m.trdPlan(50000,50000,10).n,0);assert.equal(m.trdPlan(50000,60000,0).n,0);
-  const r3=m.trdPlan(1000,1002,5);assert.ok(/같은 단계/.test(r3.note));   // 1원 단위: 1000.8→1000
+  const r3=m.trdPlan(1000,1002,5,5,0);assert.ok(/같은 단계/.test(r3.note));   // 1원 단위: 1000.8→1000
 });
 t('익절 가격은 호가 단위 내림',()=>{const r=m.trdPlan(84700,96400,5);r.steps.forEach(s=>assert.equal(s.p,m.trdFloor(s.p)));assert.equal(r.steps.at(-1).p,96400);assert.equal(r.steps.reduce((a,s)=>a+s.q,0),5);});
 t('손익 계산',()=>{

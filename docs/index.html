@@ -9130,7 +9130,7 @@ function trdRecBids(bids,cur){
   const out=[mk("q1",byQ[0])];if(byQ[1])out.push(mk("q2",byQ[1]));out.push(mk("low",low));return out;
 }
 /* 추천 목표 매도가 — prof: buildPriceProfile 결과(높은 가격대부터, v=억원), capEok: 돌파 여력(억원) */
-function trdTarget({cur,prof,capEok,coef=1,prevHigh=0,upper=0}){
+function trdTarget({cur,prof,capEok,coef=1,prevHigh=0,upper=0,stopPct=5,rr=3}){
   const cap=Math.max(0,capEok||0)*coef;
   const above=(prof||[]).filter(b=>b.lo>=cur-1e-9).sort((a,b)=>a.lo-b.lo);
   let cum=0,ri=-1;
@@ -9143,8 +9143,11 @@ function trdTarget({cur,prof,capEok,coef=1,prevHigh=0,upper=0}){
     else{mode="normal";top=rest.reduce((m,b)=>b.v>m.v?b:m,rest[0]);}
     target=trdBelow(top.lo);
   }else{
+    // 위쪽 매물대가 없음(신고가 등): 저항이 없으므로 전고점이 아니라 손익비(손절폭 × rr) 기준 — 전고점이 더 높으면 전고점
     mode="no-supply";
-    if(prevHigh>cur)target=trdFloor(prevHigh);
+    const rrT=cur>0&&stopPct>0&&rr>0?trdFloor(cur*(1+stopPct/100*rr)):null;
+    target=Math.max(prevHigh>cur?trdFloor(prevHigh):0,rrT||0)||null;
+    if(rrT)top={rr:true,stopPct,rrN:rr,rrT};
   }
   if(target!=null&&upper>0&&target>upper)target=trdFloor(upper);
   if(target!=null&&target<=cur){target=null;mode+="-none";}
@@ -9159,12 +9162,15 @@ function trdStopRefs(rows,buy){
 }
 const trdStopPrice=(buy,pct)=>trdFloor(buy*(1-pct/100));
 /* 익절 단계: 매수가→목표가를 n등분(호가 단위 내림), 수량은 균등·나머지는 마지막 단계 */
-function trdPlan(buy,target,qty,want=5){
+function trdPlan(buy,target,qty,want=5,minPct=3){
   qty=Math.floor(qty);want=Math.min(5,Math.max(1,Math.floor(want)||5));
   if(!(buy>0)||!(target>buy)||qty<1)return {steps:[],n:0,note:qty<1?"수량이 없습니다":"목표가가 매수가보다 높아야 합니다"};
   const base=Math.floor(qty/want),rem=qty-base*want,steps=[];
-  for(let i=1;i<=want;i++)steps.push({n:i,p:trdFloor(buy+(target-buy)*i/want),q:qty>=want?base+(i===want?rem:0):(i<=qty?1:0)});
+  // 1단계는 최소 +minPct%(트레일링 2% 감안 — 그보다 낮으면 1단계가 사실상 본전 매도). 목표가가 그보다 낮으면 그대로 둠
+  const min=trdCeil(buy*(1+minPct/100)),lift=want>1&&target>min&&trdFloor(buy+(target-buy)/want)<min;
+  for(let i=1;i<=want;i++)steps.push({n:i,p:lift?trdFloor(min+(target-min)*(i-1)/(want-1)):trdFloor(buy+(target-buy)*i/want),q:qty>=want?base+(i===want?rem:0):(i<=qty?1:0)});
   let note=qty<want?`수량이 ${qty}주라 낮은 단계부터 1주씩 배정했습니다(${qty+1}~${want}단계는 수량 없음).`:"";
+  if(lift)note+=(note?" ":"")+`1단계는 매수가 대비 최소 +${minPct}%부터 시작합니다(트레일링으로 본전에 팔리는 것을 막기 위함).`;
   if(steps.some((s,i)=>i&&s.p<=steps[i-1].p))note+=(note?" ":"")+"호가 단위 때문에 가격이 같은 단계가 있습니다.";
   return {steps,n:want,note};
 }
@@ -9344,8 +9350,9 @@ function trdCalcRec(){
   const last5=rows.slice(-5),avg5=last5.length?last5.reduce((a,r)=>a+(+r.trade_amount||0),0)/last5.length:0;
   D.avg5=avg5;D.today=Q.amt||0;D.capEok=Math.max(avg5,D.today)/EOK;
   D.prevHigh=Math.max(...rows.map(r=>+r.high>0?+r.high:+r.close));
+  {const L=rows.slice(-15);let sum=0,n=0;for(let i=1;i<L.length;i++){const h=+L[i].high>0?+L[i].high:+L[i].close,l=+L[i].low>0?+L[i].low:+L[i].close,pc=+L[i-1].close;if(!(pc>0))continue;sum+=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));n++;}D.atr=n?sum/n:0;}
   D.rec=trdRecBids(Q.bids,cur);
-  D.tgt=trdTarget({cur,prof:D.profIndiv,capEok:D.capEok,coef:TRD.coef,prevHigh:D.prevHigh,upper:Q.upper});
+  D.tgt=trdTarget({cur,prof:D.profIndiv,capEok:D.capEok,coef:TRD.coef,prevHigh:D.prevHigh,upper:Q.upper,stopPct:TRD.stopPct});
   D.at=new Date();
   if(!TRD.buy)TRD.buy=D.rec[0]?D.rec[0].p:cur;
   if(!TRD.qty)TRD.qty=1;
@@ -9514,11 +9521,12 @@ function trdRenderRec(){
   $("#trdRecAt").textContent=D.at?D.at.toLocaleTimeString("ko-KR",{hour12:false})+" 기준":"";
   const T=D.tgt;let tx;
   if(T.target==null){
-    tx=T.mode.startsWith("no-supply")?"현재가 위에 매물대가 없고 전고점도 현재가 이하라 목표가를 제시할 수 없습니다.":"현재가 바로 위에 큰 매물대가 있어 목표가를 제시할 수 없습니다. 직접 입력하세요.";
+    tx=T.mode.startsWith("no-supply")?"목표가를 계산할 수 없습니다. 직접 입력하세요.":"현재가 바로 위에 큰 매물대가 있어 목표가를 제시할 수 없습니다. 직접 입력하세요.";
   }else{
     const pct=TRD.buy>0?(T.target/TRD.buy-1)*100:0;
     const why=T.mode==="normal"?`돌파 여력 ${N(T.cap,0)}억(${D.today>=D.avg5?"오늘":"5일 평균"} 거래대금${TRD.coef!==1?" ×"+TRD.coef:""}) · ${T.reach>(Q?Q.price:0)?N(T.reach,0)+"원까지 돌파 가능(누적 매물 "+N(T.cum,0)+"억)":"바로 위 매물대부터 여력 초과"} · 그 위 최대 매물대 ${N(T.top.lo,0)}~${N(T.top.hi,0)}원 ${N(T.top.v,0)}억`
       :T.mode==="blocked"?`첫 매물대부터 돌파 여력(${N(T.cap,0)}억) 초과 · 첫 매물대 ${N(T.top.lo,0)}~${N(T.top.hi,0)}원 ${N(T.top.v,0)}억의 하단 바로 아래`
+      :T.top&&T.top.rr?`위쪽에 개인 매물대가 없어(저항 없음) <b>손익비 1:${T.top.rrN}</b> 기준 — 손절 ${N(T.top.stopPct,1)}% × ${T.top.rrN} = +${N(T.top.stopPct*T.top.rrN,1)}%${T.target>T.top.rrT?` · 전고점 ${N(D.prevHigh,0)}원이 더 높아 전고점 기준`:""}${D.atr>0&&(T.target-(Q?Q.price:0))>D.atr*6?`<div class="trd-wn" style="margin-top:4px">변동성(14일 ATR ${N(D.atr,0)}원) 대비 목표가가 멀어 도달 확률이 낮을 수 있습니다 — 단계 일부만 체결될 수 있습니다</div>`:""}`
       :`위쪽에 매물대가 없어 기간 내 전고점 ${N(D.prevHigh,0)}원 기준`;
     tx=`<span class="trd-tp num">${N(T.target)}</span> <span class="up">매수가 대비 ${pct>=0?"+":""}${N(pct,1)}%</span><div class="faint" style="margin-top:4px;font-size:11.5px;line-height:1.5">${why}</div>`;
   }
@@ -10066,7 +10074,7 @@ document.addEventListener("change",e=>{
   else if(t.id==="trdSplit"){TRD.split=Math.min(5,Math.max(1,Math.floor(+t.value)||5));trdRenderPlan();}
   else if(t.id==="trdTrail"){TRD.trailEdited=true;TRD.trail=Math.min(20,Math.max(0.3,+t.value||2));trdRenderPlan();}
   else if(t.id==="trdTgtIn"){const nv=num(t.value);if(TRD.planDirty&&TRD.edited&&!confirm("직접 고친 단계 가격·수량이 덮어써집니다. 계속할까요?")){trdRenderPlan();return;}TRD.target=nv;TRD.planDirty=true;TRD.edited=null;trdRenderPlan();}
-  else if(t.id==="trdCoef"){TRD.coef=Math.min(5,Math.max(0.1,+t.value||1));if(TRD.data){TRD.data.tgt=trdTarget({cur:TRD.quote.price,prof:TRD.data.profIndiv,capEok:TRD.data.capEok,coef:TRD.coef,prevHigh:TRD.data.prevHigh,upper:TRD.quote.upper});if(!TRD.planDirty)TRD.target=TRD.data.tgt.target||0;trdRenderRec();trdRenderPlan();}}
+  else if(t.id==="trdCoef"){TRD.coef=Math.min(5,Math.max(0.1,+t.value||1));if(TRD.data){TRD.data.tgt=trdTarget({cur:TRD.quote.price,prof:TRD.data.profIndiv,capEok:TRD.data.capEok,coef:TRD.coef,prevHigh:TRD.data.prevHigh,upper:TRD.quote.upper,stopPct:TRD.stopPct});if(!TRD.planDirty)TRD.target=TRD.data.tgt.target||0;trdRenderRec();trdRenderPlan();}}
   else if(t.dataset.sp||t.dataset.sq){   // 단계별 직접 수정
     const steps=(TRD.edited&&TRD.edited.length?TRD.edited:TRD.plan.steps).map(s=>({...s}));
     const n=+(t.dataset.sp||t.dataset.sq),s=steps.find(x=>x.n===n);if(!s)return;
