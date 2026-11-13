@@ -2042,6 +2042,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
               <div class="qf seg" id="trdSmxWin" style="margin-bottom:8px"><button class="fchip" data-v="63" aria-pressed="false">3개월</button><button class="fchip" data-v="126" aria-pressed="false">6개월</button><button class="fchip" data-v="all" aria-pressed="true">전체</button></div>
               <div id="trdSmxStatus" style="margin-bottom:8px"></div>
               <div class="tw tw-scroll" style="margin-bottom:10px"><table class="earn-t" id="trdSmxTable"></table></div>
+              <div class="faint" style="font-size:11.5px;margin:4px 0 2px"><b>가격 · 이동평균</b> <span id="trdPriceRange"></span></div>
+              <div class="legend"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--mac1)"></i>MA5</span><span><i style="background:var(--mac2)"></i>MA20</span><span><i style="background:var(--mac3)"></i>MA120</span></div>
+              <div class="chart" id="trdPrice"></div>
+              <div class="faint" style="font-size:11px;margin:2px 0 8px">● 최고가·최저가·오늘 종가(2025-09-01~) · 색 띠 = 현재가 위 개인 순매수 매물대 1·2위 · 큰 점 = 외+기 매집 시작·고점</div>
               <div class="faint" style="font-size:11.5px;margin:4px 0"><b>A. 외+기 누적</b> — ▲ 매집 시작 저점 · ▼ 고점 · 파란 음영 = 고점 이후 · 회색 = 종가</div>
               <div class="chart" id="trdSmxA"></div>
               <div class="faint" style="font-size:11.5px;margin:10px 0 4px"><b>B. 주체별 누적 겹쳐 보기</b> — 기간 시작 = 0 · 점 = 각 주체의 누적 고점</div>
@@ -9365,12 +9369,36 @@ function trdBkRefresh(force){
   const t=TRD.bk,D=TRD.data;if(!D)return;
   if(t==="chart"&&(force||TRD.smxFor!==TRD.cur)){TRD.smxFor=TRD.cur;
     if(!D.rows||D.rows.length<10||D.rows[0].foreign_cum==null){$("#trdSmxStatus").innerHTML='<div class="faint">수급 이력이 부족해 진단할 수 없습니다.</div>';return;}
+    try{trdDrawPrice(D.rows);}catch(e){console.error("trade price chart",e);}
     try{smxDraw(D.rows,TRD.smxWin,{status:$("#trdSmxStatus"),table:$("#trdSmxTable"),sub:$("#trdSmxSub"),a:$("#trdSmxA"),legend:$("#trdSmxLegend"),b:$("#trdSmxB")});}catch(e){console.error("trade smx",e);}}
   if(t==="mem"&&(force||!TRD.mem||Date.now()-TRD.mem.at>30000))trdLoadMem();
   if(t==="inv"&&(force||!TRD.inv||Date.now()-TRD.inv.at>60000))trdLoadInv();
 }
 {const tb=$("#trdBkTabs");if(tb)tb.addEventListener("click",e=>{const b=e.target.closest("button[data-bt]");if(b)trdBkShow(b.dataset.bt);});
  const sw=$("#trdSmxWin");if(sw)sw.addEventListener("seg-change",e=>{TRD.smxWin=e.detail;TRD.smxFor=null;trdBkRefresh(true);});}
+/* 종목상세 "가격 · 이동평균" 차트와 같은 그림(2025-09-01~, 종가·MA5·MA20·MA120, 매물대 띠, 매집 시작·고점 점) */
+function trdDrawPrice(rows){
+  const rp0=rows.filter(r=>r.trade_date>=START_D),rp=rp0.length?rp0:rows;
+  if(!rp.length||rp[0].ma5===undefined){$("#trdPrice").innerHTML='<div class="faint">이동평균 자료가 없습니다.</div>';return;}
+  const rlb=rp.map(r=>r.trade_date.slice(2).replace(/-/g,"/")),maxClose=Math.max(...rp.map(r=>+r.close)),ovl={bands:[],pts:[]};
+  try{
+    const cur=+rp.at(-1).close,pb=buildPriceProfile(rp,24,r=>+r.individual_net||0);
+    pb.filter(b=>b.lo>=cur&&b.v>0).sort((a,b)=>b.v-a.v).slice(0,2).forEach((b,k)=>ovl.bands.push({lo:b.lo,hi:b.hi,c:k?"--warn":"--down",label:`개인 매물대 ${k+1}위 ${N(b.lo,0)}~${N(b.hi,0)}원 · ${N(b.v,0)}억`}));
+    if(rp.length>=10&&rp[0].foreign_cum!=null){const m=smxModel(rp);
+      if(m.build>0){const md=i=>String(rp[i].trade_date).slice(5).replace("-","/");
+        ovl.pts.push({i:m.tr,v:+rp[m.tr].close,t:"매집 시작 "+md(m.tr),c:"--s1",below:true});
+        ovl.pts.push({i:m.pk,v:+rp[m.pk].close,t:"외+기 고점 "+md(m.pk),c:"--up"});}}
+  }catch(e){console.error("가격차트 덧그림",e);}
+  $("#trdPriceRange").textContent=`${rp[0].trade_date}~${rp.at(-1).trade_date}`;
+  lineChart($("#trdPrice"),[
+    {n:"종가",v:rp.map(r=>+r.close),c:"--ink"},
+    {n:"MA5",v:rp.map(r=>r.ma5?+r.ma5:null),c:"--mac1"},
+    {n:"MA20",v:rp.map(r=>r.ma20?+r.ma20:null),c:"--mac2"},
+    {n:"MA120",v:rp.map(r=>r.ma120?+r.ma120:null),c:"--mac3"}],
+    rlb,{h:450,w:1180,pr:66,labelEnds:false,marks:true,monthTicks:true,
+      fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원",
+      refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`,bands:ovl.bands,pts:ovl.pts});
+}
 async function trdLoadMem(){
   const code=TRD.cur,el=$("#trdMem");TRD.mem={at:Date.now()};
   if(!TRD.memShown)el.innerHTML='<div class="load sk"></div>';
