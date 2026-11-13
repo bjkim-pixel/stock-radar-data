@@ -28,8 +28,10 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return; // 다른 오리진(Supabase, Render 등)은 그대로 통과
   if (event.request.method !== 'GET') return;
 
+  // 2026-11-13: GitHub Pages 는 파일을 최대 10분 캐시(max-age=600)해서 배포 직후에도 옛 화면이 보일 수 있었음 →
+  // 'no-cache' 로 매번 서버에 변경 여부만 확인(변경 없으면 304 로 가볍게, 있으면 즉시 새 파일)
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request.url, { cache: 'no-cache', credentials: 'same-origin' })
       .then((res) => {
         const resClone = res.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone)).catch(() => {});
