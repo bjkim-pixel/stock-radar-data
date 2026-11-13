@@ -888,6 +888,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .tb .side .kv{display:flex;justify-content:space-between;gap:6px;line-height:1.7}.tb .side .kv span{color:var(--ink-3);white-space:nowrap}.tb .side .kv b{white-space:nowrap}
 .tb .tk{display:flex;justify-content:space-between;line-height:1.55;font-size:11.5px}.tb .tk .t{color:var(--ink-3);font-size:10px}
 .trd-mem{display:grid;grid-template-columns:1fr 1fr;gap:10px}.trd-mem table{width:100%;font-size:12px;font-variant-numeric:tabular-nums}.trd-mem td{padding:3px 4px;border-bottom:1px solid var(--grid)}.trd-mem td.n{text-align:right}
+.trd-cn{margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.6}.trd-cn summary{cursor:pointer;font-weight:700}.trd-cn p{margin:6px 0}.trd-cnb{margin-top:4px}
 .trd-book{font-size:12.5px;font-variant-numeric:tabular-nums}
 .trd-r{display:grid;grid-template-columns:1fr 1.2fr 1fr 1.2fr 1fr;align-items:center;min-height:26px;border-bottom:1px solid var(--grid);cursor:pointer}
 .trd-r.h{cursor:default;font-size:11px;color:var(--ink-3);min-height:22px}
@@ -912,7 +913,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .trd-form input{font-size:16px;padding:7px 8px;min-height:40px}
 .trd-chips{display:flex;gap:6px;flex-wrap:wrap}
 .trd-sr{display:grid;grid-template-columns:36px 1fr 1fr 1.2fr;gap:6px;align-items:center;font-size:12.5px;padding:3px 0}
-.trd-ses{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;margin:-2px 0 8px}.trd-ses .tag{padding:2px 8px;border-radius:999px;background:var(--surface-2);font-weight:650}.trd-ses .tag.off{color:var(--down)}
+.trd-ses{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;margin:-2px 0 8px}.trd-ses .tag{padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink);font-weight:700;border:1px solid var(--border)}.trd-ses .tag.off{color:var(--down)}
 .trd-sr.five{grid-template-columns:62px 1fr 1fr 1fr 40px}
 .trd-sr.h{font-size:11px;color:var(--ink-3)}.trd-sr .n{text-align:right}
 .trd-si{width:100%;text-align:right;font-size:14px;padding:5px 6px;min-height:34px}
@@ -2037,7 +2038,13 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <div>
           <div class="card trd-bk">
             <div class="trd-tabs" id="trdBkTabs" role="tablist"><button type="button" data-bt="book" class="on">호가</button><button type="button" data-bt="chart">차트</button><button type="button" data-bt="mem">거래원</button><button type="button" data-bt="inv">투자자</button></div>
-            <div data-bp="book"><div id="trdSes" class="trd-ses"></div><div class="faint" style="font-size:11px;margin:2px 0 6px">호가 클릭 = 매수가 입력</div><div id="trdBook" class="trd-book"></div><div id="trdQp" class="faint" style="font-size:11.5px;margin-top:6px"></div></div>
+            <div data-bp="book"><div id="trdSes" class="trd-ses"></div><div class="faint" style="font-size:11px;margin:2px 0 6px">호가 클릭 = 매수가 입력</div><div id="trdBook" class="trd-book"></div><div id="trdQp" class="faint" style="font-size:11.5px;margin-top:6px"></div>
+              <details class="trd-cn" open><summary>체결강도란? <span id="trdCnNow"></span></summary><div class="trd-cnb">
+                <p><b>정의</b> — 오늘 체결된 주식 중 <b>매수 쪽 체결량이 매도 쪽 체결량의 몇 %</b>인지 보여주는 값입니다. 체결강도 = 매수 체결량 ÷ 매도 체결량 × 100 (당일 누적).</p>
+                <p><b>의미</b> — 100%면 매수·매도 체결이 같고, <b class="up">100%를 넘으면 사려는 쪽이 호가를 올려 체결(매수 우세)</b>, <b class="down">100% 아래면 팔려는 쪽이 호가를 내려 체결(매도 우세)</b>입니다. 보통 120% 이상이면 강한 매수세, 80% 이하면 강한 매도세로 봅니다.</p>
+                <p><b>계산·갱신</b> — 한국투자증권 체결 데이터의 당일 누적 체결강도(KIS 주식체결 ‘체결강도’ 필드)를 그대로 씁니다. 장중에는 체결이 들어올 때마다(웹소켓), 그 전에는 5초마다 받아 온 값으로 갱신합니다. 매수/매도 구분은 체결가가 매도호가에 닿으면 매수, 매수호가에 닿으면 매도로 KIS가 분류한 값입니다.</p>
+                <p style="color:var(--ink-2,var(--ink))">주의 — 하루 누적이라 장 초반엔 값이 크게 흔들리고, 오후로 갈수록 변화가 느려집니다. 가격 방향을 알려주는 신호가 아니라 체결 흐름의 참고 지표이며, 거래량이 적은 종목은 신뢰도가 낮습니다. 실시간 체결 목록의 빨강 = 매수 체결, 파랑 = 매도 체결입니다.</p>
+              </div></details></div>
             <div data-bp="chart" class="hide"><h3 style="margin:0 0 6px">스마트머니 매집·이탈 진단 <span class="r" id="trdSmxSub" style="font-size:11px"></span></h3>
               <div class="qf seg" id="trdSmxWin" style="margin-bottom:8px"><button class="fchip" data-v="63" aria-pressed="false">3개월</button><button class="fchip" data-v="126" aria-pressed="false">6개월</button><button class="fchip" data-v="all" aria-pressed="true">전체</button></div>
               <div id="trdSmxStatus" style="margin-bottom:8px"></div>
@@ -9335,6 +9342,7 @@ function trdRenderBook(){
     h+=`<div class="q a${pk(x.p)}" data-px="${x.p}" style="grid-row:${r};grid-column:1" title="${x.p?trdFmtAmt(x.p*x.q):""}"><i style="width:${w}%"></i>${x.q?N(x.q):""}</div><div class="p a${cc(x.p)}${pk(x.p)}" data-px="${x.p}" style="grid-row:${r};grid-column:2"><span class="${base&&x.p?sgn(x.p-base):""}">${x.p?N(x.p):""}</span>${pp(x.p)}</div>`;});
   bids.forEach((x,i)=>{const r=i+11,w=Math.round(x.q/maxQ*100);
     h+=`<div class="p b${cc(x.p)}${pk(x.p)}" data-px="${x.p}" style="grid-row:${r};grid-column:2"><span class="${base&&x.p?sgn(x.p-base):""}">${x.p?N(x.p):""}</span>${pp(x.p)}</div><div class="q b${pk(x.p)}" data-px="${x.p}" style="grid-row:${r};grid-column:3" title="${x.p?trdFmtAmt(x.p*x.q):""}"><i style="width:${w}%"></i>${x.q?N(x.q):""}</div>`;});
+  trdCnNow();
   const kv=(k,v,c)=>`<div class="kv"><span>${k}</span><b class="${c||""}">${v}</b></div>`;
   h+=`<div class="side" style="grid-row:1 / span 10;grid-column:3">${kv("시가",N(Q.open))}${kv("고가",N(Q.high),"up")}${kv("저가",N(Q.low),"down")}${kv("상한",N(Q.upper),"up")}${kv("하한",N(Q.lower),"down")}${kv("전일",N(Q.prevClose))}</div>`;
   h+=`<div class="side" id="trdTk" style="grid-row:11 / span 10;grid-column:1">${trdTicksHtml()}</div>`;
@@ -9342,6 +9350,12 @@ function trdRenderBook(){
   const empty=!asks.some(x=>x.p>0)&&!bids.some(x=>x.p>0);
   $("#trdBook").innerHTML=(empty?`<div class="trd-wn" style="margin-bottom:6px">호가 데이터가 비어 있습니다 — 이 종목의 거래 세션이 아니거나(위 세션 표시 참고) 시세 출처 응답이 비었습니다. 거래 중인데도 비어 있으면 아래 "시세 출처 점검"을 눌러 보세요.</div>`:"")+
     `<div class="tb">${h}</div><div class="trd-sum"><span>매도 잔량 <b class="down">${N(sqa)}</b> · ${trdFmtAmt(sa)}</span><span>매수 잔량 <b class="up">${N(sqb)}</b> · ${trdFmtAmt(sb)}${sa>0?` (${N(sb/sa,2)}배)`:""}</span></div>`;
+}
+function trdCnNow(){
+  const e=$("#trdCnNow");if(!e)return;const Q=TRD.quote||{},st=TRD.cttr!=null?TRD.cttr:Q.strength;
+  if(st==null){e.textContent="";return;}
+  const t=st>=120?["강한 매수 우세","up"]:st>100?["매수 우세","up"]:st>=80?["매도 우세","down"]:["강한 매도 우세","down"];
+  e.innerHTML=`<span class="${t[1]}" style="font-weight:600">· 지금 ${N(st,1)}% — ${t[0]}</span>`;
 }
 function trdTicksHtml(){
   const Q=TRD.quote||{},st=TRD.cttr!=null?TRD.cttr:Q.strength;
@@ -9356,7 +9370,7 @@ function trdOnTick(m){
   if(m.cttr!=null)TRD.cttr=+m.cttr;
   if(m.tickVol>0){TRD.ticks.unshift({p:+m.price,v:+m.tickVol,s:m.side||null,t:m.time||""});if(TRD.ticks.length>30)TRD.ticks.length=30;}
   if(TRD.tkPaint)return;
-  TRD.tkPaint=setTimeout(()=>{TRD.tkPaint=0;const e=$("#trdTk");if(e)e.innerHTML=trdTicksHtml();trdRenderHead();},300);
+  TRD.tkPaint=setTimeout(()=>{TRD.tkPaint=0;const e=$("#trdTk");if(e)e.innerHTML=trdTicksHtml();trdCnNow();trdRenderHead();},300);
 }
 /* 호가창 탭: 호가 · 차트(매집·이탈 진단) · 거래원 · 투자자 */
 TRD.bk=TRD.bk||"book";TRD.smxWin=TRD.smxWin||"all";
