@@ -2064,6 +2064,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
           <div class="card"><h3>주문 입력</h3>
             <div class="trd-form"><label>주문 유형<select id="trdType"><option value="limit">지정가</option><option value="market">시장가</option></select></label><label>매수가<input id="trdBuy" inputmode="numeric"></label><label>수량(주)<input id="trdQty" inputmode="numeric"></label><label>또는 금액(원)<input id="trdAmt" inputmode="numeric" placeholder="입력하면 수량 자동"></label></div>
             <div class="faint" style="margin:6px 0">매수 금액 <b id="trdBuyAmt" class="num"></b></div><div id="trdOrderW"></div></div>
+        <div class="card"><h3>진입 전 점검표</h3><div id="trdCheck"></div></div>
+        <div class="card"><div id="trdMkt"></div><button type="button" class="btn" id="trdBtn" disabled style="width:100%">매수 주문</button>
+          <div id="trdBtnNote" class="faint" style="margin-top:6px;font-size:12px;text-align:center"></div></div>
         </div>
         <div>
           <div class="card"><h3>추천 매수가 <span class="r faint" id="trdRecAt" style="font-size:11px"></span></h3><div id="trdRec" class="trd-recs"></div>
@@ -2082,9 +2085,6 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <div class="trd-form" style="margin-top:10px"><label>최종 목표가<input id="trdTgtIn" inputmode="numeric"></label><label style="flex:0 1 90px">등분 수(1~5)<input id="trdSplit" inputmode="numeric"></label><button type="button" class="btn" id="trdTpSet" style="align-self:flex-end;flex:0 0 auto">익절 설정</button></div>
         <div id="trdSteps" style="margin-top:10px"></div><div id="trdCalc" style="margin-top:10px"></div></div>
       <div class="card"><h3>자동 매도 목록 <span class="r faint" style="font-size:11px">주문할 때 이 목록이 자동 매도 조건으로 함께 전송됩니다</span></h3><div id="trdAuto"></div></div>
-      <div class="card"><h3>진입 전 점검표</h3><div id="trdCheck"></div></div>
-      <div class="card"><div id="trdMkt"></div><button type="button" class="btn" id="trdBtn" disabled style="width:100%">매수 주문</button>
-        <div id="trdBtnNote" class="faint" style="margin-top:6px;font-size:12px;text-align:center"></div></div>
       <button type="button" class="btn ghost" id="trdDetBtn" style="width:100%;margin:0 0 10px">종목 상세 펼치기 ▾</button>
       <div id="trdDetail"></div>
     </div>
