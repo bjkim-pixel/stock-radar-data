@@ -2668,10 +2668,11 @@ function ensureLiveConn(){
   S.liveWs=ws;
   ws.onopen=()=>{
     S.liveReconnectDelay=2000;
-    if(S.liveSubscribed.size) ws.send(JSON.stringify({type:"subscribe",codes:[...S.liveSubscribed]}));
+    if(S.liveSubscribed.size){ws.send(JSON.stringify({type:"subscribe",codes:[...S.liveSubscribed]}));liveSendPrio();}
   };
   ws.onmessage=(e)=>{
     let m; try{m=JSON.parse(e.data);}catch(_){return;}
+    if(m.type==="subStatus"){S.subPolled=new Set(m.polled||[]);return;}
     if(m.type!=="price"||!m.code) return;
     S.livePrices[m.code]=m;
     updateLiveCell(m.code,m);
@@ -2694,20 +2695,35 @@ function ensureLiveConn(){
 // 구독 종목이 다르지만 KIS 웹소켓 연결은 하나만 씀. 두 탭을 동시에 열어봐도
 // 서로의 구독을 덮어쓰지 않도록, 원하는 코드 집합을 따로 들고 있다가
 // 합집합으로만 실제 구독을 갱신한다.
+// 2026-11-13 구독 관리: ① 브라우저 탭이 숨겨지면 전부 해지(보이는 화면만 구독) ② 릴레이에 우선순위 전송
+// — 매매 화면 종목(hi) → 지금 보는 화면(화면 순위순) → 나머지. 릴레이는 한도(36) 안에서 배분하고 넘친 종목은 멀티시세 폴링으로 보내준다.
+function liveWantOrdered(){
+  if(document.hidden)return [];
+  const g={trade:S.trdWanted,live:S.liveTopWanted,fav:S.favWanted,sw:S.swLiveWanted,perf:S.swingWanted,perf2:S.sangttaWanted};
+  const seq=[S.trdWanted,g[S.curTab],S.liveTopWanted,S.favWanted,S.swLiveWanted,S.swingWanted,S.sangttaWanted];
+  const out=[],seen=new Set();seq.forEach(x=>{if(x)for(const c of x)if(!seen.has(c)){seen.add(c);out.push(c);}});
+  return out;
+}
+function liveSendPrio(){
+  const ws=S.liveWs;if(!ws||ws.readyState!==1)return;
+  try{ws.send(JSON.stringify({type:"prio",codes:[...S.liveSubscribed],hi:[...(S.trdWanted||[])]}));}catch(_){}
+}
+document.addEventListener("visibilitychange",()=>reconcileLiveSubscription());
 function reconcileLiveSubscription(){
-  const want=new Set([...S.swingWanted,...S.sangttaWanted,...S.favWanted,...(S.swLiveWanted||[]),...(S.liveTopWanted||[]),...(S.trdWanted||[])]);
+  const want=new Set(liveWantOrdered());
   const cur=S.liveSubscribed;
   const toAdd=[...want].filter(c=>!cur.has(c));
   const toRemove=[...cur].filter(c=>!want.has(c));
   S.liveSubscribed=want;
   toRemove.forEach(c=>{delete S.livePrices[c]; delete S.i2Live[c];});
-  if(!toAdd.length && !toRemove.length) return;
+  if(!toAdd.length && !toRemove.length){liveSendPrio();return;}
   ensureLiveConn();
   const ws=S.liveWs;
   if(ws && ws.readyState===1){
     if(toRemove.length) ws.send(JSON.stringify({type:"unsubscribe",codes:toRemove}));
     if(toAdd.length) ws.send(JSON.stringify({type:"subscribe",codes:toAdd}));
   }
+  liveSendPrio();
   // 아직 연결 전이면 onopen 핸들러가 S.liveSubscribed 전체를 구독 요청함
 }
 function setSwingLiveCodes(codes){ S.swingWanted=new Set(codes); reconcileLiveSubscription(); }
@@ -2909,7 +2925,7 @@ function liveRender(){
   $("#liveBody").innerHTML=top.map((x,i)=>{
     const d=oldRank[x.code]?oldRank[x.code]-(i+1):null,mins=Math.floor((now-(L.since[x.code]||now))/60000);
     return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--${L.side==="down"?"down":"up"}) 8%,transparent)"':""}><td>${i+1}</td><td class="l"><input type="checkbox" class="tchk" data-tc="${x.code}" title="매매로 보낼 종목 선택"${TSEL.has(x.code)?" checked":""}> ${mt(x.code)}${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)}${nxTag(x.code)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':x.changePct<=-29?' <span class="tg">하한가권</span>':""}</td>
-      <td class="num ${sgn(x.changePct)}">${N(x.price,0)}${x.liveAt&&now-x.liveAt<15000?' <span class="up" title="KIS 실시간 체결가">●</span>':""}</td><td class="num ${x.open>0?sgn(x.price-x.open):"dim"}" title="${x.open>0?"시가 "+N(x.open,0):""}">${x.open>0?pm((x.price/x.open-1)*100,2)+"%":"–"}</td>
+      <td class="num ${sgn(x.changePct)}">${N(x.price,0)}${x.liveAt&&now-x.liveAt<15000?(S.subPolled&&S.subPolled.has(x.code)?' <span class="faint" title="구독 한도 초과 — 멀티시세 7초 폴링">○</span>':' <span class="up" title="KIS 실시간 체결가">●</span>'):""}</td><td class="num ${x.open>0?sgn(x.price-x.open):"dim"}" title="${x.open>0?"시가 "+N(x.open,0):""}">${x.open>0?pm((x.price/x.open-1)*100,2)+"%":"–"}</td>
       <td class="num ${sgn(x.changePct)}">${pm(x.changePct,2)}%</td>
       <td class="num">${x.shares?fmtCap(x.shares*x.price):"–"}</td><td class="num">${x.amt?N(x.amt/1e8,0)+"억":"–"}</td><td class="num lvflow" data-flow="${x.code}" data-w="f">${L.min?"–":""}</td><td class="num lvflow" data-flow="${x.code}" data-w="o">${L.min?"–":""}</td><td class="num">${x.vol?N(x.vol/1e4,0)+"만":"–"}</td><td class="dim">${mins<1?"방금":mins+"분"}</td>
       <td class="${d>0?"up":d<0?"down":"dim"}">${d==null?(Object.keys(oldRank).length?"신규":"–"):d>0?"▲"+d:d<0?"▼"+(-d):"–"}</td>
@@ -3585,6 +3601,8 @@ function go(v,detailCode){
   if(S.curTab==='fav'&&v!=='fav'&&S.favWanted.size)setFavLiveCodes([]);
   if(S.curTab==='sw'&&v!=='sw'&&S.swLiveWanted&&S.swLiveWanted.size)setSwLiveCodes([]);
   if(S.curTab==='live'&&v!=='live')liveStop();
+  if(S.curTab==='perf'&&v!=='perf'&&S.swingWanted.size)setSwingLiveCodes([]);       // 2026-11-13: 보이는 화면만 구독
+  if(S.curTab==='perf2'&&v!=='perf2'&&S.sangttaWanted.size)setSangttaLiveCodes([]);
   if(S.curTab==='trade'&&v!=='trade'){trdStop();trdDetailDetach();}
   S.curTab=v;
   if(!S._keepBack)S.backAI=false;

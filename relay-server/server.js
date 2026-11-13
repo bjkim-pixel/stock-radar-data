@@ -88,6 +88,10 @@ let reconnectAttempt = 0;
 
 const subscribers = new Map();   // code -> Set(clientWs) : 프론트엔드가 요청한 구독
 const lastPrice = new Map();     // code -> 마지막 시세 (신규 구독 시 즉시 전달용)
+const { allocate: allocateSubs, pollWindowOpen, multiRowToPayload } = require('./subs');
+const wsClients = new Set();     // 접속 중인 프론트 웹소켓(구독 우선순위 배분용)
+let _subAlloc = { ws: new Set(), polled: new Set(), order: [] };   // 마지막 배분 결과(/sub-status 표시용)
+const _subPoll = { at: 0, n: 0, err: null };
 const currentKisSubs = new Set(); // 지금 KIS에 실제로 등록해둔 코드(H0STCNT0, 체결가)
 const currentProgramTradeSubs = new Set(); // 지금 KIS에 실제로 등록해둔 코드(H0STPGM0, 프로그램매매)
 
@@ -180,28 +184,54 @@ const KIS_SUB_SLOT_LIMIT = 36;
 // 청산 판단이 필요하므로 시세·프로그램매매 구독을 유지한다. 재개: Render 환경변수 SANGTTA_LIVE_PAUSED=0.
 const SANGTTA_LIVE_PAUSED = process.env.SANGTTA_LIVE_PAUSED !== '0';
 const KIS_PROGRAM_SUB_RESERVE = 8;   // 여유가 있을 때 프로그램매매용으로 남겨두는 슬롯
+// 2026-11-13: 상따·전략성과 보유 종목은 구독 대상에서 제외(사용자 요청 — 실시간 시세는 프론트가 보는 화면에만 쓴다).
+// 프론트 요청 종목을 우선순위(매매 화면 → 최근 활동 접속 → 화면 순위)로 한도 안에서 배분하고, 넘친 종목은 REST 폴링으로 대체한다.
 let _subTrimLoggedAt = 0;
 function wantedCodes() {
-  const w = new Set();
-  for (const code of sangttaOpenPositions.keys()) w.add(code); // 청산 판단 — 절대 양보 불가
-  for (const code of heldCodes) w.add(code);                   // 전략성과(VIRTUAL) 보유분
-  for (const code of subscribers.keys()) w.add(code);          // 프론트가 보고 있는 종목
-  const mandatory = w.size;
-  const budget = Math.max(mandatory, KIS_SUB_SLOT_LIMIT - KIS_PROGRAM_SUB_RESERVE);
-  let trimmed = 0;
-  for (const code of (SANGTTA_LIVE_PAUSED ? [] : sangttaCandidates)) {  // 모멘텀 순위 순서대로 들어있음
-    if (w.size >= budget) { trimmed++; continue; }
-    w.add(code);
-  }
-  if (trimmed) {
+  const list = [...wsClients].map(c => ({ codes: c.subscribedCodes, hi: c.subHi || new Set(), rank: c.subRank || new Map(), lastActive: c.lastActive || 0 }));
+  _subAlloc = allocateSubs(list, KIS_SUB_SLOT_LIMIT);
+  if (_subAlloc.polled.size) {
     const nowMs = Date.now();
     if (nowMs - _subTrimLoggedAt > 5 * 60 * 1000) {
       _subTrimLoggedAt = nowMs;
-      console.warn(`[구독] 슬롯 예산으로 후순위 후보 ${trimmed}종목 제외 — 시세 ${w.size}(필수 ${mandatory}) / 한도 ${KIS_SUB_SLOT_LIMIT}`);
+      console.warn(`[구독] 한도 초과 ${_subAlloc.polled.size}종목은 멀티시세 폴링으로 대체 — 실시간 ${_subAlloc.ws.size} / 한도 ${KIS_SUB_SLOT_LIMIT}`);
     }
   }
-  return w;
+  return _subAlloc.ws;
 }
+// 각 접속에 "실시간(웹소켓) / 폴링" 구분을 알려준다 — 바뀐 경우에만 보냄
+function notifySubStatus() {
+  for (const c of wsClients) {
+    if (c.readyState !== WebSocket.OPEN) continue;
+    const live = [], polled = [];
+    for (const code of c.subscribedCodes) (kisWsReady && currentKisSubs.has(code) ? live : polled).push(code);
+    const msg = JSON.stringify({ type: 'subStatus', live, polled });
+    if (c._subStat === msg) continue;
+    c._subStat = msg;
+    try { c.send(msg); } catch (_) {}
+  }
+}
+// 넘친 종목(또는 KIS 웹소켓이 끊긴 동안 전체)을 멀티시세로 7초마다 조회해 같은 price 메시지로 내려보낸다
+const SUB_POLL_MS = 7000, SUB_POLL_MAX = 90;   // 멀티시세 1회 30종목 → 최대 3회/7초
+async function pollOverflowQuotes() {
+  if (!pollWindowOpen()) return;
+  const req = new Set(); for (const c of wsClients) for (const code of c.subscribedCodes) req.add(code);
+  const codes = [...req].filter(code => !(kisWsReady && currentKisSubs.has(code))).slice(0, SUB_POLL_MAX);
+  if (!codes.length) return;
+  try {
+    for (let i = 0; i < codes.length; i += 30) {
+      const out = await fetchMultiPrice(codes.slice(i, i + 30));
+      for (const o of out) {
+        const p = multiRowToPayload(o, v => safeNum(v, null));
+        if (!p || (kisWsReady && currentKisSubs.has(p.code))) continue;
+        lastPrice.set(p.code, p);
+        broadcastToSubscribers(p.code, p);
+      }
+    }
+    _subPoll.at = Date.now(); _subPoll.n = codes.length; _subPoll.err = null;
+  } catch (e) { _subPoll.err = e.message; }
+}
+setInterval(() => { pollOverflowQuotes().catch(() => {}); }, SUB_POLL_MS);
 
 // 실제 사용 중인 슬롯을 주기적으로 확인 — wantedCodes()의 예산이 제대로
 // 동작하는지(그리고 한도가 41이 맞는지) 로그로 검증할 수 있게 남겨둔다.
@@ -233,6 +263,7 @@ function reconcileKisSubscriptions() {
     }
   }
   warnIfSubSlotsTight();
+  notifySubStatus();
 }
 
 function connectKisWs() {
@@ -255,6 +286,7 @@ function connectKisWs() {
 
   kisWs.on('close', (code, reason) => {
     kisWsReady = false;
+    notifySubStatus();   // 끊긴 동안은 전 종목 폴링으로 대체된다는 것을 화면에 알림
     console.warn(`[KIS WS] 연결 종료 (code=${code}, reason=${reason}) — 재연결 예약`);
     scheduleReconnect();
   });
@@ -333,7 +365,8 @@ const SANGTTA_PROGRAM_SUB_TOP_N = 8;
 function programTradeWantedCodes() {
   // 시세 구독을 먼저 확정하고 "남은 슬롯"만 쓴다 — 프로그램매매는 등급 보너스와
   // 반전 선제청산에만 쓰이므로, 없으면 아쉬운 정도지 판정이 불가능해지진 않는다.
-  const budget = Math.max(0, KIS_SUB_SLOT_LIMIT - wantedCodes().size);
+  // 2026-11-13: 보유 종목 구독 제외 방침에 따라 프로그램매매(H0STPGM0) 구독도 하지 않는다(슬롯은 전부 프론트 화면 시세에 배분).
+  const budget = 0;
   const w = new Set();
   for (const code of sangttaOpenPositions.keys()) { // 보유 종목 우선
     if (w.size >= budget) break;
@@ -3228,6 +3261,27 @@ function refreshLiveTop(min, side = 'up') {
   _liveBusy.set(key, pr);
   return pr;
 }
+/* ── 구독 현황 모니터링(2026-11-13): 슬롯 사용량 · 실시간/폴링 종목 · 접속 수 ── */
+function handleSubStatus(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path !== '/sub-status') return false;
+  accessCors(req, res, 'GET, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const reqCnt = new Map();
+  for (const c of wsClients) for (const code of c.subscribedCodes) reqCnt.set(code, (reqCnt.get(code) || 0) + 1);
+  const hi = new Set(_subAlloc.order.filter(o => o.hi).map(o => o.code));
+  const row = code => ({ code, clients: reqCnt.get(code) || 0, hi: hi.has(code) });
+  res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify({
+    ok: true, ts: Date.now(), kisWsReady, limit: KIS_SUB_SLOT_LIMIT, kisHardLimit: 41,
+    used: currentKisSubs.size + currentProgramTradeSubs.size, price: currentKisSubs.size, program: currentProgramTradeSubs.size,
+    clients: wsClients.size, requested: reqCnt.size,
+    live: [...currentKisSubs].map(row), polled: [..._subAlloc.polled].map(row),
+    poll: { intervalMs: SUB_POLL_MS, windowOpen: pollWindowOpen(), lastAt: _subPoll.at || null, lastCount: _subPoll.n, err: _subPoll.err },
+  }));
+  return true;
+}
+
 function handleLiveTop(req, res) {
   const path = (req.url || '').split('?')[0];
   if (path !== '/live-top') return false;
@@ -3470,7 +3524,7 @@ const trade = require('./trade').createTrade({
 
 const server = http.createServer((req, res) => {
   if (trade.handle(req, res)) return;
-  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res) || handleLiveMarket(req, res) || handleStockInfo(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleSubStatus(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res) || handleLiveMarket(req, res) || handleStockInfo(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;
@@ -3612,10 +3666,20 @@ wss.on('connection', (client, req) => {
   }
 
   client.subscribedCodes = new Set();
+  client.lastActive = Date.now();
+  wsClients.add(client);
 
   client.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString('utf-8')); } catch (_) { return; }
+    client.lastActive = Date.now();
+    // 2026-11-13: 구독 우선순위 — codes는 화면 순위대로, hi는 매매 화면처럼 꼭 실시간이어야 하는 종목
+    if (msg.type === 'prio' && Array.isArray(msg.codes)) {
+      client.subRank = new Map(msg.codes.filter(c => typeof c === 'string').slice(0, 200).map((c, i) => [c, i]));
+      client.subHi = new Set((Array.isArray(msg.hi) ? msg.hi : []).filter(c => typeof c === 'string').slice(0, 5));
+      reconcileKisSubscriptions();
+      return;
+    }
 
     if (msg.type === 'subscribe' && Array.isArray(msg.codes)) {
       for (const code of msg.codes) {
@@ -3630,7 +3694,9 @@ wss.on('connection', (client, req) => {
   });
 
   client.on('close', () => {
+    wsClients.delete(client);
     for (const code of [...client.subscribedCodes]) removeSubscription(client, code);
+    reconcileKisSubscriptions();
   });
 });
 
