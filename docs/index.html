@@ -911,6 +911,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .trd-pfpick{border:1px dashed var(--border);border-radius:8px;padding:8px;margin-bottom:8px;font-size:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .trd-form{display:flex;gap:10px;flex-wrap:wrap}.trd-form label{display:flex;flex-direction:column;font-size:12px;color:var(--ink-3);gap:3px;flex:1 1 130px}
 .trd-form input{font-size:16px;padding:7px 8px;min-height:40px}
+.btn.trd-act{display:block;margin-top:8px;transition:transform .12s,background .2s,box-shadow .2s;-webkit-tap-highlight-color:transparent}
+.btn.trd-act:active{transform:scale(.95);box-shadow:inset 0 2px 6px rgba(0,0,0,.35)}
+.btn.trd-act.done{background:var(--up);color:#fff;animation:trdPop .35s}
+@keyframes trdPop{0%{transform:scale(.94)}60%{transform:scale(1.04)}100%{transform:scale(1)}}
 .trd-chips{display:flex;gap:6px;flex-wrap:wrap}
 .trd-sr{display:grid;grid-template-columns:36px 1fr 1fr 1.2fr;gap:6px;align-items:center;font-size:12.5px;padding:3px 0}
 .trd-ses{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;margin:-2px 0 8px}.trd-ses .tag{padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink);font-weight:700;border:1px solid var(--border)}.trd-ses .tag.off{color:var(--down)}
@@ -2080,9 +2084,12 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <div class="legend"><span><i style="background:var(--up)"></i>순매수 구간</span></div>
         <div class="chart" id="trdPfC"></div><div id="trdPfCTop"></div></div>
       <div class="card"><h3>자동 매도 설정</h3><div id="trdAutoMode"></div>
-        <div class="trd-form"><label>손절 %<input id="trdStopPct" inputmode="decimal"></label><button type="button" class="btn" id="trdStopSet" style="align-self:flex-end;flex:0 0 auto">손절 설정</button></div>
+        <div class="trd-form"><label>손절 %<input id="trdStopPct" inputmode="decimal"></label></div>
         <div id="trdStopTx" style="margin:6px 0"></div><div id="trdRefs" class="trd-chips"></div>
-        <div class="trd-form" style="margin-top:10px"><label>최종 목표가<input id="trdTgtIn" inputmode="numeric"></label><label style="flex:0 1 90px">등분 수(1~5)<input id="trdSplit" inputmode="numeric"></label><label style="flex:0 1 96px">트레일링 %<input id="trdTrail" inputmode="decimal"></label><button type="button" class="btn" id="trdTpSet" style="align-self:flex-end;flex:0 0 auto">익절 설정</button></div>
+        <button type="button" class="btn trd-act" id="trdStopSet">손절 설정</button>
+        <div class="trd-form" style="margin-top:14px"><label>최종 목표가<input id="trdTgtIn" inputmode="numeric"></label><label style="flex:0 1 90px">등분 수(1~5)<input id="trdSplit" inputmode="numeric"></label><label style="flex:0 1 96px">트레일링 %<input id="trdTrail" inputmode="decimal"></label></div>
+        <div id="trdTgtEst" style="margin:6px 0"></div>
+        <button type="button" class="btn trd-act" id="trdTpSet">익절 설정</button>
         <div class="faint" style="font-size:11.5px;margin-top:6px">익절은 주문을 미리 걸지 않고 감시합니다 — 현재가가 익절가에 닿으면 감시를 시작하고, 그 뒤 고점 대비 트레일링 %만큼 내려오면 그 단계 수량을 매도합니다(정규장 시장가 · 시간외 지정가). 손절은 손절가에 닿으면 남은 수량 전부 매도.</div><div id="trdSteps" style="margin-top:10px"></div><div id="trdCalc" style="margin-top:10px"></div></div>
       <div class="card"><h3>자동 매도 목록</h3><div id="trdAutoHd"></div><div id="trdAuto"></div></div>
       <button type="button" class="btn ghost" id="trdDetBtn" style="width:100%;margin:0 0 10px">종목 상세 펼치기 ▾</button>
@@ -9779,6 +9786,8 @@ function trdRenderPlan(){
   $("#trdSteps").innerHTML=steps.length?`<div class="faint" style="font-size:12px;margin-bottom:4px">미리보기 — ${h?"평균가":"매수가"} ${N(buy,0)}원 → 목표가 ${N(TRD.target)}원 ${split}등분 · "익절 설정"을 누르면 아래 자동 매도 목록에 들어갑니다</div><div class="trd-sr h"><span>단계</span><span class="n">매도가</span><span class="n">수량</span><span class="n">예상 손익</span></div>`+
     steps.map(x=>`<div class="trd-sr"${x.q?"":' style="opacity:.45"'}><span class="faint">${x.n}</span><span class="n">${N(x.p)}</span><span class="n">${x.q?N(x.q):"–"}</span><span class="n ${x.q?"up":"dim"}">${x.q?N((x.p-buy)*x.q):"–"}</span></div>`).join("")+(plan.note?`<div class="faint" style="font-size:11.5px;margin-top:4px">${trdEsc(plan.note)}</div>`:"")
     :`<div class="faint" style="font-size:12px">${TRD.target?trdEsc(plan.note||""):"최종 목표가를 입력하면 단계별 익절가가 계산됩니다"}</div>`;
+  {const E=$("#trdTgtEst");if(E){const sq=steps.reduce((a,x)=>a+(x.q||0),0),pr=steps.reduce((a,x)=>a+(x.p-buy)*(x.q||0),0);
+    E.innerHTML=TRD.target>0&&buy>0&&sq>0?`예상 수익 <b class="up">+${N(Math.round(pr))}원</b> (예상 수익률 <b class="up">${N(pr/(buy*sq)*100,1)}%</b>) · 전 단계 매도 시, 수수료·세금 전`:"";}}
   const c=trdCalc({buy,qty,stop,steps});
   $("#trdCalc").innerHTML=buy>0&&qty>0?`<div class="trd-kv"><span>손절 시 예상 손실</span><b class="down">${N(c.loss)}원 (${N(c.lossPct,1)}%)</b><span>목표 달성 시 이익</span><b class="up">+${N(c.profit)}원</b><span>손익비</span><b>${c.ratio==null?"–":N(c.ratio,1)+" : 1"} ${c.weak?'<span class="trd-w">2:1 미만</span>':""}</b></div><div class="faint" style="font-size:11px;margin-top:4px">표시 손익은 수수료·세금 차감 전 금액입니다.</div>`:"";
   // 자동 매도 목록
@@ -9931,6 +9940,10 @@ document.addEventListener("click",e=>{
   const s=t.closest(".tcsend");if(s){e.preventDefault();e.stopPropagation();tcSend([s.dataset.tcs]);}
 },true);
 
+document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("#trdStopSet,#trdTpSet");if(!b)return;
+  const ok=b.id==="trdStopSet"?(trdHeld()||TRD.buy>0):!!(TRD.plan&&TRD.plan.steps.some(x=>x.q>0));if(!ok)return;
+  const t0=b.dataset.t0||b.textContent;b.dataset.t0=t0;b.classList.remove("done");void b.offsetWidth;b.classList.add("done");b.textContent="✓ 설정 완료";
+  clearTimeout(b._tm);b._tm=setTimeout(()=>{b.classList.remove("done");b.textContent=t0;},1400);});
 const VIEW_IDS=["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","traderl","trplan","trhold"];
 function setHash(v,code){
   const h="#"+v+(code?"/"+code:"");
