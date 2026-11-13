@@ -21,6 +21,7 @@ const SLOTS = [['pre', 8 * 60 + 5], ['open', 9 * 60], ['noon', 12 * 60], ['close
 const SNAP_WINDOW = 10, KEEP_DAYS = 14;
 const { T } = SES;
 const rnd = () => Math.random().toString(36).slice(2, 6);
+const TR = require('./trail');
 const isTp = o => /^tp[1-5]$/.test(String(o.reason || ''));
 
 /* 익절 단계 수량 배분(순수 함수).
@@ -52,6 +53,7 @@ function createPaper(deps) {
   const now = deps.now || Date.now;
   const fees = deps.fees || { buy: 0, sell: 0 };
   const STOP_TICKS = deps.stopTicks || 5, STOP_RETRY_MS = (deps.stopRetrySec || 20) * 1000;   // 시간외 손절 지정가: 매수 1호가 n호가 아래 · 다 안 팔리면 다시 내는 간격
+  const TRAIL_PCT = deps.tpTrail || 2;   // 트레일링 익절 기본 폭(%) — 계획에 trail 이 없을 때
   const route = (ses) => (ses.venue === 'SOR' && deps.noSor) ? (ses.name === 'regular' ? 'KRX' : 'NXT') : ses.venue;   // % — 기본 0(수수료·세금 무시), 체결 행에 fee 를 따로 저장해 나중에 재계산 가능
   const orders = new Map(), positions = new Map(), lastPx = new Map();
   let fills = [];                                   // 오늘 체결(최신이 앞)
@@ -208,7 +210,7 @@ function createPaper(deps) {
           plan.steps = (plan.steps || []).map(s => ({ ...s, sold: 0 }));
         }
         if (plan && o.side === 'sell' && isTp(o)) { const st = (plan.steps || []).find(s => 'tp' + s.n === o.reason); if (st) st.sold = (st.sold || 0) + f.q; }
-        const np = { code: o.code, name: o.name || (pos && pos.name), qty: r.pos.qty, avg: r.pos.avg, openedAt: pos ? pos.openedAt : now(), updatedAt: now(), plan, lowSeen: pos ? pos.lowSeen : null };
+        const np = { code: o.code, name: o.name || (pos && pos.name), qty: r.pos.qty, avg: r.pos.avg, openedAt: pos ? pos.openedAt : now(), updatedAt: now(), plan, lowSeen: pos ? pos.lowSeen : null, highSeen: pos ? pos.highSeen : null };
         positions.set(o.code, np); dirty.pos.set(o.code, np);
       } else { positions.delete(o.code); dirty.pos.set(o.code, null); }
     }
@@ -246,7 +248,7 @@ function createPaper(deps) {
       .filter(s => s.n && s.p && s.q && E.validTick(s.p)) : [];
     const seen = new Set(), uniq = steps.filter(s => !seen.has(s.n) && seen.add(s.n));
     const stop = num(p.stop, 1, 1e8);
-    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop && E.validTick(stop) ? stop : (stop ? E.floorTick(stop) : null), target: num(p.target, 1, 1e8), steps: uniq };
+    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop && E.validTick(stop) ? stop : (stop ? E.floorTick(stop) : null), target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq };
   }
   async function place(body) {
     if (!(await init())) return bad(503, missing ? 'paper tables missing' : 'paper store unavailable');
@@ -323,7 +325,7 @@ function createPaper(deps) {
       // 단계 수량은 비중 — 실제 걸 수량은 allocSteps 가 매도 가능 수량 전체를 이 비중대로 나눔(단계를 지우면 남은 단계가 그 수량을 나눠 가짐)
       if (p.steps.some(s => s.p <= pos.avg * 0.5)) return bad(400, '익절 가격이 너무 낮습니다');
       for (const o of openFor(code, o => o.side === 'sell' && isTp(o))) cancelOrder(o, 'plan_edit');
-      pos.plan = noStop && !p.steps.length ? null : { ...p, steps: p.steps.map(s => ({ ...s, sold: 0 })), orderId: pos.plan && pos.plan.orderId || null, stopped: false };
+      pos.plan = noStop && !p.steps.length ? null : { ...p, steps: TR.keepTrail(pos.plan && pos.plan.steps, p.steps.map(s => ({ ...s, sold: 0 }))), orderId: pos.plan && pos.plan.orderId || null, stopped: false };
       pos.updatedAt = now(); dirty.pos.set(code, pos);
       await flush();
       event('plan_edit', code, { stop: stopOf(pos), steps: p.steps.length });
@@ -366,23 +368,39 @@ function createPaper(deps) {
     snap('fill', code, q, r.order.id);
     return true;
   }
+  /* 익절(트레일링, 2026-11-13): 주문을 미리 걸지 않고 감시 — 익절가 도달 후 고점 대비 trail% 내리면 그 단계 수량을 매도 */
   async function syncTp(code, q) {
     const pos = positions.get(code), tps = openFor(code, o => o.side === 'sell' && isTp(o));
     if (!pos || !pos.plan || pos.plan.stopped || !(pos.plan.steps || []).length) { for (const o of tps) cancelOrder(o, 'no_plan'); return; }
-    const venue = SES.restVenue(kst().min, q.info);
-    if (!venue) return;                                                       // 지금 익절을 받을 거래소가 없음(NXT 종목의 15:20~15:30 등) — 걸린 주문은 그대로
+    const prevHi = pos.highSeen, newHigh = q.high > 0 && prevHi != null && q.high > prevHi ? q.high : 0;
+    if (q.high > 0) pos.highSeen = prevHi == null ? q.high : Math.max(prevHi, q.high);
+    for (const o of tps) if (o.note !== 'trail') cancelOrder(o, 'to_trail');                  // 예전 방식(미리 걸어 둔 지정가) 익절 주문 정리
+    const ses = SES.sessionOf(kst().min, q.info);
+    if (!ses.open) return;
+    const trail = pos.plan.trail > 0 ? pos.plan.trail : TRAIL_PCT;
     const avail = pos.qty - remainOf(openFor(code, o => o.side === 'sell' && !isTp(o)));
     const want = allocSteps(pos.plan.steps, avail);
-    for (const st of pos.plan.steps) {
-      const mine = tps.filter(o => o.reason === 'tp' + st.n), w = want[st.n] || 0;
-      if (mine.length === 1 && mine[0].price === st.p && mine[0].qty - mine[0].filled === w && (mine[0].venue || 'KRX') === venue) continue;   // 그대로 유지(대기 순서 보존)
-      for (const o of mine) cancelOrder(o, 'resync');
-      if (w > 0) {
-        const r = await createOrder({ code, name: pos.name, side: 'sell', type: 'limit', price: st.p, qty: w, reason: 'tp' + st.n, q, venue, note: reopen.has(code) ? 'reopen' : null });
-        if (!r.ok) { notify(`익절 ${st.n}단계 주문을 걸지 못했습니다(${r.error}): ${pos.name || code}`, `tpfail|${code}|${st.n}`); continue; }
-        if (r.fills.length) event('tp', code, { step: st.n, qty: r.fills.reduce((a, f) => a + f.qty, 0), price: st.p, immediate: true });
-      }
+    let changed = false;
+    for (const st of pos.plan.steps.slice().sort((a, b) => a.n - b.n)) {
+      const w = want[st.n] || 0;
+      if (w <= 0) continue;
+      const u = TR.trailUpdate(st, q.price, newHigh, trail);
+      if (u.changed) changed = true;
+      if (u.armedNow) { event('tp_arm', code, { step: st.n, price: q.price, tp: st.p, trail }); notify(`익절 ${st.n}단계 감시 시작: ${pos.name || code} 익절가 ${st.p.toLocaleString('ko-KR')}원 도달 — 고점 대비 -${trail}%에서 매도`, `tparm|${code}|${st.n}`); }
+      if (!u.fire) continue;
+      const my = openFor(code, o => o.side === 'sell' && o.reason === 'tp' + st.n);
+      if (my.length) { if (my.some(o => now() - o.createdAt < STOP_RETRY_MS)) continue; for (const o of my) cancelOrder(o, 'tp_retry'); }
+      if (q.vi) { notify(`익절 조건이지만 VI 발동 중이라 대기합니다: ${pos.name || code}`, 'vi|' + code); continue; }
+      const type = ses.market ? 'market' : 'limit', price = ses.market ? null : SES.stopLimitPrice(q, STOP_TICKS, E.tickOf, E.floorTick);
+      const r = await createOrder({ code, name: pos.name, side: 'sell', type, price, qty: w, reason: 'tp' + st.n, q, ref: st.p, venue: route(ses), note: 'trail' });
+      if (!r.ok) { notify(`익절 ${st.n}단계 매도 실패(${r.error}) — 다음 주기에 다시 시도: ${pos.name || code}`, `tpfail|${code}|${st.n}`); continue; }
+      const s = E.summarize(r.fills.map(f => ({ p: f.price, q: f.qty }))), pl = r.fills.reduce((a, f) => a + (f.realized || 0), 0);
+      if (!my.length) event('tp', code, { step: st.n, qty: s.qty, price: s.avg || price, peak: st.peak, trail, type });
+      if (s.qty) notify(`익절 ${st.n}단계(트레일링): ${pos.name || code} ${s.qty}주 평균 ${Math.round(s.avg).toLocaleString('ko-KR')}원 · 고점 ${Math.round(st.peak).toLocaleString('ko-KR')}원 (손익 ${Math.round(pl).toLocaleString('ko-KR')}원)`);
+      if (s.qty < w) notify(`익절 지정가 대기(${ses.label}): ${pos.name || code} ${w - s.qty}주 — ${Math.round(STOP_RETRY_MS / 1000)}초 안에 안 팔리면 다시 냅니다`, `tpwait|${code}|${st.n}`);
+      snap('fill', code, q, r.order.id);
     }
+    const cur = positions.get(code); if (changed && cur) dirty.pos.set(code, cur);
     reopen.delete(code);
   }
   /* 소멸: 지난 날짜 주문 · 20:00 이 지난 오늘 주문 · 15:30 이 지난 KRX 정규장 주문(KRX 는 애프터마켓으로 이어지지 않음) */

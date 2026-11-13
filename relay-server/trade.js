@@ -393,7 +393,7 @@ function createTrade(deps = {}) {
   }
 
   /* 8단계(시간외) 공통 설정: 손절 지정가 호가 수·재주문 간격, SOR 대신 거래소 직접 지정(TRADE_NO_SOR=1) */
-  const extOpts = { stopTicks: Math.round(numEnv(env.STOP_LIMIT_TICKS, 5)), stopRetrySec: numEnv(env.STOP_RETRY_SEC, 20), noSor: env.TRADE_NO_SOR === '1' };
+  const extOpts = { stopTicks: Math.round(numEnv(env.STOP_LIMIT_TICKS, 5)), stopRetrySec: numEnv(env.STOP_RETRY_SEC, 20), noSor: env.TRADE_NO_SOR === '1', tpTrail: numEnv(env.TP_TRAIL_PCT, 2) };
   /* ── 가상매매(자체 체결 시뮬레이터) ── */
   const paper = (deps.sbGet && deps.sbWrite)
     ? createPaper({

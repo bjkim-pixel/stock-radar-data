@@ -40,14 +40,12 @@ test('프리마켓(NXT 종목): 지정가는 NXT 로, 시장가는 KIS 를 부�
   await x.c.close();
 });
 
-test('정규장: NXT 종목 매수는 SOR, 익절은 NXT · KRX 종목은 KRX · 취소는 주문과 같은 거래소', async () => {
+test('정규장: NXT 종목 매수는 SOR, KRX 종목은 KRX · 취소는 주문과 같은 거래소', async () => {
   const x = await setup(at('10:00'));
   await hold(x, '000660'); await hold(x, '005930');
   const buys = posts(x.kx, 'TTTC0012U').map(p => [p.body.PDNO, p.body.EXCG_ID_DVSN_CD]);
   assert.deepEqual(buys, [['000660', 'SOR'], ['005930', 'KRX']]);
-  const tp = code => posts(x.kx, 'TTTC0011U').filter(p => p.body.PDNO === code).map(p => p.body.EXCG_ID_DVSN_CD);
-  assert.deepEqual(tp('000660'), ['NXT', 'NXT']);
-  assert.deepEqual(tp('005930'), ['KRX', 'KRX']);
+  assert.equal(posts(x.kx, 'TTTC0011U').length, 0);                                // 익절은 미리 걸지 않음
   const r = await x.L('order', { code: '000660', side: 'buy', type: 'limit', price: 9000, qty: 1 });
   assert.equal(r.status, 200);
   const c = await x.L('cancel', { id: r.body.order.id });
@@ -72,16 +70,17 @@ test('19:58 남은 미체결 모두 취소 요청 · 새 주문 거부 · 20:05 
   move(x.c, 10000); await x.c.t.live.tick();
   move(x.c, 10000); await x.c.t.live.tick();
   const open = () => rows(x.db).filter(o => ['open', 'partial'].includes(o.status));
-  assert.equal(open().length, 2);                                                  // 애프터마켓 익절 2단계(NXT)
+  assert.equal((await x.L('order', { code: '000660', side: 'sell', type: 'limit', price: 11000, qty: 2 })).status, 200);
+  assert.equal(open().length, 1);
   x.c.st.clock = at('19:58'); await x.c.login();
   const n = await x.L('order', { code: '000660', side: 'buy', type: 'limit', price: 9990, qty: 1 });
   assert.equal(n.status, 409); assert.match(n.body.error, /19:58/);
   await x.c.t.live.tick();
-  assert.equal(posts(x.kx, 'TTTC0013U').length, 2);
-  assert.ok(posts(x.kx, 'TTTC0013U').every(p => p.body.EXCG_ID_DVSN_CD === 'NXT'));
+  assert.equal(posts(x.kx, 'TTTC0013U').length, 1);
+  assert.ok(posts(x.kx, 'TTTC0013U').every(p => p.body.EXCG_ID_DVSN_CD === 'SOR'));
   x.c.st.clock += 5000; await x.c.t.live.tick();                                   // 취소 확인
   assert.equal(open().length, 0);
-  assert.equal(posts(x.kx, 'TTTC0011U').length, 2);                                // 다시 걸지 않음
+  assert.equal(posts(x.kx, 'TTTC0011U').length, 1);                                // 다시 걸지 않음
   x.c.st.clock = at('20:06'); await x.c.t.live.tick();
   assert.ok(x.c.st.alerts.some(a => /마감\(20:00\)/.test(a)));
   await x.c.close();
@@ -93,8 +92,8 @@ test('애프터마켓 손절(NXT 종목): 지정가(매수1호가 5호가 아래
   assert.equal(b.status, 200, JSON.stringify(b.body));
   x.kx.fill([...x.kx.orders.keys()][0], 5, 10010);                                 // 지정가 매수 체결
   move(x.c, 10000); await x.c.t.live.tick();                                      // 체결 대조 + 잔고
-  move(x.c, 10000); await x.c.t.live.tick();                                      // 익절(NXT)
-  assert.equal(posts(x.kx, 'TTTC0011U').length, 2);
+  move(x.c, 10000); await x.c.t.live.tick();
+  assert.equal(posts(x.kx, 'TTTC0011U').length, 0);
   move(x.c, 9750); await x.c.t.live.tick();                                       // 손절가 9800 아래
   const sells = () => posts(x.kx, 'TTTC0011U');
   const st1 = sells().at(-1).body;
@@ -114,19 +113,16 @@ test('애프터마켓 손절(NXT 종목): 지정가(매수1호가 5호가 아래
   await x.c.close();
 });
 
-test('KRX 전용 종목 익절: 15:30 거래소 소멸 → 15:40 정리 → 16:00 KRX 애프터마켓에 다시 냄', async () => {
+test('KRX 전용 종목 트레일링 익절: 애프터마켓(16:00~)에서 발동하면 KRX 지정가(매수 1호가 5호가 아래)', async () => {
   const x = await setup(at('10:00'));
   await hold(x, '005930');
-  assert.equal(posts(x.kx, 'TTTC0011U').length, 2);
-  for (const o of x.kx.orders.values()) if (o.side === 'sell' && o.excg === 'KRX') o.cancelled = true;   // 거래소: KRX 정규장 미체결 소멸
-  x.c.st.clock = at('15:41'); await x.c.t.live.tick();
-  const tps = () => rows(x.db).filter(o => /^tp/.test(o.reason));
-  assert.ok(tps().every(o => o.status === 'cancelled'));
-  x.c.st.clock = at('15:50'); move(x.c, 10000, { step: 0 }); await x.c.t.live.tick();
-  assert.equal(posts(x.kx, 'TTTC0011U').length, 2);                                // 15:40~16:00 KRX 종목은 주문 불가
-  x.c.st.clock = at('16:01'); move(x.c, 10000, { step: 0 }); await x.c.t.live.tick();
-  const again = posts(x.kx, 'TTTC0011U').slice(2).map(p => [p.body.EXCG_ID_DVSN_CD, p.body.ORD_UNPR, p.body.ORD_QTY]);
-  assert.deepEqual(again, [['KRX', '10200', '2'], ['KRX', '10300', '3']]);
-  assert.ok(tps().filter(o => o.status === 'open').every(o => o.note === 'reopen'));
+  assert.equal(posts(x.kx, 'TTTC0011U').length, 0);
+  x.c.st.clock = at('15:50'); move(x.c, 10250, { step: 0 }); await x.c.t.live.tick();   // 15:40~16:00 KRX 종목은 주문 불가 → 감시도 안 함
+  assert.equal(x.db.t.live_plans.get('005930').plan.steps[0].armed, undefined);
+  x.c.st.clock = at('16:01'); move(x.c, 10250, { step: 0 }); await x.c.t.live.tick();
+  assert.equal(x.db.t.live_plans.get('005930').plan.steps[0].armed, true);
+  move(x.c, 10040); await x.c.t.live.tick();
+  const s = posts(x.kx, 'TTTC0011U').map(p => [p.body.EXCG_ID_DVSN_CD, p.body.ORD_DVSN, p.body.ORD_UNPR, p.body.ORD_QTY]);
+  assert.deepEqual(s, [['KRX', '00', '9990', '2']]);
   await x.c.close();
 });

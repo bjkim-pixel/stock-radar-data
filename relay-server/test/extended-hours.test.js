@@ -42,23 +42,18 @@ test('KRX 전용 종목은 프리마켓·빈 시간에 거부, 정규장 SOR/KRX
   await c.close();
 });
 
-test('익절: NXT 종목은 NXT 로 걸려 15:30 이후에도 유지, KRX 종목은 15:30 소멸 → 16:00 KRX 애프터마켓에 재접수', async () => {
+test('트레일링 익절: 애프터마켓에서 발동하면 시장가 대신 지정가(매수 1호가 5호가 아래), 거래소는 세션 기준', async () => {
   const db = fakeDb(), c = await boot(db, { clock: at('10:00') }); await c.login();
   for (const code of ['000660', '005930']) { const r = await c.order({ code, side: 'buy', type: 'market', qty: 10, plan: PLAN }); assert.equal(r.status, 200, JSON.stringify(r.body)); }
   move(c, 10000); await c.t.paper.tick();
-  const venues = code => open(db).filter(o => o.code === code && /^tp/.test(o.reason)).map(o => o.venue);
-  assert.deepEqual(venues('000660'), ['NXT', 'NXT']);
-  assert.deepEqual(venues('005930'), ['KRX', 'KRX']);
-  c.st.clock = at('15:31'); await c.t.paper.tick();
-  assert.deepEqual(venues('000660'), ['NXT', 'NXT']);
-  assert.deepEqual(venues('005930'), []);
-  c.st.clock = at('15:45'); move(c, 10000, { step: 0 }); await c.t.paper.tick();
-  assert.deepEqual(venues('005930'), []);                // 15:40~16:00 은 KRX 종목 주문 불가
-  c.st.clock = at('16:01'); move(c, 10000, { step: 0 }); await c.t.paper.tick();
-  assert.deepEqual(venues('005930'), ['KRX', 'KRX']);
-  assert.ok(open(db).filter(o => o.code === '005930').every(o => o.note === 'reopen'));
+  assert.equal(open(db).length, 0);                                    // 미리 걸어 두는 익절 주문 없음
+  c.st.clock = at('16:10'); move(c, 10250, { step: 0 }); await c.t.paper.tick();   // 1단계 감시
+  move(c, 10040); await c.t.paper.tick();                               // 10250×0.98=10045 아래 → 발동
+  const tp = [...db.t.paper_orders.values()].filter(o => o.reason === 'tp1');
+  assert.deepEqual(tp.map(o => [o.code, o.type, o.venue, +o.price]).sort(), [['000660', 'limit', 'SOR', 9990], ['005930', 'limit', 'KRX', 9990]]);
+  assert.equal(db.t.paper_positions.get('005930').qty, 5);
   c.st.clock = at('20:00'); await c.t.paper.tick();
-  assert.equal(open(db).length, 0);                       // 20:00 에 모두 소멸
+  assert.equal(open(db).length, 0);
   await c.close();
 });
 

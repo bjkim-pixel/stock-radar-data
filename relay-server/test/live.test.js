@@ -43,7 +43,7 @@ test('계좌 환경변수가 없으면 503(주문 안 냄)', async () => {
   await x.c.close();
 });
 
-test('시장가 매수: KIS 요청 규격 · DB 먼저 기록 · 가상 체결가 함께 저장 · 체결 대조 후 익절 주문', async () => {
+test('시장가 매수: KIS 요청 규격 · DB 먼저 기록 · 가상 체결가 함께 저장 · 체결 대조 · 익절 주문은 미리 걸지 않음', async () => {
   const x = await setup();
   await holding(x);
   const buy = posts(x.kx, 'TTTC0012U')[0].body;
@@ -51,8 +51,7 @@ test('시장가 매수: KIS 요청 규격 · DB 먼저 기록 · 가상 체결�
   const o = liveOrders(x.db).find(r => r.reason === 'manual');
   assert.equal(o.status, 'filled'); assert.equal(+o.filled_qty, 5); assert.ok(o.odno); assert.equal(+o.sim_avg, 10010);
   assert.equal(x.db.t.live_fills.size, 1);
-  const tps = posts(x.kx, 'TTTC0011U').map(p => p.body);
-  assert.deepEqual(tps.map(b => [b.ORD_DVSN, b.ORD_UNPR, b.ORD_QTY, b.SLL_TYPE]), [['00', '10200', '2', '01'], ['00', '10300', '3', '01']]);
+  assert.equal(posts(x.kx, 'TTTC0011U').length, 0);                              // 트레일링 익절 — 도달 전엔 매도 주문 없음
   assert.ok(x.db.t.live_plans.get('005930').plan.steps.length === 2);
   const s = await x.c.call('GET', '/trade/live/state');
   assert.equal(s.body.positions[0].qty, 5); assert.equal(s.body.positions[0].stop, 9800);
@@ -111,25 +110,30 @@ test('응답을 못 받은 주문이 60초 동안 체결조회에 없으면 접�
   await x.c.close();
 });
 
-test('익절 체결 → 단계 진행 기록 · 실현손익', async () => {
+test('트레일링 익절: 도달 → 감시 → 고점 대비 2% 하락 시 시장가 매도 · 단계 진행 · 실현손익', async () => {
   const x = await setup();
   await holding(x);
-  const tp1 = [...x.kx.orders.values()].find(o => o.side === 'sell' && o.price === 10200);
-  x.kx.fill(tp1.odno, 2, 10200);
-  move(x.c, 10200); await x.c.t.live.tick();
-  assert.equal(x.db.t.live_plans.get('005930').plan.steps[0].sold, 2);
+  move(x.c, 10350); await x.c.t.live.tick();                                     // 1·2단계 감시 시작
+  assert.equal(posts(x.kx, 'TTTC0011U').length, 0);
+  assert.ok(x.c.st.alerts.some(a => /익절 1단계 감시 시작/.test(a)));
+  move(x.c, 10140); await x.c.t.live.tick();                                     // 10350×0.98=10143 아래 → 발동
+  const sells = posts(x.kx, 'TTTC0011U').map(p => p.body);
+  assert.deepEqual(sells.map(b => [b.ORD_DVSN, b.ORD_QTY]), [['01', '2'], ['01', '3']]);
+  move(x.c, 10140); await x.c.t.live.tick();                                     // 체결 대조
+  assert.deepEqual(x.db.t.live_plans.get('005930') ? x.db.t.live_plans.get('005930').plan.steps.map(s => s.sold) : 'gone', 'gone');   // 전량 매도 → 계획 종료
   const f = [...x.db.t.live_fills.values()].find(f => f.reason === 'tp1');
-  assert.equal(f.qty, 2); assert.equal(Math.round(f.realized), (10200 - 10010) * 2);
-  assert.ok(x.c.st.alerts.some(a => /익절 1단계/.test(a)));
+  assert.equal(f.qty, 2); assert.equal(Math.round(f.realized), (10140 - 10010) * 2);
+  assert.ok(x.c.st.alerts.some(a => /익절 1단계\(트레일링\)/.test(a)));
   await x.c.close();
 });
 
-test('손절: 익절 주문 취소(전량 취소 규격) → 잔고 다시 읽고 시장가 매도', async () => {
+test('손절: 걸려 있는 매도 주문 취소(전량 취소 규격) → 잔고 다시 읽고 시장가 매도', async () => {
   const x = await setup();
   await holding(x);
+  assert.equal((await x.L('order', { code: '005930', side: 'sell', type: 'limit', price: 11000, qty: 2 })).status, 200);
   move(x.c, 9790); await x.c.t.live.tick();
   const cx = posts(x.kx, 'TTTC0013U').map(p => p.body);
-  assert.equal(cx.length, 2);
+  assert.equal(cx.length, 1);
   assert.ok(cx.every(b => b.RVSE_CNCL_DVSN_CD === '02' && b.QTY_ALL_ORD_YN === 'Y' && b.ORD_QTY === '0' && b.ORGN_ODNO && b.KRX_FWDG_ORD_ORGNO === '91252'));
   const sell = posts(x.kx, 'TTTC0011U').map(p => p.body).find(b => b.ORD_DVSN === '01');
   assert.equal(sell.ORD_QTY, '5');
@@ -143,13 +147,14 @@ test('손절: 익절 주문 취소(전량 취소 규격) → 잔고 다시 읽�
   await x.c.close();
 });
 
-test('시나리오: 손절 중 익절 주문 취소 실패 → 그 수량은 빼고 매도(초과 매도 없음) + 알림', async () => {
+test('시나리오: 손절 중 매도 주문 취소 실패 → 그 수량은 빼고 매도(초과 매도 없음) + 알림', async () => {
   const x = await setup();
   await holding(x);
+  assert.equal((await x.L('order', { code: '005930', side: 'sell', type: 'limit', price: 11000, qty: 5 })).status, 200);
   x.kx.cancelFail = true;
   move(x.c, 9790); await x.c.t.live.tick();
   assert.ok(x.c.st.alerts.some(a => /취소 실패/.test(a)));
-  assert.equal(posts(x.kx, 'TTTC0011U').filter(p => p.body.ORD_DVSN === '01').length, 0);   // 5주 모두 익절 주문에 묶여 매도 가능 0
+  assert.equal(posts(x.kx, 'TTTC0011U').filter(p => p.body.ORD_DVSN === '01').length, 0);   // 5주 모두 매도 주문에 묶여 매도 가능 0
   assert.ok(x.c.st.alerts.some(a => /추가 매도하지 않았습니다/.test(a)));
   x.kx.cancelFail = false;
   move(x.c, 9790); await x.c.t.live.tick();                                                  // 다음 주기: 취소 성공 → 매도
@@ -166,20 +171,21 @@ test('계획 없는 보유(HTS 매수 등)는 자동 매도하지 않음, 계획
   const r = await x.L('plan', { code: '005930', stop: 8500, steps: [{ n: 1, p: 10500, q: 4 }] });
   assert.equal(r.status, 200);
   move(x.c, 9000); await x.c.t.live.tick();
-  assert.equal(posts(x.kx, 'TTTC0011U').length, 1);
+  assert.equal(posts(x.kx, 'TTTC0011U').length, 0);                                   // 익절은 감시만
+  move(x.c, 8400); await x.c.t.live.tick();
+  assert.deepEqual(posts(x.kx, 'TTTC0011U').map(p => [p.body.ORD_DVSN, p.body.ORD_QTY]), [['01', '4']]);   // 손절가 8500 아래 → 시장가
   await x.c.close();
 });
 
-test('계획 수정: 기존 익절 취소 → 취소 확인 다음 주기에 새 가격으로 접수(두 번 걸지 않음)', async () => {
+test('계획 수정: 새 가격으로 트레일링 감시(미리 걸린 주문 없음)', async () => {
   const x = await setup();
   await holding(x);
   const r = await x.L('plan', { code: '005930', stop: 9500, steps: [{ n: 1, p: 10600, q: 5 }] });
   assert.equal(r.status, 200);
-  assert.equal(posts(x.kx, 'TTTC0013U').length, 2);
-  move(x.c, 10000); await x.c.t.live.tick();
-  move(x.c, 10000); await x.c.t.live.tick();
-  const live = [...x.kx.orders.values()].filter(o => o.side === 'sell' && !o.cancelled && o.filled < o.qty);
-  assert.deepEqual(live.map(o => [o.price, o.qty]), [[10600, 5]]);
+  move(x.c, 10300); await x.c.t.live.tick();
+  assert.equal(posts(x.kx, 'TTTC0011U').length, 0);                                // 예전 1단계(10200)가 아니라 새 가격 기준
+  move(x.c, 10650); await x.c.t.live.tick(); move(x.c, 10430); await x.c.t.live.tick();
+  assert.deepEqual(posts(x.kx, 'TTTC0011U').map(p => [p.body.ORD_DVSN, p.body.ORD_QTY]), [['01', '5']]);
   await x.c.close();
 });
 
@@ -189,8 +195,7 @@ test('보유 계획: 익절만 저장(손절 없음) · 모두 지우면 계획 
   let r = await x.L('plan', { code: '005930', steps: [{ n: 1, p: 10500, q: 1 }, { n: 2, p: 10800, q: 1 }] });
   assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.position.stop, null);
   move(x.c, 9000); await x.c.t.live.tick();
-  const sells = () => [...x.kx.orders.values()].filter(o => o.side === 'sell' && !o.cancelled).map(o => [o.price, o.qty]).sort();
-  assert.deepEqual(sells(), [[10500, 3], [10800, 3]]);                                        // 손절 없음 · 비중 1:1 로 6주 배분
+  assert.equal(posts(x.kx, 'TTTC0011U').length, 0);                                        // 손절 없음 → 하락해도 안 팜
   r = await x.L('plan', { code: '005930', steps: [] });
   assert.equal(r.status, 200); assert.equal(r.body.position.plan, null);
   await x.c.close();
@@ -206,12 +211,12 @@ test('긴급 정지: 실전 매수 거부, 손절은 동작', async () => {
   await x.c.close();
 });
 
-test('수동 매도: 익절 주문을 먼저 취소하고 매도', async () => {
+test('수동 매도: 보유에서 바로 매도(미리 걸린 익절 주문 없음)', async () => {
   const x = await setup();
   await holding(x);
   const r = await x.L('order', { code: '005930', side: 'sell', type: 'market', qty: 2 });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(posts(x.kx, 'TTTC0013U').length, 2);
+  assert.equal(posts(x.kx, 'TTTC0013U').length, 0);
   assert.equal(x.kx.hold.get('005930').qty, 3);
   await x.c.close();
 });
@@ -240,13 +245,15 @@ test('리포트: 가상 대비 차이(시장가·손절)', async () => {
 test('KRX 정규장 마감 직후 종가 단일가 체결을 받아 두고 15:40 이후 남은 KRX 주문 소멸', async () => {
   const x = await setup();
   await holding(x);
+  assert.equal((await x.L('order', { code: '005930', side: 'sell', type: 'limit', price: 10300, qty: 3 })).status, 200);
+  const b2 = await x.L('order', { code: '005930', side: 'buy', type: 'limit', price: 9000, qty: 1 }); assert.equal(b2.status, 200, JSON.stringify(b2.body));
   const tp2 = [...x.kx.orders.values()].find(o => o.side === 'sell' && o.price === 10300);
   x.c.st.clock = Date.parse('2027-01-13T15:31:00+09:00'); x.kx.fill(tp2.odno, 3, 10300);
   await x.c.t.live.tick();
   assert.equal([...x.db.t.live_orders.values()].find(o => o.odno === tp2.odno).status, 'filled');
-  assert.equal([...x.db.t.live_orders.values()].find(o => o.reason === 'tp1').status, 'open');
+  assert.equal([...x.db.t.live_orders.values()].find(o => +o.price === 9000).status, 'open');
   x.c.st.clock = Date.parse('2027-01-13T15:41:00+09:00'); await x.c.t.live.tick();
-  const tp1 = [...x.db.t.live_orders.values()].find(o => o.reason === 'tp1');
+  const tp1 = [...x.db.t.live_orders.values()].find(o => +o.price === 9000);
   assert.equal(tp1.status, 'cancelled'); assert.equal(tp1.note, 'expired');   // KRX 정규장 주문은 15:30 소멸 → 15:40 정리
   x.c.st.clock = Date.parse('2027-01-13T20:06:00+09:00'); await x.c.t.live.tick();
   assert.ok(x.c.st.alerts.some(a => /마감\(20:00\)/.test(a)));

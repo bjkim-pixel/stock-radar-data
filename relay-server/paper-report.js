@@ -13,7 +13,7 @@ const r2 = x => Math.round(x * 100) / 100;
 
 function sourceOf(o) {
   if (o.reason === 'stop') return '자동 손절';
-  if (/^tp[1-5]$/.test(o.reason || '')) return o.note === 'reopen' ? `장 시작 재접수(익절 ${o.reason.slice(2)}단계)` : `자동 익절 ${o.reason.slice(2)}단계`;
+  if (/^tp[1-5]$/.test(o.reason || '')) return o.note === 'reopen' ? `장 시작 재접수(익절 ${o.reason.slice(2)}단계)` : o.note === 'trail' ? `트레일링 익절 ${o.reason.slice(2)}단계` : `자동 익절 ${o.reason.slice(2)}단계`;
   return '직접 주문';
 }
 

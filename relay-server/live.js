@@ -19,6 +19,7 @@
 const E = require('./paper-engine');
 const SES = require('./session');
 const { allocSteps } = require('./paper');
+const TR = require('./trail');
 const { computeReport } = require('./paper-report');
 
 const MISSING = /42P01|PGRST205|does not exist/;
@@ -34,8 +35,9 @@ function createLive(deps) {
   const now = deps.now || Date.now;
   const kis = deps.kis;
   const STOP_TICKS = deps.stopTicks || 5, STOP_RETRY_MS = (deps.stopRetrySec || 20) * 1000;
+  const TRAIL_PCT = deps.tpTrail || 2;
   const route = (ses) => (ses.venue === 'SOR' && deps.noSor) ? (ses.name === 'regular' ? 'KRX' : 'NXT') : ses.venue;
-  const orders = new Map(), plans = new Map(), lastPx = new Map(), cids = new Map(), warned = new Map(), lowSeen = new Map(), reopen = new Set();
+  const orders = new Map(), plans = new Map(), lastPx = new Map(), cids = new Map(), warned = new Map(), lowSeen = new Map(), highSeen = new Map(), reopen = new Set();
   let fills = [];
   const bal = { positions: new Map(), cash: null, at: 0, keys: null };
   const dirty = { orders: new Map(), fills: new Map(), plans: new Map() };
@@ -258,29 +260,41 @@ function createLive(deps) {
     }
     return true;
   }
+  /* 익절(트레일링, 2026-11-13): 주문을 미리 걸지 않고 감시 — 익절가 도달 후 고점 대비 trail% 내리면 그 단계 수량을 매도 */
   async function syncTp(code, q) {
     const p = posOf(code), pl = plans.get(code), tps = mine(code, o => o.side === 'sell' && isTp(o));
     if (mine(code, o => UNSURE.has(o.status) || o.cancelReq).length) return;            // 확인 중이거나 취소 확인 대기 중이면 다음 주기에
     if (!p || !pl || !pl.plan || pl.plan.stopped || !(pl.plan.steps || []).length) { for (const o of tps) await cancelKis(o, 'no_plan'); return; }
-    const venue = SES.restVenue(kst().min, q.info);
-    if (!venue) return;                                                                     // 지금 익절을 받을 거래소가 없음 — 걸린 주문은 그대로
+    const prevHi = highSeen.get(code), newHigh = q.high > 0 && prevHi != null && q.high > prevHi ? q.high : 0;
+    if (q.high > 0) highSeen.set(code, prevHi == null ? q.high : Math.max(prevHi, q.high));
+    let old = false;
+    for (const o of tps) if (o.note !== 'trail') { await cancelKis(o, 'to_trail'); old = true; }   // 예전 방식(미리 걸어 둔 지정가) 익절 주문 정리
+    if (old) return;
+    const ses = SES.sessionOf(kst().min, q.info);
+    if (!ses.open) return;
+    const trail = pl.plan.trail > 0 ? pl.plan.trail : TRAIL_PCT;
     const avail = Math.min(p.qty - remain(mine(code, o => o.side === 'sell' && !isTp(o))), p.sellable + remain(tps));
     const want = allocSteps(pl.plan.steps, Math.max(0, avail));
     let changed = false;
-    for (const st of pl.plan.steps) {
-      const my = tps.filter(o => o.reason === 'tp' + st.n), w = want[st.n] || 0;
-      if (my.length === 1 && my[0].price === st.p && my[0].qty - my[0].filled === w && (my[0].excg || 'KRX') === venue) continue;
-      if (my.length === 0 && w === 0) continue;
-      for (const o of my) { await cancelKis(o, 'resync'); changed = true; }
-    }
-    if (changed) return;                                                                    // 취소가 확인된 다음 주기에 새로 냄
-    for (const st of pl.plan.steps) {
+    for (const st of pl.plan.steps.slice().sort((a, b) => a.n - b.n)) {
       const w = want[st.n] || 0;
-      if (w > 0 && !tps.some(o => o.reason === 'tp' + st.n)) {
-        const r = await send({ code, name: p.name, side: 'sell', type: 'limit', price: st.p, qty: w, reason: 'tp' + st.n, q, venue, note: reopen.has(code) ? 'reopen' : null });
-        if (!r.ok) notify(`[실전] 익절 ${st.n}단계 주문 실패(${r.error}): ${p.name || code}`, `tpfail|${code}|${st.n}`);
+      if (w <= 0) continue;
+      const u = TR.trailUpdate(st, q.price, newHigh, trail);
+      if (u.changed) changed = true;
+      if (u.armedNow) { event('tp_arm', code, { step: st.n, price: q.price, tp: st.p, trail }); notify(`[실전] 익절 ${st.n}단계 감시 시작: ${p.name || code} 익절가 ${st.p.toLocaleString('ko-KR')}원 도달 — 고점 대비 -${trail}%에서 매도`, `tparm|${code}|${st.n}`); }
+      if (!u.fire) continue;
+      const my = tps.filter(o => o.reason === 'tp' + st.n);
+      if (my.length) {                                                                      // 이미 매도 진행 중 — 시간외 지정가가 오래 안 팔리면 취소 → 확인 후 다음 주기에 다시 냄
+        for (const o of my) if (o.type === 'limit' && !o.cancelReq && !UNSURE.has(o.status) && now() - (o.sentAt || o.createdAt) >= STOP_RETRY_MS) await cancelKis(o, 'tp_retry');
+        continue;
       }
+      if (q.vi) { notify(`[실전] 익절 조건이지만 VI 발동 중이라 대기: ${p.name || code}`, 'vi|' + code); continue; }
+      const type = ses.market ? 'market' : 'limit', price = ses.market ? null : SES.stopLimitPrice(q, STOP_TICKS, E.tickOf, E.floorTick);
+      const r = await send({ code, name: p.name, side: 'sell', type, price, qty: w, reason: 'tp' + st.n, q, ref: st.p, venue: route(ses), note: 'trail' });
+      if (!r.ok) notify(`[실전] 익절 ${st.n}단계 매도 실패(${r.error}) — 다음 주기에 다시 시도: ${p.name || code}`, `tpfail|${code}|${st.n}`);
+      else { notify(`[실전] 익절 ${st.n}단계(트레일링) 주문: ${p.name || code} ${w}주 ${type === 'market' ? '시장가' : `${price.toLocaleString('ko-KR')}원 지정가(${ses.label})`} · 고점 ${Math.round(st.peak).toLocaleString('ko-KR')}원`); event('tp_fire', code, { step: st.n, qty: w, peak: st.peak, trail, type, limit: price }); }
     }
+    if (changed) dirty.plans.set(code, pl);
     reopen.delete(code);
   }
 
@@ -291,7 +305,7 @@ function createLive(deps) {
     const steps = Array.isArray(p.steps) ? p.steps.slice(0, 5).map(s => ({ n: Math.floor(num(s && s.n, 1, 5) || 0), p: num(s && s.p, 1, 1e8), q: Math.floor(num(s && s.q, 1, 1e7) || 0) })).filter(s => s.n && s.p && s.q && E.validTick(s.p)) : [];
     const seen = new Set(), uniq = steps.filter(s => !seen.has(s.n) && seen.add(s.n));
     const stop = num(p.stop, 1, 1e8);
-    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop ? E.floorTick(stop) : null, target: num(p.target, 1, 1e8), steps: uniq };
+    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop ? E.floorTick(stop) : null, target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq };
   }
   const ready = async () => { if (!(await init())) return bad(503, missing ? 'live tables missing' : 'live store unavailable'); if (!kis.configured()) return bad(503, 'account not configured'); return null; };
   async function place(body) {
@@ -368,7 +382,7 @@ function createLive(deps) {
       if (pl.steps.some(s => s.p <= p.avg * 0.5)) return bad(400, '익절 가격이 너무 낮습니다');
       for (const o of mine(code, o => o.side === 'sell' && isTp(o))) if (!(await cancelKis(o, 'plan_edit'))) return bad(409, '걸려 있는 익절 주문을 취소하지 못했습니다');
       const prev = plans.get(code);
-      const np = { name: p.name, plan: { ...pl, steps: pl.steps.map(s => ({ ...s, sold: 0 })), orderId: prev && prev.plan && prev.plan.orderId || null, stopped: false } };
+      const np = { name: p.name, plan: { ...pl, steps: TR.keepTrail(prev && prev.plan && prev.plan.steps, pl.steps.map(s => ({ ...s, sold: 0 }))), orderId: prev && prev.plan && prev.plan.orderId || null, stopped: false } };
       if (noStop && !pl.steps.length) { plans.delete(code); dirty.plans.set(code, null); } else { plans.set(code, np); dirty.plans.set(code, np); }
       await flush();
       event('plan_edit', code, { stop: stopOf(p, np.plan), steps: pl.steps.length });
@@ -429,7 +443,7 @@ function createLive(deps) {
       if (!(await init())) return;
       const t = kst();
       await lock(async () => { expireOld(); if (dirty.orders.size || dirty.fills.size || dirty.plans.size) await flush(); });
-      if (hb.day !== t.day) { hb.day = t.day; hb.open = false; hb.close = false; hb.dayCancel = false; lowSeen.clear(); }
+      if (hb.day !== t.day) { hb.day = t.day; hb.open = false; hb.close = false; hb.dayCancel = false; lowSeen.clear(); highSeen.clear(); }
       if (t.dow === 0 || t.dow === 6 || t.min < T.START) return;
       if (t.min >= T.END) {
         if (t.min < T.SETTLE && [...orders.values()].some(o => LIVE.has(o.status))) {

@@ -54,20 +54,21 @@ test('주문 출처 표시', () => {
   assert.equal(sourceOf({ reason: 'tp1', note: 'reopen' }), '장 시작 재접수(익절 1단계)');
 });
 
-test('API: 가상 운영 후 리포트(손절 슬리피지 기준=손절가 · 다음 날 재접수 표시)', async () => {
+test('API: 가상 운영 후 리포트(손절 슬리피지 기준=손절가 · 트레일링 익절 표시)', async () => {
   const db = fakeDb(), c = await boot(db); await c.login();
   const mv = (price, vol = 1000) => { const st = c.st; st.clock += 5000; st.price = price; st.vol += vol; st.asks = Array.from({ length: 10 }, (_, i) => [price + 10 * (i + 1), 100]); st.bids = Array.from({ length: 10 }, (_, i) => [price - 10 * i, 100]); st.low = Math.min(st.low, price); st.high = Math.max(st.high, price); };
   await c.order({ code: '005930', name: '삼성전자', side: 'buy', type: 'market', qty: 10, plan: { stopPct: 2, steps: [{ n: 1, p: 10200, q: 5 }, { n: 2, p: 10400, q: 5 }] } });
   mv(10000); await c.t.paper.tick();
   c.st.clock = Date.parse('2027-01-13T15:31:00+09:00'); await c.t.paper.tick();
   c.st.clock = Date.parse('2027-01-14T09:00:05+09:00') - 5000; mv(10050); await c.t.paper.tick();
-  mv(10250, 5000); await c.t.paper.tick();      // 1단계 익절
+  mv(10250); await c.t.paper.tick();            // 1단계 감시
+  mv(10040); await c.t.paper.tick();            // 10250×0.98 아래 → 1단계 트레일링 익절
   mv(9790); await c.t.paper.tick();              // 손절(9800)
   await c.login();   // 하루가 지나 거래 세션(15분)이 만료됨
   const r = await c.call('GET', '/trade/paper/report?from=2027-01-01&to=2027-01-31');
   assert.equal(r.status, 200);
   assert.equal(r.body.stats.trades, 1); assert.equal(r.body.stats.stopRate, 100);
-  assert.ok(r.body.orders.some(o => /장 시작 재접수/.test(o.source)));
+  assert.ok(r.body.orders.some(o => /트레일링 익절 1단계/.test(o.source)));
   assert.ok(r.body.orders.some(o => o.source === '자동 손절'));
   const stop = r.body.slippage.rows.find(x => x.kind === '손절(시장가)');
   assert.ok(stop && stop.orders === 1 && stop.avgPct > 0, JSON.stringify(r.body.slippage));   // 9790 기준 매수호가로 팔아 손절가 9800 보다 불리
