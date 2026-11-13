@@ -2625,7 +2625,16 @@ function liveStart(){
   try{kwLoadMap();smxLoadMap().then(()=>smxFill()).catch(()=>{});}catch(e){}
   const L=S.live;if(L.on)return;L.on=true;L.pool={};L.since={};L.prev={};L.log=[];
   $("#liveBody").innerHTML='<tr><td colspan="15" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";
-  liveFetch();L.timer=setInterval(liveFetch,8000);
+  liveDefaults().then(()=>{if(!L.on||L.timer)return;liveFetch();L.timer=setInterval(liveFetch,8000);});
+}
+/* 처음 열 때 기본 조건: 시총 1조 이상 · 정배열 60일 이상 · 매집 전체(지속+고점 후 정체). 이후 바꾼 값은 그대로 유지 */
+async function liveDefaults(){
+  const L=S.live;if(L.defaulted)return;L.defaulted=true;
+  L.min=10000;$$("#liveCap .fchip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v==="10000"?"true":"false"));
+  S.lf.ma="a60";S.lf.smx="CONT,STALL";
+  const a=$("#lf_dMaF"),b=$("#lf_dSmxF");if(a)a.value="a60";if(b)b.value="CONT,STALL";
+  const c=$("#lfCnt");if(c)c.textContent="· 2개 적용 중";
+  try{await Promise.all([loadDetailMa(),smxLoadMap()]);}catch(e){console.error("기본 조건 데이터",e);}
 }
 const fmtCap=v=>v>=1e12?N(v/1e12,1)+"조":N(v/1e8,0)+"억";
 $("#liveSide").addEventListener("seg-change",e=>{const L=S.live;L.side=e.detail==="down"?"down":"up";L.pool={};L.since={};L.prev={};L.log=[];$("#liveTitle").textContent=L.side==="down"?"당일 하락률 TOP 20":"당일 상승률 TOP 20";$("#liveBody").innerHTML='<tr><td colspan="15" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
