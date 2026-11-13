@@ -183,6 +183,19 @@ test('계획 수정: 기존 익절 취소 → 취소 확인 다음 주기에 새
   await x.c.close();
 });
 
+test('보유 계획: 익절만 저장(손절 없음) · 모두 지우면 계획 해제', async () => {
+  const x = await setup();
+  x.kx.hold.set('005930', { qty: 6, avg: 10000 });
+  let r = await x.L('plan', { code: '005930', steps: [{ n: 1, p: 10500, q: 1 }, { n: 2, p: 10800, q: 1 }] });
+  assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.position.stop, null);
+  move(x.c, 9000); await x.c.t.live.tick();
+  const sells = () => [...x.kx.orders.values()].filter(o => o.side === 'sell' && !o.cancelled).map(o => [o.price, o.qty]).sort();
+  assert.deepEqual(sells(), [[10500, 3], [10800, 3]]);                                        // 손절 없음 · 비중 1:1 로 6주 배분
+  r = await x.L('plan', { code: '005930', steps: [] });
+  assert.equal(r.status, 200); assert.equal(r.body.position.plan, null);
+  await x.c.close();
+});
+
 test('긴급 정지: 실전 매수 거부, 손절은 동작', async () => {
   const x = await setup();
   await holding(x);

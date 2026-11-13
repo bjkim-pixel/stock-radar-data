@@ -317,13 +317,13 @@ function createPaper(deps) {
       const code = String(body.code || ''), pos = positions.get(code);
       if (!pos) return bad(404, '보유하지 않은 종목입니다');
       const p = cleanPlan(body);
-      if (!p.stopPct && !p.stop) return bad(400, '손절가(또는 %)를 입력하세요');
+      const noStop = !p.stopPct && !p.stop;   // 2026-11-13: 손절만·익절만 저장 허용, 둘 다 없으면 계획 해제
       const avail = pos.qty - remainOf(openFor(code, o => o.side === 'sell' && !isTp(o)));
       const sum = p.steps.reduce((a, s) => a + s.q, 0);
-      if (p.steps.length && sum !== avail) return bad(400, `익절 단계 수량 합계(${sum})가 매도 가능 수량(${avail})과 달라 저장할 수 없습니다`);
+      // 단계 수량은 비중 — 실제 걸 수량은 allocSteps 가 매도 가능 수량 전체를 이 비중대로 나눔(단계를 지우면 남은 단계가 그 수량을 나눠 가짐)
       if (p.steps.some(s => s.p <= pos.avg * 0.5)) return bad(400, '익절 가격이 너무 낮습니다');
       for (const o of openFor(code, o => o.side === 'sell' && isTp(o))) cancelOrder(o, 'plan_edit');
-      pos.plan = { ...p, steps: p.steps.map(s => ({ ...s, sold: 0 })), orderId: pos.plan && pos.plan.orderId || null, stopped: false };
+      pos.plan = noStop && !p.steps.length ? null : { ...p, steps: p.steps.map(s => ({ ...s, sold: 0 })), orderId: pos.plan && pos.plan.orderId || null, stopped: false };
       pos.updatedAt = now(); dirty.pos.set(code, pos);
       await flush();
       event('plan_edit', code, { stop: stopOf(pos), steps: p.steps.length });

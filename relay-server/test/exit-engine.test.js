@@ -159,8 +159,7 @@ test('시나리오: 보유 중 계획 수정 → 검증 후 익절 주문을 새
   await holding(c);
   move(c, 10000); await c.t.paper.tick();
   const plan = b => c.call('POST', '/trade/paper/plan', { body: { code: '005930', ...b } });
-  assert.equal((await plan({ stopPct: 3, steps: [{ n: 1, p: 10500, q: 9 }] })).status, 400);      // 합계 9 ≠ 10
-  assert.equal((await plan({ steps: [{ n: 1, p: 10500, q: 10 }] })).status, 400);                 // 손절 없음
+  assert.equal((await plan({ steps: [{ n: 1, p: 4000, q: 10 }] })).status, 400);                  // 평균가 절반 이하 익절가
   assert.equal((await plan({ code: '000660', stopPct: 3, steps: [] })).status, 404);
   const ok = await plan({ stop: 9500, steps: [{ n: 1, p: 10500, q: 4 }, { n: 2, p: 10800, q: 6 }] });
   assert.equal(ok.status, 200); assert.equal(ok.body.position.stop, 9500);
@@ -174,12 +173,36 @@ test('시나리오: 보유 중 계획 수정 → 검증 후 익절 주문을 새
   await c.close();
 });
 
+test('보유 계획: 손절만 · 익절만 · 단계 삭제(남은 단계가 수량을 나눠 가짐) · 모두 지우면 계획 해제', async () => {
+  const db = fakeDb(), c = await boot(db); await c.login();
+  await holding(c);
+  move(c, 10000); await c.t.paper.tick();
+  const plan = b => c.call('POST', '/trade/paper/plan', { body: { code: '005930', ...b } });
+  let r = await plan({ steps: [{ n: 1, p: 10500, q: 5 }, { n: 2, p: 10800, q: 5 }] });          // 익절만
+  assert.equal(r.status, 200, 'call1 '+JSON.stringify(r.body)); assert.equal(r.body.position.stop, null);
+  move(c, 10000); await c.t.paper.tick();
+  assert.deepEqual(tpMap(db), { tp1: 5, tp2: 5 });
+  move(c, 9000); await c.t.paper.tick();
+  assert.equal(db.t.paper_positions.get('005930').qty, 10);                                          // 손절 없으니 유지
+  r = await plan({ steps: [{ n: 1, p: 10500, q: 5 }] });                                             // 2단계 삭제 → 1단계가 10주 전부
+  assert.equal(r.status, 200, 'call2 '+JSON.stringify(r.body));
+  move(c, 9000); await c.t.paper.tick();
+  assert.deepEqual(tpMap(db), { tp1: 10 });
+  r = await plan({ stopPct: 3, steps: [] });                                                         // 손절만
+  assert.equal(r.status, 200, 'call3 '+JSON.stringify(r.body)); assert.ok(r.body.position.stop > 0);
+  move(c, 9800); await c.t.paper.tick();                                                             // 손절가(9,700) 위
+  assert.equal(tps(db).length, 0);
+  r = await plan({ steps: [] });                                                                     // 모두 삭제
+  assert.equal(r.status, 200, 'call4 '+JSON.stringify(r.body)); assert.equal(r.body.position.plan, null);
+  await c.close();
+});
+
 test('수동 매도: 익절 주문을 먼저 취소하고 남은 수량으로 다시 배분, 전량 매도면 계획 종료', async () => {
   const db = fakeDb(), c = await boot(db); await c.login();
   await holding(c);
   move(c, 10000); await c.t.paper.tick();
   const r = await c.order({ code: '005930', side: 'sell', type: 'market', qty: 3 });
-  assert.equal(r.status, 200);
+  assert.equal(r.status, 200, 'call5 '+JSON.stringify(r.body));
   assert.equal(db.t.paper_positions.get('005930').qty, 7);
   move(c, 10000); await c.t.paper.tick();
   assert.equal(Object.values(tpMap(db)).reduce((a, x) => a + x, 0), 7);

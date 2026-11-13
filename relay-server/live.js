@@ -361,15 +361,15 @@ function createLive(deps) {
       const p = posOf(code);
       if (!p) return bad(404, '보유하지 않은 종목입니다');
       const pl = cleanPlan(body);
-      if (!pl.stopPct && !pl.stop) return bad(400, '손절가(또는 %)를 입력하세요');
+      const noStop = !pl.stopPct && !pl.stop;   // 2026-11-13: 손절만·익절만 저장 허용, 둘 다 없으면 계획 해제
       const avail = p.qty - remain(mine(code, o => o.side === 'sell' && !isTp(o)));
       const sum = pl.steps.reduce((a, s) => a + s.q, 0);
-      if (pl.steps.length && sum !== avail) return bad(400, `익절 단계 수량 합계(${sum})가 매도 가능 수량(${avail})과 달라 저장할 수 없습니다`);
+      // 단계 수량은 비중 — 실제 걸 수량은 allocSteps 가 매도 가능 수량 전체를 이 비중대로 나눔(단계를 지우면 남은 단계가 그 수량을 나눠 가짐)
       if (pl.steps.some(s => s.p <= p.avg * 0.5)) return bad(400, '익절 가격이 너무 낮습니다');
       for (const o of mine(code, o => o.side === 'sell' && isTp(o))) if (!(await cancelKis(o, 'plan_edit'))) return bad(409, '걸려 있는 익절 주문을 취소하지 못했습니다');
       const prev = plans.get(code);
       const np = { name: p.name, plan: { ...pl, steps: pl.steps.map(s => ({ ...s, sold: 0 })), orderId: prev && prev.plan && prev.plan.orderId || null, stopped: false } };
-      plans.set(code, np); dirty.plans.set(code, np);
+      if (noStop && !pl.steps.length) { plans.delete(code); dirty.plans.set(code, null); } else { plans.set(code, np); dirty.plans.set(code, np); }
       await flush();
       event('plan_edit', code, { stop: stopOf(p, np.plan), steps: pl.steps.length });
       return { ok: true, position: pubPos(p) };
