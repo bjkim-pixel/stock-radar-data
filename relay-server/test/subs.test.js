@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { allocate, pollWindowOpen, multiRowToPayload, planReconcile } = require('../subs');
+const { allocate, pollWindowOpen, multiRowToPayload, planReconcile, parseQuotePower } = require('../subs');
 
 const cl = (codes, opt = {}) => ({ codes: new Set(codes), hi: new Set(opt.hi || []), rank: new Map(codes.map((c, i) => [c, i])), lastActive: opt.at || 0 });
 
@@ -75,4 +75,12 @@ test('해지 유예: 한도가 차면 새 종목에 자리를 내줌(오래된 �
   const at = new Map([['B', 0], ['C', 500]]);
   const r = planReconcile(new Set(['A', 'B', 'C']), new Set(['A', 'D']), at, 1000, 3, 20000);
   assert.deepStrictEqual([r.add, r.keep, r.remove], [['D'], ['C'], ['B']]);
+});
+
+test('현재가 시세 → 참고 지표', () => {
+  const num = v => (v === '' || v == null ? null : Number(String(v).replace(/,/g, '')));
+  const r = parseQuotePower({ stck_prpr: '70000', stck_hgpr: '70500', w52_hgpr: '72000', w52_hgpr_date: '20260901', vol_tnrt: '0.85', pgtr_ntby_qty: '-120000' }, num);
+  assert.deepStrictEqual(r, { price: 70000, hgpr: 70500, w52: 72000, w52d: '20260901', tnrt: 0.85, pgQty: -120000, pgAmt: -8400000000 });
+  assert.strictEqual(parseQuotePower(null, num), null);
+  assert.strictEqual(parseQuotePower({ stck_prpr: '1000' }, num).pgAmt, null);
 });

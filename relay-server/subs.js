@@ -61,4 +61,15 @@ function planReconcile(current, want, unwantedAt, now, limit, graceMs) {
   return { add, remove, keep: [...keep], nextAt };
 }
 
-module.exports = { allocate, pollWindowOpen, multiRowToPayload, planReconcile };
+// 주식현재가 시세(FHKST01010100) output → 실시간 종목 참고 지표 (필드명은 KIS 문서 기준, 실서버 확인 전 — ?raw=1 로 원본 확인)
+//  pgtr_ntby_qty 프로그램매매 순매수 수량(당일 누적) · vol_tnrt 거래량 회전율(%) · w52_hgpr/_date 52주 최고가/일자 · stck_hgpr 당일 고가
+function parseQuotePower(o, num) {
+  if (!o) return null;
+  const price = num(o.stck_prpr), pgQty = num(o.pgtr_ntby_qty);
+  return {
+    price, hgpr: num(o.stck_hgpr), w52: num(o.w52_hgpr), w52d: o.w52_hgpr_date || null,
+    tnrt: num(o.vol_tnrt), pgQty, pgAmt: pgQty != null && price > 0 ? pgQty * price : null,
+  };
+}
+
+module.exports = { allocate, pollWindowOpen, multiRowToPayload, planReconcile, parseQuotePower };

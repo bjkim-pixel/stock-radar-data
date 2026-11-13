@@ -88,7 +88,7 @@ let reconnectAttempt = 0;
 
 const subscribers = new Map();   // code -> Set(clientWs) : 프론트엔드가 요청한 구독
 const lastPrice = new Map();     // code -> 마지막 시세 (신규 구독 시 즉시 전달용)
-const { allocate: allocateSubs, pollWindowOpen, multiRowToPayload, planReconcile } = require('./subs');
+const { allocate: allocateSubs, pollWindowOpen, multiRowToPayload, planReconcile, parseQuotePower } = require('./subs');
 const wsClients = new Set();     // 접속 중인 프론트 웹소켓(구독 우선순위 배분용)
 let _subAlloc = { ws: new Set(), polled: new Set(), order: [] };   // 마지막 배분 결과(/sub-status 표시용)
 const _subPoll = { at: 0, n: 0, err: null };
@@ -2228,7 +2228,8 @@ function handleKisMessage(text) {
       sign: rec[F_SIGN] || null,
       time: rec[F_TIME] || null,
     };
-    { const op = Number(rec[7]); if (Number.isFinite(op) && op > 0) payload.open = op; }   // H0STCNT0 8번째 필드 = 주식 시가
+    { const op = Number(rec[7]); if (Number.isFinite(op) && op > 0) payload.open = op; }
+    { const hp = Number(rec[F_HIGH]); if (Number.isFinite(hp) && hp > 0) payload.dayHighPx = hp; }   // 실시간 종목 '당일 신고가' 표시용(보유 종목용 dayHigh와 별개)   // H0STCNT0 8번째 필드 = 주식 시가
     {   // 2026-11-13 매매 화면 실시간 체결 목록·체결강도용: 이번 체결 수량, 매수/매도 체결 구분, 체결강도, 누적 거래량·대금
       const cv = Number(rec[F_CNTG_VOL]), ct = Number(rec[F_CTTR]), av = Number(rec[F_ACML_VOL]), aa = Number(rec[F_ACML_AMT]);
       if (Number.isFinite(cv) && cv > 0) payload.tickVol = cv;
@@ -3233,18 +3234,18 @@ function refreshLiveTop(min, side = 'up') {
       let allUp = null, allDn = null;
       if (!min) {
         const r = side === 'down' ? await fetchFallRateRank(30) : await fetchChangeRateRank(30);
-        rows = r.map(o => ({ code: o.stck_shrn_iscd || o.mksc_shrn_iscd, name: o.hts_kor_isnm || '', price: safeNum(o.stck_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }));
+        rows = r.map(o => ({ code: o.stck_shrn_iscd || o.mksc_shrn_iscd, name: o.hts_kor_isnm || '', price: safeNum(o.stck_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn), high: safeNum(o.stck_hgpr) }));
         try {   // 순위 응답에는 시가가 없어 멀티시세로 보강(1회 호출)
           const ids = rows.map(r => r.code).filter(Boolean).slice(0, 30);
-          const mp = new Map((await fetchMultiPrice(ids)).map(o => [o.inter_shrn_iscd, safeNum(o.inter2_oprc)]));
-          rows.forEach(r => { const op = mp.get(r.code); if (op > 0) r.open = op; });
+          const mpr = await fetchMultiPrice(ids), mp = new Map(mpr.map(o => [o.inter_shrn_iscd, safeNum(o.inter2_oprc)])), mh = new Map(mpr.map(o => [o.inter_shrn_iscd, safeNum(o.inter2_hgpr)]));
+          rows.forEach(r => { const op = mp.get(r.code); if (op > 0) r.open = op; const hp = mh.get(r.code); if (hp > 0) r.high = hp; });
         } catch (_) { /* 시가 없이 진행 */ }
       } else {
         const uni = (await loadLiveUniverse()).filter(u => u.cap >= min * 1e8);
         const all = [];
         for (let i = 0; i < uni.length; i += 30) {
           const out = await fetchMultiPrice(uni.slice(i, i + 30).map(u => u.code));
-          out.forEach(o => all.push({ code: o.inter_shrn_iscd, name: o.inter_kor_isnm || '', price: safeNum(o.inter2_prpr), open: safeNum(o.inter2_oprc), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }));
+          out.forEach(o => all.push({ code: o.inter_shrn_iscd, name: o.inter_kor_isnm || '', price: safeNum(o.inter2_prpr), open: safeNum(o.inter2_oprc), high: safeNum(o.inter2_hgpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }));
         }
         const okAll = all.filter(r => r.code && r.price > 0);
         const upAll = okAll.slice().sort((a, b) => b.changePct - a.changePct), dnAll = okAll.slice().sort((a, b) => a.changePct - b.changePct);
@@ -3263,6 +3264,45 @@ function refreshLiveTop(min, side = 'up') {
   _liveBusy.set(key, pr);
   return pr;
 }
+/* ── 실시간 종목 참고 지표(2026-11-13): KIS 주식현재가 시세(FHKST01010100)에서 프로그램 순매수(당일 누적)·회전율·52주 고가를 종목별로 조회. 30초 캐시.
+   웹소켓 슬롯을 쓰지 않고 REST만 사용. 필드명은 실서버 확인 전 → /live-power?code=종목&raw=1 로 원본 확인 ── */
+const _power = new Map();   // code -> {at, v}
+const POWER_TTL = 30e3;
+async function fetchPower(code, raw) {
+  const c = _power.get(code);
+  if (!raw && c && Date.now() - c.at < POWER_TTL) return c.v;
+  await kisRestThrottle();
+  const token = await getKisRestToken();
+  const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/quotations/inquire-price?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=${code}`, { headers: kisRestHeaders(token, 'FHKST01010100') });
+  const j = await res.json().catch(() => ({}));
+  if (raw) return { http: res.status, body: j };
+  if (!res.ok || j.rt_cd !== '0') { const v = { err: j.msg1 || ('HTTP ' + res.status) }; _power.set(code, { at: Date.now() - POWER_TTL + 10e3, v }); return v; }   // 실패는 10초 뒤 재시도
+  const v = parseQuotePower(j.output, v2 => safeNum(v2, null)) || { err: '응답 없음' };
+  _power.set(code, { at: Date.now(), v }); return v;
+}
+function handleLivePower(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path !== '/live-power') return false;
+  accessCors(req, res, 'GET, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const sp = new URLSearchParams((req.url.split('?')[1]) || '');
+  const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+  const one = (sp.get('code') || '').trim();
+  if (one && sp.get('raw') === '1') {
+    if (!/^[0-9A-Z]{6}$/.test(one)) { json(400, { ok: false, error: 'bad code' }); return true; }
+    fetchPower(one, true).then(r => json(200, { ok: true, ...r })).catch(e => json(500, { ok: false, error: e.message }));
+    return true;
+  }
+  const codes = (sp.get('codes') || '').split(',').map(x => x.trim()).filter(x => /^[0-9A-Z]{6}$/.test(x)).slice(0, 25);
+  if (!codes.length) { json(400, { ok: false, error: 'codes required' }); return true; }
+  (async () => {
+    const rows = {};
+    for (const c of codes) { try { rows[c] = await fetchPower(c); } catch (e) { rows[c] = { err: e.message }; } }
+    json(200, { ok: true, ts: Date.now(), rows });
+  })();
+  return true;
+}
+
 /* ── 구독 현황 모니터링(2026-11-13): 슬롯 사용량 · 실시간/폴링 종목 · 접속 수 ── */
 function handleSubStatus(req, res) {
   const path = (req.url || '').split('?')[0];
@@ -3526,7 +3566,7 @@ const trade = require('./trade').createTrade({
 
 const server = http.createServer((req, res) => {
   if (trade.handle(req, res)) return;
-  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleSubStatus(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res) || handleLiveMarket(req, res) || handleStockInfo(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleSubStatus(req, res) || handleLivePower(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res) || handleLiveMarket(req, res) || handleStockInfo(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;
