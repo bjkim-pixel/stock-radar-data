@@ -292,6 +292,7 @@ const F_CODE = 0, F_TIME = 1, F_PRICE = 2, F_SIGN = 3, F_DIFF = 4, F_RATE = 5;
 // H0STCNT0(주식체결) 전체 필드 — 상따 엔진이 체결강도/순간체결금액/거래대금을
 // 계산하려면 앞 6개 필드만으로는 부족해서 추가로 씀 (KIS 공식 필드 순서).
 const F_HIGH = 8, F_CNTG_VOL = 12, F_ACML_AMT = 14, F_CTTR = 18;
+const F_ACML_VOL = 13, F_CCLD_DVSN = 21;   // 누적거래량 · 체결구분(1 매수 · 5 매도 · 3 장전)
 
 // ----------------------------------------------------------------------------
 // 3-C) 프로그램매매(H0STPGM0) 실시간 구독 — 상따 매수 조건 신호
@@ -2190,6 +2191,14 @@ function handleKisMessage(text) {
       time: rec[F_TIME] || null,
     };
     { const op = Number(rec[7]); if (Number.isFinite(op) && op > 0) payload.open = op; }   // H0STCNT0 8번째 필드 = 주식 시가
+    {   // 2026-11-13 매매 화면 실시간 체결 목록·체결강도용: 이번 체결 수량, 매수/매도 체결 구분, 체결강도, 누적 거래량·대금
+      const cv = Number(rec[F_CNTG_VOL]), ct = Number(rec[F_CTTR]), av = Number(rec[F_ACML_VOL]), aa = Number(rec[F_ACML_AMT]);
+      if (Number.isFinite(cv) && cv > 0) payload.tickVol = cv;
+      const sd = rec[F_CCLD_DVSN]; if (sd === '1' || sd === '5') payload.side = sd === '1' ? 'buy' : 'sell';
+      if (Number.isFinite(ct)) payload.cttr = ct;
+      if (Number.isFinite(av) && av > 0) payload.accVol = av;
+      if (Number.isFinite(aa) && aa > 0) payload.accAmt = aa;
+    }
     if (dayHigh) {
       // 프론트 "전략성과" 표의 "고점"/"고점시각" 컬럼을 시세와 같은 틱으로 즉시 갱신하기 위한 필드.
       payload.dayHigh = dayHigh.high;
@@ -3288,6 +3297,60 @@ function handleLiveFlow(req, res) {
   return true;
 }
 
+/* ── 매매 화면 거래원·투자자 탭(2026-11-13): KIS 주식현재가 회원사(FHKST01010600) · 주식현재가 투자자(FHKST01010900). 30초 캐시.
+   응답 필드명은 이름 패턴으로 읽음 — /stock-member?code=…&raw=1, /stock-investor?code=…&raw=1 로 원본 확인 ── */
+const _stkInfo = new Map();                                // key -> {at, v}
+async function kisQuoteGet(path, tr, params) {
+  await kisRestThrottle();
+  const token = await getKisRestToken();
+  const res = await fetch(`${KIS_REST_BASE}${path}?${new URLSearchParams(params)}`, { headers: kisRestHeaders(token, tr), signal: AbortSignal.timeout(8000) });
+  const j = await res.json().catch(() => ({}));
+  return { http: res.status, ok: res.ok && j.rt_cd === '0', body: j };
+}
+const numOf = v => { if (v == null || v === '') return null; const n = Number(String(v).replace(/,/g, '')); return Number.isFinite(n) ? n : null; };
+function parseMember(j) {
+  const o = (j && (Array.isArray(j.output) ? j.output[0] : j.output)) || {};
+  const side = (pre) => {
+    const out = [];
+    for (let i = 1; i <= 5; i++) {
+      const name = o[`${pre}_mbcr_name${i}`]; if (!name) continue;
+      out.push({ name: String(name).trim(), qty: numOf(o[`total_${pre}_qty${i}`]), ratio: numOf(o[`${pre}_mbcr_rlim${i}`]), chg: numOf(o[`${pre}_qty_icdc${i}`]), glob: o[`${pre}_mbcr_glob_yn_${i}`] === 'Y' || o[`${pre}_mbcr_glob_yn${i}`] === 'Y' });
+    }
+    return out;
+  };
+  return { sell: side('seln'), buy: side('shnu'),
+    glob: { sell: numOf(o.glob_total_seln_qty), buy: numOf(o.glob_total_shnu_qty), net: numOf(o.glob_ntby_qty) } };
+}
+function parseInvestor(j) {
+  const rows = Array.isArray(j && j.output) ? j.output : [];
+  return rows.map(r => ({ d: r.stck_bsop_date, close: numOf(r.stck_clpr),
+    prsn: numOf(r.prsn_ntby_tr_pbmn), frgn: numOf(r.frgn_ntby_tr_pbmn), orgn: numOf(r.orgn_ntby_tr_pbmn),   // 백만원
+    prsnQ: numOf(r.prsn_ntby_qty), frgnQ: numOf(r.frgn_ntby_qty), orgnQ: numOf(r.orgn_ntby_qty) })).filter(r => r.d);
+}
+const STK_EP = {
+  '/stock-member': { path: '/uapi/domestic-stock/v1/quotations/inquire-member', tr: 'FHKST01010600', parse: parseMember, ttl: 30e3 },
+  '/stock-investor': { path: '/uapi/domestic-stock/v1/quotations/inquire-investor', tr: 'FHKST01010900', parse: parseInvestor, ttl: 60e3 },
+};
+function handleStockInfo(req, res) {
+  const path = (req.url || '').split('?')[0];
+  const ep = STK_EP[path]; if (!ep) return false;
+  accessCors(req, res, 'GET, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const sp = new URLSearchParams((req.url.split('?')[1]) || '');
+  const json = (c, o) => { res.writeHead(c, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+  const code = (sp.get('code') || '').trim();
+  if (!/^[0-9A-Z]{6}$/.test(code)) { json(400, { ok: false, error: 'bad code' }); return true; }
+  const raw = sp.get('raw') === '1', key = path + code, c = _stkInfo.get(key);
+  if (!raw && c && Date.now() - c.at < ep.ttl) { json(200, { ok: true, ts: c.at, ...c.v }); return true; }
+  kisQuoteGet(ep.path, ep.tr, { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code }).then(r => {
+    if (raw) return json(200, { ok: true, http: r.http, body: r.body });
+    if (!r.ok) return json(200, { ok: false, error: (r.body && (r.body.msg1 || r.body.msg_cd)) || ('HTTP ' + r.http) });
+    const v = { data: ep.parse(r.body) }; _stkInfo.set(key, { at: Date.now(), v });
+    json(200, { ok: true, ts: Date.now(), ...v });
+  }).catch(e => json(500, { ok: false, error: e.message }));
+  return true;
+}
+
 function handleAccessLog(req, res) {
   const path = (req.url || '').split('?')[0];
   if (path === '/visit-log') {
@@ -3354,7 +3417,7 @@ const trade = require('./trade').createTrade({
 
 const server = http.createServer((req, res) => {
   if (trade.handle(req, res)) return;
-  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res) || handleStockInfo(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;
