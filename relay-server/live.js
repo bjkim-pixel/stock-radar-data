@@ -510,7 +510,7 @@ function createLive(deps) {
   let timer = null;
   function start(ms = 5000) { if (timer) return; timer = setInterval(() => { tick(); }, ms); if (timer.unref) timer.unref(); }
   function stop() { if (timer) clearInterval(timer); timer = null; }
-  return { place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, _orders: orders, _plans: plans, _bal: bal };
+  return { place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
 }
 
 module.exports = { createLive };

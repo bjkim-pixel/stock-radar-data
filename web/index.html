@@ -1599,12 +1599,12 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 </section>
 <section id="v-live" class="hide">
   <div class="lmk" id="liveMkt" style="margin-top:16px" aria-label="코스피·코스닥 지수와 외국인·기관 순매수"></div>
-  <div class="card" style="margin-top:10px"><h3><span id="liveTitle">당일 상승률 TOP 20</span> <span class="r" id="liveStat">연결 중…</span></h3>
+  <div class="card" style="margin-top:10px"><h3><span id="liveTitle">당일 상승률 TOP 10</span> <span class="r" id="liveStat">연결 중…</span></h3>
     <details id="lfBox" style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600">조회 조건 <span class="faint" style="font-weight:400;font-size:11px">종목상세와 같은 조건 · 선택한 조건을 모두 만족하는 종목만 표시</span> <span id="lfCnt" class="up" style="font-size:11px"></span></summary><div id="lfRows" style="margin-top:6px"></div></details>
     <div class="qf seg" id="liveSide" style="margin-bottom:6px"><button class="fchip" data-v="up" aria-pressed="true">상승률</button><button class="fchip" data-v="down" aria-pressed="false">하락률</button></div>
     <div class="qf seg" id="liveCap" style="margin-bottom:8px"><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="10000" aria-pressed="false">1조 이상</button><button class="fchip" data-v="40000" aria-pressed="false">4조 이상</button><button class="fchip" data-v="100000" aria-pressed="false">10조 이상</button></div>
-    <div class="note" style="margin-bottom:8px">시가총액 기준으로 나눠 오늘 등락률 상위를 봅니다(전체 = 코스피·코스닥 전 종목, 나머지는 시총이 기준 이상인 종목만). 순위 후보는 KIS에서 8초마다 새로 받고, 후보 25종목의 가격은 KIS 실시간 체결가로 바로 갱신해 순위를 다시 매깁니다. 순위 밖으로 밀린 종목은 빠지고 새로 올라온 종목이 들어옵니다. ETF·ETN·스팩·우선주는 뺐습니다. 시총 = 상장주식수 × 현재가.</div>
-    <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체(업종 표시) 순환">↔</span></th><th>현재가</th><th title="현재가가 오늘 시가 대비 몇 % 올랐는지">당일시가</th><th title="현재가가 전일 종가 대비 몇 % 올랐는지(등락률)">전일종가</th><th>시총</th><th>거래대금</th><th title="외국인·기관 잠정(추정) 순매수 = 증권사 집계 수량 × 현재가. 외국인 09:30·기관 10:00부터, 이후 11:20·13:20·14:30 갱신. 시총 1조 이상 구간만 표시">외국인(잠정)</th><th title="외국인·기관 잠정(추정) 순매수 = 증권사 집계 수량 × 현재가. 외국인 09:30·기관 10:00부터, 이후 11:20·13:20·14:30 갱신. 시총 1조 이상 구간만 표시">기관(잠정)</th><th title="KIS 실시간 체결강도(당일 누적). 100 넘으면 매수 체결이 더 많음. 화살표는 약 5분 전 대비. 실시간 구독 종목만 표시(폴링 종목은 –)">체결강도</th><th title="프로그램매매 순매수(당일 누적, KIS 현재가 시세 · 30초 갱신). 수량×현재가로 환산">프로그램</th><th title="거래량 회전율 = 당일 거래량 ÷ 상장주식수 (KIS 현재가 시세)">회전율</th><th title="현재가가 당일 고가면 '당일', 52주 최고가 이상이면 '52주'">신고가</th><th>거래량</th><th title="이 화면에서 TOP 20에 들어온 뒤 지난 시간">진입 후</th><th>변동</th><th title="종목상세의 주도 세력 — 매집 구간(저점→고점)에서 외+기 순매수가 가장 큰 주체(전체 기간)">주도</th><th title="주도 주체의 최근 5일·20일 순매수 방향">추세</th><th title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록 (낮을수록 개인 물량 감소)">매집 6월</th><th title="최근 ÷ 8월 첫 기록">8월</th></tr></thead>
+    <div class="note" style="margin-bottom:8px">시가총액 기준으로 나눠 오늘 등락률 상위를 봅니다(전체 = 코스피·코스닥 전 종목, 나머지는 시총이 기준 이상인 종목만). 순위 후보는 KIS에서 8초마다 새로 받고, 후보 12종목의 가격은 KIS 실시간 체결가로 바로 갱신해 순위를 다시 매깁니다. 순위 밖으로 밀린 종목은 빠지고 새로 올라온 종목이 들어옵니다. ETF·ETN·스팩·우선주는 뺐습니다. 시총 = 상장주식수 × 현재가.</div>
+    <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체(업종 표시) 순환">↔</span></th><th>현재가</th><th title="현재가가 오늘 시가 대비 몇 % 올랐는지">당일시가</th><th title="현재가가 전일 종가 대비 몇 % 올랐는지(등락률)">전일종가</th><th>시총</th><th>거래대금</th><th title="외국인·기관 잠정(추정) 순매수 = 증권사 집계 수량 × 현재가. 외국인 09:30·기관 10:00부터, 이후 11:20·13:20·14:30 갱신. 시총 1조 이상 구간만 표시">외국인(잠정)</th><th title="외국인·기관 잠정(추정) 순매수 = 증권사 집계 수량 × 현재가. 외국인 09:30·기관 10:00부터, 이후 11:20·13:20·14:30 갱신. 시총 1조 이상 구간만 표시">기관(잠정)</th><th title="KIS 실시간 체결강도(당일 누적). 100 넘으면 매수 체결이 더 많음. 화살표는 약 5분 전 대비. 실시간 구독 종목만 표시(폴링 종목은 –)">체결강도</th><th title="프로그램매매 순매수(당일 누적, KIS 현재가 시세 · 30초 갱신). 수량×현재가로 환산">프로그램</th><th title="거래량 회전율 = 당일 거래량 ÷ 상장주식수 (KIS 현재가 시세)">회전율</th><th title="현재가가 당일 고가면 '당일', 52주 최고가 이상이면 '52주'">신고가</th><th>거래량</th><th title="이 화면에서 TOP 10에 들어온 뒤 지난 시간">진입 후</th><th>변동</th><th title="종목상세의 주도 세력 — 매집 구간(저점→고점)에서 외+기 순매수가 가장 큰 주체(전체 기간)">주도</th><th title="주도 주체의 최근 5일·20일 순매수 방향">추세</th><th title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록 (낮을수록 개인 물량 감소)">매집 6월</th><th title="최근 ÷ 8월 첫 기록">8월</th></tr></thead>
       <tbody id="liveBody"><tr><td colspan="19" class="load sk"></td></tr></tbody></table></div>
   </div>
   <div class="card" style="margin-top:12px"><h3>진입·이탈 기록 <span class="r">이 화면을 연 뒤</span></h3><div id="liveLog" class="note">아직 변동이 없습니다</div></div>
@@ -2738,8 +2738,8 @@ function updateFavLive(code,m){
 // 국면 전략 표(①·④): 종가·등락 셀을 KIS 실시간 체결가로 덮어쓴다. 화면을 떠나면 구독 해제
 const SW_LIVE_MAX=20;
 
-/* ══ 실시간 종목: 등락률 상위 20 — 순위 후보는 릴레이 /live-top(8초), 가격은 KIS 웹소켓 체결가 ══ */
-const LIVE_TOP_N=20,LIVE_POOL=25,LIVE_SUB_GRACE=3,LIVE_EXCL=/스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/;
+/* ══ 실시간 종목: 등락률 상위 10 — 순위 후보는 릴레이 /live-top(8초), 가격은 KIS 웹소켓 체결가 ══ */
+const LIVE_TOP_N=10,LIVE_POOL=12,LIVE_SUB_GRACE=3,LIVE_EXCL=/스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/;
 S.liveMeta=S.liveMeta||{};   // code -> {mk, sc} (stocks.market · v_stock_sector.sector)
 S.live={min:0,on:false,pool:{},since:{},prev:{},log:[],timer:null,paint:0,at:0};
 function liveStart(){
@@ -2803,7 +2803,7 @@ function lmPaint(){
   box.innerHTML=idxBox("KOSPI","코스피")+idxBox("KOSDAQ","코스닥")+invBox("외국인","f")+invBox("기관","o");
 }
 const fmtCap=v=>v>=1e12?N(v/1e12,1)+"조":N(v/1e8,0)+"억";
-$("#liveSide").addEventListener("seg-change",e=>{const L=S.live;L.side=e.detail==="down"?"down":"up";L.pool={};L.since={};L.prev={};L.log=[];$("#liveTitle").textContent=L.side==="down"?"당일 하락률 TOP 20":"당일 상승률 TOP 20";$("#liveBody").innerHTML='<tr><td colspan="19" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
+$("#liveSide").addEventListener("seg-change",e=>{const L=S.live;L.side=e.detail==="down"?"down":"up";L.pool={};L.since={};L.prev={};L.log=[];$("#liveTitle").textContent=L.side==="down"?"당일 하락률 TOP 10":"당일 상승률 TOP 10";$("#liveBody").innerHTML='<tr><td colspan="19" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
 $("#liveCap").addEventListener("seg-change",e=>{const L=S.live;L.min=+e.detail;L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="19" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
 /* 외국인·기관 잠정(추정) 순매수 — 시총 1조↑ 구간만. 값은 수량이라 현재가를 곱해 금액으로 표시(증권사 집계 입력값, 갱신 시각은 칸에 함께 표시) */
 S.liveFlow=S.liveFlow||{};
@@ -2890,7 +2890,7 @@ async function liveFetch(){
     const pool={};rows.slice(0,LIVE_POOL).forEach(x=>{const old=L.pool[x.code];pool[x.code]={...x,live:old&&old.liveAt>j.ts?old.price:null};if(old&&old.liveAt>j.ts){pool[x.code].price=old.price;pool[x.code].changePct=old.changePct;pool[x.code].liveAt=old.liveAt;if(old.open>0)pool[x.code].open=old.open;}
       if(old){pool[x.code].cttr=old.cttr;pool[x.code].cttrH=old.cttrH;pool[x.code].high=Math.max(old.high||0,x.high||0)||undefined;}});   // 8초마다 순위를 새로 받아도 체결강도 이력·당일 고가는 이어간다
     L.pool=pool;L.at=j.ts;
-    // 2026-11-13 구독 교체 줄이기: 실시간 구독은 TOP20만, 순위 밖으로 밀린 종목은 연속 LIVE_SUB_GRACE회(≈24초) 밖에 있을 때만 해지
+    // 2026-11-13 구독 교체 줄이기: 실시간 구독은 TOP10만, 순위 밖으로 밀린 종목은 연속 LIVE_SUB_GRACE회(≈24초) 밖에 있을 때만 해지
     {const top=rows.slice(0,LIVE_TOP_N).map(x=>x.code),keep=new Set(top),miss=L.subMiss=L.subMiss||{};
       for(const c of (S.liveTopWanted||[])){if(keep.has(c))continue;miss[c]=(miss[c]||0)+1;if(miss[c]<LIVE_SUB_GRACE&&pool[c])keep.add(c);}
       Object.keys(miss).forEach(c=>{if(!keep.has(c)||top.includes(c))delete miss[c];});

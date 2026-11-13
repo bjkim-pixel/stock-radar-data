@@ -592,7 +592,7 @@ function createTrade(deps = {}) {
   if (!cfg.allowedEmail) console.warn('[trade] ALLOWED_EMAIL 미설정 — 매매 API는 모든 요청을 거부합니다.');
   if (!cfg.pinHash) console.warn('[trade] TRADE_PIN_HASH 미설정 — 거래 세션을 열 수 없습니다.');
 
-  return { handle, paper, live, getQuote, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
+  return { handle, paper, live, getQuote, heldCodes: () => { const s = new Set(); for (const e of [paper, live]) { if (e && e.heldCodes) { try { for (const c of e.heldCodes()) s.add(c); } catch (_) {} } } return s; }, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
 }
 
 module.exports = { createTrade, hashPin, verifyHash, checkLimits, loadConfig, scrub };

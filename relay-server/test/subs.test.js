@@ -84,3 +84,13 @@ test('현재가 시세 → 참고 지표', () => {
   assert.strictEqual(parseQuotePower(null, num), null);
   assert.strictEqual(parseQuotePower({ stck_prpr: '1000' }, num).pgAmt, null);
 });
+
+test('매매 보유 종목(최우선 가상 접속)은 화면 요청이 한도를 채워도 항상 실시간', () => {
+  const held = new Set(['900001', '900002']);
+  const screen = Array.from({ length: 40 }, (_, i) => String(100000 + i));
+  const trade = { codes: held, hi: held, rank: new Map([...held].map((c, i) => [c, i])), lastActive: Number.MAX_SAFE_INTEGER };
+  const r = allocate([cl(screen, { at: Date.now() }), trade], 36);
+  assert.ok(r.ws.has('900001') && r.ws.has('900002'));
+  assert.strictEqual(r.ws.size, 36);
+  assert.strictEqual(r.order[0].hi, true);
+});

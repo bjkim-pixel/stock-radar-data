@@ -553,7 +553,7 @@ function createPaper(deps) {
   function start(ms = 5000) { if (timer) return; timer = setInterval(() => { tick(); }, ms); if (timer.unref) timer.unref(); }
   function stop() { if (timer) clearInterval(timer); timer = null; }
 
-  return { place, cancel, modify, editPlan, state, report, tick, start, stop, init, _orders: orders, _positions: positions, _dirty: dirty };
+  return { place, cancel, modify, editPlan, state, report, tick, start, stop, init, heldCodes: () => { const s = heldCodes(); for (const o of orders.values()) if (isOpen(o)) s.add(o.code); return s; }, _orders: orders, _positions: positions, _dirty: dirty };
 }
 
 module.exports = { createPaper, allocSteps };

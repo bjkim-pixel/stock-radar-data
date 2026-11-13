@@ -187,8 +187,16 @@ const KIS_PROGRAM_SUB_RESERVE = 8;   // 여유가 있을 때 프로그램매매�
 // 2026-11-13: 상따·전략성과 보유 종목은 구독 대상에서 제외(사용자 요청 — 실시간 시세는 프론트가 보는 화면에만 쓴다).
 // 프론트 요청 종목을 우선순위(매매 화면 → 최근 활동 접속 → 화면 순위)로 한도 안에서 배분하고, 넘친 종목은 REST 폴링으로 대체한다.
 let _subTrimLoggedAt = 0;
+// trade 모듈은 파일 아래쪽에서 만들어지므로 호출 시점에 확인한다(장 시간 밖에는 구독하지 않음)
+function tradeHeldCodes() {
+  try { if (typeof trade === 'undefined' || !trade || !trade.heldCodes || !pollWindowOpen()) return new Set(); return trade.heldCodes(); } catch (_) { return new Set(); }
+}
+setInterval(() => { try { reconcileKisSubscriptions(); } catch (_) {} }, 15000);   // 체결·청산으로 보유 종목이 바뀌면 구독도 따라가게
 function wantedCodes() {
   const list = [...wsClients].map(c => ({ codes: c.subscribedCodes, hi: c.subHi || new Set(), rank: c.subRank || new Map(), lastActive: c.lastActive || 0 }));
+  // 2026-11-13: 실제·가상 매매(스탑·트레일링 감시) 보유 종목 + 미체결 주문 종목은 화면 요청과 무관하게 항상 최우선으로 구독한다
+  const held = tradeHeldCodes();
+  if (held.size) list.unshift({ codes: held, hi: held, rank: new Map([...held].map((c, i) => [c, i])), lastActive: Number.MAX_SAFE_INTEGER });
   _subAlloc = allocateSubs(list, KIS_SUB_SLOT_LIMIT);
   if (_subAlloc.polled.size) {
     const nowMs = Date.now();
@@ -3312,7 +3320,8 @@ function handleSubStatus(req, res) {
   const reqCnt = new Map();
   for (const c of wsClients) for (const code of c.subscribedCodes) reqCnt.set(code, (reqCnt.get(code) || 0) + 1);
   const hi = new Set(_subAlloc.order.filter(o => o.hi).map(o => o.code));
-  const row = code => ({ code, clients: reqCnt.get(code) || 0, hi: hi.has(code) });
+  const tradeHeld = tradeHeldCodes();
+  const row = code => ({ code, clients: reqCnt.get(code) || 0, hi: hi.has(code), trade: tradeHeld.has(code) });
   res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
   res.end(JSON.stringify({
     ok: true, ts: Date.now(), kisWsReady, limit: KIS_SUB_SLOT_LIMIT, kisHardLimit: 41,
