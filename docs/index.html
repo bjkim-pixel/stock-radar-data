@@ -962,9 +962,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div class="ng" data-g="trade"><div class="ngh" role="button" tabindex="0" aria-expanded="true">매매</div><div class="ngi">
       <button data-v="live">실시간 종목</button>
       <button data-v="trade">가상매매</button>
-      <button data-v="traderl">실제매매</button>
-      <button data-v="trplan">매도 계획</button>
-      <button data-v="trhold">보유 현황</button></div></div>
+      <button data-v="traderl">실제매매</button></div></div>
     <div class="ng" data-g="sum"><div class="ngh" role="button" tabindex="0" aria-expanded="true">요약</div><div class="ngi">
       <button data-v="ai">AI 브리핑</button>
       <button data-v="fav">★ 관심</button>
@@ -9690,7 +9688,7 @@ function trdTab(p){
   $("#trdPanePlan").classList.toggle("hide",p!=="plan");$("#trdPaneHold").classList.toggle("hide",p!=="hold");
   {const h=$("#v-trade>.pg-title"),pg=p==="plan"||p==="hold";if(h)h.textContent=pg?(p==="plan"?"매도 계획":"보유 현황")+(TRD.mode==="REAL"?" · 실전":" · 가상"):(TRD.mode==="REAL"?"실제매매":"가상매매");
    $$(".trd-pmode").forEach(g=>{g.classList.toggle("hide",!pg);g.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.pmode===TRD.mode));});}
-  {const mv=p==="plan"?"trplan":p==="hold"?"trhold":(TRD.mode==="REAL"?"traderl":"trade");$$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===mv));}
+  {const mv=TRD.mode==="REAL"?"traderl":"trade";$$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===mv));}
   if(p==="rep"||p==="hist")trdLoadReport();else if(p==="plan")trdRenderPlanAll();else if(p==="hold")trdRenderHold();
 }
 async function trdLoadReport(){
