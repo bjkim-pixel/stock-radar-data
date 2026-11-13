@@ -919,6 +919,12 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .trd-sr{display:grid;grid-template-columns:36px 1fr 1fr 1.2fr;gap:6px;align-items:center;font-size:12.5px;padding:3px 0}
 .trd-ses{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;margin:-2px 0 8px}.trd-ses .tag{padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink);font-weight:700;border:1px solid var(--border)}.trd-ses .tag.off{color:var(--down)}
 .trd-sr.five{grid-template-columns:62px 1fr 1fr 1fr 40px}
+.trd-sec{display:flex;align-items:center;gap:8px;margin:14px 0 8px;padding:9px 12px;border-radius:8px;font-size:12.5px}
+.trd-sec b{font-size:15px;letter-spacing:.5px}.trd-sec span{font-size:11.5px;opacity:.85}
+.trd-sec.buy{background:color-mix(in srgb,var(--up) 12%,var(--surface));color:var(--up);border:1px solid color-mix(in srgb,var(--up) 40%,transparent)}
+.trd-sec.sell{background:color-mix(in srgb,var(--down) 12%,var(--surface));color:var(--down);border:1px solid color-mix(in srgb,var(--down) 40%,transparent)}
+.card.trd-cb{border-left:4px solid var(--up)}.card.trd-cs{border-left:4px solid var(--down)}
+#trdBtn:not(:disabled){background:var(--up);color:#fff}
 .trd-pt{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:6px}
 .trd-pt .trd-sr.five{gap:0;padding:0}.trd-pt .trd-sr.five>span{padding:7px 8px;border-left:1px solid var(--grid)}.trd-pt .trd-sr.five>span:first-child{border-left:0}
 .trd-pt .trd-sr.h{background:var(--surface-2);border-bottom:1px solid var(--border)}
@@ -2070,11 +2076,12 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
             <div data-bp="mem" class="hide"><div id="trdMem"></div></div>
             <div data-bp="inv" class="hide"><div id="trdInv"></div></div>
           </div>
-          <div class="card"><h3>주문 입력</h3>
+          <div class="trd-sec buy"><b>매수</b><span>주문 입력 · 진입 전 점검</span></div>
+          <div class="card trd-cb"><h3>주문 입력</h3>
             <div class="trd-form"><label>주문 유형<select id="trdType"><option value="limit">지정가</option><option value="market">시장가</option></select></label><label>매수가<input id="trdBuy" inputmode="numeric"></label><label>수량(주)<input id="trdQty" inputmode="numeric"></label><label>또는 금액(원)<input id="trdAmt" inputmode="numeric" placeholder="입력하면 수량 자동"></label></div>
             <div class="faint" style="margin:6px 0">매수 금액 <b id="trdBuyAmt" class="num"></b></div><div id="trdOrderW"></div></div>
-        <div class="card"><h3>진입 전 점검표</h3><div id="trdCheck"></div></div>
-        <div class="card"><div id="trdMkt"></div><button type="button" class="btn" id="trdBtn" disabled style="width:100%">매수 주문</button>
+        <div class="card trd-cb"><h3>진입 전 점검표</h3><div id="trdCheck"></div></div>
+        <div class="card trd-cb"><div id="trdMkt"></div><button type="button" class="btn" id="trdBtn" disabled style="width:100%">매수 주문</button>
           <div id="trdBtnNote" class="faint" style="margin-top:6px;font-size:12px;text-align:center"></div></div>
         </div>
         <div>
@@ -2088,7 +2095,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div class="card"><h3>외국인+기관 매물대<span class="r" id="trdPfCR">종목상세와 같은 기준 · 억원</span></h3>
         <div class="legend"><span><i style="background:var(--up)"></i>순매수 구간</span></div>
         <div class="chart" id="trdPfC"></div><div id="trdPfCTop"></div></div>
-      <div class="card"><h3>자동 매도 설정</h3><div id="trdAutoMode"></div>
+      <div class="trd-sec sell"><b>매도</b><span>자동 매도 · 손절 / 트레일링 익절</span></div>
+      <div class="card trd-cs"><h3>자동 매도 설정</h3><div id="trdAutoMode"></div>
         <div class="trd-form"><label>손절 %<input id="trdStopPct" inputmode="decimal"></label></div>
         <div id="trdStopTx" style="margin:6px 0"></div><div id="trdRefs" class="trd-chips"></div>
         <button type="button" class="btn trd-act" id="trdStopSet">손절 설정</button>
@@ -2096,7 +2104,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <div id="trdTgtEst" style="margin:6px 0"></div>
         <button type="button" class="btn trd-act" id="trdTpSet">익절 설정</button>
         <div class="faint" style="font-size:11.5px;margin-top:6px">익절은 주문을 미리 걸지 않고 감시합니다 — 현재가가 익절가에 닿으면 감시를 시작하고, 그 뒤 고점 대비 트레일링 %만큼 내려오면 그 단계 수량을 매도합니다(정규장 시장가 · 시간외 지정가). 손절은 손절가에 닿으면 남은 수량 전부 매도.</div><div id="trdSteps" style="margin-top:10px"></div><div id="trdCalc" style="margin-top:10px"></div></div>
-      <div class="card"><h3>자동 매도 목록</h3><div id="trdAutoHd"></div><div id="trdAuto"></div></div>
+      <div class="card trd-cs"><h3>자동 매도 목록</h3><div id="trdAutoHd"></div><div id="trdAuto"></div></div>
       <button type="button" class="btn ghost" id="trdDetBtn" style="width:100%;margin:0 0 10px">종목 상세 펼치기 ▾</button>
       <div id="trdDetail"></div>
     </div>
