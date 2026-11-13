@@ -14,6 +14,7 @@
 const crypto = require('crypto');
 const { createPaper } = require('./paper');
 const { createLive } = require('./live');
+const SES = require('./session');
 const { createKisOrder } = require('./kis-order');
 const { promisify } = require('util');
 const pbkdf2 = promisify(crypto.pbkdf2);
@@ -297,9 +298,27 @@ function createTrade(deps = {}) {
     if (STAT_WARN[o.iscd_stat_cls_code]) w.add(STAT_WARN[o.iscd_stat_cls_code]);
     return [...w];
   }
-  async function fetchQuote(code) {
+  /* 종목 구분(8단계): NXT 거래 가능(stocks.nxt_ok) · ETF 등 주식이 아닌 종목. 6시간 캐시, 모르면 KRX 전용·애프터마켓 제외(보수적) */
+  const infoCache = new Map();   // code -> { t, v }
+  async function codeInfo(code) {
+    const c = infoCache.get(code);
+    if (c && now() - c.t < (c.v.known ? 6 * 3600e3 : 60000)) return c.v;
+    let v = { nxt: null, etf: true, known: false };
+    if (deps.sbGet) {
+      try {
+        const r = await deps.sbGet(`stocks?select=code,nxt_ok,security_type&code=eq.${code}&limit=1`);
+        if (r && r[0]) v = { nxt: r[0].nxt_ok == null ? null : !!r[0].nxt_ok, etf: String(r[0].security_type || '') !== 'STOCK', known: true };
+        else v = { nxt: null, etf: true, known: true };   // stocks 에 없는 종목(ETF·ETN 등)
+      } catch (e) { console.warn('[trade] 종목 구분 조회 실패', code, e && e.message); }
+    }
+    infoCache.set(code, { t: now(), v });
+    if (infoCache.size > 500) infoCache.delete(infoCache.keys().next().value);
+    return v;
+  }
+  const kstMin = () => { const d = new Date(now() + 9 * 3600e3); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
+  async function fetchQuote(code, mkt = 'J') {
     if (!deps.kisGet) throw new Error('kis unavailable');
-    const P = { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code };
+    const P = { FID_COND_MRKT_DIV_CODE: mkt, FID_INPUT_ISCD: code };
     const base = '/uapi/domestic-stock/v1/quotations/';
     const [pr, ask] = await Promise.all([
       deps.kisGet(base + 'inquire-price', 'FHKST01010100', P),
@@ -331,14 +350,23 @@ function createTrade(deps = {}) {
       tick: n(o.aspr_unit) || null, strength: st.v,
       vi: (o.vi_cls_code === 'Y' || a2.vi_cls_code === 'Y'), warnings: stockWarnings(o),
       hour: String(a.aspr_acpt_hour || ''), asks, bids,
-      totalAsk: n(a.total_askp_rsqn), totalBid: n(a.total_bidp_rsqn),
+      totalAsk: n(a.total_askp_rsqn), totalBid: n(a.total_bidp_rsqn), mkt,
     };
+  }
+  /* 세션에 맞는 시장(J/NX/UN)으로 조회. 통합(UN) 응답이 비면 KRX(J)로 대신하고 표시(mktFallback) */
+  async function sessionQuote(code) {
+    const info = await codeInfo(code), s0 = SES.sessionOf(kstMin(), info);
+    let q = await fetchQuote(code, s0.mkt), fb = false;
+    if (s0.mkt === 'UN' && !(q.price > 0) && !q.asks.some(l => l.p > 0) && !q.bids.some(l => l.p > 0)) { q = await fetchQuote(code, 'J'); fb = true; }
+    const full = { nxt: info.nxt, etf: info.etf, warnings: q.warnings };
+    const s = SES.sessionOf(kstMin(), full);
+    return { ...q, info: full, mktFallback: fb, session: { open: s.open, name: s.name, label: s.label, reason: s.reason, venue: s.venue, market: s.market } };
   }
   function getQuote(code) {
     const t = now(), c = quoteCache.get(code);
     if (c && c.p) return c.p;                               // 같은 종목 동시 요청은 한 번만
-    if (c && t - c.t < 1500) return Promise.resolve(c.v);   // 1.5초 캐시
-    const p = fetchQuote(code).then(v => { quoteCache.set(code, { t: now(), v, p: null }); return v; },
+    if (c && t - c.t < 1500 && c.v && c.v.sMin === kstMin()) return Promise.resolve(c.v);   // 1.5초 캐시(분이 바뀌면 세션이 바뀔 수 있어 새로)
+    const p = sessionQuote(code).then(v => { v.sMin = kstMin(); quoteCache.set(code, { t: now(), v, p: null }); return v; },
       e => { quoteCache.delete(code); throw e; });
     quoteCache.set(code, { t: c ? c.t : 0, v: c ? c.v : null, p });
     if (quoteCache.size > 100) quoteCache.clear();
@@ -364,12 +392,14 @@ function createTrade(deps = {}) {
     return v;
   }
 
+  /* 8단계(시간외) 공통 설정: 손절 지정가 호가 수·재주문 간격, SOR 대신 거래소 직접 지정(TRADE_NO_SOR=1) */
+  const extOpts = { stopTicks: Math.round(numEnv(env.STOP_LIMIT_TICKS, 5)), stopRetrySec: numEnv(env.STOP_RETRY_SEC, 20), noSor: env.TRADE_NO_SOR === '1' };
   /* ── 가상매매(자체 체결 시뮬레이터) ── */
   const paper = (deps.sbGet && deps.sbWrite)
     ? createPaper({
       now, sbGet: deps.sbGet, sbWrite: deps.sbWrite, getQuote, guard, alert, isOpenDay,
       checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.VIRTUAL, enabled: () => cfg.enabled,
-      fees: { buy: numEnv(env.PAPER_FEE_BUY_PCT, 0), sell: numEnv(env.PAPER_FEE_SELL_PCT, 0) },
+      fees: { buy: numEnv(env.PAPER_FEE_BUY_PCT, 0), sell: numEnv(env.PAPER_FEE_SELL_PCT, 0) }, ...extOpts,
     })
     : null;
   if (paper && !deps.skipLoop) paper.start();
@@ -380,7 +410,7 @@ function createTrade(deps = {}) {
   const kisOrder = (deps.kisGet && deps.kisPost) ? createKisOrder({ kisGet: deps.kisGet, kisPost: deps.kisPost, account }) : null;
   const live = (paper && kisOrder)
     ? createLive({ now, sbGet: deps.sbGet, sbWrite: deps.sbWrite, getQuote, guard, alert, isOpenDay, kis: kisOrder,
-      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.REAL, enabled: () => cfg.enabled && cfg.realEnabled })
+      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.REAL, enabled: () => cfg.enabled && cfg.realEnabled, ...extOpts })
     : null;
   if (live && !deps.skipLoop) live.start();
 
@@ -438,6 +468,20 @@ function createTrade(deps = {}) {
       if (!/^\d{6}$/.test(code)) return json(res, 400, { ok: false, error: 'bad code' });
       try { return json(res, 200, await getQuote(code)); }
       catch (e) { console.warn('[trade] 시세 조회 실패', code, e && e.message); return json(res, 502, { ok: false, error: 'quote unavailable' }); }
+    }
+    if (path === '/trade/quote-probe' && req.method === 'GET') {   // 시세 출처 점검(8단계): KRX·NXT·통합 응답을 나란히(세션 필요)
+      if (!getSession(req.headers['x-trade-session'], a.user.id)) return json(res, 401, { ok: false, error: 'pin required' });
+      const code = new URL(req.url, 'http://x').searchParams.get('code') || '';
+      if (!/^\d{6}$/.test(code)) return json(res, 400, { ok: false, error: 'bad code' });
+      const info = await codeInfo(code), out = { ok: true, code, at: now(), info, session: SES.sessionOf(kstMin(), info), mkts: {} };
+      for (const m of ['J', 'NX', 'UN']) {
+        try {
+          const q = await fetchQuote(code, m);
+          out.mkts[m] = { ok: true, price: q.price, vol: q.vol, hour: q.hour, ask1: (q.asks[0] || {}).p || 0, bid1: (q.bids[0] || {}).p || 0,
+            askLevels: q.asks.filter(l => l.p > 0).length, bidLevels: q.bids.filter(l => l.p > 0).length, totalAsk: q.totalAsk, totalBid: q.totalBid };
+        } catch (e) { out.mkts[m] = { ok: false, error: String(e && e.message).slice(0, 120) }; }
+      }
+      return json(res, 200, out);
     }
     if (path === '/trade/paper/state' && req.method === 'GET') {
       if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });

@@ -92,3 +92,6 @@ begin
   begin revoke all on sequence paper_events_id_seq from anon, authenticated; exception when others then null; end;
   begin revoke all on sequence paper_book_snaps_id_seq from anon, authenticated; exception when others then null; end;
 end $$;
+
+-- 8단계(2026-11-13, NXT·시간외): 주문을 낸 거래소(KRX·NXT·SOR) — KRX 정규장 주문은 15:30 소멸, 그 밖은 20:00 소멸
+alter table paper_orders add column if not exists venue text;

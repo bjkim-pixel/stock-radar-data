@@ -899,6 +899,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .trd-form input{font-size:16px;padding:7px 8px;min-height:40px}
 .trd-chips{display:flex;gap:6px;flex-wrap:wrap}
 .trd-sr{display:grid;grid-template-columns:36px 1fr 1fr 1.2fr;gap:6px;align-items:center;font-size:12.5px;padding:3px 0}
+.trd-ses{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;margin:-2px 0 8px}.trd-ses .tag{padding:2px 8px;border-radius:999px;background:var(--surface-2);font-weight:650}.trd-ses .tag.off{color:var(--down)}
 .trd-sr.five{grid-template-columns:62px 1fr 1fr 1fr 40px}
 .trd-sr.h{font-size:11px;color:var(--ink-3)}.trd-sr .n{text-align:right}
 .trd-si{width:100%;text-align:right;font-size:14px;padding:5px 6px;min-height:34px}
@@ -2021,7 +2022,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div class="card"><h3>종목 정보</h3><div id="trdInfo"></div></div>
       <div class="trd-grid">
         <div>
-          <div class="card"><h3>호가 <span class="r faint" style="font-size:11px">호가 클릭 = 매수가 입력</span></h3><div id="trdBook" class="trd-book"></div></div>
+          <div class="card"><h3>호가 <span class="r faint" style="font-size:11px">호가 클릭 = 매수가 입력</span></h3><div id="trdSes" class="trd-ses"></div><div id="trdBook" class="trd-book"></div><div id="trdQp" class="faint" style="font-size:11.5px;margin-top:6px"></div></div>
           <div class="card"><h3>주문 입력</h3>
             <div class="trd-form"><label>주문 유형<select id="trdType"><option value="limit">지정가</option><option value="market">시장가</option></select></label><label>매수가<input id="trdBuy" inputmode="numeric"></label><label>수량(주)<input id="trdQty" inputmode="numeric"></label><label>또는 금액(원)<input id="trdAmt" inputmode="numeric" placeholder="입력하면 수량 자동"></label></div>
             <div class="faint" style="margin:6px 0">매수 금액 <b id="trdBuyAmt" class="num"></b></div><div id="trdOrderW"></div></div>
@@ -7093,7 +7094,7 @@ function smxModel(rows){
   return {rows,combo,pk,tr,build,dd,ratio,r5,r20,since,pchg,st,cls,subj,indiv,close,L};
 }
 // 종목후보 등 표의 "외+기 고점" 4열 채우기 — 종목후보 '스마트머니 기간' 선택(#fSmxW)에 맞춰 smx_state 값을 넣는다
-/* 거래 시간 표시(모서리 둥근 사각형): 20 = 대체거래소(NXT) 거래 가능(20시 마감) · 15 = 정규장만(15:30 마감). stocks.nxt_ok 기준, 확인 안 된 종목은 표시 없음 */
+/* 거래 시간 표시(모서리 둥근 사각형): 20 = 대체거래소(NXT) 거래 가능(08:00~20:00) · 15 = KRX만(정규장 + 2026-09-14부터 KRX 애프터마켓 16:00~20:00). stocks.nxt_ok 기준, 확인 안 된 종목은 표시 없음 */
 function nxTag(c){return `<span class="nx" data-nx="${c}"></span>`;}
 async function nxLoad(){
   if(S.nxtMap)return S.nxtMap;if(S._nxtP)return S._nxtP;
@@ -7104,7 +7105,7 @@ function nxFill(){
   const els=[...document.querySelectorAll("span.nx[data-nx]:not([data-d])")];if(!els.length)return;
   if(!S.nxtMap){nxLoad().then(()=>nxFill());return;}
   els.forEach(e=>{e.dataset.d="1";const v=S.nxtMap[e.dataset.nx];if(v==null)return;
-    e.textContent=v?"20":"15";e.className="nx "+(v?"nx-y":"nx-n");e.title=v?"NXT(대체거래소) 거래 가능 — 20시까지 거래":"정규장만 거래 — 15:30 마감";});
+    e.textContent=v?"20":"15";e.className="nx "+(v?"nx-y":"nx-n");e.title=v?"NXT(대체거래소) 거래 가능 — 08:00~20:00(프리마켓·정규장·애프터마켓)":"KRX만 거래 — 정규장 09:00~15:30 + KRX 애프터마켓 16:00~20:00(ETF·투자경고 등 제외)";});
 }
 const SMX_ST={CONT:["매집 지속","up"],STALL:["고점 후 정체","warn"],LEAVE:["이탈 진행","down"],HEAVY:["이탈 심화","down"],OUT:["순유출","down"],NONE:["매집 이력 없음","dim"]};
 const LEAD_TR={UP:["매수 추세","up",6],RESUME:["매수 재개","up",5],SLOW:["매수 둔화","warn",4],REBUY:["매도 후 재매수","warn",3],FLAT:["변동 없음","dim",2],TURN:["매도 전환","down",1],DOWN:["매도 추세","down",0]};
@@ -9230,6 +9231,9 @@ function trdRenderQuote(){
       <div class="num ${cls} trd-px">${N(Q.price)} <span class="trd-pc">${dir<0?"-":dir>0?"+":""}${N(Math.abs(Q.changePct),2)}%</span></div></div>
     <div class="faint trd-side num">체결강도 <b class="${st==null?"":st>=100?"up":"down"}">${st==null?"–":N(st,1)}</b><br>거래대금 ${trdFmtAmt(Q.amt)}<br>시 ${N(Q.open)} · 고 ${N(Q.high)} · 저 ${N(Q.low)}</div></div>
     <div class="trd-warn">${warn}<span class="faint" style="font-size:11px">상한 ${N(Q.upper)} · 하한 ${N(Q.lower)} · 호가 ${Q.hour?Q.hour.replace(/(\d\d)(\d\d)(\d\d)/,"$1:$2:$3"):"–"}</span></div>`;
+  // 세션(8단계): 지금 이 종목이 거래되는 시장·주문 유형·시세 출처
+  {const S=Q.session||{},src={J:"KRX",NX:"NXT",UN:"통합(KRX+NXT)"}[Q.mkt]||Q.mkt||"KRX",nx=Q.info&&Q.info.nxt;
+   $("#trdSes").innerHTML=`<span class="tag${S.open?"":" off"}">${trdEsc(S.open?S.label:"주문 불가")}</span>${S.open?`<span>${S.market?"지정가·시장가":"지정가만"} · 주문 거래소 ${trdEsc(S.venue||"–")}</span>`:`<span class="faint">${trdEsc(S.reason||"")}</span>`}<span class="faint">시세 ${trdEsc(src)}${Q.mktFallback?"(통합 응답 없어 KRX 대신)":""} · ${nx?"NXT 가능(20)":"KRX만(15)"}</span><button type="button" class="chip" data-qprobe="1" style="margin-left:auto">시세 출처 점검</button>`;}
   // 호가창: 위에서 아래로 매도10→매도1, 매수1→매수10
   const asks=[...Q.asks].reverse(),bids=Q.bids;
   const maxQ=Math.max(1,...asks.map(a=>a.q),...bids.map(b=>b.q));
@@ -9238,7 +9242,7 @@ function trdRenderQuote(){
       :`<div class="trd-r b${pick}" data-px="${x.p}"><span></span><span></span><span class="p">${x.p?N(x.p):""}</span><span class="n"><i style="width:${w}%"></i>${x.q?N(x.q):""}</span><span class="n f">${x.p?trdFmtAmt(amt):""}</span></div>`;};
   const sa=asks.reduce((a,x)=>a+x.p*x.q,0),sb=bids.reduce((a,x)=>a+x.p*x.q,0);
   const empty=!asks.some(x=>x.p>0)&&!bids.some(x=>x.p>0);
-  $("#trdBook").innerHTML=(empty?`<div class="trd-wn" style="margin-bottom:6px">호가 데이터가 비어 있습니다 — 정규장 호가는 08:30 동시호가부터 표시되고, 09:00~15:30 에 실시간으로 채워집니다. 그 시간인데도 비어 있으면 Render 로그의 KIS 오류를 확인하세요.</div>`:"")+`<div class="trd-r h"><span class="n">금액</span><span class="n">매도잔량</span><span class="p">호가</span><span class="n">매수잔량</span><span class="n">금액</span></div>
+  $("#trdBook").innerHTML=(empty?`<div class="trd-wn" style="margin-bottom:6px">호가 데이터가 비어 있습니다 — 이 종목의 거래 세션이 아니거나(위 세션 표시 참고) 시세 출처 응답이 비었습니다. 거래 중인데도 비어 있으면 아래 "시세 출처 점검"을 눌러 보세요.</div>`:"")+`<div class="trd-r h"><span class="n">금액</span><span class="n">매도잔량</span><span class="p">호가</span><span class="n">매수잔량</span><span class="n">금액</span></div>
     ${asks.map(x=>row(x,"a")).join("")}${bids.map(x=>row(x,"b")).join("")}
     <div class="trd-sum"><span>매도 10단계 <b class="down">${trdFmtAmt(sa)}</b></span><span>매수 10단계 <b class="up">${trdFmtAmt(sb)}</b>${sa>0?` (${N(sb/sa,2)}배)`:""}</span></div>`;
 }
@@ -9300,6 +9304,7 @@ function trdRenderOrder(){
   const price=trdBasis(Q),qty=Math.floor(TRD.qty)||0,mkt=TRD.type==="market";
   const w=mkt?[]:trdCheckOrder({price:TRD.buy,qty,upper:Q.upper,lower:Q.lower});
   $("#trdType").value=TRD.type;$("#trdBuy").disabled=mkt;
+  {const mo=$('#trdType option[value="market"]');if(mo){const ok=!Q.session||Q.session.market;mo.disabled=!ok;mo.textContent=ok?"시장가":"시장가(지금은 불가)";}}
   $("#trdBuy").value=mkt?price:(TRD.buy||"");$("#trdQty").value=TRD.qty||"";$("#trdAmt").value=TRD.amt||"";
   $("#trdBuyAmt").textContent=price>0&&qty>0?N(price*qty)+"원"+(mkt?" (현재 매도 1호가 기준 예상)":""):"–";
   const m=TRD.msg&&Date.now()-TRD.msg.t<15000?[`<div class="${TRD.msg.ok?"trd-ok":"trd-wn"}">${trdEsc(TRD.msg.text)}</div>`]:[];
@@ -9311,6 +9316,8 @@ function trdRenderOrder(){
   else if(!st.enabled)why="서버에서 매매 기능이 꺼져 있습니다(TRADING_ENABLED=1 필요)";
   else if(st.halted)why="긴급 정지 중입니다";
   else if(P&&P.market&&!P.market.open)why="지금은 주문할 수 없습니다 — "+P.market.reason;
+  else if(Q.session&&!Q.session.open)why="지금은 이 종목을 주문할 수 없습니다 — "+Q.session.reason;
+  else if(mkt&&Q.session&&!Q.session.market)why=`${Q.session.label}에는 시장가 주문을 낼 수 없습니다 — 주문 유형을 지정가로 바꾸세요`;
   else if(!(qty>=1))why="수량을 입력하세요";
   else if(!mkt&&!(TRD.buy>0&&trdFloor(TRD.buy)===TRD.buy))why="호가 단위에 맞는 매수가를 입력하세요";
   else if(steps.length&&sumQ>qty)why=`익절 단계 수량 합계(${sumQ})가 주문 수량(${qty})보다 많습니다 — 익절 설정을 다시 눌러 주세요`;
@@ -9392,7 +9399,7 @@ function trdRenderHold(){
   if(planned){
     if(!en.enabled)eng='<div class="trd-wn">서버 매매 기능이 꺼져 있어 자동 매도(손절·익절)도 멈춰 있습니다.</div>';
     else if(P.market&&P.market.open)eng=age!=null&&age<=30?`<div class="trd-ok">자동 매도 감시 중 · ${age}초 전 확인${P.real&&P.engine.lastSync?` · 체결조회 ${Math.round((P.now-P.engine.lastSync)/1000)}초 전`:""}</div>`:`<div class="trd-wn">자동 매도 감시가 ${age==null?"아직 시작되지 않았습니다":age+"초째 멈춰 있습니다"} — 서버 상태를 확인하세요</div>`;
-    else eng=`<div class="sub">장이 닫혀 있어 감시 대기 중 (${trdEsc(P.market?P.market.reason:"")}). 다음 거래일 첫 시세에서 익절 주문을 다시 걸고 손절 감시를 시작합니다.</div>`;
+    else eng=`<div class="sub">거래 시간이 아니라 감시 대기 중 (${trdEsc(P.market?P.market.reason:"")}). 08:00(NXT 종목) 또는 09:00(KRX 종목) 첫 시세에서 익절 주문을 다시 걸고 손절 감시를 시작합니다.</div>`;
   }
   const probe=P.real?`<div class="trd-sell" style="margin:0 0 6px"><button type="button" class="chip" data-probe="1">계좌 연결 점검</button><span class="faint" style="font-size:11.5px">${trdEsc(TRD.probeTx||"")}</span></div>`:"";
   box.innerHTML=probe+eng+(P.positions.length?P.positions.map(p=>{
@@ -9405,7 +9412,7 @@ function trdRenderHold(){
       ${editing?trdPeHtml(p):`<div class="trd-sell"><input data-hq="${p.code}" inputmode="numeric" placeholder="수량 ${p.avail??p.qty}" value="${q.qty||""}"><input data-hp="${p.code}" inputmode="numeric" placeholder="비우면 시장가" value="${q.price||""}"><button type="button" class="btn ghost" data-sell="${p.code}">${armed?"한 번 더 누르면 매도":"매도"}</button><button type="button" class="chip" data-pe-open="${p.code}">계획 수정</button></div>`}</div>`;
   }).join(""):'<div class="faint" style="font-size:12.5px">보유 종목이 없습니다.</div>');
   const open=P.orders.filter(o=>o.status==="open"||o.status==="partial");
-  $("#trdOpen").innerHTML=open.length?open.map(o=>{const auto=TRD_RSN(o.reason);return `<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${trdEsc(o.name||trdNm(o.code))} ${o.type==="market"?"시장가":N(o.price)+"원"}${auto?` <span class="trd-w" style="background:var(--surface-2);color:var(--ink-2)">${auto} · 자동</span>`:""}</span>${auto||o.status==="unknown"||o.status==="pending"||o.cancelReq?"":`<button type="button" class="chip" data-ccl="${o.id}">취소</button>`}</div><div class="sub num">${N(o.filled)}/${N(o.qty)}주 체결${o.queueAhead!=null?` · 내 앞 대기 약 ${N(o.queueAhead)}주`:""}${o.status==="unknown"?' · <b class="down">접수 확인 중</b>':o.status==="pending"?" · 전송 중":""}${o.cancelReq?" · 취소 요청됨":""} · ${trdTm(o.ts)}</div></div>`;}).join(""):'<div class="faint" style="font-size:12.5px">미체결 주문이 없습니다.</div>';
+  $("#trdOpen").innerHTML=open.length?open.map(o=>{const auto=TRD_RSN(o.reason);return `<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${trdEsc(o.name||trdNm(o.code))} ${o.type==="market"?"시장가":N(o.price)+"원"}${o.venue?` <span class="faint" style="font-size:11px">${trdEsc(o.venue)}</span>`:""}${auto?` <span class="trd-w" style="background:var(--surface-2);color:var(--ink-2)">${auto} · 자동</span>`:""}</span>${auto||o.status==="unknown"||o.status==="pending"||o.cancelReq?"":`<button type="button" class="chip" data-ccl="${o.id}">취소</button>`}</div><div class="sub num">${N(o.filled)}/${N(o.qty)}주 체결${o.queueAhead!=null?` · 내 앞 대기 약 ${N(o.queueAhead)}주`:""}${o.status==="unknown"?' · <b class="down">접수 확인 중</b>':o.status==="pending"?" · 전송 중":""}${o.cancelReq?" · 취소 요청됨":""} · ${trdTm(o.ts)}</div></div>`;}).join(""):'<div class="faint" style="font-size:12.5px">미체결 주문이 없습니다.</div>';
   $("#trdFills").innerHTML=P.fills.length?P.fills.map(f=>`<div class="trd-hr"><div class="top"><span><b class="${f.side==="buy"?"up":"down"}">${f.side==="buy"?"매수":"매도"}</b> ${trdEsc(trdNm(f.code))} ${N(f.price)}원 × ${N(f.qty)}주</span><span class="num ${f.realized>0?"up":f.realized<0?"down":"dim"}">${f.realized==null?"":trdSgn(f.realized)+"원"}</span></div><div class="sub">${trdTm(f.ts)}${TRD_RSN(f.reason)?" · "+TRD_RSN(f.reason)+" (자동)":""}</div></div>`).join(""):'<div class="faint" style="font-size:12.5px">오늘 체결이 없습니다.</div>';
 }
 async function trdPeSave(code){
@@ -9570,6 +9577,10 @@ document.addEventListener("click",e=>{
   if((el=t.closest("[data-rpo]"))){if(el.disabled)return;TRD.rp.off=Math.min(0,TRD.rp.off+ +el.dataset.rpo);return trdLoadReport();}
   if(t.closest("[data-rpr]"))return trdLoadReport();
   if(t.closest("[data-csv]"))return trdCsv();
+  if(t.closest("[data-qprobe]")){const box=$("#trdQp");box.textContent="시세 출처 점검 중…";
+    trdApi("/trade/quote-probe?code="+TRD.cur).then(r=>{const nm={J:"KRX",NX:"NXT",UN:"통합"};
+      box.innerHTML=`세션: <b>${trdEsc(r.session.open?r.session.label:"닫힘 — "+r.session.reason)}</b> · NXT ${r.info.nxt?"가능":"불가/미확인"}<br>`+["J","NX","UN"].map(k=>{const m=r.mkts[k]||{};return m.ok?`${nm[k]}: 현재가 ${N(m.price)} · 매도 ${m.askLevels}단계(1호가 ${N(m.ask1)}) · 매수 ${m.bidLevels}단계(1호가 ${N(m.bid1)}) · 거래량 ${N(m.vol)} · 호가시각 ${trdEsc(m.hour||"–")}`:`${nm[k]}: 실패 ${trdEsc(m.error||"")}`;}).join("<br>");})
+    .catch(e=>{box.textContent="점검 실패: "+trdErrTx(e);});return;}
   if(t.closest("[data-probe]")){TRD.probeTx="점검 중…";trdRenderHold();trdApi("/trade/live/probe").then(r=>{TRD.probeTx=!r.configured?"계좌 환경변수가 없습니다":`잔고 ${r.balance.ok?"정상("+r.balance.positions+"종목, 필드 "+((r.balance.rowKeys||[]).length||"-")+"개)":"실패: "+r.balance.error} · 체결조회 ${r.daily.ok?"정상("+r.daily.rows+"건)":"실패: "+r.daily.error}`;TRD.probe=r;}).catch(e=>{TRD.probeTx="점검 실패: "+trdErrTx(e);}).finally(()=>trdRenderHold());return;}
   if((el=t.closest("[data-pe-open]"))){const p=TRD.ps&&TRD.ps.positions.find(x=>x.code===el.dataset.peOpen);if(p){trdPeInit(p);trdRenderHold();}return;}
   if((el=t.closest("[data-pe-close]"))){delete TRD.pe[el.dataset.peClose];trdRenderHold();return;}

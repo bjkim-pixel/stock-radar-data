@@ -79,3 +79,6 @@ begin
   end loop;
   begin revoke all on sequence live_events_id_seq from anon, authenticated; exception when others then null; end;
 end $$;
+
+-- 8단계(2026-11-13, NXT·시간외): KIS 에 보낸 거래소 구분(EXCG_ID_DVSN_CD: KRX·NXT·SOR) — 취소할 때 같은 값을 씀
+alter table live_orders add column if not exists excg text;

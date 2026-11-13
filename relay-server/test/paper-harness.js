@@ -8,7 +8,9 @@ const T0 = Date.parse('2027-01-13T10:00:00+09:00');     // 수요일 10:00 KST
 
 /* 메모리 DB: relay 가 쓰는 PostgREST 호출(sbGet/sbWrite) 흉내 */
 function fakeDb() {
-  const t = { paper_orders: new Map(), paper_fills: new Map(), paper_positions: new Map(), paper_book_snaps: [], paper_events: [], trade_audit: [], deleted: [], live_orders: new Map(), live_fills: new Map(), live_plans: new Map(), live_events: [] };
+  const t = { paper_orders: new Map(), paper_fills: new Map(), paper_positions: new Map(), paper_book_snaps: [], paper_events: [], trade_audit: [], deleted: [], live_orders: new Map(), live_fills: new Map(), live_plans: new Map(), live_events: [],
+    // 종목 구분(8단계): 005930 은 KRX 전용(기존 시나리오 = 정규장 기준), 000660 은 NXT 가능
+    stocks: new Map([['005930', { code: '005930', nxt_ok: false, security_type: 'STOCK' }], ['000660', { code: '000660', nxt_ok: true, security_type: 'STOCK' }]]) };
   const pk = { paper_orders: 'id', paper_fills: 'id', paper_positions: 'code', live_orders: 'id', live_fills: 'id', live_plans: 'code' };
   let snapId = 0, fail = null;
   return {
@@ -17,6 +19,7 @@ function fakeDb() {
       if (fail && fail.get) throw new Error(fail.get);
       const [tbl, qs = ''] = path.split('?'); const p = new URLSearchParams(qs);
       if (tbl === 'trade_audit') return [];
+      if (tbl === 'stocks') { const c = (p.get('code') || '').replace('eq.', ''); return t.stocks.has(c) ? [{ ...t.stocks.get(c) }] : []; }
       let rows = tbl === 'paper_book_snaps' ? t.paper_book_snaps : tbl === 'live_events' ? t.live_events : [...t[tbl].values()];
       const st = p.get('status'); if (st) { const set = st.replace(/^in\.\(|\)$/g, '').split(','); rows = rows.filter(r => set.includes(r.status)); }
       const ca = p.get('created_at'); if (ca) rows = rows.filter(r => Date.parse(r.created_at) >= Date.parse(ca.replace('gte.', '')));
@@ -49,7 +52,9 @@ async function boot(db, { envExtra = {}, clock: c0 = T0, kx = null } = {}) {
   st.asks = [[10010, 100], [10020, 200], [10030, 300], [10040, 400], [10050, 500], [10060, 100], [10070, 100], [10080, 100], [10090, 100], [10100, 100]];
   st.bids = [[10000, 500], [9990, 400], [9980, 300], [9970, 200], [9960, 100], [9950, 100], [9940, 100], [9930, 100], [9920, 100], [9910, 100]];
   const hhmmss = () => { const d = new Date(st.clock + 9 * 3600e3); return String(d.getUTCHours()).padStart(2, '0') + String(d.getUTCMinutes()).padStart(2, '0') + String(d.getUTCSeconds()).padStart(2, '0'); };
-  const kisGet = async (path, trId) => {
+  st.mkts = [];
+  const kisGet = async (path, trId, params) => {
+    if (params && params.FID_COND_MRKT_DIV_CODE) st.mkts.push(params.FID_COND_MRKT_DIV_CODE);
     if (trId === 'FHKST01010100') return { output: { stck_prpr: st.price, prdy_vrss: 0, prdy_ctrt: 0, prdy_vrss_sign: '3', stck_oprc: 10000, stck_hgpr: st.high, stck_lwpr: st.low, stck_sdpr: 10000, stck_mxpr: 13000, stck_llam: 7000, acml_vol: st.vol, acml_tr_pbmn: 1e9, aspr_unit: 10, temp_stop_yn: st.warnings.includes('거래정지') ? 'Y' : 'N', vi_cls_code: st.vi ? 'Y' : 'N' } };
     if (trId === 'FHKST01010200') {
       const o1 = { aspr_acpt_hour: st.hourOverride || hhmmss(), total_askp_rsqn: 1, total_bidp_rsqn: 1 };
@@ -96,7 +101,7 @@ function fakeKis() {
     kx.hold.set(o.code, h);
   };
   const accept = (body, tr) => {
-    const o = { odno: String(++kx.seq).padStart(10, '0'), code: body.PDNO, side: tr === 'TTTC0012U' ? 'buy' : 'sell', qty: +body.ORD_QTY, price: +body.ORD_UNPR, type: body.ORD_DVSN === '01' ? 'market' : 'limit', filled: 0, amt: 0, cancelled: false, tmd: hhmmss() };
+    const o = { odno: String(++kx.seq).padStart(10, '0'), code: body.PDNO, side: tr === 'TTTC0012U' ? 'buy' : 'sell', qty: +body.ORD_QTY, price: +body.ORD_UNPR, type: body.ORD_DVSN === '01' ? 'market' : 'limit', filled: 0, amt: 0, cancelled: false, tmd: hhmmss(), excg: body.EXCG_ID_DVSN_CD };
     kx.orders.set(o.odno, o);
     if (o.type === 'market') kx.fill(o.odno, o.qty, o.side === 'buy' ? kx.st.asks[0][0] : kx.st.bids[0][0]);
     return o;

@@ -11,13 +11,20 @@
    · 확인 중(pending/unknown) 주문이 있는 종목은 자동 매도가 새 주문을 내지 않음
    · 계획이 없는 보유 종목(HTS 에서 산 종목 등)은 자동 매도하지 않음 — 화면의 계획 수정으로 계획을 넣으면 그때부터 감시
    · 모든 실전 주문에 같은 순간 호가로 계산한 가상 체결가(sim_avg)를 함께 저장 → 리포트에서 가상 대비 차이 비교
+   · 8단계(NXT·시간외): 08:00~20:00 동안 종목별 세션(session.js)에 따라 주문. 주문마다 거래소(excg: KRX·NXT·SOR)를 저장하고 취소에 같은 값을 씀.
+     익절은 NXT 종목이면 NXT(20:00까지 유지), KRX 종목이면 KRX(정규장분은 15:30 소멸 → 15:40 체결조회 정리 후 16:00 애프터마켓에 다시 냄).
+     프리·애프터마켓 손절은 시장가 대신 매수 1호가 n호가 아래 지정가 — 정해진 시간 안에 다 안 팔리면 취소 확인 후 다시 냄.
+     19:58 에 남은 미체결을 모두 취소 요청, 20:05 까지 체결조회로 정리한 뒤 남은 주문은 소멸 처리
    ════════════════════════════════════════════════════════════════════════ */
 const E = require('./paper-engine');
+const SES = require('./session');
 const { allocSteps } = require('./paper');
 const { computeReport } = require('./paper-report');
 
 const MISSING = /42P01|PGRST205|does not exist/;
-const OPEN_MIN = 9 * 60, CLOSE_MIN = 15 * 60 + 30, SETTLE_MIN = 15 * 60 + 40;   // 15:20~15:30 종가 단일가 체결을 15:40 까지 체결조회로 받아 둔 뒤 남은 주문을 소멸 처리
+const { T } = SES;
+const DAY_CANCEL = 19 * 60 + 58;   // 이때 남은 미체결을 모두 취소 요청(20:00 마감 전)
+const GRACE = 10;                  // 거래소에서 주문이 소멸한 뒤 체결조회로 마지막 체결을 받아 둘 시간(분) — KRX 정규장 15:30 → 15:40 정리
 const rnd = () => Math.random().toString(36).slice(2, 6);
 const isTp = o => /^tp[1-5]$/.test(String(o.reason || ''));
 const LIVE = new Set(['pending', 'unknown', 'open', 'partial']);           // 아직 끝나지 않은 주문
@@ -26,24 +33,26 @@ const UNSURE = new Set(['pending', 'unknown']);                             // K
 function createLive(deps) {
   const now = deps.now || Date.now;
   const kis = deps.kis;
+  const STOP_TICKS = deps.stopTicks || 5, STOP_RETRY_MS = (deps.stopRetrySec || 20) * 1000;
+  const route = (ses) => (ses.venue === 'SOR' && deps.noSor) ? (ses.name === 'regular' ? 'KRX' : 'NXT') : ses.venue;
   const orders = new Map(), plans = new Map(), lastPx = new Map(), cids = new Map(), warned = new Map(), lowSeen = new Map(), reopen = new Set();
   let fills = [];
   const bal = { positions: new Map(), cash: null, at: 0, keys: null };
   const dirty = { orders: new Map(), fills: new Map(), plans: new Map() };
-  const hb = { day: '', open: false, close: false, lastTick: 0, lastSync: 0 };
+  const hb = { day: '', open: false, close: false, lastTick: 0, lastSync: 0, dayCancel: false };
   let loaded = false, missing = false, ticking = false, needBal = true;
 
   /* ── 시간 ── */
   const kstOf = ms => { const d = new Date(ms + 9 * 3600e3); return { day: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes(), sec: d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds(), dow: d.getUTCDay() }; };
   const kst = () => kstOf(now());
   const dayStart = () => Date.parse(kst().day + 'T00:00:00+09:00');
-  const inSession = t => !(t.dow === 0 || t.dow === 6 || t.min < OPEN_MIN || t.min >= CLOSE_MIN);
   const fresh = q => { const h = /^(\d\d)(\d\d)(\d\d)$/.exec(String(q.hour || '')); if (!h) return false; const d = kst().sec - (+h[1] * 3600 + +h[2] * 60 + +h[3]); return d >= -5 && d <= 120; };
   async function closedReason(q) {
     const t = kst();
     if (t.dow === 0 || t.dow === 6) return '주말입니다';
-    if (t.min < OPEN_MIN || t.min >= CLOSE_MIN) return '정규장 시간이 아닙니다(09:00~15:30)';
+    if (t.min < T.START || t.min >= T.END) return '거래 시간이 아닙니다(08:00~20:00)';
     if (deps.isOpenDay) { let o = null; try { o = await deps.isOpenDay(t.day); } catch (_) {} if (o === false) return '휴장일입니다'; }
+    if (q) { const s = SES.sessionOf(t.min, q.info); if (!s.open) return s.reason; }
     if (q && !fresh(q)) return '시세가 갱신되지 않고 있습니다(휴장·지연)';
     return null;
   }
@@ -61,13 +70,13 @@ function createLive(deps) {
     id: o.id, created_at: new Date(o.createdAt).toISOString(), updated_at: new Date(o.updatedAt).toISOString(), code: o.code, name: o.name || null, side: o.side, type: o.type,
     price: o.price == null ? null : o.price, qty: o.qty, filled_qty: o.filled, filled_amt: o.amt || 0, avg_price: o.filled ? o.avg : null, status: o.status,
     reason: o.reason || 'manual', plan: o.plan || null, note: o.note || null, odno: o.odno || null, orgno: o.orgno || null, ref_price: o.refPrice || null,
-    sim_avg: o.simAvg || null, sim_qty: o.simQty == null ? null : o.simQty, sent_at: o.sentAt ? new Date(o.sentAt).toISOString() : null, msg: o.msg || null, cancel_req: !!o.cancelReq,
+    sim_avg: o.simAvg || null, sim_qty: o.simQty == null ? null : o.simQty, sent_at: o.sentAt ? new Date(o.sentAt).toISOString() : null, msg: o.msg || null, cancel_req: !!o.cancelReq, excg: o.excg || null,
   });
   const fromOrder = r => ({
     id: r.id, createdAt: Date.parse(r.created_at), updatedAt: Date.parse(r.updated_at), code: r.code, name: r.name, side: r.side, type: r.type, price: r.price == null ? null : +r.price,
     qty: +r.qty, filled: +r.filled_qty || 0, amt: +r.filled_amt || 0, avg: r.avg_price == null ? 0 : +r.avg_price, status: r.status, reason: r.reason, plan: r.plan, note: r.note,
     odno: r.odno, orgno: r.orgno, refPrice: r.ref_price == null ? null : +r.ref_price, simAvg: r.sim_avg == null ? null : +r.sim_avg, simQty: r.sim_qty == null ? null : +r.sim_qty,
-    sentAt: r.sent_at ? Date.parse(r.sent_at) : null, msg: r.msg, cancelReq: !!r.cancel_req,
+    sentAt: r.sent_at ? Date.parse(r.sent_at) : null, msg: r.msg, cancelReq: !!r.cancel_req, excg: r.excg || null,
   });
   const fillRow = f => ({ id: f.id, ts: new Date(f.ts).toISOString(), order_id: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: 0, realized: f.realized, reason: f.reason });
   const fromFill = r => ({ id: r.id, ts: Date.parse(r.ts), orderId: r.order_id, code: r.code, side: r.side, price: +r.price, qty: +r.qty, amount: +r.amount, fee: +r.fee || 0, realized: r.realized == null ? null : +r.realized, reason: r.reason });
@@ -128,18 +137,18 @@ function createLive(deps) {
   }
 
   /* ── 주문 내기(잠금 안). DB 먼저 → KIS → 결과 기록 ── */
-  async function send({ code, name, side, type, price, qty, reason, plan, q, ref, note }) {
+  async function send({ code, name, side, type, price, qty, reason, plan, q, ref, note, venue }) {
     const sim = E.submit({ side, type, price, qty }, q), s = E.summarize(sim.fills || []);
     const t = now();
     const o = { id: `L${t.toString(36)}${rnd()}`, createdAt: t, updatedAt: t, code, name: name || null, side, type, price: type === 'limit' ? price : null, qty, filled: 0, amt: 0, avg: 0, status: 'pending',
       reason: reason || 'manual', plan: plan || null, note: note || null, odno: null, orgno: null,
       refPrice: ref || (type === 'limit' ? price : ((side === 'buy' ? q.asks : q.bids).find(l => l.p > 0) || {}).p || q.price),
-      simAvg: s.qty ? s.avg : null, simQty: s.qty, sentAt: null, msg: null, cancelReq: false };
+      simAvg: s.qty ? s.avg : null, simQty: s.qty, sentAt: null, msg: null, cancelReq: false, excg: venue || 'KRX' };
     try { await W('live_orders', 'POST', [orderRow(o)]); } catch (e) { console.warn('[live] 주문 기록 실패 — 주문 안 냄:', e.message); return bad(503, '주문 기록을 저장하지 못해 주문을 내지 않았습니다'); }
     orders.set(o.id, o);
     o.sentAt = now();
     try {
-      const r = await kis.order({ side, code, type, price, qty });
+      const r = await kis.order({ side, code, type, price, qty, venue: o.excg });
       o.odno = r.odno; o.orgno = r.orgno; o.status = 'open';
     } catch (e) {
       if (e.code === 'REJECT' || e.code === 'NOACCT') { o.status = 'rejected'; o.msg = String(e.message).slice(0, 200); }
@@ -156,7 +165,7 @@ function createLive(deps) {
   async function cancelKis(o, note) {
     if (o.cancelReq) return true;
     if (UNSURE.has(o.status) || !o.odno) return false;
-    try { await kis.cancel({ odno: o.odno, orgno: o.orgno }); o.cancelReq = true; o.note = note || o.note; o.updatedAt = now(); dirty.orders.set(o.id, o); needBal = true; return true; }
+    try { await kis.cancel({ odno: o.odno, orgno: o.orgno, venue: o.excg || 'KRX' }); o.cancelReq = true; o.note = note || o.note; o.updatedAt = now(); dirty.orders.set(o.id, o); needBal = true; return true; }
     catch (e) { o.msg = String(e.message).slice(0, 200); dirty.orders.set(o.id, o); notify(`실전 주문 취소 실패(${o.msg}): ${o.name || o.code} ${o.qty}주`, 'cancelfail|' + o.id); return false; }
   }
 
@@ -204,9 +213,14 @@ function createLive(deps) {
       if (r) applyRow(o, r);
     }
   }
+  /* 소멸 처리: 지난 날짜 주문 · 거래소 소멸 시각(KRX 정규장 15:30, 그 밖 20:00)에서 체결조회 정리 시간이 지난 주문 */
   function expireOld() {
-    const t = kst(), cut = t.min >= SETTLE_MIN ? Infinity : dayStart();
-    for (const o of orders.values()) if ((o.status === 'open' || o.status === 'partial') && o.createdAt < cut) { o.status = 'cancelled'; o.note = 'expired'; o.updatedAt = now(); dirty.orders.set(o.id, o); if (isTp(o)) reopen.add(o.code); }
+    const t = kst(), d0 = dayStart();
+    for (const o of orders.values()) {
+      if (!(o.status === 'open' || o.status === 'partial')) continue;
+      const e = SES.expiryOf(o.excg || 'KRX', kstOf(o.createdAt).min), until = e >= T.END ? T.SETTLE : e + GRACE;
+      if (o.createdAt < d0 || t.min >= until) { o.status = 'cancelled'; o.note = 'expired'; o.updatedAt = now(); dirty.orders.set(o.id, o); needBal = true; if (isTp(o)) reopen.add(o.code); }
+    }
   }
 
   /* ── 자동 매도(잠금 안, 종목별) ── */
@@ -216,9 +230,16 @@ function createLive(deps) {
     const sp = stopOf(p, pl.plan), prevLow = lowSeen.get(code);
     const newLow = q.low > 0 && prevLow != null && q.low < prevLow;
     if (q.low > 0) lowSeen.set(code, prevLow == null ? q.low : Math.min(prevLow, q.low));
-    if (!sp || !(q.price <= sp || (newLow && q.low <= sp))) return false;
+    const hit = !!sp && (q.price <= sp || (newLow && q.low <= sp));
+    if (!hit && !pl.plan.stopped) return false;                                             // 손절이 시작되면 가격이 돌아와도 남은 수량을 끝까지 팜
     if (q.vi) { notify(`[실전] 손절 조건이지만 VI 발동 중이라 대기: ${p.name || code}`, 'vi|' + code); return true; }
-    if (mine(code, o => o.reason === 'stop').length) return true;                           // 손절 주문이 이미 진행 중
+    const ses = SES.sessionOf(kst().min, q.info);
+    const stops = mine(code, o => o.reason === 'stop');
+    if (stops.length) {                                                                      // 손절 주문이 이미 진행 중
+      // 시간외 지정가 손절이 정해진 시간 안에 다 안 팔렸으면 취소 요청 → 취소가 체결조회로 확인된 다음 주기에 지금 호가로 다시 냄
+      for (const o of stops) if (o.type === 'limit' && !o.cancelReq && !UNSURE.has(o.status) && now() - (o.sentAt || o.createdAt) >= STOP_RETRY_MS) await cancelKis(o, 'stop_retry');
+      return true;
+    }
     if (mine(code, o => UNSURE.has(o.status)).length) { notify(`[실전] 손절 조건 — 확인 중인 주문이 있어 대조 후 매도합니다: ${p.name || code}`, 'stopwait|' + code); return true; }
     const sells = mine(code, o => o.side === 'sell');
     let failed = 0;
@@ -226,21 +247,29 @@ function createLive(deps) {
     let sellable = p.qty - failed;
     try { await refreshBalance(); const fp = posOf(code); sellable = fp ? Math.min(fp.sellable, fp.qty - failed) : 0; } catch (_) { /* 잔고를 못 읽으면 보수적으로 앞의 값 */ }
     if (sellable <= 0) { if (failed) notify(`[실전] 손절: 취소 실패한 매도 주문이 남아 추가 매도하지 않았습니다: ${p.name || code}`, 'stopblocked|' + code); return true; }
-    const r = await send({ code, name: p.name, side: 'sell', type: 'market', price: null, qty: sellable, reason: 'stop', q, ref: sp });
+    const type = ses.market ? 'market' : 'limit', price = ses.market ? null : SES.stopLimitPrice(q, STOP_TICKS, E.tickOf, E.floorTick);
+    const first = !pl.plan.stopped;
+    const r = await send({ code, name: p.name, side: 'sell', type, price, qty: sellable, reason: 'stop', q, ref: sp || q.price, venue: route(ses), note: first ? null : 'retry' });
     if (!r.ok) notify(`[실전] 손절 매도 실패(${r.error}) — 다음 주기에 다시 시도: ${p.name || code}`, 'stopfail|' + code);
-    else { notify(`[실전] 손절 주문: ${p.name || code} ${sellable}주 시장가 (손절가 ${sp.toLocaleString('ko-KR')}원)`); event('stop', code, { stop: sp, price: q.price, qty: sellable }); }
+    else {
+      pl.plan.stopped = true; dirty.plans.set(code, pl);
+      notify(`[실전] 손절 주문: ${p.name || code} ${sellable}주 ${type === 'market' ? '시장가' : `${price.toLocaleString('ko-KR')}원 지정가(${ses.label})`} (손절가 ${(sp || 0).toLocaleString('ko-KR')}원)`, first ? null : 'stopretry|' + code);
+      if (first) event('stop', code, { stop: sp, price: q.price, qty: sellable, type, limit: price, session: ses.name, venue: route(ses) });
+    }
     return true;
   }
   async function syncTp(code, q) {
     const p = posOf(code), pl = plans.get(code), tps = mine(code, o => o.side === 'sell' && isTp(o));
     if (mine(code, o => UNSURE.has(o.status) || o.cancelReq).length) return;            // 확인 중이거나 취소 확인 대기 중이면 다음 주기에
     if (!p || !pl || !pl.plan || pl.plan.stopped || !(pl.plan.steps || []).length) { for (const o of tps) await cancelKis(o, 'no_plan'); return; }
+    const venue = SES.restVenue(kst().min, q.info);
+    if (!venue) return;                                                                     // 지금 익절을 받을 거래소가 없음 — 걸린 주문은 그대로
     const avail = Math.min(p.qty - remain(mine(code, o => o.side === 'sell' && !isTp(o))), p.sellable + remain(tps));
     const want = allocSteps(pl.plan.steps, Math.max(0, avail));
     let changed = false;
     for (const st of pl.plan.steps) {
       const my = tps.filter(o => o.reason === 'tp' + st.n), w = want[st.n] || 0;
-      if (my.length === 1 && my[0].price === st.p && my[0].qty - my[0].filled === w) continue;
+      if (my.length === 1 && my[0].price === st.p && my[0].qty - my[0].filled === w && (my[0].excg || 'KRX') === venue) continue;
       if (my.length === 0 && w === 0) continue;
       for (const o of my) { await cancelKis(o, 'resync'); changed = true; }
     }
@@ -248,7 +277,7 @@ function createLive(deps) {
     for (const st of pl.plan.steps) {
       const w = want[st.n] || 0;
       if (w > 0 && !tps.some(o => o.reason === 'tp' + st.n)) {
-        const r = await send({ code, name: p.name, side: 'sell', type: 'limit', price: st.p, qty: w, reason: 'tp' + st.n, q, note: reopen.has(code) ? 'reopen' : null });
+        const r = await send({ code, name: p.name, side: 'sell', type: 'limit', price: st.p, qty: w, reason: 'tp' + st.n, q, venue, note: reopen.has(code) ? 'reopen' : null });
         if (!r.ok) notify(`[실전] 익절 ${st.n}단계 주문 실패(${r.error}): ${p.name || code}`, `tpfail|${code}|${st.n}`);
       }
     }
@@ -280,6 +309,9 @@ function createLive(deps) {
     const run = (async () => {
       let q; try { q = await deps.getQuote(code); } catch (_) { return bad(502, '시세를 가져오지 못했습니다'); }
       const closed = await closedReason(q); if (closed) return bad(409, closed);
+      const ses = SES.sessionOf(kst().min, q.info);
+      if (type === 'market' && !ses.market) return bad(409, `${ses.label}에는 시장가 주문을 낼 수 없습니다(지정가만)`);
+      if (kst().min >= DAY_CANCEL) return bad(409, '19:58 이후에는 새 주문을 받지 않습니다(20:00 마감 정리 중)');
       if (q.vi) return bad(409, 'VI 발동 중에는 주문할 수 없습니다');
       if ((q.warnings || []).includes('거래정지')) return bad(409, '거래정지 종목입니다');
       if (type === 'limit' && ((q.upper > 0 && price > q.upper) || (q.lower > 0 && price < q.lower))) return bad(400, '상·하한가 범위를 벗어났습니다');
@@ -298,7 +330,7 @@ function createLive(deps) {
           const lim = deps.checkLimits({ mode: 'REAL', orderKrw: ref * qty, dayKrw: dayBuyKrw(), positions: heldCodes().size, isNewPosition: !heldCodes().has(code) });
           if (!lim.ok) return bad(403, lim.error);
         }
-        const r = await send({ code, name, side, type, price, qty, reason: 'manual', plan: side === 'buy' ? cleanPlan(body.plan) : null, q });
+        const r = await send({ code, name, side, type, price, qty, reason: 'manual', plan: side === 'buy' ? cleanPlan(body.plan) : null, q, venue: route(ses) });
         if (!r.ok) return r;
         return { ok: true, order: pubOrder(r.order), pending: r.order.status !== 'open' };
       });
@@ -346,7 +378,7 @@ function createLive(deps) {
 
   /* ── 조회 ── */
   const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null,
-    status: o.status, queueAhead: null, reason: o.reason, note: o.note, msg: o.msg, cancelReq: o.cancelReq, simAvg: o.simAvg });
+    status: o.status, queueAhead: null, reason: o.reason, note: o.note, msg: o.msg, cancelReq: o.cancelReq, simAvg: o.simAvg, venue: o.excg || null });
   const pubFill = f => ({ id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: 0, realized: f.realized, reason: f.reason });
   const pubPos = p => { const pl = plans.get(p.code); return { code: p.code, name: p.name, qty: p.qty, avg: p.avg, plan: pl ? pl.plan : null, stop: stopOf(p, pl && pl.plan),
     last: (lastPx.get(p.code) || {}).price || p.price || null, avail: p.qty - remain(mine(p.code, o => o.side === 'sell' && !isTp(o))), sellable: p.sellable }; };
@@ -397,15 +429,16 @@ function createLive(deps) {
       if (!(await init())) return;
       const t = kst();
       await lock(async () => { expireOld(); if (dirty.orders.size || dirty.fills.size || dirty.plans.size) await flush(); });
-      if (hb.day !== t.day) { hb.day = t.day; hb.open = false; hb.close = false; lowSeen.clear(); }
-      if (!inSession(t)) {
-        if (t.dow !== 0 && t.dow !== 6 && t.min >= CLOSE_MIN && t.min < SETTLE_MIN && [...orders.values()].some(o => LIVE.has(o.status))) {
-          await lock(async () => {   // 장 마감 직후: 종가 단일가 체결분을 받아 둠(자동 매도는 하지 않음)
+      if (hb.day !== t.day) { hb.day = t.day; hb.open = false; hb.close = false; hb.dayCancel = false; lowSeen.clear(); }
+      if (t.dow === 0 || t.dow === 6 || t.min < T.START) return;
+      if (t.min >= T.END) {
+        if (t.min < T.SETTLE && [...orders.values()].some(o => LIVE.has(o.status))) {
+          await lock(async () => {   // 20:00 마감 직후: 마지막 체결을 받아 둠(자동 매도는 하지 않음). 20:05 에 남은 주문은 소멸 처리
             try { await syncOrders(); if (needBal) await refreshBalance(); } catch (e) { notify(`[실전] 마감 후 체결조회 실패: ${e.message}`, 'syncfail'); }
             await flush();
           });
         }
-        if (t.min >= SETTLE_MIN && hb.open && !hb.close) { hb.close = true; const tf = fills.filter(f => f.ts >= dayStart()); notify(`[실전] 장 마감: 오늘 체결 ${tf.length}건 · 실현손익 ${Math.round(tf.reduce((a, f) => a + (f.realized || 0), 0)).toLocaleString('ko-KR')}원`); }
+        if (t.min >= T.SETTLE && hb.open && !hb.close) { hb.close = true; const tf = fills.filter(f => f.ts >= dayStart()); notify(`[실전] 마감(20:00): 오늘 체결 ${tf.length}건 · 실현손익 ${Math.round(tf.reduce((a, f) => a + (f.realized || 0), 0)).toLocaleString('ko-KR')}원`); }
         return;
       }
       if (deps.isOpenDay) { let od = null; try { od = await deps.isOpenDay(t.day); } catch (_) {} if (od === false) return; }
@@ -413,8 +446,14 @@ function createLive(deps) {
       await lock(async () => {
         try { if ([...orders.values()].some(o => LIVE.has(o.status))) await syncOrders(); } catch (e) { notify(`[실전] 체결조회 실패: ${e.message}`, 'syncfail'); }
         try { if (needBal || now() - bal.at > 30000) await refreshBalance(); } catch (e) { notify(`[실전] 잔고 조회 실패: ${e.message}`, 'balfail'); }
+        if (t.min >= DAY_CANCEL && !hb.dayCancel) {                                         // 19:58: 남은 미체결을 모두 취소 요청(자동·수동 모두)
+          hb.dayCancel = true; let n = 0;
+          for (const o of orders.values()) if ((o.status === 'open' || o.status === 'partial') && !o.cancelReq) { if (await cancelKis(o, 'day_end')) n++; }
+          if (n) { notify(`[실전] 20:00 마감 전 미체결 ${n}건을 취소했습니다`); event('day_end_cancel', null, { n }); }
+        }
         await flush();
       });
+      if (t.min >= DAY_CANCEL) return;                                                       // 마감 정리 중에는 새 자동 매도 주문을 내지 않음
       const planned = [...plans.keys()].filter(c => bal.positions.has(c));
       if (!hb.open) { hb.open = true; if (planned.length) notify(`[실전] 자동 매도 감시 시작 — 보유 ${planned.length}종목`); }
       for (const code of planned) {

@@ -93,8 +93,9 @@ function restFill(o, q, sharedBook) {
   // 2) 남은 수량: 체결(거래량) 기반
   const dv = o.lastVol == null ? 0 : Math.max(0, (q.vol || 0) - o.lastVol);   // 기준 거래량이 없으면(서버 재시작 직후) 이번엔 체결 인정 안 함
   const buy = o.side === 'buy';
-  const newLow = q.low > 0 && (o.lowSeen == null || q.low < o.lowSeen);
-  const newHigh = q.high > 0 && (o.highSeen == null || q.high > o.highSeen);
+  // 기준 저가·고가를 모르면(재시작·시세 출처 변경 직후) 새 저가·고가로 보지 않음 — 다른 시간대의 고저가로 '지나쳐 거래됨'을 잘못 판단하지 않게
+  const newLow = q.low > 0 && o.lowSeen != null && q.low < o.lowSeen;
+  const newHigh = q.high > 0 && o.highSeen != null && q.high > o.highSeen;
   const through = buy ? (q.price < o.price || (newLow && q.low < o.price)) : (q.price > o.price || (newHigh && q.high > o.price));
   const at = q.price === o.price;
   if (left > 0) {

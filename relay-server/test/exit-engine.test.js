@@ -122,8 +122,9 @@ test('시나리오: 장 마감에 당일 주문 소멸 → 다음 날 갭 하락
   move(c, 10000); await c.t.paper.tick();
   c.st.clock = Date.parse('2027-01-13T15:31:00+09:00'); await c.t.paper.tick();
   assert.equal(tps(db).length, 0);
-  assert.ok([...db.t.paper_orders.values()].some(o => o.note === 'expired'));
-  assert.ok(c.st.alerts.some(a => /장 마감/.test(a)));
+  assert.ok([...db.t.paper_orders.values()].some(o => o.note === 'expired'));   // KRX 정규장 익절은 15:30 소멸
+  c.st.clock = Date.parse('2027-01-13T20:01:00+09:00'); await c.t.paper.tick();
+  assert.ok(c.st.alerts.some(a => /장 마감/.test(a)));                       // 마감 요약은 20:00 이후
   c.st.clock = Date.parse('2027-01-14T09:00:05+09:00') - 5000; move(c, 9600, { low: 9600, high: 9600 });
   await c.t.paper.tick();
   assert.equal(db.t.paper_positions.has('005930'), false);

@@ -224,7 +224,7 @@ test('리포트: 가상 대비 차이(시장가·손절)', async () => {
   await x.c.close();
 });
 
-test('장 마감 직후 종가 단일가 체결을 받아 두고 15:40 이후 남은 주문 소멸', async () => {
+test('KRX 정규장 마감 직후 종가 단일가 체결을 받아 두고 15:40 이후 남은 KRX 주문 소멸', async () => {
   const x = await setup();
   await holding(x);
   const tp2 = [...x.kx.orders.values()].find(o => o.side === 'sell' && o.price === 10300);
@@ -234,7 +234,8 @@ test('장 마감 직후 종가 단일가 체결을 받아 두고 15:40 이후 �
   assert.equal([...x.db.t.live_orders.values()].find(o => o.reason === 'tp1').status, 'open');
   x.c.st.clock = Date.parse('2027-01-13T15:41:00+09:00'); await x.c.t.live.tick();
   const tp1 = [...x.db.t.live_orders.values()].find(o => o.reason === 'tp1');
-  assert.equal(tp1.status, 'cancelled'); assert.equal(tp1.note, 'expired');
-  assert.ok(x.c.st.alerts.some(a => /장 마감/.test(a)));
+  assert.equal(tp1.status, 'cancelled'); assert.equal(tp1.note, 'expired');   // KRX 정규장 주문은 15:30 소멸 → 15:40 정리
+  x.c.st.clock = Date.parse('2027-01-13T20:06:00+09:00'); await x.c.t.live.tick();
+  assert.ok(x.c.st.alerts.some(a => /마감\(20:00\)/.test(a)));
   await x.c.close();
 });

@@ -7,14 +7,19 @@
    · 자동 매도(4단계): 보유 종목마다 익절 1~5단계 지정가 매도를 걸어두고, 현재가가 손절가 이하가 되면
      남은 매도 주문을 모두 취소한 뒤 남은 수량 전부를 시장가로 매도. 장 마감에 당일 주문은 소멸하고
      다음 거래일 첫 시세에서 다시 접수. 긴급 정지 중에도 매도(손절·익절)는 계속함(정지는 신규 매수만 막음)
-   · 호가 10단계는 09:00·12:00·15:10(보유·미체결 종목)과 사람 주문·체결·손절 시점에만 저장, 14일 뒤 삭제
+   · 호가 10단계는 08:05·09:00·12:00·15:10·16:05(보유·미체결 종목)과 사람 주문·체결·손절 시점에만 저장, 14일 뒤 삭제
+   · 8단계(NXT·시간외): 08:00~20:00 동안 종목별 세션(session.js)에 따라 주문·체결. 프리·애프터마켓은 지정가만 —
+     손절은 시장가 대신 매수 1호가 n호가 아래 지정가로 내고, 일정 시간 안에 다 안 팔리면 취소 후 다시 냄.
+     주문마다 거래소(venue)를 기록: KRX 정규장 주문은 15:30 소멸(애프터마켓 16:00 에 익절 재접수), NXT·SOR 는 20:00 소멸
    ════════════════════════════════════════════════════════════════════════ */
 const E = require('./paper-engine');
+const SES = require('./session');
 const { computeReport } = require('./paper-report');
 
 const MISSING = /42P01|PGRST205|does not exist/;
-const SLOTS = [['open', 9 * 60], ['noon', 12 * 60], ['close', 15 * 60 + 10]];
-const OPEN_MIN = 9 * 60, CLOSE_MIN = 15 * 60 + 30, SNAP_WINDOW = 10, KEEP_DAYS = 14;
+const SLOTS = [['pre', 8 * 60 + 5], ['open', 9 * 60], ['noon', 12 * 60], ['close', 15 * 60 + 10], ['after', 16 * 60 + 5]];
+const SNAP_WINDOW = 10, KEEP_DAYS = 14;
+const { T } = SES;
 const rnd = () => Math.random().toString(36).slice(2, 6);
 const isTp = o => /^tp[1-5]$/.test(String(o.reason || ''));
 
@@ -45,10 +50,12 @@ function allocSteps(steps, avail) {
 
 function createPaper(deps) {
   const now = deps.now || Date.now;
-  const fees = deps.fees || { buy: 0, sell: 0 };   // % — 기본 0(수수료·세금 무시), 체결 행에 fee 를 따로 저장해 나중에 재계산 가능
+  const fees = deps.fees || { buy: 0, sell: 0 };
+  const STOP_TICKS = deps.stopTicks || 5, STOP_RETRY_MS = (deps.stopRetrySec || 20) * 1000;   // 시간외 손절 지정가: 매수 1호가 n호가 아래 · 다 안 팔리면 다시 내는 간격
+  const route = (ses) => (ses.venue === 'SOR' && deps.noSor) ? (ses.name === 'regular' ? 'KRX' : 'NXT') : ses.venue;   // % — 기본 0(수수료·세금 무시), 체결 행에 fee 를 따로 저장해 나중에 재계산 가능
   const orders = new Map(), positions = new Map(), lastPx = new Map();
   let fills = [];                                   // 오늘 체결(최신이 앞)
-  const snapDone = new Set(), cids = new Map(), warned = new Map(), reopen = new Set();   // reopen: 전날 소멸한 익절 주문을 다시 거는 종목(내역에 '장 시작 재접수'로 표시)
+  const snapDone = new Set(), cids = new Map(), warned = new Map(), reopen = new Set(), srcOf = new Map();   // reopen: 전날 소멸한 익절 주문을 다시 거는 종목(내역에 '장 시작 재접수'로 표시)
   const dirty = { orders: new Map(), fills: new Map(), pos: new Map() };
   const hb = { day: '', open: false, close: false, lastTick: 0, restartPending: false };
   let loaded = false, missing = false, ticking = false, lastPurge = '', persistAlerted = false;
@@ -60,7 +67,7 @@ function createPaper(deps) {
   };
   const kst = () => kstOf(now());
   const dayStartIso = () => new Date(Date.parse(kst().day + 'T00:00:00+09:00')).toISOString();
-  const inSession = t => !(t.dow === 0 || t.dow === 6 || t.min < OPEN_MIN || t.min >= CLOSE_MIN);
+  const inSession = t => !(t.dow === 0 || t.dow === 6 || t.min < T.START || t.min >= T.END);   // 엔진이 도는 시간(08:00~20:00). 종목별로 열렸는지는 sessionOf
   const fresh = q => {
     const h = /^(\d\d)(\d\d)(\d\d)$/.exec(String(q.hour || ''));
     if (!h) return false;
@@ -71,8 +78,9 @@ function createPaper(deps) {
   async function closedReason(q) {
     const t = kst();
     if (t.dow === 0 || t.dow === 6) return '주말입니다';
-    if (t.min < OPEN_MIN || t.min >= CLOSE_MIN) return '정규장 시간이 아닙니다(09:00~15:30)';
+    if (t.min < T.START || t.min >= T.END) return '거래 시간이 아닙니다(08:00~20:00)';
     if (deps.isOpenDay) { let o = null; try { o = await deps.isOpenDay(t.day); } catch (_) {} if (o === false) return '휴장일입니다'; }
+    if (q) { const s = SES.sessionOf(t.min, q.info); if (!s.open) return s.reason; }
     if (q && !fresh(q)) return '시세가 갱신되지 않고 있습니다(휴장·지연)';
     return null;
   }
@@ -91,13 +99,13 @@ function createPaper(deps) {
     id: o.id, created_at: new Date(o.createdAt).toISOString(), updated_at: new Date(o.updatedAt).toISOString(), code: o.code, name: o.name || null,
     side: o.side, type: o.type, price: o.price == null ? null : o.price, qty: o.qty, filled_qty: o.filled, avg_price: o.filled ? o.avg : null, status: o.status,
     queue_ahead: Math.round(o.queueAhead || 0), last_vol: o.lastVol == null ? null : Math.round(o.lastVol), low_seen: o.lowSeen, high_seen: o.highSeen,
-    reason: o.reason || 'manual', plan: o.plan || null, note: o.note || null, ref_price: o.refPrice || null,
+    reason: o.reason || 'manual', plan: o.plan || null, note: o.note || null, ref_price: o.refPrice || null, venue: o.venue || null,
   });
   const fromOrder = r => ({
     id: r.id, createdAt: Date.parse(r.created_at), updatedAt: Date.parse(r.updated_at), code: r.code, name: r.name, side: r.side, type: r.type,
     price: r.price == null ? null : +r.price, qty: +r.qty, filled: +r.filled_qty || 0, avg: r.avg_price == null ? 0 : +r.avg_price, status: r.status,
     queueAhead: +r.queue_ahead || 0, lastVol: r.last_vol == null ? null : +r.last_vol, lowSeen: r.low_seen == null ? null : +r.low_seen, highSeen: r.high_seen == null ? null : +r.high_seen,
-    reason: r.reason, plan: r.plan, note: r.note, refPrice: r.ref_price == null ? null : +r.ref_price,
+    reason: r.reason, plan: r.plan, note: r.note, refPrice: r.ref_price == null ? null : +r.ref_price, venue: r.venue || null,
   });
   const posRow = p => ({ code: p.code, name: p.name || null, qty: p.qty, avg_price: p.avg, opened_at: new Date(p.openedAt).toISOString(), updated_at: new Date(p.updatedAt).toISOString(), plan: p.plan || null });
   const fromPos = r => ({ code: r.code, name: r.name, qty: +r.qty, avg: +r.avg_price, openedAt: Date.parse(r.opened_at), updatedAt: Date.parse(r.updated_at), plan: r.plan, lowSeen: null });
@@ -137,7 +145,7 @@ function createPaper(deps) {
         deps.sbGet(`paper_orders?select=*&created_at=gte.${since}&order=created_at.asc&limit=1000`),
         deps.sbGet('paper_positions?select=*&limit=200'),
         deps.sbGet(`paper_fills?select=*&ts=gte.${since}&order=ts.desc&limit=500`),
-        deps.sbGet(`paper_book_snaps?select=code,kind&kind=in.(open,noon,close)&ts=gte.${since}&limit=1000`),
+        deps.sbGet(`paper_book_snaps?select=code,kind&kind=in.(pre,open,noon,close,after)&ts=gte.${since}&limit=1000`),
       ]);
       orders.clear(); positions.clear(); snapDone.clear();
       for (const r of [...open, ...today]) {
@@ -213,12 +221,13 @@ function createPaper(deps) {
 
   const bad = (status, error) => ({ ok: false, status, error });
   /* 주문 1건 생성(잠금 안에서만 호출). 즉시 체결분까지 반영 */
-  async function createOrder({ code, name, side, type, price, qty, reason, plan, q, ref, note }) {
+  async function createOrder({ code, name, side, type, price, qty, reason, plan, q, ref, note, venue }) {
     const sub = E.submit({ side, type, price, qty }, q);
     if (sub.reject) return bad(409, sub.reject);
     const t = now();
     const o = { id: `o${t.toString(36)}${rnd()}`, createdAt: t, updatedAt: t, code, name: name || null, side, type, price: type === 'limit' ? price : null, qty, filled: 0, avg: 0, status: 'open',
       queueAhead: sub.state.queueAhead, lastVol: sub.state.lastVol, lowSeen: sub.state.lowSeen, highSeen: sub.state.highSeen, reason: reason || 'manual', plan: plan || null, note: note || null,
+      venue: venue || 'KRX', src: q.mkt || null,
       // 슬리피지 기준가: 손절은 손절가, 시장가는 주문 순간 상대 1호가, 지정가는 지정가
       refPrice: ref || (type === 'limit' ? price : ((side === 'buy' ? q.asks : q.bids).find(l => l.p > 0) || {}).p || q.price) };
     try { await W('paper_orders', 'POST', [orderRow(o)]); } catch (e) { console.warn('[paper] 주문 저장 실패:', e.message); return bad(503, '주문을 저장하지 못했습니다'); }
@@ -258,6 +267,8 @@ function createPaper(deps) {
       try { q = await deps.getQuote(code); } catch (_) { return bad(502, '시세를 가져오지 못했습니다'); }
       const closed = await closedReason(q);
       if (closed) return bad(409, closed);
+      const ses = SES.sessionOf(kst().min, q.info);
+      if (type === 'market' && !ses.market) return bad(409, `${ses.label}에는 시장가 주문을 낼 수 없습니다(지정가만)`);
       if (q.vi) return bad(409, 'VI 발동 중에는 주문할 수 없습니다');
       if ((q.warnings || []).includes('거래정지')) return bad(409, '거래정지 종목입니다');
       if (type === 'limit' && ((q.upper > 0 && price > q.upper) || (q.lower > 0 && price < q.lower))) return bad(400, '상·하한가 범위를 벗어났습니다');
@@ -274,7 +285,7 @@ function createPaper(deps) {
           const lim = deps.checkLimits({ mode: 'VIRTUAL', orderKrw: ref * qty, dayKrw: dayBuyKrw(), positions: heldCodes().size, isNewPosition: !heldCodes().has(code) });
           if (!lim.ok) return bad(403, lim.error);
         }
-        const r = await createOrder({ code, name, side, type, price, qty, reason: 'manual', plan: side === 'buy' ? cleanPlan(body.plan) : null, q });
+        const r = await createOrder({ code, name, side, type, price, qty, reason: 'manual', plan: side === 'buy' ? cleanPlan(body.plan) : null, q, venue: route(ses) });
         await flush();
         if (!r.ok) return r;
         if (side === 'sell' && !positions.has(code)) event('plan_end', code, { why: 'manual_sell' });
@@ -328,49 +339,66 @@ function createPaper(deps) {
     const sp = stopOf(pos);
     const newLow = q.low > 0 && pos.lowSeen != null && q.low < pos.lowSeen;   // 시세 사이에 잠깐 찍고 올라온 저가도 잡음(재시작 직후 첫 시세는 기준만 잡음)
     if (q.low > 0) pos.lowSeen = pos.lowSeen == null ? q.low : Math.min(pos.lowSeen, q.low);
-    if (!sp || !(q.price <= sp || (newLow && q.low <= sp))) return false;
+    const hit = !!sp && (q.price <= sp || (newLow && q.low <= sp));
+    if (!hit && !pos.plan.stopped) return false;                              // 한 번 손절이 시작되면 가격이 돌아와도 남은 수량을 끝까지 팜
     if (q.vi) { notify(`손절 조건이지만 VI 발동 중이라 대기합니다: ${pos.name || code}`, 'vi|' + code); return true; }
-    // 1) 걸려 있는 매도 주문(익절·수동) 모두 취소  2) 남은 수량 전부 시장가 매도
+    const ses = SES.sessionOf(kst().min, q.info);
+    // 시간외 손절 지정가가 아직 대기 중이면: 정해진 시간이 지나기 전엔 기다리고, 지나면 취소 후 지금 호가로 다시 냄
+    const stops = openFor(code, o => o.side === 'sell' && o.reason === 'stop');
+    if (stops.length) {
+      if (stops.some(o => now() - o.createdAt < STOP_RETRY_MS)) return true;
+      for (const o of stops) cancelOrder(o, 'stop_retry');
+    }
+    // 1) 걸려 있는 매도 주문(익절·수동) 모두 취소  2) 남은 수량 전부 매도(정규장 시장가 · 시간외 공격적 지정가)
     for (const o of openFor(code, o => o.side === 'sell')) cancelOrder(o, 'stop');
     const qty = pos.qty - remainOf(openFor(code, o => o.side === 'sell'));   // 취소가 안 된 매도분은 빼고(실전 어댑터에서 취소 실패 대비)
     if (qty <= 0) return true;
-    const r = await createOrder({ code, name: pos.name, side: 'sell', type: 'market', price: null, qty, reason: 'stop', q, ref: sp });
+    const first = !pos.plan.stopped;
+    const type = ses.market ? 'market' : 'limit', price = ses.market ? null : SES.stopLimitPrice(q, STOP_TICKS, E.tickOf, E.floorTick);
+    const r = await createOrder({ code, name: pos.name, side: 'sell', type, price, qty, reason: 'stop', q, ref: sp || q.price, venue: route(ses), note: stops.length ? 'retry' : null });
     if (!r.ok) { notify(`손절 매도 실패(${r.error}) — 다음 주기에 다시 시도: ${pos.name || code}`, 'stopfail|' + code); return true; }   // 손절 조건이면 익절 주문은 다시 걸지 않음
     const s = E.summarize(r.fills.map(f => ({ p: f.price, q: f.qty })));
     const realized = r.fills.reduce((a, f) => a + (f.realized || 0), 0);
-    pos.plan.stopped = true;
-    event('stop', code, { stop: sp, price: q.price, qty: s.qty, avg: s.avg, realized });
-    notify(`손절: ${pos.name || code} ${s.qty}주 평균 ${Math.round(s.avg).toLocaleString('ko-KR')}원 (손절가 ${sp.toLocaleString('ko-KR')}원, 손익 ${Math.round(realized).toLocaleString('ko-KR')}원)`);
+    if (positions.get(code)) { positions.get(code).plan.stopped = true; dirty.pos.set(code, positions.get(code)); }
+    if (first) event('stop', code, { stop: sp, price: q.price, qty, type, limit: price, session: ses.name });
+    if (s.qty) notify(`손절: ${pos.name || code} ${s.qty}주 평균 ${Math.round(s.avg).toLocaleString('ko-KR')}원 (손절가 ${(sp || 0).toLocaleString('ko-KR')}원, 손익 ${Math.round(realized).toLocaleString('ko-KR')}원)`);
+    if (s.qty < qty) notify(`손절 지정가 대기(${ses.label}): ${pos.name || code} ${qty - s.qty}주 ${price ? price.toLocaleString('ko-KR') + '원' : ''} — ${Math.round(STOP_RETRY_MS / 1000)}초 안에 안 팔리면 다시 냅니다`, 'stopwait|' + code);
     snap('fill', code, q, r.order.id);
     return true;
   }
   async function syncTp(code, q) {
     const pos = positions.get(code), tps = openFor(code, o => o.side === 'sell' && isTp(o));
     if (!pos || !pos.plan || pos.plan.stopped || !(pos.plan.steps || []).length) { for (const o of tps) cancelOrder(o, 'no_plan'); return; }
+    const venue = SES.restVenue(kst().min, q.info);
+    if (!venue) return;                                                       // 지금 익절을 받을 거래소가 없음(NXT 종목의 15:20~15:30 등) — 걸린 주문은 그대로
     const avail = pos.qty - remainOf(openFor(code, o => o.side === 'sell' && !isTp(o)));
     const want = allocSteps(pos.plan.steps, avail);
     for (const st of pos.plan.steps) {
       const mine = tps.filter(o => o.reason === 'tp' + st.n), w = want[st.n] || 0;
-      if (mine.length === 1 && mine[0].price === st.p && mine[0].qty - mine[0].filled === w) continue;   // 그대로 유지(대기 순서 보존)
+      if (mine.length === 1 && mine[0].price === st.p && mine[0].qty - mine[0].filled === w && (mine[0].venue || 'KRX') === venue) continue;   // 그대로 유지(대기 순서 보존)
       for (const o of mine) cancelOrder(o, 'resync');
       if (w > 0) {
-        const r = await createOrder({ code, name: pos.name, side: 'sell', type: 'limit', price: st.p, qty: w, reason: 'tp' + st.n, q, note: reopen.has(code) ? 'reopen' : null });
+        const r = await createOrder({ code, name: pos.name, side: 'sell', type: 'limit', price: st.p, qty: w, reason: 'tp' + st.n, q, venue, note: reopen.has(code) ? 'reopen' : null });
         if (!r.ok) { notify(`익절 ${st.n}단계 주문을 걸지 못했습니다(${r.error}): ${pos.name || code}`, `tpfail|${code}|${st.n}`); continue; }
         if (r.fills.length) event('tp', code, { step: st.n, qty: r.fills.reduce((a, f) => a + f.qty, 0), price: st.p, immediate: true });
       }
     }
     reopen.delete(code);
   }
-  /* 장 마감(15:30)이 지난 당일 주문과 지난 날짜의 주문은 소멸 */
+  /* 소멸: 지난 날짜 주문 · 20:00 이 지난 오늘 주문 · 15:30 이 지난 KRX 정규장 주문(KRX 는 애프터마켓으로 이어지지 않음) */
   function expireOld() {
-    const t = kst(), cut = t.min >= CLOSE_MIN ? Infinity : Date.parse(t.day + 'T00:00:00+09:00');
+    const t = kst(), day0 = Date.parse(t.day + 'T00:00:00+09:00');
     let n = 0;
-    for (const o of orders.values()) if (isOpen(o) && (o.createdAt < cut)) { cancelOrder(o, 'expired'); n++; if (isTp(o)) reopen.add(o.code); }
+    for (const o of orders.values()) {
+      if (!isOpen(o)) continue;
+      const dead = o.createdAt < day0 || t.min >= SES.expiryOf(o.venue || 'KRX', kstOf(o.createdAt).min);
+      if (dead) { cancelOrder(o, 'expired'); n++; if (isTp(o)) reopen.add(o.code); }
+    }
     return n;
   }
 
   /* ── 조회 ── */
-  const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, queueAhead: o.queueAhead, reason: o.reason, note: o.note });
+  const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, queueAhead: o.queueAhead, reason: o.reason, note: o.note, venue: o.venue || null });
   const pubFill = f => ({ id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee, realized: f.realized, reason: f.reason });
   const pubPos = p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, plan: p.plan, stop: stopOf(p), last: (lastPx.get(p.code) || {}).price || null,
     avail: p.qty - remainOf(openFor(p.code, o => o.side === 'sell' && !isTp(o))) });
@@ -430,7 +458,7 @@ function createPaper(deps) {
       }
       if (hb.day !== t.day) { hb.day = t.day; hb.open = false; hb.close = false; for (const p of positions.values()) p.lowSeen = null; }   // 저가는 날마다 새로
       if (!inSession(t)) {
-        if (t.min >= CLOSE_MIN && hb.open && !hb.close) {                         // 장 마감 요약(그날 감시를 했을 때만)
+        if (t.min >= T.END && hb.open && !hb.close) {                             // 20:00 마감 요약(그날 감시를 했을 때만)
           hb.close = true;
           const since = Date.parse(dayStartIso()), fl = fills.filter(f => f.ts >= since);
           notify(`가상매매 장 마감: 오늘 체결 ${fl.length}건 · 실현손익 ${Math.round(fl.reduce((a, f) => a + (f.realized || 0), 0)).toLocaleString('ko-KR')}원 · 보유 ${positions.size}종목`);
@@ -449,6 +477,13 @@ function createPaper(deps) {
         if (await closedReason(q)) continue;
         lastPx.set(code, { price: q.price, ts: now() });
         await lock(async () => {
+          // 시세 출처(KRX·NXT·통합)가 바뀌면 누적 거래량·고저가 기준이 달라지므로 재시작처럼 기준을 새로 잡음(그 사이 체결은 인정 안 함 = 보수적)
+          const src = (q.mkt || 'J') + (q.mktFallback ? '*' : ''), prevSrc = srcOf.get(code);
+          srcOf.set(code, src);
+          if (prevSrc && prevSrc !== src) {
+            for (const o of openFor(code)) { o.lastVol = null; o.lowSeen = null; o.highSeen = null; }
+            const ps = positions.get(code); if (ps) ps.lowSeen = null;
+          }
           const shared = E.cloneBook(q); let any = false;
           for (const o of openFor(code).sort((a, b) => a.createdAt - b.createdAt)) {
             const before = o.queueAhead, list = E.restFill(o, q, shared);
@@ -458,6 +493,10 @@ function createPaper(deps) {
                 const n = f.reduce((a, x) => a + x.qty, 0), pl = f.reduce((a, x) => a + (x.realized || 0), 0);
                 event('tp', code, { step: +o.reason.slice(2), qty: n, price: o.price, realized: pl });
                 notify(`익절 ${o.reason.slice(2)}단계: ${o.name || code} ${n}주 ${o.price.toLocaleString('ko-KR')}원 (손익 ${Math.round(pl).toLocaleString('ko-KR')}원)`);
+              } else if (o.reason === 'stop') {
+                const n = f.reduce((a, x) => a + x.qty, 0), pl = f.reduce((a, x) => a + (x.realized || 0), 0);
+                event('stop_fill', code, { qty: n, price: o.price, realized: pl });
+                notify(`손절 체결: ${o.name || code} ${n}주 ${o.price.toLocaleString('ko-KR')}원 (손익 ${Math.round(pl).toLocaleString('ko-KR')}원)`);
               }
             } else if (o.queueAhead !== before) dirty.orders.set(o.id, o);   // 대기 큐 위치가 줄었을 때만 저장(재시작 복구용)
           }
