@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { allocate, pollWindowOpen, multiRowToPayload } = require('../subs');
+const { allocate, pollWindowOpen, multiRowToPayload, planReconcile } = require('../subs');
 
 const cl = (codes, opt = {}) => ({ codes: new Set(codes), hi: new Set(opt.hi || []), rank: new Map(codes.map((c, i) => [c, i])), lastActive: opt.at || 0 });
 
@@ -49,4 +49,30 @@ test('멀티시세 행 → 체결 메시지 모양', () => {
   const p = multiRowToPayload({ inter_shrn_iscd: '005930', inter2_prpr: '70000', prdy_ctrt: '1.5', inter2_oprc: '69000', inter2_hgpr: '70500', acml_vol: '100', acml_tr_pbmn: '7000000' }, num);
   assert.deepStrictEqual(p, { type: 'price', code: '005930', price: 70000, changePct: 1.5, sign: null, time: null, polled: true, open: 69000, dayHighPx: 70500, accVol: 100, accAmt: 7000000 });
   assert.strictEqual(multiRowToPayload({ inter_shrn_iscd: '005930', inter2_prpr: '0' }, num), null);
+});
+
+test('해지 유예: grace 안이면 유지, 지나면 해지', () => {
+  const at = new Map();
+  let r = planReconcile(new Set(['A', 'B']), new Set(['A']), at, 1000, 36, 20000);
+  assert.deepStrictEqual([r.remove, r.keep, r.add], [[], ['B'], []]);
+  assert.strictEqual(r.nextAt, 21000);
+  r = planReconcile(new Set(['A', 'B']), new Set(['A']), at, 15000, 36, 20000);
+  assert.deepStrictEqual(r.remove, []);   // 처음 필요 없어진 시각(1000) 기준 유지
+  r = planReconcile(new Set(['A', 'B']), new Set(['A']), at, 21001, 36, 20000);
+  assert.deepStrictEqual([r.remove, r.keep], [['B'], []]);
+  assert.strictEqual(at.has('B'), false);
+});
+
+test('해지 유예: 다시 필요해지면 재등록 없이 그대로', () => {
+  const at = new Map();
+  planReconcile(new Set(['A', 'B']), new Set(['A']), at, 0, 36, 20000);
+  const r = planReconcile(new Set(['A', 'B']), new Set(['A', 'B']), at, 5000, 36, 20000);
+  assert.deepStrictEqual([r.add, r.remove], [[], []]);
+  assert.strictEqual(at.size, 0);
+});
+
+test('해지 유예: 한도가 차면 새 종목에 자리를 내줌(오래된 것부터)', () => {
+  const at = new Map([['B', 0], ['C', 500]]);
+  const r = planReconcile(new Set(['A', 'B', 'C']), new Set(['A', 'D']), at, 1000, 3, 20000);
+  assert.deepStrictEqual([r.add, r.keep, r.remove], [['D'], ['C'], ['B']]);
 });

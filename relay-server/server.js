@@ -88,7 +88,7 @@ let reconnectAttempt = 0;
 
 const subscribers = new Map();   // code -> Set(clientWs) : 프론트엔드가 요청한 구독
 const lastPrice = new Map();     // code -> 마지막 시세 (신규 구독 시 즉시 전달용)
-const { allocate: allocateSubs, pollWindowOpen, multiRowToPayload } = require('./subs');
+const { allocate: allocateSubs, pollWindowOpen, multiRowToPayload, planReconcile } = require('./subs');
 const wsClients = new Set();     // 접속 중인 프론트 웹소켓(구독 우선순위 배분용)
 let _subAlloc = { ws: new Set(), polled: new Set(), order: [] };   // 마지막 배분 결과(/sub-status 표시용)
 const _subPoll = { at: 0, n: 0, err: null };
@@ -245,23 +245,25 @@ function warnIfSubSlotsTight() {
   console.warn(`[구독] 실시간 등록 슬롯 ${used}/${KIS_SUB_SLOT_LIMIT} 사용 중(시세 ${currentKisSubs.size} + 프로그램매매 ${currentProgramTradeSubs.size})`);
 }
 
+const KIS_UNSUB_GRACE_MS = 20000;   // 필요 없어진 종목의 KIS 해지 유예(순위 출렁임·화면 왕복 시 해지/재등록 반복 방지)
+const _unwantedAt = new Map();
+let _unsubTimer = null;
 function reconcileKisSubscriptions() {
   const want = wantedCodes();
-  for (const code of want) {
-    if (!currentKisSubs.has(code)) {
-      currentKisSubs.add(code);
-      sendKisSubscribe(code, true);
-      console.log('[구독 추가]', code);
-    }
+  const plan = planReconcile(currentKisSubs, want, _unwantedAt, Date.now(), KIS_SUB_SLOT_LIMIT, KIS_UNSUB_GRACE_MS);
+  for (const code of plan.remove) {   // 자리를 먼저 비운 뒤 등록
+    currentKisSubs.delete(code);
+    sendKisSubscribe(code, false);
+    lastPrice.delete(code);
+    console.log('[구독 해제]', code);
   }
-  for (const code of [...currentKisSubs]) {
-    if (!want.has(code)) {
-      currentKisSubs.delete(code);
-      sendKisSubscribe(code, false);
-      lastPrice.delete(code);
-      console.log('[구독 해제]', code);
-    }
+  for (const code of plan.add) {
+    currentKisSubs.add(code);
+    sendKisSubscribe(code, true);
+    console.log('[구독 추가]', code);
   }
+  clearTimeout(_unsubTimer); _unsubTimer = null;
+  if (plan.nextAt) _unsubTimer = setTimeout(reconcileKisSubscriptions, Math.max(500, plan.nextAt - Date.now() + 200));
   warnIfSubSlotsTight();
   notifySubStatus();
 }

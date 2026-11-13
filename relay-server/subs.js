@@ -44,4 +44,21 @@ function multiRowToPayload(o, num) {
   return p;
 }
 
-module.exports = { allocate, pollWindowOpen, multiRowToPayload };
+// KIS 구독 해지를 바로 하지 않고 grace 동안 미룬다(2026-11-13) — TOP20 순위 출렁임·화면 왕복 때마다
+// 해지/재등록이 반복되는 부담을 줄인다. 단, 미룬 종목이 새로 필요한 종목의 자리를 막지는 않는다(한도 안에서만 유지).
+// current: 지금 KIS에 등록된 코드, want: 필요한 코드, unwantedAt: code->필요 없어진 시각(호출 측이 들고 있는 상태, 여기서 갱신)
+function planReconcile(current, want, unwantedAt, now, limit, graceMs) {
+  for (const c of [...unwantedAt.keys()]) if (want.has(c) || !current.has(c)) unwantedAt.delete(c);
+  const stale = [...current].filter(c => !want.has(c));
+  for (const c of stale) if (!unwantedAt.has(c)) unwantedAt.set(c, now);
+  const add = [...want].filter(c => !current.has(c));
+  const room = Math.max(0, limit - want.size);
+  const fresh = stale.filter(c => now - unwantedAt.get(c) < graceMs).sort((a, b) => unwantedAt.get(b) - unwantedAt.get(a)).slice(0, room);
+  const keep = new Set(fresh);
+  const remove = stale.filter(c => !keep.has(c));
+  for (const c of remove) unwantedAt.delete(c);
+  const nextAt = fresh.length ? Math.min(...fresh.map(c => unwantedAt.get(c))) + graceMs : null;
+  return { add, remove, keep: [...keep], nextAt };
+}
+
+module.exports = { allocate, pollWindowOpen, multiRowToPayload, planReconcile };
