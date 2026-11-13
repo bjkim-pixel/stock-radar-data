@@ -259,3 +259,24 @@ test('KRX 정규장 마감 직후 종가 단일가 체결을 받아 두고 15:40
   assert.ok(x.c.st.alerts.some(a => /마감\(20:00\)/.test(a)));
   await x.c.close();
 });
+
+test('틱 깨우기(실전): 감시선 제공 · 손절선 아래 틱이면 즉시 손절 주문 한 번', async () => {
+  const x = await setup();
+  await holding(x);
+  const L = x.c.t.live.watchLines('005930');
+  assert.equal(L.stop, 9800); assert.equal(L.stopped, false); assert.equal(L.steps.length, 2);
+  x.c.st.clock += 2000; x.c.st.price = 9790; x.c.st.low = 9790; x.c.st.bids = Array.from({ length: 10 }, (_, i) => [9790 - 10 * i, 100]);
+  assert.equal(await x.c.t.live.kick('005930'), true);
+  assert.equal(posts(x.kx, 'TTTC0011U').filter(p => p.body.ORD_DVSN === '01').length, 1);   // 시장가 손절 주문
+  assert.equal(x.c.t.live.watchLines('005930').stopped, true);                                // 진행 중 → 이후 틱으로는 깨우지 않음
+  x.c.st.clock += 2100;
+  await x.c.t.live.kick('005930');
+  assert.equal(posts(x.kx, 'TTTC0011U').filter(p => p.body.ORD_DVSN === '01').length, 1);   // 중복 주문 없음
+  await x.c.close();
+});
+
+test('틱 깨우기(실전): 실전 스위치가 꺼져 있으면 깨우지 않음', async () => {
+  const x = await setup({ KIS_ACCOUNT_NO: '12345678-01' });
+  assert.equal(await x.c.t.live.kick('005930'), false);
+  await x.c.close();
+});

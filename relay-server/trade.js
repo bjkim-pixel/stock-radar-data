@@ -362,10 +362,10 @@ function createTrade(deps = {}) {
     const s = SES.sessionOf(kstMin(), full);
     return { ...q, info: full, mktFallback: fb, session: { open: s.open, name: s.name, label: s.label, reason: s.reason, venue: s.venue, market: s.market } };
   }
-  function getQuote(code) {
+  function getQuote(code, fresh) {                          // fresh: 틱 깨우기용 — 1.5초 캐시를 건너뜀(진행 중인 요청은 같이 씀)
     const t = now(), c = quoteCache.get(code);
     if (c && c.p) return c.p;                               // 같은 종목 동시 요청은 한 번만
-    if (c && t - c.t < 1500 && c.v && c.v.sMin === kstMin()) return Promise.resolve(c.v);   // 1.5초 캐시(분이 바뀌면 세션이 바뀔 수 있어 새로)
+    if (!fresh && c && t - c.t < 1500 && c.v && c.v.sMin === kstMin()) return Promise.resolve(c.v);   // 1.5초 캐시(분이 바뀌면 세션이 바뀔 수 있어 새로)
     const p = sessionQuote(code).then(v => { v.sMin = kstMin(); quoteCache.set(code, { t: now(), v, p: null }); return v; },
       e => { quoteCache.delete(code); throw e; });
     quoteCache.set(code, { t: c ? c.t : 0, v: c ? c.v : null, p });
@@ -592,7 +592,11 @@ function createTrade(deps = {}) {
   if (!cfg.allowedEmail) console.warn('[trade] ALLOWED_EMAIL 미설정 — 매매 API는 모든 요청을 거부합니다.');
   if (!cfg.pinHash) console.warn('[trade] TRADE_PIN_HASH 미설정 — 거래 세션을 열 수 없습니다.');
 
-  return { handle, paper, live, getQuote, heldCodes: () => { const s = new Set(); for (const e of [paper, live]) { if (e && e.heldCodes) { try { for (const c of e.heldCodes()) s.add(c); } catch (_) {} } } return s; }, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
+  return { handle, paper, live, getQuote,
+    // 체결 틱 깨우기(2026-11-13): 엔진별 감시선 · 깨우기(판정은 엔진이 REST 시세로)
+    watchLines: code => [['paper', paper], ['live', live]].filter(([, e]) => e && e.watchLines).map(([k, e]) => { try { return [k, e.watchLines(code)]; } catch (_) { return [k, null]; } }).filter(([, L]) => L),
+    kick: (eng, code) => { const e = eng === 'live' ? live : paper; return e && e.kick ? e.kick(code) : Promise.resolve(false); },
+    heldCodes: () => { const s = new Set(); for (const e of [paper, live]) { if (e && e.heldCodes) { try { for (const c of e.heldCodes()) s.add(c); } catch (_) {} } } return s; }, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
 }
 
 module.exports = { createTrade, hashPin, verifyHash, checkLimits, loadConfig, scrub };

@@ -498,19 +498,39 @@ function createLive(deps) {
       if (t.min >= DAY_CANCEL) return;                                                       // 마감 정리 중에는 새 자동 매도 주문을 내지 않음
       const planned = [...plans.keys()].filter(c => bal.positions.has(c));
       if (!hb.open) { hb.open = true; if (planned.length) notify(`[실전] 자동 매도 감시 시작 — 보유 ${planned.length}종목`); }
-      for (const code of planned) {
-        let q; try { q = await deps.getQuote(code); } catch (_) { notify(`[실전] 시세 조회 실패로 감시가 멈춰 있습니다: ${code}`, 'quotefail|' + code); continue; }
-        if (await closedReason(q)) continue;
-        lastPx.set(code, { price: q.price, ts: now() });
-        await lock(async () => { const stopped = await stopCheck(code, q); if (!stopped) await syncTp(code, q); await flush(); });
-      }
+      for (const code of planned) { if (kicking.has(code)) continue; await checkCode(code); }   // 틱으로 깨운 점검이 도는 종목은 이번 주기에서 건너뜀
     } catch (e) { console.warn('[live] 루프 오류:', e.message); }
     finally { ticking = false; }
+  }
+  /* 종목 하나 점검(시세 → 손절 → 트레일링 익절). 5초 루프와 틱 깨우기(kick)가 같은 코드를 씀 */
+  async function checkCode(code, fresh) {
+    let q; try { q = await deps.getQuote(code, fresh); } catch (_) { notify(`[실전] 시세 조회 실패로 감시가 멈춰 있습니다: ${code}`, 'quotefail|' + code); return; }
+    if (await closedReason(q)) return;
+    lastPx.set(code, { price: q.price, ts: now() });
+    await lock(async () => { const stopped = await stopCheck(code, q); if (!stopped) await syncTp(code, q); await flush(); });
+  }
+  /* ── 체결 틱으로 깨우기(2026-11-13): 판정·주문은 checkCode 가 REST 시세로 기존과 똑같이 함. 여기서는 언제 깨울 수 있는지만 지킴 ── */
+  const KICK_MIN_MS = 2000, kickAt = new Map(), kicking = new Set();
+  function watchLines(code) {
+    const p = posOf(code), pl = plans.get(code);
+    if (!p || !pl || !pl.plan) return null;
+    return { stop: stopOf(p, pl.plan), stopped: !!pl.plan.stopped, trail: pl.plan.trail > 0 ? pl.plan.trail : TRAIL_PCT,
+      steps: (pl.plan.steps || []).filter(st => !st.fired && (st.q || 0) - (st.sold || 0) > 0).map(st => ({ p: st.p, armed: !!st.armed, peak: st.peak || null })) };
+  }
+  async function kick(code) {
+    const t0 = now();
+    if (ticking || !deps.enabled() || !kis.configured() || !hb.open || hb.close || !hb.lastTick || t0 - hb.lastTick > 12000) return false;   // 5초 루프가 장중 정상 동작 중일 때만
+    if (kst().min >= DAY_CANCEL) return false;                                                                         // 마감 정리 중에는 자동 매도를 새로 내지 않음
+    if (!plans.has(code) || !bal.positions.has(code) || kicking.has(code) || t0 - (kickAt.get(code) || 0) < KICK_MIN_MS) return false;
+    kickAt.set(code, t0); kicking.add(code);
+    try { await checkCode(code, true); return true; }
+    catch (e) { console.warn('[live] 틱 점검 오류:', e.message); return false; }
+    finally { kicking.delete(code); }
   }
   let timer = null;
   function start(ms = 5000) { if (timer) return; timer = setInterval(() => { tick(); }, ms); if (timer.unref) timer.unref(); }
   function stop() { if (timer) clearInterval(timer); timer = null; }
-  return { place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
+  return { place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, watchLines, kick, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
 }
 
 module.exports = { createLive };

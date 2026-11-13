@@ -188,9 +188,22 @@ const KIS_PROGRAM_SUB_RESERVE = 8;   // 여유가 있을 때 프로그램매매�
 // 프론트 요청 종목을 우선순위(매매 화면 → 최근 활동 접속 → 화면 순위)로 한도 안에서 배분하고, 넘친 종목은 REST 폴링으로 대체한다.
 let _subTrimLoggedAt = 0;
 // trade 모듈은 파일 아래쪽에서 만들어지므로 호출 시점에 확인한다(장 시간 밖에는 구독하지 않음)
+let _tradeHeld = new Set();   // 마지막으로 확인한 매매 보유·미체결 종목(틱 훅에서 빠르게 거르는 용도)
 function tradeHeldCodes() {
-  try { if (typeof trade === 'undefined' || !trade || !trade.heldCodes || !pollWindowOpen()) return new Set(); return trade.heldCodes(); } catch (_) { return new Set(); }
+  try { _tradeHeld = (typeof trade === 'undefined' || !trade || !trade.heldCodes || !pollWindowOpen()) ? new Set() : trade.heldCodes(); } catch (_) { _tradeHeld = new Set(); }
+  return _tradeHeld;
 }
+/* ── 체결 틱으로 매매 엔진 깨우기(2026-11-13) ──
+   보유 종목 틱이 손절선·익절가·트레일링 발동선에 닿으면 그 종목만 즉시 점검(엔진의 5초 루프와 같은 코드, REST 시세로 판정).
+   틱 가격으로 직접 주문하지 않음. 엔진 쪽에서 2초 간격·장중 정상 동작·마감 정리 시간을 지킴 */
+const _tickHook = require('./kick').createTickHook({
+  held: () => _tradeHeld,
+  watchLines: code => (typeof trade !== 'undefined' && trade && trade.watchLines) ? trade.watchLines(code) : [],
+  kick: (eng, code) => trade.kick(eng, code),
+  log: m => console.log(m),
+});
+const _kickStat = _tickHook.stat;
+function tradeTickHook(code, price, nowMs) { _tickHook.onTick(code, price, nowMs); }
 setInterval(() => { try { reconcileKisSubscriptions(); } catch (_) {} }, 15000);   // 체결·청산으로 보유 종목이 바뀌면 구독도 따라가게
 function wantedCodes() {
   const list = [...wsClients].map(c => ({ codes: c.subscribedCodes, hi: c.subHi || new Set(), rank: c.subRank || new Map(), lastActive: c.lastActive || 0 }));
@@ -2261,6 +2274,7 @@ function handleKisMessage(text) {
     // 구독 해제와 무관하게 "마지막으로 본 등락률"을 당일 기준으로 따로 기억해둔다.
     if (Number.isFinite(rate)) sangttaLastChangePct.set(code, { pct: rate, date: kstDateStr() });
     broadcastToSubscribers(code, payload);
+    try { tradeTickHook(code, price, tickNow); } catch (_) {}   // 매매 보유 종목: 손절·트레일링 선에 닿으면 엔진 즉시 점검
     checkAlerts(code, price);
     if (dayHigh) maybePersistPeak(code, dayHigh); // Supabase에 스로틀 저장(재시작/재접속 대비 영속화)
   }
@@ -3328,6 +3342,7 @@ function handleSubStatus(req, res) {
     used: currentKisSubs.size + currentProgramTradeSubs.size, price: currentKisSubs.size, program: currentProgramTradeSubs.size,
     clients: wsClients.size, requested: reqCnt.size,
     live: [...currentKisSubs].map(row), polled: [..._subAlloc.polled].map(row),
+    tradeKick: { ..._kickStat, held: [..._tradeHeld] },
     poll: { intervalMs: SUB_POLL_MS, windowOpen: pollWindowOpen(), lastAt: _subPoll.at || null, lastCount: _subPoll.n, err: _subPoll.err },
   }));
   return true;

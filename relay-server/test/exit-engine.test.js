@@ -237,3 +237,35 @@ test('상태 조회에 손절가·매도 가능 수량·감시 상태 포함', a
   assert.ok(Array.isArray(s.body.positions[0].plan.steps));
   await c.close();
 });
+
+/* ── 체결 틱 깨우기(2026-11-13): 판정은 REST 시세로 · 깨우는 조건만 시험 ── */
+test('틱 깨우기(가상): 감시선 제공 · 5초 루프 전엔 거부 · 손절선 아래 틱이면 즉시 손절', async () => {
+  const db = fakeDb(), c = await boot(db); await c.login();
+  await holding(c);
+  assert.equal(await c.t.paper.kick('005930'), false);                 // 장중 5초 루프가 한 번도 안 돌았으면 깨우지 않음
+  move(c, 10000); await c.t.paper.tick();
+  const L = c.t.paper.watchLines('005930');
+  assert.equal(L.stop, 9800); assert.equal(L.stopped, false); assert.equal(L.steps.length, 5); assert.equal(L.trail, 2);
+  assert.equal(c.t.paper.watchLines('000660'), null);
+  c.st.clock += 2000; c.st.price = 9790; c.st.bids = Array.from({ length: 10 }, (_, i) => [9790 - 10 * i, 100]); c.st.low = 9790;
+  assert.equal(await c.t.paper.kick('005930'), true);                  // 1.5초 캐시를 건너뛰고 새 시세로 판정
+  assert.equal(db.t.paper_positions.has('005930'), false);
+  assert.ok(db.t.paper_events.some(e => e.kind === 'stop'));
+  assert.equal(await c.t.paper.kick('005930'), false);                 // 보유가 없으면 깨우지 않음
+  await c.close();
+});
+
+test('틱 깨우기(가상): 같은 종목은 2초에 한 번 · 트레일링 발동선 아래면 즉시 익절', async () => {
+  const db = fakeDb(), c = await boot(db); await c.login();
+  await holding(c);
+  move(c, 10000); await c.t.paper.tick();
+  move(c, 10450); await c.t.paper.tick();                              // 1~3단계 감시, 고점 10450
+  c.st.clock += 2000;
+  assert.equal(await c.t.paper.kick('005930'), true);
+  assert.equal(await c.t.paper.kick('005930'), false);                 // 2초 안 재요청 거부
+  c.st.clock += 2100; c.st.price = 10240; c.st.bids = Array.from({ length: 10 }, (_, i) => [10240 - 10 * i, 100]);
+  assert.equal(await c.t.paper.kick('005930'), true);
+  assert.equal(db.t.paper_positions.get('005930').qty, 4);             // 1~3단계 2주씩 트레일링 매도
+  assert.deepEqual(db.t.paper_positions.get('005930').plan.steps.map(s => s.sold), [2, 2, 2, 0, 0]);
+  await c.close();
+});

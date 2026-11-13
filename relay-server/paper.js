@@ -477,6 +477,65 @@ function createPaper(deps) {
     } catch (e) { console.warn('[paper] 리포트 실패:', e.message); return bad(502, '리포트를 만들지 못했습니다'); }
   }
 
+  /* 종목 하나 점검: 시세 → 체결 판단 → 손절 → 익절(트레일링) → 호가 스냅. 5초 루프와 틱 깨우기(kick)가 같은 코드를 씀 */
+  async function checkCode(code, t, fresh) {
+    let q; try { q = await deps.getQuote(code, fresh); } catch (_) { notify(`시세 조회 실패로 감시가 멈춰 있습니다: ${code}`, 'quotefail|' + code); return; }
+    if (await closedReason(q)) return;
+    lastPx.set(code, { price: q.price, ts: now() });
+    await lock(async () => {
+      // 시세 출처(KRX·NXT·통합)가 바뀌면 누적 거래량·고저가 기준이 달라지므로 재시작처럼 기준을 새로 잡음(그 사이 체결은 인정 안 함 = 보수적)
+      const src = (q.mkt || 'J') + (q.mktFallback ? '*' : ''), prevSrc = srcOf.get(code);
+      srcOf.set(code, src);
+      if (prevSrc && prevSrc !== src) {
+        for (const o of openFor(code)) { o.lastVol = null; o.lowSeen = null; o.highSeen = null; }
+        const ps = positions.get(code); if (ps) ps.lowSeen = null;
+      }
+      const shared = E.cloneBook(q); let any = false;
+      for (const o of openFor(code).sort((a, b) => a.createdAt - b.createdAt)) {
+        const before = o.queueAhead, list = E.restFill(o, q, shared);
+        if (list.length) {
+          const f = applyFills(o, list); any = true;
+          if (isTp(o)) {
+            const n = f.reduce((a, x) => a + x.qty, 0), pl = f.reduce((a, x) => a + (x.realized || 0), 0);
+            event('tp', code, { step: +o.reason.slice(2), qty: n, price: o.price, realized: pl });
+            notify(`익절 ${o.reason.slice(2)}단계: ${o.name || code} ${n}주 ${o.price.toLocaleString('ko-KR')}원 (손익 ${Math.round(pl).toLocaleString('ko-KR')}원)`);
+          } else if (o.reason === 'stop') {
+            const n = f.reduce((a, x) => a + x.qty, 0), pl = f.reduce((a, x) => a + (x.realized || 0), 0);
+            event('stop_fill', code, { qty: n, price: o.price, realized: pl });
+            notify(`손절 체결: ${o.name || code} ${n}주 ${o.price.toLocaleString('ko-KR')}원 (손익 ${Math.round(pl).toLocaleString('ko-KR')}원)`);
+          }
+        } else if (o.queueAhead !== before) dirty.orders.set(o.id, o);   // 대기 큐 위치가 줄었을 때만 저장(재시작 복구용)
+      }
+      const stopped = await stopCheck(code, q);
+      if (!stopped) await syncTp(code, q);
+      await flush();
+      if (any) snap('fill', code, q);
+    });
+    for (const [kind, at] of SLOTS) {
+      const key = `${t.day}|${kind}|${code}`;
+      if (t.min >= at && t.min < at + SNAP_WINDOW && !snapDone.has(key) && (positions.has(code) || openFor(code).length)) {
+        if (await snap(kind, code, q)) snapDone.add(key);
+      }
+    }
+  }
+  /* ── 체결 틱으로 깨우기(2026-11-13): 판정은 checkCode 가 REST 시세로 기존과 똑같이 함. 여기서는 언제 깨울 수 있는지만 지킴 ── */
+  const KICK_MIN_MS = 2000, kickAt = new Map(), kicking = new Set();
+  function watchLines(code) {
+    const pos = positions.get(code);
+    if (!pos || !pos.plan) return null;
+    return { stop: stopOf(pos), stopped: !!pos.plan.stopped, trail: pos.plan.trail > 0 ? pos.plan.trail : TRAIL_PCT,
+      steps: (pos.plan.steps || []).filter(st => !st.fired && (st.q || 0) - (st.sold || 0) > 0).map(st => ({ p: st.p, armed: !!st.armed, peak: st.peak || null })) };
+  }
+  async function kick(code) {
+    const t0 = now();
+    if (ticking || !deps.enabled() || !hb.open || !hb.lastTick || t0 - hb.lastTick > 12000) return false;   // 5초 루프가 장중 정상 동작 중일 때만
+    if (!positions.has(code) || kicking.has(code) || t0 - (kickAt.get(code) || 0) < KICK_MIN_MS) return false;
+    const t = kst(); if (!inSession(t)) return false;
+    kickAt.set(code, t0); kicking.add(code);
+    try { await checkCode(code, t, true); return true; }
+    catch (e) { console.warn('[paper] 틱 점검 오류:', e.message); return false; }
+    finally { kicking.delete(code); }
+  }
   /* ── 장중 루프: 체결 판단 → 손절 → 익절 주문 맞추기 → 호가 스냅 ── */
   async function tick() {
     if (ticking || !deps.enabled()) return;
@@ -506,46 +565,7 @@ function createPaper(deps) {
       if (hb.restartPending) { hb.restartPending = false; notify(`relay 재시작 — 가상 보유 ${planned.length}종목 자동 매도 감시를 다시 시작했습니다`); }
       const codes = new Set([...heldCodes()]);
       for (const o of orders.values()) if (isOpen(o)) codes.add(o.code);
-      for (const code of codes) {
-        let q; try { q = await deps.getQuote(code); } catch (_) { notify(`시세 조회 실패로 감시가 멈춰 있습니다: ${code}`, 'quotefail|' + code); continue; }
-        if (await closedReason(q)) continue;
-        lastPx.set(code, { price: q.price, ts: now() });
-        await lock(async () => {
-          // 시세 출처(KRX·NXT·통합)가 바뀌면 누적 거래량·고저가 기준이 달라지므로 재시작처럼 기준을 새로 잡음(그 사이 체결은 인정 안 함 = 보수적)
-          const src = (q.mkt || 'J') + (q.mktFallback ? '*' : ''), prevSrc = srcOf.get(code);
-          srcOf.set(code, src);
-          if (prevSrc && prevSrc !== src) {
-            for (const o of openFor(code)) { o.lastVol = null; o.lowSeen = null; o.highSeen = null; }
-            const ps = positions.get(code); if (ps) ps.lowSeen = null;
-          }
-          const shared = E.cloneBook(q); let any = false;
-          for (const o of openFor(code).sort((a, b) => a.createdAt - b.createdAt)) {
-            const before = o.queueAhead, list = E.restFill(o, q, shared);
-            if (list.length) {
-              const f = applyFills(o, list); any = true;
-              if (isTp(o)) {
-                const n = f.reduce((a, x) => a + x.qty, 0), pl = f.reduce((a, x) => a + (x.realized || 0), 0);
-                event('tp', code, { step: +o.reason.slice(2), qty: n, price: o.price, realized: pl });
-                notify(`익절 ${o.reason.slice(2)}단계: ${o.name || code} ${n}주 ${o.price.toLocaleString('ko-KR')}원 (손익 ${Math.round(pl).toLocaleString('ko-KR')}원)`);
-              } else if (o.reason === 'stop') {
-                const n = f.reduce((a, x) => a + x.qty, 0), pl = f.reduce((a, x) => a + (x.realized || 0), 0);
-                event('stop_fill', code, { qty: n, price: o.price, realized: pl });
-                notify(`손절 체결: ${o.name || code} ${n}주 ${o.price.toLocaleString('ko-KR')}원 (손익 ${Math.round(pl).toLocaleString('ko-KR')}원)`);
-              }
-            } else if (o.queueAhead !== before) dirty.orders.set(o.id, o);   // 대기 큐 위치가 줄었을 때만 저장(재시작 복구용)
-          }
-          const stopped = await stopCheck(code, q);
-          if (!stopped) await syncTp(code, q);
-          await flush();
-          if (any) snap('fill', code, q);
-        });
-        for (const [kind, at] of SLOTS) {
-          const key = `${t.day}|${kind}|${code}`;
-          if (t.min >= at && t.min < at + SNAP_WINDOW && !snapDone.has(key) && (positions.has(code) || openFor(code).length)) {
-            if (await snap(kind, code, q)) snapDone.add(key);
-          }
-        }
-      }
+      for (const code of codes) { if (kicking.has(code)) continue; await checkCode(code, t); }   // 틱으로 깨운 점검이 도는 종목은 이번 주기에서 건너뜀
     } catch (e) { console.warn('[paper] 루프 오류:', e.message); }
     finally { ticking = false; }
   }
@@ -553,7 +573,7 @@ function createPaper(deps) {
   function start(ms = 5000) { if (timer) return; timer = setInterval(() => { tick(); }, ms); if (timer.unref) timer.unref(); }
   function stop() { if (timer) clearInterval(timer); timer = null; }
 
-  return { place, cancel, modify, editPlan, state, report, tick, start, stop, init, heldCodes: () => { const s = heldCodes(); for (const o of orders.values()) if (isOpen(o)) s.add(o.code); return s; }, _orders: orders, _positions: positions, _dirty: dirty };
+  return { place, cancel, modify, editPlan, state, report, tick, start, stop, init, watchLines, kick, heldCodes: () => { const s = heldCodes(); for (const o of orders.values()) if (isOpen(o)) s.add(o.code); return s; }, _orders: orders, _positions: positions, _dirty: dirty };
 }
 
 module.exports = { createPaper, allocSteps };
