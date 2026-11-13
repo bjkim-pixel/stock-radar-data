@@ -105,6 +105,9 @@ const ALERT_MIN_MOVE_PCT = 1;
 // 꺼져 있는 동안은 신고가/신저가·트레일링 손절·목표가 알림만 멈추고,
 // "오늘의 종목" 요약(자동/수동)은 이 스위치와 무관하게 계속 발송됨.
 let alertsPaused = false;
+// 2026-11-13: 전략성과1·2(가상 보유 종목) 실시간 푸시 — 신고가·신저가·트레일링 손절선 이탈/근접 — 기본 꺼짐. 다시 켜려면 Render 환경변수 STRATEGY_ALERTS=1.
+// 목표가 도달 알림(직접 정한 목표가)·오늘의 종목 요약·매매 엔진 알림은 그대로 보냄.
+const STRATEGY_ALERTS = process.env.STRATEGY_ALERTS === '1';
 
 // ----------------------------------------------------------------------------
 // 1) approval_key 발급/재발급
@@ -2520,11 +2523,11 @@ function checkAlerts(code, price) {
   // (화면 표시·트레일링 손절 계산 공용). 여기서는 "알림을 보낼지"만 판단 —
   // 마지막으로 알림을 보낸 고점/저점 대비 ALERT_MIN_MOVE_PCT% 이상 갱신됐을
   // 때만 보내서, 상승/하락 추세에서 틱마다 알림이 쏟아지는 걸 방지.
-  if (st._isNewHigh && !alertsPaused && price >= st.alertedHigh * (1 + ALERT_MIN_MOVE_PCT / 100)) {
+  if (STRATEGY_ALERTS && st._isNewHigh && !alertsPaused && price >= st.alertedHigh * (1 + ALERT_MIN_MOVE_PCT / 100)) {
     st.alertedHigh = price;
     notifyAll(`📈 ${name}(${code}) 당일 신고가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📈 ${name} 신고가`, tag: `high-${code}` });
   }
-  if (st._isNewLow && !alertsPaused && price <= st.alertedLow * (1 - ALERT_MIN_MOVE_PCT / 100)) {
+  if (STRATEGY_ALERTS && st._isNewLow && !alertsPaused && price <= st.alertedLow * (1 - ALERT_MIN_MOVE_PCT / 100)) {
     st.alertedLow = price;
     notifyAll(`📉 ${name}(${code}) 당일 신저가 갱신: ${fmt(price)}원${infoSuffix}`, { title: `📉 ${name} 신저가`, tag: `low-${code}` });
   }
@@ -2552,7 +2555,8 @@ function checkAlerts(code, price) {
       const label = stop.type === 'BREAKEVEN'
         ? `손익분기 보호선(매수가 +${(BREAKEVEN_FLOOR_PCT * 100).toFixed(1)}%)`
         : `트레일링 손절선(고점 대비 ${stop.trailPct.toFixed(0)}%)`;
-      if (price <= stop.line && !st.trailHit && !alertsPaused) {
+      if (!STRATEGY_ALERTS) { /* 전략성과 손절선 알림 꺼짐 */ }
+      else if (price <= stop.line && !st.trailHit && !alertsPaused) {
         st.trailHit = true;
         notifyAll(`🚨 ${name}(${code}) ${label} 이탈! 현재가 ${fmt(price)}원 · 손절선 ${fmt(Math.round(stop.line))}원 · 고점 대비 ${drawdown.toFixed(1)}%${infoSuffix}`,
           { title: `🚨 ${name} 손절선 이탈`, tag: `trail-hit-${code}` });
