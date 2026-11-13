@@ -3,7 +3,7 @@
    KIS 실전 주문 어댑터 (매매 6단계) — 이 파일만 KIS 주문 API 를 부릅니다.
    규격: 한국투자증권 공식 예제 저장소 koreainvestment/open-trading-api (examples_llm/domestic_stock) 확인, 2026-11-13
      · 현금 주문   POST /uapi/domestic-stock/v1/trading/order-cash        매수 TTTC0012U · 매도 TTTC0011U (구 TTTC0802U/0801U 는 차단 예정)
-     · 정정·취소   POST /uapi/domestic-stock/v1/trading/order-rvsecncl    TTTC0013U (RVSE_CNCL_DVSN_CD 02=취소, QTY_ALL_ORD_YN Y=잔량 전부)
+     · 정정·취소   POST /uapi/domestic-stock/v1/trading/order-rvsecncl    TTTC0013U (RVSE_CNCL_DVSN_CD 01=정정 02=취소, QTY_ALL_ORD_YN Y=잔량 전부)
      · 일별 주문체결 GET /uapi/domestic-stock/v1/trading/inquire-daily-ccld TTTC0081R (3개월 이내)
      · 잔고        GET /uapi/domestic-stock/v1/trading/inquire-balance     TTTC8434R
      · 주문구분 ORD_DVSN 00=지정가 01=시장가 · 거래소 EXCG_ID_DVSN_CD=KRX · 값은 모두 문자열 · hashkey 는 선택(공식 예제도 생략)
@@ -43,6 +43,14 @@ function createKisOrder({ kisGet, kisPost, account }) {
     const o = up(j.output);
     return { odno: String(o.ODNO || '') };
   }
+  /* 정정(RVSE_CNCL_DVSN_CD 01): 남은 수량 중 qty 만큼(all=true 면 잔량 전부)을 새 가격으로. 새 주문번호가 생기고 원주문 잔량은 빠짐 */
+  async function modify({ odno, orgno, venue, price, qty, all }) {
+    const body = { ...acct(), KRX_FWDG_ORD_ORGNO: String(orgno || ''), ORGN_ODNO: String(odno), ORD_DVSN: '00', RVSE_CNCL_DVSN_CD: '01', ORD_QTY: all ? '0' : String(qty), ORD_UNPR: String(price), QTY_ALL_ORD_YN: all ? 'Y' : 'N', EXCG_ID_DVSN_CD: venueOf(venue) };
+    const j = await kisPost('/uapi/domestic-stock/v1/trading/order-rvsecncl', 'TTTC0013U', body);
+    const o = up(j.output);
+    if (!o.ODNO) { const e = new Error('no order number'); e.code = 'UNKNOWN'; throw e; }
+    return { odno: String(o.ODNO), orgno: String(o.KRX_FWDG_ORD_ORGNO || orgno || '') };
+  }
   /* 오늘(또는 지정일) 주문·체결 목록 */
   async function dailyOrders(ymd) {
     const j = await kisGet('/uapi/domestic-stock/v1/trading/inquire-daily-ccld', 'TTTC0081R', {
@@ -65,7 +73,7 @@ function createKisOrder({ kisGet, kisPost, account }) {
     const s = (j.output2 || [])[0] || {};
     return { positions: rows, cash: n(s.dnca_tot_amt), total: n(s.tot_evlu_amt), _keys2: Object.keys(s) };
   }
-  return { order, cancel, dailyOrders, balance, configured };
+  return { order, cancel, modify, dailyOrders, balance, configured };
 }
 
 module.exports = { createKisOrder };

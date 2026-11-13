@@ -124,7 +124,15 @@ function fakeKis() {
     }
     if (path.endsWith('order-rvsecncl')) {
       if (kx.cancelFail) { const e = new Error('정정취소가능수량이 없습니다 (APBK0918)'); e.code = 'REJECT'; throw e; }
-      const o = kx.orders.get(body.ORGN_ODNO); o.cancelled = true;
+      const o = kx.orders.get(body.ORGN_ODNO);
+      if (body.RVSE_CNCL_DVSN_CD === '01') {                                  // 정정: 원주문 잔량(또는 일부)을 새 가격의 새 주문으로
+        const left = o.qty - o.filled, q = body.QTY_ALL_ORD_YN === 'Y' ? left : +body.ORD_QTY;
+        if (q >= left) o.cancelled = true; else o.qty -= q;
+        const n = { odno: String(++kx.seq).padStart(10, '0'), code: o.code, side: o.side, qty: q, price: +body.ORD_UNPR, type: 'limit', filled: 0, amt: 0, cancelled: false, tmd: hhmmss(), excg: body.EXCG_ID_DVSN_CD };
+        kx.orders.set(n.odno, n);
+        return { rt_cd: '0', output: { ODNO: n.odno, KRX_FWDG_ORD_ORGNO: '91252' } };
+      }
+      o.cancelled = true;
       return { rt_cd: '0', output: { odno: String(++kx.seq) } };
     }
     throw new Error('unexpected post ' + path);

@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test --test-force-exit test/trade.test.js test/paper-engine.test.js test/paper.test.js test/exit-engine.test.js test/paper-report.test.js test/live.test.js test/session.test.js test/extended-hours.test.js test/live-extended.test.js && node test/trade-calc.test.js"
+    "test": "node --test --test-force-exit test/trade.test.js test/paper-engine.test.js test/paper.test.js test/exit-engine.test.js test/paper-report.test.js test/live.test.js test/session.test.js test/extended-hours.test.js test/live-extended.test.js test/modify.test.js && node test/trade-calc.test.js"
   },
   "engines": {
     "node": ">=18"

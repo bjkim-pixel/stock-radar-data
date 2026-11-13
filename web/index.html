@@ -919,6 +919,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .trd-sr{display:grid;grid-template-columns:36px 1fr 1fr 1.2fr;gap:6px;align-items:center;font-size:12.5px;padding:3px 0}
 .trd-ses{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;margin:-2px 0 8px}.trd-ses .tag{padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink);font-weight:700;border:1px solid var(--border)}.trd-ses .tag.off{color:var(--down)}
 .trd-sr.five{grid-template-columns:62px 1fr 1fr 1fr 40px}
+#trdPaneOrder:not(.sellm) .trd-sellonly,#trdPaneOrder:not(.sellm) .trd-sellpick,#trdPaneOrder.sellm .trd-qcard,#trdPaneOrder.sellm .trd-sec.buy,#trdPaneOrder.sellm .trd-cb,#trdPaneOrder.sellm .trd-buyonly{display:none}
+#trdPaneOrder.sellm .trd-grid{grid-template-columns:1fr}
+.btn.trd-sbtn:not(:disabled){background:var(--down);color:#fff}
 .trd-sec{display:flex;align-items:center;gap:8px;margin:14px 0 8px;padding:9px 12px;border-radius:8px;font-size:12.5px}
 .trd-sec b{font-size:15px;letter-spacing:.5px}.trd-sec span{font-size:11.5px;opacity:.85}
 .trd-sec.buy{background:color-mix(in srgb,var(--up) 12%,var(--surface));color:var(--up);border:1px solid color-mix(in srgb,var(--up) 40%,transparent)}
@@ -1000,8 +1003,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
   <nav id="tabs">
     <div class="ng" data-g="trade"><div class="ngh" role="button" tabindex="0" aria-expanded="true">매매</div><div class="ngi">
       <button data-v="live">실시간 종목</button>
-      <button data-v="trade">가상매매</button>
-      <button data-v="traderl">실제매매</button></div></div>
+      <button data-v="trade">주식주문</button>
+      <button data-v="trhold">보유현황</button>
+      <button data-v="trhist">거래내역</button></div></div>
     <div class="ng" data-g="sum"><div class="ngh" role="button" tabindex="0" aria-expanded="true">요약</div><div class="ngi">
       <button data-v="ai">AI 브리핑</button>
       <button data-v="fav">★ 관심</button>
@@ -2059,6 +2063,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 
 <!-- ═══════════ 투자일지 ═══════════ -->
 <section id="v-trade" class="hide">
+  <div class="trd-tabs trd-pmode" id="trdMode" role="tablist" style="margin-bottom:8px"><button type="button" data-pmode="VIRTUAL">가상</button><button type="button" data-pmode="REAL">실전</button></div>
   <div id="trdBand" class="trd-band virt"><span id="trdBandTx"></span><span class="sp"></span><span id="trdSessTx" class="faint"></span><button type="button" id="trdLockBtn" class="chip">잠그기</button><button type="button" id="trdKill" class="trd-kill">긴급 정지</button></div>
   <div id="trdHalt" class="trd-halt hide" role="alert"></div>
   <div id="trdGate" class="card trd-gate">
@@ -2066,9 +2071,11 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
     <div id="trdPinRow" class="hide"><input id="trdPin" type="password" inputmode="numeric" autocomplete="off" placeholder="거래 PIN" aria-label="거래 PIN"><button type="button" class="btn" id="trdPinGo">확인</button></div>
   </div>
   <div id="trdMain" class="hide">
-    <div class="trd-tabs" id="trdTabs" role="tablist"><button type="button" data-tp="order" class="on">주문</button><button type="button" data-tp="hist">주문·체결 내역</button><button type="button" data-tp="plan">매도 계획</button><button type="button" data-tp="hold">보유 현황</button><button type="button" data-tp="rep">수익률</button></div>
+    <div class="trd-tabs" id="trdTabs" role="tablist"><button type="button" data-tp="order" class="on">매수</button><button type="button" data-tp="sell">매도</button><button type="button" data-tp="mod">정정/취소</button><button type="button" data-tp="fills">체결/미체결</button><button type="button" data-tp="plan">매도 계획</button></div>
+    <div class="trd-tabs hide" id="trdHistTabs" role="tablist"><button type="button" data-tp="rep">수익률</button><button type="button" data-tp="hist">주문·체결 내역</button></div>
     <div id="trdPaneOrder">
-    <div class="card"><h3>매매 대기 목록 <span class="r faint" style="font-size:11px">최대 10종목 · 이 브라우저에만 저장</span></h3><div id="trdQ" class="trd-q"></div></div>
+    <div class="card trd-sellpick"><h3>보유 종목 <span class="r faint" style="font-size:11px">매도할 종목을 고르세요</span></h3><div id="trdSellPick" class="trd-q"></div></div>
+    <div class="card trd-qcard"><h3>매매 대기 목록 <span class="r faint" style="font-size:11px">최대 10종목 · 이 브라우저에만 저장</span></h3><div id="trdQ" class="trd-q"></div></div>
     <div id="trdEmpty" class="card hide"><div class="load">종목 표에서 체크박스로 종목을 고른 뒤 "매매로 보내기"를 누르거나, 종목 상세 화면의 "매매로 보내기" 버튼을 쓰세요.</div></div>
     <div id="trdStock" class="hide">
       <div class="card"><div id="trdHd"></div></div>
@@ -2077,7 +2084,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <div>
           <div class="card trd-bk">
             <div class="trd-tabs" id="trdBkTabs" role="tablist"><button type="button" data-bt="book" class="on">호가</button><button type="button" data-bt="chart">차트</button><button type="button" data-bt="mem">거래원</button><button type="button" data-bt="inv">투자자</button></div>
-            <div data-bp="book"><div id="trdSes" class="trd-ses"></div><div class="faint" style="font-size:11px;margin:2px 0 6px">호가 클릭 = 매수가 입력</div><div id="trdBook" class="trd-book"></div><div id="trdQp" class="faint" style="font-size:11.5px;margin-top:6px"></div>
+            <div data-bp="book"><div id="trdSes" class="trd-ses"></div><div class="faint" style="font-size:11px;margin:2px 0 6px" id="trdBkHint">호가 클릭 = 매수가 입력</div><div id="trdBook" class="trd-book"></div><div id="trdQp" class="faint" style="font-size:11.5px;margin-top:6px"></div>
               <details class="trd-cn"><summary>체결강도란? <span id="trdCnNow"></span></summary><div class="trd-cnb">
                 <p><b>정의</b> — 오늘 체결된 주식 중 <b>매수 쪽 체결량이 매도 쪽 체결량의 몇 %</b>인지 보여주는 값입니다. 체결강도 = 매수 체결량 ÷ 매도 체결량 × 100 (당일 누적).</p>
                 <p><b>의미</b> — 100%면 매수·매도 체결이 같고, <b class="up">100%를 넘으면 사려는 쪽이 호가를 올려 체결(매수 우세)</b>, <b class="down">100% 아래면 팔려는 쪽이 호가를 내려 체결(매도 우세)</b>입니다. 보통 120% 이상이면 강한 매수세, 80% 이하면 강한 매도세로 봅니다.</p>
@@ -2100,6 +2107,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
             <div data-bp="mem" class="hide"><div id="trdMem"></div></div>
             <div data-bp="inv" class="hide"><div id="trdInv"></div></div>
           </div>
+          <div class="trd-sec sell trd-sellonly"><b>매도</b><span>주문 입력</span></div>
+          <div class="card trd-cs trd-sellonly" id="trdSellCard"></div>
           <div class="trd-sec buy"><b>매수</b><span>주문 입력 · 진입 전 점검</span></div>
           <div class="card trd-cb"><h3>주문 입력</h3>
             <div class="trd-form"><label>주문 유형<select id="trdType"><option value="limit">지정가</option><option value="market">시장가</option></select></label><label>매수가<input id="trdBuy" inputmode="numeric"></label><label>수량(주)<input id="trdQty" inputmode="numeric"></label><label>또는 금액(원)<input id="trdAmt" inputmode="numeric" placeholder="입력하면 수량 자동"></label></div>
@@ -2108,7 +2117,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
         <div class="card trd-cb"><div id="trdMkt"></div><button type="button" class="btn" id="trdBtn" disabled style="width:100%">매수 주문</button>
           <div id="trdBtnNote" class="faint" style="margin-top:6px;font-size:12px;text-align:center"></div></div>
         </div>
-        <div>
+        <div class="trd-buyonly">
           <div class="card"><h3>추천 매수가 <span class="r faint" id="trdRecAt" style="font-size:11px"></span></h3><div id="trdRec" class="trd-recs"></div>
             <h3 style="margin-top:12px">추천 목표 매도가 <button type="button" class="chip" id="trdRecalc" style="margin-left:auto">다시 계산</button></h3><div id="trdTgt"></div></div>
         </div>
@@ -2133,9 +2142,12 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
       <div id="trdDetail"></div>
     </div>
     </div>
-    <div id="trdPanePlan" class="hide"><div class="trd-tabs trd-pmode hide" style="margin-bottom:8px"><button type="button" data-pmode="VIRTUAL">가상</button><button type="button" data-pmode="REAL">실전</button></div><div class="card"><h3>종목별 매도 계획 <span class="r faint" style="font-size:11px">보유 종목의 손절·트레일링 익절 · 4초마다 갱신</span></h3><div id="trdPlanAll"></div></div></div>
-    <div id="trdPaneHold" class="hide"><div class="trd-tabs trd-pmode hide" style="margin-bottom:8px"><button type="button" data-pmode="VIRTUAL">가상</button><button type="button" data-pmode="REAL">실전</button></div>
+    <div id="trdPanePlan" class="hide"><div class="card"><h3>종목별 매도 계획 <span class="r faint" style="font-size:11px">보유 종목의 손절·트레일링 익절 · 4초마다 갱신</span></h3><div id="trdPlanAll"></div></div></div>
+    <div id="trdPaneHold" class="hide">
     <div class="card"><h3>보유 <span class="r faint" id="trdPl" style="font-size:11px"></span></h3><div id="trdHold"></div></div>
+    </div>
+    <div id="trdPaneMod" class="hide"><div class="card"><h3>정정 / 취소 <span class="r faint" style="font-size:11px">미체결 주문의 가격·수량을 바꾸거나 취소</span></h3><div id="trdMod"></div></div></div>
+    <div id="trdPaneFills" class="hide">
     <div class="card"><h3>미체결 주문</h3><div id="trdOpen"></div></div>
     <div class="card"><h3>오늘 체결</h3><div id="trdFills"></div></div>
     </div>
@@ -3513,7 +3525,9 @@ function procEnter(){
   lazyNear($("#tdKWrap"),()=>loadTdKospi().catch(e=>console.error("KOSPI 카드",e)));
 }
 function go(v,detailCode){
-  const vOrig=v;if(v==="trplan"||v==="trhold"){TRD.pane=v==="trplan"?"plan":"hold";v="trade";S.tradeMode=S.tradeMode||"VIRTUAL";}else if(v==="traderl"){v="trade";S.tradeMode="REAL";TRD.pane="order";}else if(v==="trade"){S.tradeMode="VIRTUAL";TRD.pane="order";}
+  if(v==="traderl"){v="trade";S.tradeMode="REAL";}else if(v==="trplan"){v="trade";TRD.pane="plan";}
+  const vOrig=v;if(v==="trade"||v==="trhold"||v==="trhist"){if(!S.tradeMode){let m=null;try{m=localStorage.getItem("trdMode");}catch(_){}S.tradeMode=m==="REAL"?"REAL":"VIRTUAL";}
+    TRD.pane=v==="trhold"?"hold":v==="trhist"?(TRD.pane==="hist"?"hist":"rep"):(TRD_ORDER_P.includes(TRD.pane)&&TRD.keepPane?TRD.pane:"order");TRD.keepPane=false;v="trade";}
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
   if(cur&&cur!==v)S.prevView=cur;
   if(S.curTab==='fav'&&v!=='fav'&&S.favWanted.size)setFavLiveCodes([]);
@@ -9072,7 +9086,7 @@ async function loadTdKospi(){
    · 입장: 로그인 → 거래 PIN(relay /trade/session) → 15분 세션(쓸 때마다 연장)
    · 시세·호가: relay /trade/quote (KIS 실전 시세, 3초마다) · 추천가·목표가·매물대: 종목상세와 같은 계산(DB 수급 이력)
    · 이 단계에서는 어떤 주문도 나가지 않습니다 — 3단계(가상 주문)에서 활성화 */
-const TRD={trail:2,pane:"order",q:[],cur:null,mode:"VIRTUAL",sess:null,off:0,st:null,quote:null,data:null,poll:null,stPoll:null,busy:false,buy:0,qty:0,amt:0,stopPct:5,target:0,coef:1,plan:null,planDirty:false,auto:{stop:null,tp:null},split:5};
+const TRD={trail:2,pane:"order",q:[],cur:null,mode:"VIRTUAL",sess:null,off:0,st:null,quote:null,data:null,poll:null,stPoll:null,busy:false,buy:0,qty:0,amt:0,stopPct:5,target:0,coef:1,plan:null,planDirty:false,auto:{stop:null,tp:null},split:5,sell:{code:null,type:"limit",price:0,qty:0,pct:0,arm:0},mod:{}};
 const trdEsc=v=>String(v==null?"":v).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const trdNm=c=>((S.codes||[]).find(x=>x.code===c)||{}).name||c;
 const trdBase=()=>TRD.mode==="REAL"?"/trade/live":"/trade/paper";
@@ -9187,11 +9201,10 @@ async function trdRefreshStatus(){
 function trdGateMsg(html){const g=$("#trdGate");g.classList.remove("hide");$("#trdMain").classList.add("hide");$("#trdGateMsg").innerHTML=html;}
 async function trdEnter(){
   TRD.mode=S.tradeMode==="REAL"?"REAL":"VIRTUAL";
-  if(TRD.pane&&TRD.pane!=="order")setTimeout(()=>trdTab(TRD.pane),0);
+  setTimeout(()=>trdTab(TRD.pane||"order"),0);
   $("#trdBand").className="trd-band "+(TRD.mode==="REAL"?"real":"virt");
   $("#trdBandTx").innerHTML=TRD.mode==="REAL"?"<b>실전</b> · KIS 실제 계좌 — 주문이 실제로 체결됩니다":"<b>가상</b> · 자체 체결 시뮬레이터 (실제 주문은 나가지 않음)";
   trdRenderQ();
-  {const h=$("#v-trade>.pg-title");if(h)h.textContent=TRD.mode==="REAL"?"실제매매":"가상매매";}
   if(!AUTH.s){$("#trdPinRow").classList.add("hide");trdGateMsg('로그인이 필요합니다. <button class="btn" id="trdLogin" type="button">로그인</button>');$("#trdLogin").onclick=()=>authShow();return;}
   try{
     const st=await trdRefreshStatus();
@@ -9659,7 +9672,7 @@ async function trdSubmitBuy(cid){
 async function trdLoadState(){
   try{TRD.ps=await trdApi(trdBase()+"/state");TRD.psErr=null;}
   catch(e){TRD.ps=null;TRD.psErr=e;if(e.status===401||e.status===403){trdStop();trdEnter();return;}}
-  trdRenderHold();if(TRD.pane==="plan")trdRenderPlanAll();if(TRD.quote&&TRD.data)trdRenderPlan();else if(TRD.quote)trdRenderOrder();
+  trdRenderHold();if(TRD.pane==="plan")trdRenderPlanAll();if(TRD.pane==="mod")trdRenderMod();if(TRD.pane==="sell")trdRenderSellPick();if(TRD.quote&&TRD.data)trdRenderPlan();else if(TRD.quote)trdRenderOrder();
 }
 /* 매도 계획 페이지: 보유 종목별 손절·익절 단계와 상태를 한 화면에 */
 function trdRenderPlanAll(){
@@ -9728,7 +9741,7 @@ function trdRenderHold(){
       <div class="c"><b>${cp?N(cp*p.qty):"–"}</b><span>${N(Math.round(p.avg*p.qty))}</span></div>
       <div class="c"><b class="${pcls}">${cp?N(cp):"–"}</b><span>${N(p.avg,0)}</span></div></div>
       ${open?`<div class="x"><div class="au">자동 매도 · ${plan}</div>
-        ${editing?trdPeHtml(p):`<div class="bt"><button type="button" class="lk" data-pe-open="${p.code}">계획 수정</button><button type="button" class="lk" data-plgo="${p.code}">주문 화면</button><span class="sp"></span><button type="button" class="b buy" data-plgo="${p.code}">매수</button><button type="button" class="b sell${sopen?" on":""}" data-sopen="${p.code}">매도</button></div>
+        ${editing?trdPeHtml(p):`<div class="bt"><button type="button" class="lk" data-pe-open="${p.code}">계획 수정</button><button type="button" class="lk" data-plgo="${p.code}">주문 화면</button><span class="sp"></span><button type="button" class="b buy" data-plgo="${p.code}">매수</button><button type="button" class="b sell" data-hsell="${p.code}">매도</button></div>
         ${sopen?`<div class="trd-sell"><input data-hq="${p.code}" inputmode="numeric" placeholder="수량 ${p.avail??p.qty}" value="${q.qty||""}"><input data-hp="${p.code}" inputmode="numeric" placeholder="비우면 시장가" value="${q.price||""}"><button type="button" class="btn${armed?"":" ghost"}" data-sell="${p.code}">${armed?"한 번 더 누르면 매도":"매도 확인"}</button></div>`:""}`}</div>`:""}</div>`;
   }).join("");
   box.innerHTML=probe+sum+eng+(P.positions.length?`<div class="trd-ht"><div class="trd-hh"><div class="c0"><span>종목명</span><div class="q"><span>주문가능</span><span>보유수량</span></div></div><div class="c"><span>평가손익</span><span>수익률(%)</span></div><div class="c"><span>평가금액</span><span>매입금액</span></div><div class="c"><span>현재가</span><span>평균단가</span></div></div>${rows}</div><div class="faint" style="font-size:11px;margin-top:6px">종목을 누르면 매수·매도·계획 수정이 펼쳐집니다</div>`
@@ -9758,14 +9771,22 @@ function trdPeriod(){
   const t=new Date(Date.UTC(y,m+R.off,1)),yy=t.getUTCFullYear(),mm=t.getUTCMonth()+1,last=new Date(Date.UTC(yy,mm,0)).getUTCDate();
   return {from:`${yy}-${pad(mm)}-01`,to:`${yy}-${pad(mm)}-${pad(last)}`,label:`${yy}년 ${mm}월`};
 }
+const TRD_ORDER_P=["order","sell","mod","fills","plan"];
+const TRD_PANE_T={order:"주식주문 · 매수",sell:"주식주문 · 매도",mod:"주식주문 · 정정/취소",fills:"주식주문 · 체결/미체결",plan:"주식주문 · 매도 계획",hold:"보유현황",rep:"거래내역",hist:"거래내역"};
 function trdTab(p){
-  TRD.pane=p;$$("#trdTabs button").forEach(b=>b.classList.toggle("on",b.dataset.tp===p));
-  $("#trdPaneOrder").classList.toggle("hide",p!=="order");$("#trdPaneRep").classList.toggle("hide",p!=="rep");$("#trdPaneHist").classList.toggle("hide",p!=="hist");
+  if(!TRD_PANE_T[p])p="order";
+  TRD.pane=p;const op=TRD_ORDER_P.includes(p),hp=p==="rep"||p==="hist";
+  $$("#trdTabs button,#trdHistTabs button").forEach(b=>b.classList.toggle("on",b.dataset.tp===p));
+  $("#trdTabs").classList.toggle("hide",!op);$("#trdHistTabs").classList.toggle("hide",!hp);
+  $("#trdPaneOrder").classList.toggle("hide",p!=="order"&&p!=="sell");$("#trdPaneOrder").classList.toggle("sellm",p==="sell");
+  $("#trdPaneRep").classList.toggle("hide",p!=="rep");$("#trdPaneHist").classList.toggle("hide",p!=="hist");
   $("#trdPanePlan").classList.toggle("hide",p!=="plan");$("#trdPaneHold").classList.toggle("hide",p!=="hold");
-  {const h=$("#v-trade>.pg-title"),pg=p==="plan"||p==="hold";if(h)h.textContent=pg?(p==="plan"?"매도 계획":"보유 현황")+(TRD.mode==="REAL"?" · 실전":" · 가상"):(TRD.mode==="REAL"?"실제매매":"가상매매");
-   $$(".trd-pmode").forEach(g=>{g.classList.toggle("hide",!pg);g.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.pmode===TRD.mode));});}
-  {const mv=TRD.mode==="REAL"?"traderl":"trade";$$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===mv));}
-  if(p==="rep"||p==="hist")trdLoadReport();else if(p==="plan")trdRenderPlanAll();else if(p==="hold")trdRenderHold();
+  $("#trdPaneMod").classList.toggle("hide",p!=="mod");{const b=$("#trdBkHint");if(b)b.textContent=p==="sell"?"호가 클릭 = 매도가 입력":"호가 클릭 = 매수가 입력";}$("#trdPaneFills").classList.toggle("hide",p!=="fills");
+  {const h=$("#v-trade>.pg-title");if(h)h.textContent=TRD_PANE_T[p]+(TRD.mode==="REAL"?" · 실전":" · 가상");}
+  $$(".trd-pmode button").forEach(b=>b.classList.toggle("on",b.dataset.pmode===TRD.mode));
+  {const mv=op?"trade":p==="hold"?"trhold":"trhist";$$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===mv));}
+  if(hp)trdLoadReport();else if(p==="plan")trdRenderPlanAll();else if(p==="hold"||p==="fills")trdRenderHold();else if(p==="mod")trdRenderMod();
+  else if(p==="sell"){trdRenderSellPick();trdRenderSell();}
 }
 async function trdLoadReport(){
   const box=p=>$(p==="rep"?"#trdPaneRep":"#trdPaneHist");
@@ -9874,6 +9895,7 @@ function trdRenderPlan(){
     :`<div class="faint" style="font-size:12px">설정된 자동 매도가 없습니다. 위에서 "손절 설정"·"익절 설정"을 누르면 여기에 담깁니다.</div>`);
   trdRenderOrder();   // 익절 단계 수량이 바뀌면 주문 버튼 가능 여부도 다시 판단
   if(TRD.focusEdit)setTimeout(trdFocusEdit,60);
+  if(TRD.pane==="sell")trdRenderSell();
 }
 function trdFocusEdit(){const id=TRD.focusEdit;if(!id)return;const e=$("#"+id);if(!e||!e.offsetParent)return;TRD.focusEdit=null;e.scrollIntoView({block:"center",behavior:"smooth"});e.focus();if(e.select)e.select();}
 function trdRenderCheck(){
@@ -9887,6 +9909,85 @@ function trdRenderCheck(){
   $("#trdCheck").innerHTML=`<div class="trd-kv">${it.map(([k,v])=>`<span>${k}</span>${v}`).join("")}</div>`;
 }
 
+
+/* ── 매도 탭: 보유 종목 고르기 + 호가창 아래 매도 주문 ── */
+function trdRenderSellPick(){
+  const b=$("#trdSellPick");if(!b)return;const P=TRD.ps;
+  if(!P||!P.positions){b.innerHTML='<span class="faint" style="font-size:12px">불러오는 중…</span>';return;}
+  b.innerHTML=P.positions.length?P.positions.map(p=>`<span class="trd-chip${p.code===TRD.cur?" on":""}"><button type="button" class="trd-chip-n" data-spick="${p.code}">${trdEsc(p.name||trdNm(p.code))} <span class="faint">${N(p.avail??p.qty)}주</span></button></span>`).join(""):'<span class="faint" style="font-size:12px">보유 종목이 없습니다.</span>';
+  if(TRD.pane==="sell"){const hasCur=!!TRD.cur;$("#trdEmpty").classList.toggle("hide",hasCur||!P.positions.length);}
+}
+function trdRenderSell(){
+  const box=$("#trdSellCard");if(!box||TRD.pane!=="sell")return;
+  const P=TRD.ps,h=P&&P.positions?P.positions.find(x=>x.code===TRD.cur):null,Q=TRD.quote,S2=TRD.sell;
+  if(!h){box.innerHTML=`<h3>매도 주문</h3><div class="faint" style="font-size:12.5px">${TRD.cur?`${trdEsc(trdNm(TRD.cur))}은(는) 보유 중이 아닙니다. `:""}위 보유 종목에서 매도할 종목을 고르세요.</div>`;return;}
+  if(S2.code!==h.code){Object.assign(S2,{code:h.code,type:"limit",price:0,qty:0,pct:0,arm:0});}
+  const avail=h.avail??h.qty,bid1=Q&&Q.bids?((Q.bids.find(l=>l.p>0)||{}).p||Q.price):(h.last||0);
+  if(!S2.price&&bid1)S2.price=bid1;
+  if(S2.pct)S2.qty=Math.max(1,Math.floor(avail*S2.pct/100));
+  const mkt=S2.type==="market",px=mkt?(bid1||h.last||0):S2.price,qty=Math.min(S2.qty||0,avail),amt=px*qty,pl=(px-h.avg)*qty,pc=h.avg?(px/h.avg-1)*100:0;
+  const act=document.activeElement,keep=id=>act&&act.id===id;
+  const armed=S2.arm&&Date.now()-S2.arm<4000;
+  const why=!qty?"수량을 입력하세요":qty>avail?"매도 가능 수량을 넘었습니다":!mkt&&!(px>0)?"매도가를 입력하세요":!mkt&&trdFloor(px)!==px?"호가 단위에 맞지 않는 가격입니다":"";
+  const m=TRD.msg&&Date.now()-TRD.msg.t<15000?`<div class="${TRD.msg.ok?"trd-ok":"trd-wn"}" style="margin-top:8px">${trdEsc(TRD.msg.text)}</div>`:"";
+  const html=`<h3>매도 주문 <span class="r faint" style="font-size:11px">호가 클릭 = 매도가 입력</span></h3>
+    <div class="trd-sum2" style="margin:0 0 8px"><span><i>평균 매수가</i><b>${N(h.avg,0)}원</b></span><span><i>보유</i><b>${N(h.qty)}주</b></span><span><i>매도 가능</i><b>${N(avail)}주</b></span></div>
+    <div class="trd-form"><label>주문 유형<select id="trdSType"><option value="limit"${mkt?"":" selected"}>지정가</option><option value="market"${mkt?" selected":""}>시장가</option></select></label>
+      <label>매도가<input id="trdSPrice" inputmode="numeric" ${mkt?'disabled placeholder="시장가"':""} value="${mkt?"":(keep("trdSPrice")?act.value:S2.price||"")}"></label>
+      <label>수량(주)<input id="trdSQty" inputmode="numeric" value="${keep("trdSQty")?act.value:(qty||"")}"></label></div>
+    <div class="trd-chips" style="margin-top:6px">${[10,25,50,100].map(v=>`<button type="button" class="chip${S2.pct===v?" on":""}" data-spct="${v}">${v===100?"전량":v+"%"}</button>`).join("")}${!mkt&&bid1?`<button type="button" class="chip" data-spx="${bid1}">매수 1호가 ${N(bid1)}</button>`:""}</div>
+    <div class="trd-kv" style="margin-top:8px"><span>매도 금액</span><b>${qty?N(Math.round(amt))+"원":"–"}${mkt?' <span class="faint" style="font-weight:400">(매수 1호가 기준 추정)</span>':""}</b>
+      <span>예상 손익</span><b class="${pl>0?"up":pl<0?"down":""}">${qty?`${trdSgn(Math.round(pl))}원 (${pc>=0?"+":""}${N(pc,2)}%)`:"–"}</b></div>
+    <div class="faint" style="font-size:11px;margin-top:4px">평균 매수가 대비 · 수수료·세금 전. 수동 매도하면 걸려 있던 익절 감시 수량은 남은 수량으로 다시 나뉩니다.</div>
+    <button type="button" class="btn trd-sbtn" id="trdSBtn" ${why?"disabled":""} style="width:100%;margin-top:10px">${why||(armed?`${TRD.mode==="REAL"?"실전 — ":""}한 번 더 누르면 매도됩니다 · ${mkt?"시장가":N(px)+"원"} × ${N(qty)}주`:`${TRD.mode==="REAL"?"실전":"가상"} 매도 주문 · ${mkt?"시장가":N(px)+"원"} × ${N(qty)}주`)}</button>${m}`;
+  if(box.contains(act)&&/INPUT|SELECT/.test(act.tagName)){   // 입력 중엔 버튼·계산만 갱신
+    const tmp=document.createElement("div");tmp.innerHTML=html;
+    [".trd-kv","#trdSBtn",".trd-chips"].forEach(sel=>{const a=box.querySelector(sel),b=tmp.querySelector(sel);if(a&&b)a.replaceWith(b);});return;}
+  box.innerHTML=html;
+}
+async function trdSellGo(){
+  const S2=TRD.sell,P=TRD.ps,h=P&&P.positions.find(x=>x.code===TRD.cur);if(!h)return;
+  if(!(S2.arm&&Date.now()-S2.arm<4000)){S2.arm=Date.now();trdRenderSell();clearTimeout(TRD.sArmT);TRD.sArmT=setTimeout(()=>{S2.arm=0;trdRenderSell();},4100);return;}
+  S2.arm=0;const qty=Math.min(S2.qty,h.avail??h.qty);
+  TRD.hq[h.code]={qty:String(qty),price:S2.type==="market"?"":String(S2.price)};
+  await trdSell(h.code);S2.qty=0;S2.pct=0;trdRenderSell();
+}
+/* ── 정정/취소 탭 ── */
+function trdRenderMod(){
+  const box=$("#trdMod");if(!box)return;const P=TRD.ps;
+  if(box.contains(document.activeElement)&&/INPUT/.test(document.activeElement.tagName))return;
+  if(!P||!P.orders){box.innerHTML='<div class="load">'+(TRD.psErr?trdEsc(trdErrTx(TRD.psErr)):"불러오는 중…")+"</div>";return;}
+  const open=P.orders.filter(o=>o.status==="open"||o.status==="partial");
+  const m=TRD.msg&&Date.now()-TRD.msg.t<15000?`<div class="${TRD.msg.ok?"trd-ok":"trd-wn"}" style="margin-bottom:8px">${trdEsc(TRD.msg.text)}</div>`:"";
+  box.innerHTML=m+(open.length?open.map(o=>{
+    const auto=TRD_RSN(o.reason),left=o.qty-o.filled,e=TRD.mod[o.id]||{};
+    return `<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${trdEsc(o.name||trdNm(o.code))} ${o.type==="market"?"시장가":N(o.price)+"원"}${auto?` <span class="trd-w" style="background:var(--surface-2);color:var(--ink-2)">${auto} · 자동</span>`:""}</span><span class="faint num" style="font-size:12px">${N(o.filled)}/${N(o.qty)}주 체결</span></div>
+      ${auto?'<div class="sub">자동 매도 주문은 매도 계획 탭에서 바꿉니다</div>':o.status==="unknown"||o.status==="pending"||o.cancelReq?'<div class="sub">접수 확인·취소 처리 중</div>':
+      `<div class="trd-sell"><input data-mp="${o.id}" inputmode="numeric" placeholder="정정 가격" value="${e.price??(o.price||"")}"><input data-mq="${o.id}" inputmode="numeric" placeholder="수량 ${left}" value="${e.qty??left}"><button type="button" class="btn ghost" data-mod="${o.id}">정정</button><button type="button" class="chip" data-ccl="${o.id}">취소</button></div>`}</div>`;
+  }).join(""):'<div class="faint" style="font-size:12.5px">미체결 주문이 없습니다.</div>')+
+  '<div class="faint" style="font-size:11px;margin-top:8px">정정하면 거래소 대기 순서가 새로 잡힙니다. 수량을 줄이면 나머지는 원래 가격 그대로 남습니다(실전) · 가상은 원주문 취소 후 새 주문.</div>';
+}
+async function trdModGo(id){
+  const o=TRD.ps&&TRD.ps.orders.find(x=>x.id===id);if(!o)return;
+  const e=TRD.mod[id]||{},price=Math.floor(+String(e.price??o.price??"").replace(/,/g,"")),qty=Math.floor(+String(e.qty??(o.qty-o.filled)).replace(/,/g,""));
+  try{const r=await trdApi(trdBase()+"/modify",{method:"POST",body:{id,price,qty}});delete TRD.mod[id];TRD.msg={ok:true,t:Date.now(),text:`정정했습니다 — ${N(r.order.price)}원 × ${N(r.order.qty)}주`};}
+  catch(err){if(err.status===401&&err.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");return;}TRD.msg={ok:false,t:Date.now(),text:"정정 실패: "+trdErrTx(err)};}
+  await trdLoadState();trdRenderMod();
+}
+document.addEventListener("input",e=>{const t=e.target;if(!t||!t.id&&!t.dataset)return;
+  if(t.id==="trdSPrice"){TRD.sell.price=Math.floor(+t.value.replace(/,/g,""))||0;trdRenderSell();}
+  else if(t.id==="trdSQty"){TRD.sell.qty=Math.floor(+t.value.replace(/,/g,""))||0;TRD.sell.pct=0;trdRenderSell();}
+  else if(t.dataset&&t.dataset.mp){(TRD.mod[t.dataset.mp]=TRD.mod[t.dataset.mp]||{}).price=t.value;}
+  else if(t.dataset&&t.dataset.mq){(TRD.mod[t.dataset.mq]=TRD.mod[t.dataset.mq]||{}).qty=t.value;}});
+document.addEventListener("change",e=>{const t=e.target;if(t&&t.id==="trdSType"){TRD.sell.type=t.value;t.blur();trdRenderSell();}});
+document.addEventListener("click",e=>{const t=e.target;if(!t.closest||!t.closest("#v-trade"))return;let el;
+  if((el=t.closest("[data-spick]"))){const c=el.dataset.spick;if(!TRD.q.includes(c)){trdQAdd([c]);trdRenderQ();}TRD.cur=c;trdRenderSellPick();trdSelect(c);return;}
+  if((el=t.closest("[data-spct]"))){TRD.sell.pct=+el.dataset.spct;trdRenderSell();return;}
+  if((el=t.closest("[data-spx]"))){TRD.sell.type="limit";TRD.sell.price=+el.dataset.spx;trdRenderSell();return;}
+  if(t.closest("#trdSBtn"))return void trdSellGo();
+  if((el=t.closest("[data-mod]")))return void trdModGo(el.dataset.mod);
+  if((el=t.closest("[data-hsell]"))){const c=el.dataset.hsell;if(!TRD.q.includes(c)){trdQAdd([c]);trdRenderQ();}TRD.cur=c;trdTab("sell");trdSelect(c);window.scrollTo(0,0);return;}
+});
 /* ── 입력 이벤트 ── */
 function trdSetBuy(p,note){TRD.fixNote=note||"";TRD.buy=p;if(TRD.amt)TRD.qty=Math.max(1,Math.floor(TRD.amt/Math.max(1,trdFloor(p))));TRD.edited=null;trdRenderQuote();trdRenderRec();trdRenderOrder();trdRenderPlan();trdRenderCheck();}
 document.addEventListener("click",e=>{
@@ -9894,7 +9995,7 @@ document.addEventListener("click",e=>{
   let el;
   if((el=t.closest("[data-pick]")))return void(TRD.cur!==el.dataset.pick&&trdSelect(el.dataset.pick));
   if((el=t.closest("[data-del]"))){const c=el.dataset.del;TRD.q=TRD.q.filter(x=>x!==c);trdSaveQ();trdRenderQ();if(TRD.cur===c){TRD.cur=TRD.q[0]||null;if(TRD.cur)trdSelect(TRD.cur);else trdRenderEmpty();}return;}
-  if((el=t.closest(".trd-r[data-px],.tb [data-px]"))&&+el.dataset.px>0)return trdSetBuy(+el.dataset.px);
+  if((el=t.closest(".trd-r[data-px],.tb [data-px]"))&&+el.dataset.px>0){if(TRD.pane==="sell"){TRD.sell.type="limit";TRD.sell.price=+el.dataset.px;return trdRenderSell();}return trdSetBuy(+el.dataset.px);}
   if((el=t.closest(".trd-rec")))return trdSetBuy(+el.dataset.px);
   if((el=t.closest("[data-stop]"))){const hb=trdHeld();TRD.stopPct=Math.max(0.1,Math.round((1-+el.dataset.stop/Math.max(1,hb?+hb.avg:trdFloor(TRD.buy)))*1000)/10);TRD.edited=null;trdRenderPlan();return;}
   if((el=t.closest(".trd-pf"))){const lo=+el.dataset.lo,hi=+el.dataset.hi,b=$("#trdPfPick");
@@ -9925,7 +10026,7 @@ document.addEventListener("click",e=>{
   if((el=t.closest("[data-hpick]"))){const c=el.dataset.hpick;if(!TRD.q.includes(c)){trdQAdd([c]);trdRenderQ();}return trdSelect(c);}
   if((el=t.closest("[data-ccl]")))return trdCancel(el.dataset.ccl);
   if((el=t.closest("[data-tp]")))return trdTab(el.dataset.tp);
-  if((el=t.closest("[data-pmode]"))){const m=el.dataset.pmode;if(m!==TRD.mode){S.tradeMode=m;trdStop();TRD.ps=null;trdEnter();}return;}
+  if((el=t.closest("[data-pmode]"))){const m=el.dataset.pmode;if(m!==TRD.mode){S.tradeMode=m;try{localStorage.setItem("trdMode",m);}catch(_){}trdStop();TRD.ps=null;trdEnter();}return;}
   if((el=t.closest("[data-plgo]"))){const c=el.dataset.plgo;trdQAdd([c]);TRD.cur=c;trdRenderQ();trdTab("order");trdSelect(c);window.scrollTo(0,0);return;}
   if((el=t.closest("[data-rpm]"))){TRD.rp={mode:el.dataset.rpm,off:0};return trdLoadReport();}
   if((el=t.closest("[data-rpo]"))){if(el.disabled)return;TRD.rp.off=Math.min(0,TRD.rp.off+ +el.dataset.rpo);return trdLoadReport();}
@@ -9999,7 +10100,7 @@ function tcSend(codes){
   const r=trdQAdd(codes);TSEL.clear();$$(".tchk").forEach(x=>x.checked=false);tcBar();
   if(r.cut)alert(`대기 목록은 최대 10종목입니다. 앞의 10개만 담았고 ${r.cut}개는 제외했습니다.`);
   TRD.cur=codes.find(c=>TRD.q.includes(c))||TRD.q[0]||null;
-  go(TRD.mode==="REAL"?"traderl":"trade");
+  TRD.pane="order";TRD.keepPane=true;go("trade");
 }
 document.addEventListener("change",e=>{const k=e.target;if(!k.classList||!k.classList.contains("tchk"))return;
   const c=k.dataset.tc;if(k.checked)TSEL.add(c);else TSEL.delete(c);
@@ -10016,7 +10117,7 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
   const ok=b.id==="trdStopSet"?(trdHeld()||TRD.buy>0):!!(TRD.plan&&TRD.plan.steps.some(x=>x.q>0));if(!ok)return;
   const t0=b.dataset.t0||b.textContent;b.dataset.t0=t0;b.classList.remove("done");void b.offsetWidth;b.classList.add("done");b.textContent="✓ 설정 완료";
   clearTimeout(b._tm);b._tm=setTimeout(()=>{b.classList.remove("done");b.textContent=t0;},1400);});
-const VIEW_IDS=["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","traderl","trplan","trhold"];
+const VIEW_IDS=["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trhold","trhist"];
 function setHash(v,code){
   const h="#"+v+(code?"/"+code:"");
   if(location.hash!==h)history.pushState(null,"",h);

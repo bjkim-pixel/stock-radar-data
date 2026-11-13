@@ -367,6 +367,34 @@ function createLive(deps) {
       return { ok: true, order: pubOrder(o) };
     });
   }
+  /* 정정: KIS 정정(TTTC0013U·01) — 새 주문번호로 새 주문 기록을 만들고 원주문은 체결조회에서 잔량 0 으로 끝남 */
+  function modify(body) {
+    return lock(async () => {
+      const nr = await ready(); if (nr) return nr;
+      const o = orders.get(String(body.id || ''));
+      if (!o) return bad(404, '주문을 찾을 수 없습니다');
+      if (!LIVE.has(o.status) || o.cancelReq) return bad(409, '이미 끝났거나 취소 중인 주문입니다');
+      if (isTp(o) || o.reason === 'stop') return bad(409, '자동 매도 주문은 매도 계획에서 바꾸세요');
+      if (UNSURE.has(o.status) || !o.odno) return bad(409, '접수 확인 중인 주문입니다. 잠시 뒤 다시 시도하세요');
+      const left = o.qty - o.filled, price = Number(body.price), qty = body.qty == null || body.qty === '' ? left : Number(body.qty);
+      if (!E.validTick(price)) return bad(400, '호가 단위에 맞지 않는 가격입니다');
+      if (!Number.isInteger(qty) || qty < 1 || qty > left) return bad(400, `정정 수량은 1~${left}주입니다`);
+      const g = deps.guard(o.side, 'REAL'); if (!g.ok) return bad(403, g.error);
+      let r;
+      try { r = await kis.modify({ odno: o.odno, orgno: o.orgno, venue: o.excg || 'KRX', price, qty, all: qty === left }); }
+      catch (e) { return bad(e.code === 'REJECT' ? 409 : 502, '정정 실패: ' + String(e.message).slice(0, 200)); }
+      const t = now();
+      if (qty === left) { o.cancelReq = true; o.note = 'modified'; }
+      else { o.note = 'modified_part'; o.qty -= qty; }                                     // 일부 정정: 원주문엔 나머지 잔량만 남음
+      o.updatedAt = t; dirty.orders.set(o.id, o);
+      const n = { id: `L${t.toString(36)}${rnd()}`, createdAt: t, updatedAt: t, code: o.code, name: o.name, side: o.side, type: 'limit', price, qty, filled: 0, amt: 0, avg: 0, status: 'open',
+        reason: o.reason || 'manual', plan: o.plan || null, note: 'modify:' + o.id, odno: r.odno, orgno: r.orgno, refPrice: price, simAvg: null, simQty: null, sentAt: t, msg: null, cancelReq: false, excg: o.excg || 'KRX' };
+      orders.set(n.id, n); dirty.orders.set(n.id, n); needBal = true;
+      await flush();
+      event('modify', o.code, { from: o.id, id: n.id, price, qty });
+      return { ok: true, order: pubOrder(n), from: o.id };
+    });
+  }
   function editPlan(body) {
     return lock(async () => {
       const nr = await ready(); if (nr) return nr;
@@ -482,7 +510,7 @@ function createLive(deps) {
   let timer = null;
   function start(ms = 5000) { if (timer) return; timer = setInterval(() => { tick(); }, ms); if (timer.unref) timer.unref(); }
   function stop() { if (timer) clearInterval(timer); timer = null; }
-  return { place, cancel, editPlan, state, report, probe, tick, start, stop, init, _orders: orders, _plans: plans, _bal: bal };
+  return { place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, _orders: orders, _plans: plans, _bal: bal };
 }
 
 module.exports = { createLive };
