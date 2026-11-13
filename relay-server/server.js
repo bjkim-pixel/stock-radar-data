@@ -3301,6 +3301,55 @@ function handleLiveFlow(req, res) {
   return true;
 }
 
+/* ── 실시간 종목 상단 박스(2026-11-13): 코스피·코스닥 지수 현재가(FHPUP02100000) · 시장별 투자자 매매동향(FHPTJ04030000, 장중 잠정).
+   KIS 응답 필드명은 이름 패턴으로 읽음(이 환경에서 응답을 확인하지 못함) — /live-market?raw=1 로 원본 확인. 20초 캐시 ── */
+let _mktLive = { at: 0, v: null };
+const MKT_IDX = { KOSPI: { iscd: '0001', grp: 'KSP' }, KOSDAQ: { iscd: '1001', grp: 'KSQ' } };
+function pickAmt(o, re) { for (const k of Object.keys(o || {})) if (re.test(k)) { const v = numOf(o[k]); if (v != null) return v; } return null; }
+function parseMktInvestor(j) {
+  let o = j && j.output; if (Array.isArray(o)) { o = o.slice().sort((a, b) => String(b.bsop_hour || b.stck_bsop_date || '').localeCompare(String(a.bsop_hour || a.stck_bsop_date || '')))[0]; }
+  if (Array.isArray(j && j.output2) && !o) o = j.output2[0];
+  o = o || {};
+  // 거래대금(백만원) 우선, 없으면 null — 수량(주) 필드는 금액이 아니므로 쓰지 않음
+  const f = pickAmt(o, /^frgn.*ntby.*(tr_pbmn|pbmn|amt)$/i), g = pickAmt(o, /^orgn.*ntby.*(tr_pbmn|pbmn|amt)$/i), p = pickAmt(o, /^prsn.*ntby.*(tr_pbmn|pbmn|amt)$/i);
+  return { frgn: f == null ? null : f / 100, orgn: g == null ? null : g / 100, prsn: p == null ? null : p / 100, keys: Object.keys(o) };   // 백만원 → 억원
+}
+function parseMktIndex(j) {
+  const o = (j && (Array.isArray(j.output) ? j.output[0] : j.output)) || {};
+  const price = numOf(o.bstp_nmix_prpr), vrss = numOf(o.bstp_nmix_prdy_vrss), pct = numOf(o.bstp_nmix_prdy_ctrt), sign = String(o.prdy_vrss_sign || '');
+  const dn = sign === '4' || sign === '5';                      // 4 하락 · 5 하한
+  return { price, chg: vrss == null ? null : (dn && vrss > 0 ? -vrss : vrss), pct: pct == null ? null : (dn && pct > 0 ? -pct : pct), open: numOf(o.bstp_nmix_oprc), high: numOf(o.bstp_nmix_hgpr), low: numOf(o.bstp_nmix_lwpr) };
+}
+async function fetchLiveMarket(raw) {
+  if (!raw && _mktLive.v && Date.now() - _mktLive.at < 20000) return _mktLive.v;
+  const out = { ts: Date.now(), idx: {}, inv: {}, errs: [] }, rawOut = {};
+  for (const [mk, c] of Object.entries(MKT_IDX)) {
+    try {
+      const r = await kisQuoteGet('/uapi/domestic-stock/v1/quotations/inquire-index-price', 'FHPUP02100000', { FID_COND_MRKT_DIV_CODE: 'U', FID_INPUT_ISCD: c.iscd });
+      if (raw) rawOut['idx_' + mk] = r.body;
+      if (r.ok) out.idx[mk] = parseMktIndex(r.body); else out.errs.push(`idx ${mk}: ${r.body.msg1 || r.http}`);
+    } catch (e) { out.errs.push(`idx ${mk}: ${e.message}`); }
+    try {
+      const r = await kisQuoteGet('/uapi/domestic-stock/v1/quotations/inquire-investor-time-by-market', 'FHPTJ04030000', { FID_INPUT_ISCD: c.grp, FID_INPUT_ISCD_2: c.iscd });
+      if (raw) rawOut['inv_' + mk] = r.body;
+      if (r.ok) out.inv[mk] = parseMktInvestor(r.body); else out.errs.push(`inv ${mk}: ${r.body.msg1 || r.http}`);
+    } catch (e) { out.errs.push(`inv ${mk}: ${e.message}`); }
+  }
+  if (raw) out.raw = rawOut;
+  if (!raw) _mktLive = { at: Date.now(), v: out };
+  return out;
+}
+function handleLiveMarket(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path !== '/live-market') return false;
+  accessCors(req, res, 'GET, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const sp = new URLSearchParams((req.url.split('?')[1]) || '');
+  const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+  fetchLiveMarket(sp.get('raw') === '1').then(r => json(200, { ok: true, ...r })).catch(e => json(500, { ok: false, error: e.message }));
+  return true;
+}
+
 /* ── 매매 화면 거래원·투자자 탭(2026-11-13): KIS 주식현재가 회원사(FHKST01010600) · 주식현재가 투자자(FHKST01010900). 30초 캐시.
    응답 필드명은 이름 패턴으로 읽음 — /stock-member?code=…&raw=1, /stock-investor?code=…&raw=1 로 원본 확인 ── */
 const _stkInfo = new Map();                                // key -> {at, v}
@@ -3421,7 +3470,7 @@ const trade = require('./trade').createTrade({
 
 const server = http.createServer((req, res) => {
   if (trade.handle(req, res)) return;
-  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res) || handleStockInfo(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res) || handleLiveMarket(req, res) || handleStockInfo(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;
