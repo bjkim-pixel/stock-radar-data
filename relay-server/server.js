@@ -3232,6 +3232,62 @@ function handleLiveTop(req, res) {
   return true;
 }
 
+/* ── 외국인·기관 잠정(추정) 순매수: KIS 종목별 외인기관 추정가집계(HHPTJ04160200). 증권사 직원이 입력·집계하는 값이라
+   외국인 09:30·11:20·13:20·14:30, 기관 10:00·11:20·13:20·14:30 경에만 갱신된다(실시간 체결 합계 아님). 수량만 주므로 금액은 화면에서 현재가를 곱해 추정.
+   응답 필드명을 아직 실서버로 확인하지 못해 이름 패턴(frgn…ntby_qty / orgn…ntby_qty)으로 읽는다. /live-flow?code=종목&raw=1 로 원본 확인. ── */
+const _flowEst = new Map();                              // code -> {at, v}
+const FLOW_TTL = 60e3;
+const BSOP_HOUR = { 1: '09:30', 2: '10:00', 3: '11:20', 4: '13:20', 5: '14:30' };
+function parseFlowEst(j) {
+  const o2 = j && (j.output2 || j.output);
+  const rows = Array.isArray(o2) ? o2 : (o2 && typeof o2 === 'object' ? [o2] : []);
+  const pick = (r, re) => { const k = Object.keys(r).find(x => re.test(x)); return k == null ? null : (r[k] === '' || r[k] == null ? null : Number(String(r[k]).replace(/,/g, ''))); };
+  let best = null;
+  rows.forEach(r => {
+    const f = pick(r, /frgn.*ntby_qty|frgn.*qty/i), o = pick(r, /orgn.*ntby_qty|orgn.*qty/i);
+    const gb = Number(r.bsop_hour_gb) || 0;
+    if ((f == null || !f) && (o == null || !o)) return;     // 아직 입력 전(빈값·0)
+    if (!best || gb >= best.gb) best = { gb, f, o };
+  });
+  const lastF = {}, lastO = {};
+  rows.forEach(r => { const gb = Number(r.bsop_hour_gb) || 0, f = pick(r, /frgn.*ntby_qty|frgn.*qty/i), o = pick(r, /orgn.*ntby_qty|orgn.*qty/i);
+    if (f) { if (!(lastF.gb >= gb)) { lastF.gb = gb; lastF.v = f; } } if (o) { if (!(lastO.gb >= gb)) { lastO.gb = gb; lastO.v = o; } } });
+  return { fq: lastF.v == null ? null : lastF.v, ft: lastF.gb ? BSOP_HOUR[lastF.gb] || null : null, oq: lastO.v == null ? null : lastO.v, ot: lastO.gb ? BSOP_HOUR[lastO.gb] || null : null };
+}
+async function fetchFlowEst(code, raw) {
+  const c = _flowEst.get(code);
+  if (!raw && c && Date.now() - c.at < FLOW_TTL) return c.v;
+  await kisRestThrottle();
+  const token = await getKisRestToken();
+  const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/quotations/investor-trend-estimate?${new URLSearchParams({ MKSC_SHRN_ISCD: code })}`, { headers: kisRestHeaders(token, 'HHPTJ04160200'), signal: AbortSignal.timeout(8000) });
+  const j = await res.json().catch(() => ({}));
+  if (raw) return { http: res.status, body: j };
+  if (!res.ok || j.rt_cd !== '0') { const v = { err: j.msg1 || ('HTTP ' + res.status) }; _flowEst.set(code, { at: Date.now() - FLOW_TTL + 15e3, v }); return v; }   // 실패는 15초 뒤 재시도
+  const v = parseFlowEst(j); _flowEst.set(code, { at: Date.now(), v }); return v;
+}
+function handleLiveFlow(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path !== '/live-flow') return false;
+  accessCors(req, res, 'GET, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const sp = new URLSearchParams((req.url.split('?')[1]) || '');
+  const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+  const one = (sp.get('code') || '').trim();
+  if (one && sp.get('raw') === '1') {
+    if (!/^[0-9A-Z]{6}$/.test(one)) { json(400, { ok: false, error: 'bad code' }); return true; }
+    fetchFlowEst(one, true).then(r => json(200, { ok: true, ...r })).catch(e => json(500, { ok: false, error: e.message }));
+    return true;
+  }
+  const codes = (sp.get('codes') || '').split(',').map(x => x.trim()).filter(x => /^[0-9A-Z]{6}$/.test(x)).slice(0, 30);
+  if (!codes.length) { json(400, { ok: false, error: 'codes required' }); return true; }
+  (async () => {
+    const rows = {};
+    for (const c of codes) { try { rows[c] = await fetchFlowEst(c); } catch (e) { rows[c] = { err: e.message }; } }
+    json(200, { ok: true, ts: Date.now(), rows });
+  })();
+  return true;
+}
+
 function handleAccessLog(req, res) {
   const path = (req.url || '').split('?')[0];
   if (path === '/visit-log') {
@@ -3298,7 +3354,7 @@ const trade = require('./trade').createTrade({
 
 const server = http.createServer((req, res) => {
   if (trade.handle(req, res)) return;
-  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleLiveTop(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;

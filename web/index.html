@@ -2630,6 +2630,29 @@ function liveStart(){
 const fmtCap=v=>v>=1e12?N(v/1e12,1)+"조":N(v/1e8,0)+"억";
 $("#liveSide").addEventListener("seg-change",e=>{const L=S.live;L.side=e.detail==="down"?"down":"up";L.pool={};L.since={};L.prev={};L.log=[];$("#liveTitle").textContent=L.side==="down"?"당일 하락률 TOP 20":"당일 상승률 TOP 20";$("#liveBody").innerHTML='<tr><td colspan="13" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
 $("#liveCap").addEventListener("seg-change",e=>{const L=S.live;L.min=+e.detail;L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="13" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
+/* 외국인·기관 잠정(추정) 순매수 — 시총 1조↑ 구간만. 값은 수량이라 현재가를 곱해 금액으로 표시(증권사 집계 입력값, 갱신 시각은 칸에 함께 표시) */
+S.liveFlow=S.liveFlow||{};
+async function liveFlowFetch(){
+  const L=S.live;if(!L.on||!L.min)return;
+  const codes=Object.values(L.pool).sort((a,b)=>(L.side==="down"?a.changePct-b.changePct:b.changePct-a.changePct)).slice(0,LIVE_TOP_N).map(x=>x.code);
+  if(!codes.length||Date.now()-(L.flowAt||0)<30000)return;L.flowAt=Date.now();
+  try{const r=await fetch(RELAY_HTTP_BASE+"/live-flow?codes="+codes.join(","),{cache:"no-store"});const j=await r.json();
+    if(j.ok&&j.rows){Object.assign(S.liveFlow,j.rows);liveFlowPaint();}}catch(e){}
+}
+function liveFlowFmt(q,t,price,lbl){
+  if(q==null)return `<span class="dim">${lbl} –</span>`;
+  const eok=q*price/1e8,txt=Math.abs(eok)>=10?N(eok,0):N(eok,1);
+  return `<span class="${eok>0?"up":eok<0?"down":"dim"}" title="${lbl} 잠정 순매수 ${N(q,0)}주 × 현재가 · ${t||""} 집계">${lbl} ${eok>0?"+":""}${txt}억${t?` <span class="faint">(${t})</span>`:""}</span>`;
+}
+function liveFlowPaint(){
+  const L=S.live;$$("#liveBody [data-flow]").forEach(e=>{
+    const c=e.dataset.flow,v=S.liveFlow[c],x=L.pool[c];
+    if(!L.min){e.textContent="";return;}
+    if(!v||!x||!x.price){e.innerHTML='<span class="dim">잠정 –</span>';return;}
+    if(v.err){e.innerHTML='<span class="dim" title="'+escH(v.err)+'">잠정 조회 실패</span>';return;}
+    e.innerHTML=liveFlowFmt(v.fq,v.ft,x.price,"외국인")+" · "+liveFlowFmt(v.oq,v.ot,x.price,"기관");
+  });
+}
 function liveStop(){const L=S.live;L.on=false;clearInterval(L.timer);L.timer=null;S.liveTopWanted=new Set();reconcileLiveSubscription();}
 /* ── 실시간 종목 조회 조건: 종목상세 상단 조회 조건과 같은 판정(독립 상태) ── */
 S.lf={};
@@ -2732,7 +2755,8 @@ function liveRender(){
       <td class="num">${x.shares?fmtCap(x.shares*x.price):"–"}</td><td class="num">${x.amt?N(x.amt/1e8,0)+"억":"–"}</td><td class="num">${x.vol?N(x.vol/1e4,0)+"만":"–"}</td><td class="dim">${mins<1?"방금":mins+"분"}</td>
       <td class="${d>0?"up":d<0?"down":"dim"}">${d==null?(Object.keys(oldRank).length?"신규":"–"):d>0?"▲"+d:d<0?"▼"+(-d):"–"}</td>
       <td data-smx="lead" data-code="${x.code}">–</td><td data-smx="ltr" data-code="${x.code}">–</td>${kwCell(x.code,"r6",false,true)}${kwCell(x.code,"r8",false,true)}</tr>
-      <tr class="lv2"><td colspan="10" class="l"><span class="lvs"><span class="lvl">외+기 합계</span><span data-smx="st" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${x.code}">–</span> <span data-smx="ltr" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">매집 6월</span><span class="kwc" data-kw="r6" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r6):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r6):"–"}</span></span><span class="lvs"><span class="lvl">8월</span><span class="kwc" data-kw="r8" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r8):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r8):"–"}</span></span></td></tr>`;}).join("");
+      <tr class="lv2"><td colspan="10" class="l"><span class="lvs"><span class="lvl">외+기 합계</span><span data-smx="st" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${x.code}">–</span> <span data-smx="ltr" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">매집 6월</span><span class="kwc" data-kw="r6" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r6):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r6):"–"}</span></span><span class="lvs"><span class="lvl">8월</span><span class="kwc" data-kw="r8" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r8):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r8):"–"}</span></span>${L.min?`<span class="lvs"><span class="lvl">잠정</span><span data-flow="${x.code}">–</span></span>`:""}</td></tr>`;}).join("");
+  liveFlowPaint();liveFlowFetch();
   if(!top.length)$("#liveBody").innerHTML='<tr><td colspan="13" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#liveBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   $("#liveLog").innerHTML=L.log.length?L.log.map(t=>`<div>${t}</div>`).join(""):"아직 변동이 없습니다";
