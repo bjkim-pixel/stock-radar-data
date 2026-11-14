@@ -1610,7 +1610,8 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <details id="lfBox" style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600">조회 조건 <span class="faint" style="font-weight:400;font-size:11px">종목상세와 같은 조건 · 선택한 조건을 모두 만족하는 종목만 표시</span> <span id="lfCnt" class="up" style="font-size:11px"></span></summary><div id="lfRows" style="margin-top:6px"></div></details>
     <div class="qf seg" id="liveSide" style="margin-bottom:6px"><button class="fchip" data-v="up" aria-pressed="true">상승률</button><button class="fchip" data-v="down" aria-pressed="false">하락률</button></div>
     <div class="qf seg" id="liveCap" style="margin-bottom:8px"><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="10000" aria-pressed="false">1조 이상</button><button class="fchip" data-v="40000" aria-pressed="false">4조 이상</button><button class="fchip" data-v="100000" aria-pressed="false">10조 이상</button></div>
-    <div class="note" style="margin-bottom:8px">시가총액 기준으로 나눠 오늘 등락률 상위를 봅니다(전체 = 코스피·코스닥 전 종목, 나머지는 시총이 기준 이상인 종목만). 순위 후보는 KIS에서 8초마다 새로 받고, 후보 12종목의 가격은 KIS 실시간 체결가로 바로 갱신해 순위를 다시 매깁니다. 순위 밖으로 밀린 종목은 빠지고 새로 올라온 종목이 들어옵니다. ETF·ETN·스팩·우선주는 뺐습니다. 시총 = 상장주식수 × 현재가.</div>
+    <div class="qf seg" id="liveAmt" style="margin-bottom:8px"><span class="faint" style="font-size:11px;align-self:center;margin-right:4px">거래대금</span><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="1000" aria-pressed="false">1,000억↑</button><button class="fchip" data-v="500" aria-pressed="false">500억↑</button><button class="fchip" data-v="300" aria-pressed="false">300억↑</button><button class="fchip" data-v="100" aria-pressed="false">100억↑</button></div>
+    <div class="note" style="margin-bottom:8px">거래대금(오늘 누적, 억원 이상)을 고르면 그 조건을 넘는 종목만 등락률 순서로 보입니다 — 시총 "전체"는 KIS 등락률 순위 30종목 안에서만 걸러지니 시총 1조 이상과 함께 쓰는 게 정확합니다. 시가총액 기준으로 나눠 오늘 등락률 상위를 봅니다(전체 = 코스피·코스닥 전 종목, 나머지는 시총이 기준 이상인 종목만). 순위 후보는 KIS에서 8초마다 새로 받고, 후보 12종목의 가격은 KIS 실시간 체결가로 바로 갱신해 순위를 다시 매깁니다. 순위 밖으로 밀린 종목은 빠지고 새로 올라온 종목이 들어옵니다. ETF·ETN·스팩·우선주는 뺐습니다. 시총 = 상장주식수 × 현재가.</div>
     <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체(업종 표시) 순환">↔</span></th><th>현재가</th><th title="현재가가 오늘 시가 대비 몇 % 올랐는지">당일시가</th><th title="현재가가 전일 종가 대비 몇 % 올랐는지(등락률)">전일종가</th><th title="현재가 ÷ 당일 최고가. 100%면 지금이 당일 고가, 낮을수록 고점 대비 밀린 것(KIS 당일 고가 기준)">고가比</th><th>시총</th><th>거래대금</th><th title="외국인·기관 잠정(추정) 순매수 = 증권사 집계 수량 × 현재가. 외국인 09:30·기관 10:00부터, 이후 11:20·13:20·14:30 갱신. 시총 1조 이상 구간만 표시">외국인(잠정)</th><th title="외국인·기관 잠정(추정) 순매수 = 증권사 집계 수량 × 현재가. 외국인 09:30·기관 10:00부터, 이후 11:20·13:20·14:30 갱신. 시총 1조 이상 구간만 표시">기관(잠정)</th><th title="KIS 실시간 체결강도(당일 누적). 100 넘으면 매수 체결이 더 많음. 화살표는 약 5분 전 대비. 실시간 구독 종목만 표시(폴링 종목은 –)">체결강도</th><th title="프로그램매매 순매수(당일 누적, KIS 현재가 시세 · 30초 갱신). 수량×현재가로 환산">프로그램</th><th title="거래량 회전율 = 당일 거래량 ÷ 상장주식수 (KIS 현재가 시세)">회전율</th><th title="현재가가 당일 고가면 '당일', 52주 최고가 이상이면 '52주'">신고가</th><th>거래량</th><th title="이 화면에서 TOP 10에 들어온 뒤 지난 시간">진입 후</th><th>변동</th><th title="종목상세의 주도 세력 — 매집 구간(저점→고점)에서 외+기 순매수가 가장 큰 주체(전체 기간)">주도</th><th title="주도 주체의 최근 5일·20일 순매수 방향">추세</th><th title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록 (낮을수록 개인 물량 감소)">매집 6월</th><th title="최근 ÷ 8월 첫 기록">8월</th></tr></thead>
       <tbody id="liveBody"><tr><td colspan="20" class="load sk"></td></tr></tbody></table></div>
   </div>
@@ -2811,6 +2812,7 @@ function lmPaint(){
 }
 const fmtCap=v=>v>=1e12?N(v/1e12,1)+"조":N(v/1e8,0)+"억";
 $("#liveSide").addEventListener("seg-change",e=>{const L=S.live;L.side=e.detail==="down"?"down":"up";L.pool={};L.since={};L.prev={};L.log=[];$("#liveTitle").textContent=L.side==="down"?"당일 하락률 TOP 10":"당일 상승률 TOP 10";$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
+$("#liveAmt").addEventListener("seg-change",e=>{const L=S.live;L.amt=+e.detail||0;L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
 $("#liveCap").addEventListener("seg-change",e=>{const L=S.live;L.min=+e.detail;L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
 /* 외국인·기관 잠정(추정) 순매수 — 시총 1조↑ 구간만. 값은 수량이라 현재가를 곱해 금액으로 표시(증권사 집계 입력값, 갱신 시각은 칸에 함께 표시) */
 S.liveFlow=S.liveFlow||{};
@@ -2887,10 +2889,11 @@ function lfChanged(){
 async function liveFetch(){
   const L=S.live;if(!L.on)return;
   try{
-    const r=await fetch(RELAY_HTTP_BASE+"/live-top?min="+L.min+"&side="+(L.side||"up")+(lfActive()?"&all=1":""),{cache:"no-store"});const j=await r.json();
+    const r=await fetch(RELAY_HTTP_BASE+"/live-top?min="+L.min+"&side="+(L.side||"up")+((lfActive()||L.amt)?"&all=1":""),{cache:"no-store"});const j=await r.json();
     if(!L.on||j.min!==L.min||(j.side||"up")!==(L.side||"up"))return;
     if(!j.ok&&!(j.rows||[]).length){$("#liveStat").textContent="순위를 받지 못했습니다 — "+(j.err||j.error||"");return;}
     let rows=j.rows.filter(x=>!LIVE_EXCL.test(x.name||""));   // ETF·ETN·스팩 제외(우선주는 서버가 제외)
+    if(L.amt)rows=rows.filter(x=>(x.amt||0)>=L.amt*1e8);   // 2026-11-14 거래대금 조건(억원 이상) — 시총 구간 전체 후보에서 걸러 상위 순서 유지
     const nAll=rows.length;
     if(lfActive()){rows=rows.filter(x=>lfPass(x.code));}
     L.cand=nAll;
@@ -2982,7 +2985,7 @@ function liveRender(){
   if(!top.length)$("#liveBody").innerHTML='<tr><td colspan="20" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#liveBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   $("#liveLog").innerHTML=L.log.length?L.log.map(t=>`<div>${t}</div>`).join(""):"아직 변동이 없습니다";
-  $("#liveStat").textContent=`${hm(now)} 갱신 · 후보 ${Object.keys(L.pool).length}종목 실시간 구독`+(lfActive()?` · 조건 충족 ${arr.length}/${L.cand||"?"}`:"");
+  $("#liveStat").textContent=`${hm(now)} 갱신 · 후보 ${Object.keys(L.pool).length}종목 실시간 구독`+(lfActive()?` · 조건 충족 ${arr.length}/${L.cand||"?"}`:"")+(S.live.amt?` · 거래대금 ${N(S.live.amt)}억↑ ${S.live.cand||0}종목`:"");
 }
 function setSwLiveCodes(codes){ S.swLiveWanted=new Set(codes.slice(0,SW_LIVE_MAX)); reconcileLiveSubscription(); }
 function updateSwLive(code,m){
