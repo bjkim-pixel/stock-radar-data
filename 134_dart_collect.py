@@ -87,22 +87,67 @@ for corp in sorted({d["corp_code"] for d in I}):
             inc=num(it.get("sp_stock_lmp_irds_rate"))
             if r["rt_now"] is not None and inc is not None: r["rt_prev"]=round(r["rt_now"]-inc,2)
         rows[r["rcept_no"]]=r
-# 3) 주요사항보고서(자사주·유상증자·CB 등)·거래소공시(소각·최대주주 변경) — 보고서명으로 분류
+# 3) 주요사항보고서·거래소공시(수시·공정) — 보고서명으로 분류. 호재(수주·증설·지분투자·무상증자·배당·실적·기술)·악재(RISK)·참고(MERGER) 포함
+#    보고서명에서 공백·가운뎃점(ㆍ·)을 모두 제거한 뒤 부분 문자열로 비교하므로 키워드에는 공백·점을 쓰지 않는다. 위에서부터 먼저 맞는 종류가 이긴다.
 KIND=[("자기주식취득결정","BUYBACK"),("자기주식취득신탁계약체결결정","BUYBACK"),("자기주식처분결정","SELLBACK"),("자기주식취득신탁계약해지결정","SELLBACK"),
       ("주식소각결정","CANCEL"),("유상증자결정","SUPPLY"),("전환사채권발행결정","SUPPLY"),("신주인수권부사채권발행결정","SUPPLY"),("교환사채권발행결정","SUPPLY"),
-      ("공개매수신고서","TENDER"),("최대주주변경","MAJOR")]
+      ("공개매수신고서","TENDER"),("최대주주변경","MAJOR"),
+      # ── 악재 경고(RISK): 해지·횡령·거래정지 등은 호재 키워드보다 먼저 검사
+      ("단일판매공급계약해지","RISK"),("횡령","RISK"),("배임","RISK"),("불성실공시","RISK"),("감자결정","RISK"),("관리종목","RISK"),("감사의견","RISK"),("의견거절","RISK"),
+      ("상장폐지","RISK"),("거래정지","RISK"),("상장적격성","RISK"),("회생절차","RISK"),("부도발생","RISK"),("파산","RISK"),("영업정지","RISK"),("채무불이행","RISK"),
+      ("투자주의환기","RISK"),("해산사유","RISK"),
+      # ── 호재
+      ("단일판매공급계약체결","ORDER"),("신규시설투자","CAPEX"),("유형자산취득결정","CAPEX"),("타법인주식및출자증권취득결정","STAKE"),
+      ("무상증자결정","BONUS"),("주식분할결정","BONUS"),("액면분할","BONUS"),("배당결정","DIVIDEND"),
+      ("영업(잠정)실적","EARN"),("매출액또는손익구조","EARN"),
+      ("기술이전","TECH"),("기술도입","TECH"),("기술수출","TECH"),("라이선스","TECH"),("라이센스","TECH"),("임상","TECH"),("품목허가","TECH"),("특허권취득","TECH"),("신약","TECH"),
+      # ── 참고(호재·악재 혼재)
+      ("회사합병결정","MERGER"),("영업양수결정","MERGER"),("영업양도결정","MERGER"),("회사분할결정","MERGER"),("분할합병결정","MERGER")]
+def nz(s): return re.sub(r"[\s·ㆍ‧∙•]","",s or "")
 def classify(nm):
-    s=nm.replace(" ","")
+    s=nz(nm)
     for k,v in KIND:
         if k in s: return v
     return None
-M=[]
-for ty in (dict(pblntf_ty="B"),dict(pblntf_detail_ty="I001"),dict(pblntf_detail_ty="D004"),dict(pblntf_detail_ty="I004")):
+M=[];seen=set()
+for ty in (dict(pblntf_ty="B"),dict(pblntf_ty="I"),dict(pblntf_detail_ty="D004")):
     for d in listall(**ty):
-        if keep(d) and classify(d["report_nm"]) and d["rcept_no"] not in rows: M.append(d)
+        if keep(d) and classify(d["report_nm"]) and d["rcept_no"] not in rows and d["rcept_no"] not in seen: seen.add(d["rcept_no"]);M.append(d)
 print("기타 이벤트 목록",len(M),flush=True)
 for d in M:
     r=base(d,classify(d["report_nm"])); rows[r["rcept_no"]]=r
+# 3-1) 수주(단일판매·공급계약)·증설(신규시설투자) — 공시 본문에서 금액·비율 추출(실패하면 금액 없이 저장)
+import html as _h
+def doc_text(rcp):
+    try:
+        zz=zipfile.ZipFile(io.BytesIO(api("document.xml",rcept_no=rcp).content))
+        t=" ".join(zz.read(n).decode("utf-8","ignore") for n in zz.namelist() if n.lower().endswith((".xml",".html",".htm")))
+        return re.sub(r"\s+"," ",_h.unescape(re.sub(r"<[^>]+>"," ",t)))
+    except Exception: return ""
+def first(pat,t):
+    m=re.search(pat,t); return m.group(1) if m else None
+ok_o=ok_c=0
+for r in list(rows.values()):
+    if r["kind"] not in ("ORDER","CAPEX"): continue
+    t=doc_text(r["rcept_no"])
+    if not t: continue
+    det={}
+    if r["kind"]=="ORDER":
+        a=num(first(r"계약\s*금액(?:\s*총액)?\s*\(원\)\s*([\d,]{3,})",t) or first(r"계약\s*금액[^\d]{0,25}([\d,]{4,})",t))
+        rt=first(r"매출액\s*대비\s*\(%\)\s*(-?[\d.,]+)",t)
+        cp=first(r"계약\s*상대\s*([^\d]{2,40}?)\s+(?:-|최근|회사와|상장|판매|해당)",t)
+        pe=re.search(r"시작일\s*([\d.\-]{8,10})\s*종료일\s*([\d.\-]{8,10})",t)
+        if rt: det["매출대비%"]=num(rt)
+        if cp: det["계약상대"]=cp.strip()[:40]
+        if pe: det["기간"]=pe.group(1)+"~"+pe.group(2)
+        if a: r["amount"]=a; ok_o+=1
+    else:
+        a=num(first(r"투자\s*금액\s*\(원\)\s*([\d,]{3,})",t))
+        rt=first(r"자기자본\s*대비\s*\(%\)\s*(-?[\d.,]+)",t)
+        if rt: det["자기자본대비%"]=num(rt)
+        if a: r["amount"]=a; ok_c+=1
+    if det: r["detail"]=det
+print(f"본문 파싱 성공 수주 {ok_o} · 증설 {ok_c}",flush=True)
 for corp in sorted({d["corp_code"] for d in M if "자기주식취득결정" in d["report_nm"].replace(" ","")}):
     j=js("tsstkAqDecsn.json",corp_code=corp,bgn_de=bgn,end_de=end)
     for it in j.get("list",[]) or []:
@@ -116,7 +161,7 @@ if vals:
       on conflict(rcept_no) do update set report_nm=excluded.report_nm,filer=excluded.filer,filer_type=excluded.filer_type,report_tp=excluded.report_tp,rt_prev=excluded.rt_prev,rt_now=excluded.rt_now,
         shares_now=excluded.shares_now,shares_delta=excluded.shares_delta,amount=excluded.amount,reason=excluded.reason,detail=excluded.detail,updated_at=now()""",vals,page_size=500)
 cur.execute("select kind,count(*),min(rcept_dt),max(rcept_dt) from dart_filings group by kind order by kind"); t=cur.fetchall()
-rep=f"# DART 공시 수집 결과\n- 기간 {bgn}~{end} · API 호출 {calls}회 · 이번 업서트 {len(vals)}건\n\n| 종류 | 건수 | 최소일 | 최대일 |\n|---|---|---|---|\n"+"\n".join(f"| {a} | {b} | {c} | {d} |" for a,b,c,d in t)
+rep=f"# DART 공시 수집 결과\n- 본문 파싱 성공 수주 {ok_o} · 증설 {ok_c}\n- 기간 {bgn}~{end} · API 호출 {calls}회 · 이번 업서트 {len(vals)}건\n\n| 종류 | 건수 | 최소일 | 최대일 |\n|---|---|---|---|\n"+"\n".join(f"| {a} | {b} | {c} | {d} |" for a,b,c,d in t)
 cur.execute("select rcept_dt,corp_name,filer,filer_type,rt_prev,rt_now from dart_filings where kind='HOLD5' and filer_type='운용사' order by rcept_dt desc,corp_name limit 12")
 rep+="\n\n## 운용사 5% 샘플\n```\n"+"\n".join(str(x) for x in cur.fetchall())+"\n```\n"
 cur.execute("select rcept_dt,corp_name,filer,report_tp,shares_delta from dart_filings where kind='INSIDER' and shares_delta<>0 order by rcept_dt desc limit 8")

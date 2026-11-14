@@ -1154,18 +1154,31 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <span><span class="lb">최종 후보</span><span class="vl" id="fn5">–</span></span></div>
   </div>
 
-  <div class="card" id="tdDartCard" style="margin-top:16px"><h3>공시 동향 <span class="r" id="tdDartSub">DART 전자공시 · 5% 대량보유·내부자·자사주</span></h3>
+  <div class="card" id="tdDartCard" style="margin-top:16px"><h3>공시 동향 <span class="r" id="tdDartSub">DART 전자공시 · 5% 대량보유·내부자·자사주·수주·증설 등 호재/악재</span></h3>
     <div class="qf-group"><div class="qf-lb">종류</div><div class="qf seg" id="tdDartKindSel">
       <button class="fchip" data-v="HOLD5" aria-pressed="true">5% 대량보유</button>
       <button class="fchip" data-v="INSIDER" aria-pressed="false">내부자(임원·주요주주)</button>
       <button class="fchip" data-v="BUYBACK" aria-pressed="false">자사주 취득</button>
-      <button class="fchip" data-v="ETC" aria-pressed="false">공급 부담·기타</button>
+      <button class="fchip" data-v="ORDER" aria-pressed="false">수주</button>
+      <button class="fchip" data-v="INV" aria-pressed="false">증설·지분 투자</button>
+      <button class="fchip" data-v="BONUS" aria-pressed="false">무상증자·분할</button>
+      <button class="fchip" data-v="DIVIDEND" aria-pressed="false">배당</button>
+      <button class="fchip" data-v="EARN" aria-pressed="false">실적</button>
+      <button class="fchip" data-v="TECH" aria-pressed="false">기술·신약</button>
+      <button class="fchip" data-v="RISK" aria-pressed="false">악재 경고</button>
+      <button class="fchip" data-v="ETC" aria-pressed="false">공급 부담·합병·기타</button>
     </div></div>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdDartPeriodSel">
+      <button class="fchip" data-v="90" aria-pressed="false">3개월</button>
       <button class="fchip" data-v="30" aria-pressed="false">1개월</button>
       <button class="fchip" data-v="14" aria-pressed="false">2주</button>
       <button class="fchip" data-v="7" aria-pressed="true">1주</button>
       <button class="fchip" data-v="3" aria-pressed="false">3일</button>
+    </div></div>
+    <div class="qf-group" id="tdDartSortWrap" style="display:none"><div class="qf-lb">정렬</div><div class="qf seg" id="tdDartSortSel">
+      <button class="fchip" data-v="date" aria-pressed="true">최신순</button>
+      <button class="fchip" data-v="amt" aria-pressed="false">금액순</button>
+      <button class="fchip" data-v="ratio" aria-pressed="false">매출·자기자본 대비순</button>
     </div></div>
     <div class="qf-group" id="tdDartSubWrap"><div class="qf-lb">보고자</div><div class="qf seg" id="tdDartSubSel">
       <button class="fchip" data-v="all" aria-pressed="false">전체</button>
@@ -1540,9 +1553,10 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
         <select id="fDart" title="최근 N일 안에 접수된 DART 공시 조건에 맞는 종목만"><option value="">사용 안 함</option>
           <option value="hold_up_am">운용사·연기금 5% 증가·신규</option><option value="hold_down_am">운용사·연기금 5% 감소·이탈</option>
           <option value="ins_buy">내부자 순매수</option><option value="ins_sell">내부자 순매도</option>
-          <option value="buyback">자사주 취득 결정</option><option value="supply">공급 부담(유증·CB 등)</option></select></div>
+          <option value="buyback">자사주 취득 결정</option><option value="supply">공급 부담(유증·CB 등)</option>
+          <option value="order">수주 공시(단일판매·공급계약)</option><option value="capex">증설·시설투자·지분 투자</option><option value="bonus">무상증자·주식분할</option><option value="dividend">배당 결정</option><option value="earn">실적 공시(잠정·손익 변동)</option><option value="tech">기술이전·신약·임상</option><option value="risk">악재 경고(횡령·거래정지 등)</option></select></div>
       <div class="field"><label>공시 기간</label>
-        <select id="fDartP"><option value="3">3일</option><option value="7" selected>7일</option><option value="14">14일</option><option value="30">30일</option></select></div>
+        <select id="fDartP"><option value="3">3일</option><option value="7" selected>7일</option><option value="14">14일</option><option value="30">30일</option><option value="90">90일</option></select></div>
       <div class="field"><label>스마트머니 진단 (외+기)</label>
         <select id="fSmx" title="종목상세 '스마트머니 매집·이탈 진단' 카드와 같은 판정 — 매 평일 20:50 갱신"><option value="">사용 안 함</option><option value="CONT,STALL">매집 전체 (지속+고점 후 정체)</option><option value="CONT">└ 매집 지속 (고점이 최근 5일 이내)</option><option value="STALL">└ 고점 후 정체</option><option value="LEAVE,HEAVY,OUT">이탈 전체 (진행+심화+순유출)</option><option value="LEAVE">└ 이탈 진행</option><option value="HEAVY">└ 이탈 심화 (매집분 50%↑ 회수)</option><option value="OUT">└ 기간 내 순유출</option></select></div>
       <div class="field"><label>진단 기간</label>
@@ -1836,8 +1850,9 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <select id="dDartF" class="df" style="flex:1.5 1 0" title="최근 N일 안에 접수된 DART 공시 조건으로 종목 목록 좁히기"><option value="">공시(DART)</option>
           <option value="hold_up_am">운용사·연기금 5% 증가·신규</option><option value="hold_down_am">운용사·연기금 5% 감소·이탈</option>
           <option value="ins_buy">내부자 순매수</option><option value="ins_sell">내부자 순매도</option>
-          <option value="buyback">자사주 취득 결정</option><option value="supply">공급 부담(유증·CB 등)</option></select>
-      <select id="dDartP" class="df" style="flex:.6 1 0" title="공시 조회 기간"><option value="3">3일</option><option value="7" selected>7일</option><option value="14">14일</option><option value="30">30일</option></select>
+          <option value="buyback">자사주 취득 결정</option><option value="supply">공급 부담(유증·CB 등)</option>
+          <option value="order">수주 공시(단일판매·공급계약)</option><option value="capex">증설·시설투자·지분 투자</option><option value="bonus">무상증자·주식분할</option><option value="dividend">배당 결정</option><option value="earn">실적 공시(잠정·손익 변동)</option><option value="tech">기술이전·신약·임상</option><option value="risk">악재 경고(횡령·거래정지 등)</option></select>
+      <select id="dDartP" class="df" style="flex:.6 1 0" title="공시 조회 기간"><option value="3">3일</option><option value="7" selected>7일</option><option value="14">14일</option><option value="30">30일</option><option value="90">90일</option></select>
       <select id="dSmxF" class="df" style="flex:1.5 1 0" title="스마트머니 매집·이탈 진단(외국인+기관합계 누적) 상태로 종목 목록 좁히기"><option value="">매집·이탈 진단</option><option value="CONT,STALL">매집 전체 (지속+고점 후 정체)</option><option value="CONT">└ 매집 지속 (고점이 최근 5일 이내)</option><option value="STALL">└ 고점 후 정체</option><option value="LEAVE,HEAVY,OUT">이탈 전체 (진행+심화+순유출)</option><option value="LEAVE">└ 이탈 진행</option><option value="HEAVY">└ 이탈 심화 (매집분 50%↑ 회수)</option><option value="OUT">└ 기간 내 순유출</option></select>
       <select id="dSmxW" class="df" style="flex:.7 1 0" title="진단 기간"><option value="63">3개월</option><option value="126">6개월</option><option value="all" selected>전체</option></select>
     </div>
@@ -1885,6 +1900,8 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button class="fchip" data-v="all" aria-pressed="true">전체</button>
       <button class="fchip" data-v="HOLD5" aria-pressed="false">5% 대량보유</button>
       <button class="fchip" data-v="INSIDER" aria-pressed="false">내부자</button>
+      <button class="fchip" data-v="POS" aria-pressed="false">수주·투자 호재</button>
+      <button class="fchip" data-v="RISK" aria-pressed="false">악재 경고</button>
       <button class="fchip" data-v="ETC" aria-pressed="false">자사주·공급 부담·기타</button>
     </div>
     <div id="dDartBody"></div>
@@ -5940,7 +5957,10 @@ function topBuyer(row, sfx){
   document.addEventListener("click",e=>{if(e.target.closest(".nmh"))e.stopPropagation();},true);   // 머리글 정렬 클릭으로 새지 않게
 })();
 /* ══ 공시 동향(DART): 오늘의 종목 카드 + 종목상세 카드 공용 ══ */
-const DART_KIND_LB={HOLD5:"5% 대량보유",INSIDER:"내부자",BUYBACK:"자사주 취득",SELLBACK:"자사주 처분·해지",CANCEL:"주식 소각",SUPPLY:"공급 부담",TENDER:"공개매수",MAJOR:"최대주주 변경"};
+const DART_KIND_LB={HOLD5:"5% 대량보유",INSIDER:"내부자",BUYBACK:"자사주 취득",SELLBACK:"자사주 처분·해지",CANCEL:"주식 소각",SUPPLY:"공급 부담",TENDER:"공개매수",MAJOR:"최대주주 변경",ORDER:"수주",CAPEX:"증설·시설투자",STAKE:"지분 투자",BONUS:"무상증자·분할",DIVIDEND:"배당",EARN:"실적",TECH:"기술·신약",MERGER:"합병·양수도",RISK:"악재 경고"};
+const DART_POS=["ORDER","CAPEX","STAKE","BONUS","DIVIDEND","EARN","TECH"];
+const DART_GRP={ORDER:["ORDER"],INV:["CAPEX","STAKE"],BONUS:["BONUS"],DIVIDEND:["DIVIDEND"],EARN:["EARN"],TECH:["TECH"],RISK:["RISK"]};
+function dartRatio(r){const d=r.detail||{};const v=d["매출대비%"]!=null?d["매출대비%"]:d["자기자본대비%"];return v==null?-1e9:+v;}
 function dartUrl(no){return "https://dart.fss.or.kr/dsaf001/main.do?rcpNo="+no;}
 function dartMd(d){return `${+d.slice(5,7)}/${+d.slice(8,10)}`;}
 function dartNm(code,fb){if(!S._nmMap||!Object.keys(S._nmMap).length){S._nmMap={};(S.codes||[]).forEach(c=>S._nmMap[c.code]=c.name);}return S._nmMap[code]||fb||code;}
@@ -5975,17 +5995,26 @@ function dartInsiderLine(r){
 function dartEtcLine(r){
   const amt=r.amount?` · ${fmtEokJo(+r.amount/EOK)}`:"",sh=(r.kind==="BUYBACK"&&r.shares_delta)?` · ${N(+r.shares_delta,0)}주`:"";
   const det=r.detail&&r.detail["기간"]?` · ${String(r.detail["기간"]).replace(/20(\d\d)년 (\d+)월 (\d+)일/g,"$1.$2.$3")}`:"";
-  const col=r.kind==="BUYBACK"||r.kind==="CANCEL"||r.kind==="TENDER"?"up":(r.kind==="SUPPLY"||r.kind==="SELLBACK"?"down":"");
-  return `<div class="dline">${dartStock(r)} <span class="${col}"><b>${DART_KIND_LB[r.kind]||r.kind}</b>${amt}${sh}</span><span class="faint">${det} · ${(r.report_nm||"").replace(/^주요사항보고서\(|\)$/g,"")} · ${dartMd(r.rcept_dt)}</span> <a class="faint" href="${dartUrl(r.rcept_no)}" target="_blank" rel="noopener">공시</a></div>`;
+  const col=r.kind==="BUYBACK"||r.kind==="CANCEL"||r.kind==="TENDER"||DART_POS.includes(r.kind)?"up":(r.kind==="SUPPLY"||r.kind==="SELLBACK"||r.kind==="RISK"?"down":"");
+  const dd=r.detail||{},ex=(dd["매출대비%"]!=null?` · 매출 대비 ${N(+dd["매출대비%"],1)}%`:"")+(dd["자기자본대비%"]!=null?` · 자기자본 대비 ${N(+dd["자기자본대비%"],1)}%`:"")+(dd["계약상대"]?` · ${dd["계약상대"]}`:"");
+  return `<div class="dline">${dartStock(r)} <span class="${col}"><b>${DART_KIND_LB[r.kind]||r.kind}</b>${amt}${sh}${ex}</span><span class="faint">${det} · ${(r.report_nm||"").replace(/^주요사항보고서\(|\)$/g,"")} · ${dartMd(r.rcept_dt)}</span> <a class="faint" href="${dartUrl(r.rcept_no)}" target="_blank" rel="noopener">공시</a></div>`;
 }
-async function dartLoad30(){
-  if(!S._dartP)S._dartP=q("dart_filings",`select=rcept_no,rcept_dt,code,corp_name,kind,report_nm,filer,filer_type,report_tp,rt_prev,rt_now,shares_now,shares_delta,amount,detail&rcept_dt=gte.${dartDay(30)}&order=rcept_dt.desc&limit=5000`).then(r=>{S._dartRows=r;return r;}).catch(e=>{S._dartP=null;throw e;});
-  return S._dartP;
+const DART_SEL="select=rcept_no,rcept_dt,code,corp_name,kind,report_nm,filer,filer_type,report_tp,rt_prev,rt_now,shares_now,shares_delta,amount,detail";
+function dartLoadN(n){
+  S._dartPN=S._dartPN||{};
+  if(!S._dartPN[n])S._dartPN[n]=(async()=>{
+    let out=[];
+    for(let off=0;off<40000;off+=1000){const r=await q("dart_filings",`${DART_SEL}&rcept_dt=gte.${dartDay(n)}&order=rcept_dt.desc,rcept_no.desc&limit=1000&offset=${off}`);out=out.concat(r);if(r.length<1000)break;}
+    S._dartRows=out;return out;
+  })().catch(e=>{S._dartPN[n]=null;throw e;});
+  return S._dartPN[n];
 }
+function dartLoad30(){return dartLoadN(30);}
 function dartRender(){
   const K=S.dart,body=$("#tdDartBody");if(!K||!K.rows)return;
   const since=dartDay(+K.period-1),rows=K.rows.filter(r=>r.rcept_dt>=since);
   $("#tdDartSubWrap").style.display=K.kind==="HOLD5"?"":"none";
+  $("#tdDartSortWrap").style.display=(K.kind==="ORDER"||K.kind==="INV")?"":"none";
   let html="",n=0;
   if(K.kind==="HOLD5"){
     let a=rows.filter(r=>r.kind==="HOLD5");
@@ -6004,24 +6033,36 @@ function dartRender(){
       (sells.length?`<div style="margin:8px 0 2px"><b class="down">매도</b></div>`+sells.map(dartInsiderLine).join(""):"");
   }else if(K.kind==="BUYBACK"){
     const a=rows.filter(r=>r.kind==="BUYBACK");n=a.length;html=a.map(dartEtcLine).join("");
+  }else if(DART_GRP[K.kind]){
+    let a=rows.filter(r=>DART_GRP[K.kind].includes(r.kind));
+    if(K.sort==="amt")a=[...a].sort((x,y)=>(+y.amount||0)-(+x.amount||0));
+    else if(K.sort==="ratio")a=[...a].sort((x,y)=>dartRatio(y)-dartRatio(x));
+    n=a.length;html=a.map(dartEtcLine).join("");
   }else{
-    const a=rows.filter(r=>!["HOLD5","INSIDER","BUYBACK"].includes(r.kind));n=a.length;html=a.map(dartEtcLine).join("");
+    const a=rows.filter(r=>!["HOLD5","INSIDER","BUYBACK","RISK",...DART_POS].includes(r.kind));n=a.length;html=a.map(dartEtcLine).join("");
   }
   body.innerHTML=html||'<div class="load">해당 기간 공시가 없습니다</div>';
   body.querySelectorAll("a.lk[data-code]").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
-  $("#tdDartSub").textContent=`DART 전자공시 · ${DART_KIND_LB[K.kind]||"공급 부담·기타"} ${n}건 · 최근 ${K.period}일(접수일 기준)`;
+  $("#tdDartSub").textContent=`DART 전자공시 · ${DART_KIND_LB[K.kind]||({INV:"증설·지분 투자"})[K.kind]||"공급 부담·합병·기타"} ${n}건 · 최근 ${K.period}일(접수일 기준)`;
 }
 /* 공시 조건 필터(종목후보·종목상세 상단): 최근 N일 DART 공시를 종목별로 집계 */
-const DART_COND={hold_up_am:f=>f.hu>0,hold_down_am:f=>f.hd>0,ins_buy:f=>f.ins>0,ins_sell:f=>f.ins<0,buyback:f=>f.bb>0,supply:f=>f.sp>0};
+const DART_COND={hold_up_am:f=>f.hu>0,hold_down_am:f=>f.hd>0,ins_buy:f=>f.ins>0,ins_sell:f=>f.ins<0,buyback:f=>f.bb>0,supply:f=>f.sp>0,order:f=>f.or>0,capex:f=>f.cx>0,bonus:f=>f.bn>0,dividend:f=>f.dv>0,earn:f=>f.er>0,tech:f=>f.tc>0,risk:f=>f.rk>0};
 function dartFlags(days){
   const since=dartDay(+days-1),m={};
   (S._dartRows||[]).forEach(r=>{
     if(r.rcept_dt<since)return;
-    const f=m[r.code]=m[r.code]||{hu:0,hd:0,ins:0,bb:0,sp:0};
+    const f=m[r.code]=m[r.code]||{hu:0,hd:0,ins:0,bb:0,sp:0,or:0,cx:0,bn:0,dv:0,er:0,tc:0,rk:0};
     if(r.kind==="HOLD5"&&["운용사","연기금"].includes(r.filer_type)){const i=dartHoldInfo(r);if(i.dir>0)f.hu++;else if(i.dir<0)f.hd++;}
     else if(r.kind==="INSIDER")f.ins+=+r.shares_delta||0;
     else if(r.kind==="BUYBACK")f.bb++;
     else if(r.kind==="SUPPLY")f.sp++;
+    else if(r.kind==="ORDER")f.or++;
+    else if(r.kind==="CAPEX"||r.kind==="STAKE")f.cx++;
+    else if(r.kind==="BONUS")f.bn++;
+    else if(r.kind==="DIVIDEND")f.dv++;
+    else if(r.kind==="EARN")f.er++;
+    else if(r.kind==="TECH")f.tc++;
+    else if(r.kind==="RISK")f.rk++;
   });
   return m;
 }
@@ -6031,12 +6072,13 @@ function dartCodeSet(cond,days){
   return S._dSet;
 }
 async function dartInit(){
-  if(!S.dart)S.dart={rows:null,kind:"HOLD5",period:"7",sub:"운용사"};
+  if(!S.dart)S.dart={rows:null,kind:"HOLD5",period:"7",sub:"운용사",sort:"date"};
   const K=S.dart;
   if(!S._dartWired){
     S._dartWired=true;
     $("#tdDartKindSel").addEventListener("seg-change",e=>{K.kind=e.detail;dartRender();});
-    $("#tdDartPeriodSel").addEventListener("seg-change",e=>{K.period=e.detail;dartRender();});
+    $("#tdDartPeriodSel").addEventListener("seg-change",async e=>{K.period=e.detail;if(+K.period>30){try{K.rows=await dartLoadN(90);}catch(err){console.warn("공시 3개월",err);}}dartRender();});
+    $("#tdDartSortSel").addEventListener("seg-change",e=>{K.sort=e.detail;dartRender();});
     $("#tdDartSubSel").addEventListener("seg-change",e=>{K.sub=e.detail;dartRender();});
   }
   try{K.rows=await dartLoad30();dartRender();}
@@ -7462,16 +7504,16 @@ async function renderDartCard(){
   const d90=dartDay(90),r90=rows.filter(r=>r.rcept_dt>=d90),h=r90.filter(r=>r.kind==="HOLD5"),hi=h.filter(r=>dartHoldInfo(r).dir>0).length,hd=h.filter(r=>dartHoldInfo(r).dir<0).length;
   const ins=r90.filter(r=>r.kind==="INSIDER"),buy=ins.filter(r=>+r.shares_delta>0).reduce((a,r)=>a+ +r.shares_delta,0),sell=ins.filter(r=>+r.shares_delta<0).reduce((a,r)=>a-+r.shares_delta,0);
   const bb=r90.filter(r=>r.kind==="BUYBACK").length,sp=r90.filter(r=>r.kind==="SUPPLY").length;
-  $("#dDartSum").innerHTML=`최근 90일 — 5% 보고 ${h.length}건 (<span class="up">증가·신규 ${hi}</span> · <span class="down">감소 ${hd}</span>) · 내부자 <span class="up">매수 ${N(buy,0)}주</span> / <span class="down">매도 ${N(sell,0)}주</span> · 자사주 취득 ${bb}건 · 공급 부담 ${sp}건`;
+  $("#dDartSum").innerHTML=`최근 90일 — 5% 보고 ${h.length}건 (<span class="up">증가·신규 ${hi}</span> · <span class="down">감소 ${hd}</span>) · 내부자 <span class="up">매수 ${N(buy,0)}주</span> / <span class="down">매도 ${N(sell,0)}주</span> · 자사주 취득 ${bb}건 · 공급 부담 ${sp}건${(()=>{const o=r90.filter(r=>r.kind==="ORDER").length,rk=r90.filter(r=>r.kind==="RISK").length,ps=r90.filter(r=>DART_POS.includes(r.kind)&&r.kind!=="ORDER").length;return (o?` · <span class="up">수주 ${o}건</span>`:"")+(ps?` · <span class="up">기타 호재 ${ps}건</span>`:"")+(rk?` · <span class="down">악재 경고 ${rk}건</span>`:"");})()}`;
   dartDetailRender();
 }
 function dartDetailRender(){
-  const rows=(S._dDart||[]).filter(r=>S.dDartKind==="all"||(S.dDartKind==="ETC"?!["HOLD5","INSIDER"].includes(r.kind):r.kind===S.dDartKind));
+  const rows=(S._dDart||[]).filter(r=>S.dDartKind==="all"||(S.dDartKind==="ETC"?!["HOLD5","INSIDER","RISK",...DART_POS].includes(r.kind):S.dDartKind==="POS"?DART_POS.includes(r.kind):r.kind===S.dDartKind));
   const line=r=>{
     let c="";
     if(r.kind==="HOLD5"){const i=dartHoldInfo(r);c=`<b>${r.filer||""}</b> <span class="faint">${r.filer_type||""}${r.report_tp?" · "+r.report_tp:""}</span> <span class="num ${i.cls}">${i.txt}</span>`;}
     else if(r.kind==="INSIDER"){const d=+r.shares_delta||0;c=`<b>${r.filer||""}</b> <span class="faint">${r.report_tp&&r.report_tp!=="-"?r.report_tp:""}</span> <span class="${d>0?"up":d<0?"down":"dim"}">${d>0?"매수":d<0?"매도":"변동 없음"} ${N(Math.abs(d),0)}주</span>${r.rt_now!=null?`<span class="faint"> · 보유 ${N(+r.rt_now,2)}%</span>`:""}`;}
-    else{const amt=r.amount?` · ${fmtEokJo(+r.amount/EOK)}`:"";c=`<b>${DART_KIND_LB[r.kind]||r.kind}</b>${amt} <span class="faint">${(r.report_nm||"").replace(/^주요사항보고서\(|\)$/g,"")}</span>`;}
+    else{const dd=r.detail||{},amt=(r.amount?` · ${fmtEokJo(+r.amount/EOK)}`:"")+(dd["매출대비%"]!=null?` · 매출 대비 ${N(+dd["매출대비%"],1)}%`:"")+(dd["자기자본대비%"]!=null?` · 자기자본 대비 ${N(+dd["자기자본대비%"],1)}%`:"")+(dd["계약상대"]?` · ${escH(dd["계약상대"])}`:"");c=`<b class="${DART_POS.includes(r.kind)?"up":r.kind==="RISK"?"down":""}">${DART_KIND_LB[r.kind]||r.kind}</b>${amt} <span class="faint">${(r.report_nm||"").replace(/^주요사항보고서\(|\)$/g,"")}</span>`;}
     return `<tr><td class="l">${r.rcept_dt.slice(2).replace(/-/g,".")}</td><td class="l">${DART_KIND_LB[r.kind]||r.kind}</td><td class="l" style="white-space:normal">${c}</td><td><a class="faint" href="${dartUrl(r.rcept_no)}" target="_blank" rel="noopener">원문</a></td></tr>`;
   };
   $("#dDartBody").innerHTML=rows.length?`<div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">접수일</th><th class="l">종류</th><th class="l">내용</th><th></th></tr></thead><tbody>${rows.slice(0,60).map(line).join("")}</tbody></table></div>${rows.length>60?`<div class="faint" style="font-size:11px">최근 60건만 표시 (전체 ${rows.length}건)</div>`:""}`:'<div class="load">해당 공시가 없습니다</div>';
