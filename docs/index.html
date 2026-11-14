@@ -846,12 +846,9 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 #v-live th,#v-live td{white-space:nowrap}
 @media(max-width:700px){#v-live table{font-size:10.5px}#v-live th,#v-live td{padding:4px 2px}#v-live .card{padding-left:8px;padding-right:8px}#v-live table .faint{display:none}#v-live thead th:nth-child(15),#v-live tbody tr:not(.lv2) td:nth-child(15),#v-live thead th:nth-child(16),#v-live tbody tr:not(.lv2) td:nth-child(16){display:none}#v-live thead th:nth-child(n+18),#v-live tbody tr:not(.lv2) td:nth-child(n+18){display:none}#v-live tbody tr.lv2{display:table-row}}
 #v-live thead th:nth-child(n+18),#v-live tbody tr:not(.lv2) td:nth-child(n+18){display:none}#v-live tr.lv2{display:table-row}#v-live tr.lv2 td{padding:0 4px 5px;font-size:11px;border-top:none;white-space:normal}#v-live tr.lv2 .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}#v-live tr.lv2 .lvs{margin-right:8px}#v-live tr.lv2 .kwc{padding:0 3px;border-radius:3px}
-/* 종목 추세 (2026-11-14): 실시간 종목 표와 같은 2줄 구성 */
-#v-trend .tw{overflow:visible!important}#v-trend table{width:100%;table-layout:auto}#v-trend th,#v-trend td{white-space:nowrap}
-#v-trend tr.trm{cursor:pointer}#v-trend tr.trm.open td{background:var(--surface-2)}
-#v-trend tr.lv2 td{padding:0 4px 5px;font-size:11px;border-top:none;white-space:normal}#v-trend tr.lv2 .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}#v-trend tr.lv2 .lvs{margin-right:8px}#v-trend tr.lv2 .kwc{padding:0 3px;border-radius:3px}
-#v-trend tr.trc>td{text-align:left;padding:6px 4px 12px;white-space:normal;background:var(--surface-2)}#v-trend tr.trc .chart{min-height:120px}
-@media(max-width:700px){#v-trend table{font-size:10.5px}#v-trend th,#v-trend td{padding:4px 2px}#v-trend .card{padding-left:8px;padding-right:8px}#v-trend thead th:nth-child(n+8),#v-trend tbody tr.trm td:nth-child(n+8){display:none}}
+/* 종목 추세 (2026-11-14): 종목 후보와 같은 표(scrlike) — 오른쪽으로 펼치고 행 높이 일정(줄바꿈 없음) */
+#trWrap table td,#trWrap table th{white-space:nowrap}#trWrap tr.trm{cursor:pointer}#trWrap tr.trm td{height:34px;box-sizing:border-box}#trWrap tr.trm.open td{background:var(--surface-2)}
+#trWrap tr.trc>td{white-space:normal;text-align:left;padding:6px 4px 12px;background:var(--surface-2);position:sticky;left:0}#trWrap tr.trc .chart{min-height:120px}
 .ldl{display:block;font-size:10px;line-height:1.35;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin-top:1px}.ldl .lvl{color:var(--ink-3);font-size:9.5px;margin-right:2px}.ldl .lvs{margin-right:7px}.ldl .kwc{padding:0 3px;border-radius:3px}
 
 /* 로그인 창 */
@@ -1630,9 +1627,8 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="qf seg" id="trCap" style="margin-bottom:6px"><button class="fchip" data-v="0" aria-pressed="false">전체</button><button class="fchip" data-v="10000" aria-pressed="true">1조 이상</button><button class="fchip" data-v="40000" aria-pressed="false">4조 이상</button><button class="fchip" data-v="100000" aria-pressed="false">10조 이상</button></div>
     <div class="qf seg" id="trAmt" style="margin-bottom:6px"><span class="faint" style="font-size:11px;align-self:center;margin-right:4px">거래대금</span><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="1000" aria-pressed="false">1,000억↑</button><button class="fchip" data-v="500" aria-pressed="false">500억↑</button><button class="fchip" data-v="300" aria-pressed="false">300억↑</button><button class="fchip" data-v="100" aria-pressed="false">100억↑</button></div>
     <div class="qf seg" id="trSort" style="margin-bottom:8px"><span class="faint" style="font-size:11px;align-self:center;margin-right:4px">정렬</span><button class="fchip" data-v="rs20" aria-pressed="true">RS20</button><button class="fchip" data-v="rs5" aria-pressed="false">RS5</button><button class="fchip" data-v="chg" aria-pressed="false">등락률</button><button class="fchip" data-v="cap" aria-pressed="false">시총</button><button class="fchip" data-v="amt" aria-pressed="false">거래대금</button></div>
-    <div class="note" style="margin-bottom:8px">종가(장중 업데이트 후에는 잠정) 기준으로 추세가 강한 종목을 봅니다. 기본 조건은 시총 1조 이상 · 종가 &gt; 60일선 &gt; 120일선 정배열이고 RS20(최근 20일 시장 대비 강도) 상위 순입니다. RS5·RS20은 <b>상위 N%</b>이며 작을수록 강합니다. <b>행을 누르면</b> 아래에 가격·이평선 차트가 펼쳐지고, 종목명을 누르면 종목상세로 이동합니다.</div>
-    <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목</th><th>종가</th><th>등락률</th><th title="최근 5일 시장 대비 초과 강도 — 상위 %(작을수록 강함)">RS5</th><th title="최근 20일 시장 대비 초과 강도 — 상위 %(작을수록 강함)">RS20</th><th title="종가가 60일선보다 몇 % 위인지">60일선比</th><th>시총</th><th>거래대금</th><th>외인</th><th>기관</th></tr></thead>
-      <tbody id="trBody"><tr><td colspan="11" class="load sk"></td></tr></tbody></table></div>
+    <div class="note" style="margin-bottom:8px">종가(장중 업데이트 후에는 잠정) 기준으로 추세가 강한 종목을 봅니다. 기본 조건은 시총 1조 이상 · 종가 &gt; 60일선 &gt; 120일선 정배열 · 매집 전체(지속+고점 후 정체)이고 RS20(최근 20일 시장 대비 강도) 상위 순입니다. 표의 열은 종목 후보와 같고 오른쪽으로 펼쳐집니다. <b>행을 누르면</b> 아래에 가격·이평선 차트가 펼쳐지고, 종목명을 누르면 종목상세로 이동합니다.</div>
+    <div class="tw scrlike" id="trWrap"><table><thead></thead><tbody id="trBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
   </div>
 </section>
 <section id="v-sw" class="hide">
@@ -3023,19 +3019,25 @@ S.tr={min:10000,amt:0,sort:"rs20",raw:null,rawDate:null,open:null,defaulted:fals
 const TR_PREF=/우[BC]?$/;
 async function trendStart(){
   const T=S.tr;
+  {const th=$("#trWrap thead");if(th&&!th.innerHTML.trim())th.innerHTML=scrThead();}
   if(!S.date){setTimeout(()=>{if(S.curTab==="trend")trendStart();},800);return;}
   try{lfBuild("trfRows","tf_","tf",trChanged);lfSyncSectors("tf_dSec");}catch(e){console.error("종목 추세 조건 UI",e);}
   try{kwLoadMap();smxLoadMap().then(()=>smxFill()).catch(()=>{});}catch(e){}
-  if(!T.defaulted){   // 처음 열 때 기본 조건: 시총 1조 이상 · 종가>60일선>120일선(정배열 60일 이상)
-    T.defaulted=true;S.tf.ma="a60";
-    const a=$("#tf_dMaF");if(a)a.value="a60";
-    const c=$("#trfCnt");if(c)c.textContent="· 1개 적용 중";
-    try{await loadDetailMa();}catch(e){console.error("종목 추세 기본 조건",e);}
+  if(!T.defaulted){   // 처음 열 때 기본 조건: 시총 1조 이상 · 종가>60일선>120일선(정배열 60일 이상) · 매집 전체(지속+고점 후 정체)
+    T.defaulted=true;S.tf.ma="a60";S.tf.smx="CONT,STALL";
+    const a=$("#tf_dMaF"),b=$("#tf_dSmxF");if(a)a.value="a60";if(b)b.value="CONT,STALL";
+    const c=$("#trfCnt");if(c)c.textContent="· 2개 적용 중";
+    try{await Promise.all([loadDetailMa(),smxLoadMap()]);}catch(e){console.error("종목 추세 기본 조건",e);}
   }
   if(!T.raw||T.rawDate!==S.date){
     if(T.loading)return;T.loading=true;
     $("#trBody").innerHTML='<tr><td colspan="11" class="load sk"></td></tr>';
-    try{T.raw=await q("v_screener",`select=*&trade_date=eq.${S.date}`);T.rawDate=S.date;}
+    try{
+      const [rows,rk,per,fcr]=await Promise.all([q("v_screener",`select=*&trade_date=eq.${S.date}`),qFlowRank(S.date),
+        q("v_stock_flow_periods","select=code,foreign_1m,inst_1m,foreign_2m,inst_2m,fin_inv_1m,inv_trust_1m,pension_1m,pe_1m,fin_inv_2m,inv_trust_2m,pension_2m,pe_2m,individual_1m,corp_other_1m,individual_2m,corp_other_2m").catch(()=>[]),
+        loadFlowCapRatio()]);
+      const rkB={},perB={};rk.forEach(x=>rkB[x.code]=x);per.forEach(x=>perB[x.code]=x);
+      T.raw=rows.map(r=>({...r,...(rkB[r.code]||{}),...(perB[r.code]||{}),...(fcr[r.code]||{})}));T.rawDate=S.date;}
     catch(e){console.error("종목 추세",e);$("#trBody").innerHTML='<tr><td colspan="11" class="load">불러오지 못했습니다 — 잠시 후 다시 열어 주세요</td></tr>';T.loading=false;return;}
     T.loading=false;
   }
@@ -3066,23 +3068,15 @@ const trTop=v=>v==null||isNaN(+v)?'<span class="dim">–</span>':`<span class="$
 function trRender(){
   const T=S.tr;if(!T.raw)return;
   const {rows,n,nCand}=trList();
-  const known=new Set((S.codes||[]).map(c=>c.code));
-  const lv2=c=>`<tr class="lv2" data-code="${c}"><td colspan="11" class="l"><span class="lvs"><span class="lvl">외+기 합계</span><span data-smx="st" data-code="${c}">–</span></span><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${c}">–</span> <span data-smx="ltr" data-code="${c}">–</span></span><span class="lvs"><span class="lvl">매집 6월</span><span class="kwc" data-kw="r6" data-kwc="${c}" style="${S.kwMap?kwStyle((S.kwMap[c]||{}).r6):""}">${S.kwMap?kwFmt((S.kwMap[c]||{}).r6):"–"}</span></span><span class="lvs"><span class="lvl">8월</span><span class="kwc" data-kw="r8" data-kwc="${c}" style="${S.kwMap?kwStyle((S.kwMap[c]||{}).r8):""}">${S.kwMap?kwFmt((S.kwMap[c]||{}).r8):"–"}</span></span></td></tr>`;
-  $("#trBody").innerHTML=rows.length?rows.map((r,i)=>{
-    const cl=+r.close,m60=r.ma60?(cl/+r.ma60-1)*100:null,fo=r.foreign_net==null?null:+r.foreign_net/EOK,io=r.inst_net==null?null:+r.inst_net/EOK;
-    const open=T.open===r.code;
-    return `<tr class="trm${open?" open":""}" data-code="${r.code}"><td>${i+1}</td><td class="l">${known.has(r.code)?`<a class="lk nm" data-code="${r.code}">${escH(r.name)}</a>`:escH(r.name)} <span class="faint" style="font-size:11px">${r.code}</span></td>
-      <td class="num ${sgn(+r.change_pct)}">${N(cl,0)}</td><td class="num ${sgn(+r.change_pct)}">${r.change_pct==null?"–":pm(+r.change_pct,2)+"%"}</td>
-      <td class="num">${trTop(r.rs5_pctl)}</td><td class="num">${trTop(r.rs20_pctl)}</td><td class="num ${sgn(m60)}">${m60==null?"–":pm(m60,1)+"%"}</td>
-      <td class="num">${r.market_cap?fmtCap(+r.market_cap):"–"}</td><td class="num">${r.trade_amount?N(+r.trade_amount/EOK,0)+"억":"–"}</td>
-      <td class="num ${sgn(fo)}">${fo==null?"–":pm(fo,0)}</td><td class="num ${sgn(io)}">${io==null?"–":pm(io,0)}</td></tr>${lv2(r.code)}${open?`<tr class="trc" data-code="${r.code}"><td colspan="11"><div class="chart" id="trChart"><div class="load sk"></div></div></td></tr>`:""}`;}).join("")
-    :'<tr><td colspan="11" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+  $("#trBody").innerHTML=rows.length?rows.map((r,i)=>`<tr class="trm${T.open===r.code?" open":""}" data-code="${r.code}"><td class="l rank">${i+1}</td>${scrNameCell(r)}${scrCells(r)}</tr>${T.open===r.code?`<tr class="trc" data-code="${r.code}"><td colspan="30"><div class="trcb" style="position:sticky;left:8px;width:${trW()}px"><div class="chart" id="trChart"><div class="load sk"></div></div></div></td></tr>`:""}`).join("")
+    :'<tr><td colspan="30" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $("#trStat").textContent=`${S.date} 기준 · 조건 충족 ${N(n)}종목`+(n>TR_N?` 중 상위 ${TR_N}`:"")+(n!==nCand?` / 후보 ${N(nCand)}`:"");
   $$("#trBody a.lk").forEach(a=>a.onclick=e=>{e.stopPropagation();go("detail",a.dataset.code);});
-  $$("#trBody tr.trm").forEach(tr=>tr.onclick=()=>trToggle(tr.dataset.code));
+  $$("#trBody tr.trm").forEach(tr=>tr.onclick=e=>{if(e.target.closest("a,button,input,.fav,[data-fav]"))return;trToggle(tr.dataset.code);});
   smxFill();kwFill();
   if(T.open)trDraw(T.open);
 }
+const trW=()=>Math.max(300,Math.min(760,window.innerWidth-28));
 function trToggle(code){const T=S.tr;T.open=T.open===code?null:code;trRender();if(T.open){const el=document.querySelector('#trBody tr.trc');if(el)el.scrollIntoView({block:"nearest",behavior:"smooth"});}}
 async function trDraw(code){
   const host=$("#trChart");if(!host)return;
@@ -3092,7 +3086,7 @@ async function trDraw(code){
     if(S.tr.open!==code||$("#trChart")!==host)return;
     const rows=S.trChart[code];if(!rows.length){host.innerHTML='<div class="load">차트 데이터 없음</div>';return;}
     const ma=maSeries(rows),a=Math.max(0,rows.length-250),rp=rows.slice(a),sl=k=>ma[k].slice(a);
-    const W=Math.max(300,Math.min(1000,Math.round(host.clientWidth||340))),H=Math.round(Math.min(340,W*0.66));
+    const W=trW(),H=Math.round(Math.min(340,W*0.66));
     const nm=((S.codes||[]).find(c=>c.code===code)||{}).name||code;
     host.innerHTML=`<div style="font-size:12px;font-weight:650;margin-bottom:4px">${escH(nm)} · 가격 · 이동평균 <span class="faint" style="font-weight:400">${rp[0].trade_date}~${rp.at(-1).trade_date}</span></div>
       <div class="legend" style="font-size:11px;gap:10px;margin-bottom:4px"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--mac1)"></i>MA5</span><span><i style="background:var(--mac2)"></i>MA20</span><span><i style="background:var(--ma3)"></i>MA60</span><span><i style="background:var(--mac3)"></i>MA120</span></div><div id="trChartIn"></div>`;
@@ -3776,7 +3770,7 @@ function go(v,detailCode){
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===vOrig));
   if(typeof navSync==="function")navSync();
   ["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
-  document.documentElement.classList.toggle("wide",v==="scr"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
+  document.documentElement.classList.toggle("wide",v==="scr"||v==="trend"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
   // "아직 종목상세를 한 번도 안 봤으면(S.chart.code 없음) 디폴트 SK하이닉스를
