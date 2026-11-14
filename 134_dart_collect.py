@@ -87,7 +87,7 @@ for corp in sorted({d["corp_code"] for d in I}):
             inc=num(it.get("sp_stock_lmp_irds_rate"))
             if r["rt_now"] is not None and inc is not None: r["rt_prev"]=round(r["rt_now"]-inc,2)
         rows[r["rcept_no"]]=r
-# 3) 주요사항보고서·거래소공시(수시·공정) — 보고서명으로 분류. 호재(수주·증설·지분투자·무상증자·배당·실적·기술)·악재(RISK)·참고(MERGER) 포함
+# 3) 주요사항보고서·거래소공시(수시·공정) — 보고서명으로 분류. 호재(수주·증설·지분투자·무상증자)·악재(RISK)·참고(MERGER) 포함
 #    보고서명에서 공백·가운뎃점(ㆍ·)을 모두 제거한 뒤 부분 문자열로 비교하므로 키워드에는 공백·점을 쓰지 않는다. 위에서부터 먼저 맞는 종류가 이긴다.
 KIND=[("자기주식취득결정","BUYBACK"),("자기주식취득신탁계약체결결정","BUYBACK"),("자기주식처분결정","SELLBACK"),("자기주식취득신탁계약해지결정","SELLBACK"),
       ("주식소각결정","CANCEL"),("유상증자결정","SUPPLY"),("전환사채권발행결정","SUPPLY"),("신주인수권부사채권발행결정","SUPPLY"),("교환사채권발행결정","SUPPLY"),
@@ -98,9 +98,7 @@ KIND=[("자기주식취득결정","BUYBACK"),("자기주식취득신탁계약체
       ("투자주의환기","RISK"),("해산사유","RISK"),
       # ── 호재
       ("단일판매공급계약체결","ORDER"),("신규시설투자","CAPEX"),("유형자산취득결정","CAPEX"),("타법인주식및출자증권취득결정","STAKE"),
-      ("무상증자결정","BONUS"),("주식분할결정","BONUS"),("액면분할","BONUS"),("배당결정","DIVIDEND"),
-      ("영업(잠정)실적","EARN"),("매출액또는손익구조","EARN"),
-      ("기술이전","TECH"),("기술도입","TECH"),("기술수출","TECH"),("라이선스","TECH"),("라이센스","TECH"),("임상","TECH"),("품목허가","TECH"),("특허권취득","TECH"),("신약","TECH"),
+      ("무상증자결정","BONUS"),("주식분할결정","BONUS"),("액면분할","BONUS"),
       # ── 참고(호재·악재 혼재)
       ("회사합병결정","MERGER"),("영업양수결정","MERGER"),("영업양도결정","MERGER"),("회사분할결정","MERGER"),("분할합병결정","MERGER")]
 def nz(s): return re.sub(r"[\s·ㆍ‧∙•]","",s or "")
@@ -160,6 +158,8 @@ if vals:
     execute_values(cur,"""insert into dart_filings(rcept_no,rcept_dt,code,corp_code,corp_name,kind,report_nm,filer,filer_type,report_tp,rt_prev,rt_now,shares_now,shares_delta,amount,reason,detail) values %s
       on conflict(rcept_no) do update set report_nm=excluded.report_nm,filer=excluded.filer,filer_type=excluded.filer_type,report_tp=excluded.report_tp,rt_prev=excluded.rt_prev,rt_now=excluded.rt_now,
         shares_now=excluded.shares_now,shares_delta=excluded.shares_delta,amount=excluded.amount,reason=excluded.reason,detail=excluded.detail,updated_at=now()""",vals,page_size=500)
+# 더 이상 수집하지 않는 종류(배당·실적·기술신약)와 1개월 보관 기준을 넘은 공시 정리 — 여러 번 실행해도 안전
+cur.execute("delete from dart_filings where kind in ('DIVIDEND','EARN','TECH') or rcept_dt < current_date - 35"); print("정리 삭제",cur.rowcount,"건",flush=True)
 cur.execute("select kind,count(*),min(rcept_dt),max(rcept_dt) from dart_filings group by kind order by kind"); t=cur.fetchall()
 rep=f"# DART 공시 수집 결과\n- 본문 파싱 성공 수주 {ok_o} · 증설 {ok_c}\n- 기간 {bgn}~{end} · API 호출 {calls}회 · 이번 업서트 {len(vals)}건\n\n| 종류 | 건수 | 최소일 | 최대일 |\n|---|---|---|---|\n"+"\n".join(f"| {a} | {b} | {c} | {d} |" for a,b,c,d in t)
 cur.execute("select rcept_dt,corp_name,filer,filer_type,rt_prev,rt_now from dart_filings where kind='HOLD5' and filer_type='운용사' order by rcept_dt desc,corp_name limit 12")

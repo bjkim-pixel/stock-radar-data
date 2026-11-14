@@ -5,7 +5,7 @@ create table if not exists dart_filings (
   code         text not null,             -- 종목코드(우리 DB 기준)
   corp_code    text,
   corp_name    text,
-  kind         text not null,             -- HOLD5 대량보유 / INSIDER 임원·주요주주 / BUYBACK 자사주 취득 / SELLBACK 자사주 처분·신탁해지 / CANCEL 소각 / SUPPLY 유증·CB·BW·EB / TENDER 공개매수 / MAJOR 최대주주 변경 / ORDER 수주 / CAPEX 증설·시설투자 / STAKE 지분투자 / BONUS 무상증자·분할 / DIVIDEND 배당 / EARN 실적 / TECH 기술·신약 / MERGER 합병·양수도 / RISK 악재 경고
+  kind         text not null,             -- HOLD5 대량보유 / INSIDER 임원·주요주주 / BUYBACK 자사주 취득 / SELLBACK 자사주 처분·신탁해지 / CANCEL 소각 / SUPPLY 유증·CB·BW·EB / TENDER 공개매수 / MAJOR 최대주주 변경 / ORDER 수주 / CAPEX 증설·시설투자 / STAKE 지분투자 / BONUS 무상증자·분할 / MERGER 합병·양수도 / RISK 악재 경고
   report_nm    text,
   filer        text,                      -- 보고자(운용사·임원·주주 등)
   filer_type   text,                      -- 운용사 / 연기금 / 증권사 / 외국계 / 임원 / 주요주주 / 기타
