@@ -5,7 +5,7 @@ c=psycopg2.connect(os.environ["SUPABASE_DB_URL"]).cursor();L=["# ETF 상세 데�
 c.execute("""select i.code,m.name,i.ntas_eok,i.listed,i.cu_unit,i.cfg_cnt,count(h.*),round(sum(h.amount)/1e8,1),round(sum(h.weight),2),
   round(100*sum(h.amount)/1e8/nullif(i.ntas_eok,0),1)
   from etf_info i join etf_master m on m.code=i.code left join etf_holdings_now h on h.etf_code=i.code
-  where m.watch_grp is not null group by 1,2,3,4,5,6 order by m.watch_ord""")
+  where m.watch_grp is not null group by 1,2,3,4,5,6,m.watch_ord order by m.watch_ord""")
 L.append("| 코드 | 이름 | 순자산(억) | 상장좌수 | CU | 구성수 | 행 | 보유금액합(억) | 비중합% | 금액합/순자산% |\n|---|---|---|---|---|---|---|---|---|---|")
 for r in c.fetchall(): L.append("| "+" | ".join(str(x) for x in r)+" |")
 c.execute("select etf_code,stock_name,weight,cu_qty,shares,round(amount/1e8,1),price from etf_holdings_now where etf_code='0163Y0' order by rank limit 5")
