@@ -514,6 +514,9 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .pc-cell table{font-size:10.5px}
 .pc-cell td,.pc-cell th{padding:5px 6px;white-space:nowrap}
 .pc-cell th{position:static}
+/* 2026-11-14 두 종목 실적 표 행 높이 통일(증감률 줄 유무와 무관) — 좌우 같은 줄에서 비교 */
+.pc-earn .earn-t th{height:34px;box-sizing:border-box}
+.pc-earn .earn-t td{height:52px;box-sizing:border-box;vertical-align:middle}
 .pc-cell .pc-tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media(max-width:480px){
   .card.pair-outer{padding-left:3px;padding-right:3px}
@@ -3404,6 +3407,8 @@ function volumeBars(host,vals,labels,opt={}){
    buckets: [{label, v, cur}] 배열, 배열 순서가 위→아래 렌더 순서(높은 가격대가 위).
    v>=0(순매수)=--up, v<0(순매도)=--down. opt.hideNeg=true면 순매도 구간은 막대 없이
    가격대 라벨만 표시(요청: 순매도는 안 보이게). cur=true면 "현재가" 구간으로 굵게 표시. */
+/* 짝꿍매매용 짧은 가격대 라벨: 1만원 이상은 만원 단위(15.4~15.8만), 그 미만은 그대로 */
+function pcProfLbl(b){const m=b.hi>=10000,f=v=>m?N(v/10000,1):N(v,0);return f(b.lo)+"~"+f(b.hi)+(m?"만":"");}
 function profileChart(host,buckets,opt={}){
   const vFmt=opt.fv||null;   // 값 표시 포맷(기본은 억원) — 거래량 매물대용
   host.innerHTML="";
@@ -3424,7 +3429,7 @@ function profileChart(host,buckets,opt={}){
     const y=P.t+i*rowH+1.2,h=Math.max(2,rowH-2.4);
     const lbl=el("text",{x:P.l-6,y:y+h/2+3.5,"text-anchor":"end","font-size":9.5,
       fill:b.cur?css("--ink"):css("--ink-3"),"font-weight":b.cur?700:400});
-    lbl.textContent=b.label;svg.appendChild(lbl);
+    lbl.textContent=opt.lblFmt?opt.lblFmt(b):b.label;svg.appendChild(lbl);
     if(shown(b)){
       const w=Math.max(1.5,X(b.v)-P.l);
       const bar=el("rect",{x:P.l,y,width:w,height:h,rx:2,
@@ -3441,7 +3446,7 @@ function profileChart(host,buckets,opt={}){
       const fmtAmt=v=>Math.abs(v)>=10000?N(Math.round(v/10000),0)+"조원":N(Math.round(v),0)+"억원";
       const vt=el("text",{x:Math.min(W-P.r,P.l+w)+6,y:y+h/2+3.5,"font-size":9.5,
         fill:css("--ink"),"font-weight":b.cur?700:500});
-      vt.textContent=(vFmt?vFmt(b.v,b):fmtAmt(b.v))+(b.cur?" ◀현재가":"");
+      vt.textContent=(vFmt?vFmt(b.v,b):fmtAmt(b.v))+(b.cur&&!opt.compact?" ◀현재가":b.cur?" ◀":"");
       svg.appendChild(vt);
     }else if(b.cur){
       const ct=el("text",{x:P.l+6,y:y+h/2+3.5,"font-size":9.5,fill:css("--ink-3"),"font-weight":700});
@@ -3472,12 +3477,17 @@ function profileChart(host,buckets,opt={}){
     // 스케일링을 안 받으므로 화면 크기와 무관하게 항상 진짜 11px/650로 렌더링되고,
     // .card>h3(85행)와 정확히 같은 크기로 보인다.
     sumEl=document.createElement("div");
+    if(opt.compact){   // 2026-11-14 짝꿍매매(칸 폭 절반): 겹침 방지 — 차트 위에 일반 블록으로, 줄바꿈 허용·짧은 문구
+      sumEl.style.cssText="font-size:11px;font-weight:650;color:var(--ink-2);line-height:1.4;margin:0 0 4px;word-break:keep-all";
+      sumEl.textContent=`위쪽 매물대 ${N(Math.round(above),0)}억`+(above>=10000?` (${N(above/10000,1)}조)`:"");
+    }else{
     sumEl.style.cssText="position:absolute;top:2px;right:8px;font-size:11px;font-weight:650;"+
       "color:var(--ink-3);letter-spacing:.02em;white-space:nowrap";
-    sumEl.textContent=sumLbl;
+    sumEl.textContent=sumLbl;}
   }
+  if(sumEl&&opt.compact)host.appendChild(sumEl);
   host.appendChild(svg);
-  if(sumEl)host.appendChild(sumEl);
+  if(sumEl&&!opt.compact)host.appendChild(sumEl);
 }
 // 매물대 가격 범위: 전체 기간 최저~최고가 아니라 "현재가 기준" 아래/위 비율로
 // 잡음(2026-09-08 결정) — 주가가 상승하며 만날 수 있는 매물대를 더 세분화해서
@@ -7972,11 +7982,11 @@ function renderPairCard(code,sum,rows,flowRow){
       fy:v=>N(v,0),fm:v=>pm(v,0)+"억",ft:v=>pm(v,0)+"억"});
   const profIndiv=buildPriceProfile(rpUse,24,r=>+r.individual_net||0);
   profileChart($("#pcProfile_"+code),profIndiv,
-    {h:300,w:700,pr:88,pl:60,fx:v=>N(v,0)+"억",hideNeg:true,subj:"개인 순매수",aboveSum:aboveSupply(rows,r=>+r.individual_net||0)});
+    {h:300,w:250,pr:50,pl:56,compact:true,lblFmt:pcProfLbl,fx:v=>N(v,0),hideNeg:true,subj:"개인 순매수",aboveSum:aboveSupply(rows,r=>+r.individual_net||0)});
   $("#pcProfileTop_"+code).innerHTML=topBucketsHtml(profIndiv,5,"개인");
   const profInst=buildPriceProfile(rpUse,24,r=>(+r.foreign_net||0)+(+r.inst_net||0));
   profileChart($("#pcProfileInst_"+code),profInst,
-    {h:300,w:700,pr:88,pl:60,fx:v=>N(v,0)+"억",hideNeg:true,subj:"외국인+기관 순매수",aboveSum:aboveSupply(rows,r=>(+r.foreign_net||0)+(+r.inst_net||0))});
+    {h:300,w:250,pr:50,pl:56,compact:true,lblFmt:pcProfLbl,fx:v=>N(v,0),hideNeg:true,subj:"외국인+기관 순매수",aboveSum:aboveSupply(rows,r=>(+r.foreign_net||0)+(+r.inst_net||0))});
   $("#pcProfileInstTop_"+code).innerHTML=topBucketsHtml(profInst,5,"외국인+기관");
   const rcum=k=>rpUse.map(r=>(+r[k]-+rb[k])/EOK);
   lineChart($("#pcFlow4_"+code),[
