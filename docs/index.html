@@ -1242,6 +1242,10 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button class="fchip" data-v="1w">1주</button>
       <button class="fchip" data-v="1d" aria-pressed="true">오늘</button>
     </div></div>
+    <div class="qf-group"><div class="qf-lb">정렬</div><div class="qf seg" id="flowRankSortSel">
+      <button class="fchip" data-v="amt">절대금액순</button>
+      <button class="fchip" data-v="ratio" aria-pressed="true">시가총액 대비 비중순</button>
+    </div></div>
     <div class="note" id="flowSelNote"></div>
 
     <div style="margin-top:6px">
@@ -4706,7 +4710,7 @@ const FLOW_SUBJ_ORDER=["combo","foreign","inst","fin_inv","inv_trust","pension",
 // 연기금이 다 사면 기관합계도 거의 항상 같이 +라 4곳이 동시에 산 것처럼 보이지만
 // 실은 3곳의 파생값). 서로 독립적인 7개(외국인/금융투자/투신/연기금/사모/개인/기타법인)만 씁니다.
 const FLOW_COMMON_SUBJ=["foreign","fin_inv","inv_trust","pension","pe","individual","corp_other"];
-S.flowPeriod=S.flowPeriod||"1d";
+S.flowPeriod=S.flowPeriod||"1d";S.flowRankSort=S.flowRankSort||"ratio";
 S.flowTrendDir=S.flowTrendDir||"desc";
 function flowVal(row,subj,period){
   if(subj==="combo")return (+row["foreign_"+period]||0)+(+row["inst_"+period]||0);
@@ -4889,14 +4893,15 @@ function flowSubjTableHTML(rows,label,tid){
 }
 function flowSubjPanelHTML(subj,cand){
   const withRatio=cand.filter(r=>r.ratio!=null);
-  const sorted=[...withRatio].sort((a,b)=>b.ratio-a.ratio);
+  const byAmt=S.flowRankSort==="amt";
+  const sorted=[...withRatio].sort((a,b)=>byAmt?(b.v-a.v):(b.ratio-a.ratio));
   const buy=sorted.slice(0,FLOW_RANK_N);
   const sell=sorted.slice(-FLOW_RANK_N).reverse();
   return `<div class="flow-subj-panel" data-subj="${subj}">
       <h4>${FLOW_SUBJ[subj]}<span class="d">${S.date||""}</span></h4>
       <div class="flow-subj-tables">
-        ${flowSubjTableHTML(buy,"시총대비 매수순위","flowSubj_"+subj+"_buy")}
-        ${flowSubjTableHTML(sell,"시총대비 매도순위","flowSubj_"+subj+"_sell")}
+        ${flowSubjTableHTML(buy,(byAmt?"절대금액 매수순위":"시총대비 매수순위"),"flowSubj_"+subj+"_buy")}
+        ${flowSubjTableHTML(sell,(byAmt?"절대금액 매도순위":"시총대비 매도순위"),"flowSubj_"+subj+"_sell")}
       </div>
     </div>`;
 }
@@ -4908,7 +4913,7 @@ function renderFlowSubjGrid(bySubj){
 async function loadFlowLists(){
   const all=await loadFlowRawData();
   const period=S.flowPeriod;
-  $("#flowSelNote").innerHTML=`<b>${FLOW_PERIOD[period]}</b> 누적 순매수 거래대금 ÷ 시가총액 기준`;
+  $("#flowSelNote").innerHTML=`<b>${FLOW_PERIOD[period]}</b> 누적 순매수 ${S.flowRankSort==="amt"?"거래대금(절대금액)":"거래대금 ÷ 시가총액"} 기준`;
   const filtered=all.filter(flowFilterPass);
   const bySubj={};
   FLOW_SUBJ_ORDER.forEach(subj=>{
@@ -4923,6 +4928,7 @@ async function loadFlowLists(){
   renderFlowSubjGrid(bySubj);
 }
 $("#flowPeriodSel").addEventListener("seg-change",e=>{S.flowPeriod=e.detail;loadFlowLists().catch(()=>{});});
+$("#flowRankSortSel").addEventListener("seg-change",e=>{S.flowRankSort=e.detail;loadFlowLists().catch(()=>{});});
 $("#flowCondToggle").onclick=()=>{
   const nowHidden=$("#flowCondPanel").classList.toggle("hide"), isOpen=!nowHidden;
   $("#flowCondToggle").setAttribute("aria-expanded",isOpen?"true":"false");
@@ -6906,8 +6912,8 @@ function peRenderTop(){
   const body=rows=>rows.length?rows.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
       <td class="${sgn(r.v)}">${pm(r.v/EOK,0)}</td><td class="${sgn(r.ratio)}">${r.ratio!=null?pm(r.ratio,2)+"%":"–"}</td>${scrCells(r)}</tr>`).join("")
     :'<tr><td colspan="30" class="load">해당 없음</td></tr>';
-  $("#peBuyLb").textContent=byRatio?"시총대비 매수순위":"순매수 상위";
-  $("#peSellLb").textContent=byRatio?"시총대비 매도순위":"순매도 상위";
+  $("#peBuyLb").textContent=byRatio?(byAmt?"절대금액 매수순위":"시총대비 매수순위"):"순매수 상위";
+  $("#peSellLb").textContent=byRatio?(byAmt?"절대금액 매도순위":"시총대비 매도순위"):"순매도 상위";
   $("#peTopBody").innerHTML=body(buy);$("#peSellBody").innerHTML=body(sell);
   $$("#peTopBody a.lk,#peSellBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   makeSortable("peTopBody");makeSortable("peSellBody");
