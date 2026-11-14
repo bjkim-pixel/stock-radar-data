@@ -1669,18 +1669,20 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div class="card" style="margin-top:12px"><h3>진입·이탈 기록 <span class="r">이 화면을 연 뒤</span></h3><div id="liveLog" class="note">아직 변동이 없습니다</div></div>
 </section>
 <section id="v-etf" class="hide">
+  <div style="margin:12px 0 4px"><button class="btn ghost" id="eBackTop">← 이전 화면으로</button></div>
   <div class="card" id="etfHead"><div class="load sk"></div></div>
+    <div class="card" style="margin-top:10px"><h3>시세 정보 <span class="r" id="etfQtSub"></span></h3><div id="etfQt"></div></div>
   <div class="qf seg" id="etfTab" style="margin:12px 0 4px"><button class="fchip" data-v="ov" aria-pressed="true">개요</button><button class="fchip" data-v="div">분배금</button></div>
   <div id="etfOv">
     <div class="card" style="margin-top:10px"><h3>가격 추이 <span id="etfPerChg" style="font-weight:650;margin-left:6px"></span>
       <span class="r"><span class="qf seg" id="etfPer" style="display:inline-flex"><button class="fchip" data-v="5">1주</button><button class="fchip" data-v="21" aria-pressed="true">1개월</button><button class="fchip" data-v="126">6개월</button><button class="fchip" data-v="250">1년</button></span></span></h3>
       <div id="etfChart"><div class="load sk"></div></div></div>
     <div class="card" style="margin-top:12px"><h3>포트폴리오 <span class="r" id="etfPfSub"></span></h3><div id="etfPf"><div class="load sk"></div></div></div>
-    <div class="card" style="margin-top:12px"><h3>시세 정보 <span class="r" id="etfQtSub"></span></h3><div id="etfQt"></div></div>
     <div class="card" style="margin-top:12px"><h3>구성종목 변동 <span class="r" id="etfChgSub">주간(금요일 기준) · 상위 20종목</span></h3><div id="etfChg" class="etf-chg"></div></div>
   </div>
   <div id="etfDivWrap" class="hide"><div class="card" style="margin-top:10px"><h3>분배금 <span class="r" id="etfDivSub">예탁원 기준일 기준</span></h3><div id="etfDiv"></div></div></div>
   <div class="note" style="margin-top:8px">출처: 한국투자증권 KIS(구성종목·NAV·분배금, 매일 장마감 후 갱신), 일봉은 KRX 종가. 구성종목은 KIS 제공 한도인 상위 30개까지 표시합니다. 주식수는 CU(설정단위)당 수량, 보유금액은 상장좌수로 환산한 추정치입니다.</div>
+  <div style="margin:16px 0 40px"><button class="btn ghost" id="eBack">← 이전 화면으로</button></div>
 </section>
 <section id="v-trend" class="hide">
   <div class="card" id="trCard" style="margin-top:16px"><h3><span>종목 추세</span> <span class="r" id="trStat">불러오는 중…</span></h3>
@@ -3987,7 +3989,9 @@ function go(v,detailCode){
   const vOrig=v;if(v==="trade"||v==="trhold"||v==="trhist"){if(!S.tradeMode){let m=null;try{m=localStorage.getItem("trdMode");}catch(_){}S.tradeMode=m==="REAL"?"REAL":"VIRTUAL";}
     TRD.pane=v==="trhold"?"hold":v==="trhist"?(TRD.pane==="hist"?"hist":"rep"):(TRD_ORDER_P.includes(TRD.pane)&&TRD.keepPane?TRD.pane:"order");TRD.keepPane=false;v="trade";}
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
-  if(cur&&cur!==v)S.prevView=cur;
+  let cur2=cur;if(!cur2&&!$("#v-etf").classList.contains("hide"))cur2="etf";
+  if(cur2&&cur2!==v)S.prevView=cur2;
+  if(v==="etf"&&cur2&&cur2!=="etf"&&cur2!=="detail")S.etfBack=cur2;   // ETF 페이지의 이전 화면(종목상세 왕복과 무관하게 유지)
   if(S.curTab==='fav'&&v!=='fav'&&S.favWanted.size)setFavLiveCodes([]);
   if(S.curTab==='sw'&&v!=='sw'&&S.swLiveWanted&&S.swLiveWanted.size)setSwLiveCodes([]);
   if(S.curTab==='live'&&v!=='live')liveStop();
@@ -4062,6 +4066,7 @@ function go(v,detailCode){
 }
 $("#dBack").onclick=()=>go(S.prevView||"proc");
 $("#dBackTop").onclick=()=>go(S.prevView||"proc");
+$("#eBack").onclick=$("#eBackTop").onclick=()=>go(S.etfBack||"proc");
 // 전략성과2 탭이 열려있는 동안 30초마다 후보/보유/청산 목록을 새로 불러와
 // 장중 계속 바뀌는 후보(SCAN 신규 편입 등)와 방금 일어난 매수/매도를 반영.
 // 틱 단위 실시간 갱신(체결강도 등)은 웹소켓이 담당하고, 이 폴링은 그보다
