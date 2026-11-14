@@ -1,0 +1,37 @@
+name: "[점검] ETF 구성종목·부가정보 | 수동 | 읽기 전용"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - name: KIS token
+        id: kistoken
+        env:
+          KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL:  ${{ secrets.SUPABASE_DB_URL }}
+          KIS_TOKEN_ISSUER: "gha:${{ github.workflow }}"
+        run: |
+          TOKEN=$(python 72_kis_token.py || true)
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+      - name: 스터디 실행
+        env:
+          KIS_APP_KEY:      ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET:   ${{ secrets.KIS_APP_SECRET }}
+          KIS_ACCESS_TOKEN: ${{ steps.kistoken.outputs.token }}
+        run: python 156_etf_component_probe.py 472150 2>&1 | tail -5
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: etf-component-report
+          file: etf_component_probe.md
