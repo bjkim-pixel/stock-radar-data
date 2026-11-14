@@ -45,6 +45,7 @@
 body{margin:0;background:var(--page);color:var(--ink);font-size:13.5px;line-height:1.55;
   -webkit-font-smoothing:antialiased;overflow-x:hidden}
 .wrap{max-width:1480px;margin:0 auto;padding:0 20px 80px}
+@media(max-width:700px){.wrap,.hbar{max-width:none;box-sizing:border-box;min-width:var(--cw,0px)}}   /* 모든 페이지: 화면이 표 때문에 넓어지면 본문도 머리글(로그아웃)과 같은 폭으로 */
 .num{font-variant-numeric:tabular-nums}
 .up{color:var(--up)} .down{color:var(--down)} .dim{color:var(--ink-2)} .faint{color:var(--ink-3)} .good{color:var(--good)} .warn{color:var(--warn)}
 b{font-weight:640}
@@ -3884,9 +3885,11 @@ setInterval(()=>{ if(S.curTab==="perf2") loadPerf2().catch(()=>{}); }, 30000);
 // 항상 실측치를 씁니다. 표는 안쪽 스크롤 없이 페이지 스크롤을 그대로 씁니다.
 function setPageW(){
   const r=document.documentElement,st=r.style;
-  st.setProperty("--pw","0px");
-  const w=Math.max(r.scrollWidth,document.body.scrollWidth,window.innerWidth);
+  st.setProperty("--pw","0px");st.setProperty("--cw","0px");
+  const sw=Math.max(r.scrollWidth,document.body.scrollWidth);   // 내용이 실제로 차지하는 폭(화면 폭 포함)
+  const w=Math.max(sw,window.innerWidth);
   st.setProperty("--pw",w+"px");
+  st.setProperty("--cw",sw+"px");   // 2026-11-14: 폰에서 표 때문에 화면이 넓어져도 본문·머리글을 같은 폭(로그아웃 오른쪽 끝)까지 펼침
 }
 window.addEventListener("resize",setPageW);window.addEventListener("load",setPageW);
 setInterval(setPageW,1500);
