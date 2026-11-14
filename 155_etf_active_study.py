@@ -69,6 +69,9 @@ for k,(n,s) in sorted(bb.items(),key=lambda x:-x[1][1]): log(f"- {k}: {n}개 · 
 log("\n### 상위 100개(시가총액 순)\n| 순위 | 코드 | 이름 | 분류 | 시총(억) | 순자산(억) | 괴리율% | 당일거래대금(억) |\n|---|---|---|---|---|---|---|---|")
 for i,r in enumerate(rows[:100],1):
     log(f"| {i} | {r['code']} | {r['name']} | {r['theme']} | {r['mcap']:,.0f} | {'' if r['ntas'] is None else format(r['ntas']/1e8 if r['ntas']>1e9 else r['ntas'],',.0f')} | {'' if r['dprt'] is None else r['dprt']} | {'' if r['vol'] is None else format(r['vol']/1e8,',.1f')} |")
+log("\n### 전체 액티브(주식형·혼합형) 목록\n| 코드 | 이름 | 분류 | 시총(억) | 괴리율% | 당일거래대금(억) |\n|---|---|---|---|---|---|")
+for r in EQ:
+    log(f"| {r['code']} | {r['name']} | {r['theme']} | {r['mcap']:,.0f} | {'' if r['dprt'] is None else r['dprt']} | {'' if r['vol'] is None else format(r['vol']/1e8,',.1f')} |")
 # ───────── B. 해외
 log("\n## B. 해외 (KIS 해외종목마스터)")
 OV={}

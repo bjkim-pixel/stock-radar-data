@@ -1,0 +1,23 @@
+name: "[점검] 업종별 시가총액 비중 | 수동 | 읽기 전용"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary
+      - run: python 157_sector_mcap_probe.py 2>&1 | tail -5
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: sector-mcap-report
+          file: sector_mcap.md
