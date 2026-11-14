@@ -31,6 +31,10 @@ create table if not exists etf_daily (
   primary key (code, trade_date)
 );
 create index if not exists idx_etf_daily_date on etf_daily (trade_date desc);
+-- 2026-11-14: 관리 액티브 ETF(주간 보유 추적) 구분 — 시장/업종, 업종명, 표시 순서
+alter table etf_master add column if not exists watch_grp text;
+alter table etf_master add column if not exists watch_sector text;
+alter table etf_master add column if not exists watch_ord int;
 
 -- RLS: 읽기만 공개 (78번 원칙)
 do $$

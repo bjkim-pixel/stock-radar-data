@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ETF 101종목(etf_list.json) 마스터 + 일봉 수집 → etf_master / etf_daily.
+"""ETF 120종목(etf_list.json) 마스터 + 일봉 수집 → etf_master / etf_daily.
   python 107_etf_collect.py            # 증분(없는 종목은 2025-09-01부터 백필, 있는 종목은 최근 15일만)
   python 107_etf_collect.py --full     # 전 종목 2025-09-01부터 다시 채움
 읽기: KIS 일봉(FHKST03010100)·현재가(FHKST01010100). 쓰기: etf_master/etf_daily 만."""
@@ -67,11 +67,11 @@ for i, e in enumerate(ETFS):
         fail += 1; print(f"  ⚠ 일봉 없음: {code} {e['name']}", flush=True)
     p = kget("/uapi/domestic-stock/v1/quotations/inquire-price", "FHKST01010100", {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code}).get("output") or {}
     mcap = fnum(p.get("hts_avls"))
-    cur.execute("insert into etf_master (code,name,field,subfield,tags,country,mgmt,flags,mcap_eok,as_of,updated_at) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now()) "
+    cur.execute("insert into etf_master (code,name,field,subfield,tags,country,mgmt,flags,mcap_eok,as_of,watch_grp,watch_sector,watch_ord,updated_at) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now()) "
                 "on conflict (code) do update set name=excluded.name, field=excluded.field, subfield=excluded.subfield, tags=excluded.tags, "
                 "country=excluded.country, mgmt=excluded.mgmt, flags=excluded.flags, mcap_eok=coalesce(excluded.mcap_eok, etf_master.mcap_eok), "
-                "as_of=excluded.as_of, updated_at=now()",
-                (code, e["name"], e["field"], e["subfield"], e["tags"], e["country"], e["mgmt"], e["flags"], mcap, today))
+                "as_of=excluded.as_of, watch_grp=excluded.watch_grp, watch_sector=excluded.watch_sector, watch_ord=excluded.watch_ord, updated_at=now()",
+                (code, e["name"], e["field"], e["subfield"], e["tags"], e["country"], e["mgmt"], e["flags"], mcap, today, e.get("watch_grp"), e.get("watch_sector"), e.get("watch_ord")))
     conn.commit()
     if i % 25 == 0: print(f"  ({i}/{len(ETFS)})", flush=True)
 cur.execute("select count(*), count(distinct code), min(trade_date), max(trade_date) from etf_daily"); print("etf_daily 현황(행/종목/시작/끝):", cur.fetchone())
