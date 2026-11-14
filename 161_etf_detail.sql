@@ -74,3 +74,37 @@ begin
     execute format('grant select on public.%I to anon, authenticated', t);
   end loop;
 end $$;
+
+-- 2026-11-15: ETF 허브(액티브/패시브) 페이지용 일간 기록 ---------------------------------
+-- etf_holdings_daily : 액티브 ETF(etf_master.mgmt='액티브') 일별 구성종목 상위 30 — 신규편입·편출·주식수변동 계산용. 120일 보관
+-- etf_flow_daily     : 전 ETF 일별 상장좌수·순자산·NAV — 설정/환매(자금 유출입) 계산용. 400일 보관
+create table if not exists etf_holdings_daily (
+  d           date not null,
+  etf_code    text not null,
+  rank        smallint,
+  stock_code  text not null,
+  stock_name  text,
+  cu_qty      numeric(18,2),
+  shares      numeric(20,0),
+  amount      numeric(20,0),
+  weight      numeric(8,3),
+  primary key (d, etf_code, stock_code)
+);
+create index if not exists idx_etf_hd_stock on etf_holdings_daily (stock_code, d desc);
+create table if not exists etf_flow_daily (
+  d         date not null,
+  etf_code  text not null,
+  listed    bigint,
+  ntas_eok  numeric(14,1),
+  nav       numeric(14,2),
+  primary key (d, etf_code)
+);
+alter table etf_holdings_daily enable row level security;
+alter table etf_flow_daily enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename='etf_holdings_daily' and policyname='public read') then
+    create policy "public read" on etf_holdings_daily for select using (true); end if;
+  if not exists (select 1 from pg_policies where tablename='etf_flow_daily' and policyname='public read') then
+    create policy "public read" on etf_flow_daily for select using (true); end if;
+end $$;
+grant select on etf_holdings_daily, etf_flow_daily to anon, authenticated;

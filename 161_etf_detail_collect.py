@@ -25,11 +25,11 @@ def d8(s):
 conn=psycopg2.connect(os.environ["SUPABASE_DB_URL"]); conn.autocommit=False; cur=conn.cursor()
 cur.execute(open(os.path.join(HERE,"161_etf_detail.sql"),encoding="utf-8").read()); cur.execute("alter table etf_master add column if not exists nxt_ok boolean"); conn.commit()
 cur.execute("select max(trade_date) from etf_daily"); AS_OF=cur.fetchone()[0]
-cur.execute("select code,name,watch_grp from etf_master order by code"); ETFS=cur.fetchall()
+cur.execute("select code,name,watch_grp,mgmt from etf_master order by code"); ETFS=cur.fetchall()
 wk0=AS_OF-datetime.timedelta(days=AS_OF.weekday()); wk1=wk0+datetime.timedelta(days=6)
 print(f"ETF {len(ETFS)}개 · 기준일 {AS_OF} (주 {wk0}~{wk1})",flush=True)
-T=datetime.date.today(); nh=nw=nd=nn=0; empty=[]
-for code,name,wg in ETFS:
+T=datetime.date.today(); nh=nw=nd=nn=nd2=0; empty=[]
+for code,name,wg,mg in ETFS:
     e=kget("/uapi/etfetn/v1/quotations/inquire-price","FHPST02400000",{"FID_COND_MRKT_DIV_CODE":"J","FID_INPUT_ISCD":code}).get("output") or {}
     c=kget("/uapi/etfetn/v1/quotations/inquire-component-stock-price","FHKST121600C0",{"FID_COND_MRKT_DIV_CODE":"J","FID_INPUT_ISCD":code,"FID_COND_SCR_DIV_CODE":"11216"})
     o1=c.get("output1") or {}; o2=[x for x in (c.get("output2") or []) if x.get("stck_shrn_iscd")]
@@ -50,6 +50,14 @@ for code,name,wg in ETFS:
     if rows or c.get("rt_cd")=="0":   # 정상 응답이면 교체(빈 응답=파생형 구성 → 기존 행 삭제)
         cur.execute("delete from etf_holdings_now where etf_code=%s",(code,))
         if rows: execute_values(cur,"insert into etf_holdings_now(etf_code,rank,stock_code,stock_name,cu_qty,shares,amount,weight,price,chg_pct,as_of) values %s on conflict do nothing",rows); nh+=len(rows)
+    # 2026-11-15: 일간 기록 — 액티브 구성종목 상위 30, 전 ETF 상장좌수·순자산(자금 유출입)
+    if mg=="액티브" and rows:
+        cur.execute("delete from etf_holdings_daily where d=%s and etf_code=%s",(AS_OF,code))
+        execute_values(cur,"insert into etf_holdings_daily(d,etf_code,rank,stock_code,stock_name,cu_qty,shares,amount,weight) values %s on conflict do nothing",
+                       [(AS_OF,r[0],r[1],r[2],r[3],r[4],r[5],r[6],r[7]) for r in rows[:30]]); nd2+=min(30,len(rows))
+    if listed:
+        cur.execute("insert into etf_flow_daily(d,etf_code,listed,ntas_eok,nav) values(%s,%s,%s,%s,%s) on conflict(d,etf_code) do update set listed=excluded.listed,ntas_eok=excluded.ntas_eok,nav=excluded.nav",
+                    (AS_OF,code,int(listed),f(e.get("etf_ntas_ttam")),f(e.get("nav"))))
     if wg and rows:
         cur.execute("delete from etf_holdings_weekly where etf_code=%s and week_date between %s and %s",(code,wk0,wk1))
         execute_values(cur,"insert into etf_holdings_weekly(week_date,etf_code,rank,stock_code,stock_name,cu_qty,shares,amount,weight) values %s on conflict do nothing",
@@ -68,6 +76,8 @@ for code,name,wg in ETFS:
     if drs:
         execute_values(cur,"insert into etf_dividends(code,record_date,dps,rate,pay_date) values %s on conflict(code,record_date) do update set dps=excluded.dps,rate=excluded.rate,pay_date=excluded.pay_date",list(drs.values())); nd+=len(drs)
     conn.commit()
+cur.execute("delete from etf_holdings_daily where d<%s",(AS_OF-datetime.timedelta(days=120),)); cur.execute("delete from etf_flow_daily where d<%s",(AS_OF-datetime.timedelta(days=400),)); conn.commit()
+print(f"일간 구성 기록 {nd2}행")
 print(f"NXT 표시 {nn}/{len(ETFS)}개 확인",flush=True)
 print(f"구성종목(최신) {nh}행 · 주간 스냅샷 {nw}행 · 분배금 {nd}행",flush=True)
 print("구성 행 없음(파생형 등):",len(empty),"개 —",", ".join(empty[:30]),flush=True)
