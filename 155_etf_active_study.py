@@ -25,8 +25,8 @@ etfs=[(x[:9].strip(),x[21:-227].strip()) for x in raw if len(x)>=240 and x[-227:
 ACT=re.compile(r"액티브|KoAct|TIME |Active|ACTIVE",re.I)
 act=[(c,n) for c,n in etfs if ACT.search(n)]
 def theme(n):
-    if re.search(r"CD금리|머니마켓|KOFR|SOFR|초단기|단기채|단기통안|파킹|단기금융",n): return "현금성"
-    if re.search(r"국고채|국채|채권|통안|회사채|하이일드|금리|크레딧|금융채|특수채",n): return "채권"
+    if re.search(r"CD금리|머니마켓|KOFR|SOFR|초단기|단기채|전단채|단기통안|파킹|단기금융",n): return "현금성"
+    if re.search(r"국고채|국채|채권|통안|회사채|하이일드|금리|크레딧|금융채|특수채|국공채",n): return "채권"
     if re.search(r"금현물|골드|은선물|원유|구리|농산물|WTI|천연가스|원자재|달러|엔화|환율",n): return "원자재·통화"
     if re.search(r"혼합|배분|TDF|자산배분|멀티에셋|인컴",n): return "혼합·배분"
     if re.search(r"미국|나스닥|S&P|글로벌|일본|니케이|중국|차이나|인도|베트남|대만|유럽|선진|신흥|해외|월드|엔비디아|테슬라|테크TOP|빅테크|반도체TOP",n): return "해외주식"
@@ -50,6 +50,14 @@ for k in (1,5,10,20,30,50,70,100,150):
     if k<=len(mc): log(f"- {k}위: {mc[k-1]:,.0f}억")
 for th in (10000,5000,3000,1000,500,300,100):
     log(f"- {th:,}억 이상: {sum(1 for x in mc if x>=th)}개")
+EQ=[r for r in rows if r["theme"] in ("국내주식","해외주식","혼합·배분","원자재·통화")]
+log(f"\n### 주식형·혼합형만(현금성·채권 제외): {len(EQ)}개 · 합계 {sum(r['mcap'] for r in EQ)/1e4:,.1f}조")
+for k in (1,5,10,20,30,50,70,100):
+    if k<=len(EQ): log(f"- {k}위: {EQ[k-1]['mcap']:,.0f}억 ({EQ[k-1]['name']})")
+for th in (5000,3000,1000,500,300,100): log(f"- {th:,}억 이상: {sum(1 for r in EQ if r['mcap']>=th)}개")
+log("\n| 순위 | 코드 | 이름 | 분류 | 시총(억) | 괴리율% | 당일거래대금(억) |\n|---|---|---|---|---|---|---|")
+for i,r in enumerate(EQ[:100],1):
+    log(f"| {i} | {r['code']} | {r['name']} | {r['theme']} | {r['mcap']:,.0f} | {'' if r['dprt'] is None else r['dprt']} | {'' if r['vol'] is None else format(r['vol']/1e8,',.1f')} |")
 log("\n### 분류별 개수·시총합")
 cc=collections.defaultdict(lambda:[0,0.0])
 for r in rows: cc[r["theme"]][0]+=1; cc[r["theme"]][1]+=r["mcap"]
