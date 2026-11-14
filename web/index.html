@@ -851,7 +851,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 #trWrap tr.trc>td{white-space:normal;text-align:left;padding:6px 4px 12px;background:var(--surface-2);position:sticky;left:0}#trWrap tr.trc .chart{min-height:120px}
 #trCard.cardmode{width:auto!important;min-width:0!important}
 #trCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:10px}
-.trk{border:1px solid var(--border);border-radius:10px;padding:8px 10px 6px;background:var(--surface);min-width:0}
+.trk{border:1px solid var(--border);border-radius:10px;padding:8px 2px 6px 10px;background:var(--surface);min-width:0}
 .trkh{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}.trkh .nm{font-size:14px;font-weight:700}.trkh .px{margin-left:auto;font-weight:650;font-size:13px}
 .trkm{font-size:11px;color:var(--ink-2);margin-top:3px;display:flex;flex-wrap:wrap;gap:2px 10px}.trkm .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}
 .trkl{font-size:11px;margin-top:2px;line-height:1.5}.trkl .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}.trkl .lvs{margin-right:8px;white-space:nowrap}.trkl .kwc{padding:0 3px;border-radius:3px}
@@ -3108,18 +3108,20 @@ async function trDrawTo(host,code,opt={}){
   if(!host)return;
   try{
     S.trChart=S.trChart||{};
-    if(!S.trChart[code])S.trChart[code]=await q("v_stock_chart",`select=trade_date,close&code=eq.${code}&order=trade_date.asc`);
+    if(!S.trChart[code])S.trChart[code]=await q("v_stock_chart",`select=trade_date,close,individual_net&code=eq.${code}&order=trade_date.asc`);
     if(!host.isConnected||(opt.title&&S.tr.open!==code))return;
     const rows=S.trChart[code];if(!rows.length){host.innerHTML='<div class="load">차트 데이터 없음</div>';return;}
-    const ma=maSeries(rows),a=Math.max(0,rows.length-250),rp=rows.slice(a),sl=k=>ma[k].slice(a);
+    const ma=maSeries(rows),a=0,rp=rows,sl=k=>ma[k].slice(a);   // 종목상세 "전 기간"과 같은 구간
     const W=opt.title?trW():Math.max(260,Math.round(host.clientWidth||320)),H=Math.round(Math.min(340,W*(opt.title?0.66:0.58)));
     const nm=((S.codes||[]).find(c=>c.code===code)||{}).name||code;
     host.innerHTML=(opt.title?`<div style="font-size:12px;font-weight:650;margin-bottom:4px">${escH(nm)} · 가격 · 이동평균 <span class="faint" style="font-weight:400">${rp[0].trade_date}~${rp.at(-1).trade_date}</span></div>`:"")+
-      `<div class="legend" style="font-size:10.5px;gap:9px;margin-bottom:3px"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--mac1)"></i>MA5</span><span><i style="background:var(--mac2)"></i>MA20</span><span><i style="background:var(--ma3)"></i>MA60</span><span><i style="background:var(--mac3)"></i>MA120</span></div><div class="trin"></div>`;
+      `<div class="legend" style="font-size:10.5px;gap:9px;margin-bottom:3px"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--mac2)"></i>MA20</span><span><i style="background:var(--ma3)"></i>MA60</span><span><i style="background:var(--mac3)"></i>MA120</span><span><i style="background:var(--down)"></i>매물대 1위</span><span><i style="background:var(--warn)"></i>2위</span></div><div class="trin"></div>`;
+    /* 종목상세와 같은 개인 순매수 매물대: 현재가 위에서 개인 순매수가 가장 많이 쌓인 가격대 1·2위 */
+    const bands=[];try{const cur=+rp.at(-1).close;buildPriceProfile(rp,24,r=>+r.individual_net||0).filter(b=>b.lo>=cur&&b.v>0).sort((x,y)=>y.v-x.v).slice(0,2).forEach((b,k)=>bands.push({lo:b.lo,hi:b.hi,c:k?"--warn":"--down",label:`매물대 ${k+1}위 ${N(b.lo,0)}~${N(b.hi,0)} · ${N(b.v,0)}억`}));}catch(e){console.error("매물대",e);}
     lineChart(host.querySelector(".trin"),[
-      {n:"종가",v:rp.map(r=>+r.close),c:"--ink"},{n:"MA5",v:sl(5),c:"--mac1"},{n:"MA20",v:sl(20),c:"--mac2"},{n:"MA60",v:sl(60),c:"--ma3"},{n:"MA120",v:sl(120),c:"--mac3"}],
+      {n:"종가",v:rp.map(r=>+r.close),c:"--ink"},{n:"MA20",v:sl(20),c:"--mac2"},{n:"MA60",v:sl(60),c:"--ma3"},{n:"MA120",v:sl(120),c:"--mac3"}],
       rp.map(r=>r.trade_date.slice(2).replace(/-/g,"/")),
-      {h:H,w:W,pr:W<420?54:64,pl:W<420?40:48,labelEnds:false,marks:true,monthTicks:true,fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원"});
+      {h:H,w:W,pr:6,pl:W<420?40:48,labelEnds:false,marks:true,monthTicks:true,fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원",bands});
   }catch(e){console.error("종목 추세 차트",e);host.innerHTML='<div class="load">차트를 불러오지 못했습니다</div>';}
 }
 $("#trView").addEventListener("seg-change",e=>{S.tr.view=e.detail==="card"?"card":"table";S.tr.open=null;trRender();});
