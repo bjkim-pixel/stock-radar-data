@@ -1896,9 +1896,11 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button class="fchip" data-v="all" aria-pressed="true">전체</button>
       <button class="fchip" data-v="HOLD5" aria-pressed="false">5% 대량보유</button>
       <button class="fchip" data-v="INSIDER" aria-pressed="false">내부자</button>
-      <button class="fchip" data-v="POS" aria-pressed="false">수주·투자 호재</button>
+      <button class="fchip" data-v="ORDER" aria-pressed="false">수주</button>
+      <button class="fchip" data-v="INV" aria-pressed="false">증설·지분 투자</button>
+      <button class="fchip" data-v="BONUS" aria-pressed="false">무상증자·분할</button>
       <button class="fchip" data-v="RISK" aria-pressed="false">악재 경고</button>
-      <button class="fchip" data-v="ETC" aria-pressed="false">자사주·공급 부담·기타</button>
+      <button class="fchip" data-v="ETC" aria-pressed="false">자사주·공급 부담·합병·기타</button>
     </div>
     <div id="dDartBody"></div>
     <div class="note">출처: 금융감독원 DART(접수일 기준). 정정 공시는 원본과 중복되어 제외합니다. 종류별 의미는 오늘의 종목 탭의 "공시 동향"과 같습니다.</div>
@@ -7501,12 +7503,12 @@ async function renderDartCard(){
   dartDetailRender();
 }
 function dartDetailRender(){
-  const rows=(S._dDart||[]).filter(r=>S.dDartKind==="all"||(S.dDartKind==="ETC"?!["HOLD5","INSIDER","RISK",...DART_POS].includes(r.kind):S.dDartKind==="POS"?DART_POS.includes(r.kind):r.kind===S.dDartKind));
+  const rows=(S._dDart||[]).filter(r=>S.dDartKind==="all"||(S.dDartKind==="ETC"?!["HOLD5","INSIDER","RISK",...DART_POS].includes(r.kind):DART_GRP[S.dDartKind]?DART_GRP[S.dDartKind].includes(r.kind):r.kind===S.dDartKind));
   const line=r=>{
     let c="";
     if(r.kind==="HOLD5"){const i=dartHoldInfo(r);c=`<b>${r.filer||""}</b> <span class="faint">${r.filer_type||""}${r.report_tp?" · "+r.report_tp:""}</span> <span class="num ${i.cls}">${i.txt}</span>`;}
     else if(r.kind==="INSIDER"){const d=+r.shares_delta||0;c=`<b>${r.filer||""}</b> <span class="faint">${r.report_tp&&r.report_tp!=="-"?r.report_tp:""}</span> <span class="${d>0?"up":d<0?"down":"dim"}">${d>0?"매수":d<0?"매도":"변동 없음"} ${N(Math.abs(d),0)}주</span>${r.rt_now!=null?`<span class="faint"> · 보유 ${N(+r.rt_now,2)}%</span>`:""}`;}
-    else{const dd=r.detail||{},amt=(r.amount?` · ${fmtEokJo(+r.amount/EOK)}`:"")+(dd["매출대비%"]!=null?` · 매출 대비 ${N(+dd["매출대비%"],1)}%`:"")+(dd["자기자본대비%"]!=null?` · 자기자본 대비 ${N(+dd["자기자본대비%"],1)}%`:"")+(dd["계약상대"]?` · ${escH(dd["계약상대"])}`:"");c=`<b class="${DART_POS.includes(r.kind)?"up":r.kind==="RISK"?"down":""}">${DART_KIND_LB[r.kind]||r.kind}</b>${amt} <span class="faint">${(r.report_nm||"").replace(/^주요사항보고서\(|\)$/g,"")}</span>`;}
+    else{const dd=r.detail||{},amt=(r.amount?` · ${fmtEokJo(+r.amount/EOK)}`:"")+(dd["매출대비%"]!=null?` · 매출 대비 ${N(+dd["매출대비%"],1)}%`:"")+(dd["자기자본대비%"]!=null?` · 자기자본 대비 ${N(+dd["자기자본대비%"],1)}%`:"")+(dd["계약상대"]?` · ${escH(dd["계약상대"])}`:"")+(dd["기간"]&&(r.kind==="ORDER")?` · 계약기간 ${escH(String(dd["기간"]))}`:"");c=`<b class="${DART_POS.includes(r.kind)?"up":r.kind==="RISK"?"down":""}">${DART_KIND_LB[r.kind]||r.kind}</b>${amt} <span class="faint">${(r.report_nm||"").replace(/^주요사항보고서\(|\)$/g,"")}</span>`;}
     return `<tr><td class="l">${r.rcept_dt.slice(2).replace(/-/g,".")}</td><td class="l">${DART_KIND_LB[r.kind]||r.kind}</td><td class="l" style="white-space:normal">${c}</td><td><a class="faint" href="${dartUrl(r.rcept_no)}" target="_blank" rel="noopener">원문</a></td></tr>`;
   };
   $("#dDartBody").innerHTML=rows.length?`<div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">접수일</th><th class="l">종류</th><th class="l">내용</th><th></th></tr></thead><tbody>${rows.slice(0,60).map(line).join("")}</tbody></table></div>${rows.length>60?`<div class="faint" style="font-size:11px">최근 60건만 표시 (전체 ${rows.length}건)</div>`:""}`:'<div class="load">해당 공시가 없습니다</div>';
