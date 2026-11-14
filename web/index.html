@@ -3232,7 +3232,7 @@ function etfHead(){
   const ch=last&&prev?+last.close-+prev.close:null,cp=ch!=null?ch/+prev.close*100:null;
   const mult=i.mult!=null&&+i.mult!==1?`배수 ${+i.mult>0?"+":""}${N(+i.mult,0)}배`:"";
   const meta=[i.mgr,i.idx_name,mult,i.cfg_cnt?`${i.cfg_cnt}종목`:"",i.list_date?`상장 ${i.list_date}`:""].filter(Boolean).map(escH).join('<span class="sep">·</span>');
-  $("#etfHead").innerHTML=`<div class="etf-h1">${escH(m.name||E.code)}<span class="cd">(${E.code})</span></div>
+  $("#etfHead").innerHTML=`<div class="etf-h1">${escH(m.name||E.code)}${nxTag(E.code)}<span class="cd">(${E.code})</span></div>
     <div class="etf-tags">${etfTags(m,i).map(t=>`<span>${escH(t)}</span>`).join("")}</div>
     <div class="etf-px">${last?N(+last.close,0)+"원":"–"}${ch!=null?`<small class="${sgn(ch)}">${ch>0?"+":""}${N(ch,0)} (${pm(cp,2)}%)</small>`:""}</div>
     <div class="etf-meta">${escH([m.field,m.subfield].filter(Boolean).join(" / "))}${i.etf_type?`<span class="sep">·</span>${escH(i.etf_type)}`:""}<br>${meta||'<span class="faint">상세 정보 수집 전</span>'}</div>`;
@@ -3258,8 +3258,8 @@ function etfDonut(parts,rest){
   return out;
 }
 function etfNameLink(code,nm){
-  if((S.codes||[]).some(c=>c.code===code))return `<a class="lk nm" data-code="${code}">${escH(nm)}</a>`;
-  if(S.etfMap&&S.etfMap[code])return `<a class="lk nm" data-etf="${code}">${escH(nm)}</a>`;
+  if((S.codes||[]).some(c=>c.code===code))return `<a class="lk nm" data-code="${code}">${escH(nm)}</a>${nxTag(code)}`;
+  if(S.etfMap&&S.etfMap[code])return `<a class="lk nm" data-etf="${code}">${escH(nm)}</a>${nxTag(code)}`;
   return escH(nm);
 }
 function etfWire(host){
@@ -7727,14 +7727,14 @@ function smxModel(rows){
 function nxTag(c){return `<span class="nx" data-nx="${c}"></span>`;}
 async function nxLoad(){
   if(S.nxtMap)return S.nxtMap;if(S._nxtP)return S._nxtP;
-  S._nxtP=(async()=>{const m={};try{for(let off=0;off<6000;off+=1000){const a=await q("stocks",`select=code,nxt_ok&nxt_ok=not.is.null&order=code.asc&limit=1000&offset=${off}`);a.forEach(r=>m[r.code]=!!r.nxt_ok);if(a.length<1000)break;}}catch(e){}S.nxtMap=m;return m;})();
+  S._nxtP=(async()=>{const m={};try{for(let off=0;off<6000;off+=1000){const a=await q("stocks",`select=code,nxt_ok&nxt_ok=not.is.null&order=code.asc&limit=1000&offset=${off}`);a.forEach(r=>m[r.code]=!!r.nxt_ok);if(a.length<1000)break;}}catch(e){}try{const a=await q("etf_master","select=code,nxt_ok&nxt_ok=not.is.null&limit=1000");a.forEach(r=>m[r.code]=!!r.nxt_ok);}catch(e){}S.nxtMap=m;return m;})();
   return S._nxtP;
 }
 function nxFill(){
   const els=[...document.querySelectorAll("span.nx[data-nx]:not([data-d])")];if(!els.length)return;
   if(!S.nxtMap){nxLoad().then(()=>nxFill());return;}
   els.forEach(e=>{e.dataset.d="1";const v=S.nxtMap[e.dataset.nx];if(v==null)return;
-    e.textContent=v?"20":"15";e.className="nx "+(v?"nx-y":"nx-n");e.title=v?"NXT(대체거래소) 거래 가능 — 08:00~20:00(프리마켓·정규장·애프터마켓)":"KRX만 거래 — 정규장 09:00~15:30 + KRX 애프터마켓 16:00~20:00(ETF·투자경고 등 제외)";});
+    e.textContent=v?"20":"15";e.className="nx "+(v?"nx-y":"nx-n");e.title=v?"NXT(대체거래소) 거래 가능 — 08:00~20:00(프리마켓·정규장·애프터마켓)":"KRX만 거래 — 정규장 09:00~15:30 + KRX 애프터마켓 16:00~20:00(투자경고 등 제외)";});
 }
 const SMX_ST={CONT:["매집 지속","up"],STALL:["고점 후 정체","warn"],LEAVE:["이탈 진행","down"],HEAVY:["이탈 심화","down"],OUT:["순유출","down"],NONE:["매집 이력 없음","dim"]};
 const LEAD_TR={UP:["매수 추세","up",6],RESUME:["매수 재개","up",5],SLOW:["매수 둔화","warn",4],REBUY:["매도 후 재매수","warn",3],FLAT:["변동 없음","dim",2],TURN:["매도 전환","down",1],DOWN:["매도 추세","down",0]};

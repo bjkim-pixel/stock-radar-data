@@ -23,12 +23,12 @@ def d8(s):
     try: return datetime.datetime.strptime(s,"%Y%m%d").date() if len(s)==8 and s!="00000000" else None
     except Exception: return None
 conn=psycopg2.connect(os.environ["SUPABASE_DB_URL"]); conn.autocommit=False; cur=conn.cursor()
-cur.execute(open(os.path.join(HERE,"161_etf_detail.sql"),encoding="utf-8").read()); conn.commit()
+cur.execute(open(os.path.join(HERE,"161_etf_detail.sql"),encoding="utf-8").read()); cur.execute("alter table etf_master add column if not exists nxt_ok boolean"); conn.commit()
 cur.execute("select max(trade_date) from etf_daily"); AS_OF=cur.fetchone()[0]
 cur.execute("select code,name,watch_grp from etf_master order by code"); ETFS=cur.fetchall()
 wk0=AS_OF-datetime.timedelta(days=AS_OF.weekday()); wk1=wk0+datetime.timedelta(days=6)
 print(f"ETF {len(ETFS)}개 · 기준일 {AS_OF} (주 {wk0}~{wk1})",flush=True)
-T=datetime.date.today(); nh=nw=nd=0; empty=[]
+T=datetime.date.today(); nh=nw=nd=nn=0; empty=[]
 for code,name,wg in ETFS:
     e=kget("/uapi/etfetn/v1/quotations/inquire-price","FHPST02400000",{"FID_COND_MRKT_DIV_CODE":"J","FID_INPUT_ISCD":code}).get("output") or {}
     c=kget("/uapi/etfetn/v1/quotations/inquire-component-stock-price","FHKST121600C0",{"FID_COND_MRKT_DIV_CODE":"J","FID_INPUT_ISCD":code,"FID_COND_SCR_DIV_CODE":"11216"})
@@ -54,6 +54,12 @@ for code,name,wg in ETFS:
         cur.execute("delete from etf_holdings_weekly where etf_code=%s and week_date between %s and %s",(code,wk0,wk1))
         execute_values(cur,"insert into etf_holdings_weekly(week_date,etf_code,rank,stock_code,stock_name,cu_qty,shares,amount,weight) values %s on conflict do nothing",
                        [(AS_OF,r[0],r[1],r[2],r[3],r[4],r[5],r[6],r[7]) for r in rows[:20]]); nw+=min(20,len(rows))
+    # NXT(대체거래소) 거래 가능 여부 → etf_master.nxt_ok (종목명 옆 20/15 표시용; 148_nxt_flag.py 와 같은 KIS 주식기본조회)
+    try:
+        sj=kget("/uapi/domestic-stock/v1/quotations/search-stock-info","CTPF1002R",{"PRDT_TYPE_CD":"300","PDNO":code}).get("output") or {}
+        v=sj.get("cptt_trad_tr_psbl_yn")
+        if v in ("Y","N"): cur.execute("update etf_master set nxt_ok=%s where code=%s",(v=="Y" and sj.get("nxt_tr_stop_yn")!="Y",code)); nn+=1
+    except Exception: pass
     dv=kget("/uapi/domestic-stock/v1/ksdinfo/dividend","HHKDB669102C0",{"CTS":"","GB1":"0","F_DT":(T-datetime.timedelta(days=760)).strftime("%Y%m%d"),"T_DT":(T+datetime.timedelta(days=60)).strftime("%Y%m%d"),"SHT_CD":code,"HIGH_GB":""})
     drs={}
     for x in (dv.get("output1") or []):
@@ -62,6 +68,7 @@ for code,name,wg in ETFS:
     if drs:
         execute_values(cur,"insert into etf_dividends(code,record_date,dps,rate,pay_date) values %s on conflict(code,record_date) do update set dps=excluded.dps,rate=excluded.rate,pay_date=excluded.pay_date",list(drs.values())); nd+=len(drs)
     conn.commit()
+print(f"NXT 표시 {nn}/{len(ETFS)}개 확인",flush=True)
 print(f"구성종목(최신) {nh}행 · 주간 스냅샷 {nw}행 · 분배금 {nd}행",flush=True)
 print("구성 행 없음(파생형 등):",len(empty),"개 —",", ".join(empty[:30]),flush=True)
 cur.execute("select week_date,count(distinct etf_code),count(*) from etf_holdings_weekly group by 1 order by 1 desc limit 5"); print("주간 스냅샷:",cur.fetchall())
