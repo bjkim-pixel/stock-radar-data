@@ -3086,6 +3086,9 @@ function trRender(){
   $$("#trBody a.lk").forEach(a=>a.onclick=e=>{e.stopPropagation();go("detail",a.dataset.code);});
   $$("#trBody tr.trm").forEach(tr=>tr.onclick=e=>{if(e.target.closest("a,button,input,.fav,[data-fav]"))return;trToggle(tr.dataset.code);});
   smxFill();kwFill();
+  makeSortable('trBody');   // 머리글 클릭: 내림차순 → 올림차순 토글(종목 후보와 같은 방식, 표시된 종목 안에서 재정렬)
+  $$("#trWrap thead th").forEach(th=>{const o=th.onclick;if(!o||th.dataset.trw)return;th.dataset.trw="1";
+    th.onclick=function(e){if(S.tr.open){S.tr.open=null;$$("#trBody tr.trc").forEach(x=>x.remove());$$("#trBody tr.trm.open").forEach(x=>x.classList.remove("open"));}return o.call(this,e);};});   // 펼친 차트 행은 정렬 전에 접는다
   if(T.open)trDraw(T.open);
 }
 /* 차트 카드 보기: 표와 같은 순서·조건. 차트는 화면에 가까워진 카드부터 불러온다(IntersectionObserver) */
