@@ -3268,8 +3268,8 @@ function etfPf(){
   const E=S.etf,h=E.hold,i=E.info,host=$("#etfPf");
   $("#etfPfSub").textContent=i.cfg_cnt?`${i.cfg_cnt}종목${h.length&&h.length<i.cfg_cnt?` · 상위 ${h.length}개 표시`:""}`:"";
   if(!h.length){
-    const deriv=/인버스|레버리지|선물|2X/.test((E.m.name||"")+(E.m.flags||""));
-    host.innerHTML=`<div class="load" style="text-align:left">${i.cfg_cnt?`구성종목 ${i.cfg_cnt}개`:"구성 정보 없음"}${deriv?` — 선물·스왑 등 파생상품과 현금으로 구성되어 KIS가 구성 내역(종목별 비중)을 제공하지 않습니다.`:" — 아직 수집 전이거나 KIS가 구성 내역을 제공하지 않습니다."}
+    const deriv=/인버스|레버리지|선물|2X|합성|커버드콜/.test((E.m.name||"")+(E.m.flags||"")),ovs=/국가별|해외|원자재|통화/.test(E.m.field||"");
+    host.innerHTML=`<div class="load" style="text-align:left">${i.cfg_cnt?`구성종목 ${i.cfg_cnt}개`:"구성 정보 없음"}${deriv?` — 선물·스왑·옵션 등 파생상품과 현금으로 구성되어 KIS가 구성 내역(종목별 비중)을 제공하지 않습니다.`:ovs?" — 해외 주식·실물 자산으로 구성되어 KIS가 구성 내역을 제공하지 않습니다.":" — 아직 수집 전이거나 KIS가 구성 내역을 제공하지 않습니다."}
       ${i.idx_name?`<br><span class="faint">기초지수 ${escH(i.idx_name)}${i.mult!=null&&+i.mult!==1?` · 배수 ${N(+i.mult,0)}배`:""}</span>`:""}</div>`;return;}
   const top=h.slice(0,10).map(x=>({nm:x.stock_name,w:Math.max(0,+x.weight||0)})),sw=top.reduce((a,p)=>a+p.w,0),rest=Math.max(0,100-h.slice(0,10).reduce((a,x)=>a+(+x.weight||0),0));
   const others=(i.cfg_cnt||h.length)-Math.min(10,h.length),mx=h[0];
