@@ -652,7 +652,7 @@ function createTrade(deps = {}) {
     }
     if (path === '/trade/auto/config') {   // 자동매매 켜기/끄기·종목당 금액(auto_config 'main'). 실전 주문과 무관 — 가상매매 설정
       if (!autoRef) return json(res, 503, { ok: false, error: 'auto unavailable' });
-      const r = await autoRef.setConfig(body).catch(e => ({ ok: false, status: 502, error: '저장 실패: ' + (e && e.message) }));
+      const r = await autoRef.setConfig(body).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
       audit(r.ok ? 'auto_config' : 'auto_config_reject', !!r.ok, { on: body.on, perStockKrw: body.perStockKrw, error: r.error }, req, 'VIRTUAL');
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
     }

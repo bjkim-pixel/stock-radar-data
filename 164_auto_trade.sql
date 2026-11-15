@@ -20,3 +20,6 @@ begin
   revoke all on public.auto_config from anon, authenticated;
 exception when others then null;
 end $$;
+
+-- PostgREST(Supabase API)가 새 테이블을 바로 알도록 스키마 캐시 갱신
+notify pgrst, 'reload schema';
