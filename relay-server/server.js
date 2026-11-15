@@ -3440,6 +3440,36 @@ function handleLiveFlow(req, res) {
   return true;
 }
 
+/* ── 체결강도(2026-11-15): KIS 주식현재가 체결(FHKST01010300)의 당일 체결강도(tday_rltv). 실시간 종목 "체결강도 100%↑" 조건용. 종목별 20초 캐시 ── */
+const _cttr = new Map();
+const CTTR_TTL = 20e3;
+async function fetchCttr(code) {
+  const c = _cttr.get(code);
+  if (c && Date.now() - c.at < CTTR_TTL) return c.v;
+  const r = await kisQuoteGet('/uapi/domestic-stock/v1/quotations/inquire-ccnl', 'FHKST01010300', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code });
+  const r0 = Array.isArray(r.body && r.body.output) ? r.body.output[0] : null;
+  const n = r0 && r0.tday_rltv !== '' && r0.tday_rltv != null ? Number(String(r0.tday_rltv).replace(/,/g, '')) : null;
+  const v = r.ok && Number.isFinite(n) ? { cttr: n } : { err: (r.body && r.body.msg1) || ('HTTP ' + r.http) };
+  _cttr.set(code, { at: Date.now() - (v.err ? CTTR_TTL - 8e3 : 0), v });   // 실패는 8초 뒤 재시도
+  return v;
+}
+function handleLiveCttr(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path !== '/live-cttr') return false;
+  accessCors(req, res, 'GET, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const sp = new URLSearchParams((req.url.split('?')[1]) || '');
+  const json = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+  const codes = (sp.get('codes') || '').split(',').map(x => x.trim()).filter(x => /^[0-9A-Z]{6}$/.test(x)).slice(0, 30);
+  if (!codes.length) { json(400, { ok: false, error: 'codes required' }); return true; }
+  (async () => {
+    const rows = {};
+    for (const c of codes) { try { rows[c] = await fetchCttr(c); } catch (e) { rows[c] = { err: e.message }; } }
+    json(200, { ok: true, ts: Date.now(), rows });
+  })();
+  return true;
+}
+
 /* ── 실시간 종목 상단 박스(2026-11-13): 코스피·코스닥 지수 현재가(FHPUP02100000) · 시장별 투자자 매매동향(FHPTJ04030000, 장중 잠정).
    KIS 응답 필드명은 이름 패턴으로 읽음(이 환경에서 응답을 확인하지 못함) — /live-market?raw=1 로 원본 확인. 20초 캐시 ── */
 let _mktLive = { at: 0, v: null };
@@ -3609,7 +3639,7 @@ const trade = require('./trade').createTrade({
 
 const server = http.createServer((req, res) => {
   if (trade.handle(req, res)) return;
-  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleSubStatus(req, res) || handleLivePower(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res) || handleLiveMarket(req, res) || handleStockInfo(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleSubStatus(req, res) || handleLivePower(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res) || handleLiveCttr(req, res) || handleLiveMarket(req, res) || handleStockInfo(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;
