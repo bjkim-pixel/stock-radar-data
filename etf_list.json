@@ -1390,7 +1390,7 @@
   "field": "인버스·레버리지",
   "subfield": "레버리지",
   "tags": "",
-  "country": "미국",
+  "country": "",
   "mgmt": "패시브",
   "flags": "레버리지"
  },
@@ -1533,5 +1533,145 @@
   "country": "미국",
   "mgmt": "패시브",
   "flags": "선물/레버리지/인버스"
+ },
+ {
+  "code": "449190",
+  "name": "KODEX 미국나스닥100(H)",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "133690",
+  "name": "TIGER 미국나스닥100",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "448290",
+  "name": "TIGER 미국S&P500(H)",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "381180",
+  "name": "TIGER 미국필라델피아반도체나스닥",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "465580",
+  "name": "ACE 미국빅테크TOP7 Plus",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "461900",
+  "name": "PLUS 미국테크TOP10",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "364960",
+  "name": "TIGER BBIG",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "304660",
+  "name": "KODEX 미국30년국채울트라선물(H)",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "267440",
+  "name": "RISE 미국장기국채선물(H)",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "195920",
+  "name": "TIGER 일본TOPIX(합성 H)",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "일본",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "099140",
+  "name": "KODEX 차이나H",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "중국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "371160",
+  "name": "TIGER 차이나항셍테크",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "중국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "371460",
+  "name": "TIGER 차이나전기차SOLACTIVE",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "중국",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "261240",
+  "name": "KODEX 미국달러선물",
+  "field": "기초자산(참고)",
+  "subfield": "레버리지 기초",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": ""
  }
 ]

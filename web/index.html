@@ -3296,7 +3296,7 @@ function etfDonut(parts,rest){
   return out;
 }
 function etfNameLink(code,nm){
-  if((S.codes||[]).some(c=>c.code===code))return `<a class="lk nm" data-code="${code}">${escH(nm)}</a>${nxTag(code)}`;
+  if((S.codes||[]).some(c=>c.code===code))return `<a class="lk nm" data-code="${code}">${escH(nm)}</a>${nxTag(code)}${holdBtn(code)}`;
   if(S.etfMap&&S.etfMap[code])return `<a class="lk nm" data-etf="${code}">${escH(nm)}</a>${nxTag(code)}`;
   return escH(nm);
 }
@@ -3511,7 +3511,7 @@ function ehLbRows(set,key){
     return `<tr><td>${i+1}</td><td class="l">${ehE(x.code)}</td><td>${ehPct(r.r1w)}</td><td>${ehPct(r.r1m)}</td><td>${ehPct(r.r3m)}</td><td>${ehPct(r.r6m)}</td><td>${r.rs==null?"–":N(r.rs,0)}</td><td>${inf.ntas_eok==null?"–":N(+inf.ntas_eok,0)+"억"}</td><td>${fl==null?"–":`<span class="${sgn(fl)}">${pm(fl,0)}억</span>`}</td><td>${inf.dprt==null?"–":pm(+inf.dprt,2)+"%"}</td></tr>`;}).join("")||'<tr><td colspan="10" class="load">데이터 없음</td></tr>';
 }
 function ehPasSet(){
-  const E=S.eh,all=Object.values(S.etfMap||{}).filter(m=>m.mgmt==="패시브"&&m.field!=="인버스·레버리지");
+  const E=S.eh,all=Object.values(S.etfMap||{}).filter(m=>m.mgmt==="패시브"&&m.field!=="인버스·레버리지"&&m.field!=="기초자산(참고)");
   const g=m=>m.field==="국내 시장지수"||m.subfield==="배당·가치"?"mkt":m.field==="국내 업종·테마"?"sec":m.field==="국가별(해외주식)"?"glb":m.field==="원자재"?"com":"etc";
   return {all,g,list:E.pg==="all"?all:all.filter(m=>g(m)===E.pg)};
 }
@@ -3554,7 +3554,19 @@ const LV_BASE={ // 코드:[기초코드, 배수, 기초이름, 근사여부, 종
   "0193W0":["005930",2,"삼성전자","","stk"],"0193L0":["005930",-2,"삼성전자","","stk"],
   "494310":["091160",2,"KODEX 반도체"],"243880":["139260",2,"TIGER 200 IT"],"412570":["364980",2,"TIGER 2차전지TOP10"],
   "462330":["364980",2,"TIGER 2차전지TOP10","근사"],"0100K0":["449450",2,"PLUS K방산","근사"],
-  "236350":["453810",2,"KODEX 인도Nifty50","근사"],"204480":["283580",2,"KODEX 차이나CSI300","근사"]};
+  "236350":["453810",2,"KODEX 인도Nifty50","근사"],"204480":["283580",2,"KODEX 차이나CSI300","근사"],
+  // 해외 — 국내 상장 1배 ETF를 기초로(환헤지 여부·지수 차이가 있으면 근사)
+  "409820":["449190",2,"KODEX 미국나스닥100(H)"],"409810":["449190",-1,"KODEX 미국나스닥100(H)"],"418660":["133690",2,"TIGER 미국나스닥100"],
+  "225040":["448290",2,"TIGER 미국S&P500(H)"],"225030":["448290",-1,"TIGER 미국S&P500(H)"],
+  "423920":["381180",2,"TIGER 미국필라델피아반도체"],"491630":["381180",-1,"TIGER 미국필라델피아반도체","근사"],
+  "465610":["465580",2,"ACE 미국빅테크TOP7 Plus"],"461910":["461900",2,"PLUS 미국테크TOP10"],"412560":["364960",2,"TIGER BBIG"],
+  "304670":["304660",-1,"KODEX 미국30년국채울트라(H)"],"452250":["304660",2,"KODEX 미국30년국채울트라(H)","근사"],
+  "267490":["267440",2,"RISE 미국장기국채선물(H)"],"267450":["267440",-1,"RISE 미국장기국채선물(H)"],
+  "196030":["195920",2,"TIGER 일본TOPIX(H)","근사"],"205720":["195920",-1,"TIGER 일본TOPIX(H)","근사"],
+  "225050":["195930",2,"TIGER 유로스탁스50(H)"],"225060":["195980",2,"PLUS 신흥국MSCI(H)","근사"],
+  "453820":["453810",2,"KODEX 인도Nifty50"],"219900":["283580",2,"KODEX 차이나CSI300","근사"],"217780":["283580",-1,"KODEX 차이나CSI300","근사"],
+  "204450":["099140",2,"KODEX 차이나H","근사"],"291680":["099140",-1,"KODEX 차이나H","근사"],"438320":["371160",2,"TIGER 차이나항셍테크","근사"],
+  "456680":["371460",2,"TIGER 차이나전기차"],"261110":["261240",2,"KODEX 미국달러선물"],"261120":["261240",-2,"KODEX 미국달러선물"]};
 const LV_PAIRS=[["코스피200","122630","252670"],["코스닥150","233740","251340"],["삼성전자","0193W0","0193L0"],["SK하이닉스","0193T0","0197X0"]];
 const LV_PER={r1w:[5,"1주"],r1m:[21,"1개월"],r3m:[63,"3개월"],r6m:[126,"6개월"],r1y:[250,"1년"]};
 const lvSeg=(id,arr,cur)=>`<div class="qf seg" id="${id}">${arr.map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>`;
@@ -5908,6 +5920,15 @@ const GM_PER_LBL={252:"1년",126:"6개월",63:"3개월",21:"1개월",ytd:"연초
 const GM_PH={lead:"주도",impr:"개선",weak:"약화",lag:"소외"};
 const gmF=v=>v==null?"–":(v<0?`(${Math.abs(v).toFixed(2)})`:v.toFixed(2));
 const gmC=v=>v==null?"dim":v>0?"up":v<0?"down":"dim";
+/* 테마 ETF 대표종목(비중 상위 5)의 RS — 글로벌 시황(한국)·ETF 허브 섹터 탭 공용, 한 번만 조회 */
+async function gmRsKR(){
+  if(S.gm.rsKR)return S.gm.rsKR;
+  const row=S.gm.packs.KR;if(!row||!row.payload)return {};
+  const p=row.payload,g=(p.groups||[]).find(x=>x.id==="theme");if(!g)return {};
+  const codes=[...new Set(g.keys.flatMap(k=>((p.items[k]||{}).h||[]).map(x=>x.c).filter(Boolean)))],rs={};
+  if(codes.length&&S.date){try{(await q("v_screener",`select=code,rs20_pctl&trade_date=eq.${S.date}&code=in.(${codes.join(",")})`)).forEach(r=>rs[r.code]=r.rs20_pctl==null?null:+r.rs20_pctl);}catch(e){return rs;}}
+  return S.gm.rsKR=rs;
+}
 async function loadGlobal(tab){
   tab=tab||S.gm.tab; S.gm.tab=tab;
   if(!S.gm.packs[tab]){
@@ -5916,6 +5937,7 @@ async function loadGlobal(tab){
     if(!r.length){$("#gmBody").innerHTML='<div class="note">데이터 준비 중입니다 (한국 장마감 후 · 미국 마감 직후 자동 수집).</div>';return;}
     S.gm.packs[tab]=r[0];
   }
+  if(tab==="KR")await gmRsKR();
   if(S.gm.tab===tab)renderGlobal(S.gm.packs[tab]);
 }
 $("#gmTabSel").addEventListener("seg-change",e=>{S.gm.big=null;loadGlobal(e.detail).catch(console.error);});
@@ -6092,8 +6114,7 @@ async function ehSecLoad(){
     if(!S.gm.packs.KR){const r=await q("global_pack","select=as_of,updated_at,payload&tab=eq.KR").catch(()=>[]);if(r.length)S.gm.packs.KR=r[0];}
     const row=S.gm.packs.KR;if(!row){host.innerHTML='<div class="card" style="margin-top:12px"><div class="load" style="text-align:left">테마 데이터가 아직 없습니다. 한국 장마감 후 자동 수집됩니다.</div></div>';return;}
     const p=row.payload,g=(p.groups||[]).find(x=>x.id==="theme");E.sec.p=p;E.sec.g=g;
-    const codes=[...new Set(g.keys.flatMap(k=>((p.items[k]||{}).h||[]).map(x=>x.c).filter(Boolean)))];E.sec.rs={};
-    if(codes.length&&S.date){try{(await q("v_screener",`select=code,rs20_pctl&trade_date=eq.${S.date}&code=in.(${codes.join(",")})`)).forEach(r=>E.sec.rs[r.code]=r.rs20_pctl==null?null:+r.rs20_pctl);}catch(e){}}
+    E.sec.rs=await gmRsKR();
     E.sec.ok=true;
   }catch(e){console.error("섹터",e);}
   ehRender();
@@ -6105,7 +6126,7 @@ function ehSecRender(){
   host.innerHTML=`<div class="card" style="margin-top:12px"><h3>섹터 · 테마 <span class="r">총 <b>${its.length}</b>개 · <span class="up">강세 ${up}</span> · 중립 ${mid} · <span class="down">약세 ${dn}</span></span></h3>
     <div class="note" style="margin:0 0 8px">글로벌 시황(한국) 테마 요약과 같은 표입니다. 대표종목 = ETF 비중 상위 5종목(괄호 = 종목 RS, 90 이상 굵게). 주도주 = 그 중 RS 80 이상 비율 — ETF는 약한데 주도주 비율이 높으면 힘이 쌓이는 초기 신호, ETF만 오르고 비율이 낮으면 소수 종목만 끄는 좁은 랠리입니다.</div>
     ${lvSeg("ehSecF",[["all","전체"],["up","강세만"],["dn","약세만"]],x.f||"all")}</div>
-    ${gmTable(x.p,x.g,{reps:true,f:x.f,tid:"ehSecT",rs:x.rs})}
+    ${gmTable(x.p,x.g,{reps:true,plain:true,f:x.f,tid:"ehSecT",rs:x.rs})}
     <div class="note" style="margin-top:8px">강세 = 추세 ▲▲(50일선 위 + 50일선 상승) · 중립 = ▲(50일선 위) · 약세 = ▼(50일선 아래). 국면 = KOSPI 대비 1M·3M 초과수익 부호.</div>`;
   makeSortable("ehSecT");ehWire();etfWire(host);
   host.querySelectorAll("a.lk[data-code]").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
@@ -6129,13 +6150,13 @@ function gmTable(p,g,o){
   const rows=its.map(([k,it])=>{const m=it.m;
     const lab=p.tab==="US"?`<a class="gm-tl" data-gmk2="${k}"><b>${it.s}</b></a> <span class="faint">${it.n}</span>`:`${it.n}`;
     const ec=k.replace(/^etf:/,"");
-    const first=o.reps?`<td class="l"><b>${it.th}</b></td><td class="l">${S.etfMap&&S.etfMap[ec]?`<a class="lk" data-etf="${ec}">${it.n}</a>`:it.n}</td><td data-sort-val="${it.cap??""}">${it.cap==null?"–":N(it.cap,0)}</td>`:hasTh?`<td class="l"><a class="gm-tl" data-gmth="${secIdx[it.th]??""}">${it.th}</a></td><td class="l"><a class="gm-tl gm-el" data-gmk2="${k}">${it.n}</a></td><td data-sort-val="${it.cap??""}">${it.cap==null?"–":N(it.cap,0)}</td>`:`<td class="l">${lab}</td>`;
+    const first=o.plain?`<td class="l"><b>${it.th}</b></td><td class="l">${S.etfMap&&S.etfMap[ec]?`<a class="lk" data-etf="${ec}">${it.n}</a>`:it.n}</td><td data-sort-val="${it.cap??""}">${it.cap==null?"–":N(it.cap,0)}</td>`:hasTh?`<td class="l"><a class="gm-tl" data-gmth="${secIdx[it.th]??""}">${it.th}</a></td><td class="l"><a class="gm-tl gm-el" data-gmk2="${k}">${it.n}</a></td><td data-sort-val="${it.cap??""}">${it.cap==null?"–":N(it.cap,0)}</td>`:`<td class="l">${lab}</td>`;
     return `<tr>${first}${GM_COLS.map(([f])=>{const v=m[f];
         const hl=v==null||its.length<6?"":v>=rank[f].hi&&v>0?" gm-hi":(v<=rank[f].lo&&v<0?" gm-lo":"");
         return `<td class="${gmC(v)}${hl}" data-sort-val="${v??""}">${gmF(v)}</td>`;}).join("")}
       <td data-sort-val="${m.tr??""}">${m.tr==null?"–":m.tr===2?'<span class="up">▲▲</span>':m.tr===1?'<span class="up">▲</span>':'<span class="down">▼</span>'}</td>
       <td><span class="gm-ph ${m.ph||""}">${GM_PH[m.ph]||"–"}</span></td>${o.reps?secReps(it,o.rs||{}):""}</tr>`;}).join("");
-  return `<div class="gm-sec">${g.title} 요약<span class="r">기본 정렬 = 당일(D) 큰 순(없으면 W) · 열 머리 = 정렬${hasTh&&!o.reps?" · 테마명 클릭 = 차트로 이동":""}${o.reps?" · 오른쪽으로 밀면 대표종목":""}</span></div>
+  return `<div class="gm-sec">${g.title} 요약<span class="r">기본 정렬 = 당일(D) 큰 순(없으면 W) · 열 머리 = 정렬${hasTh&&!o.plain?" · 테마명 클릭 = 차트로 이동":""}${o.reps?" · 오른쪽으로 밀면 대표종목":""}</span></div>
     <div class="tw tw-scroll"><table><thead><tr>${hasTh?'<th class="l">테마</th><th class="l">ETF</th><th>시총(억)</th>':`<th class="l">${p.tab==="US"?"티커":"이름"}</th>`}${GM_COLS.map(c=>`<th>${c[1]}</th>`).join("")}<th>추세</th><th class="l">국면</th>${o.reps?'<th>주도주</th><th class="l">대표종목(RS)</th>':""}</tr></thead>
     <tbody id="${tid}">${rows||'<tr><td colspan="15" class="load">데이터 없음</td></tr>'}</tbody></table></div>`;
 }
@@ -6301,7 +6322,7 @@ function renderGlobal(row){
   if(p.tab==="GL")h+=gmCompare(p);   /* 글로벌 주식: 전 국가 비교 차트 */
   if(G.index)h+=gmGrid(p,G.index);   /* 인덱스 차트를 맨 위로 */
   if(G.macro)h+=gmGrid(p,G.macro);   /* 금리·원자재·심리 */
-  (p.summary||[]).forEach(id=>{if(G[id])h+=gmTable(p,G[id]);});
+  (p.summary||[]).forEach(id=>{if(G[id])h+=gmTable(p,G[id],p.tab==="KR"&&id==="theme"?{reps:true,rs:S.gm.rsKR||{}}:undefined);});
   if(G.credit)h+=gmGrid(p,G.credit);   /* 신용융자·반대매매는 인덱스·금리 다음 */
   p.groups.forEach(g=>{if(g.id!=="index"&&g.id!=="macro"&&g.id!=="credit")h+=gmGrid(p,g);});
   h+=`<div class="note" style="margin-top:8px">추세 ▲▲ = 50일선 위 + 50일선 상승 · ▲ = 50일선 위 · ▼ = 50일선 아래. 국면 = ${p.bench} 대비 1M·3M 초과수익 부호(주도 +/+ · 개선 1M+ 3M− · 약화 1M− 3M+ · 소외 −/−). 고점대비 = 최근 1년 최고 종가 대비.${p.tab==="KR"?" 차트는 ETF 종가(테마별로 묶고 ETF 시총 큰 순), 시총은 한국투자증권 현재가 기준 ETF 시가총액(억원), ADR은 상승종목수÷하락종목수 20일 합 ×100(2026-10-23부터 수집).":""}</div>`;
@@ -6314,6 +6335,7 @@ function renderGlobal(row){
     t.scrollIntoView({behavior:"smooth",block:"center"});
     t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash");
   });
+  $$("#gmBody table a.lk[data-code]").forEach(a=>a.onclick=e=>{e.preventDefault();e.stopPropagation();go("detail",a.dataset.code);});
   $$("#gmBody [data-gmth]").forEach(a=>a.onclick=e=>{
     e.preventDefault(); e.stopPropagation();
     const t=document.getElementById("gmth_"+p.tab+"_"+a.dataset.gmth); if(!t)return;
