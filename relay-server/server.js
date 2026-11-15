@@ -2691,7 +2691,7 @@ function telegramHelpText() {
       '/오늘요약 — "오늘의 종목" 요약 즉시 받기 (매 거래일 수집·계산이 끝나면 자동 발송)\n' +
       '/알림끄기 — 신고가·신저가·손절·목표가 알림 일시정지 (오늘의 종목 요약은 계속 발송)\n' +
       '/알림켜기 — 알림 다시 켜기\n' +
-      '/status — 매매 상태(스위치·정지·세션)\n/lock — 열린 거래 세션 모두 종료\n/kill — 긴급 정지(신규 매수 차단)\n' +
+      '/status — 매매 상태(스위치·정지·세션)\n/lock — 열린 거래 세션 모두 종료\n/kill — 긴급 정지(신규 매수 차단)\n/승인 코드 · /거부 코드 — 거래 세션 열기 요청(새 기기·실전) 승인/거부\n' +
       '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
       `보유 종목의 당일 신고가·신저가 갱신(직전 알림 대비 ${ALERT_MIN_MOVE_PCT}% 이상 갱신 시), 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.`;
 }
@@ -2706,6 +2706,11 @@ async function handleTelegramCommand(chatId, text) {
     if (c === 'lock' || c === '잠금') { const n = await trade.adminLock('telegram'); await sendTelegramTo(chatId, `🔒 열려 있던 거래 세션 ${n}개를 모두 종료했어요. (PIN을 다시 입력해야 해요)`); return; }
     const saved = await trade.adminKill('telegram');
     await sendTelegramTo(chatId, '🛑 긴급 정지: 신규 매수를 막았어요. (보유 종목 매도·취소는 가능)' + (saved ? '' : '\n⚠ 기록 저장 실패 — 서버가 재시작되면 풀릴 수 있어요. Render에서 TRADING_ENABLED=0 으로 막으세요.'));
+    return;
+  }
+  if ((m = text.match(/^\/(승인|approve|거부|deny)(?:@\w+)?\s+(\d{4})\s*$/i))) {   // 거래 세션 승인/거부
+    if (!TELEGRAM_CHAT_ID || String(chatId) !== String(TELEGRAM_CHAT_ID)) return;
+    await sendTelegramTo(chatId, await trade.adminDecide(m[2], /^(승인|approve)$/i.test(m[1])));
     return;
   }
   if ((m = text.match(/^\/?(?:target|목표가)\s+(\S+)\s+([\d,]+)\s*원?\s*$/i))) {

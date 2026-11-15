@@ -58,8 +58,11 @@ function loadConfig(env) {
     enabled: env.TRADING_ENABLED === '1',
     realEnabled: env.REAL_TRADING_ENABLED === '1',
     sessionMs: numEnv(env.TRADE_SESSION_MIN, 15) * 60000,
+    idleMs: numEnv(env.TRADE_IDLE_MIN, 5) * 60000,          // 무조작 자동 잠금(클라이언트가 조작 중일 때만 x-active 를 보냄)
+    approval: env.TRADE_APPROVAL !== '0',                  // 새 기기·실전 스위치 ON 일 때 텔레그램 승인 요구(0 이면 끔 — 텔레그램 불능으로 잠겼을 때의 비상구)
+    approvalMs: 3 * 60000,
     sessionMaxMs: numEnv(env.TRADE_SESSION_MAX_HOURS, 4) * 3600000,
-    maxSessions: 3,
+    maxSessions: numEnv(env.TRADE_MAX_SESSIONS, 1),
     pinMaxFails: numEnv(env.PIN_MAX_FAILS, 5),
     pinLockMs: numEnv(env.PIN_LOCK_MIN, 30) * 60000,
     replayMs: numEnv(env.REPLAY_WINDOW_SEC, 30) * 1000,
@@ -110,7 +113,8 @@ function createTrade(deps = {}) {
   const cfg = loadConfig(env);
 
   const state = { halted: false, pinFails: 0, pinLockUntil: 0 };
-  const sessions = new Map();     // sid -> { uid, exp, abs }
+  const sessions = new Map();     // sid -> { uid, exp, abs, act }
+  const pending = new Map();     // reqId -> { uid, code, c, exp, status:'wait'|'ok'|'deny', devId }
   const nonces = new Map();       // nonce -> 만료시각
   const userCache = new Map();    // sha(token) -> { res, exp }
   const ipHits = new Map();       // ip -> [ts...]
@@ -120,6 +124,7 @@ function createTrade(deps = {}) {
   const sweep = () => {
     const t = now();
     for (const [k, v] of sessions) if (v.exp <= t || v.abs <= t) sessions.delete(k);
+    for (const [k, v] of pending) if (v.exp + 60000 <= t) pending.delete(k);
     for (const [k, v] of nonces) if (v <= t) nonces.delete(k);
     for (const [k, v] of userCache) if (v.exp <= t) userCache.delete(k);
     for (const [k, v] of ipHits) { const a = v.filter(x => t - x < 60000); if (a.length) ipHits.set(k, a); else ipHits.delete(k); }
@@ -275,7 +280,7 @@ function createTrade(deps = {}) {
     const t = now(), sid = crypto.randomBytes(32).toString('hex');
     sweep();
     while (sessions.size >= cfg.maxSessions) sessions.delete(sessions.keys().next().value);
-    sessions.set(sid, { uid, exp: t + cfg.sessionMs, abs: t + cfg.sessionMaxMs });
+    sessions.set(sid, { uid, exp: t + cfg.sessionMs, abs: t + cfg.sessionMaxMs, act: t });
     return sid;
   }
   function getSession(sid, uid) {
@@ -506,6 +511,16 @@ function createTrade(deps = {}) {
     limits: cfg.limits, hours: cfg.hours, accountConfigured: !!(kisOrder && kisOrder.configured()),
   });
 
+  async function finishOpen(req, res, uid, c) {
+    sweep();
+    const kicked = sessions.size >= cfg.maxSessions;
+    const sid = openSession(uid);
+    await audit('session_open', true, { flags: c.flags.length ? c.flags : undefined, kicked: kicked || undefined }, req);
+    remember(c);
+    alert(`${warnText(c)}🔓 거래 세션 열림 · ${kst()}\n${whoText(c)}\n실전 스위치 ${cfg.realEnabled ? 'ON 🔴' : 'OFF'} · 긴급정지 ${state.halted ? 'ON' : '해제'}${kicked ? '\n(기존에 열려 있던 세션은 종료됨)' : ''}\n본인이 아니면 /kill`, '매매 세션');
+    return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000), idleSec: Math.round(cfg.idleMs / 1000) });
+  }
+
   async function run(req, res, path) {
     await ready;
     const ip = clientIp(req);
@@ -513,6 +528,8 @@ function createTrade(deps = {}) {
     const origin = req.headers.origin;
     if (req.method === 'POST' && origin && !allowedOrigins.includes(origin)) return json(res, 403, { ok: false, error: 'forbidden origin' });
 
+    { const sidH = String(req.headers['x-trade-session'] || ''), ss = sessions.get(sidH);   // 무조작 자동 잠금: 조작(POST 또는 x-active)이 있을 때만 활동으로 침
+      if (ss) { const t = now(); if (cfg.idleMs && t - (ss.act || 0) > cfg.idleMs) { sessions.delete(sidH); audit('session_idle_lock', true, {}, req); } else if (req.method !== 'GET' || req.headers['x-active'] === '1') ss.act = t; } }
     const needSession = path === '/trade/resume' || path === '/trade/ping' || path.startsWith('/trade/paper/') || path.startsWith('/trade/live/');
     // 상태 조회는 세션이 있으면 그 정보도 함께 돌려줌(없어도 통과)
     const a = await authz(req, { session: needSession });
@@ -590,12 +607,33 @@ function createTrade(deps = {}) {
         else if (r.status === 401) alert(`${warnText(c)}⚠ 거래 PIN 오류 (남은 시도 ${r.left}회)\n${whoText(c)}`);
         return json(res, r.status, { ok: false, error: r.error, ...(r.left != null ? { left: r.left } : {}), ...(r.retrySec ? { retrySec: r.retrySec } : {}) });
       }
-      const sid = openSession(a.user.id);
       const c = classify(req);
-      await audit('session_open', true, { flags: c.flags.length ? c.flags : undefined }, req);
-      remember(c);
-      alert(`${warnText(c)}🔓 거래 세션 열림 · ${kst()}\n${whoText(c)}\n실전 스위치 ${cfg.realEnabled ? 'ON 🔴' : 'OFF'} · 긴급정지 ${state.halted ? 'ON' : '해제'}\n본인이 아니면 /kill`, '매매 세션');
-      return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000) });
+      const kd = c.d.id ? known.devs.get(c.d.id) : null;
+      const reasons = [];
+      if (cfg.realEnabled) reasons.push('실전 스위치 ON');
+      if (!c.d.id) reasons.push('기기 정보 없음'); else if (!kd) reasons.push('등록되지 않은 새 기기');
+      if (c.flags.some(f => /집 밖/.test(f))) reasons.push('집 밖 접속');
+      if (cfg.approval && deps.notify && reasons.length) {   // 텔레그램 승인 대기
+        sweep();
+        for (const [k, v] of pending) if (v.uid === a.user.id && v.status === 'wait') pending.delete(k);
+        const reqId = crypto.randomBytes(16).toString('hex'), code = String(crypto.randomInt(1000, 10000));
+        pending.set(reqId, { uid: a.user.id, code, c, exp: now() + cfg.approvalMs, status: 'wait', devId: c.d.id });
+        await audit('session_pending', true, { reasons, flags: c.flags.length ? c.flags : undefined }, req);
+        alert(`${warnText(c)}🔐 거래 세션 승인 요청 · ${kst()}\n${whoText(c)}\n사유: ${reasons.join(', ')}\n\n본인이 맞으면  /승인 ${code}\n아니면  /거부 ${code}  (${Math.round(cfg.approvalMs / 60000)}분 안에)`, '매매 세션');
+        return json(res, 202, { ok: false, pending: true, reqId, ttlSec: Math.round(cfg.approvalMs / 1000) });
+      }
+      return finishOpen(req, res, a.user.id, c);
+    }
+    if (path === '/trade/session/poll') {   // 텔레그램 승인 결과 확인(같은 로그인·같은 기기만)
+      const p = pending.get(String(body.reqId || ''));
+      if (!p || p.uid !== a.user.id || p.devId !== devOf(req).id) return json(res, 404, { ok: false, error: 'not found' });
+      if (p.status === 'wait') {
+        if (p.exp <= now()) { pending.delete(String(body.reqId)); audit('session_pending_expired', false, {}, req); return json(res, 403, { ok: false, error: 'expired' }); }
+        return json(res, 202, { ok: false, pending: true, leftSec: Math.round((p.exp - now()) / 1000) });
+      }
+      pending.delete(String(body.reqId));
+      if (p.status === 'deny') return json(res, 403, { ok: false, error: 'denied' });
+      return finishOpen(req, res, a.user.id, p.c);
     }
     if (path === '/trade/live/order' || path === '/trade/live/cancel' || path === '/trade/live/plan' || path === '/trade/live/modify') {
       if (!live) return json(res, 503, { ok: false, error: 'live unavailable' });
@@ -669,6 +707,18 @@ function createTrade(deps = {}) {
 
   /* ── 텔레그램 관리 명령(채팅 ID 확인은 server.js) ── */
   const adminStatus = () => `📊 매매 상태 · ${kst()}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치 ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 긴급정지 ${state.halted ? 'ON' : '해제'}\n열린 거래 세션 ${[...sessions.values()].filter(x => x.exp > now() && x.abs > now()).length}개 · PIN 잠금 ${state.pinLockUntil > now() ? Math.ceil((state.pinLockUntil - now()) / 60000) + '분 남음' : '없음'}${BUILD ? '\n빌드 ' + BUILD : ''}`;
+  async function adminDecide(code, ok) {
+    const t = now();
+    for (const v of pending.values()) {
+      if (v.status === 'wait' && v.exp > t && v.code === String(code).trim()) {
+        v.status = ok ? 'ok' : 'deny';
+        if (ok) remember(v.c);   // 승인한 기기는 등록 기기가 됨
+        await audit(ok ? 'session_approved' : 'session_denied', ok, { via: 'telegram', dev: v.c.d.label }, null);
+        return `${ok ? '✅ 승인했어요' : '⛔ 거부했어요'} — ${v.c.d.label} (${v.c.ip})`;
+      }
+    }
+    return '해당 코드의 대기 중인 요청이 없어요 (만료됐거나 이미 처리됨).';
+  }
   async function adminLock(via) { const n = sessions.size; sessions.clear(); await audit('session_close_all', true, { via, n }, null); return n; }
   async function adminKill(via) { state.halted = true; return audit('kill', true, { via }, null); }
   async function securitySummary(hours = 24) {
@@ -693,7 +743,7 @@ function createTrade(deps = {}) {
     if (warn.length) L.push('⚠ 경고 ' + warn.slice(-5).join(' / '));
     return L.join('\n');
   }
-  return { handle, paper, live, getQuote, adminStatus, adminLock, adminKill, securitySummary,
+  return { handle, paper, live, getQuote, adminStatus, adminLock, adminDecide, adminKill, securitySummary,
     // 체결 틱 깨우기(2026-11-13): 엔진별 감시선 · 깨우기(판정은 엔진이 REST 시세로)
     watchLines: code => [['paper', paper], ['live', live]].filter(([, e]) => e && e.watchLines).map(([k, e]) => { try { return [k, e.watchLines(code)]; } catch (_) { return [k, null]; } }).filter(([, L]) => L),
     kick: (eng, code) => { const e = eng === 'live' ? live : paper; return e && e.kick ? e.kick(code) : Promise.resolve(false); },

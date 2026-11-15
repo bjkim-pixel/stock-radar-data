@@ -11,7 +11,7 @@ let clock = 1_800_000_000_000;
 async function boot(envExtra = {}, opts = {}) {
   const pinHash = await hashPin('123456', 100000);
   const audits = [], alerts = [], supaCalls = [];
-  const env = { ALLOWED_EMAIL: 'Owner@Example.com', SUPABASE_ANON_KEY: 'anon', TRADE_PIN_HASH: pinHash, TRADING_ENABLED: '1', ...envExtra };
+  const env = { ALLOWED_EMAIL: 'Owner@Example.com', SUPABASE_ANON_KEY: 'anon', TRADE_PIN_HASH: pinHash, TRADING_ENABLED: '1', TRADE_APPROVAL: '0', TRADE_MAX_SESSIONS: '3', ...envExtra };
   const fakeFetch = async (url, init) => {
     if (String(url).includes('/auth/v1/user')) {
       supaCalls.push(init.headers.Authorization);
@@ -126,12 +126,13 @@ test('PIN 동시 시도로 횟수 제한을 우회할 수 없음', async () => {
 test('세션: 15분 지나면 만료, 사용하면 연장, 다른 사용자 불가', async () => {
   const c = await boot();
   const { body } = await open(c);
-  clock += 10 * 60000;
-  assert.equal((await c.call('GET', '/trade/ping', { session: body.session })).status, 200);
-  clock += 10 * 60000;   // 마지막 사용 후 10분 → 아직 유효(연장됨)
-  assert.equal((await c.call('GET', '/trade/ping', { session: body.session })).status, 200);
+  const act = { 'x-active': '1' };
+  clock += 4 * 60000;
+  assert.equal((await c.call('GET', '/trade/ping', { session: body.session, h: act })).status, 200);
+  clock += 4 * 60000;   // 마지막 사용 후 4분 → 아직 유효(연장됨)
+  assert.equal((await c.call('GET', '/trade/ping', { session: body.session, h: act })).status, 200);
   clock += 16 * 60000;
-  assert.equal((await c.call('GET', '/trade/ping', { session: body.session })).status, 401);
+  assert.equal((await c.call('GET', '/trade/ping', { session: body.session, h: act })).status, 401);
   await c.close();
 });
 
@@ -414,4 +415,65 @@ test('보안 요약: 세션·기기·실패·로그인 기록 집계', async () 
   const t = await c.t.securitySummary(24);
   assert.match(t, /세션 열림 1회/); assert.match(t, /갤럭시 S26 울트라 1/); assert.match(t, /실패\/거부 1건/); assert.match(t, /사이트 로그인 1회/); assert.match(t, /새 IP/);
   await c.close();
+});
+
+const DEV3 = { 'x-device-id': 'aaaaaaaaaaaaaaaaaaaa', 'x-device-info': encodeURIComponent(JSON.stringify({ n: '폰', m: 'SM-S948N' })) };
+const sess = (c, h) => c.call('POST', '/trade/session', { body: { pin: '123456' }, h });
+
+test('무조작 5분이면 자동 잠금, 조작(x-active)이 있으면 유지', async () => {
+  const c = await boot();
+  const { body } = await open(c);
+  clock += 4 * 60000;
+  assert.equal((await c.call('GET', '/trade/ping', { session: body.session })).status, 200);   // 조작 표시 없는 조회는 활동으로 안 침
+  clock += 2 * 60000;
+  assert.equal((await c.call('GET', '/trade/ping', { session: body.session })).status, 401);
+  const b2 = (await open(c)).body;
+  clock += 4 * 60000;
+  assert.equal((await c.call('GET', '/trade/ping', { session: b2.session, h: { 'x-active': '1' } })).status, 200);
+  clock += 4 * 60000;
+  assert.equal((await c.call('GET', '/trade/ping', { session: b2.session })).status, 200);
+  await c.close();
+});
+
+test('동시 세션 1개: 새로 열면 기존 세션 종료', async () => {
+  const c = await boot({ TRADE_MAX_SESSIONS: '1' });
+  const a = (await open(c)).body, b = (await open(c)).body;
+  assert.equal((await c.call('GET', '/trade/ping', { session: a.session, h: { 'x-active': '1' } })).status, 401);
+  assert.equal((await c.call('GET', '/trade/ping', { session: b.session, h: { 'x-active': '1' } })).status, 200);
+  await c.close();
+});
+
+test('새 기기: PIN 통과해도 텔레그램 승인 전엔 세션 없음 → 승인하면 열림·기기 등록', async () => {
+  const c = await boot({ TRADE_APPROVAL: '1' });
+  const r = await sess(c, DEV3);
+  assert.equal(r.status, 202); assert.ok(r.body.pending && r.body.reqId && !r.body.session);
+  const code = /\/승인 (\d{4})/.exec(c.alerts.join('\n'))[1];
+  assert.equal((await c.call('POST', '/trade/session/poll', { body: { reqId: r.body.reqId }, h: DEV3 })).status, 202);
+  assert.equal((await c.call('POST', '/trade/session/poll', { body: { reqId: r.body.reqId } })).status, 404);   // 다른 기기는 확인 불가
+  assert.match(await c.t.adminDecide('0000', true), /없어요/);
+  assert.match(await c.t.adminDecide(code, true), /승인/);
+  const p = await c.call('POST', '/trade/session/poll', { body: { reqId: r.body.reqId }, h: DEV3 });
+  assert.equal(p.status, 200); assert.ok(p.body.session);
+  const again = await sess(c, DEV3);   // 등록된 기기 → 바로 열림
+  assert.equal(again.status, 200); assert.ok(again.body.session);
+  await c.close();
+});
+
+test('승인 거부·만료, 실전 스위치 ON 이면 등록 기기도 승인 필요', async () => {
+  const c = await boot({ TRADE_APPROVAL: '1' });
+  const r = await sess(c, DEV3);
+  const code = /\/승인 (\d{4})/.exec(c.alerts.join('\n'))[1];
+  await c.t.adminDecide(code, false);
+  assert.equal((await c.call('POST', '/trade/session/poll', { body: { reqId: r.body.reqId }, h: DEV3 })).status, 403);
+  const r2 = await sess(c, DEV3);
+  clock += 4 * 60000;
+  assert.equal((await c.call('POST', '/trade/session/poll', { body: { reqId: r2.body.reqId }, h: DEV3 })).status, 403);   // 만료
+  await c.close();
+  const d = await boot({ TRADE_APPROVAL: '1', REAL_TRADING_ENABLED: '1' });
+  const code2 = (async () => { const q = await sess(d, DEV3); return [q, /\/승인 (\d{4})/.exec(d.alerts.join('\n'))[1]]; })();
+  const [q, cd] = await code2;
+  await d.t.adminDecide(cd, true);
+  assert.equal((await d.call('POST', '/trade/session/poll', { body: { reqId: q.body.reqId }, h: DEV3 })).status, 200);
+  assert.equal((await sess(d, DEV3)).status, 202);   // 이제 등록된 기기지만 실전 ON → 또 승인 필요
+  await d.close();
 });

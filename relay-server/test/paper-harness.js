@@ -68,7 +68,7 @@ async function boot(db, { envExtra = {}, clock: c0 = T0, kx = null } = {}) {
     throw new Error('unexpected ' + trId);
   };
   const pinHash = await hashPin('123456', 100000);
-  const env = { ALLOWED_EMAIL: 'owner@example.com', SUPABASE_ANON_KEY: 'anon', TRADE_PIN_HASH: pinHash, TRADING_ENABLED: '1', TRADE_HOURS: '08:00-20:00', ...envExtra };
+  const env = { ALLOWED_EMAIL: 'owner@example.com', SUPABASE_ANON_KEY: 'anon', TRADE_PIN_HASH: pinHash, TRADING_ENABLED: '1', TRADE_HOURS: '08:00-20:00', TRADE_APPROVAL: '0', TRADE_MAX_SESSIONS: '3', ...envExtra };
   const fakeFetch = async url => String(url).includes('/auth/v1/user')
     ? { ok: true, status: 200, json: async () => ({ id: 'uid-1', email: 'owner@example.com' }) } : { ok: true, status: 200 };
   const t = createTrade({ env, now: () => st.clock, fetch: fakeFetch, allowedOrigins: [ORIGIN], clientIp: () => '1.1.1.1', sbGet: db.sbGet, sbWrite: db.sbWrite, kisGet, kisPost: kx ? kx.post : undefined, skipLoop: true, notify: async (text) => { st.alerts.push(text); } });

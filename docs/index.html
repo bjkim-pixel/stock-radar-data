@@ -9848,6 +9848,7 @@ async function trdApi(path,{method="GET",body,sess,timeout}={}){
   const h={authorization:"Bearer "+tok};
   if(sess||TRD.sess)h["x-trade-session"]=sess||TRD.sess;
   Object.assign(h,devHeaders());
+  if(Date.now()-(TRD.act||0)<240000)h["x-active"]="1";   // 사용자가 최근 조작했을 때만 서버 무조작 타이머를 갱신(자동 갱신 조회는 해당 없음)
   let b;
   if(method==="POST"){h["content-type"]="application/json";b=JSON.stringify({...(body||{}),nonce:trdNonce(),ts:trdNow()});}
   const r=await fetch(RELAY_HTTP_BASE+path,{method,headers:h,body:b,cache:"no-store",...(timeout?{signal:AbortSignal.timeout(timeout)}:{})});
@@ -9973,16 +9974,35 @@ function trdShowPin(msg){
   {const dn=$("#trdDevName");if(dn)dn.value=devName()||devGuess();}
   $("#trdPinRow").classList.remove("hide");$("#trdPin").value="";setTimeout(()=>$("#trdPin").focus(),50);
 }
+/* 새 기기·실전 스위치 ON 이면 PIN 통과 후 텔레그램 승인(/승인 코드)을 기다림 */
+async function trdWaitApproval(j){
+  const end=Date.now()+(j.ttlSec||180)*1000;
+  $("#trdPinRow").classList.add("hide");
+  while(Date.now()<end){
+    trdGateMsg(`🔐 텔레그램으로 승인 요청을 보냈습니다. 텔레그램에서 "/승인 코드"를 보내주세요. (${Math.max(0,Math.round((end-Date.now())/1000))}초 남음)`);
+    await new Promise(r=>setTimeout(r,2500));
+    try{
+      const r=await trdApi("/trade/session/poll",{method:"POST",body:{reqId:j.reqId},timeout:15000});
+      if(r.session)return r;
+    }catch(e){
+      if(e.status===403||e.status===404){const x=new Error("denied");x.code="denied";throw x;}
+      if(e.status===401)throw e;
+    }
+  }
+  const x=new Error("denied");x.code="denied";throw x;
+}
 async function trdSubmitPin(){
   const pin=$("#trdPin").value,btn=$("#trdPinGo");if(!pin||btn.disabled)return;
   btn.disabled=true;
   {const dn=$("#trdDevName");if(dn&&dn.value.trim())devSaveName(dn.value);else if(!devName()&&devGuess())devSaveName(devGuess());}
   try{
-    const j=await trdApi("/trade/session",{method:"POST",body:{pin}});
-    trdSetSess(j.session);$("#trdPin").value="";await trdRefreshStatus();trdOpenMain();
+    let j=await trdApi("/trade/session",{method:"POST",body:{pin}});
+    if(j.pending)j=await trdWaitApproval(j);
+    TRD.act=Date.now();trdSetSess(j.session);$("#trdPin").value="";await trdRefreshStatus();trdOpenMain();
   }catch(e){
     const b=e.body||{};
     if(e.status===401&&b.error==="invalid pin")trdShowPin(`PIN이 맞지 않습니다. (남은 시도 ${b.left}회)`);
+    else if(e.code==='denied')trdShowPin("텔레그램에서 거부되었거나 승인 시간이 지났습니다. 다시 시도하세요.");
     else if(e.status===423)trdShowPin(`PIN이 잠겼습니다. ${Math.ceil((b.retrySec||1800)/60)}분 뒤 다시 시도하세요.`);
     else if(e.status===400)trdShowPin("요청 시각이 서버와 맞지 않습니다. 다시 시도하세요.");
     else trdShowPin("연결 오류: "+trdEsc(e.message));
@@ -10042,6 +10062,9 @@ async function trdKill(){
   }catch(e){alert(e.status===401?"해제하려면 PIN 세션이 필요합니다. 새로고침 후 PIN을 입력하세요.":"실패: "+e.message);}
 }
 // 2026-11-15: 화면은 바로 잠그고(서버가 느리거나 재배포 중이어도 반응 없음 방지), 서버 세션 종료는 뒤에서 보냄.
+/* 무조작 자동 잠금(5분): 화면을 만지거나 키를 누르지 않으면 세션을 닫음 */
+["pointerdown","keydown","touchstart","wheel"].forEach(ev=>addEventListener(ev,()=>{TRD.act=Date.now();},{passive:true,capture:true}));
+setInterval(()=>{if(TRD.sess&&Date.now()-(TRD.act||0)>300000){trdLock();trdGateMsg("5분 동안 조작이 없어 자동으로 잠갔습니다. PIN을 다시 입력하세요.");}},15000);
 function trdLock(){const sess=TRD.sess;trdSetSess(null);trdStop();trdShowPin("세션을 잠갔습니다.");
   if(sess)trdApi("/trade/lock",{method:"POST",sess,timeout:15000}).catch(()=>{});}
 
