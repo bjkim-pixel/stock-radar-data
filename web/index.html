@@ -1048,6 +1048,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .sr-card{display:flex;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer}.sr-card:last-of-type{border-bottom:0}.sr-l{min-width:0;flex:1}.sr-nm{font-weight:700;font-size:15px}.sr-sub{font-size:12px;margin:2px 0 5px}.sr-r{text-align:right;white-space:nowrap}.sr-r b{font-size:16px}
 .sr-tg{display:flex;gap:5px;flex-wrap:wrap}.sr-t{font-size:11px;border-radius:6px;padding:1px 7px;background:color-mix(in srgb,var(--ink-3) 14%,transparent)}.sr-t.a{background:color-mix(in srgb,var(--accent,#2f6fed) 15%,transparent);color:var(--accent,#2f6fed);font-weight:700}
 .sr-w{font-weight:800;color:var(--accent,#2f6fed);font-size:13px}.sr-new{font-size:10px;font-weight:800;color:#fff;background:var(--up);border-radius:5px;padding:1px 5px;vertical-align:1px}
+.tf-sel{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 8px}.tf-sel span:not(.faint):not(.dim){border:1px solid var(--border);border-radius:12px;padding:2px 9px;font-size:12px;background:color-mix(in srgb,var(--accent,#2f6fed) 8%,transparent)}
 .lv-b{display:inline-block;font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:1px}
 .lv-b.l{background:color-mix(in srgb,var(--up) 14%,transparent);color:var(--up)}.lv-b.i{background:color-mix(in srgb,var(--down) 14%,transparent);color:var(--down)}
 .lv-warn{font-size:12.5px;color:#b45309}
@@ -1741,6 +1742,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 <section id="v-trend" class="hide">
   <div class="card" id="trCard" style="margin-top:16px"><h3><span>종목 추세</span> <span class="r" id="trStat">불러오는 중…</span></h3>
     <details id="trfBox" style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600">조회 조건 <span class="faint" style="font-weight:400;font-size:11px">실시간 종목과 같은 조건 · 선택한 조건을 모두 만족하는 종목만 표시</span> <span id="trfCnt" class="up" style="font-size:11px"></span></summary><div id="trfRows" style="margin-top:6px"></div></details>
+    <div class="tf-sel" id="trSel"></div>
     <div class="qf seg" id="trCap" style="margin-bottom:6px"><button class="fchip" data-v="0" aria-pressed="false">전체</button><button class="fchip" data-v="10000" aria-pressed="true">1조 이상</button><button class="fchip" data-v="40000" aria-pressed="false">4조 이상</button><button class="fchip" data-v="100000" aria-pressed="false">10조 이상</button></div>
     <div class="qf seg" id="trAmt" style="margin-bottom:6px"><span class="faint" style="font-size:11px;align-self:center;margin-right:4px">거래대금</span><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="1000" aria-pressed="false">1,000억↑</button><button class="fchip" data-v="500" aria-pressed="false">500억↑</button><button class="fchip" data-v="300" aria-pressed="false">300억↑</button><button class="fchip" data-v="100" aria-pressed="false">100억↑</button></div>
     <div class="qf seg" id="trSort" style="margin-bottom:8px"><span class="faint" style="font-size:11px;align-self:center;margin-right:4px">정렬</span><button class="fchip" data-v="rs20" aria-pressed="true">RS20</button><button class="fchip" data-v="rs5" aria-pressed="false">RS5</button><button class="fchip" data-v="chg" aria-pressed="false">등락률</button><button class="fchip" data-v="cap" aria-pressed="false">시총</button><button class="fchip" data-v="amt" aria-pressed="false">거래대금</button></div>
@@ -2995,6 +2997,14 @@ function lfPass(code,fs){
   if(f.dart){if(!dartCodeSet(f.dart,f.dartP||"7").has(code))return false;}
   return true;
 }
+/* 선택된 조회 조건을 글자로: 종목 추세·액티브 컨센서스가 공통으로 "지금 어떤 조건이 걸려 있는지" 보여준다 */
+const LF_KEYS=[["sec","dSec"],["ma","dMaF"],["ph","dPh"],["kw","dKwF"],["div","dDivF"],["grS","dGrS"],["grO","dGrO"],["grE","dGrE"],["dart","dDartF"],["smx","dSmxF"]];
+function lfDesc(fs){const out=[];LF_KEYS.forEach(([k,id])=>{const v=fs[k];if(v===""||v==null)return;const sel=document.getElementById(id);if(!sel)return;
+  const op=[...sel.options].find(o=>o.value===String(v)),ph=sel.options[0]?sel.options[0].textContent.trim():"";let t=op?op.textContent.trim():String(v);
+  if(k==="dart")t+=` · 최근 ${fs.dartP||"7"}일`;
+  if(k==="smx"&&fs.smxW&&fs.smxW!=="all"){const w=document.getElementById("dSmxW"),wo=w&&[...w.options].find(o=>o.value===fs.smxW);t+=` · ${wo?wo.textContent.trim():fs.smxW}`;}
+  out.push(ph&&!t.includes(ph)?`${ph}: ${t}`:t);});return out;}
+const lfSelHtml=(arr,empty)=>`<span class="faint" style="font-size:11.5px;align-self:center">선택된 조건</span>`+(arr.length?arr.map(t=>`<span>${escH(t)}</span>`).join(""):`<span class="dim">${empty||"없음"}</span>`);
 function lfBuild(hostId="lfRows",pref="lf_",key="lf",onChg){
   onChg=onChg||lfChanged;
   const host=$("#"+hostId);if(!host||host.dataset.built)return;host.dataset.built="1";
@@ -3195,6 +3205,7 @@ function trRender(){
   const card=T.view==="card";
   document.documentElement.classList.toggle("wide",!card);setPageW();   // 카드 보기: 페이지를 화면 폭에 맞춰 차트가 오른쪽 끝까지
   $("#trWrap").classList.toggle("hide",card);$("#trCards").classList.toggle("hide",!card);$("#trCard").classList.toggle("cardmode",card);
+  {const cs=[`시총 ${T.min?(T.min>=10000?N(T.min/10000)+"조":N(T.min)+"억")+" 이상":"전체"}`,`거래대금 ${T.amt?N(T.amt)+"억↑":"전체"}`,...lfDesc(S.tf)];$("#trSel").innerHTML=lfSelHtml(cs);}
   $("#trStat").textContent=`${S.date} 기준 · 조건 충족 ${N(n)}종목`+(n>TR_N?` 중 상위 ${TR_N}`:"")+(n!==nCand?` / 후보 ${N(nCand)}`:"");
   if(card){trCards(rows);smxFill();kwFill();return;}
   $("#trBody").innerHTML=rows.length?rows.map((r,i)=>`<tr class="trm${T.open===r.code?" open":""}" data-code="${r.code}"><td class="l rank">${i+1}</td>${scrNameCell(r)}${scrCells(r)}</tr>${trLv2(r.code)}${T.open===r.code?`<tr class="trc" data-code="${r.code}"><td colspan="30"><div class="trcb" style="position:sticky;left:8px;width:${trW()}px"><div class="chart" id="trChart"><div class="load sk"></div></div></div></td></tr>`:""}`).join("")
@@ -3383,6 +3394,7 @@ $("#etfTab").addEventListener("seg-change",e=>{S.etf.tab=e.detail;$("#etfOv").cl
 /* ══ ETF 허브 (액티브/패시브) — 2026-11-15 ═══════════════════════════════════════
    목적: ① 액티브 ETF 운용역들이 공통으로 담은 종목 발굴 ② 수익률·RS 높은 ETF 찾기.
    데이터: etf_holdings_daily(액티브 일별 구성 30) · etf_flow_daily(상장좌수) · etf_daily(수익률) · etf_info(괴리율·순자산) · v_screener(시총·RS) */
+S.ef=S.ef||{smxW:"all",dartP:"7"};
 S.eh={tab:"port",grp:"all",sort:"cnt",pick:"all",per:"d",thr:5,cmore:false,lb:"r1m",pg:"all",ps:"r1m",loaded:false};
 const EH_SEC={"시장대표":["시장"],"코스닥":["시장"],"반도체":["반도체"],"AI·테크":["로봇·AI·소프트웨어"],"로봇":["로봇·AI·소프트웨어"],"바이오":["바이오·헬스케어"],"전력·신재생":["원자력·전력·에너지"],"2차전지":["2차전지·배터리"]};
 const ehE=c=>`<a class="lk nm" data-etf="${c}">${escH(((S.etfMap||{})[c]||{}).name||c)}</a>`;
@@ -3418,6 +3430,16 @@ async function ehLoad(force){
     E.loaded=true;
   }catch(e){console.error("ETF 허브",e);}
   E.busy=false;ehRender();
+}
+/* 액티브 컨센서스 종목 추세 필터: 종목 추세·실시간 종목과 같은 조회 조건(S.ef 독립 상태). 박스는 한 번만 만들고 다시 그릴 때마다 옮겨 붙인다 */
+const ehTfOn=()=>{const f=S.ef;return !!(f.sec||f.ma||f.ph||f.kw||f.div||f.grS||f.grO||f.grE||f.dart||f.smx);};
+function ehTfChanged(){const n=lfDesc(S.ef).length;const c=$("#ehTfCnt");if(c)c.textContent=n?`· ${n}개 적용 중`:"";ehRender();}
+function ehTfMount(){
+  const E=S.eh,slot=$("#ehTfSlot");if(!slot)return;
+  if(!E.tfBox){E.tfBox=document.createElement("div");E.tfBox.innerHTML='<details id="ehTfBox" style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600">종목 추세 조건 <span class="faint" style="font-weight:400;font-size:11px">종목 추세와 같은 조건 · 만족하는 종목만 표시</span> <span id="ehTfCnt" class="up" style="font-size:11px"></span></summary><div id="ehTfRows" style="margin-top:6px"></div></details>';}
+  slot.appendChild(E.tfBox);
+  try{lfBuild("ehTfRows","ehtf_","ef",ehTfChanged);lfSyncSectors("ehtf_dSec");}catch(e){console.error("컨센서스 조건 UI",e);}
+  const sel=$("#ehTfSel");if(sel)sel.innerHTML=lfSelHtml(lfDesc(S.ef),"없음 (액티브 ETF 전체 종목)");
 }
 function ehActSet(){ // 국내 주식형 액티브 ETF
   const E=S.eh,by={};(E.h0||[]).forEach(r=>{if(String(r.stock_code).length===6)(by[r.etf_code]=by[r.etf_code]||[]).push(r);});
@@ -3474,12 +3496,13 @@ function ehRenderAct(){
   const E=S.eh,host=$("#ehAct");
   if(!E.d0||!E.h0.length){host.innerHTML='<div class="card"><div class="load" style="text-align:left">액티브 ETF 구성종목 기록이 아직 없습니다. 장마감 후 수집이 돌면 채워집니다.</div></div>';return;}
   const all=ehActSet(),set=ehPicked();
-  const cons=ehConsensus(set).filter(o=>o.cnt>=2);
+  const efOn=ehTfOn(),cons=ehConsensus(set).filter(o=>o.cnt>=2&&(!efOn||lfPass(o.code,S.ef)));
   const sk={cnt:(a,b)=>b.cnt-a.cnt||b.avg-a.avg,ex:(a,b)=>(b.ex??-1e9)-(a.ex??-1e9),amt:(a,b)=>b.amt-a.amt,rs:(a,b)=>(b.rs??-1)-(a.rs??-1)};
   cons.sort(sk[E.sort]||sk.cnt);
   const show=E.cmore?cons.slice(0,60):cons.slice(0,15);
   const seg=(id,arr,cur)=>`<div class="qf seg" id="${id}">${arr.map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>`;
   const cT=`<div class="card" style="margin-top:12px"><h3>액티브 컨센서스 TOP <span class="r">${set.length}개 ETF 중 2개 이상 보유</span></h3>
+    <div id="ehTfSlot"></div><div class="tf-sel" id="ehTfSel"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${seg("ehGrp",[["all","전체"],["시장","시장"],["업종","업종"]],E.grp)}${seg("ehPick",[["all","전체 ETF"],["top","1개월 성과 상위 10"]],E.pick)}</div>
     <div class="qf seg" id="ehSort" style="margin-bottom:8px">${[["cnt","보유 ETF 수"],["ex","초과비중"],["amt","보유금액"],["rs","RS"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===E.sort}">${l}</button>`).join("")}</div>
     <div class="tw"><table class="eh-t"><thead><tr><th>#</th><th class="l">종목</th><th>ETF수</th><th>평균비중</th><th>시장비중</th><th>초과비중</th><th>보유금액</th><th>RS</th></tr></thead><tbody>
@@ -3507,7 +3530,7 @@ function ehRenderAct(){
   }
   const cS=`<div class="card" style="margin-top:12px"><h3>주식수 변동</h3><div id="ehSh">${shH}</div></div>`;
   // 매트릭스
-  const mat=ehConsensus(set).sort((a,b)=>b.cnt-a.cnt||b.amt-a.amt).slice(0,20),cols=[...set].sort((a,b)=>(a.m.watch_grp||"z").localeCompare(b.m.watch_grp||"z")||(+a.m.watch_ord||99)-(+b.m.watch_ord||99));
+  const mat=ehConsensus(set).filter(o=>!efOn||lfPass(o.code,S.ef)).sort((a,b)=>b.cnt-a.cnt||b.amt-a.amt).slice(0,20),cols=[...set].sort((a,b)=>(a.m.watch_grp||"z").localeCompare(b.m.watch_grp||"z")||(+a.m.watch_ord||99)-(+b.m.watch_ord||99));
   const wm={};set.forEach(x=>x.rows.forEach(r=>{wm[x.code+"|"+r.stock_code]=+r.weight;}));
   const mx=`<div class="card" style="margin-top:12px"><h3>동시 보유 ETF TOP 20 <span class="r">종목 × ETF 비중(%)</span></h3><div class="tw eh-mx"><table><thead><tr><th class="l">종목</th><th>ETF수</th>${cols.map(c=>`<th title="${escH(c.m.name)}">${escH((c.m.name||"").replace(/액티브$/,""))}</th>`).join("")}</tr></thead><tbody>${mat.map(o=>`<tr><td class="l">${etfNameLink(o.code,o.name)}</td><td><b>${o.cnt}</b></td>${cols.map(c=>{const w=wm[c.code+"|"+o.code];return `<td${w!=null?` style="background:color-mix(in srgb,var(--up) ${Math.min(55,w*4)}%,transparent)"`:""}>${w!=null?N(w,1):"–"}</td>`;}).join("")}</tr>`).join("")}</tbody></table></div></div>`;
   // 리더보드
@@ -3515,7 +3538,7 @@ function ehRenderAct(){
   const lbRows=ehLbRows(set,E.lb);
   const lb=`<div class="card" style="margin-top:12px"><h3>액티브 ETF 성과 <span class="r">${set.length}개</span></h3><div class="qf seg" id="ehLb" style="margin-bottom:6px">${[["r1m","1개월"],["r3m","3개월"],["r6m","6개월"],["rs","RS"],["ntas","순자산"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===E.lb}">${l}</button>`).join("")}</div><div class="tw"><table class="eh-t"><thead><tr><th>#</th><th class="l">ETF</th><th>1주</th><th>1개월</th><th>3개월</th><th>6개월</th><th>RS</th><th>순자산</th><th>5일 설정</th><th>괴리</th></tr></thead><tbody>${lbRows}</tbody></table></div><div class="note" style="margin-top:6px">RS = 1개월 수익률의 전체 ETF(120개) 내 백분위. 5일 설정 = 상장좌수 증감 × NAV (자금 유입 추정). 좌수 기록이 쌓이는 중이라 처음엔 "–"로 보입니다.</div></div>`;
   host.innerHTML=`<div class="card eh-sig" id="ehSig" style="margin-top:12px"></div>`+cT+cN+cS+mx+lb;
-  ehSignal(set);ehWire();etfWire(host);
+  ehSignal(set);ehTfMount();ehWire();etfWire(host);
 }
 function ehFlow5(code){
   const E=S.eh,rows=(E.flow||[]).filter(r=>r.etf_code===code).sort((a,b)=>a.d<b.d?-1:1);if(rows.length<2)return null;
