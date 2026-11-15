@@ -1034,6 +1034,11 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .eh-t td,.eh-t th{padding:6px 7px;white-space:nowrap}.eh-t td.l,.eh-t th.l{text-align:left}
 .eh-g{border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin:6px 0}.eh-g.hot{border-color:color-mix(in srgb,var(--up) 45%,var(--border));background:color-mix(in srgb,var(--up) 6%,transparent)}
 .eh-gh{display:flex;justify-content:space-between;gap:8px;font-weight:650;margin-bottom:5px}
+.pt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px}.pt-c{border:1px solid var(--border);border-radius:12px;padding:10px 12px}.pt-c h4{margin:0 0 6px;font-size:13px}
+.pt-gv{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}.pt-gv b{font-size:30px;font-weight:800}.pt-gv span{font-size:15px;font-weight:700}
+.pt-gbar{position:relative;height:12px;border-radius:8px;background:linear-gradient(90deg,var(--down),#d1d5db 50%,var(--up))}.pt-gbar i{position:absolute;top:-4px;width:4px;height:20px;background:var(--ink,#111);border-radius:2px;transform:translateX(-50%)}.pt-glab{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3);margin-top:4px}
+.lv-tiles b i{font-style:normal}.pt-cp{display:flex;align-items:center;gap:8px;margin-top:6px}.pt-ck{width:108px;font-size:12.5px;font-weight:600}.pt-cb{flex:1;height:8px;border-radius:5px;background:color-mix(in srgb,var(--ink-3) 18%,transparent);overflow:hidden}.pt-cb i{display:block;height:100%;background:var(--accent,#2f6fed)}.pt-cv{width:28px;text-align:right;font-weight:700;font-size:13px}.pt-ct{font-size:11.5px;color:var(--ink-3);margin:1px 0 0 116px}
+.pt-fb{display:inline-block;height:9px;border-radius:3px;vertical-align:middle}.pt-fb.u{background:var(--up)}.pt-fb.d{background:var(--down)}
 .lv-b{display:inline-block;font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:1px}
 .lv-b.l{background:color-mix(in srgb,var(--up) 14%,transparent);color:var(--up)}.lv-b.i{background:color-mix(in srgb,var(--down) 14%,transparent);color:var(--down)}
 .lv-warn{font-size:12.5px;color:#b45309}
@@ -1705,9 +1710,10 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 </section>
 <section id="v-etfhub" class="hide">
   <div class="card" style="margin-top:16px"><h3>ETF <span class="r" id="ehAsOf"></span></h3>
-    <div class="qf seg" id="ehTab"><button class="fchip" data-v="act" aria-pressed="true">액티브</button><button class="fchip" data-v="pas">패시브</button><button class="fchip" data-v="sec">섹터</button><button class="fchip" data-v="lev">레버리지/인버스</button></div>
-    <div class="note" style="margin-top:8px">액티브·패시브 탭: 액티브 ETF 운용역들이 <b>공통으로 담은 종목</b>을 찾고, 수익률·RS가 좋은 ETF를 비교합니다. 구성종목은 매일 장마감 후 KIS에서 수집(상위 30종목)합니다.</div></div>
-  <div id="ehAct"><div class="card"><div class="load sk"></div></div></div>
+    <div class="qf seg" id="ehTab"><button class="fchip" data-v="port" aria-pressed="true">ETF 포털</button><button class="fchip" data-v="act">액티브</button><button class="fchip" data-v="pas">패시브</button><button class="fchip" data-v="sec">섹터</button><button class="fchip" data-v="lev">레버리지/인버스</button></div>
+    <div class="note" style="margin-top:8px">ETF 포털: 오늘의 ETF 흐름(급등락·거래대금·자금 유입·위험선호)을 한눈에 봅니다. 액티브·패시브 탭: 액티브 ETF 운용역들이 <b>공통으로 담은 종목</b>을 찾고, 수익률·RS가 좋은 ETF를 비교합니다. 구성종목은 매일 장마감 후 KIS에서 수집(상위 30종목)합니다.</div></div>
+  <div id="ehPort"><div class="card"><div class="load sk"></div></div></div>
+  <div id="ehAct" class="hide"><div class="card"><div class="load sk"></div></div></div>
   <div id="ehPas" class="hide"></div>
   <div id="ehLev" class="hide"></div>
   <div id="ehSec" class="hide"></div>
@@ -3367,7 +3373,7 @@ $("#etfTab").addEventListener("seg-change",e=>{S.etf.tab=e.detail;$("#etfOv").cl
 /* ══ ETF 허브 (액티브/패시브) — 2026-11-15 ═══════════════════════════════════════
    목적: ① 액티브 ETF 운용역들이 공통으로 담은 종목 발굴 ② 수익률·RS 높은 ETF 찾기.
    데이터: etf_holdings_daily(액티브 일별 구성 30) · etf_flow_daily(상장좌수) · etf_daily(수익률) · etf_info(괴리율·순자산) · v_screener(시총·RS) */
-S.eh={tab:"act",grp:"all",sort:"cnt",pick:"all",per:"d",thr:5,cmore:false,lb:"r1m",pg:"all",ps:"r1m",loaded:false};
+S.eh={tab:"port",grp:"all",sort:"cnt",pick:"all",per:"d",thr:5,cmore:false,lb:"r1m",pg:"all",ps:"r1m",loaded:false};
 const EH_SEC={"시장대표":["시장"],"코스닥":["시장"],"반도체":["반도체"],"AI·테크":["로봇·AI·소프트웨어"],"로봇":["로봇·AI·소프트웨어"],"바이오":["바이오·헬스케어"],"전력·신재생":["원자력·전력·에너지"],"2차전지":["2차전지·배터리"]};
 const ehE=c=>`<a class="lk nm" data-etf="${c}">${escH(((S.etfMap||{})[c]||{}).name||c)}</a>`;
 const ehPct=v=>v==null?'<span class="dim">–</span>':`<span class="${sgn(v)}">${pm(v,1)}%</span>`;
@@ -3447,7 +3453,8 @@ const ehChip=(c,t)=>`<span class="eh-chip">${ehE(c)} <b>${t}</b></span>`;
 function ehRender(){
   const E=S.eh;
   $("#ehAsOf").textContent=E.d0?`구성 기준 ${E.d0}`:"";
-  $("#ehAct").classList.toggle("hide",E.tab!=="act");$("#ehPas").classList.toggle("hide",E.tab!=="pas");$("#ehLev").classList.toggle("hide",E.tab!=="lev");$("#ehSec").classList.toggle("hide",E.tab!=="sec");
+  $("#ehAct").classList.toggle("hide",E.tab!=="act");$("#ehPas").classList.toggle("hide",E.tab!=="pas");$("#ehLev").classList.toggle("hide",E.tab!=="lev");$("#ehSec").classList.toggle("hide",E.tab!=="sec");$("#ehPort").classList.toggle("hide",E.tab!=="port");
+  if(E.tab==="port"){ehPortRender();return;}
   if(E.tab==="lev"){ehLvRender();return;}
   if(E.tab==="sec"){ehSecRender();return;}
   if(E.tab==="act")ehRenderAct();else ehRenderPas();
@@ -3543,7 +3550,140 @@ function ehWire(){
   if(E.sec)on("ehSecF",v=>{E.sec.f=v;ehRender();});
   const L=E.lv;if(L){on("ehLvSort",v=>{L.sort=v;ehRender();});on("ehLvPg",v=>{L.pg=v;L.moreP=false;ehRender();});on("ehLvPer",v=>{L.per=v;ehRender();});on("ehLvRg",v=>{L.rg=v;ehRender();});on("ehLvRs",v=>{L.rs=v;ehRender();});on("ehLvEp",v=>{L.ep=v;ehRender();});
     [["ehLvML","moreL"],["ehLvMI","moreI"],["ehLvMP","moreP"]].forEach(([id,k])=>{const b=$("#"+id);if(b)b.onclick=()=>{L[k]=!L[k];ehRender();};});}
+  const T=E.port;if(T){on("ehPtCat",v=>{T.cat=v;T.more=false;ehRender();});on("ehPtMg",v=>{T.mg=v;T.more=false;ehRender();});on("ehPtRk",v=>{T.rk=v;T.more=false;ehRender();});on("ehPtPf",v=>{T.pf=v;ehRender();});on("ehPtFl",v=>{T.fl=v;ehRender();});const b=$("#ehPtMore");if(b)b.onclick=()=>{T.more=!T.more;ehRender();};}
   const mo=$("#ehCMore");if(mo)mo.onclick=()=>{E.cmore=!E.cmore;ehRender();};
+}
+/* ══ ETF 허브 · ETF 포털(오늘의 ETF) 탭 — 2026-11-15 ═══════════════════════════════
+   대상: etf_master 중 인버스·레버리지·기초자산(참고)을 뺀 국내 상장 ETF(우리 DB 등록분만).
+   데이터: ehLoad()가 불러온 수익률·순자산·구성종목 + etf_daily(당일·5일 거래대금) + etf_flow_daily(상장좌수 증감) + etf_holdings_now(내 투자종목). */
+const EH_NORM={"AI·테크":"로봇·AI·소프트웨어","로봇":"로봇·AI·소프트웨어","바이오":"바이오·헬스케어","전력·신재생":"원자력·전력·에너지","2차전지":"2차전지·배터리"};
+const ehSubLabel=m=>m.field==="국내 시장지수"?"국내 시장지수":(EH_NORM[m.subfield]||m.subfield||m.field||"기타");
+const ehCat=m=>m.field==="국내 시장지수"||m.subfield==="배당·가치"?"mkt":m.field==="국내 업종·테마"?"sec":m.field==="국가별(해외주식)"?"glb":m.field==="원자재"?"com":"etc";
+const ehAvg=(a,k)=>{a=a.map(r=>k?r[k]:r).filter(v=>v!=null&&!isNaN(v));return a.length?a.reduce((x,y)=>x+y,0)/a.length:null;};
+async function ehPortLoad(force){
+  const E=S.eh,P=E.port=E.port||{loaded:false,busy:false,cat:"all",mg:"all",rk:"chg",pf:"r1m",fl:"w",more:false};
+  if(P.loaded&&!force){ehRender();return;}if(P.busy)return;P.busy=true;P.failed=false;
+  $("#ehPort").innerHTML='<div class="card" style="margin-top:12px"><div class="load sk"></div></div>';
+  try{
+    while(E.busy)await new Promise(r=>setTimeout(r,150));
+    await ehLoad(force);
+    if(!E.loaded||!(E.td||[]).length)throw new Error("ehLoad 실패");
+    const all=Object.values(S.etfMap||{}),U=all.filter(m=>m.field!=="인버스·레버리지"&&m.field!=="기초자산(참고)"),LI=all.filter(m=>m.field==="인버스·레버리지");
+    const ds=E.td.slice(0,6),inl=a=>a.map(m=>m.code).join(",");
+    const fd=await q("etf_flow_daily","select=d&etf_code=eq.494890&order=d.desc&limit=8").then(r=>r.map(x=>x.d)).catch(()=>[]);
+    const fn=Math.min(5,Math.max(fd.length-1,0)),fk=fd.length>=2?[fd[0],fd[1],fd[fn]]:[];
+    const [px,lp,fl]=await Promise.all([
+      q("etf_daily",`select=code,trade_date,close,volume,amount&code=in.(${inl(U)})&trade_date=in.(${ds.join(",")})&limit=1000`).catch(()=>[]),
+      LI.length?q("etf_daily",`select=code,trade_date,amount&code=in.(${inl(LI)})&trade_date=in.(${ds.join(",")})&limit=1000`).catch(()=>[]):[],
+      fk.length?q("etf_flow_daily",`select=d,etf_code,listed,ntas_eok,nav&d=in.(${[...new Set(fk)].join(",")})&limit=1000`).catch(()=>[]):[]]);
+    const byC={};px.forEach(r=>{(byC[r.code]=byC[r.code]||{})[r.trade_date]={c:+r.close,a:+r.amount};});
+    const lvm={};lp.forEach(r=>{(lvm[r.code]=lvm[r.code]||{})[r.trade_date]=+r.amount;});
+    const flM={};fl.forEach(r=>{(flM[r.etf_code]=flM[r.etf_code]||{})[r.d]=r;});
+    const fw=(a,b)=>a&&b&&a.listed!=null&&b.listed!=null&&a.nav!=null?(a.listed-b.listed)*(+a.nav)/1e8:null;
+    P.d0=ds[0];P.fn=fn;P.fOk=fk.length>0;
+    P.rows=U.map(m=>{
+      const s=byC[m.code]||{},a=s[ds[0]],b=s[ds[1]],ret=E.ret[m.code]||{},inf=E.info[m.code]||{},f=flM[m.code]||{};
+      const pa=ds.slice(1).map(d=>s[d]&&s[d].a).filter(v=>v>0),avg5=pa.length>=3?pa.reduce((x,y)=>x+y,0)/pa.length:null;
+      return {code:m.code,m,cat:ehCat(m),sub:ehSubLabel(m),chg:a&&b&&b.c?(a.c/b.c-1)*100:null,amt:a?a.a:null,avg5,amtX:a&&avg5?a.a/avg5:null,
+        r1w:ret.r1w,r1m:ret.r1m,r3m:ret.r3m,r6m:ret.r6m,rs:ret.rs,ntas:inf.ntas_eok==null?null:+inf.ntas_eok,dprt:inf.dprt==null?null:+inf.dprt,
+        fd:fk.length?fw(f[fk[0]],f[fk[1]]):null,fw:fk.length?fw(f[fk[0]],f[fk[2]]):null};});
+    const lvA=(g,d)=>LI.filter(m=>(lvMult(m)>0)===g).reduce((a,m)=>a+((lvm[m.code]||{})[d]||0),0);
+    const rat=d=>{const l=lvA(true,d),i=lvA(false,d);return l+i>0?l/(l+i):null;};
+    P.lvR=rat(ds[0]);const pr=ds.slice(1).map(rat).filter(v=>v!=null);P.lvR5=pr.length>=3?ehAvg(pr):null;
+    P.loaded=true;
+    ehPortHold().catch(()=>{}).then(()=>{if(S.eh.tab==="port")ehRender();});
+  }catch(e){console.error("ETF 포털",e);P.failed=true;}
+  P.busy=false;ehRender();
+}
+async function ehPortHold(){
+  const P=S.eh.port,hl=holdList().filter(Boolean);P.hkey=hl.join(",");
+  if(!hl.length){P.hold={rows:[],n:0};return;}
+  const rows=await q("etf_holdings_now",`select=etf_code,stock_code,stock_name,weight,rank&stock_code=in.(${hl.slice(0,60).join(",")})&limit=1000`).catch(()=>[]);
+  P.hold={rows,n:hl.length};
+}
+function ehPortTemp(R){
+  const P=S.eh.port,cl=v=>Math.max(0,Math.min(100,v)),eq=R.filter(r=>["mkt","sec","glb"].includes(r.cat)),
+    safe=R.filter(r=>["채권","현금성·단기채"].includes(r.m.field)||r.m.subfield==="금·은"),c=[];
+  const hv=eq.filter(r=>r.chg!=null),nu=hv.filter(r=>r.chg>0).length,br=hv.length>=10?nu/hv.length*100:null;
+  c.push({k:"시장 폭",v:br,t:br==null?"–":`주식형 ETF ${hv.length}개 중 ${nu}개 상승`});
+  const lr=P.lvR,l5=P.lvR5;
+  c.push({k:"레버리지 쏠림",v:lr!=null&&l5!=null?cl(50+(lr-l5)*500):null,t:lr==null?"–":`레버리지ETF 거래대금 비중 ${N(lr*100,0)}% (최근 5일 평균 ${l5==null?"–":N(l5*100,0)+"%"})`});
+  const ea=ehAvg(eq,"r1w"),sa=ehAvg(safe,"r1w");
+  c.push({k:"위험 vs 안전자산",v:ea!=null&&sa!=null?cl(50+(ea-sa)*10):null,t:`1주 수익률 · 주식형 ${ea==null?"–":pm(ea,1)+"%"} / 안전자산(채권·금·은) ${sa==null?"–":pm(sa,1)+"%"}`});
+  const ax=ehAvg(eq,"amtX");
+  c.push({k:"거래 활력",v:ax!=null?cl(50+(ax-1)*100):null,t:ax==null?"–":`주식형 ETF 거래대금이 최근 5일 평균의 ${N(ax*100,0)}%`});
+  const vs=c.map(x=>x.v).filter(v=>v!=null),score=vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:null;
+  const label=score==null?"–":score>=70?"위험선호 강함":score>=57?"위험선호":score>=43?"중립":score>=30?"관망":"위험회피";
+  return {c,score,label};
+}
+function ehPortRender(){
+  const E=S.eh,P=E.port,host=$("#ehPort");
+  if(!P||!P.loaded){if(P&&P.failed)host.innerHTML='<div class="card" style="margin-top:12px"><div class="load" style="text-align:left">ETF 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div></div>';return;}
+  $("#ehAsOf").textContent=`시세 기준 ${P.d0}`;
+  const R=P.rows,have=R.filter(r=>r.chg!=null);
+  if(!have.length){host.innerHTML='<div class="card" style="margin-top:12px"><div class="load" style="text-align:left">ETF 일봉이 아직 없습니다. 장마감 후 수집이 돌면 채워집니다.</div></div>';return;}
+  const card=(h,b,r)=>`<div class="card" style="margin-top:12px"><h3>${h}${r?` <span class="r">${r}</span>`:""}</h3>${b}</div>`;
+  const top=(arr,k,n,dir)=>[...arr].filter(r=>r[k]!=null).sort((a,b)=>dir*(b[k]-a[k])).slice(0,n);
+  const lr=(i,r,val,ex)=>`<div class="lv-row"><span class="lv-rk">${i}</span><span class="lv-rn">${ehE(r.code)} <span class="faint" style="font-size:11px">${escH(r.sub)}</span></span>${ex||""}<span class="lv-rv">${val}</span></div>`;
+  // ① 요약 + 온도계
+  const up=have.filter(r=>r.chg>0.005).length,dn=have.filter(r=>r.chg<-0.005).length,eq=have.filter(r=>["mkt","sec","glb"].includes(r.cat));
+  const pr=R.filter(r=>r.amt&&r.amtX),sA=pr.reduce((a,r)=>a+r.amt,0),sB=pr.reduce((a,r)=>a+r.amt/r.amtX,0),tA=R.reduce((a,r)=>a+(r.amt||0),0);
+  const T=ehPortTemp(R);
+  const sum=`<div class="lv-tiles"><div><span>상승 / 하락 / 보합</span><b><i class="up">${up}</i> / <i class="down">${dn}</i> / ${have.length-up-dn}</b></div><div><span>주식형 평균 등락</span><b>${ehPct(ehAvg(eq,"chg"))}</b></div><div><span>총 거래대금</span><b>${N(tA/1e8,0)}억</b></div><div><span>5일 평균 대비</span><b class="${sB?sgn(sA/sB-1):""}">${sB?N(sA/sB*100,0)+"%":"–"}</b></div></div>`;
+  const gauge=T.score==null?'<div class="faint">데이터 부족</div>':`<div class="pt-gv"><b>${N(T.score,0)}</b><span>${T.label}</span></div><div class="pt-gbar"><i style="left:${T.score}%"></i></div><div class="pt-glab"><span>위험회피</span><span>중립</span><span>위험선호</span></div>`;
+  const cp=T.c.map(x=>`<div class="pt-cp"><span class="pt-ck">${x.k}</span><div class="pt-cb"><i style="width:${x.v==null?0:x.v}%"></i></div><span class="pt-cv">${x.v==null?"–":N(x.v,0)}</span></div><div class="pt-ct">${x.t}</div>`).join("");
+  const hdr=card("오늘의 ETF",sum+`<div style="margin-top:14px">${gauge}</div><div style="margin-top:10px">${cp}</div><div class="note" style="margin-top:8px"><b>위험선호 온도계</b>는 4가지(시장 폭 · 레버리지 거래대금 쏠림 · 주식형 vs 안전자산 1주 수익률 · 거래 활력)를 0~100으로 환산해 평균낸 <b>참고용 자체 지표</b>입니다. 50이 중립이며, 투자 판단의 근거로 쓰기엔 단순합니다.</div>`,`${R.length}개 ETF`);
+  // ② 트렌드보드
+  const tb=(t,arr,f)=>`<div class="pt-c"><h4>${t}</h4>${arr.length?arr.map((r,i)=>lr(i+1,r,f(r))).join(""):'<div class="faint" style="font-size:12.5px">해당 없음</div>'}</div>`;
+  const fk=P.fn>=2?`${P.fn}일`:"1일";
+  const board=card("트렌드보드",`<div class="pt-grid">${tb("<span class=\"up\">▲</span> 급등 TOP 5",top(R,"chg",5,1),r=>ehPct(r.chg))}${tb("<span class=\"down\">▼</span> 급락 TOP 5",top(R,"chg",5,-1),r=>ehPct(r.chg))}${tb("거래대금 TOP 5",top(R,"amt",5,1),r=>lvAmt(r.amt))}${tb("거래대금 급증 TOP 5",top(R.filter(r=>r.amt>=3e8),"amtX",5,1),r=>N(r.amtX,1)+"배")}${P.fOk?tb(`자금 유입 TOP 5 (${fk})`,top(R,"fw",5,1).filter(r=>r.fw>0),r=>`<span class="up">${pm(r.fw,0)}억</span>`)+tb(`자금 이탈 TOP 5 (${fk})`,top(R,"fw",5,-1).filter(r=>r.fw<0),r=>`<span class="down">${pm(r.fw,0)}억</span>`):""}</div><div class="note" style="margin-top:8px">거래대금 급증 = 오늘 거래대금 ÷ 직전 5거래일 평균 (거래대금 3억 이상만). 자금 유입·이탈 = 상장좌수 증감 × NAV 추정치입니다.</div>`,`${P.d0}`);
+  // ③ 당일 순위 (필터 적용)
+  const F=R.filter(r=>(P.cat==="all"||r.cat===P.cat)&&(P.mg==="all"||r.m.mgmt===P.mg));
+  const rkD={chg:["상승률",(a,b)=>b.chg-a.chg,r=>r.chg!=null],dn:["하락률",(a,b)=>a.chg-b.chg,r=>r.chg!=null],amt:["거래대금",(a,b)=>b.amt-a.amt,r=>r.amt!=null],amtX:["거래대금 급증",(a,b)=>b.amtX-a.amtX,r=>r.amtX!=null&&r.amt>=3e8],ntas:["순자산",(a,b)=>b.ntas-a.ntas,r=>r.ntas!=null]};
+  const rd=rkD[P.rk]||rkD.chg,rl=F.filter(rd[2]).sort(rd[1]),shown=rl.slice(0,P.more?40:15);
+  const filt=lvSeg("ehPtCat",[["all","전체"],["mkt","시장·배당"],["sec","업종·테마"],["glb","해외 국가"],["com","원자재"],["etc","채권·기타"]],P.cat)+lvSeg("ehPtMg",[["all","액티브+패시브"],["액티브","액티브"],["패시브","패시브"]],P.mg);
+  const rk=card("당일 순위",`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${filt}</div>${lvSeg("ehPtRk",Object.entries(rkD).map(([k,v])=>[k,v[0]]),P.rk)}
+    <div class="tw" style="margin-top:8px"><table class="eh-t"><thead><tr><th>#</th><th class="l">ETF</th><th class="l">분야</th><th>등락</th><th>거래대금</th><th>5일평균比</th><th>순자산</th><th>괴리</th></tr></thead><tbody>${shown.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${ehE(r.code)}</td><td class="l faint">${escH(r.sub)}</td><td>${ehPct(r.chg)}</td><td>${r.amt==null?"–":lvAmt(r.amt)}</td><td>${r.amtX==null?"–":N(r.amtX,1)+"배"}</td><td>${r.ntas==null?"–":N(r.ntas,0)+"억"}</td><td>${r.dprt==null?"–":pm(r.dprt,2)+"%"}</td></tr>`).join("")||'<tr><td colspan="8" class="load">조건에 맞는 ETF 없음</td></tr>'}</tbody></table></div>${rl.length>15?`<div style="text-align:center;margin-top:6px"><button class="btn ghost" id="ehPtMore">${P.more?"접기":`+${Math.min(40,rl.length)-15}개 더보기`}</button></div>`:""}`,`${rl.length}개`);
+  // ④ 기간별 수익률 (같은 필터)
+  const pa=F.filter(r=>r[P.pf]!=null).sort((x,y)=>y[P.pf]-x[P.pf]),pt=pa.slice(0,10),pb=pa.slice(-5).reverse();
+  const per=card("기간별 수익률",`${lvSeg("ehPtPf",[["r1w","1주"],["r1m","1개월"],["r3m","3개월"],["r6m","6개월"]],P.pf)}<div class="note" style="margin:6px 0 4px">위 '당일 순위'의 분야·운용 필터가 그대로 적용됩니다.</div>
+    <div class="pt-grid" style="margin-top:6px"><div class="pt-c"><h4 class="up">상위 10</h4>${pt.map((r,i)=>lr(i+1,r,ehPct(r[P.pf]))).join("")||'<div class="faint">없음</div>'}</div><div class="pt-c"><h4 class="down">하위 5</h4>${pb.map((r,i)=>lr(pa.length-i,r,ehPct(r[P.pf]))).join("")||'<div class="faint">없음</div>'}</div></div>`,`${pa.length}개`);
+  // ⑤ 자금 유입/이탈
+  let flw;
+  if(!P.fOk)flw='<div class="load" style="text-align:left">상장좌수 기록이 2일 이상 쌓이면 표시됩니다.</div>';
+  else{const k=P.fl==="d"?"fd":"fw",fa=R.filter(r=>r[k]!=null),ins=top(fa,k,10,1).filter(r=>r[k]>0),outs=top(fa,k,10,-1).filter(r=>r[k]<0);
+    const sp=r=>`<span class="faint" style="font-size:11px">${r.ntas?pm(r[k]/r.ntas*100,1)+"%":""}</span>`,v=r=>`<span class="${sgn(r[k])}">${pm(r[k],0)}억</span>`;
+    flw=`${lvSeg("ehPtFl",[["d","1일"],["w",`${P.fn}일`]],P.fl)}<div class="pt-grid" style="margin-top:8px"><div class="pt-c"><h4 class="up">유입 TOP 10</h4>${ins.map((r,i)=>lr(i+1,r,v(r),sp(r))).join("")||'<div class="faint">없음</div>'}</div><div class="pt-c"><h4 class="down">이탈 TOP 10</h4>${outs.map((r,i)=>lr(i+1,r,v(r),sp(r))).join("")||'<div class="faint">없음</div>'}</div></div><div class="note" style="margin-top:8px">상장좌수 증감 × NAV 로 추정한 설정·환매 금액입니다 (괄호 옆 % = 순자산 대비). 좌수 기록이 쌓이는 중이라 기간은 최대 ${P.fn}거래일입니다.</div>`;}
+  const fl=card("자금 유입 / 이탈",flw);
+  // ⑥ 분야별 자금흐름
+  const gm={};R.forEach(r=>{(gm[r.sub]=gm[r.sub]||{sub:r.sub,a:[]}).a.push(r);});
+  const fkey=P.fl==="d"?"fd":"fw";
+  const gs=Object.values(gm).map(g=>{const f=g.a.filter(r=>r[fkey]!=null);return {sub:g.sub,n:g.a.length,ntas:g.a.reduce((x,r)=>x+(r.ntas||0),0),chg:ehAvg(g.a,"chg"),w:ehAvg(g.a,"r1w"),m:ehAvg(g.a,"r1m"),m3:ehAvg(g.a,"r3m"),amt:g.a.reduce((x,r)=>x+(r.amt||0),0),flow:f.length?f.reduce((x,r)=>x+r[fkey],0):null};})
+    .sort((a,b)=>(b.flow??-1e12)-(a.flow??-1e12)||b.ntas-a.ntas);
+  const mx=Math.max(1,...gs.map(g=>Math.abs(g.flow||0)));
+  const sec=card("분야별 자금흐름",`<div class="note" style="margin:0 0 6px">분야 평균 수익률은 ETF 단순 평균입니다. 자금은 위 '자금 유입/이탈'의 기간 선택(${P.fl==="d"?"1일":P.fn+"일"})을 따릅니다.</div><div class="tw"><table class="eh-t"><thead><tr><th class="l">분야</th><th>ETF</th><th>순자산</th><th>등락</th><th>1주</th><th>1개월</th><th>3개월</th><th>거래대금</th><th class="l">자금(억)</th></tr></thead><tbody>${gs.map(g=>`<tr><td class="l">${escH(g.sub)}</td><td>${g.n}</td><td>${N(g.ntas,0)}억</td><td>${ehPct(g.chg)}</td><td>${ehPct(g.w)}</td><td>${ehPct(g.m)}</td><td>${ehPct(g.m3)}</td><td>${lvAmt(g.amt)}</td><td class="l">${g.flow==null?'<span class="dim">–</span>':`<span class="pt-fb ${g.flow>=0?"u":"d"}" style="width:${Math.max(2,Math.abs(g.flow)/mx*70)}px"></span> <span class="${sgn(g.flow)}">${pm(g.flow,0)}</span>`}</td></tr>`).join("")}</tbody></table></div>`);
+  // ⑦ 새로 편입한 종목 (액티브)
+  let nw;
+  if(!E.d0||!(E.h0||[]).length)nw='<div class="load" style="text-align:left">액티브 ETF 구성종목 기록이 아직 없습니다.</div>';
+  else{const ch=ehChanges(ehActSet(),"d");
+    if(!ch)nw=`<div class="load" style="text-align:left">비교할 전일 기록이 아직 없습니다. 11/16(월) 장마감 수집 이후부터 표시됩니다. (현재 기록 시작일 ${E.d0})</div>`;
+    else{const arr=[...ch.nw].sort((a,b)=>b.list.length-a.list.length||b.sumW-a.sumW).slice(0,8);
+      nw=`<div class="note" style="margin-bottom:6px">${ch.d} → ${E.d0} · 액티브 ETF 상위 30종목에 새로 들어온 종목 (편출·주식수 변동은 '액티브' 탭)</div>`+(arr.map(o=>`<div class="eh-g${o.list.length>=2?" hot":""}"><div class="eh-gh"><span>${etfNameLink(o.code,o.name)}</span><b class="up">${o.list.length} ETF</b></div>${o.list.map(x=>ehChip(x.etf,N(x.w,1)+"%")).join("")}</div>`).join("")||'<div class="faint">신규 편입 없음</div>');}}
+  const neu=card("새로 편입한 종목",nw,"액티브 ETF");
+  // ⑧ 내 투자종목 연동
+  const H=P.hold,hl=holdList();
+  if(!H||P.hkey!==hl.join(",")){if(!P.hbusy){P.hbusy=true;ehPortHold().catch(()=>{}).then(()=>{P.hbusy=false;if(S.eh.tab==="port")ehRender();});}}
+  let mine;
+  if(!H)mine='<div class="load sk"></div>';
+  else if(!hl.length)mine='<div class="load" style="text-align:left">내 투자종목이 없습니다. 종목명 옆 💼 버튼으로 담으면, 그 종목을 많이 담은 ETF를 여기서 볼 수 있습니다.</div>';
+  else{const ok=new Set(R.map(r=>r.code)),rows=H.rows.filter(x=>ok.has(x.etf_code)),rm={};R.forEach(r=>rm[r.code]=r);
+    if(!rows.length)mine='<div class="load" style="text-align:left">내 투자종목이 상위 30종목에 들어간 ETF가 없습니다.</div>';
+    else{const bs={},be={};rows.forEach(x=>{(bs[x.stock_code]=bs[x.stock_code]||{name:x.stock_name||codeName(x.stock_code),code:x.stock_code,a:[]}).a.push(x);(be[x.etf_code]=be[x.etf_code]||{code:x.etf_code,a:[],sw:0}).a.push(x);be[x.etf_code].sw+=+x.weight||0;});
+      const sl=Object.values(bs).sort((a,b)=>b.a.length-a.length).slice(0,10),el=Object.values(be).sort((a,b)=>b.a.length-a.length||b.sw-a.sw).slice(0,5);
+      mine=`<div class="note" style="margin-bottom:6px">내 투자종목 ${hl.length}개 중 ${Object.keys(bs).length}개가 ETF 상위 30종목에 들어 있습니다.</div><h4>내 종목을 많이 담은 ETF TOP 5</h4>${el.map(o=>`<div class="eh-g"><div class="eh-gh"><span>${ehE(o.code)} ${ehPct((rm[o.code]||{}).chg)}</span><b>${o.a.length}종목 · ${N(o.sw,1)}%</b></div>${[...o.a].sort((x,y)=>y.weight-x.weight).map(x=>`<span class="eh-chip">${escH(x.stock_name||codeName(x.stock_code))} <b>${N(+x.weight,1)}%</b></span>`).join("")}</div>`).join("")}<h4 style="margin-top:12px">종목별로 많이 담은 ETF</h4>${sl.map(o=>`<div class="eh-g"><div class="eh-gh"><span>${escH(o.name)}</span><b>${o.a.length}개 ETF</b></div>${[...o.a].sort((x,y)=>y.weight-x.weight).slice(0,4).map(x=>ehChip(x.etf_code,N(+x.weight,1)+"%")).join("")}</div>`).join("")}`;}}
+  const mc=card("내 투자종목 × ETF",mine,"💼");
+  host.innerHTML=hdr+board+rk+per+fl+sec+neu+mc;
+  ehWire();etfWire(host);
 }
 /* ══ ETF 허브 · 레버리지/인버스 탭 — 2026-11-15 ═══════════════════════════════════
    대상: etf_master 의 분야 '인버스·레버리지'. 일봉(etf_daily)·순자산/상장좌수(etf_info·etf_flow_daily)로 계산. 기초자산 비교는 LV_BASE 에 있는 종목만. */
@@ -3689,7 +3829,7 @@ function ehLvRender(){
   host.innerHTML=hdr+mv+gl+sent+pair+per+rank+effC+flow;ehWire();etfWire(host);
 }
 
-$("#ehTab").addEventListener("seg-change",e=>{S.eh.tab=["pas","lev","sec"].includes(e.detail)?e.detail:"act";if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();});
+$("#ehTab").addEventListener("seg-change",e=>{S.eh.tab=["pas","lev","sec","port"].includes(e.detail)?e.detail:"act";if(S.eh.tab==="port")ehPortLoad();else if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();});
 
 /* ══ 접속 기기 식별 · 보안 로그 — 2026-11-15 ═══════════════════════════════════
    모든 거래 요청에 기기 ID(무작위, 이 브라우저에만 저장)와 기기 이름·모델(Chrome UA-CH)을 실어 보냄 → 서버 감사 기록·텔레그램 알림에 표시. */
@@ -4445,7 +4585,7 @@ function go(v,detailCode){
       detailJustLoaded=true;
     }
   }
-  if(v==="etfhub"){if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();}
+  if(v==="etfhub"){if(S.eh.tab==="port")ehPortLoad();else if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();}
   if(v==="seclog")slLoad();
   if(v==="etf"){const c=detailCode||S.etf.code;if(c&&(c!==S.etf.code||detailCode))etfLoad(c);}
   if(v==="proc")procEnter();
