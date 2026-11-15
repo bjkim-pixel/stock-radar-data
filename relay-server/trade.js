@@ -587,6 +587,14 @@ function createTrade(deps = {}) {
       try { return json(res, 200, await autoRef.uiState()); }
       catch (e) { console.warn('[trade] 자동매매 상태 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'auto state failed' }); }
     }
+    if (path === '/trade/auto/journal' && req.method === 'GET') {   // 자동 일지: 목록+성과(?sid&from&to) 또는 하루 상세(?date&sid)
+      if (!autoRef || !autoRef.journalList) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      try {
+        const sp = new URL(req.url, 'http://x').searchParams;
+        const r = sp.get('date') ? await autoRef.journalGet(sp.get('date'), sp.get('sid') || null) : await autoRef.journalList({ sid: sp.get('sid'), from: sp.get('from'), to: sp.get('to'), limit: sp.get('limit') });
+        return json(res, r.ok ? 200 : (r.status || 400), r);
+      } catch (e) { console.warn('[trade] 일지 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'journal read failed' }); }
+    }
     if ((path === '/trade/auto/strategies' || path === '/trade/auto/strategy-versions') && req.method === 'GET') {   // 컨트롤 타워: 전략 목록·스키마 / 버전 이력
       if (!autoRef || !autoRef.strategies) return json(res, 503, { ok: false, error: 'auto unavailable' });
       try {
@@ -669,6 +677,13 @@ function createTrade(deps = {}) {
       const r = await autoRef[fn](kind, nums, sid).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
       audit(path === '/trade/auto/approve' ? 'auto_approve' : 'auto_eod', !!r.ok, { kind, nums, strategy: sid }, req, 'VIRTUAL');
       return json(res, 200, r);
+    }
+    if (path === '/trade/auto/journal-memo' || path === '/trade/auto/journal-run') {   // 일지 메모 저장 · 하루치 일지 다시 만들기(텔레그램 없음)
+      const isMemo = path === '/trade/auto/journal-memo';
+      if (!autoRef || !autoRef.journalMemo) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      const r = await (isMemo ? autoRef.journalMemo(String(body.date || ''), String(body.sid || ''), body.memo) : autoRef.journalRun(String(body.date || ''))).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
+      audit(isMemo ? 'auto_journal_memo' : 'auto_journal_run', !!r.ok, { date: body.date, sid: body.sid, len: isMemo && typeof body.memo === 'string' ? body.memo.length : undefined, error: r.error }, req, 'VIRTUAL');
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
     }
     if (path === '/trade/auto/strategy-new' || path === '/trade/auto/strategy-delete') {   // 전략 추가(기본값/복제) · 삭제(보관)
       const isNew = path === '/trade/auto/strategy-new', fn = isNew ? 'createStrategy' : 'deleteStrategy';

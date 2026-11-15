@@ -1,0 +1,350 @@
+'use strict';
+/* 자동매매 D단계(2026-11-16) — 전략별 장부 + 자동 일지
+   · 장부: 가상매매 체결(paper_fills)을 "어느 전략의 매매인지" 나눠 계산한다(직접 매매는 빠짐). 별도 테이블 없이 일지(auto_journal)에 담는다.
+     - 매수 체결 → 그날 그 종목을 산 장중 전략(주문 id 우선, 없으면 종목)
+     - 매도 체결 → 같은 전략. 단, 종가베팅으로 넘긴 종목을 다음 날 아침 파는 체결은 종가베팅 전략 몫
+   · 손익: 장중 전략 = 그날 실현손익 + 이월 종목은 "넘긴 가격(종가)" 기준 평가손익 − 수수료. 종가베팅 = (판 가격 − 넘겨받은 가격) × 수량 − 수수료
+     → 같은 손익을 두 전략이 이중으로 갖지 않는다(넘긴 순간까지는 장중 전략, 그 뒤는 종가베팅)
+   · 일지: 거래일 15:40 첫 작성(텔레그램 요약) → 전환(20:00) 5분 뒤 이월 반영 → 다음 거래일 09:20 이후 종가베팅 결과·공식 종가 반영해 확정. 다시 만들어도 같은 결과(멱등), 메모는 건드리지 않음 */
+const UI = require('./auto-ui');
+
+const DAY = 864e5, KST = 9 * 3600e3;
+const JOURNAL_AT = 15 * 60 + 40, FINISH_AT = 9 * 60 + 20, FINISH_END = 15 * 60 + 30, AFTER_CONVERT = 5;
+const dayOfTs = ts => new Date(ts + KST).toISOString().slice(0, 10);
+const nextDate = d => new Date(Date.parse(d + 'T00:00:00Z') + DAY).toISOString().slice(0, 10);
+const daysBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / DAY);
+const startIso = d => `${d}T00:00:00+09:00`;
+const round = Math.round;
+const sum = (a, f) => a.reduce((s, x) => s + (+f(x) || 0), 0);
+const num = v => (v == null || v === '' || !isFinite(+v)) ? null : +v;
+const fmt = v => Math.round(v).toLocaleString('ko-KR');
+const sg = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmt(Math.abs(v));
+const sp = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(2) + '%';
+const md = d => d.slice(5).replace('-', '/');
+const isMissing = e => /PGRST205|42P01|404/.test(String((e && e.message) || e));
+const MEMO_MAX = 2000;
+
+function normFill(r) {
+  return { id: r.id, ts: typeof r.ts === 'number' ? r.ts : Date.parse(r.ts), orderId: r.order_id != null ? r.order_id : r.orderId, code: r.code, side: r.side,
+    price: +r.price, qty: +r.qty, amount: +r.amount, fee: +r.fee || 0, realized: r.realized == null ? null : +r.realized, reason: r.reason || 'manual' };
+}
+
+/* 체결을 전략에 귀속(순수). 직접 매매·전략 밖 종목은 빠진다. carryItems: auto_config 'carry' 의 이월 종목(from·at·sid) */
+function attribute(date, runs, fills, carryItems, closingId) {
+  const byCode = {}, byOrder = {};
+  for (const r of runs) {
+    const sid = r.strategy_id || (r.payload && r.payload.strategy && r.payload.strategy.id);
+    for (const [code, o] of Object.entries((r.payload && r.payload.orders) || {})) {
+      if (!((o.filled || 0) > 0)) continue;
+      if (!byCode[code]) byCode[code] = sid;
+      [o.orderId, o.from].filter(Boolean).forEach(id => { byOrder[id] = sid; });
+    }
+  }
+  const firstBuy = {};
+  fills.filter(f => f.side === 'buy').forEach(f => { if (firstBuy[f.code] == null || f.ts < firstBuy[f.code]) firstBuy[f.code] = f.ts; });
+  const carry = {}; (carryItems || []).forEach(i => { carry[i.code] = i; });
+  const out = [];
+  for (const f of fills.slice().sort((a, b) => a.ts - b.ts)) {
+    if (dayOfTs(f.ts) !== date) continue;
+    if (f.side === 'buy') { const sid = byOrder[f.orderId] || byCode[f.code]; if (sid) out.push({ ...f, sid, leg: 'intraday' }); continue; }
+    const ci = carry[f.code], rebought = firstBuy[f.code] != null && firstBuy[f.code] <= f.ts;
+    if (ci && closingId && !rebought && (ci.from < date || (ci.from === date && ci.at && f.ts >= ci.at))) { out.push({ ...f, sid: closingId, leg: 'closing', from: ci.from, fromSid: ci.sid || null }); continue; }
+    const sid = byCode[f.code];
+    if (sid) out.push({ ...f, sid, leg: 'intraday' });
+  }
+  return out;
+}
+
+const whyOf = (f, eodSell, closing) => {
+  if (f.reason === 'stop') return closing ? '손절(이월 중)' : '손절';
+  const m = /^tp(\d)$/.exec(f.reason || ''); if (m) return `${m[1]}차 익절`;
+  if (closing) return '아침 분할 매도';
+  return eodSell && eodSell.has(f.code) ? '종가 전 정리' : '수동·기타';
+};
+
+/* 장중 전략 하루 일지(순수). fills = 그 전략으로 귀속된 체결. closes = {종목: 공식 종가}(있으면), marks = {종목: 현재가}, prev = 지난 작성 때 값(넘긴 가격 고정용) */
+function buildIntraday({ date, run, fills, marks = {}, closes = {}, prev = {}, today }) {
+  const P = run.payload || {}, ords = P.orders || {};
+  const codes = Object.entries(ords).filter(([, o]) => (o.filled || 0) > 0).map(([c]) => c);
+  const names = {}; (P.picks || []).forEach(p => { names[p.code] = p.name; }); (P.shadow || []).forEach(p => { if (!names[p.code]) names[p.code] = p.name; });
+  const eodSell = new Set(P.eod && P.eod.decision && P.eod.decision.kind === 'sell' ? (P.eod.decision.codes || []) : []);
+  const carried = new Set(P.carryDone ? (P.carryDone.codes || []) : []);
+  const frozen = prev.px0 || {};
+  const positions = [], buys = [], sells = [];
+  for (const code of codes) {
+    const fb = fills.filter(f => f.code === code && f.side === 'buy'), fs = fills.filter(f => f.code === code && f.side === 'sell');
+    const bq = sum(fb, f => f.qty), ba = sum(fb, f => f.amount), bf = sum(fb, f => f.fee);
+    const sq = sum(fs, f => f.qty), sa = sum(fs, f => f.amount), sf = sum(fs, f => f.fee), re = sum(fs, f => f.realized);
+    if (!(bq > 0)) continue;
+    const buyAvg = ba / bq, held = Math.max(0, bq - sq);
+    let px0 = null, src = null;
+    if (held > 0) {
+      if (closes[code] > 0) { px0 = closes[code]; src = 'close'; }
+      else if (frozen[code] > 0 && !(prev.src && prev.src[code] === 'avg' && marks[code] > 0)) { px0 = frozen[code]; src = (prev.src && prev.src[code]) || 'frozen'; }
+      else if (marks[code] > 0) { px0 = marks[code]; src = 'last'; }
+      else { px0 = buyAvg; src = 'avg'; }
+    }
+    const carryMark = held > 0 ? (px0 - buyAvg) * held : 0;
+    const pnl = re + carryMark - bf - sf;
+    const state = held <= 0 ? 'closed' : carried.has(code) ? 'carried' : P.carryDone ? 'held' : 'pending';
+    positions.push({ code, name: names[code] || code, qty: bq, buyAvg: round(buyAvg), sellQty: sq, sellAvg: sq ? round(sa / sq) : null, held, px0: px0 ? round(px0) : null, px0src: src,
+      realized: round(re), carryMark: round(carryMark), fees: round(bf + sf), pnl: round(pnl), cost: round(ba), pct: ba > 0 ? +(pnl / ba * 100).toFixed(2) : null, state });
+    fb.forEach(f => buys.push({ code, name: names[code] || code, qty: f.qty, price: f.price, amount: round(f.amount), at: f.ts }));
+    fs.forEach(f => sells.push({ code, name: names[code] || code, qty: f.qty, price: f.price, amount: round(f.amount), realized: f.realized == null ? null : round(f.realized), fee: round(f.fee), why: whyOf(f, eodSell, false), at: f.ts }));
+  }
+  const cost = sum(positions, p => p.cost), net = sum(positions, p => p.pnl);
+  const totals = {
+    cost: round(cost), net: round(net), pct: cost > 0 ? +(net / cost * 100).toFixed(2) : null, realized: round(sum(positions, p => p.realized)), carryMark: round(sum(positions, p => p.carryMark)),
+    fees: round(sum(positions, p => p.fees)), n: positions.length, wins: positions.filter(p => p.pnl > 0).length, losses: positions.filter(p => p.pnl < 0).length,
+    carried: positions.filter(p => p.state === 'carried' || p.state === 'pending').length,
+  };
+  const sm = UI.summarizeRun(run, false);
+  const sh = Object.keys(closes).length && sm.shadow.length ? UI.shadowReturns(sm, { [date]: closes }) : null;
+  const skipped = Object.entries(ords).filter(([, o]) => !((o.filled || 0) > 0)).map(([code, o]) => ({ code, name: names[code] || code, st: o.st, why: o.why || null }));
+  const E = P.eod;
+  return {
+    v: 1, kind: 'intraday', date, strategy: P.strategy || null, letter: P.letter || null, params: P.params || null, warn: P.warn || null,
+    funnel: { ...(P.stat || {}), picks: (P.picks || []).length, approved: (P.approved || []).length, bought: positions.length },
+    decision: P.decision ? { kind: P.decision.kind, nums: P.decision.nums || null } : null,
+    buys, sells, positions, skipped, totals,
+    judge: E ? { at: E.at, none: !!E.none, items: (E.items || []).map(i => ({ code: i.code, name: i.name, ok: !!i.ok, why: i.why || [] })), weak: E.weak || [], decision: E.decision ? { kind: E.decision.kind, timeout: !!E.decision.timeout, auto: !!E.decision.auto } : null } : null,
+    carry: P.carryDone ? { at: P.carryDone.at || null, off: !!P.carryDone.off, codes: P.carryDone.codes || [] } : null,
+    shadow: sh,
+    px0: Object.fromEntries(positions.filter(p => p.px0).map(p => [p.code, p.px0])), px0src: Object.fromEntries(positions.filter(p => p.px0).map(p => [p.code, p.px0src])),
+    closeFinal: !!(date < (today || '9999') && (Object.keys(closes).length || !codes.length)),
+  };
+}
+
+/* 종가베팅 하루 일지(순수). items = 그날 넘겨받은 이월 종목({code,name,q0,avg,at,px0,sid,state,log}), sells = 그 종목들의 이후 매도 체결(시각순) */
+function buildClosing({ date, items, sells, strategy }) {
+  const positions = [], rows = [];
+  for (const it of items) {
+    let rem = +it.q0 || 0, sq = 0, sa = 0, sf = 0, cut = false;
+    for (const f of sells.filter(s => s.code === it.code && s.ts >= (it.at || 0)).sort((a, b) => a.ts - b.ts)) {
+      if (rem <= 0) break;
+      const take = Math.min(f.qty, rem), frac = f.qty > 0 ? take / f.qty : 0;
+      sq += take; sa += f.price * take; sf += f.fee * frac; rem -= take;
+      rows.push({ code: it.code, name: it.name, qty: take, price: f.price, amount: round(f.price * take), fee: round(f.fee * frac), why: whyOf(f, null, true), at: f.ts, day: dayOfTs(f.ts) });
+    }
+    if ((it.log || []).some(l => l.cut)) cut = true;
+    const px0 = it.px0 > 0 ? it.px0 : it.avg, avgSell = sq ? sa / sq : null;
+    const pnl = sq ? (avgSell - px0) * sq - sf : 0;
+    const done = sq >= (+it.q0 || 0) || it.state === 'done';
+    positions.push({ code: it.code, name: it.name, qty: +it.q0 || 0, px0: round(px0), buyAvg: round(it.avg), fromSid: it.sid || null, sellQty: sq, sellAvg: avgSell ? round(avgSell) : null, left: Math.max(0, (+it.q0 || 0) - sq),
+      fees: round(sf), pnl: round(pnl), cost: round(px0 * sq), pct: sq && px0 > 0 ? +(pnl / (px0 * sq) * 100).toFixed(2) : null, vsCost: sq && it.avg > 0 ? +((avgSell / it.avg - 1) * 100).toFixed(2) : null, gapCut: cut, done });
+  }
+  const traded = positions.filter(p => p.sellQty > 0);
+  const cost = sum(traded, p => p.cost), net = sum(positions, p => p.pnl);
+  const alldone = positions.length > 0 && positions.every(p => p.done);
+  return {
+    v: 1, kind: 'closing', date, strategy: strategy || null, positions, sells: rows,
+    totals: { cost: round(cost), net: round(net), pct: cost > 0 ? +(net / cost * 100).toFixed(2) : null, n: positions.length, wins: positions.filter(p => p.pnl > 0).length, losses: positions.filter(p => p.pnl < 0).length, left: sum(positions, p => p.left) },
+    state: alldone ? 'done' : 'open', resultFrom: rows.length ? rows[0].day : null,
+  };
+}
+
+/* 일지 행 → DB 행 */
+function toRow(date, sid, kind, st, status, payload) {
+  const t = payload.totals || {};
+  return { trade_date: date, strategy_id: sid, kind, strategy_version: st && st.version != null ? st.version : null, strategy_name: st && st.name || null, status,
+    net: t.net == null ? null : t.net, cost: t.cost == null ? null : t.cost, pct: t.pct == null ? null : t.pct, n_pos: t.n || 0, wins: t.wins || 0, losses: t.losses || 0, payload, updated_at: new Date().toISOString() };
+}
+
+/* 성과 집계(순수). rows = 일지 행(가벼운 목록: pos/shadow 별칭 또는 payload 로 읽음) */
+function summarize(rows) {
+  const by = {}, ord = rows.slice().sort((a, b) => a.trade_date < b.trade_date ? -1 : a.trade_date > b.trade_date ? 1 : 0);
+  const posOf = r => r.pos || (r.payload && r.payload.positions) || [];
+  const shOf = r => r.shadow !== undefined ? r.shadow : (r.payload && r.payload.shadow) || null;
+  for (const r of ord) {
+    const g = by[r.strategy_id] = by[r.strategy_id] || { sid: r.strategy_id, name: r.strategy_name, kind: r.kind, rows: [] };
+    g.name = r.strategy_name || g.name; g.rows.push(r);
+  }
+  const mean = a => { const v = a.filter(x => x != null && isFinite(x)); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+  const out = Object.values(by).map(g => {
+    let cum = 0, peak = 0, dd = 0;
+    const curve = g.rows.map(r => { cum += num(r.net) || 0; peak = Math.max(peak, cum); dd = Math.max(dd, peak - cum); return { date: r.trade_date, net: num(r.net) || 0, cum: round(cum), status: r.status }; });
+    const pos = g.rows.flatMap(posOf).filter(p => p && p.pnl != null);
+    const wins = pos.filter(p => p.pnl > 0), losses = pos.filter(p => p.pnl < 0);
+    const aw = wins.length ? sum(wins, p => p.pnl) / wins.length : null, al = losses.length ? sum(losses, p => p.pnl) / losses.length : null;
+    const cost = sum(g.rows, r => num(r.cost)), net = sum(g.rows, r => num(r.net));
+    const vers = {};
+    g.rows.forEach(r => { const k = r.strategy_version == null ? 0 : r.strategy_version; const v = vers[k] = vers[k] || { version: r.strategy_version, days: 0, net: 0, cost: 0, wins: 0, n: 0 }; v.days++; v.net += num(r.net) || 0; v.cost += num(r.cost) || 0; const ps = posOf(r).filter(p => p && p.pnl != null); v.n += ps.length; v.wins += ps.filter(p => p.pnl > 0).length; });
+    const sh = g.rows.map(shOf).filter(Boolean);
+    return {
+      sid: g.sid, name: g.name, kind: g.kind, days: g.rows.length, tradedDays: g.rows.filter(r => (num(r.cost) || 0) > 0).length, pending: g.rows.filter(r => r.status !== 'final').length,
+      net: round(net), cost: round(cost), pct: cost > 0 ? +(net / cost * 100).toFixed(2) : null,
+      n: pos.length, wins: wins.length, losses: losses.length, winRate: pos.length ? +(wins.length / pos.length * 100).toFixed(1) : null,
+      avgWin: aw == null ? null : round(aw), avgLoss: al == null ? null : round(al), payoff: aw != null && al ? +(aw / Math.abs(al)).toFixed(2) : null,
+      maxDrawdown: round(dd), curve,
+      byVersion: Object.values(vers).map(v => ({ version: v.version, days: v.days, net: round(v.net), cost: round(v.cost), pct: v.cost > 0 ? +(v.net / v.cost * 100).toFixed(2) : null, n: v.n, winRate: v.n ? +(v.wins / v.n * 100).toFixed(1) : null })).sort((a, b) => (a.version || 0) - (b.version || 0)),
+      shadow: sh.length ? { n: sh.length, all: mean(sh.map(s => s.all)), picked: mean(sh.map(s => s.picked)), bought: mean(sh.map(s => s.bought)) } : null,
+    };
+  });
+  const dates = [...new Set(ord.map(r => r.trade_date))];
+  let c = 0;
+  const combined = dates.map(d => { c += sum(ord.filter(r => r.trade_date === d), r => num(r.net)); return { date: d, cum: round(c) }; });
+  return { strategies: out.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'intraday' ? -1 : 1)), combined, total: { net: round(sum(ord, r => num(r.net))), cost: round(sum(ord, r => num(r.cost))) } };
+}
+
+/* 텔레그램 요약 */
+function daySummaryText(date, journals) {
+  const L = [`📒 ${md(date)} 자동매매 일지`];
+  let net = 0;
+  for (const j of journals) {
+    const t = j.totals, nm = `${j.letter ? j.letter + ' · ' : ''}${(j.strategy && j.strategy.name) || '전략'}`;
+    if (!t.n) { L.push('', `■ ${nm}`, `매수 없음${j.decision ? (j.decision.kind === 'pass' ? ' (패스)' : j.decision.kind === 'expired' ? ' (승인 시간 초과)' : '') : ''}`); continue; }
+    net += t.net;
+    L.push('', `■ ${nm}`, `매수 ${t.n}종목 · 실현 ${sg(t.realized)}원${t.carried ? ` · 이월 ${t.carried}종목(평가 ${sg(t.carryMark)}원)` : ''}`, `순손익 ${sg(t.net)}원 (${sp(t.pct)}) · 수수료 ${fmt(t.fees)}원`);
+    j.positions.forEach(p => L.push(`· ${p.name} ${sg(p.pnl)}원 (${sp(p.pct)})${p.state === 'closed' ? '' : p.state === 'carried' ? ' · 이월' : ' · 보유'}`));
+  }
+  if (journals.length > 1) L.push('', `합계 ${sg(net)}원`);
+  L.push('', '종가베팅 결과는 다음 거래일 아침에 이어서 알려드려요. 자세한 내용은 사이트 자동매매 › 일지');
+  return L.join('\n');
+}
+function closingText(date, j) {
+  const t = j.totals, L = [`📒 ${md(date)} 이월분 종가베팅 결과`, `순손익 ${sg(t.net)}원 (${sp(t.pct)})`];
+  j.positions.forEach(p => L.push(`· ${p.name}: ${p.sellQty ? `${fmt(p.sellQty)}주 평균 ${fmt(p.sellAvg)}원 매도 · 넘긴 가격 대비 ${sp(p.pct)}` : '매도 없음'}${p.gapCut ? ' · 갭 하락 전량' : ''}`));
+  return L.join('\n');
+}
+
+function createJournal(deps) {
+  const D = deps, now = D.now || Date.now;
+  const S = { at: {}, p1: {}, p2: {}, missing: 0, last: null };
+  const due = (k, ms) => { const t = S.at[k] || 0; if (now() - t < ms) return false; S.at[k] = now(); return true; };
+  const tg = t => (D.sendTelegram ? D.sendTelegram(t).catch(() => {}) : null);
+  const inList = a => `(${a.map(encodeURIComponent).join(',')})`;
+
+  async function loadFills(date) {
+    const r = await D.sbGet(`paper_fills?select=*&ts=gte.${encodeURIComponent(startIso(date))}&ts=lt.${encodeURIComponent(startIso(nextDate(date)))}&order=ts.asc&limit=5000`);
+    return (r || []).map(normFill);
+  }
+  async function loadSellsAfter(codes, tsMs) {
+    if (!codes.length) return [];
+    const r = await D.sbGet(`paper_fills?select=*&side=eq.sell&code=in.${inList(codes)}&ts=gte.${encodeURIComponent(new Date(tsMs).toISOString())}&order=ts.asc&limit=2000`);
+    return (r || []).map(normFill);
+  }
+  async function loadCloses(date, codes) {
+    if (!codes.length) return {};
+    const r = await D.sbGet(`daily_price?select=code,close&trade_date=eq.${date}&code=in.${inList(codes)}&limit=2000`).catch(() => []);
+    const m = {}; (r || []).forEach(x => { if (+x.close > 0) m[x.code] = +x.close; });
+    return m;
+  }
+  async function marksNow() {
+    try { const ps = D.paper && D.paper.state ? await D.paper.state() : null; const m = {}; if (ps && ps.ok) ps.positions.forEach(p => { if (p.last > 0) m[p.code] = p.last; }); return m; } catch (_) { return {}; }
+  }
+  async function existingRows(date) {
+    const r = await D.sbGet(`auto_journal?select=*&trade_date=eq.${date}&limit=20`).catch(e => { if (isMissing(e)) throw e; return []; });
+    return Object.fromEntries((r || []).map(x => [x.strategy_id, x]));
+  }
+
+  /* 하루치 일지를 (다시) 만든다. phase: 1=15:40 이후 · 2=전환 이후 · 3=다음 거래일 이후 마무리. 같은 입력이면 같은 결과 */
+  async function generateDay(date, { today, min, phase = 1, announce = true } = {}) {
+    const runs = await D.readRuns(date);
+    if (!runs.length) return { ok: true, none: true, date };
+    const [fills, carryAll, A, ex] = await Promise.all([loadFills(date), D.readCarry().then(c => Object.values((c && c.items) || {})).catch(() => []), D.actives(), existingRows(date)]);
+    const closingId = A.C && A.C.id;
+    const att = attribute(date, runs, fills, carryAll, closingId);
+    const want = new Set([...runs.flatMap(r => Object.keys((r.payload && r.payload.orders) || {})), ...runs.flatMap(r => ((r.payload && r.payload.shadow) || []).map(s => s.code))]);
+    const closes = date < (today || '9999') ? await loadCloses(date, [...want]) : {};
+    const marks = date === today ? await marksNow() : {};
+    const days = today ? daysBetween(date, today) : 0;
+    const rowsOut = [], sums = [];
+    const px0All = {};
+    for (const run of runs) {
+      const sid = run.strategy_id || (run.payload.strategy && run.payload.strategy.id);
+      const prev = ex[sid] && ex[sid].payload ? ex[sid].payload : {};
+      const j = buildIntraday({ date, run, fills: att.filter(f => f.sid === sid && f.leg === 'intraday'), marks, closes, prev: { px0: prev.px0, src: prev.px0src }, today });
+      // 공식 종가가 아직 없어도 4일이 지나면 확정(더 기다려도 오지 않음)
+      if (!j.closeFinal && days >= 4) j.closeFinal = true;
+      const settled = phase >= 2 || date < (today || '9999');
+      const status = j.closeFinal ? 'final' : 'draft';
+      j.tg = { ...(prev.tg || {}) };
+      const wasSent = !!j.tg.day;
+      if (announce && phase >= 1 && min != null && min >= JOURNAL_AT && date === today && !wasSent && (j.totals.n > 0)) j.tg.day = now();
+      j.settled = settled;
+      Object.entries(j.px0 || {}).forEach(([c, v]) => { px0All[c] = v; });
+      rowsOut.push(toRow(date, sid, 'intraday', j.strategy, status, j));
+      sums.push({ j, newlySent: !wasSent && !!j.tg.day });
+    }
+    // 종가베팅: 그날 넘겨받은 이월 종목
+    let closing = null;
+    const items = carryAll.filter(i => i.from === date).map(i => ({ ...i, px0: px0All[i.code] || i.px0 || null }));
+    if (items.length && A.C) {
+      const sells = await loadSellsAfter(items.map(i => i.code), Math.min(...items.map(i => i.at || Date.parse(startIso(date)))));
+      const c = buildClosing({ date, items, sells, strategy: { id: A.C.id, version: ex[A.C.id] && ex[A.C.id].strategy_version != null ? ex[A.C.id].strategy_version : A.C.version, name: A.C.name || '종가베팅' } });
+      const forced = items.every(i => i.state === 'done') || (today && daysBetween(date, today) >= 5);
+      const prevC = ex[A.C.id] && ex[A.C.id].payload ? ex[A.C.id].payload : {};
+      c.tg = { ...(prevC.tg || {}) };
+      const status = c.state === 'done' || forced ? 'final' : 'open';
+      const newly = status === 'final' && !c.tg.final && (c.totals.n > 0);
+      if (newly && announce && today && date < today) c.tg.final = now();
+      rowsOut.push(toRow(date, A.C.id, 'closing', c.strategy, status, c));
+      closing = { c, newly: newly && announce && !!c.tg.final };
+    }
+    await D.sbWrite('auto_journal?on_conflict=trade_date,strategy_id', 'POST', rowsOut);
+    // 텔레그램은 저장이 끝난 뒤에(보낸 표시가 먼저 저장돼 중복 발송이 없게)
+    const send = sums.filter(s => s.newlySent).map(s => s.j);
+    if (send.length) await tg(daySummaryText(date, send));
+    if (closing && closing.newly) await tg(closingText(date, closing.c));
+    return { ok: true, date, journals: rowsOut.length, sent: send.length, closing: closing ? closing.c.state : null };
+  }
+
+  /* 서버 30초 타이머에서 호출 — 시각이 됐고 아직 안 했을 때만 일한다 */
+  async function tick(date, min, convertAt) {
+    if (S.missing && now() - S.missing < 10 * 60e3) return { ok: true, idle: 'no-table' };
+    const out = {};
+    try {
+      if (min >= JOURNAL_AT && !S.p1[date] && due('p1|' + date, 5 * 60e3)) { const r = await generateDay(date, { today: date, min, phase: 1 }); if (r.ok) S.p1[date] = true; out.day = r; }
+      if (min >= (convertAt || 1200) + AFTER_CONVERT && !S.p2[date] && due('p2|' + date, 5 * 60e3)) { const r = await generateDay(date, { today: date, min, phase: 2 }); if (r.ok) S.p2[date] = true; out.convert = r; }
+      if (min >= FINISH_AT && min < FINISH_END && due('p3|' + date, 10 * 60e3)) {
+        const open = await D.sbGet(`auto_journal?select=trade_date&status=in.(draft,open)&trade_date=lt.${date}&order=trade_date.desc&limit=40`);
+        const ds = [...new Set((open || []).map(x => x.trade_date))].slice(0, 6);
+        out.finish = [];
+        for (const d of ds) out.finish.push(await generateDay(d, { today: date, min, phase: 3 }));
+      }
+      S.missing = 0;
+    } catch (e) {
+      if (isMissing(e)) { S.missing = now(); S.last = '자동 일지 테이블이 없습니다(DB 설정 auto_journal 필요)'; return { ok: false, err: S.last }; }
+      S.last = e.message; return { ok: false, err: e.message };
+    }
+    return { ok: true, ...out };
+  }
+
+  const LIGHT = 'trade_date,strategy_id,kind,strategy_version,strategy_name,status,net,cost,pct,n_pos,wins,losses,memo,updated_at,pos:payload->positions,shadow:payload->shadow';
+  async function list({ sid, from, to, limit } = {}) {
+    const q = [`select=${LIGHT}`, 'order=trade_date.desc,strategy_id.asc', `limit=${Math.min(Math.max(+limit || 400, 1), 1500)}`];
+    if (sid && /^[a-z]+-[a-z0-9]{1,20}$/.test(sid)) q.push(`strategy_id=eq.${sid}`);
+    if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) q.push(`trade_date=gte.${from}`);
+    if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) q.push(`trade_date=lte.${to}`);
+    let rows;
+    try { rows = await D.sbGet('auto_journal?' + q.join('&')); } catch (e) { if (isMissing(e)) return { ok: true, missing: true, rows: [], perf: summarize([]) }; throw e; }
+    const light = (rows || []).map(r => ({ date: r.trade_date, sid: r.strategy_id, kind: r.kind, version: r.strategy_version, name: r.strategy_name, status: r.status, net: num(r.net), cost: num(r.cost), pct: num(r.pct), n: r.n_pos || 0, wins: r.wins || 0, losses: r.losses || 0, hasMemo: !!(r.memo && r.memo.trim()), updatedAt: r.updated_at }));
+    return { ok: true, rows: light, perf: summarize(rows || []) };
+  }
+  async function get(date, sid) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return { ok: false, status: 400, error: '날짜가 올바르지 않습니다' };
+    const r = await D.sbGet(`auto_journal?select=*&trade_date=eq.${date}${sid ? `&strategy_id=eq.${encodeURIComponent(sid)}` : ''}&order=strategy_id.asc&limit=10`).catch(e => { if (isMissing(e)) return null; throw e; });
+    if (!r) return { ok: true, missing: true, journals: [] };
+    return { ok: true, journals: r.map(x => ({ date: x.trade_date, sid: x.strategy_id, kind: x.kind, version: x.strategy_version, name: x.strategy_name, status: x.status, net: num(x.net), cost: num(x.cost), pct: num(x.pct), memo: x.memo || '', payload: x.payload, updatedAt: x.updated_at })) };
+  }
+  async function memo(date, sid, text) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) || !/^[a-z]+-[a-z0-9]{1,20}$/.test(String(sid || ''))) return { ok: false, status: 400, error: '날짜·전략이 올바르지 않습니다' };
+    if (typeof text !== 'string') return { ok: false, status: 400, error: '메모가 올바르지 않습니다' };
+    const t = text.replace(/\r/g, '').slice(0, MEMO_MAX);
+    const r = await D.sbGet(`auto_journal?select=trade_date&trade_date=eq.${date}&strategy_id=eq.${encodeURIComponent(sid)}&limit=1`);
+    if (!r.length) return { ok: false, status: 404, error: '그 날짜의 일지가 없습니다' };
+    await D.sbWrite(`auto_journal?trade_date=eq.${date}&strategy_id=eq.${encodeURIComponent(sid)}`, 'PATCH', { memo: t });
+    return { ok: true, memo: t, truncated: text.length > MEMO_MAX };
+  }
+  /* 사이트 "지금 다시 만들기" — 텔레그램은 보내지 않음 */
+  async function run(date, today) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return { ok: false, status: 400, error: '날짜가 올바르지 않습니다' };
+    if (date > today) return { ok: false, status: 400, error: '미래 날짜는 만들 수 없습니다' };
+    const r = await generateDay(date, { today, min: null, phase: date < today ? 3 : 2, announce: false }).catch(e => { if (isMissing(e)) return { ok: false, status: 503, error: '자동 일지 테이블이 없습니다(DB 설정 auto_journal 필요)' }; throw e; });
+    if (r.ok && r.none) return { ok: false, status: 404, error: '그 날짜의 자동매매 기록이 없습니다' };
+    return r;
+  }
+  return { tick, generateDay, list, get, memo, run, status: () => ({ last: S.last, missing: !!S.missing }) };
+}
+
+module.exports = { attribute, buildIntraday, buildClosing, summarize, toRow, daySummaryText, closingText, normFill, whyOf, createJournal, JOURNAL_AT, FINISH_AT, FINISH_END, AFTER_CONVERT, MEMO_MAX };
