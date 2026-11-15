@@ -108,6 +108,20 @@ const won = v => (v == null ? '–' : (Math.abs(v) >= 1e8 ? (v / 1e8).toFixed(Ma
 const fmtN = v => Math.round(v).toLocaleString('ko-KR');
 
 /* 텔레그램 메시지 */
+/* 시장 상태 점수(E1) → 종목당 금액 배수. 전략 조건값 regimeMode 가 'scale' 일 때만(기본 '표시만') */
+const REGIME_KO = { attack: '공격', normal: '보통', caution: '보수', defense: '방어' };
+function regimeMult(P, rg) {
+  if (!P || P.regimeMode !== 'scale' || !rg) return 1;
+  if (rg.stage === 'caution') return (+P.regimeCaution || 100) / 100;
+  if (rg.stage === 'defense') return (+P.regimeDefense || 100) / 100;
+  return 1;
+}
+function regimeLine(rg, P, perStock) {
+  if (!rg) return null;
+  const m = regimeMult(P, rg), d = String(rg.date || '').slice(5).replace('-', '/');
+  return `📊 시장 상태 ${REGIME_KO[rg.stage] || rg.stage} ${rg.score}점(${d} 종가 기준)` + (m < 1 ? ` — 종목당 금액 ${Math.round(m * 100)}%${perStock ? `(${fmtN(perStock)}원)` : ''}` : P && P.regimeMode === 'scale' ? '' : ' · 표시만');
+}
+
 function formatMessage(date, picks, ctx = {}) {
   const head = `📈 자동매매 후보 · ${date} ${ctx.timeText || ''}`.trim();
   if (ctx.restDay) return `${head}\n\n오늘은 쉬는 날로 판단했어요.\n사유: ${ctx.restDay}`;
@@ -122,6 +136,7 @@ function formatMessage(date, picks, ctx = {}) {
     if (c.warns && c.warns.length) lines.push(`   ⚠ ${c.warns.join(' · ')}`);
   });
   if (ctx.warn) lines.push('', `⚠ ${ctx.warn}`);
+  if (ctx.regime) lines.push(ctx.warn ? ctx.regime : '\n' + ctx.regime);
   if (ctx.auto) lines.push('', '🤖 자동 매수 설정 — 알림 직후 위 후보를 모두 가상 매수합니다.');
   else lines.push('', `답장: /매수 1 3 5 (번호) · /매수 전체 · /패스`, `${ctx.deadline || '10:30'}까지 답이 없으면 전부 취소돼요. (자동으로 사지 않습니다)`);
   return lines.join('\n');
@@ -288,12 +303,24 @@ function createAuto(deps) {
     });
   }
 
+  /* 시장 상태 점수: 오늘 이전 가장 최근 날(전날 종가 기준). 10분 캐시, 테이블이 없으면 null */
+  async function regimeOf(date) {
+    const c = state.regime;
+    if (c && c.date === date && Date.now() - c.at < 600e3) return c.row;
+    let row = null;
+    try { const r = await D.sbGet(`market_regime?select=trade_date,score,stage,parts&trade_date=lt.${date}&order=trade_date.desc&limit=1`); if (r && r[0]) row = { date: r[0].trade_date, score: +r[0].score, stage: r[0].stage, parts: r[0].parts || null }; } catch (_) {}
+    state.regime = { date, row, at: Date.now() };
+    return row;
+  }
   async function perStockOf(sid) {
     const { I } = await intraOf(sid);
-    if (!store.isMissing()) return I.params.perStockKrw;
+    if (!store.isMissing()) {
+      const m = regimeMult(I.params, await regimeOf(kstParts().date));
+      return m < 1 ? Math.max(10000, Math.floor(I.params.perStockKrw * m / 10000) * 10000) : I.params.perStockKrw;
+    }
     try { const r = await D.sbGet('auto_config?select=value&key=eq.main&limit=1'); return (r[0] && r[0].value && +r[0].value.perStockKrw) || 1000000; } catch (_) { return 1000000; }   // 전략 테이블 전: 예전 설정
   }
-  const perStock = async () => perStockOf((await pair()).I.id);
+  const perStock = async () => { const { I } = await pair(); return store.isMissing() ? perStockOf(I.id) : I.params.perStockKrw; };   // 설정 표시용(시장 상태 조절 전 금액)
   /* 엔진별로 쓰는 형태 */
   async function execOpt(sid) {
     const p = (await intraOf(sid)).I.params;
@@ -347,6 +374,7 @@ function createAuto(deps) {
     if (ex && !force) { state.runs[I.id] = ex; return { ok: true, skipped: true, status: ex.status }; }
     if (ex && force && ((ex.payload && ex.payload.decision) || (ex.payload && ex.payload.orders))) return { ok: false, why: '오늘은 이미 승인·주문을 처리해서 다시 고를 수 없어요' };
     const warn = await marketWarn();
+    const regime = await regimeOf(date);
     const sel = await select(I.params);
     const shadow = sel.passedAll.map(c => ({
       code: c.code, name: c.name, score: c.score.total, parts: c.score.parts, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector,
@@ -354,6 +382,7 @@ function createAuto(deps) {
     }));
     const payload = {
       selectedAt: new Date().toISOString(), stat: sel.stat, scrDate: sel.scrDate, warn: warn || null,
+      regime: regime ? { date: regime.date, score: regime.score, stage: regime.stage, mult: regimeMult(I.params, regime), mode: I.params.regimeMode || 'info' } : null,
       strategy: { id: I.id, version: I.version, name: I.name }, params: I.params, letter: I.letter || 'A',
       picks: sel.picks.slice(0, I.params.notifyTop).map(c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts })),
       shadow, dropped: sel.dropped, rejected: sel.rejected.slice(0, 40), approved: [], decision: null, noticeSent: false,
@@ -382,7 +411,8 @@ function createAuto(deps) {
     await mutateRun(date, sid, run => {
       if (run.payload.noticeSent && !force) return;
       const picks = (run.payload.picks || []).map(p => ({ ...p, score: { total: p.score, ratio: p.ratio || 0 }, warns: [] }));
-      text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, deadline: ST.hhmm(I.T.deadline), auto: I.params.approval === 'auto' && picks.length > 0 });
+      const rg = run.payload.regime, ps = rg && rg.mult < 1 ? Math.max(10000, Math.floor(I.params.perStockKrw * rg.mult / 10000) * 10000) : null;
+      text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, regime: regimeLine(rg, I.params, ps), deadline: ST.hhmm(I.T.deadline), auto: I.params.approval === 'auto' && picks.length > 0 });
       if (state.multi && picks.length) text = text.replace(/\n(\d+)\. /g, `\n${run.payload.letter || 'A'}$1. `).replace('답장: /매수 1 3 5 (번호)', `답장: /매수 ${run.payload.letter || 'A'}1 ${run.payload.letter || 'A'}3 (글자+번호)`);
       run.payload.noticeSent = true; run.payload.noticeAt = new Date().toISOString();
       if (run.status === 'selected') run.status = 'noticed';
@@ -598,6 +628,7 @@ function createAuto(deps) {
       actives(),
     ]);
     const cv = (cfgRows[0] && cfgRows[0].value) || {};
+    const regime = await regimeOf(date).catch(() => null);
     const runs = rows.map(r => UI.summarizeRun(r, false));
     let realized = {}, closes = {};
     if (runs.length) {
@@ -627,7 +658,7 @@ function createAuto(deps) {
     return {
       ok: true, now: Date.now(), date, tradingDay: isTradingDay(date),
       cfg: { on: !!cv.on, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
-      today: todays[0] || null, todays, active: A.Is.map(i => i.id), positions, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
+      today: todays[0] || null, todays, active: A.Is.map(i => i.id), regime, positions, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
     };
   }
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */
@@ -668,4 +699,4 @@ function createAuto(deps) {
     _select: select, _mutateRun: mutateRun, _readRun: readRun, _readRuns: readRuns, _readCarry: readCarry, _exec: exec };
 }
 
-module.exports = { RULES, EXCL_NAME, baseFilter, evalFlow, scoreOne, rankAndPick, formatMessage, parseApproval, parseCmdMulti, createAuto };
+module.exports = { regimeMult, regimeLine, REGIME_KO, RULES, EXCL_NAME, baseFilter, evalFlow, scoreOne, rankAndPick, formatMessage, parseApproval, parseCmdMulti, createAuto };

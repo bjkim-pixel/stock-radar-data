@@ -103,7 +103,7 @@ function buildIntraday({ date, run, fills, marks = {}, closes = {}, prev = {}, t
   const skipped = Object.entries(ords).filter(([, o]) => !((o.filled || 0) > 0)).map(([code, o]) => ({ code, name: names[code] || code, st: o.st, why: o.why || null }));
   const E = P.eod;
   return {
-    v: 1, kind: 'intraday', date, strategy: P.strategy || null, letter: P.letter || null, params: P.params || null, warn: P.warn || null,
+    v: 1, kind: 'intraday', date, strategy: P.strategy || null, letter: P.letter || null, params: P.params || null, warn: P.warn || null, regime: P.regime || null,
     funnel: { ...(P.stat || {}), picks: (P.picks || []).length, approved: (P.approved || []).length, bought: positions.length },
     decision: P.decision ? { kind: P.decision.kind, nums: P.decision.nums || null } : null,
     buys, sells, positions, skipped, totals,

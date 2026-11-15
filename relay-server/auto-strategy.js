@@ -16,6 +16,7 @@ const ENUM = {
   eodTimeout: { keep: '유지', sell: '정리' },
   approval: { manual: '텔레그램 승인 필수', auto: '알림 후 자동 매수' },
   carryFlow: { any: '외국인·기관 중 하나', both: '외국인·기관 둘 다', ignore: '보지 않음' },
+  regimeMode: { info: '표시만', scale: '종목당 금액 조절' },
 };
 
 /* type: num | time | times | bool | enum | weights. group 순서 = 화면 순서 */
@@ -42,6 +43,9 @@ const SCHEMA = {
     F('recheckPct', '매수 주문', '승인 후 재확인 허용 변동', 'num', 1.5, { min: 0.5, max: 5, step: 0.1, unit: '%' }),
     F('fillWaitMin', '매수 주문', '미체결 정정·취소 대기', 'num', 3, { min: 1, max: 10, step: 1, unit: '분' }),
     F('approval', '매수 주문', '승인 방식', 'enum', 'manual', { opts: ENUM.approval }),
+    F('regimeMode', '시장 상태', '시장 상태 점수 반영', 'enum', 'info', { opts: ENUM.regimeMode }),
+    F('regimeCaution', '시장 상태', '보수 단계(30~49점) 금액', 'num', 50, { min: 10, max: 100, step: 5, unit: '%' }),
+    F('regimeDefense', '시장 상태', '방어 단계(30점 미만) 금액', 'num', 25, { min: 10, max: 100, step: 5, unit: '%' }),
     F('stopPct', '매도', '손절', 'num', 5, { min: 2, max: 10, step: 0.5, unit: '%' }),
     F('rr', '매도', '손익비(매물대 없을 때 목표)', 'num', 3, { min: 1, max: 5, step: 0.5, unit: '배' }),
     F('split', '매도', '익절 분할 수', 'num', 5, { min: 1, max: 5, step: 1, unit: '회' }),
@@ -110,6 +114,7 @@ function validate(kind, input, base) {
     }
   }
   if (!errs.length && kind === 'intraday') {
+    if (val.regimeDefense > val.regimeCaution) errs.push({ key: 'regimeDefense', msg: '방어 단계 금액은 보수 단계 금액보다 클 수 없습니다' });
     if (val.notifyTop > val.poolTop) errs.push({ key: 'notifyTop', msg: '알림에 싣는 수는 점수 상위 후보 수보다 클 수 없습니다' });
     const dl = tmin(val.selectAt) + val.noticeAfter + val.approveWindow;
     if (dl > 14 * 60 + 30) errs.push({ key: 'approveWindow', msg: `승인 마감이 ${hhmm(dl)}입니다(14:30 이전이어야 함)` });

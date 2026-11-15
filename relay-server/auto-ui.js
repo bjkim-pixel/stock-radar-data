@@ -22,7 +22,7 @@ function summarizeRun(r, full) {
     stat: p.stat || null,
     eod: p.eod ? { at: p.eod.at, none: !!p.eod.none, items: (p.eod.items || []).map(i => ({ code: i.code, name: i.name, ok: !!i.ok, why: i.why || [] })), decision: p.eod.decision ? { kind: p.eod.decision.kind, timeout: !!p.eod.decision.timeout } : null } : null,
     carry: p.carryDone ? (p.carryDone.codes || []) : null,
-    strategy: p.strategy || null,
+    strategy: p.strategy || null, regime: p.regime || null,
   };
   if (full) {
     out.rejected = (p.rejected || []).map(x => ({ code: x.code, name: x.name, changePct: x.changePct, fails: x.fails || [] }));

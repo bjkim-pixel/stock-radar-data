@@ -12,7 +12,10 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   for (const k of ['intraday', 'closing']) assert.deepEqual(S.validate(k, S.defaults(k)).val, S.defaults(k));
   const sql = fs.readFileSync(path.join(__dirname, '..', '..', '165_auto_strategy.sql'), 'utf8');
   const js = [...sql.matchAll(/'(\{"[^']+\})'::jsonb/g)].map(m => JSON.parse(m[1]));
-  assert.deepEqual(js[0], S.defaults('intraday'));
+  const LATER = ['regimeMode', 'regimeCaution', 'regimeDefense'];   // 165 이후 추가(E1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
+  const I0 = Object.fromEntries(Object.entries(S.defaults('intraday')).filter(([k]) => !LATER.includes(k)));
+  assert.deepEqual(js[0], I0);
+  assert.deepEqual(S.validate('intraday', js[0]).val, S.defaults('intraday'));
   assert.deepEqual(js[1], S.defaults('closing'));
 });
 test('기본 시각 = 1~3단계 값(선정 10:05 · 알림 10:15 · 마감 10:30 · 판정 15:10~15:18 · 전환 20:00)', () => {
@@ -213,4 +216,24 @@ test('선정 시각을 09:30 으로 바꾸면 09:31 에 선정하고 풀은 설�
   assert.ok(r.sel && r.sel.ok);
   assert.equal(runs['2026-11-16'].payload.strategy.version, 3);
   assert.equal(runs['2026-11-16'].strategy_id, 'i');
+});
+
+/* ── 시장 상태 점수(E1) ── */
+test('시장 상태: 기본은 표시만, 금액 조절은 보수·방어 단계만 줄이고 방어 ≤ 보수', () => {
+  const A = require('../auto');
+  const P = S.defaults('intraday');
+  assert.equal(P.regimeMode, 'info');
+  const rg = st => ({ date: '2026-11-13', score: 42, stage: st });
+  assert.equal(A.regimeMult(P, rg('defense')), 1);
+  const Q = { ...P, regimeMode: 'scale' };
+  assert.equal(A.regimeMult(Q, rg('attack')), 1); assert.equal(A.regimeMult(Q, rg('normal')), 1);
+  assert.equal(A.regimeMult(Q, rg('caution')), 0.5); assert.equal(A.regimeMult(Q, rg('defense')), 0.25);
+  assert.equal(A.regimeMult(Q, null), 1);
+  assert.match(A.regimeLine(rg('caution'), P), /시장 상태 보수 42점\(11\/13 종가 기준\) · 표시만/);
+  assert.match(A.regimeLine(rg('defense'), Q, 250000), /종목당 금액 25%\(250,000원\)/);
+  assert.equal(A.regimeLine(null, Q), null);
+  assert.match(S.validate('intraday', { regimeCaution: 30, regimeDefense: 40 }).errs[0].msg, /방어 단계 금액/);
+  assert.ok(S.validate('intraday', { regimeDefense: 0 }).errs);   // 0%(매수 중단)는 허용 안 함 — 결정: 방어도 줄이기만
+  const m = A.formatMessage('2026-11-16', [{ code: 'A', name: '가', price: 1000, open: 990, changePct: 1, sector: 'x', reasons: [], m: { cttr: 120, fAmt: 1, oAmt: 1, pAmt: 1 }, score: { total: 80, ratio: 0.01 }, warns: [] }], { regime: A.regimeLine(rg('defense'), Q, 250000) });
+  assert.match(m, /📊 시장 상태 방어 42점/);
 });

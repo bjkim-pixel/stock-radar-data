@@ -147,7 +147,7 @@ function createExec(deps) {
 
   /* 승인 처리: 승인한 종목을 차례로 주문. 반환 = 텔레그램 답장 */
   async function approve(date, payload) {
-    const perStock = (D.perStock ? await D.perStock() : 1000000) || 1000000;
+    const ps0 = D.perStock ? await D.perStock() : null, perStock = ps0 > 0 ? ps0 : 1000000;
     const opt = D.opt ? await D.opt() : {};
     const lines = [`🛒 가상 매수 · 종목당 ${fmt(perStock)}원`];
     for (const code of payload.approved || []) {
