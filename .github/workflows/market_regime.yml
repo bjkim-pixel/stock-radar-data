@@ -1,0 +1,34 @@
+name: "[상시5] 시장 상태 점수 | 장전 보완·수동 | 168_market_regime"
+
+# 자동매매 보강 E1(2026-11-16): 시장 상태 점수(0~100, 공격/보통/보수/방어)를 market_regime 에 저장
+#  · 매일: post_compute.yml(16·18시 계산 직후) 의 regime 잡이 최근 5거래일을 다시 계산
+#  · 08:15 KST 평일: 전날 계산이 빠졌을 때를 대비한 보완 실행(같은 날짜는 덮어쓰기라 여러 번 돌아도 안전)
+#  · 수동: mode=backfill 이면 최근 2년을 채우고 단계별 검증 보고서를 market-regime-report 브랜치에 올림
+on:
+  schedule:
+    - cron: "15 23 * * 0-4"   # 08:15 KST 월~금
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'daily(최근 5거래일) | backfill(최근 2년 + 검증 보고서)'
+        type: choice
+        default: daily
+        options: [daily, backfill]
+permissions:
+  contents: write
+jobs:
+  regime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency: { group: market-regime, cancel-in-progress: false }
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install psycopg2-binary pandas numpy
+      - run: python 168_market_regime.py ${{ inputs.mode == 'backfill' && '--backfill' || '--days 5' }} --report market_regime_report.md 2>regime_err.txt; s=$?; grep -v "UserWarning\|pandas only supports\|read_sql" regime_err.txt | tail -c 2000 >> market_regime_report.md || true; exit $s
+      - if: always()
+        uses: ./.github/actions/publish-report
+        with: { branch: market-regime-report, file: market_regime_report.md }

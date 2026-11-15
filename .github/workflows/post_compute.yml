@@ -171,6 +171,23 @@ jobs:
         uses: ./.github/actions/publish-report
         with: { branch: investor-collect-report, file: investor_collect_report.md }
 
+  # 시장 상태 점수(자동매매 보강 E1) — 계산 직후 최근 5거래일 다시 계산. 실패해도 다른 잡·AI 브리핑에 영향 없음
+  regime:
+    if: ${{ ((inputs.parts || 'all') == 'all') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    concurrency: { group: market-regime, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install psycopg2-binary pandas numpy
+      - name: Market regime score
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 168_market_regime.py --days 5
+
   # AI 브리핑 — 위 4개 계산(앞 단계가 실패/생략돼도 진행)이 끝난 뒤 생성. 같은 날짜·회차가 이미 성공했으면 113_ai_brief.py 가 스스로 건너뜁니다.
   ai:
     needs: [flowcap, sectorflow, smartmoney, investor]
