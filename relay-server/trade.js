@@ -486,7 +486,7 @@ function createTrade(deps = {}) {
     const o = req.headers.origin;
     res.setHeader('Access-Control-Allow-Origin', (o && allowedOrigins.includes(o)) ? o : (allowedOrigins[0] || ''));
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'content-type, authorization, x-trade-session, x-device-id, x-device-info');
+    res.setHeader('Access-Control-Allow-Headers', 'content-type, authorization, x-trade-session, x-device-id, x-device-info, x-active');
     res.setHeader('Vary', 'Origin');
   }
   const json = (res, code, o) => { res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(o)); };
