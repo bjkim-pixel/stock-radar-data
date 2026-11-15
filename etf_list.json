@@ -1293,5 +1293,245 @@
   "country": "",
   "mgmt": "패시브",
   "flags": ""
+ },
+ {
+  "code": "409820",
+  "name": "KODEX 미국나스닥100레버리지(합성 H)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "합성/환헤지(H)/레버리지"
+ },
+ {
+  "code": "409810",
+  "name": "KODEX 미국나스닥100선물인버스(H)",
+  "field": "인버스·레버리지",
+  "subfield": "인버스",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "선물/환헤지(H)/인버스"
+ },
+ {
+  "code": "418660",
+  "name": "TIGER 미국나스닥100레버리지(합성)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "합성/레버리지"
+ },
+ {
+  "code": "225040",
+  "name": "TIGER 미국S&P500레버리지(합성 H)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "합성/환헤지(H)/레버리지"
+ },
+ {
+  "code": "225030",
+  "name": "TIGER 미국S&P500선물인버스(H)",
+  "field": "인버스·레버리지",
+  "subfield": "인버스",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "선물/환헤지(H)/인버스"
+ },
+ {
+  "code": "423920",
+  "name": "TIGER 미국필라델피아반도체레버리지(합성)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "반도체",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "합성/레버리지"
+ },
+ {
+  "code": "491630",
+  "name": "RISE 미국반도체인버스(합성 H)",
+  "field": "인버스·레버리지",
+  "subfield": "인버스",
+  "tags": "반도체",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "합성/환헤지(H)/인버스"
+ },
+ {
+  "code": "465610",
+  "name": "ACE 미국빅테크TOP7 Plus레버리지(합성)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "합성/레버리지"
+ },
+ {
+  "code": "461910",
+  "name": "PLUS 미국테크TOP10레버리지(합성)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "합성/레버리지"
+ },
+ {
+  "code": "412560",
+  "name": "TIGER BBIG레버리지",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "레버리지"
+ },
+ {
+  "code": "452250",
+  "name": "ACE 미국30년국채선물레버리지(합성 H)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "합성/선물/환헤지(H)/레버리지"
+ },
+ {
+  "code": "267490",
+  "name": "RISE 미국장기국채선물레버리지(합성 H)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "합성/선물/환헤지(H)/레버리지"
+ },
+ {
+  "code": "304670",
+  "name": "KODEX 미국30년국채울트라선물인버스(H)",
+  "field": "인버스·레버리지",
+  "subfield": "인버스",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "선물/환헤지(H)/인버스"
+ },
+ {
+  "code": "267450",
+  "name": "RISE 미국장기국채선물인버스(H)",
+  "field": "인버스·레버리지",
+  "subfield": "인버스",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "선물/환헤지(H)/인버스"
+ },
+ {
+  "code": "196030",
+  "name": "ACE 일본TOPIX레버리지(H)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "일본",
+  "mgmt": "패시브",
+  "flags": "환헤지(H)/레버리지"
+ },
+ {
+  "code": "205720",
+  "name": "ACE 일본TOPIX인버스(합성 H)",
+  "field": "인버스·레버리지",
+  "subfield": "인버스",
+  "tags": "",
+  "country": "일본",
+  "mgmt": "패시브",
+  "flags": "합성/환헤지(H)/인버스"
+ },
+ {
+  "code": "225050",
+  "name": "TIGER 유로스탁스레버리지(합성 H)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "유럽",
+  "mgmt": "패시브",
+  "flags": "합성/환헤지(H)/레버리지"
+ },
+ {
+  "code": "225060",
+  "name": "TIGER 이머징마켓MSCI레버리지(합성 H)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "이머징",
+  "mgmt": "패시브",
+  "flags": "합성/환헤지(H)/레버리지"
+ },
+ {
+  "code": "453820",
+  "name": "KODEX 인도Nifty50레버리지(합성)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "인도",
+  "mgmt": "패시브",
+  "flags": "합성/레버리지"
+ },
+ {
+  "code": "219900",
+  "name": "ACE 중국본토CSI300레버리지(합성)",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "중국",
+  "mgmt": "패시브",
+  "flags": "합성/레버리지"
+ },
+ {
+  "code": "217780",
+  "name": "TIGER 차이나CSI300인버스(합성)",
+  "field": "인버스·레버리지",
+  "subfield": "인버스",
+  "tags": "",
+  "country": "중국",
+  "mgmt": "패시브",
+  "flags": "합성/인버스"
+ },
+ {
+  "code": "291680",
+  "name": "RISE 차이나H선물인버스(H)",
+  "field": "인버스·레버리지",
+  "subfield": "인버스",
+  "tags": "",
+  "country": "중국",
+  "mgmt": "패시브",
+  "flags": "선물/환헤지(H)/인버스"
+ },
+ {
+  "code": "261110",
+  "name": "TIGER 미국달러선물레버리지",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "선물/레버리지"
+ },
+ {
+  "code": "261120",
+  "name": "TIGER 미국달러선물인버스2X",
+  "field": "인버스·레버리지",
+  "subfield": "레버리지인버스",
+  "tags": "",
+  "country": "미국",
+  "mgmt": "패시브",
+  "flags": "선물/레버리지/인버스"
  }
 ]
