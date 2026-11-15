@@ -1,0 +1,33 @@
+name: "[보안] 로그인 기록 복사 + 보안 요약 텔레그램 | 매일 07:30(KST)"
+# 매일 아침: ① Supabase 로그인 기록을 auth_audit 로 복사 ② relay-server 의 /trigger-security-summary 호출 →
+# 전날 세션·기기·IP·실패·로그인 요약을 텔레그램으로 발송(서버가 슬립 중이면 이 호출이 깨움).
+on:
+  schedule:
+    - cron: "30 22 * * *"   # 07:30 KST
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary
+      - name: 로그인 기록 복사
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 165_auth_audit_copy.py || echo "⚠ 복사 실패(요약은 계속 진행)"
+      - name: 보안 요약 발송 (최대 3회 재시도)
+        env:
+          TOKEN: ${{ secrets.DAILY_SUMMARY_TOKEN }}
+        run: |
+          for i in 1 2 3; do
+            S=$(curl -s -o /tmp/r.json -w "%{http_code}" --max-time 90 "https://kis-relay-server.onrender.com/trigger-security-summary?token=${TOKEN}&hours=24")
+            echo "시도 $i — HTTP $S"; cat /tmp/r.json 2>/dev/null; echo
+            [ "$S" = "200" ] && exit 0
+            sleep 20
+          done
+          exit 1

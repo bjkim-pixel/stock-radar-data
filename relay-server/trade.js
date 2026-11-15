@@ -127,6 +127,61 @@ function createTrade(deps = {}) {
   };
   const timer = setInterval(sweep, 60000); if (timer.unref) timer.unref();
 
+  /* ── 접속 기기·IP 식별 (2026-11-15) ──
+     브라우저가 보내는 x-device-id(무작위 ID)·x-device-info(이름·모델 등)를 기록하고, 처음 보는 기기·IP는 알림에 경고를 붙임.
+     모델명은 Chrome 의 UA-CH(model)에서 오며 클라이언트가 보낸 값이라 참고용(위조 가능) — 기기 ID·IP 와 함께 봄. */
+  const BUILD = String(env.RENDER_GIT_COMMIT || '').slice(0, 7);
+  const known = { ips: new Set(), devs: new Map(), loaded: false };   // devs: id -> { ips:Set, name }
+  const HOME_PREFIXES = String(env.HOME_IP_PREFIXES || '').split(',').map(x => x.trim()).filter(Boolean);
+  const kst = () => new Date(now() + 9 * 3600e3).toISOString().slice(5, 16).replace('T', ' ');
+  const sameNet = (a, b) => String(a).split('.').slice(0, 2).join('.') === String(b).split('.').slice(0, 2).join('.');
+  function friendlyModel(m) {
+    m = String(m || '');
+    if (/^SM-S948/i.test(m)) return '삼성 갤럭시 S26 울트라';
+    if (/^SM-S938/i.test(m)) return '삼성 갤럭시 S25 울트라';
+    if (/^SM-S928/i.test(m)) return '삼성 갤럭시 S24 울트라';
+    if (/iplay/i.test(m)) return 'iPlay 태블릿';
+    if (/^SM-/i.test(m)) return '삼성 ' + m;
+    return m;
+  }
+  function devOf(req) {
+    const id = String(req.headers['x-device-id'] || '').toLowerCase();
+    let info = {};
+    try { info = JSON.parse(decodeURIComponent(String(req.headers['x-device-info'] || '').slice(0, 1200))) || {}; } catch (_) {}
+    const cl = v => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, '').slice(0, 60);
+    const d = { id: /^[0-9a-f-]{16,40}$/.test(id) ? id : '', name: cl(info.n), model: cl(info.m), brand: cl(info.b), plat: cl(info.p), pv: cl(info.pv) };
+    d.label = d.name || friendlyModel(d.model) || (d.id ? '이름 없는 기기' : '기기 정보 없음');
+    return d;
+  }
+  function classify(req) {
+    const ip = clientIp(req), d = devOf(req), flags = [];
+    const kd = d.id ? known.devs.get(d.id) : null;
+    if (!d.id) flags.push('기기 정보 없음');
+    else if (known.loaded && !kd) flags.push('새 기기');
+    if (known.loaded && !known.ips.has(ip)) flags.push('새 IP');
+    if (/iplay/i.test(d.name + ' ' + d.model)) {   // 태블릿은 집 Wi-Fi 에서만 씀
+      const ok = HOME_PREFIXES.length ? HOME_PREFIXES.some(x => ip.startsWith(x)) : (kd ? [...kd.ips].some(x => sameNet(x, ip)) : true);
+      if (!ok) flags.push('집 밖 접속(태블릿은 집 Wi-Fi 전용)');
+    }
+    return { ip, d, flags, danger: flags.some(f => /새 기기|집 밖|기기 정보 없음/.test(f)) };
+  }
+  function remember(c) {
+    known.ips.add(c.ip);
+    if (c.d.id) { const k = known.devs.get(c.d.id) || { ips: new Set(), name: c.d.label }; k.ips.add(c.ip); k.name = c.d.label; known.devs.set(c.d.id, k); }
+  }
+  const whoText = (c) => `📱 ${c.d.label}${c.d.model ? ` (${c.d.model})` : ''}\n🌐 ${c.ip}`;
+  const warnText = (c) => c.flags.length ? (c.danger ? '🚨 ' : '⚠ ') + c.flags.join(' · ') + '\n' : '';
+  async function loadKnown() {
+    const since = new Date(now() - 90 * 864e5).toISOString();
+    const rows = await deps.sbGet(`trade_audit?select=ip,detail&event=eq.session_open&ts=gte.${encodeURIComponent(since)}&limit=2000`);
+    for (const r of rows) {
+      if (r.ip) known.ips.add(r.ip);
+      const id = r.detail && r.detail.dev && r.detail.dev.id;
+      if (id) { const k = known.devs.get(id) || { ips: new Set(), name: (r.detail.dev.n || '') }; if (r.ip) k.ips.add(r.ip); known.devs.set(id, k); }
+    }
+    known.loaded = true;
+  }
+
   /* ── 알림 · 감사 ── */
   async function alert(text, title = '매매 보안') {
     try { if (deps.notify) await deps.notify(text, { title, tag: 'trade-security' }); } catch (_) {}
@@ -137,7 +192,9 @@ function createTrade(deps = {}) {
     }
   }
   async function audit(event, ok, detail, req, mode) {
-    const row = { event, ok: !!ok, mode: mode || null, ip: req ? clientIp(req) : null, ua: req ? String(req.headers['user-agent'] || '').slice(0, 200) : null, detail: scrub(detail) };
+    const det = { ...(detail || {}), real: cfg.realEnabled, build: BUILD };
+    if (req) { const dv = devOf(req); det.dev = { id: dv.id, n: dv.name, m: dv.model, b: dv.brand, p: dv.plat }; }
+    const row = { event, ok: !!ok, mode: mode || null, ip: req ? clientIp(req) : null, ua: req ? String(req.headers['user-agent'] || '').slice(0, 200) : null, detail: scrub(det) };
     console.log(`[trade] ${event} ${ok ? 'ok' : 'DENY'} ${row.ip || ''}`);
     try { if (deps.sbWrite) { await deps.sbWrite('trade_audit', 'POST', [row]); return true; } }
     catch (e) { if (!/42P01|PGRST205|does not exist/.test(String(e.message))) console.warn('[trade] 감사 기록 실패:', e.message); }
@@ -164,6 +221,7 @@ function createTrade(deps = {}) {
         }
         state.pinFails = fails; state.pinLockUntil = Math.max(state.pinLockUntil, lockUntil);
         if (state.halted) console.log('[trade] 재시작 복구: 긴급 정지 상태 유지');
+        try { await loadKnown(); } catch (e) { console.warn('[trade] 접속 기기 이력 읽기 실패:', e && e.message); }
         return;
       } catch (e) {
         lastErr = e;
@@ -175,7 +233,11 @@ function createTrade(deps = {}) {
     console.warn('[trade] 재시작 복구 실패 — 안전을 위해 신규 매수 정지로 시작:', lastErr && lastErr.message);
     alert('서버 재시작 후 매매 상태를 읽지 못해 신규 매수를 정지했습니다. 확인 후 해제하세요.');
   }
-  if (deps.sbGet && !deps.skipRestore) ready = restore();
+  async function announce() {
+    if (deps.skipLoop || !deps.notify) return;
+    await alert(`🔁 서버 시작${BUILD ? ' (' + BUILD + ')' : ''}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치 ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 긴급정지 ${state.halted ? 'ON(유지)' : '해제'}`, '서버 상태');
+  }
+  if (deps.sbGet && !deps.skipRestore) ready = restore().then(announce, announce);
   /* 인증 실패처럼 반복될 수 있는 기록은 IP·사유별로 분당 1회만 */
   function auditOnce(event, detail, req) {
     const k = event + '|' + (req ? clientIp(req) : '');
@@ -419,7 +481,7 @@ function createTrade(deps = {}) {
     const o = req.headers.origin;
     res.setHeader('Access-Control-Allow-Origin', (o && allowedOrigins.includes(o)) ? o : (allowedOrigins[0] || ''));
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'content-type, authorization, x-trade-session');
+    res.setHeader('Access-Control-Allow-Headers', 'content-type, authorization, x-trade-session, x-device-id, x-device-info');
     res.setHeader('Vary', 'Origin');
   }
   const json = (res, code, o) => { res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(o)); };
@@ -455,13 +517,22 @@ function createTrade(deps = {}) {
     // 상태 조회는 세션이 있으면 그 정보도 함께 돌려줌(없어도 통과)
     const a = await authz(req, { session: needSession });
     if (!a.ok) {
-      if (a.wrongUser) { if (auditOnce('login_wrong_user', { path }, req)) alert('허용되지 않은 계정이 매매 API에 접근했습니다.'); }
+      if (a.wrongUser) { if (auditOnce('login_wrong_user', { path }, req)) { const c = classify(req); alert(`🚨 허용되지 않은 계정이 매매 API에 접근했습니다.\n${whoText(c)}`); } }
       else if (a.status === 401 && !needSession) auditOnce('login_invalid', { path }, req);
       return json(res, a.status, { ok: false, error: a.error });
     }
     if (path === '/trade/status' && req.method === 'GET') {
       const sess = getSession(req.headers['x-trade-session'], a.user.id);
       return json(res, 200, statusBody({ session: sess }));
+    }
+    if (path === '/trade/audit' && req.method === 'GET') {   // 보안 로그 화면용(로그인한 주인만)
+      if (!deps.sbGet) return json(res, 503, { ok: false, error: 'audit unavailable' });
+      const days = Math.min(90, Math.max(1, +new URL(req.url, 'http://x').searchParams.get('days') || 7));
+      try {
+        const since = new Date(now() - days * 864e5).toISOString();
+        const rows = await deps.sbGet(`trade_audit?select=ts,event,ok,mode,ip,detail&ts=gte.${encodeURIComponent(since)}&event=not.in.(paper_plan,live_plan)&order=ts.desc&limit=800`);
+        return json(res, 200, { ok: true, rows, realEnabled: cfg.realEnabled, enabled: cfg.enabled, halted: state.halted, build: BUILD, now: now() });
+      } catch (e) { return json(res, 502, { ok: false, error: 'audit read failed' }); }
     }
     if (path === '/trade/quote' && req.method === 'GET') {
       const code = new URL(req.url, 'http://x').searchParams.get('code') || '';
@@ -514,13 +585,16 @@ function createTrade(deps = {}) {
       const r = await checkPin(body.pin);
       if (!r.ok) {
         await audit('pin_fail', false, { left: r.left, locked: !!r.locked }, req);
-        if (r.locked) alert(`거래 PIN을 ${cfg.pinMaxFails}회 틀려 ${Math.round(cfg.pinLockMs / 60000)}분간 잠겼습니다.`);
-        else if (r.status === 401) alert(`거래 PIN 오류 (남은 시도 ${r.left}회)`);
+        const c = classify(req);
+        if (r.locked) alert(`🚨 거래 PIN을 ${cfg.pinMaxFails}회 틀려 ${Math.round(cfg.pinLockMs / 60000)}분간 잠겼습니다.\n${warnText(c)}${whoText(c)}`);
+        else if (r.status === 401) alert(`${warnText(c)}⚠ 거래 PIN 오류 (남은 시도 ${r.left}회)\n${whoText(c)}`);
         return json(res, r.status, { ok: false, error: r.error, ...(r.left != null ? { left: r.left } : {}), ...(r.retrySec ? { retrySec: r.retrySec } : {}) });
       }
       const sid = openSession(a.user.id);
-      await audit('session_open', true, {}, req);
-      alert('거래 세션이 열렸습니다. 본인이 아니면 긴급 정지를 누르세요.', '매매 세션');
+      const c = classify(req);
+      await audit('session_open', true, { flags: c.flags.length ? c.flags : undefined }, req);
+      remember(c);
+      alert(`${warnText(c)}🔓 거래 세션 열림 · ${kst()}\n${whoText(c)}\n실전 스위치 ${cfg.realEnabled ? 'ON 🔴' : 'OFF'} · 긴급정지 ${state.halted ? 'ON' : '해제'}\n본인이 아니면 /kill`, '매매 세션');
       return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000) });
     }
     if (path === '/trade/live/order' || path === '/trade/live/cancel' || path === '/trade/live/plan' || path === '/trade/live/modify') {
@@ -559,19 +633,20 @@ function createTrade(deps = {}) {
     if (path === '/trade/lock') {
       sessions.delete(String(req.headers['x-trade-session'] || ''));
       audit('session_close', true, {}, req);
+      { const c = classify(req); alert(`🔒 거래 세션 잠금 · ${kst()}\n${whoText(c)}`, '매매 세션'); }
       return json(res, 200, { ok: true });
     }
     if (path === '/trade/kill') {
       state.halted = true;
       const saved = await audit('kill', true, {}, req);
-      alert('긴급 정지: 신규 매수가 막혔습니다. (보유 종목 매도·취소는 가능)' + (saved ? '' : ' ⚠ 기록 저장 실패 — 서버 재시작 시 Render 의 TRADING_ENABLED=0 으로 막으세요'));
+      alert(`🛑 긴급 정지: 신규 매수가 막혔습니다. (보유 종목 매도·취소는 가능)\n${whoText(classify(req))}` + (saved ? '' : ' ⚠ 기록 저장 실패 — 서버 재시작 시 Render 의 TRADING_ENABLED=0 으로 막으세요'));
       return json(res, 200, { ok: true, halted: true, saved });
     }
     if (path === '/trade/resume') {
       const saved = await audit('resume', true, {}, req);
       if (!saved) return json(res, 503, { ok: false, error: 'audit unavailable' });   // 해제 기록이 안 남으면 재시작 때 다시 정지되므로 해제하지 않음
       state.halted = false;
-      alert('긴급 정지가 해제되었습니다.');
+      alert(`▶ 긴급 정지가 해제되었습니다.\n${whoText(classify(req))}`);
       return json(res, 200, { ok: true, halted: false });
     }
     return json(res, 404, { ok: false, error: 'not found' });
@@ -592,7 +667,33 @@ function createTrade(deps = {}) {
   if (!cfg.allowedEmail) console.warn('[trade] ALLOWED_EMAIL 미설정 — 매매 API는 모든 요청을 거부합니다.');
   if (!cfg.pinHash) console.warn('[trade] TRADE_PIN_HASH 미설정 — 거래 세션을 열 수 없습니다.');
 
-  return { handle, paper, live, getQuote,
+  /* ── 텔레그램 관리 명령(채팅 ID 확인은 server.js) ── */
+  const adminStatus = () => `📊 매매 상태 · ${kst()}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치 ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 긴급정지 ${state.halted ? 'ON' : '해제'}\n열린 거래 세션 ${[...sessions.values()].filter(x => x.exp > now() && x.abs > now()).length}개 · PIN 잠금 ${state.pinLockUntil > now() ? Math.ceil((state.pinLockUntil - now()) / 60000) + '분 남음' : '없음'}${BUILD ? '\n빌드 ' + BUILD : ''}`;
+  async function adminLock(via) { const n = sessions.size; sessions.clear(); await audit('session_close_all', true, { via, n }, null); return n; }
+  async function adminKill(via) { state.halted = true; return audit('kill', true, { via }, null); }
+  async function securitySummary(hours = 24) {
+    const since = new Date(now() - hours * 3600e3).toISOString(), q = encodeURIComponent(since);
+    const rows = await deps.sbGet(`trade_audit?select=ts,event,ok,mode,ip,detail&ts=gte.${q}&order=ts.asc&limit=2000`);
+    let auth = [];
+    try { auth = await deps.sbGet(`auth_audit?select=ts,action,ip&ts=gte.${q}&order=ts.asc&limit=2000`); } catch (_) { auth = null; }
+    const cnt = {}, devs = new Map(), ips = new Set(), warn = [];
+    for (const r of rows) {
+      cnt[r.event] = (cnt[r.event] || 0) + 1;
+      const d = r.detail && r.detail.dev;
+      if (r.event === 'session_open') { ips.add(r.ip); const k = (d && (d.n || d.m)) || '기기 정보 없음'; devs.set(k, (devs.get(k) || 0) + 1); }
+      if (r.detail && r.detail.flags) warn.push(`${String(r.ts).slice(5, 16).replace('T', ' ')} ${r.detail.flags.join('·')}`);
+    }
+    const fail = (cnt.pin_fail || 0) + (cnt.login_invalid || 0) + (cnt.login_wrong_user || 0) + (cnt.replay_reject || 0);
+    const live = Object.keys(cnt).filter(k => k.startsWith('live_')).reduce((a, k) => a + cnt[k], 0);
+    const L = [`🛡 보안 요약 (최근 ${hours}시간) · 실전 스위치 ${cfg.realEnabled ? '🚨 ON' : 'OFF'}`,
+      `세션 열림 ${cnt.session_open || 0}회 · 기기 ${devs.size ? [...devs].map(([k, v]) => `${k} ${v}`).join(', ') : '없음'}`,
+      `접속 IP ${ips.size}개 · 실패/거부 ${fail}건 · 긴급정지 ${cnt.kill || 0}회 · 실전 주문 이벤트 ${live}건`];
+    if (auth) { const li = auth.filter(a => a.action === 'login'); L.push(`사이트 로그인 ${li.length}회 · IP ${new Set(li.map(a => a.ip)).size}개${auth.some(a => /password|recover|user_modified/.test(a.action)) ? ' · ⚠ 계정/비밀번호 변경 기록 있음' : ''}`); }
+    else L.push('사이트 로그인 기록: 아직 수집 전');
+    if (warn.length) L.push('⚠ 경고 ' + warn.slice(-5).join(' / '));
+    return L.join('\n');
+  }
+  return { handle, paper, live, getQuote, adminStatus, adminLock, adminKill, securitySummary,
     // 체결 틱 깨우기(2026-11-13): 엔진별 감시선 · 깨우기(판정은 엔진이 REST 시세로)
     watchLines: code => [['paper', paper], ['live', live]].filter(([, e]) => e && e.watchLines).map(([k, e]) => { try { return [k, e.watchLines(code)]; } catch (_) { return [k, null]; } }).filter(([, L]) => L),
     kick: (eng, code) => { const e = eng === 'live' ? live : paper; return e && e.kick ? e.kick(code) : Promise.resolve(false); },

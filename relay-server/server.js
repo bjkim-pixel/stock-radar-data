@@ -2685,6 +2685,16 @@ function resolveCode(token) {
 
 async function handleTelegramCommand(chatId, text) {
   let m;
+  // 2026-11-15: 매매 보안 명령 — 등록된 채팅(TELEGRAM_CHAT_ID)에서만 동작
+  if ((m = text.match(/^\/(status|상태|lock|잠금|kill|정지)(?:@\w+)?\s*$/i))) {
+    if (!TELEGRAM_CHAT_ID || String(chatId) !== String(TELEGRAM_CHAT_ID)) return;
+    const c = m[1].toLowerCase();
+    if (c === 'status' || c === '상태') { await sendTelegramTo(chatId, trade.adminStatus()); return; }
+    if (c === 'lock' || c === '잠금') { const n = await trade.adminLock('telegram'); await sendTelegramTo(chatId, `🔒 열려 있던 거래 세션 ${n}개를 모두 종료했어요. (PIN을 다시 입력해야 해요)`); return; }
+    const saved = await trade.adminKill('telegram');
+    await sendTelegramTo(chatId, '🛑 긴급 정지: 신규 매수를 막았어요. (보유 종목 매도·취소는 가능)' + (saved ? '' : '\n⚠ 기록 저장 실패 — 서버가 재시작되면 풀릴 수 있어요. Render에서 TRADING_ENABLED=0 으로 막으세요.'));
+    return;
+  }
   if ((m = text.match(/^\/?(?:target|목표가)\s+(\S+)\s+([\d,]+)\s*원?\s*$/i))) {
     const price = parsePriceNum(m[2]);
     const r = resolveCode(m[1]);
@@ -2762,6 +2772,7 @@ async function handleTelegramCommand(chatId, text) {
       '/오늘요약 — "오늘의 종목" 요약 즉시 받기 (매 거래일 수집·계산이 끝나면 자동 발송)\n' +
       '/알림끄기 — 신고가·신저가·손절·목표가 알림 일시정지 (오늘의 종목 요약은 계속 발송)\n' +
       '/알림켜기 — 알림 다시 켜기\n' +
+      '/status — 매매 상태(스위치·정지·세션)\n/lock — 열린 거래 세션 모두 종료\n/kill — 긴급 정지(신규 매수 차단)\n' +
       '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
       `보유 종목의 당일 신고가·신저가 갱신(직전 알림 대비 ${ALERT_MIN_MOVE_PCT}% 이상 갱신 시), 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.`);
     return;
@@ -3640,6 +3651,14 @@ const server = http.createServer((req, res) => {
         res.writeHead(500, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: err.message }));
       });
+    return;
+  }
+  if (req.url && req.url.startsWith('/trigger-security-summary')) {   // 2026-11-15: 매일 아침 보안 요약(GitHub Actions 가 호출)
+    const u = new URL(req.url, 'http://internal');
+    if (DAILY_SUMMARY_TOKEN && u.searchParams.get('token') !== DAILY_SUMMARY_TOKEN) { res.writeHead(403, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: 'forbidden' })); return; }
+    trade.ready().then(() => trade.securitySummary(Math.min(72, +u.searchParams.get('hours') || 24)))
+      .then(text => sendTelegram(text).then(() => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true })); }))
+      .catch(err => { console.error('[보안 요약] 실패:', err.message); res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: err.message })); });
     return;
   }
   if (req.url && req.url.startsWith('/trigger-intraday-summary')) {

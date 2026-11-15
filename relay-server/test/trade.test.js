@@ -33,8 +33,8 @@ async function boot(envExtra = {}, opts = {}) {
   await new Promise(r => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
   let n = 0;
-  const call = async (method, path, { token = GOOD, session, body, origin = ORIGIN, ip, raw } = {}) => {
-    const headers = { 'content-type': 'application/json' };
+  const call = async (method, path, { token = GOOD, session, body, origin = ORIGIN, ip, raw, h } = {}) => {
+    const headers = { 'content-type': 'application/json', ...(h || {}) };
     if (token) headers.authorization = `Bearer ${token}`;
     if (session) headers['x-trade-session'] = session;
     if (origin) headers.origin = origin;
@@ -320,4 +320,98 @@ test('시세: 1.5초 캐시·동시 요청 1번, 체결강도는 5초 캐시, KI
   const c2 = await boot({}, { kisGet: async () => { throw new Error('KIS down'); } });
   assert.equal((await c2.call('GET', '/trade/quote?code=005930')).status, 502);
   await c2.close();
+});
+
+/* ── 2026-11-15: 접속 기기·IP 식별, 알림 강화, 보안 로그 ── */
+const DEV = (id, n, m) => ({ 'x-device-id': id, 'x-device-info': encodeURIComponent(JSON.stringify({ n, m })) });
+const PHONE = DEV('a1b2c3d4e5f60718a1b2c3d4e5f60718', '갤럭시 S26 울트라', 'SM-S948N');
+const PAD = DEV('b1b2c3d4e5f60718a1b2c3d4e5f60718', 'iPlay 50 mini Pro', 'iPlay 50 mini Pro');
+
+test('세션 열림 알림에 기기·IP·실전 스위치 표시, 감사 기록에 기기 정보 저장', async () => {
+  const c = await boot();
+  const r = await open2(c, PHONE, '9.9.9.9');
+  assert.equal(r.status, 200);
+  const a = c.alerts.find(x => /거래 세션 열림/.test(x));
+  assert.match(a, /갤럭시 S26 울트라 \(SM-S948N\)/); assert.match(a, /9\.9\.9\.9/); assert.match(a, /실전 스위치 OFF/);
+  const row = c.audits.find(x => x.event === 'session_open');
+  assert.equal(row.detail.dev.n, '갤럭시 S26 울트라'); assert.equal(row.detail.dev.m, 'SM-S948N'); assert.equal(row.detail.dev.id, PHONE['x-device-id']);
+  assert.equal(row.detail.real, false);
+  await c.close();
+});
+async function open2(c, h, ip, pin = '123456') { return c.call('POST', '/trade/session', { body: { pin }, h, ip }); }
+
+test('이력이 로드된 뒤 처음 보는 기기·IP는 경고, 본 기기는 경고 없음', async () => {
+  const hist = [{ ip: '9.9.9.9', detail: { dev: { id: PHONE['x-device-id'], n: '갤럭시 S26 울트라' } } }];
+  const c = await boot({}, { sbGet: async q => (/session_open/.test(q) ? hist : []) });
+  await c.t.ready();
+  await open2(c, PHONE, '9.9.9.9');
+  assert.ok(!c.alerts.some(x => /새 기기|새 IP/.test(x)), '본 기기·IP는 경고 없음');
+  c.alerts.length = 0;
+  await open2(c, DEV('c1b2c3d4e5f60718a1b2c3d4e5f60718', '모르는 폰', 'Pixel 9'), '7.7.7.7');
+  const a = c.alerts.find(x => /거래 세션 열림/.test(x));
+  assert.match(a, /🚨 .*새 기기/); assert.match(a, /새 IP/);
+  assert.deepEqual(c.audits.filter(x => x.event === 'session_open').at(-1).detail.flags, ['새 기기', '새 IP']);
+  await c.close();
+});
+
+test('태블릿(iPlay)은 집 IP 대역 밖이면 🚨 경고', async () => {
+  const c = await boot({ HOME_IP_PREFIXES: '125.241.' }, { sbGet: async () => [] });
+  await c.t.ready();
+  await open2(c, PAD, '125.241.1.2');
+  assert.ok(!c.alerts.some(x => /집 밖/.test(x)));
+  c.alerts.length = 0;
+  await open2(c, PAD, '211.1.1.1');
+  assert.match(c.alerts.find(x => /거래 세션 열림/.test(x)), /집 밖 접속/);
+  await c.close();
+});
+
+test('기기 헤더 없으면 "기기 정보 없음" 경고, 잘못된 헤더는 무시', async () => {
+  const c = await boot();
+  await open2(c, { 'x-device-id': 'zz', 'x-device-info': '%E0%A4%A' }, '1.2.3.4');
+  assert.match(c.alerts.find(x => /거래 세션 열림/.test(x)), /기기 정보 없음/);
+  await c.close();
+});
+
+test('PIN 오류·잠금·kill·잠그기 알림에도 기기·IP 포함', async () => {
+  const c = await boot();
+  await open2(c, PHONE, '9.9.9.9', '000000');
+  assert.match(c.alerts.find(x => /PIN 오류/.test(x)), /9\.9\.9\.9/);
+  const s = await open2(c, PHONE, '9.9.9.9');
+  await c.call('POST', '/trade/kill', { h: PHONE, ip: '9.9.9.9' });
+  assert.match(c.alerts.find(x => /긴급 정지/.test(x)), /갤럭시 S26 울트라/);
+  await c.call('POST', '/trade/lock', { session: s.body.session, h: PHONE, ip: '9.9.9.9' });
+  assert.match(c.alerts.find(x => /세션 잠금/.test(x)), /9\.9\.9\.9/);
+  await c.close();
+});
+
+test('텔레그램 관리 API: 상태·전체 세션 종료·긴급 정지', async () => {
+  const c = await boot();
+  const s = await open2(c, PHONE, '9.9.9.9');
+  assert.match(c.t.adminStatus(), /열린 거래 세션 1개/);
+  assert.equal(await c.t.adminLock('telegram'), 1);
+  assert.equal((await c.call('GET', '/trade/ping', { session: s.body.session })).status, 401);
+  await c.t.adminKill('telegram');
+  assert.equal((await c.call('GET', '/trade/status')).body.halted, true);
+  assert.ok(c.audits.some(x => x.event === 'session_close_all' && x.detail.via === 'telegram'));
+  assert.ok(c.audits.some(x => x.event === 'kill' && x.detail.via === 'telegram'));
+  await c.close();
+});
+
+test('GET /trade/audit: 로그인 필요, 기록 반환', async () => {
+  const rows = [{ ts: '2026-11-14T14:05:16Z', event: 'session_open', ok: true, ip: '9.9.9.9', detail: {} }];
+  const c = await boot({}, { sbGet: async q => (/trade_audit\?select=ts/.test(q) ? rows : []) });
+  assert.equal((await c.call('GET', '/trade/audit', { token: null })).status, 401);
+  const r = await c.call('GET', '/trade/audit?days=7');
+  assert.equal(r.status, 200); assert.equal(r.body.rows.length, 1); assert.equal(r.body.realEnabled, false);
+  await c.close();
+});
+
+test('보안 요약: 세션·기기·실패·로그인 기록 집계', async () => {
+  const rows = [
+    { ts: '2026-11-14T14:05:16Z', event: 'session_open', ip: '9.9.9.9', detail: { dev: { n: '갤럭시 S26 울트라' }, flags: ['새 IP'] } },
+    { ts: '2026-11-14T14:06:16Z', event: 'pin_fail', ip: '9.9.9.9', detail: {} }];
+  const c = await boot({}, { sbGet: async q => (/auth_audit/.test(q) ? [{ ts: 'x', action: 'login', ip: '9.9.9.9' }] : rows) });
+  const t = await c.t.securitySummary(24);
+  assert.match(t, /세션 열림 1회/); assert.match(t, /갤럭시 S26 울트라 1/); assert.match(t, /실패\/거부 1건/); assert.match(t, /사이트 로그인 1회/); assert.match(t, /새 IP/);
+  await c.close();
 });

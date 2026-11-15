@@ -882,7 +882,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .trd-halt{background:#fff3cd;color:#664d03;border:1px solid #ffe69c;border-radius:var(--r);padding:8px 12px;margin:0 0 10px;font-size:13px}
 :root[data-theme="dark"] .trd-halt{background:#3d3210;color:#ffe08a;border-color:#6b5614}
 .trd-gate{max-width:420px}
-#trdPinRow{display:flex;gap:8px;margin-top:10px}#trdPin{flex:1;min-width:0}
+#trdPinRow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}#trdPin{flex:1;min-width:0}#trdDevName{flex:1 1 100%;min-width:0;font-size:13px}
 .trd-q{display:flex;flex-wrap:wrap;gap:6px}
 .trd-chip{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;background:var(--surface-2);overflow:hidden}
 .trd-chip.on{border-color:var(--ink);background:var(--surface-3)}
@@ -1087,7 +1087,8 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="sw">국면 전략</button></div></div>
     <div class="ng" data-g="mgmt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">관리</div><div class="ngi">
       <button data-v="perf">전략 성과</button>
-      <button data-v="perf2">전략 성과2</button></div></div>
+      <button data-v="perf2">전략 성과2</button>
+      <button data-v="seclog">보안 로그</button></div></div>
   </nav>
 </aside>
 <div id="navScrim"></div>
@@ -1699,6 +1700,16 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div id="ehAct"><div class="card"><div class="load sk"></div></div></div>
   <div id="ehPas" class="hide"></div>
 </section>
+<section id="v-seclog" class="hide">
+  <div class="card" style="margin-top:16px"><h3>보안 로그 <span class="r" id="slSub"></span></h3>
+    <div id="slState"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px"><div class="qf seg" id="slDays"><button class="fchip" data-v="7" aria-pressed="true">7일</button><button class="fchip" data-v="30" aria-pressed="false">30일</button><button class="fchip" data-v="90" aria-pressed="false">90일</button></div>
+      <div class="qf seg" id="slFilter"><button class="fchip" data-v="all" aria-pressed="true">전체</button><button class="fchip" data-v="ses" aria-pressed="false">세션</button><button class="fchip" data-v="bad" aria-pressed="false">실패·거부</button><button class="fchip" data-v="ord" aria-pressed="false">주문</button><button class="fchip" data-v="stop" aria-pressed="false">정지</button></div></div>
+    <div class="note">매매 세션·PIN·긴급 정지·주문 기록입니다. 기기 이름·모델은 기기가 알려준 값이라 참고용이고, 기기 ID와 IP를 함께 보세요. 처음 보는 기기·IP는 텔레그램으로도 경고가 옵니다.</div></div>
+  <div class="card" style="margin-top:12px"><h3>접속 기기</h3><div id="slDev"></div></div>
+  <div class="card" style="margin-top:12px"><h3>이벤트</h3><div id="slBody"></div></div>
+  <div class="card" style="margin-top:12px"><h3>이 기기</h3><div id="slMe"></div><div style="display:flex;gap:6px"><input id="slName" list="trdDevList" placeholder="이 기기 이름 바꾸기" maxlength="40" style="flex:1"><button type="button" class="btn" id="slNameGo">저장</button></div></div>
+</section>
 <section id="v-trend" class="hide">
   <div class="card" id="trCard" style="margin-top:16px"><h3><span>종목 추세</span> <span class="r" id="trStat">불러오는 중…</span></h3>
     <details id="trfBox" style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600">조회 조건 <span class="faint" style="font-weight:400;font-size:11px">실시간 종목과 같은 조건 · 선택한 조건을 모두 만족하는 종목만 표시</span> <span id="trfCnt" class="up" style="font-size:11px"></span></summary><div id="trfRows" style="margin-top:6px"></div></details>
@@ -2183,7 +2194,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div id="trdHalt" class="trd-halt hide" role="alert"></div>
   <div id="trdGate" class="card trd-gate">
     <div id="trdGateMsg" class="load"></div>
-    <div id="trdPinRow" class="hide"><input id="trdPin" type="password" inputmode="numeric" autocomplete="off" placeholder="거래 PIN" aria-label="거래 PIN"><button type="button" class="btn" id="trdPinGo">확인</button></div>
+    <div id="trdPinRow" class="hide"><input id="trdDevName" list="trdDevList" placeholder="이 기기 이름 (예: 삼성 갤럭시 S26 울트라)" maxlength="40" autocomplete="off" aria-label="기기 이름"><datalist id="trdDevList"><option value="삼성 갤럭시 S26 울트라"><option value="iPlay 50 mini Pro"></datalist><input id="trdPin" type="password" inputmode="numeric" autocomplete="off" placeholder="거래 PIN" aria-label="거래 PIN"><button type="button" class="btn" id="trdPinGo">확인</button></div>
   </div>
   <div id="trdMain" class="hide">
     <div class="trd-tabs" id="trdTabs" role="tablist"><button type="button" data-tp="order" class="on">매수</button><button type="button" data-tp="sell">매도</button><button type="button" data-tp="mod">정정/취소</button><button type="button" data-tp="fills">체결/미체결</button><button type="button" data-tp="plan">매도 계획</button></div>
@@ -3519,6 +3530,50 @@ function ehWire(){
 }
 $("#ehTab").addEventListener("seg-change",e=>{S.eh.tab=e.detail==="pas"?"pas":"act";ehLoad();});
 
+/* ══ 접속 기기 식별 · 보안 로그 — 2026-11-15 ═══════════════════════════════════
+   모든 거래 요청에 기기 ID(무작위, 이 브라우저에만 저장)와 기기 이름·모델(Chrome UA-CH)을 실어 보냄 → 서버 감사 기록·텔레그램 알림에 표시. */
+const DEV_PRESETS=["삼성 갤럭시 S26 울트라","iPlay 50 mini Pro"];
+function devId(){let v="";try{v=localStorage.getItem("sr_dev_id")||"";if(!/^[0-9a-f-]{16,40}$/.test(v)){v=crypto.randomUUID?crypto.randomUUID():[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,"0")).join("");localStorage.setItem("sr_dev_id",v);}}catch(_){}return v;}
+function devName(){try{return localStorage.getItem("sr_dev_name")||"";}catch(_){return "";}}
+let DEV_HINTS={};try{DEV_HINTS=JSON.parse(localStorage.getItem("sr_dev_hints")||"{}")||{};}catch(_){}
+(async()=>{try{const u=navigator.userAgentData;if(!u||!u.getHighEntropyValues)return;const h=await u.getHighEntropyValues(["model","platform","platformVersion"]);
+  DEV_HINTS={m:h.model||"",p:h.platform||u.platform||"",pv:h.platformVersion||"",b:(u.brands||[]).map(x=>x.brand).filter(x=>!/not.?a/i.test(x)).join("/")};localStorage.setItem("sr_dev_hints",JSON.stringify(DEV_HINTS));}catch(_){}})();
+function devGuess(){const m=DEV_HINTS.m||"";return /^SM-/i.test(m)?DEV_PRESETS[0]:/iplay|alldocube/i.test(m)?DEV_PRESETS[1]:"";}
+function devHeaders(){return {"x-device-id":devId(),"x-device-info":encodeURIComponent(JSON.stringify({n:devName(),m:DEV_HINTS.m||"",p:DEV_HINTS.p||"",pv:DEV_HINTS.pv||"",b:DEV_HINTS.b||""}))};}
+function devSaveName(v){v=String(v||"").trim().slice(0,40);try{if(v)localStorage.setItem("sr_dev_name",v);}catch(_){}return v;}
+
+const SL_EV={session_open:"세션 열림",session_close:"세션 잠금",session_close_all:"전체 세션 종료",pin_fail:"PIN 오류",login_invalid:"로그인 무효",login_wrong_user:"허용 안 된 계정",kill:"긴급 정지",resume:"정지 해제",replay_reject:"재전송 거부",paper_order:"가상 주문",paper_cancel:"가상 취소",paper_reject:"가상 거절",live_order:"실전 주문",live_cancel:"실전 취소",live_modify:"실전 정정",live_reject:"실전 거절"};
+const SL_GRP={ses:["session_open","session_close","session_close_all"],bad:["pin_fail","login_invalid","login_wrong_user","replay_reject","live_reject","paper_reject"],ord:["paper_order","paper_cancel","live_order","live_cancel","live_modify"],stop:["kill","resume"]};
+S.sl={days:7,f:"all",rows:[],meta:null};
+const slKst=ts=>new Date(ts).toLocaleString("ko-KR",{timeZone:"Asia/Seoul",hour12:false,month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"});
+function slDevName(d,ua){if(d&&(d.n||d.m))return d.n||d.m;return d&&d.id?"이름 없는 기기":"기기 정보 없음";}
+async function slLoad(force){
+  const E=S.sl;if(E.busy)return;E.busy=true;$("#slBody").innerHTML='<div class="load sk"></div>';
+  try{const j=await trdApi("/trade/audit?days="+E.days);E.rows=j.rows||[];E.meta=j;E.err=null;}
+  catch(e){E.err=e.code==="login"||e.status===401?"로그인이 필요합니다.":e.status===403?"허용되지 않은 계정입니다.":"보안 로그를 불러오지 못했어요(서버가 깨어나는 중일 수 있어요 — 잠시 뒤 다시 시도).";}
+  E.busy=false;slRender();
+}
+function slRender(){
+  const E=S.sl,m=E.meta||{};$("#slSub").textContent=E.rows.length?`최근 ${E.days}일 · ${E.rows.length}건`:"";
+  $("#slState").innerHTML=E.err?`<div class="load" style="text-align:left">${escH(E.err)}</div>`:`<div class="etf-qt"><div><span>매매 기능</span><b>${m.enabled?"ON":"OFF"}</b></div><div><span>실전 스위치</span><b class="${m.realEnabled?"up":""}">${m.realEnabled?"ON ⚠":"OFF"}</b></div><div><span>긴급 정지</span><b>${m.halted?"작동 중":"해제"}</b></div><div><span>서버 빌드</span><b>${escH(m.build||"–")}</b></div></div>`;
+  if(E.err){$("#slDev").innerHTML="";$("#slBody").innerHTML="";return;}
+  // 기기 집계
+  const dv=new Map();
+  E.rows.forEach(r=>{const d=(r.detail||{}).dev||{};const k=d.id||("ip:"+r.ip);const o=dv.get(k)||{name:slDevName(d),model:d.m||"",ips:new Set(),open:0,last:r.ts,lastIp:r.ip,bad:0,id:d.id||""};
+    if(r.ip)o.ips.add(r.ip);if(r.event==="session_open")o.open++;if(SL_GRP.bad.includes(r.event))o.bad++;if(r.ts>o.last){o.last=r.ts;o.lastIp=r.ip;}if(!o.name||/기기 정보 없음|이름 없는/.test(o.name)){o.name=slDevName(d);}dv.set(k,o);});
+  const me=devId();
+  $("#slDev").innerHTML=`<div class="tw"><table class="eh-t"><thead><tr><th class="l">기기</th><th class="l">모델(기기가 알린 값)</th><th>세션</th><th>실패</th><th>IP</th><th>마지막</th></tr></thead><tbody>${[...dv.values()].sort((a,b)=>a.last<b.last?1:-1).map(o=>`<tr><td class="l"><b>${escH(o.name)}</b>${o.id&&o.id===me?' <span class="faint">(이 기기)</span>':""}${o.id?"":' <span class="down">⚠ 미식별</span>'}</td><td class="l faint">${escH(o.model||"–")}</td><td>${o.open}</td><td class="${o.bad?"down":""}">${o.bad}</td><td>${[...o.ips].map(escH).join("<br>")}</td><td>${slKst(o.last)}<br><span class="faint">${escH(o.lastIp||"")}</span></td></tr>`).join("")||'<tr><td colspan="6" class="load">기록 없음</td></tr>'}</tbody></table></div>`;
+  const rows=E.rows.filter(r=>E.f==="all"||(SL_GRP[E.f]||[]).includes(r.event)).slice(0,300);
+  $("#slBody").innerHTML=`<div class="tw"><table class="eh-t"><thead><tr><th class="l">시각(KST)</th><th class="l">이벤트</th><th class="l">기기</th><th class="l">IP</th><th class="l">비고</th></tr></thead><tbody>${rows.map(r=>{const d=(r.detail||{}).dev||{},fl=(r.detail||{}).flags||[];const bad=SL_GRP.bad.includes(r.event)||r.ok===false;
+    return `<tr><td class="l">${slKst(r.ts)}</td><td class="l ${bad?"down":""}">${SL_EV[r.event]||escH(r.event)}${r.mode?` <span class="faint">${r.mode==="REAL"?"실전":"가상"}</span>`:""}</td><td class="l">${escH(slDevName(d))}</td><td class="l">${escH(r.ip||"")}</td><td class="l">${fl.map(f=>`<span class="eh-chip" style="color:var(--down)">${escH(f)}</span>`).join("")}${(r.detail||{}).via?`<span class="faint">${escH(r.detail.via)}</span>`:""}</td></tr>`;}).join("")||'<tr><td colspan="5" class="load">기록 없음</td></tr>'}</tbody></table></div>`;
+  $("#slMe").innerHTML=`<div class="faint" style="font-size:12px;margin-bottom:6px">이 브라우저의 이름: <b>${escH(devName()||"(없음)")}</b> · 기기 ID ${escH(devId().slice(0,8))}… · 모델 ${escH(DEV_HINTS.m||"알 수 없음")}</div>`;
+}
+(function(){
+  const on=(id,fn)=>{const el=$("#"+id);if(el)el.addEventListener("seg-change",e=>fn(e.detail));};   // 정적 칩 묶음은 공통 초기화가 연결(seg-change)
+  on("slDays",v=>{S.sl.days=+v;slLoad();});on("slFilter",v=>{S.sl.f=v;slRender();});
+  const nb=$("#slNameGo");if(nb)nb.onclick=()=>{const v=devSaveName($("#slName").value);if(v){$("#slName").value="";slRender();}};
+})();
+
 /* ══ 테이블 정렬 ═══════════════════════════════════════════════════ */
 function sortVal(txt,el){
   // data-sort-val 속성이 있으면 텍스트 파싱 없이 그 숫자값을 바로 씀
@@ -4196,7 +4251,7 @@ function go(v,detailCode){
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===vOrig));
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend","etf","etfhub"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   document.documentElement.classList.toggle("wide",v==="scr"||v==="trend"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -4230,6 +4285,7 @@ function go(v,detailCode){
     }
   }
   if(v==="etfhub")ehLoad();
+  if(v==="seclog")slLoad();
   if(v==="etf"){const c=detailCode||S.etf.code;if(c&&(c!==S.etf.code||detailCode))etfLoad(c);}
   if(v==="proc")procEnter();
   if(v==="gm"&&!S.gmEntered){S.gmEntered=true;loadGlobal().catch(e=>{console.error(e);S.gmEntered=false;});}
@@ -9791,6 +9847,7 @@ async function trdApi(path,{method="GET",body,sess,timeout}={}){
   if(!tok){const e=new Error("login");e.status=401;e.code="login";throw e;}
   const h={authorization:"Bearer "+tok};
   if(sess||TRD.sess)h["x-trade-session"]=sess||TRD.sess;
+  Object.assign(h,devHeaders());
   let b;
   if(method==="POST"){h["content-type"]="application/json";b=JSON.stringify({...(body||{}),nonce:trdNonce(),ts:trdNow()});}
   const r=await fetch(RELAY_HTTP_BASE+path,{method,headers:h,body:b,cache:"no-store",...(timeout?{signal:AbortSignal.timeout(timeout)}:{})});
@@ -9913,11 +9970,13 @@ async function trdEnter(){
 }
 function trdShowPin(msg){
   trdGateMsg(msg||"거래 PIN을 입력하세요.");
+  {const dn=$("#trdDevName");if(dn)dn.value=devName()||devGuess();}
   $("#trdPinRow").classList.remove("hide");$("#trdPin").value="";setTimeout(()=>$("#trdPin").focus(),50);
 }
 async function trdSubmitPin(){
   const pin=$("#trdPin").value,btn=$("#trdPinGo");if(!pin||btn.disabled)return;
   btn.disabled=true;
+  {const dn=$("#trdDevName");if(dn&&dn.value.trim())devSaveName(dn.value);else if(!devName()&&devGuess())devSaveName(devGuess());}
   try{
     const j=await trdApi("/trade/session",{method:"POST",body:{pin}});
     trdSetSess(j.session);$("#trdPin").value="";await trdRefreshStatus();trdOpenMain();
@@ -10816,7 +10875,7 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
   const ok=b.id==="trdStopSet"?(trdHeld()||TRD.buy>0):!!(TRD.plan&&TRD.plan.steps.some(x=>x.q>0));if(!ok)return;
   const t0=b.dataset.t0||b.textContent;b.dataset.t0=t0;b.classList.remove("done");void b.offsetWidth;b.classList.add("done");b.textContent="✓ 설정 완료";
   clearTimeout(b._tm);b._tm=setTimeout(()=>{b.classList.remove("done");b.textContent=t0;},1400);});
-const VIEW_IDS=["etfhub","etf","trend","proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trhold","trhist"];
+const VIEW_IDS=["seclog","etfhub","etf","trend","proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trhold","trhist"];
 function setHash(v,code){
   const h="#"+v+(code?"/"+code:"");
   if(location.hash!==h)history.pushState(null,"",h);
