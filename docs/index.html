@@ -3271,7 +3271,7 @@ async function etfLoad(code){
   const codes=hold.map(h=>h.stock_code).filter(c=>/^\d{6}$/.test(c));E.rs={};
   if(codes.length&&S.date){try{(await q("v_screener",`select=code,rs20_pctl&trade_date=eq.${S.date}&code=in.(${codes.join(",")})`)).forEach(r=>E.rs[r.code]=r.rs20_pctl);}catch(e){}}
   if(E.gen!==gen)return;
-  etfHead();etfChart();etfPf();etfQt();etfChg();etfDiv();
+  etfHead();etfChart();etfPf();etfQt();etfChg();etfDiv();ehSortAll($("#v-etf"));
 }
 function etfTags(m,i){
   const t=[],f=(m.flags||"")+" "+(m.name||"");
@@ -3340,7 +3340,7 @@ function etfPf(){
     <div class="tw" style="margin-top:12px"><table><thead><tr><th class="l">종목명</th><th>비중</th><th title="CU(설정단위)당 보유 수량">주식수</th><th title="상장좌수로 환산한 ETF 전체 보유금액 추정">보유금액(억)</th><th title="RS20 백분위(0~100, 높을수록 시장 대비 강함)">RS</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${h.length>10?`<div style="text-align:center;margin-top:6px"><button class="btn ghost" id="etfMore">${E.more?"접기 ▴":`+${h.length-10}개 더보기 ▾`}</button></div>`:""}`;
   etfWire(host);
-  const mb=$("#etfMore");if(mb)mb.onclick=()=>{E.more=!E.more;etfPf();};
+  const mb=$("#etfMore");if(mb)mb.onclick=()=>{E.more=!E.more;etfPf();ehSortAll($("#v-etf"));};
 }
 function etfQt(){
   const E=S.etf,d=E.d,i=E.info,last=d.at(-1),prev=d.at(-2);
@@ -3553,7 +3553,11 @@ function ehRenderPas(){
   const vs=`<div class="card" style="margin-top:12px"><h3>같은 업종 액티브 vs 패시브 <span class="r">평균 수익률</span></h3><div class="tw"><table class="eh-t"><thead><tr><th class="l">업종</th><th>액티브</th><th>1개월</th><th>패시브</th><th>1개월</th><th>격차</th><th>3개월(액티브)</th><th>3개월(패시브)</th><th>격차</th></tr></thead><tbody>${cmp}</tbody></table></div><div class="note" style="margin-top:6px">격차가 +이면 운용역이 지수형을 이기고 있는 업종입니다. 시장대표·코스닥 액티브는 같은 분야 패시브가 등록돼 있지 않아 제외했습니다.</div></div>`;
   host.innerHTML=vs+tbl;ehWire();etfWire(host);
 }
+// ETF 화면의 모든 표: 머리글 클릭 → 내림차순/오름차순 토글 (종목명 같은 글자 열도 가나다순)
+let _ehSid=0;
+function ehSortAll(root){if(!root)return;root.querySelectorAll("table").forEach(t=>{const tb=t.tBodies[0];if(!tb||!t.tHead)return;if(!tb.id)tb.id="ehs"+(++_ehSid);try{makeSortable(tb.id,true);}catch(e){}});}
 function ehWire(){
+  ehSortAll($("#v-etfhub"));
   const E=S.eh,on=(id,fn)=>{const el=$("#"+id);if(el)$$(".fchip",el).forEach(b=>b.onclick=()=>fn(b.dataset.v));};   // 동적으로 그린 칩 묶음은 직접 연결
   on("ehGrp",v=>{E.grp=v;ehRender();});on("ehPick",v=>{E.pick=v;ehRender();});on("ehSort",v=>{E.sort=v;E.cmore=false;ehRender();});
   on("ehPer",v=>{E.per=v;ehRender();});on("ehThr",v=>{E.thr=+v;ehRender();});on("ehLb",v=>{E.lb=v;ehRender();});
