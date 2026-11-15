@@ -1039,6 +1039,15 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .pt-gbar{position:relative;height:12px;border-radius:8px;background:linear-gradient(90deg,var(--down),#d1d5db 50%,var(--up))}.pt-gbar i{position:absolute;top:-4px;width:4px;height:20px;background:var(--ink,#111);border-radius:2px;transform:translateX(-50%)}.pt-glab{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3);margin-top:4px}
 .lv-tiles b i{font-style:normal}.pt-cp{display:flex;align-items:center;gap:8px;margin-top:6px}.pt-ck{width:108px;font-size:12.5px;font-weight:600}.pt-cb{flex:1;height:8px;border-radius:5px;background:color-mix(in srgb,var(--ink-3) 18%,transparent);overflow:hidden}.pt-cb i{display:block;height:100%;background:var(--accent,#2f6fed)}.pt-cv{width:28px;text-align:right;font-weight:700;font-size:13px}.pt-ct{font-size:11.5px;color:var(--ink-3);margin:1px 0 0 116px}
 .pt-fb{display:inline-block;height:9px;border-radius:3px;vertical-align:middle}.pt-fb.u{background:var(--up)}.pt-fb.d{background:var(--down)}
+.sr-hero{text-align:center;background:linear-gradient(180deg,color-mix(in srgb,var(--accent,#2f6fed) 7%,transparent),transparent)}.sr-h1{font-size:22px;font-weight:800;margin:6px 0}.sr-h2{font-size:13px;color:var(--ink-3);margin-bottom:12px}
+.sr-q{width:100%;box-sizing:border-box;padding:12px 14px;font-size:15px;border:1px solid var(--border);border-radius:10px;background:var(--card,#fff);color:inherit}
+.sr-sgh{text-align:left;font-size:12px;color:var(--ink-3);margin:12px 0 4px}.sr-sg{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;border:1px solid color-mix(in srgb,var(--accent,#2f6fed) 35%,var(--border));background:color-mix(in srgb,var(--accent,#2f6fed) 7%,transparent);border-radius:10px;padding:8px 12px;margin-top:6px}
+.sr-ctl{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}.sr-ctl select,.sr-dd summary{padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card,#fff);color:inherit;font-size:13px;cursor:pointer}
+.sr-dd{position:relative}.sr-ddl{position:absolute;z-index:5;top:34px;left:0;min-width:210px;max-height:260px;overflow:auto;background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:6px 10px;box-shadow:0 6px 20px rgba(0,0,0,.15)}.sr-ddl label{display:flex;gap:6px;align-items:center;padding:5px 0;font-size:13px}.sr-ddl label .faint{margin-left:auto}
+.sr-n{font-size:13px;margin-top:6px}.sr-chip{display:inline-block;border:1px solid var(--accent,#2f6fed);border-radius:8px;padding:1px 8px;font-size:12px}.sr-chip a{cursor:pointer;margin-left:4px}
+.sr-card{display:flex;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer}.sr-card:last-of-type{border-bottom:0}.sr-l{min-width:0;flex:1}.sr-nm{font-weight:700;font-size:15px}.sr-sub{font-size:12px;margin:2px 0 5px}.sr-r{text-align:right;white-space:nowrap}.sr-r b{font-size:16px}
+.sr-tg{display:flex;gap:5px;flex-wrap:wrap}.sr-t{font-size:11px;border-radius:6px;padding:1px 7px;background:color-mix(in srgb,var(--ink-3) 14%,transparent)}.sr-t.a{background:color-mix(in srgb,var(--accent,#2f6fed) 15%,transparent);color:var(--accent,#2f6fed);font-weight:700}
+.sr-w{font-weight:800;color:var(--accent,#2f6fed);font-size:13px}.sr-new{font-size:10px;font-weight:800;color:#fff;background:var(--up);border-radius:5px;padding:1px 5px;vertical-align:1px}
 .lv-b{display:inline-block;font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:1px}
 .lv-b.l{background:color-mix(in srgb,var(--up) 14%,transparent);color:var(--up)}.lv-b.i{background:color-mix(in srgb,var(--down) 14%,transparent);color:var(--down)}
 .lv-warn{font-size:12.5px;color:#b45309}
@@ -1710,9 +1719,10 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 </section>
 <section id="v-etfhub" class="hide">
   <div class="card" style="margin-top:16px"><h3>ETF <span class="r" id="ehAsOf"></span></h3>
-    <div class="qf seg" id="ehTab"><button class="fchip" data-v="port" aria-pressed="true">ETF 포털</button><button class="fchip" data-v="act">액티브</button><button class="fchip" data-v="pas">패시브</button><button class="fchip" data-v="sec">섹터</button><button class="fchip" data-v="lev">레버리지/인버스</button></div>
-    <div class="note" style="margin-top:8px">ETF 포털: 오늘의 ETF 흐름(급등락·거래대금·자금 유입·위험선호)을 한눈에 봅니다. 액티브·패시브 탭: 액티브 ETF 운용역들이 <b>공통으로 담은 종목</b>을 찾고, 수익률·RS가 좋은 ETF를 비교합니다. 구성종목은 매일 장마감 후 KIS에서 수집(상위 30종목)합니다.</div></div>
+    <div class="qf seg" id="ehTab"><button class="fchip" data-v="port" aria-pressed="true">ETF 포털</button><button class="fchip" data-v="srch">ETF 검색</button><button class="fchip" data-v="act">액티브</button><button class="fchip" data-v="pas">패시브</button><button class="fchip" data-v="sec">섹터</button><button class="fchip" data-v="lev">레버리지/인버스</button></div>
+    <div class="note" style="margin-top:8px">ETF 검색: ETF명·운용사·분야, 또는 일반 종목명으로 그 종목을 편입한 ETF를 찾습니다. ETF 포털: 오늘의 ETF 흐름(급등락·거래대금·자금 유입·위험선호)을 한눈에 봅니다. 액티브·패시브 탭: 액티브 ETF 운용역들이 <b>공통으로 담은 종목</b>을 찾고, 수익률·RS가 좋은 ETF를 비교합니다. 구성종목은 매일 장마감 후 KIS에서 수집(상위 30종목)합니다.</div></div>
   <div id="ehPort"><div class="card"><div class="load sk"></div></div></div>
+  <div id="ehSrch" class="hide"></div>
   <div id="ehAct" class="hide"><div class="card"><div class="load sk"></div></div></div>
   <div id="ehPas" class="hide"></div>
   <div id="ehLev" class="hide"></div>
@@ -3453,7 +3463,8 @@ const ehChip=(c,t)=>`<span class="eh-chip">${ehE(c)} <b>${t}</b></span>`;
 function ehRender(){
   const E=S.eh;
   $("#ehAsOf").textContent=E.d0?`구성 기준 ${E.d0}`:"";
-  $("#ehAct").classList.toggle("hide",E.tab!=="act");$("#ehPas").classList.toggle("hide",E.tab!=="pas");$("#ehLev").classList.toggle("hide",E.tab!=="lev");$("#ehSec").classList.toggle("hide",E.tab!=="sec");$("#ehPort").classList.toggle("hide",E.tab!=="port");
+  $("#ehAct").classList.toggle("hide",E.tab!=="act");$("#ehPas").classList.toggle("hide",E.tab!=="pas");$("#ehLev").classList.toggle("hide",E.tab!=="lev");$("#ehSec").classList.toggle("hide",E.tab!=="sec");$("#ehPort").classList.toggle("hide",E.tab!=="port");$("#ehSrch").classList.toggle("hide",E.tab!=="srch");
+  if(E.tab==="srch"){ehSrRender();return;}
   if(E.tab==="port"){ehPortRender();return;}
   if(E.tab==="lev"){ehLvRender();return;}
   if(E.tab==="sec"){ehSecRender();return;}
@@ -3554,11 +3565,11 @@ function ehWire(){
   const mo=$("#ehCMore");if(mo)mo.onclick=()=>{E.cmore=!E.cmore;ehRender();};
 }
 /* ══ ETF 허브 · ETF 포털(오늘의 ETF) 탭 — 2026-11-15 ═══════════════════════════════
-   대상: etf_master 중 인버스·레버리지·기초자산(참고)을 뺀 국내 상장 ETF(우리 DB 등록분만).
+   대상: etf_master 전체(우리 DB 등록 160개). 온도계·주식형 평균은 레버리지/인버스·기초 참고 ETF를 뺀 주식형만 씁니다.
    데이터: ehLoad()가 불러온 수익률·순자산·구성종목 + etf_daily(당일·5일 거래대금) + etf_flow_daily(상장좌수 증감) + etf_holdings_now(내 투자종목). */
 const EH_NORM={"AI·테크":"로봇·AI·소프트웨어","로봇":"로봇·AI·소프트웨어","바이오":"바이오·헬스케어","전력·신재생":"원자력·전력·에너지","2차전지":"2차전지·배터리"};
 const ehSubLabel=m=>m.field==="국내 시장지수"?"국내 시장지수":(EH_NORM[m.subfield]||m.subfield||m.field||"기타");
-const ehCat=m=>m.field==="국내 시장지수"||m.subfield==="배당·가치"?"mkt":m.field==="국내 업종·테마"?"sec":m.field==="국가별(해외주식)"?"glb":m.field==="원자재"?"com":"etc";
+const ehCat=m=>m.field==="인버스·레버리지"?"lev":m.field==="기초자산(참고)"?"ref":m.field==="국내 시장지수"||m.subfield==="배당·가치"?"mkt":m.field==="국내 업종·테마"?"sec":m.field==="국가별(해외주식)"?"glb":m.field==="원자재"?"com":"etc";
 const ehAvg=(a,k)=>{a=a.map(r=>k?r[k]:r).filter(v=>v!=null&&!isNaN(v));return a.length?a.reduce((x,y)=>x+y,0)/a.length:null;};
 async function ehPortLoad(force){
   const E=S.eh,P=E.port=E.port||{loaded:false,busy:false,cat:"all",mg:"all",rk:"chg",pf:"r1m",fl:"w",more:false};
@@ -3568,16 +3579,15 @@ async function ehPortLoad(force){
     while(E.busy)await new Promise(r=>setTimeout(r,150));
     await ehLoad(force);
     if(!E.loaded||!(E.td||[]).length)throw new Error("ehLoad 실패");
-    const all=Object.values(S.etfMap||{}),U=all.filter(m=>m.field!=="인버스·레버리지"&&m.field!=="기초자산(참고)"),LI=all.filter(m=>m.field==="인버스·레버리지");
+    const U=Object.values(S.etfMap||{}),LI=U.filter(m=>m.field==="인버스·레버리지");
     const ds=E.td.slice(0,6),inl=a=>a.map(m=>m.code).join(",");
     const fd=await q("etf_flow_daily","select=d&etf_code=eq.494890&order=d.desc&limit=8").then(r=>r.map(x=>x.d)).catch(()=>[]);
     const fn=Math.min(5,Math.max(fd.length-1,0)),fk=fd.length>=2?[fd[0],fd[1],fd[fn]]:[];
-    const [px,lp,fl]=await Promise.all([
+    const [px,fl]=await Promise.all([
       q("etf_daily",`select=code,trade_date,close,volume,amount&code=in.(${inl(U)})&trade_date=in.(${ds.join(",")})&limit=1000`).catch(()=>[]),
-      LI.length?q("etf_daily",`select=code,trade_date,amount&code=in.(${inl(LI)})&trade_date=in.(${ds.join(",")})&limit=1000`).catch(()=>[]):[],
       fk.length?q("etf_flow_daily",`select=d,etf_code,listed,ntas_eok,nav&d=in.(${[...new Set(fk)].join(",")})&limit=1000`).catch(()=>[]):[]]);
     const byC={};px.forEach(r=>{(byC[r.code]=byC[r.code]||{})[r.trade_date]={c:+r.close,a:+r.amount};});
-    const lvm={};lp.forEach(r=>{(lvm[r.code]=lvm[r.code]||{})[r.trade_date]=+r.amount;});
+    const lvm={};Object.keys(byC).forEach(c=>{lvm[c]={};Object.keys(byC[c]).forEach(d=>lvm[c][d]=byC[c][d].a);});
     const flM={};fl.forEach(r=>{(flM[r.etf_code]=flM[r.etf_code]||{})[r.d]=r;});
     const fw=(a,b)=>a&&b&&a.listed!=null&&b.listed!=null&&a.nav!=null?(a.listed-b.listed)*(+a.nav)/1e8:null;
     P.d0=ds[0];P.fn=fn;P.fOk=fk.length>0;
@@ -3641,7 +3651,7 @@ function ehPortRender(){
   const F=R.filter(r=>(P.cat==="all"||r.cat===P.cat)&&(P.mg==="all"||r.m.mgmt===P.mg));
   const rkD={chg:["상승률",(a,b)=>b.chg-a.chg,r=>r.chg!=null],dn:["하락률",(a,b)=>a.chg-b.chg,r=>r.chg!=null],amt:["거래대금",(a,b)=>b.amt-a.amt,r=>r.amt!=null],amtX:["거래대금 급증",(a,b)=>b.amtX-a.amtX,r=>r.amtX!=null&&r.amt>=3e8],ntas:["순자산",(a,b)=>b.ntas-a.ntas,r=>r.ntas!=null]};
   const rd=rkD[P.rk]||rkD.chg,rl=F.filter(rd[2]).sort(rd[1]),shown=rl.slice(0,P.more?40:15);
-  const filt=lvSeg("ehPtCat",[["all","전체"],["mkt","시장·배당"],["sec","업종·테마"],["glb","해외 국가"],["com","원자재"],["etc","채권·기타"]],P.cat)+lvSeg("ehPtMg",[["all","액티브+패시브"],["액티브","액티브"],["패시브","패시브"]],P.mg);
+  const filt=lvSeg("ehPtCat",[["all","전체"],["mkt","시장·배당"],["sec","업종·테마"],["glb","해외 국가"],["com","원자재"],["etc","채권·기타"],["lev","레버리지·인버스"],["ref","기초 참고"]],P.cat)+lvSeg("ehPtMg",[["all","액티브+패시브"],["액티브","액티브"],["패시브","패시브"]],P.mg);
   const rk=card("당일 순위",`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${filt}</div>${lvSeg("ehPtRk",Object.entries(rkD).map(([k,v])=>[k,v[0]]),P.rk)}
     <div class="tw" style="margin-top:8px"><table class="eh-t"><thead><tr><th>#</th><th class="l">ETF</th><th class="l">분야</th><th>등락</th><th>거래대금</th><th>5일평균比</th><th>순자산</th><th>괴리</th></tr></thead><tbody>${shown.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${ehE(r.code)}</td><td class="l faint">${escH(r.sub)}</td><td>${ehPct(r.chg)}</td><td>${r.amt==null?"–":lvAmt(r.amt)}</td><td>${r.amtX==null?"–":N(r.amtX,1)+"배"}</td><td>${r.ntas==null?"–":N(r.ntas,0)+"억"}</td><td>${r.dprt==null?"–":pm(r.dprt,2)+"%"}</td></tr>`).join("")||'<tr><td colspan="8" class="load">조건에 맞는 ETF 없음</td></tr>'}</tbody></table></div>${rl.length>15?`<div style="text-align:center;margin-top:6px"><button class="btn ghost" id="ehPtMore">${P.more?"접기":`+${Math.min(40,rl.length)-15}개 더보기`}</button></div>`:""}`,`${rl.length}개`);
   // ④ 기간별 수익률 (같은 필터)
@@ -3684,6 +3694,128 @@ function ehPortRender(){
   const mc=card("내 투자종목 × ETF",mine,"💼");
   host.innerHTML=hdr+board+rk+per+fl+sec+neu+mc;
   ehWire();etfWire(host);
+}
+/* ══ ETF 허브 · ETF 검색 탭 — 2026-11-15 ══════════════════════════════════════════
+   ETF명·코드·운용사·기초지수·분야 검색 + 일반 종목명 검색 시 그 종목을 편입한 ETF(etf_holdings_now 상위 30종목) 목록.
+   대상: etf_master 전체(160). 데이터: etf_info · etf_daily(최근 시세) · etf_holdings_now · etf_holdings_daily(NEW 표시) */
+const SR_TABS=[["all","전체"],["dom","국내주식"],["glb","해외주식"],["com","원자재"],["etc","채권·기타"],["lev","레버리지·인버스"]];
+const srAsset=m=>{const f=m.field;return f==="인버스·레버리지"?"lev":f==="원자재"?"com":["채권","통화","커버드콜·옵션","현금성·단기채"].includes(f)?"etc":f==="국가별(해외주식)"?"glb":f==="기초자산(참고)"?(m.country?"glb":"dom"):"dom";};
+const srMode=m=>m.field==="인버스·레버리지"?(/인버스/.test(m.subfield||"")?"인버스":"레버리지"):(m.mgmt==="액티브"?"액티브":"패시브");
+const srAmt=v=>v==null?"–":v>=1e4?N(v/1e4,1)+"조":N(v,0)+"억";
+async function ehSrLoad(force){
+  const E=S.eh,X=E.sr=E.sr||{loaded:false,busy:false,q:"",tab:"all",sort:"ntas",mode:"all",mgrs:[],lim:30,stock:null,sugg:[],srows:null};
+  if(X.loaded&&!force){ehRender();return;}if(X.busy)return;X.busy=true;
+  $("#ehSrch").innerHTML='<div class="card" style="margin-top:12px"><div class="load sk"></div></div>';
+  try{
+    const list=Object.values(S.etfMap||{}),codes=list.map(m=>m.code).join(",");
+    const dl=await q("etf_daily","select=trade_date&code=eq.494890&order=trade_date.desc&limit=25").then(r=>r.map(x=>x.trade_date)).catch(()=>[]);
+    const ds=[dl[0],dl[1],dl[Math.min(21,dl.length-1)]].filter(Boolean);
+    const [info,px]=await Promise.all([q("etf_info","select=code,mgr,idx_name,ntas_eok&limit=400").catch(()=>[]),
+      ds.length?q("etf_daily",`select=code,trade_date,close,volume,amount&code=in.(${codes})&trade_date=in.(${[...new Set(ds)].join(",")})&limit=1000`).catch(()=>[]):[]]);
+    const inf={};info.forEach(r=>inf[r.code]=r);const pm_={};px.forEach(r=>{(pm_[r.code]=pm_[r.code]||{})[r.trade_date]=r;});
+    X.d0=ds[0]||null;
+    X.rows=list.map(m=>{const i=inf[m.code]||{},s=pm_[m.code]||{},a=s[ds[0]],b=s[ds[1]],c=s[ds[ds.length-1]];
+      return {code:m.code,m,name:m.name,ast:srAsset(m),mode:srMode(m),mgr:i.mgr||"기타",idx:i.idx_name||"",ntas:i.ntas_eok==null?null:+i.ntas_eok,
+        close:a?+a.close:null,chg:a&&b&&+b.close?(a.close/b.close-1)*100:null,vol:a?+a.volume:null,amt:a?+a.amount:null,
+        r1m:a&&c&&c!==a&&+c.close?(a.close/c.close-1)*100:null,
+        hay:[m.name,m.code,i.mgr,i.idx_name,m.field,m.subfield,m.tags,m.country].join(" ").toLowerCase()};});
+    X.loaded=true;
+  }catch(e){console.error("ETF 검색",e);X.failed=true;}
+  X.busy=false;ehRender();
+}
+function srCand(qs){ // 일반 종목 후보: 종목 목록(S.codes) + ETF 구성종목 이름
+  const ql=qs.toLowerCase(),out=[];
+  (S.codes||[]).forEach(c=>{const n=(c.name||"").toLowerCase();if(n.includes(ql)||c.code.startsWith(ql))out.push({code:c.code,name:c.name,sc:(n.startsWith(ql)||c.code===qs?0:1)});});
+  out.sort((a,b)=>a.sc-b.sc||a.name.length-b.name.length);return out.slice(0,6);
+}
+let srTimer=0,srSeq=0;
+function srOnInput(v){
+  const X=S.eh.sr;X.q=v;X.lim=30;if(X.stock&&v!==X.stockQ){X.stock=null;X.srows=null;if(X.sort==="w")X.sort="ntas";}
+  clearTimeout(srTimer);const my=++srSeq;
+  if(v.trim().length<1){X.sugg=[];ehSrUpdate();return;}
+  X.sugg=srCand(v.trim()).map(o=>({...o,n:null}));ehSrUpdate();
+  srTimer=setTimeout(async()=>{
+    const t=v.trim();let c=srCand(t);
+    if(t.length>=2){const r=await q("etf_holdings_now",`select=stock_code,stock_name&stock_name=ilike.*${encodeURIComponent(t)}*&limit=300`).catch(()=>[]);
+      const seen=new Set(c.map(o=>o.code));r.forEach(x=>{if(!seen.has(x.stock_code)&&c.length<8){seen.add(x.stock_code);c.push({code:x.stock_code,name:x.stock_name});}});}
+    if(my!==srSeq)return;
+    if(c.length){const rows=await q("etf_holdings_now",`select=etf_code,stock_code&stock_code=in.(${c.map(o=>o.code).join(",")})&limit=1000`).catch(()=>[]);
+      const cnt={};rows.forEach(x=>{if(S.etfMap[x.etf_code])cnt[x.stock_code]=(cnt[x.stock_code]||0)+1;});c.forEach(o=>o.n=cnt[o.code]||0);}
+    if(my!==srSeq)return;X.sugg=c;ehSrUpdate();},300);
+}
+async function srPick(code,name){
+  const X=S.eh.sr;X.stock={code,name};X.stockQ=X.q;X.sort="w";X.tab="all";X.lim=30;X.srows=null;ehSrUpdate();
+  const [rows,dl]=await Promise.all([q("etf_holdings_now",`select=etf_code,weight,rank,stock_name&stock_code=eq.${encodeURIComponent(code)}&limit=500`).catch(()=>[]),
+    q("etf_holdings_daily","select=d&etf_code=eq.494890&rank=eq.1&order=d.desc&limit=2").then(r=>r.map(x=>x.d)).catch(()=>[])]);
+  let nw=new Set();
+  if(dl.length>=2){const dd=await q("etf_holdings_daily",`select=etf_code,d,rank&stock_code=eq.${encodeURIComponent(code)}&d=in.(${dl.join(",")})&limit=500`).catch(()=>[]);
+    const cur={},prv={};dd.forEach(x=>{(x.d===dl[0]?cur:prv)[x.etf_code]=x;});Object.keys(cur).forEach(e=>{if(!prv[e]&&+cur[e].rank<=25)nw.add(e);});}
+  if(!X.stock||X.stock.code!==code)return;
+  X.srows={};rows.forEach(r=>{X.srows[r.etf_code]={w:+r.weight,rk:+r.rank};});X.nw=nw;ehSrUpdate();
+}
+function ehSrRender(){
+  const E=S.eh,X=E.sr,host=$("#ehSrch");
+  if(!X||!X.loaded){if(X&&X.failed)host.innerHTML='<div class="card" style="margin-top:12px"><div class="load" style="text-align:left">ETF 데이터를 불러오지 못했습니다.</div></div>';return;}
+  $("#ehAsOf").textContent=X.d0?`시세 기준 ${X.d0}`:"";
+  if(!$("#ehSrQ")){
+    host.innerHTML=`<div class="card sr-hero" style="margin-top:12px"><div class="sr-h1">어떤 ETF를 찾고 계신가요?</div><div class="sr-h2">ETF명·운용사·분야는 물론, <b>개별 종목으로도</b> 편입 ETF를 찾아보세요</div>
+      <input id="ehSrQ" class="sr-q" type="search" placeholder="KODEX 200, 반도체, 069500, 삼성전자" autocomplete="off" value="${escH(X.q)}"><div id="ehSrSg"></div></div>
+      <div class="card" style="margin-top:12px"><div id="ehSrTabs"></div><div id="ehSrCtl" class="sr-ctl"></div><div id="ehSrSum"></div></div><div id="ehSrRes"></div>`;
+    $("#ehSrQ").addEventListener("input",e=>srOnInput(e.target.value));
+    document.addEventListener("click",e=>{const d=document.querySelector("#ehSrCtl details[open]");if(d&&!d.contains(e.target))d.removeAttribute("open");});
+  }
+  ehSrUpdate();
+}
+function ehSrUpdate(){
+  const E=S.eh,X=E.sr;if(!X||!X.loaded||!$("#ehSrQ"))return;
+  const qs=X.q.trim().toLowerCase(),toks=qs.split(/\s+/).filter(Boolean);
+  // 1) 검색어/종목 필터 (자산군 탭 제외)
+  let base=X.rows;
+  if(X.stock){base=base.filter(r=>X.srows&&X.srows[r.code]).map(r=>({...r,w:X.srows[r.code].w,rk:X.srows[r.code].rk}));}
+  else if(toks.length)base=base.filter(r=>toks.every(t=>r.hay.includes(t)));
+  const cnt=k=>k==="all"?base.length:base.filter(r=>r.ast===k).length;
+  const t1=base.filter(r=>X.tab==="all"||r.ast===X.tab);
+  const modes=["패시브","액티브","레버리지","인버스"],mc=m=>t1.filter(r=>r.mode===m).length;
+  const t2=t1.filter(r=>X.mode==="all"||r.mode===X.mode);
+  const mg={};t2.forEach(r=>mg[r.mgr]=(mg[r.mgr]||0)+1);
+  const res=t2.filter(r=>!X.mgrs.length||X.mgrs.includes(r.mgr));
+  const sk={ntas:(a,b)=>(b.ntas??-1)-(a.ntas??-1),amt:(a,b)=>(b.amt??-1)-(a.amt??-1),vol:(a,b)=>(b.vol??-1)-(a.vol??-1),chg:(a,b)=>(b.chg??-1e9)-(a.chg??-1e9),r1m:(a,b)=>(b.r1m??-1e9)-(a.r1m??-1e9),w:(a,b)=>(b.w??-1)-(a.w??-1)};
+  res.sort(sk[X.sort]||sk.ntas);
+  // 제안 카드
+  const sg=X.stock?"":X.sugg.filter(o=>o.n!==0).map(o=>`<div class="sr-sg"><span><b>${escH(o.name)}</b> <span class="faint">${escH(o.code)}</span></span><button class="btn ghost" data-sg="${escH(o.code)}" data-nm="${escH(o.name)}">${o.n==null?"…":o.n+"개 ETF 보기 →"}</button></div>`).join("");
+  $("#ehSrSg").innerHTML=sg?`<div class="sr-sgh">이 종목을 편입한 ETF 찾기</div>${sg}`:"";
+  $("#ehSrTabs").innerHTML=lvSeg("ehSrTab",SR_TABS.map(([k,l])=>[k,`${l} (${cnt(k)})`]),X.tab);
+  const ctl=$("#ehSrCtl");
+  if(!ctl.querySelector("details[open]")){
+    const so=[["ntas","순자산 큰순"],["amt","거래대금 큰순"],["vol","거래량 큰순"],["chg","등락률 높은순"],["r1m","1개월 수익률 높은순"]];if(X.stock)so.unshift(["w","비중 큰순"]);
+    ctl.innerHTML=`<select id="ehSrSort">${so.map(([k,l])=>`<option value="${k}"${k===X.sort?" selected":""}>${l}</option>`).join("")}</select>
+      <select id="ehSrMode"><option value="all">운용방식 전체</option>${modes.map(m=>`<option value="${m}"${m===X.mode?" selected":""}>${m} ${mc(m)}</option>`).join("")}</select>
+      <details class="sr-dd"><summary>운용사 ${X.mgrs.length?X.mgrs.length+"개 선택":"전체"}</summary><div class="sr-ddl">${Object.entries(mg).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<label><input type="checkbox" value="${escH(k)}"${X.mgrs.includes(k)?" checked":""}> ${escH(k)} <span class="faint">${n}</span></label>`).join("")||'<div class="faint">없음</div>'}</div></details>`;
+    $("#ehSrSort").onchange=e=>{X.sort=e.target.value;X.lim=30;ehSrUpdate();};$("#ehSrMode").onchange=e=>{X.mode=e.target.value;X.lim=30;ehSrUpdate();};
+    ctl.querySelectorAll(".sr-ddl input").forEach(c=>c.onchange=()=>{X.mgrs=[...ctl.querySelectorAll(".sr-ddl input:checked")].map(i=>i.value);X.lim=30;ehSrUpdate();});
+  }
+  // 요약
+  let sum=`<div class="sr-n">총 <b>${res.length}</b>개 ETF${X.stock?` · <span class="sr-chip">편입종목: ${escH(X.stock.name)} (${escH(X.stock.code)}) <a data-clr="1">×</a></span>`:""}${X.tab!=="all"||X.mode!=="all"||X.mgrs.length||X.stock?` · <a class="lk" data-rst="1">전체 초기화</a>`:""}</div>`;
+  if(X.stock&&X.srows){const ws=res.map(r=>r.w).filter(v=>v!=null),ac=res.filter(r=>r.mode==="액티브").length,top=res[0];
+    sum+=ws.length?`<div class="note" style="margin-top:6px">${escH(X.stock.name)} 보유 ETF <b>${res.length}</b>개 · 평균 비중 <b>${N(ws.reduce((a,b)=>a+b,0)/ws.length,2)}%</b> · 액티브 <b>${ac}</b>개${top&&X.sort==="w"?` · 최대 비중 ${escH(top.name)} ${N(top.w,2)}%`:""}</div>`:"";}
+  $("#ehSrSum").innerHTML=sum;
+  // 결과
+  const show=res.slice(0,X.lim),nm=X.nw||new Set();
+  let h="";
+  if(X.stock&&!X.srows)h='<div class="card" style="margin-top:12px"><div class="load sk"></div></div>';
+  else if(!res.length)h=`<div class="card" style="margin-top:12px"><div class="load" style="text-align:center">${X.stock?"조건에 맞는 편입 ETF가 없습니다.":(qs?`"${escH(X.q.trim())}" 검색 결과가 없습니다.${X.sugg.some(o=>o.n)?" 위의 종목 카드를 눌러 편입 ETF를 찾아보세요.":""}`:"조건에 맞는 ETF가 없습니다.")}</div></div>`;
+  else h=`<div class="card" style="margin-top:12px;padding:0 12px">${show.map(r=>`<div class="sr-card" data-etf="${r.code}"><div class="sr-l"><div class="sr-nm">${favStar(r.code)} ${escH(r.name)}${nm.has(r.code)?' <span class="sr-new">NEW</span>':""}</div><div class="faint sr-sub">${r.code}${r.idx?" · "+escH(r.idx):""}</div><div class="sr-tg"><span class="sr-t a">${SR_TABS.find(t=>t[0]===r.ast)[1]}</span><span class="sr-t">${escH(r.mgr)}</span><span class="sr-t">${r.mode}</span></div></div>
+      <div class="sr-r">${r.w!=null?`<div class="sr-w">비중 ${N(r.w,2)}%</div><div class="faint" style="font-size:11px">${r.rk}위</div>`:""}<b>${r.close==null?"–":N(r.close,0)}</b><div>${ehPct(r.chg)}</div><div class="faint" style="font-size:12px">순자산 ${srAmt(r.ntas)}</div></div></div>`).join("")}
+    ${res.length>X.lim?`<div style="text-align:center;padding:10px"><button class="btn ghost" id="ehSrMore">+${Math.min(30,res.length-X.lim)}개 더보기</button></div>`:""}</div>
+    <div class="note" style="margin-top:8px">구성종목은 ETF별 상위 30개까지만 수집되어, 비중이 작은 종목은 보유 ETF에 잡히지 않을 수 있습니다.${X.stock?" NEW = 액티브 ETF가 전일 대비 새로 담은 종목(상위 25위 이내).":""}</div>`;
+  $("#ehSrRes").innerHTML=h;
+  // 이벤트
+  $$("#ehSrSg [data-sg]").forEach(b=>b.onclick=()=>srPick(b.dataset.sg,b.dataset.nm));
+  const tb=$("#ehSrTab");$$(".fchip",tb).forEach(b=>b.onclick=()=>{X.tab=b.dataset.v;X.lim=30;ehSrUpdate();});
+  const clr=$("#ehSrSum [data-clr]");if(clr)clr.onclick=()=>{X.stock=null;X.srows=null;X.nw=null;if(X.sort==="w")X.sort="ntas";ehSrUpdate();};
+  const rst=$("#ehSrSum [data-rst]");if(rst)rst.onclick=()=>{X.tab="all";X.mode="all";X.mgrs=[];X.stock=null;X.srows=null;X.nw=null;if(X.sort==="w")X.sort="ntas";ehSrUpdate();};
+  const mo=$("#ehSrMore");if(mo)mo.onclick=()=>{X.lim+=30;ehSrUpdate();};
+  $$("#ehSrRes .sr-card").forEach(c=>c.onclick=e=>{if(e.target.closest(".fav"))return;go("etf",c.dataset.etf);});
 }
 /* ══ ETF 허브 · 레버리지/인버스 탭 — 2026-11-15 ═══════════════════════════════════
    대상: etf_master 의 분야 '인버스·레버리지'. 일봉(etf_daily)·순자산/상장좌수(etf_info·etf_flow_daily)로 계산. 기초자산 비교는 LV_BASE 에 있는 종목만. */
@@ -3829,7 +3961,7 @@ function ehLvRender(){
   host.innerHTML=hdr+mv+gl+sent+pair+per+rank+effC+flow;ehWire();etfWire(host);
 }
 
-$("#ehTab").addEventListener("seg-change",e=>{S.eh.tab=["pas","lev","sec","port"].includes(e.detail)?e.detail:"act";if(S.eh.tab==="port")ehPortLoad();else if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();});
+$("#ehTab").addEventListener("seg-change",e=>{S.eh.tab=["pas","lev","sec","port","srch"].includes(e.detail)?e.detail:"act";if(S.eh.tab==="srch")ehSrLoad();else if(S.eh.tab==="port")ehPortLoad();else if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();});
 
 /* ══ 접속 기기 식별 · 보안 로그 — 2026-11-15 ═══════════════════════════════════
    모든 거래 요청에 기기 ID(무작위, 이 브라우저에만 저장)와 기기 이름·모델(Chrome UA-CH)을 실어 보냄 → 서버 감사 기록·텔레그램 알림에 표시. */
@@ -4585,7 +4717,7 @@ function go(v,detailCode){
       detailJustLoaded=true;
     }
   }
-  if(v==="etfhub"){if(S.eh.tab==="port")ehPortLoad();else if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();}
+  if(v==="etfhub"){if(S.eh.tab==="srch")ehSrLoad();else if(S.eh.tab==="port")ehPortLoad();else if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();}
   if(v==="seclog")slLoad();
   if(v==="etf"){const c=detailCode||S.etf.code;if(c&&(c!==S.etf.code||detailCode))etfLoad(c);}
   if(v==="proc")procEnter();
