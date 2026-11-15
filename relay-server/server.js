@@ -3685,6 +3685,7 @@ const autoTrade = require('./auto').createAuto({
     return k && k.pct != null && k.pct <= -1 ? `코스피 ${k.pct.toFixed(2)}% — 장이 약한 날이에요. 신중하게 판단하세요.` : null;
   },
 });
+trade.attachAuto(autoTrade);   // 사이트 자동매매 카드(/trade/auto/state·config)
 setInterval(() => { autoTrade.tick().catch(e => console.error('[자동매매] tick 실패:', e.message)); }, 30000);
 
 

@@ -382,7 +382,55 @@ function createAuto(deps) {
     const r = state.run, o = (r && r.payload && r.payload.orders) || {};
     return { date: state.date, run: r && { status: r.status, picks: ((r.payload || {}).picks || []).length, orders: Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.st])) }, lastErr: state.lastErr };
   }
-  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, _select: select, _mutateRun: mutateRun, _readRun: readRun, _readCarry: readCarry };
+  /* ── 4단계: 사이트 카드용 조회·설정 ── */
+  const UI = require('./auto-ui');
+  async function setConfig(body) {
+    const c = UI.checkConfig(body);
+    if (c.err) return { ok: false, status: 400, error: c.err };
+    return lock(async () => {
+      const r = await D.sbGet('auto_config?select=value&key=eq.main&limit=1');
+      const cur = (r[0] && r[0].value) || {};
+      const next = { ...cur, ...c.val };
+      await D.sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'main', value: next, updated_at: new Date().toISOString() }]);
+      return { ok: true, cfg: { on: !!next.on, perStockKrw: +next.perStockKrw || 1000000 }, changed: c.val };
+    });
+  }
+  async function uiState() {
+    const { date } = kstParts();
+    const [cfgRows, todayRow, carry, rows] = await Promise.all([
+      D.sbGet('auto_config?select=value&key=eq.main&limit=1').catch(() => []),
+      readRun(date).catch(() => null),
+      readCarry().catch(() => ({ items: {} })),
+      D.sbGet('auto_runs?select=trade_date,status,payload&order=trade_date.desc&limit=15').catch(() => []),
+    ]);
+    const cv = (cfgRows[0] && cfgRows[0].value) || {};
+    const runs = rows.map(r => UI.summarizeRun(r, false));
+    let realized = {}, closes = {};
+    if (runs.length) {
+      const oldest = runs[runs.length - 1].date;
+      const sells = await D.sbGet(`paper_fills?select=code,ts,realized&side=eq.sell&ts=gte.${encodeURIComponent(oldest + 'T00:00:00+09:00')}&order=ts.asc&limit=5000`).catch(() => []);
+      realized = UI.attributeRealized(runs, sells);
+      const past = runs.filter(r => r.date < date && r.shadow.length);
+      const codes = [...new Set(past.flatMap(r => r.shadow.map(s => s.code)))];
+      if (past.length && codes.length) {
+        const cl = await D.sbGet(`daily_price?select=code,trade_date,close&trade_date=in.(${past.map(r => r.date).join(',')})&code=in.(${codes.join(',')})&limit=5000`).catch(() => []);
+        cl.forEach(x => { (closes[x.trade_date] = closes[x.trade_date] || {})[x.code] = +x.close; });
+      }
+    }
+    const hist = UI.buildHistory(runs, realized, closes, date);
+    const today = todayRow ? UI.summarizeRun(todayRow, true) : null;
+    // 오늘 자동매매 종목·종가 베팅으로 넘긴 종목의 현재 보유 상태
+    const watch = new Set([...(today ? today.orders.filter(o => o.filled > 0).map(o => o.code) : []), ...Object.values((carry && carry.items) || {}).filter(i => i.state !== 'done').map(i => i.code)]);
+    let positions = [];
+    try { const ps = D.paper && D.paper.state ? await D.paper.state() : null; if (ps && ps.ok) positions = ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop })); } catch (_) {}
+    const ci = Object.values((carry && carry.items) || {}).filter(i => i.state !== 'done').map(i => ({ code: i.code, name: i.name, q0: i.q0, avg: i.avg, from: i.from, sold: i.sold || 0, state: i.state }));
+    return {
+      ok: true, now: Date.now(), date, tradingDay: isTradingDay(date),
+      cfg: { on: !!cv.on, perStockKrw: +cv.perStockKrw || 1000000 }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
+      today, positions, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
+    };
+  }
+  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, _select: select, _mutateRun: mutateRun, _readRun: readRun, _readCarry: readCarry };
 }
 
 module.exports = { RULES, EXCL_NAME, baseFilter, evalFlow, scoreOne, rankAndPick, formatMessage, parseApproval, createAuto };

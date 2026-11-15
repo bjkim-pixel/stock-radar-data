@@ -530,7 +530,7 @@ function createTrade(deps = {}) {
 
     { const sidH = String(req.headers['x-trade-session'] || ''), ss = sessions.get(sidH);   // 무조작 자동 잠금: 조작(POST 또는 x-active)이 있을 때만 활동으로 침
       if (ss) { const t = now(); if (cfg.idleMs && t - (ss.act || 0) > cfg.idleMs) { sessions.delete(sidH); audit('session_idle_lock', true, {}, req); } else if (req.method !== 'GET' || req.headers['x-active'] === '1') ss.act = t; } }
-    const needSession = path === '/trade/resume' || path === '/trade/ping' || path.startsWith('/trade/paper/') || path.startsWith('/trade/live/');
+    const needSession = path === '/trade/resume' || path === '/trade/ping' || path.startsWith('/trade/paper/') || path.startsWith('/trade/live/') || path.startsWith('/trade/auto/');
     // 상태 조회는 세션이 있으면 그 정보도 함께 돌려줌(없어도 통과)
     const a = await authz(req, { session: needSession });
     if (!a.ok) {
@@ -581,6 +581,11 @@ function createTrade(deps = {}) {
       const sp = new URL(req.url, 'http://x').searchParams;
       const r = await paper.report(sp.get('from') || null, sp.get('to') || null);
       return json(res, r.ok ? 200 : (r.status || 500), r);
+    }
+    if (path === '/trade/auto/state' && req.method === 'GET') {   // 자동매매 카드(4단계): 설정·오늘 후보·보유·일별 성과 — 세션 필요, 가상매매 전용
+      if (!autoRef) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      try { return json(res, 200, await autoRef.uiState()); }
+      catch (e) { console.warn('[trade] 자동매매 상태 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'auto state failed' }); }
     }
     if (path.startsWith('/trade/live/') && req.method === 'GET') {
       if (!live) return json(res, 503, { ok: false, error: 'live unavailable' });
@@ -644,6 +649,12 @@ function createTrade(deps = {}) {
       audit(r.ok ? 'live_' + kind : 'live_reject', !!r.ok, detail, req, 'REAL');
       if (r.ok && kind === 'order') alert(`[실전] 주문 ${r.order.status === 'open' ? '접수' : '확인 중'}: ${body.code} ${body.side === 'buy' ? '매수' : '매도'} ${body.qty}주 ${body.type === 'market' ? '시장가' : body.price + '원'}`);
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, order: r.order });
+    }
+    if (path === '/trade/auto/config') {   // 자동매매 켜기/끄기·종목당 금액(auto_config 'main'). 실전 주문과 무관 — 가상매매 설정
+      if (!autoRef) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      const r = await autoRef.setConfig(body).catch(e => ({ ok: false, status: 502, error: '저장 실패: ' + (e && e.message) }));
+      audit(r.ok ? 'auto_config' : 'auto_config_reject', !!r.ok, { on: body.on, perStockKrw: body.perStockKrw, error: r.error }, req, 'VIRTUAL');
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
     }
     if (path === '/trade/paper/plan') {
       if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
@@ -743,7 +754,9 @@ function createTrade(deps = {}) {
     if (warn.length) L.push('⚠ 경고 ' + warn.slice(-5).join(' / '));
     return L.join('\n');
   }
-  return { handle, paper, live, getQuote, adminStatus, adminLock, adminDecide, adminKill, securitySummary,
+  let autoRef = null;   // 자동매매는 trade 보다 나중에 만들어지므로 server.js 가 만든 뒤 붙임
+  const attachAuto = a => { autoRef = a; };
+  return { handle, attachAuto, paper, live, getQuote, adminStatus, adminLock, adminDecide, adminKill, securitySummary,
     // 체결 틱 깨우기(2026-11-13): 엔진별 감시선 · 깨우기(판정은 엔진이 REST 시세로)
     watchLines: code => [['paper', paper], ['live', live]].filter(([, e]) => e && e.watchLines).map(([k, e]) => { try { return [k, e.watchLines(code)]; } catch (_) { return [k, null]; } }).filter(([, L]) => L),
     kick: (eng, code) => { const e = eng === 'live' ? live : paper; return e && e.kick ? e.kick(code) : Promise.resolve(false); },
