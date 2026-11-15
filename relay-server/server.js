@@ -2683,6 +2683,19 @@ function resolveCode(token) {
   return { notFound: true };
 }
 
+function telegramHelpText() {
+  return '📌 사용 가능한 명령어\n' +
+      '/목표가 [종목코드 또는 종목명] [가격] — 목표가 설정 (예: /목표가 005930 165000, /목표가 삼성전자 165000)\n' +
+      '/목표가삭제 [종목코드 또는 종목명] — 목표가 삭제\n' +
+      '/목표가확인 — 현재 설정 목록\n' +
+      '/오늘요약 — "오늘의 종목" 요약 즉시 받기 (매 거래일 수집·계산이 끝나면 자동 발송)\n' +
+      '/알림끄기 — 신고가·신저가·손절·목표가 알림 일시정지 (오늘의 종목 요약은 계속 발송)\n' +
+      '/알림켜기 — 알림 다시 켜기\n' +
+      '/status — 매매 상태(스위치·정지·세션)\n/lock — 열린 거래 세션 모두 종료\n/kill — 긴급 정지(신규 매수 차단)\n' +
+      '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
+      `보유 종목의 당일 신고가·신저가 갱신(직전 알림 대비 ${ALERT_MIN_MOVE_PCT}% 이상 갱신 시), 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.`;
+}
+
 async function handleTelegramCommand(chatId, text) {
   let m;
   // 2026-11-15: 매매 보안 명령 — 등록된 채팅(TELEGRAM_CHAT_ID)에서만 동작
@@ -2764,17 +2777,7 @@ async function handleTelegramCommand(chatId, text) {
     return;
   }
   if (/^\/?(?:help|도움말|start)\s*$/i.test(text)) {
-    await sendTelegramTo(chatId,
-      '📌 사용 가능한 명령어\n' +
-      '/목표가 [종목코드 또는 종목명] [가격] — 목표가 설정 (예: /목표가 005930 165000, /목표가 삼성전자 165000)\n' +
-      '/목표가삭제 [종목코드 또는 종목명] — 목표가 삭제\n' +
-      '/목표가확인 — 현재 설정 목록\n' +
-      '/오늘요약 — "오늘의 종목" 요약 즉시 받기 (매 거래일 수집·계산이 끝나면 자동 발송)\n' +
-      '/알림끄기 — 신고가·신저가·손절·목표가 알림 일시정지 (오늘의 종목 요약은 계속 발송)\n' +
-      '/알림켜기 — 알림 다시 켜기\n' +
-      '/status — 매매 상태(스위치·정지·세션)\n/lock — 열린 거래 세션 모두 종료\n/kill — 긴급 정지(신규 매수 차단)\n' +
-      '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
-      `보유 종목의 당일 신고가·신저가 갱신(직전 알림 대비 ${ALERT_MIN_MOVE_PCT}% 이상 갱신 시), 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.`);
+    await sendTelegramTo(chatId, telegramHelpText());
     return;
   }
   if (text.startsWith('/')) {
@@ -3657,7 +3660,7 @@ const server = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://internal');
     if (DAILY_SUMMARY_TOKEN && u.searchParams.get('token') !== DAILY_SUMMARY_TOKEN) { res.writeHead(403, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: 'forbidden' })); return; }
     trade.ready().then(() => trade.securitySummary(Math.min(72, +u.searchParams.get('hours') || 24)))
-      .then(text => sendTelegram(text).then(() => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true })); }))
+      .then(text => sendTelegram(text).then(() => sendTelegram('☀️ 오늘의 텔레그램 명령어\n\n' + telegramHelpText())).then(() => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true })); }))
       .catch(err => { console.error('[보안 요약] 실패:', err.message); res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: err.message })); });
     return;
   }
