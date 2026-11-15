@@ -587,6 +587,13 @@ function createTrade(deps = {}) {
       try { return json(res, 200, await autoRef.uiState()); }
       catch (e) { console.warn('[trade] 자동매매 상태 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'auto state failed' }); }
     }
+    if ((path === '/trade/auto/strategies' || path === '/trade/auto/strategy-versions') && req.method === 'GET') {   // 컨트롤 타워: 전략 목록·스키마 / 버전 이력
+      if (!autoRef || !autoRef.strategies) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      try {
+        if (path === '/trade/auto/strategies') return json(res, 200, await autoRef.strategies());
+        return json(res, 200, await autoRef.strategyVersions(new URL(req.url, 'http://x').searchParams.get('id')));
+      } catch (e) { console.warn('[trade] 전략 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'strategy read failed' }); }
+    }
     if (path.startsWith('/trade/live/') && req.method === 'GET') {
       if (!live) return json(res, 503, { ok: false, error: 'live unavailable' });
       const sp = new URL(req.url, 'http://x').searchParams;
@@ -649,6 +656,13 @@ function createTrade(deps = {}) {
       audit(r.ok ? 'live_' + kind : 'live_reject', !!r.ok, detail, req, 'REAL');
       if (r.ok && kind === 'order') alert(`[실전] 주문 ${r.order.status === 'open' ? '접수' : '확인 중'}: ${body.code} ${body.side === 'buy' ? '매수' : '매도'} ${body.qty}주 ${body.type === 'market' ? '시장가' : body.price + '원'}`);
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, order: r.order });
+    }
+    if (path === '/trade/auto/strategy') {   // 전략 조건값·켜기/끄기·이름 저장(버전 +1, 바뀐 항목 기록). 가상매매 전용
+      if (!autoRef || !autoRef.saveStrategy) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      const patch = {}; for (const k of ['params', 'enabled', 'name', 'desc']) if (body[k] !== undefined) patch[k] = body[k];
+      const r = await autoRef.saveStrategy(body.id, patch, 'site').catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
+      audit(r.ok ? 'auto_strategy' : 'auto_strategy_reject', !!r.ok, { id: body.id, version: r.strategy && r.strategy.version, changed: (r.changed || []).map(c => `${c.key}:${c.from}→${c.to}`).slice(0, 20), error: r.error }, req, 'VIRTUAL');
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, errs: r.errs });
     }
     if (path === '/trade/auto/config') {   // 자동매매 켜기/끄기·종목당 금액(auto_config 'main'). 실전 주문과 무관 — 가상매매 설정
       if (!autoRef) return json(res, 503, { ok: false, error: 'auto unavailable' });

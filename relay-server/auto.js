@@ -7,6 +7,8 @@
    · 업종당 2종목까지(같은 업종 3번째부터 제외)
    · 승인하지 않은 후보도 auto_runs 에 남겨(그림자 기록) 점수와 내 판단을 나중에 비교한다 */
 
+const ST = require('./auto-strategy');
+const DEFP = Object.freeze(ST.defaults('intraday'));   // 기본 장중 전략 조건값(= 1~3단계 확정값). 함수 인자를 안 주면 이 값
 const EXCL_NAME = /스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/;
 const RULES = Object.freeze({
   capMinEok: 10000,          // 시총 1조(억원)
@@ -23,7 +25,7 @@ const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const num = v => (v == null || v === '' || !isFinite(+v) ? null : +v);
 
 /* 1차: 이름·가격·이평선·매집(DB 값) — 시세 조회 전에 걸러 KIS 호출을 아낀다 */
-function baseFilter(pool, scr, smx, held) {
+function baseFilter(pool, scr, smx, held, P = DEFP) {
   const out = [];
   for (const r of pool || []) {
     if (!r || !r.code || EXCL_NAME.test(r.name || '')) continue;
@@ -31,27 +33,29 @@ function baseFilter(pool, scr, smx, held) {
     const s = scr && scr[r.code];
     if (!s) continue;
     const close = num(s.close), m60 = num(s.ma60), m120 = num(s.ma120);
-    if (!(close > 0 && m60 > 0 && m120 > 0 && close > m60 && m60 > m120)) continue;
-    const st = smx && smx[r.code];
-    if (!st || (st !== 'CONT' && st !== 'STALL')) continue;
+    if (!(close > 0)) continue;
+    if (P.maTrend && !(m60 > 0 && m120 > 0 && close > m60 && m60 > m120)) continue;
+    const st = (smx && smx[r.code]) || null;
+    if (P.smx !== 'off' && !(st === 'CONT' || (P.smx === 'cont_stall' && st === 'STALL'))) continue;
     if (!(r.price > 0) || !(r.changePct > 0)) continue;
-    if (r.open > 0 && Math.round((r.price / r.open - 1) * 1e4) / 100 > RULES.openRiseMax) continue;   // 소수 둘째 자리로 맞춰 경계(+8.00%) 부동소수점 오차 방지
+    if (r.open > 0 && Math.round((r.price / r.open - 1) * 1e4) / 100 > P.openRiseMax) continue;   // 소수 둘째 자리로 맞춰 경계(+8.00%) 부동소수점 오차 방지
     out.push({ ...r, sector: s.sector || '미분류', rs20: num(s.rs20_pctl), smx: st });
   }
   return out;
 }
 
 /* 2차: 시세 조회 결과(flow=외인·기관 잠정 수량, power=프로그램, cttr=체결강도)로 수급 조건 판정 */
-function evalFlow(c, flow, power, cttr) {
+function evalFlow(c, flow, power, cttr, P = DEFP) {
   const fails = [];
   const fq = flow && flow.err == null ? num(flow.fq) : null;
   const oq = flow && flow.err == null ? num(flow.oq) : null;
   const pq = power && power.err == null ? num(power.pgQty) : null;
   const cs = cttr && cttr.err == null ? num(cttr.cttr) : null;
-  if (fq == null) fails.push('외국인 수급 없음'); else if (!(fq > 0)) fails.push('외국인 순매도');
-  if (oq == null) fails.push('기관 수급 없음'); else if (!(oq > 0)) fails.push('기관 순매도');
-  if (pq == null) fails.push('프로그램 없음'); else if (!(pq > 0)) fails.push('프로그램 순매도');
-  if (cs == null) fails.push('체결강도 없음'); else if (cs < RULES.cttrMin) fails.push(`체결강도 ${cs.toFixed(0)}%`);
+  const need = (mode, v, miss, neg) => { if (mode !== 'req') return; if (v == null) fails.push(miss); else if (!(v > 0)) fails.push(neg); };   // 필수만 탈락 사유, 가점·무시는 통과
+  need(P.flowForeign, fq, '외국인 수급 없음', '외국인 순매도');
+  need(P.flowInst, oq, '기관 수급 없음', '기관 순매도');
+  need(P.flowProgram, pq, '프로그램 없음', '프로그램 순매도');
+  if (cs == null) fails.push('체결강도 없음'); else if (cs < P.cttrMin) fails.push(`체결강도 ${cs.toFixed(0)}%`);
   const p = c.price;
   return {
     pass: fails.length === 0, fails,
@@ -65,11 +69,12 @@ function evalFlow(c, flow, power, cttr) {
 }
 
 /* 점수(100) */
-function scoreOne(c, m, amtRankPct) {
-  const sum = (m.fAmt || 0) + (m.oAmt || 0) + (m.pAmt || 0);
+function scoreOne(c, m, amtRankPct, P = DEFP) {
+  const W = P.weights, use = (mode, v) => (mode === 'ignore' ? 0 : mode === 'req' ? (v || 0) : Math.max(0, v || 0));   // 필수는 통과했으니 양수, 가점은 순매수일 때만 더함
+  const sum = use(P.flowForeign, m.fAmt) + use(P.flowInst, m.oAmt) + use(P.flowProgram, m.pAmt);
   const ratio = c.amt > 0 ? sum / c.amt : 0;
-  const sFlow = 40 * clamp(ratio / RULES.flowFullRatio, 0, 1);
-  const sCs = 15 * clamp(((m.cttr || 100) - 100) / 50, 0, 1);
+  const sFlow = W.flow * clamp(ratio / RULES.flowFullRatio, 0, 1);
+  const sCs = W.cttr * clamp(((m.cttr || 100) - 100) / 50, 0, 1);
   const r = c.changePct;
   let sRise;
   if (r <= 0) sRise = 0;
@@ -77,22 +82,23 @@ function scoreOne(c, m, amtRankPct) {
   else if (r <= 5) sRise = 15;
   else if (r < 10) sRise = 15 - (r - 5) * 2;
   else sRise = 5;
-  const sAmt = 15 * clamp(amtRankPct, 0, 1);
+  sRise *= W.rise / 15;
+  const sAmt = W.amt * clamp(amtRankPct, 0, 1);
   const rsPart = c.rs20 != null ? 10 * clamp(c.rs20 / 100, 0, 1) : 5;
   const near = m.w52 > 0 ? clamp((c.price / m.w52 - 0.85) / 0.15, 0, 1) * 5 : 2.5;   // 52주 고가 85%→0점, 100%→5점
-  const sTrend = rsPart + near;
+  const sTrend = (rsPart + near) * W.trend / 15;
   const parts = { flow: sFlow, cttr: sCs, rise: sRise, amt: sAmt, trend: sTrend };
   const total = Object.values(parts).reduce((a, b) => a + b, 0);
   return { total: Math.round(total * 10) / 10, parts: Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, Math.round(v * 10) / 10])), ratio };
 }
 
 /* 점수 순위 → 업종당 2종목까지 → 상위 N */
-function rankAndPick(list, topN = RULES.poolTop) {
+function rankAndPick(list, topN = DEFP.poolTop, sectorMax = DEFP.sectorMax) {
   const sorted = list.slice().sort((a, b) => b.score.total - a.score.total);
   const cnt = {}, pick = [], dropped = [];
   for (const c of sorted) {
     cnt[c.sector] = (cnt[c.sector] || 0) + 1;
-    if (cnt[c.sector] > RULES.sectorMax) { dropped.push({ code: c.code, why: `업종 ${c.sector} ${cnt[c.sector]}번째` }); continue; }
+    if (cnt[c.sector] > sectorMax) { dropped.push({ code: c.code, why: `업종 ${c.sector} ${cnt[c.sector]}번째` }); continue; }
     if (pick.length < topN) pick.push(c);
   }
   return { pick, dropped };
@@ -116,12 +122,16 @@ function formatMessage(date, picks, ctx = {}) {
     if (c.warns && c.warns.length) lines.push(`   ⚠ ${c.warns.join(' · ')}`);
   });
   if (ctx.warn) lines.push('', `⚠ ${ctx.warn}`);
-  lines.push('', `답장: /매수 1 3 5 (번호) · /매수 전체 · /패스`, `${ctx.deadline || '10:30'}까지 답이 없으면 전부 취소돼요. (자동으로 사지 않습니다)`);
+  if (ctx.auto) lines.push('', '🤖 자동 매수 설정 — 알림 직후 위 후보를 모두 가상 매수합니다.');
+  else lines.push('', `답장: /매수 1 3 5 (번호) · /매수 전체 · /패스`, `${ctx.deadline || '10:30'}까지 답이 없으면 전부 취소돼요. (자동으로 사지 않습니다)`);
   return lines.join('\n');
 }
 
-function reasonsFor(c) {
-  const r = [`수급 외·기·프 동시`, `매집 ${c.smx === 'CONT' ? '지속' : '고점 후 정체'}`];
+function reasonsFor(c, P = DEFP) {
+  const allReq = P.flowForeign === 'req' && P.flowInst === 'req' && P.flowProgram === 'req';
+  const pos = [['외', c.m.fAmt], ['기', c.m.oAmt], ['프', c.m.pAmt]].filter(([, v]) => v > 0).map(([k]) => k);
+  const r = [allReq ? `수급 외·기·프 동시` : pos.length ? `순매수 ${pos.join('·')}` : '수급 조건 없음'];
+  if (c.smx) r.push(`매집 ${c.smx === 'CONT' ? '지속' : '고점 후 정체'}`);
   if (c.m.cttr >= 120) r.push(`체결강도 강함`);
   return r;
 }
@@ -147,19 +157,22 @@ function createAuto(deps) {
   const state = { date: null, lastErr: null, running: false, run: null, checkedAt: 0, carry: null, carryAt: 0 };
 
   const kstParts = () => D.kstNow();            // { date:'YYYY-MM-DD', min: 분 }
+  const store = D.strategies || ST.createStore({ sbGet: D.sbGet, sbWrite: D.sbWrite, now: D.now || Date.now });   // 전략(조건값). 테이블이 없으면 기본 전략
+  const pair = () => store.pair().catch(() => ({ I: { id: 'intraday-default', version: 1, enabled: true, params: DEFP }, C: { id: 'closing-default', version: 1, enabled: true, params: ST.defaults('closing') }, T: ST.timesOf(DEFP, ST.defaults('closing')) }));
   const isTradingDay = date => D.isTradingDay(date);
 
   async function enabled() {
     if (D.forceEnabled != null) return !!D.forceEnabled;
-    try { const r = await D.sbGet('auto_config?select=key,value&key=eq.main&limit=1'); return !!(r[0] && r[0].value && r[0].value.on); } catch (_) { return false; }
+    try { const r = await D.sbGet('auto_config?select=key,value&key=eq.main&limit=1'); if (!(r[0] && r[0].value && r[0].value.on)) return false; } catch (_) { return false; }
+    return !!(await pair()).I.enabled;   // 전체 스위치 + 장중 전략 켜짐
   }
 
-  async function loadScreener() {
+  async function loadScreener(P) {
     const d = await D.sbGet('v_screener?select=trade_date&order=trade_date.desc&limit=1');
     const date = d[0] && d[0].trade_date;
     const map = {};
     for (let off = 0; off < 6000; off += 1000) {
-      const part = await D.sbGet(`v_screener?select=code,close,ma60,ma120,sector,rs20_pctl&trade_date=eq.${date}&market_cap=gte.${RULES.capMinEok * 1e8}&order=code.asc&limit=1000&offset=${off}`);
+      const part = await D.sbGet(`v_screener?select=code,close,ma60,ma120,sector,rs20_pctl&trade_date=eq.${date}&market_cap=gte.${P.capMinEok * 1e8}&order=code.asc&limit=1000&offset=${off}`);
       part.forEach(r => { map[r.code] = r; });
       if (part.length < 1000) break;
     }
@@ -183,21 +196,21 @@ function createAuto(deps) {
     try { const w = await D.marketState(); return w || null; } catch (_) { return null; }
   }
 
-  async function select() {
-    const [scr, smx, held, pool] = await Promise.all([loadScreener(), loadSmx(), loadHeld(), D.livePool()]);
-    const base = baseFilter(pool, scr.map, smx, held).sort((a, b) => b.changePct - a.changePct);
+  async function select(P = DEFP) {
+    const [scr, smx, held, pool] = await Promise.all([loadScreener(P), loadSmx(), loadHeld(), D.livePool(P.capMinEok)]);
+    const base = baseFilter(pool, scr.map, smx, held, P).sort((a, b) => b.changePct - a.changePct);
     const stat = { pool: (pool || []).length, base: base.length, flowPass: 0, errs: 0 };
     const passed = [];
     for (const c of base.slice(0, 40)) {
       const [flow, power, cttr] = await Promise.all([D.fetchFlow(c.code), D.fetchPower(c.code), D.fetchCttr(c.code)]);
-      const ev = evalFlow(c, flow, power, cttr);
+      const ev = evalFlow(c, flow, power, cttr, P);
       if (ev.fails.some(f => /없음/.test(f))) stat.errs++;
       if (!ev.pass) { c.fails = ev.fails; c.m = ev.m; c.shadowOnly = false; continue; }
       c.m = ev.m; stat.flowPass++; passed.push(c);
     }
     const byAmt = passed.slice().sort((a, b) => a.amt - b.amt);
-    passed.forEach(c => { c.score = scoreOne(c, c.m, byAmt.length > 1 ? byAmt.indexOf(c) / (byAmt.length - 1) : 1); c.reasons = reasonsFor(c); });
-    const { pick, dropped } = rankAndPick(passed, RULES.poolTop);
+    passed.forEach(c => { c.score = scoreOne(c, c.m, byAmt.length > 1 ? byAmt.indexOf(c) / (byAmt.length - 1) : 1, P); c.reasons = reasonsFor(c, P); });
+    const { pick, dropped } = rankAndPick(passed, P.poolTop, P.sectorMax);
     return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed };
   }
 
@@ -205,7 +218,8 @@ function createAuto(deps) {
   let chain = Promise.resolve();
   const lock = fn => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
   async function writeRun(run) {
-    await D.sbWrite('auto_runs?on_conflict=trade_date', 'POST', [{ trade_date: run.trade_date, status: run.status, payload: run.payload, updated_at: new Date().toISOString() }]);
+    const st = run.payload && run.payload.strategy, cols = st && !store.isMissing() ? { strategy_id: st.id, strategy_version: st.version } : {};   // 전략 컬럼은 165 SQL 이후에만
+    await D.sbWrite('auto_runs?on_conflict=trade_date', 'POST', [{ trade_date: run.trade_date, status: run.status, payload: run.payload, ...cols, updated_at: new Date().toISOString() }]);
     state.date = run.trade_date; state.run = run;
   }
   async function readRun(date) {
@@ -224,7 +238,19 @@ function createAuto(deps) {
   }
 
   async function perStock() {
-    try { const r = await D.sbGet('auto_config?select=value&key=eq.main&limit=1'); return (r[0] && r[0].value && +r[0].value.perStockKrw) || 1000000; } catch (_) { return 1000000; }
+    const { I } = await pair();
+    if (!store.isMissing()) return I.params.perStockKrw;
+    try { const r = await D.sbGet('auto_config?select=value&key=eq.main&limit=1'); return (r[0] && r[0].value && +r[0].value.perStockKrw) || 1000000; } catch (_) { return 1000000; }   // 전략 테이블 전: 예전 설정
+  }
+  /* 엔진별로 쓰는 형태 */
+  async function execOpt() {
+    const p = (await pair()).I.params;
+    return { stopPct: p.stopPct, rr: p.rr, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3 };
+  }
+  async function eodRule() {
+    const { I, C, T } = await pair(), c = C.params;
+    return { highNear: 1 - c.highNearPct / 100, idxFloor: c.idxFloor, gapCut: c.gapCut, slices: T.slices, needAboveAvg: c.needAboveAvg, carryFlow: c.carryFlow,
+      overnightStopPct: c.overnightStopPct, replyEnd: T.reply, convertAt: T.convert, eodWeak: I.params.eodWeak, eodTimeout: I.params.eodTimeout, closingOn: !!C.enabled };
   }
   /* 종가 베팅 넘긴 종목(auto_config 'carry') — 같은 잠금 안에서 읽기 → 고치기 → 저장 */
   async function readCarry() {
@@ -243,12 +269,12 @@ function createAuto(deps) {
   }
   const eod = D.paper ? require('./auto-eod').createEod({
     paper: D.paper, getQuote: D.getQuote, fetchFlow: D.fetchFlow, marketIdx: D.marketIdx || (async () => ({})), sendTelegram: D.sendTelegram, now: D.now,
-    mutateRun, readRun, mutateCarry, readCarry,
+    mutateRun, readRun, mutateCarry, readCarry, rule: eodRule,
   }) : null;
 
   const exec = D.paper ? require('./auto-exec').createExec({
     paper: D.paper, getQuote: D.getQuote, loadChart: D.loadChart, sendTelegram: D.sendTelegram, now: D.now,
-    mutateRun, readRun, perStock, opt: async () => ({}),
+    mutateRun, readRun, perStock, opt: execOpt,
   }) : null;
 
   /* 10:05 선정 + 그림자 기록. 한 번만(오늘 기록이 있으면 건너뜀 — 서버 재시작·재호출 안전).
@@ -262,14 +288,16 @@ function createAuto(deps) {
       if (ex && !force) { state.date = date; state.run = ex; return { ok: true, skipped: true, status: ex.status }; }
       if (ex && force && ((ex.payload && ex.payload.decision) || (ex.payload && ex.payload.orders))) return { ok: false, why: '오늘은 이미 승인·주문을 처리해서 다시 고를 수 없어요' };
       const warn = await marketWarn();
-      const sel = await select();
+      const { I } = await pair();
+      const sel = await select(I.params);
       const shadow = sel.passedAll.map(c => ({
         code: c.code, name: c.name, score: c.score.total, parts: c.score.parts, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector,
         m: c.m, picked: sel.picks.some(p => p.code === c.code),
       }));
       const payload = {
         selectedAt: new Date().toISOString(), stat: sel.stat, scrDate: sel.scrDate, warn: warn || null,
-        picks: sel.picks.slice(0, RULES.notifyTop).map(c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts })),
+        strategy: { id: I.id, version: I.version, name: I.name }, params: I.params,
+        picks: sel.picks.slice(0, I.params.notifyTop).map(c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts })),
         shadow, dropped: sel.dropped, approved: [], decision: null, noticeSent: false,
       };
       await lock(() => writeRun({ trade_date: date, status: 'selected', payload }));
@@ -281,10 +309,11 @@ function createAuto(deps) {
     const { date, min } = kstParts();
     const hhmm = `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
     let text = null;
+    const { I, T } = await pair();
     await mutateRun(date, run => {
       if (run.payload.noticeSent && !force) return;
       const picks = (run.payload.picks || []).map(p => ({ ...p, score: { total: p.score, ratio: p.ratio || 0 }, warns: [] }));
-      text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, deadline: '10:30' });
+      text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, deadline: ST.hhmm(T.deadline), auto: I.params.approval === 'auto' && picks.length > 0 });
       run.payload.noticeSent = true; run.payload.noticeAt = new Date().toISOString();
       if (run.status === 'selected') run.status = 'noticed';
     });
@@ -301,7 +330,8 @@ function createAuto(deps) {
     if (!a) return null;
     if (!ex || !max) return '오늘은 승인할 후보가 없어요.';
     if (a.kind === 'bad') return `번호를 확인해 주세요. 1~${max} 중에서 골라요. 예) /매수 1 3`;
-    if (min > 10 * 60 + 30 && !D.allowLateApproval) return '승인 마감(10:30)이 지났어요. 오늘은 취소 처리돼요.';
+    const { T } = await pair();
+    if (min > T.deadline && !D.allowLateApproval) return `승인 마감(${ST.hhmm(T.deadline)})이 지났어요. 오늘은 취소 처리돼요.`;
     const res = await mutateRun(date, run => {
       if (run.payload.decision && run.payload.decision.kind) return { dup: run.payload.decision };
       run.payload.decision = a.kind === 'pass' ? { kind: 'pass', at: new Date().toISOString() } : { kind: 'buy', nums: a.nums, at: new Date().toISOString() };
@@ -318,8 +348,9 @@ function createAuto(deps) {
   /* 승인 마감(10:30) 넘긴 알림은 '만료'로 기록 */
   async function expireIfNeeded(date) {
     let expired = false;
+    const { T } = await pair();
     await mutateRun(date, run => { if (run.status === 'noticed' && !run.payload.decision) { run.status = 'expired'; run.payload.decision = { kind: 'expired', at: new Date().toISOString() }; expired = true; } });
-    if (expired) await D.sendTelegram('⌛ 10:30 승인 마감 — 오늘 자동매매 후보는 매수하지 않고 기록만 남겼어요.');
+    if (expired) await D.sendTelegram(`⌛ ${ST.hhmm(T.deadline)} 승인 마감 — 오늘 자동매매 후보는 매수하지 않고 기록만 남겼어요.`);
   }
 
   const activeOrders = run => Object.values((run && run.payload && run.payload.orders) || {}).some(v => v.st === 'intent' || v.st === 'open' || v.st === 'modified');
@@ -330,8 +361,9 @@ function createAuto(deps) {
   async function tick() {
     const { date, min } = kstParts();
     const W = (a, b) => min >= a && min < b;
-    const inSel = W(605, 660), inOrd = !!exec && W(540, 930), inEodJ = !!eod && W(910, 918), inEodT = !!eod && W(918, 930);
-    const inConv = !!eod && min >= 1200, inPre = !!eod && W(480, 540), inMorn = !!eod && W(540, 920);
+    const { I, T } = await pair();   // 시각은 전략 설정에서(기본: 선정 10:05~11:00 · 판정 15:10~15:18 · 전환 20:00)
+    const inSel = W(T.sel, T.selEnd), inOrd = !!exec && W(540, 930), inEodJ = !!eod && W(T.judge, T.reply), inEodT = !!eod && W(T.reply, 930);
+    const inConv = !!eod && min >= T.convert, inPre = !!eod && W(480, 540), inMorn = !!eod && W(540, 920);
     if (!inSel && !inOrd && !inEodJ && !inEodT && !inConv && !inPre && !inMorn) return { ok: true, idle: 'outside-window' };
     if (!isTradingDay(date)) return { ok: true, idle: 'non-trading' };
     const out = {};
@@ -361,15 +393,26 @@ function createAuto(deps) {
     if (have && inConv && !state.run.payload.carryDone) out.convert = await eod.convert(date).catch(err);
     if (!inSel) return { ok: true, date, min, ...out };
     if (have && state.run.payload && state.run.payload.noticeSent) {
-      if (min > 630 && state.run.status === 'noticed') await expireIfNeeded(date).catch(e => { state.lastErr = e.message; });
+      if (I.params.approval === 'auto' && state.run.status === 'noticed' && min <= T.deadline) out.auto = await autoApprove().catch(err);   // 알림 직후 끊겼던 경우 보완
+      else if (min > T.deadline && state.run.status === 'noticed') await expireIfNeeded(date).catch(e => { state.lastErr = e.message; });
       return { ok: true, date, min, idle: 'done', ...out };
     }
     if (!have && state.checkedAt && Date.now() - state.checkedAt < 25000) return { ok: true, idle: 'busy', ...out };
     state.checkedAt = Date.now();
     if (!(await enabled())) return { ok: true, idle: 'disabled', ...out };
     out.sel = await runSelection(false).catch(err);
-    if (min >= 615 && out.sel && out.sel.ok) out.notice = await sendNotice(false).catch(err);
+    if (min >= T.notice && out.sel && out.sel.ok) {
+      out.notice = await sendNotice(false).catch(err);
+      if (out.notice && out.notice.sent && I.params.approval === 'auto') out.auto = await autoApprove().catch(err);
+    }
     return { ok: true, date, min, ...out };
+  }
+
+  /* 승인 방식 '자동': 알림한 후보 전체를 승인한 것으로 처리(가상매매) */
+  async function autoApprove() {
+    const msg = await handleApproval('/매수 전체');
+    if (msg) await D.sendTelegram('🤖 자동 승인\n' + msg);
+    return { ok: true };
   }
 
   async function handleEod(text) {
@@ -387,12 +430,17 @@ function createAuto(deps) {
   async function setConfig(body) {
     const c = UI.checkConfig(body);
     if (c.err) return { ok: false, status: 400, error: c.err };
+    const { I } = await pair();
+    if (c.val.perStockKrw !== undefined && !store.isMissing()) {   // 종목당 금액은 장중 전략 조건값(버전 기록)
+      const r = await store.save(I.id, { params: { perStockKrw: c.val.perStockKrw } }, 'site');
+      if (!r.ok) return r;
+    }
     return lock(async () => {
       const r = await D.sbGet('auto_config?select=value&key=eq.main&limit=1');
       const cur = (r[0] && r[0].value) || {};
       const next = { ...cur, ...c.val };
       await D.sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'main', value: next, updated_at: new Date().toISOString() }]);
-      return { ok: true, cfg: { on: !!next.on, perStockKrw: +next.perStockKrw || 1000000 }, changed: c.val };
+      return { ok: true, cfg: { on: !!next.on, perStockKrw: await perStock() }, changed: c.val };
     });
   }
   async function uiState() {
@@ -426,11 +474,18 @@ function createAuto(deps) {
     const ci = Object.values((carry && carry.items) || {}).filter(i => i.state !== 'done').map(i => ({ code: i.code, name: i.name, q0: i.q0, avg: i.avg, from: i.from, sold: i.sold || 0, state: i.state }));
     return {
       ok: true, now: Date.now(), date, tradingDay: isTradingDay(date),
-      cfg: { on: !!cv.on, perStockKrw: +cv.perStockKrw || 1000000 }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
+      cfg: { on: !!cv.on, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
       today, positions, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
     };
   }
-  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, _select: select, _mutateRun: mutateRun, _readRun: readRun, _readCarry: readCarry };
+  /* 전략 조회·저장(컨트롤 타워) */
+  async function strategies() {
+    const [list, P] = await Promise.all([store.list(true), pair()]);
+    return { ok: true, missing: store.isMissing(), schema: ST.publicSchema(), strategies: list, active: { intraday: P.I.id, closing: P.C.id }, times: P.T };
+  }
+  const saveStrategy = (id, patch, who) => store.save(String(id || ''), patch, who);
+  const strategyVersions = async id => ({ ok: true, versions: await store.versions(String(id || '')) });
+  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, _select: select, _mutateRun: mutateRun, _readRun: readRun, _readCarry: readCarry };
 }
 
 module.exports = { RULES, EXCL_NAME, baseFilter, evalFlow, scoreOne, rankAndPick, formatMessage, parseApproval, createAuto };

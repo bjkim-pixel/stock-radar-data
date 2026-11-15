@@ -80,7 +80,8 @@ function makeOrder({ q, rows, perStockKrw, opt = {} }) {
   const o = { ...DEF, ...opt };
   const cur = q.price > 0 ? q.price : +(rows[rows.length - 1] || {}).close;
   const rec = recBids(q.bids, cur);
-  const pick = (o.buyPick === 'low' ? rec.find(r => r.k === 'low') : rec[0]) || null;
+  const bid1 = (q.bids || []).filter(b => b.p > 0 && b.q > 0).reduce((m, b) => (!m || b.p > m.p ? b : m), null);   // 최우선 매수 호가
+  const pick = (o.buyPick === 'low' ? rec.find(r => r.k === 'low') : o.buyPick === 'bid1' ? (bid1 && { k: 'bid1', p: bid1.p }) : rec[0]) || null;
   const buy = pick ? pick.p : floorTick(cur);
   const qty = Math.floor(perStockKrw / buy);
   if (qty < 1) return { skip: `금액 ${perStockKrw.toLocaleString('ko-KR')}원으로 1주도 못 삼(${buy.toLocaleString('ko-KR')}원)` };
@@ -164,7 +165,8 @@ function createExec(deps) {
         lines.push(`  ${planText(ord)}`);
       }
     }
-    lines.push('', '미체결은 3분 뒤 매수 1호가로 한 번 정정, 다시 3분 뒤 남으면 취소해요.');
+    const wm = Math.round(((opt && opt.fillWaitMs) || DEF.fillWaitMs) / 60e3);
+    lines.push('', `미체결은 ${wm}분 뒤 매수 1호가로 한 번 정정, 다시 ${wm}분 뒤 남으면 취소해요.`);
     return lines.join('\n');
   }
 
@@ -173,6 +175,7 @@ function createExec(deps) {
     const run = await D.readRun(date);
     const ords = run && run.payload && run.payload.orders;
     if (!ords) return { ok: true, n: 0 };
+    const o2 = { ...DEF, ...(D.opt ? await D.opt().catch(() => ({})) : {}) }, wm = Math.round(o2.fillWaitMs / 60e3);
     const active = Object.entries(ords).filter(([, v]) => v.st === 'intent' || v.st === 'open' || v.st === 'modified');
     if (!active.length) return { ok: true, n: 0 };
     const S = await D.paper.state();
@@ -202,7 +205,7 @@ function createExec(deps) {
         continue;
       }
       const since = v.st === 'modified' ? v.modifiedAt : v.placedAt;
-      if (now() - since < DEF.fillWaitMs) continue;
+      if (now() - since < o2.fillWaitMs) continue;
       if (v.st === 'open') {   // 3분 미체결 → 매수 1호가로 한 번 정정
         let q; try { q = await D.getQuote(code); } catch (_) { continue; }
         const bid1 = ((q.bids || []).find(b => b.p > 0) || {}).p;
@@ -213,7 +216,7 @@ function createExec(deps) {
         const m = await D.paper.modify({ id: o.id, price: bid1 });
         if (m && m.ok) {
           await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: m.order.status === 'filled' ? 'filled' : 'modified', orderId: m.order.id, modifiedAt: now(), from: o.id, buy2: bid1 }; });
-          msgs.push(`↪ ${name}: 3분 미체결 → ${fmt(bid1)}원으로 정정${m.order.status === 'filled' ? ' · 체결' : ''}`);
+          msgs.push(`↪ ${name}: ${wm}분 미체결 → ${fmt(bid1)}원으로 정정${m.order.status === 'filled' ? ' · 체결' : ''}`);
         } else {
           await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'cancelled', why: '정정 실패: ' + ((m && m.error) || '') }; });
           msgs.push(`⚠ ${name}: 정정 실패 — ${(m && m.error) || '알 수 없음'}`);

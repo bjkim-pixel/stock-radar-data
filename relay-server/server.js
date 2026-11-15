@@ -3668,10 +3668,10 @@ const autoTrade = require('./auto').createAuto({
   loadChart: async code => (await sbGet(`v_stock_chart?select=trade_date,close,high,low,trade_amount,individual_net&code=eq.${code}&order=trade_date.desc&limit=1000`)).reverse(),   // 최근 1000일(매매 화면과 같은 이력)
   kstNow: () => ({ date: kstDateStr(), min: kstMinutesNow() }),
   isTradingDay: d => { const dow = new Date(`${d}T00:00:00Z`).getUTCDay(); return dow !== 0 && dow !== 6 && !KRX_HOLIDAYS.has(d); },
-  livePool: async () => {
-    const c = _liveTop.get(10000);
-    if (!c || Date.now() - c.at > 20000) await refreshLiveTop(10000, 'up');
-    const x = _liveTop.get(10000);
+  livePool: async (cap = 10000) => {   // 장중 전략의 시총 하한(억원)
+    const c = _liveTop.get(cap);
+    if (!c || Date.now() - c.at > 20000) await refreshLiveTop(cap, 'up');
+    const x = _liveTop.get(cap);
     return (x && (x.all || x.rows)) || [];
   },
   fetchFlow: code => fetchFlowEst(code).catch(e => ({ err: e.message })),

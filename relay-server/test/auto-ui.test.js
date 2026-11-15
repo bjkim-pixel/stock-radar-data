@@ -58,6 +58,7 @@ function fakeAuto({ runs = [], cfg = {}, fills = [], closes = [], paperState = n
   const store = { cfg: JSON.parse(JSON.stringify(cfg)), writes: [] };
   const A = createAuto({
     sbGet: async p => {
+      if (p.startsWith('auto_strateg')) throw new Error('auto_strategies 404 PGRST205');   // 165 SQL 실행 전 상태
       if (p.startsWith('auto_config')) { const k = (p.match(/key=eq\.(\w+)/) || [])[1]; return store.cfg[k] ? [{ key: k, value: JSON.parse(JSON.stringify(store.cfg[k])) }] : []; }
       if (p.startsWith('auto_runs')) { const d = (p.match(/trade_date=eq\.([\d-]+)/) || [])[1]; return d ? runs.filter(r => r.trade_date === d) : runs.slice().sort((a, b) => a.trade_date < b.trade_date ? 1 : -1); }
       if (p.startsWith('paper_fills')) return fills;
@@ -121,7 +122,10 @@ test('/trade/auto/*: 세션 없으면 401 · 세션이 있으면 조회·설정,
     env, now: () => clock, allowedOrigins: [ORIGIN], clientIp: () => '1.1.1.1', sbWrite: async (tbl, m, rows) => { audits.push(...rows); }, notify: async () => {},
     fetch: async url => String(url).includes('/auth/v1/user') ? { ok: true, status: 200, json: async () => ({ id: 'u1', email: 'owner@example.com' }) } : { ok: true, status: 200 },
   });
-  const fake = { uiState: async () => ({ ok: true, hello: 1 }), setConfig: async b => (b.perStockKrw === 12345 ? { ok: false, status: 400, error: '금액 오류' } : { ok: true, cfg: { on: !!b.on, perStockKrw: 1 }, changed: b }) };
+  const saved = [];
+  const fake = { uiState: async () => ({ ok: true, hello: 1 }), setConfig: async b => (b.perStockKrw === 12345 ? { ok: false, status: 400, error: '금액 오류' } : { ok: true, cfg: { on: !!b.on, perStockKrw: 1 }, changed: b }),
+    strategies: async () => ({ ok: true, strategies: [{ id: 'intraday-default' }] }), strategyVersions: async id => ({ ok: true, versions: [{ version: 2, id }] }),
+    saveStrategy: async (id, patch, who) => { saved.push({ id, patch, who }); return patch.params && patch.params.cttrMin > 200 ? { ok: false, status: 400, error: '체결강도 범위', errs: [{ key: 'cttrMin' }] } : { ok: true, strategy: { id, version: 2 }, changed: [{ key: 'cttrMin', from: '100%', to: '120%' }] }; } };
   const server = http.createServer((req, res) => { if (!t.handle(req, res)) { res.writeHead(404); res.end(); } });
   await new Promise(r => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`; let n = 0;
@@ -144,7 +148,18 @@ test('/trade/auto/*: 세션 없으면 401 · 세션이 있으면 조회·설정,
     assert.equal(ok.status, 200); assert.equal(ok.body.cfg.on, true);
     const no = await call('POST', '/trade/auto/config', { session, body: { perStockKrw: 12345 } });
     assert.equal(no.status, 400); assert.match(no.body.error, /금액/);
+    assert.equal((await call('GET', '/trade/auto/strategies')).status, 401);
+    assert.equal((await call('GET', '/trade/auto/strategies', { session })).body.strategies[0].id, 'intraday-default');
+    assert.equal((await call('GET', '/trade/auto/strategy-versions?id=intraday-default', { session })).body.versions[0].id, 'intraday-default');
+    assert.equal((await call('POST', '/trade/auto/strategy', { body: { id: 'intraday-default', params: { cttrMin: 120 } } })).status, 401);
+    const sv = await call('POST', '/trade/auto/strategy', { session, body: { id: 'intraday-default', params: { cttrMin: 120 }, junk: 1 } });
+    assert.equal(sv.status, 200); assert.equal(sv.body.strategy.version, 2);
+    assert.deepEqual(saved[0], { id: 'intraday-default', patch: { params: { cttrMin: 120 } }, who: 'site' });   // 허용한 키만 넘김
+    const sb = await call('POST', '/trade/auto/strategy', { session, body: { id: 'intraday-default', params: { cttrMin: 300 } } });
+    assert.equal(sb.status, 400); assert.equal(sb.body.errs[0].key, 'cttrMin');
     await new Promise(r => setTimeout(r, 20));
+    assert.ok(audits.some(a => a.event === 'auto_strategy' && a.ok === true && /cttrMin:100%→120%/.test(JSON.stringify(a.detail))));
+    assert.ok(audits.some(a => a.event === 'auto_strategy_reject'));
     assert.ok(audits.some(a => a.event === 'auto_config' && a.ok === true));
     assert.ok(audits.some(a => a.event === 'auto_config_reject' && a.ok === false));
   } finally { await new Promise(r => server.close(r)); }

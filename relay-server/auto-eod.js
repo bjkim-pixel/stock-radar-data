@@ -9,26 +9,31 @@
      매도 도중 전일 종가 대비 −3% 도달 시 남은 수량 전량. 서버가 늦게 깨어나도 지난 시각만큼 따라잡아 판다
    · 손절(−5%)은 가상매매 엔진이 밤새·아침에도 계속 감시(프리마켓 포함) */
 
-const RULE = Object.freeze({ highNear: 0.98, idxFloor: -1, gapCut: -3, slices: [9 * 60 + 5, 9 * 60 + 10, 9 * 60 + 15] });
+const { hhmm } = require('./auto-strategy');
+/* 기본값 = 1~3단계 확정값. 실제 값은 전략 설정(deps.rule())에서 옴 */
+const RULE = Object.freeze({ highNear: 0.98, idxFloor: -1, gapCut: -3, slices: [9 * 60 + 5, 9 * 60 + 10, 9 * 60 + 15], needAboveAvg: true, carryFlow: 'any',
+  overnightStopPct: 5, replyEnd: 15 * 60 + 18, convertAt: 20 * 60, eodWeak: 'ask', eodTimeout: 'keep', closingOn: true });
 const fmt = v => Math.round(v).toLocaleString('ko-KR');
 
 /* 넘길 자격 판정(순수) — why 가 비면 자격 있음 */
-function carryCheck({ price, avg, high, flow, idx }) {
+function carryCheck({ price, avg, high, flow, idx }, R = RULE) {
   const why = [];
   if (!(price > 0)) return ['시세 없음'];
-  if (!(price > avg)) why.push(`매수가 이하(${((price / avg - 1) * 100).toFixed(1)}%)`);
-  if (high > 0 && price < high * RULE.highNear) why.push(`고가 대비 ${((price / high - 1) * 100).toFixed(1)}%`);
+  if (R.needAboveAvg && !(price > avg)) why.push(`매수가 이하(${((price / avg - 1) * 100).toFixed(1)}%)`);
+  if (high > 0 && price < high * R.highNear) why.push(`고가 대비 ${((price / high - 1) * 100).toFixed(1)}%`);
   const fq = flow && flow.err == null ? flow.fq : null, oq = flow && flow.err == null ? flow.oq : null;
-  if (!((fq != null && fq > 0) || (oq != null && oq > 0))) why.push('외국인·기관 모두 순매수 아님');
-  for (const [k, v] of Object.entries(idx || {})) if (v != null && v <= RULE.idxFloor) why.push(`${k} ${v.toFixed(2)}%`);
+  const fp = fq != null && fq > 0, op = oq != null && oq > 0;
+  if (R.carryFlow === 'any' && !(fp || op)) why.push('외국인·기관 모두 순매수 아님');
+  if (R.carryFlow === 'both' && !(fp && op)) why.push(`${fp ? '기관' : op ? '외국인' : '외국인·기관'} 순매수 아님`);
+  for (const [k, v] of Object.entries(idx || {})) if (v != null && v <= R.idxFloor) why.push(`${k} ${v.toFixed(2)}%`);
   return why;
 }
 
 /* 아침 3분할: 지금 시각까지 팔았어야 할 누적 수량(순수) */
-function sliceTarget(q0, min) {
-  const k = RULE.slices.filter(t => min >= t).length;
-  if (k >= 3) return q0;
-  return Math.floor(q0 * k / 3);
+function sliceTarget(q0, min, slices = RULE.slices) {
+  const n = slices.length, k = slices.filter(t => min >= t).length;
+  if (k >= n) return q0;
+  return Math.floor(q0 * k / n);
 }
 
 function parseEodCmd(text, max) {
@@ -44,6 +49,7 @@ function parseEodCmd(text, max) {
 /* deps: paper{state,place,editPlan} · getQuote · fetchFlow · marketIdx()→{코스피:pct,코스닥:pct} · mutateRun · readRun · mutateCarry(fn) · readCarry() · sendTelegram · now */
 function createEod(deps) {
   const D = deps, now = D.now || Date.now;
+  const rule = async () => ({ ...RULE, ...(D.rule ? await D.rule().catch(() => ({})) : {}) });
 
   async function heldMap() {
     const S = await D.paper.state();
@@ -70,6 +76,7 @@ function createEod(deps) {
     if (!codes.length) { await D.mutateRun(date, r => { r.payload.eod = { at: now(), items: [], none: true }; }); return { ok: true, n: 0 }; }
     const H = await heldMap();
     let idx = {}; try { idx = (await D.marketIdx()) || {}; } catch (_) {}
+    const R = await rule();
     const items = [];
     for (const code of codes) {
       const p = H.get(code);
@@ -77,20 +84,35 @@ function createEod(deps) {
       let q = null, flow = null;
       try { q = await D.getQuote(code); } catch (_) {}
       try { flow = await D.fetchFlow(code); } catch (_) {}
-      const why = carryCheck({ price: q && q.price, avg: p.avg, high: q && q.high, flow, idx });
+      const why = R.closingOn ? carryCheck({ price: q && q.price, avg: p.avg, high: q && q.high, flow, idx }, R) : ['종가베팅 전략 꺼짐'];
       items.push({ code, name: p.name || nameOf(run, code), qty: p.qty, avg: p.avg, price: q ? q.price : null, ok: !why.length, why });
     }
     const weak = items.filter(i => !i.ok);
-    await D.mutateRun(date, r => { r.payload.eod = { at: now(), items, weak: weak.map(i => i.code), decision: weak.length ? null : { kind: 'none' } }; });
-    const L = [`🕒 15:10 종가 판정 · 자동매매 보유 ${items.length}종목`];
-    items.filter(i => i.ok).forEach(i => L.push(`✓ ${i.name} ${fmt(i.qty)}주 — 넘길 자격 있음(20시까지 5분할 익절 유지 후 종가 베팅)`));
+    // 약한 종목 처리 방식(장중 전략 설정): ask=물어봄 · auto_sell=바로 정리 · keep=정리 안 함
+    const pre = !weak.length ? { kind: 'none' } : R.eodWeak === 'auto_sell' ? { kind: 'sell', codes: weak.map(i => i.code), auto: true, at: now() } : R.eodWeak === 'keep' ? { kind: 'keep', auto: true, at: now() } : null;
+    await D.mutateRun(date, r => { r.payload.eod = { at: now(), items, weak: weak.map(i => i.code), decision: pre }; });
+    const conv = hhmm(R.convertAt);
+    const L = [`🕒 ${hhmm(Math.floor((now() + 9 * 3600e3) / 60e3) % 1440)} 종가 판정 · 자동매매 보유 ${items.length}종목`];
+    items.filter(i => i.ok).forEach(i => L.push(`✓ ${i.name} ${fmt(i.qty)}주 — 넘길 자격 있음(${conv}까지 분할 익절 유지 후 종가 베팅)`));
     if (weak.length) {
       L.push('', '넘길 자격이 없는 종목:');
       weak.forEach((i, n) => L.push(`${n + 1}. ${i.name} ${fmt(i.qty)}주 · 현재 ${i.price ? fmt(i.price) : '–'}원 (평균 ${fmt(i.avg)}원) — ${i.why.join(', ')}`));
-      L.push('', '답장: /정리 1 2 (번호) · /정리 전체 · /유지', '15:18까지 답이 없으면 정리하지 않고 20시까지 들고 가요.');
+      if (!pre) L.push('', '답장: /정리 1 2 (번호) · /정리 전체 · /유지', `${hhmm(R.replyEnd)}까지 답이 없으면 ${R.eodTimeout === 'sell' ? '모두 정리해요' : `정리하지 않고 ${conv}까지 들고 가요`}.`);
+      else if (pre.kind === 'keep') L.push('', `설정에 따라 정리하지 않고 ${conv}까지 들고 가요.`);
     }
+    if (pre && pre.kind === 'sell') L.push('', '설정에 따라 바로 정리(시장가):', ...(await sellCodes(pre.codes, items, 'eod')));
     if (items.length) await D.sendTelegram(L.join('\n'));
     return { ok: true, n: items.length, weak: weak.length };
+  }
+
+  async function sellCodes(codes, items, why) {
+    const out = [];
+    for (const code of codes) {
+      const it = items.find(i => i.code === code) || { name: code };
+      const r = await sellAll(code, it.name, why);
+      out.push(r.ok ? (r.qty ? `· ${it.name}: ${fmt(r.qty)}주 평균 ${fmt(r.avg)}원 매도` : `· ${it.name}: 남은 수량 없음`) : `· ${it.name}: 매도 실패 — ${r.error}`);
+    }
+    return out;
   }
 
   /* /정리 · /유지 */
@@ -103,23 +125,22 @@ function createEod(deps) {
     if (!E || !weak.length) return '지금 정리할지 물어본 종목이 없어요.';
     if (a.kind === 'bad') return `번호를 확인해 주세요. 1~${weak.length} 중에서 골라요. 예) /정리 1`;
     if (E.decision) return `이미 처리했어요(${E.decision.kind === 'sell' ? '정리' : '유지'}).`;
-    if (min >= 15 * 60 + 18) return '15:18 응답 마감이 지났어요. 원래 규칙대로 20시까지 들고 갑니다.';
+    const R = await rule();
+    if (min >= R.replyEnd) return `${hhmm(R.replyEnd)} 응답 마감이 지났어요. 설정에 따라 처리합니다.`;
     const pick = a.kind === 'sell' ? a.nums.map(n => weak[n - 1]) : [];
     await D.mutateRun(date, r => { r.payload.eod.decision = { kind: a.kind, codes: pick, at: now() }; });
-    if (a.kind === 'keep') return '정리하지 않고 20시까지 들고 갈게요.';
-    const L = ['🧹 종가 전 정리(시장가)'];
-    for (const code of pick) {
-      const it = E.items.find(i => i.code === code) || { name: code };
-      const r = await sellAll(code, it.name, 'eod');
-      L.push(r.ok ? (r.qty ? `· ${it.name}: ${fmt(r.qty)}주 평균 ${fmt(r.avg)}원 매도` : `· ${it.name}: 남은 수량 없음`) : `· ${it.name}: 매도 실패 — ${r.error}`);
-    }
-    return L.join('\n');
+    if (a.kind === 'keep') return `정리하지 않고 ${hhmm(R.convertAt)}까지 들고 갈게요.`;
+    return ['🧹 종가 전 정리(시장가)', ...(await sellCodes(pick, E.items, 'eod'))].join('\n');
   }
   async function timeout(date) {
-    let hit = false;
-    await D.mutateRun(date, r => { const E = r.payload.eod; if (E && (E.weak || []).length && !E.decision) { E.decision = { kind: 'keep', timeout: true, at: now() }; hit = true; } });
-    if (hit) await D.sendTelegram('⌛ 15:18 — 답이 없어 정리하지 않았어요. 20시까지 들고 갑니다.');
-    return hit;
+    const R = await rule(), sell = R.eodTimeout === 'sell';
+    let hit = null;
+    await D.mutateRun(date, r => { const E = r.payload.eod; if (E && (E.weak || []).length && !E.decision) { E.decision = { kind: sell ? 'sell' : 'keep', codes: sell ? E.weak.slice() : undefined, timeout: true, at: now() }; hit = { codes: E.weak.slice(), items: E.items || [] }; } });
+    if (hit) {
+      if (sell) await D.sendTelegram([`⌛ ${hhmm(R.replyEnd)} — 답이 없어 설정대로 정리합니다(시장가).`, ...(await sellCodes(hit.codes, hit.items, 'eod'))].join('\n'));
+      else await D.sendTelegram(`⌛ ${hhmm(R.replyEnd)} — 답이 없어 정리하지 않았어요. ${hhmm(R.convertAt)}까지 들고 갑니다.`);
+    }
+    return !!hit;
   }
 
   /* 20:00 전환: 오늘 산 종목 중 남은 수량 → 익절 끄고(손절 유지) carry 에 등록. 다음 날 아침 08:00~09:00 에 못 했으면 그때 함 */
@@ -127,14 +148,19 @@ function createEod(deps) {
     const run = await D.readRun(date);
     if (!run || run.payload.carryDone) return { ok: true, skipped: true };
     const codes = boughtCodes(run);
+    const R = await rule();
+    if (!R.closingOn) {   // 종가베팅 전략이 꺼져 있으면 이월하지 않음
+      await D.mutateRun(date, r => { r.payload.carryDone = { at: now(), codes: [], off: true }; });
+      const H0 = await heldMap(), left = codes.filter(c => (H0.get(c) || {}).qty > 0);
+      if (left.length) await D.sendTelegram(`🌙 ${date} 종가베팅 전략이 꺼져 있어 이월하지 않았어요. 남은 자동매매 보유 ${left.length}종목은 매매 화면에서 확인하세요.`);
+      return { ok: true, n: 0, off: true };
+    }
     const H = await heldMap();
     const add = [];
     for (const code of codes) {
       const p = H.get(code);
       if (!p || !(p.qty > 0)) continue;
-      const pl = p.plan || {};
-      const keep = pl.stopPct > 0 ? { stopPct: pl.stopPct } : pl.stop > 0 ? { stop: pl.stop } : { stopPct: 5 };
-      const e = await D.paper.editPlan({ code, ...keep, steps: [] });   // 5분할 익절 끄기(손절선은 그대로)
+      const e = await D.paper.editPlan({ code, stopPct: R.overnightStopPct, steps: [] });   // 분할 익절 끄기, 손절은 종가베팅 설정값(기본 −5%)
       add.push({ code, name: p.name || nameOf(run, code), q0: p.qty, avg: p.avg, from: date, sold: 0, planOk: !!(e && e.ok) });
     }
     await D.mutateCarry(c => { c.items = c.items || {}; for (const a of add) c.items[a.code] = { ...a, at: now(), state: 'wait' }; });
@@ -143,7 +169,7 @@ function createEod(deps) {
     if (!add.length) L.push('넘길 종목이 없어요(모두 정리됨).');
     else {
       add.forEach(a => L.push(`· ${a.name} ${fmt(a.q0)}주 (평균 ${fmt(a.avg)}원)${a.planOk ? '' : ' ⚠ 익절 해제 실패 — 매매 화면에서 확인'}`));
-      L.push('', '다음 거래일 09:05·09:10·09:15 에 1/3씩 시장가 매도. 시가가 전일 종가 대비 −3% 이하이면 즉시 전량. 손절(−5%)은 밤새 유지.');
+      L.push('', `다음 거래일 ${R.slices.map(hhmm).join('·')} 에 ${R.slices.length}분할 시장가 매도. 시가가 전일 종가 대비 ${R.gapCut}% 이하이면 즉시 전량. 손절(−${R.overnightStopPct}%)은 밤새 유지.`);
     }
     await D.sendTelegram(L.join('\n'));
     return { ok: true, n: add.length };
@@ -154,7 +180,7 @@ function createEod(deps) {
     const C = await D.readCarry();
     const items = Object.values((C && C.items) || {}).filter(i => i.from < date && i.state !== 'done');
     if (!items.length) return { ok: true, n: 0 };
-    const H = await heldMap();
+    const H = await heldMap(), R = await rule(), last = R.slices[R.slices.length - 1];
     const msgs = [];
     for (const it of items) {
       const p = H.get(it.code);
@@ -165,11 +191,11 @@ function createEod(deps) {
       let q = null; try { q = await D.getQuote(it.code); } catch (_) { continue; }
       if (!(q && q.price > 0)) continue;
       const pc = q.prevClose > 0 ? q.prevClose : null, chg = pc ? (q.price / pc - 1) * 100 : 0;
-      const cut = pc && chg <= RULE.gapCut;
+      const cut = pc && chg <= R.gapCut;
       let want;
       if (cut) want = p.qty;                                                   // 갭 하락·도중 −3% → 남은 전량
-      else { const tgt = sliceTarget(it.q0, min); want = Math.min(p.avail, Math.max(0, tgt - (it.q0 - p.qty))); }   // 판 수량 = 처음 수량 − 지금 보유(손절 등 포함)
-      if (min >= RULE.slices[2]) want = p.avail;
+      else { const tgt = sliceTarget(it.q0, min, R.slices); want = Math.min(p.avail, Math.max(0, tgt - (it.q0 - p.qty))); }   // 판 수량 = 처음 수량 − 지금 보유(손절 등 포함)
+      if (min >= last) want = p.avail;
       if (!(want > 0)) continue;
       const r = await D.paper.place({ code: it.code, name: it.name, side: 'sell', type: 'market', qty: Math.min(want, p.avail) });
       if (!r || !r.ok) { msgs.push(`⚠ ${it.name}: 종가 베팅 매도 실패 — ${(r && r.error) || '거부'} (다음 주기에 다시 시도)`); continue; }
