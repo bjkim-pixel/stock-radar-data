@@ -2708,6 +2708,22 @@ async function handleTelegramCommand(chatId, text) {
     await sendTelegramTo(chatId, '🛑 긴급 정지: 신규 매수를 막았어요. (보유 종목 매도·취소는 가능)' + (saved ? '' : '\n⚠ 기록 저장 실패 — 서버가 재시작되면 풀릴 수 있어요. Render에서 TRADING_ENABLED=0 으로 막으세요.'));
     return;
   }
+  if (/^\/?(?:매수|buy|패스|pass|skip)(?:@\w+)?(?:\s|$)/i.test(text)) {   // 자동매매 후보 승인(1단계: 기록만)
+    if (!TELEGRAM_CHAT_ID || String(chatId) !== String(TELEGRAM_CHAT_ID)) return;
+    const r = await autoTrade.handleApproval(text.replace(/@\w+/, '')).catch(e => '처리 실패: ' + e.message);
+    if (r) await sendTelegramTo(chatId, r);
+    return;
+  }
+  if ((m = text.match(/^\/?(자동켜기|자동끄기|자동상태|자동후보)(?:@\w+)?\s*$/))) {
+    if (!TELEGRAM_CHAT_ID || String(chatId) !== String(TELEGRAM_CHAT_ID)) return;
+    const c = m[1];
+    try {
+      if (c === '자동상태') { const st = autoTrade.status(); const r = await sbGet('auto_config?select=value&key=eq.main&limit=1').catch(() => []); await sendTelegramTo(chatId, `🤖 자동매매 ${(r[0] && r[0].value && r[0].value.on) ? '켜짐' : '꺼짐'}\n오늘 기록: ${st.run ? `${st.run.status} · 후보 ${st.run.picks}개` : '없음'}${st.lastErr ? '\n최근 오류: ' + st.lastErr : ''}`); }
+      else if (c === '자동후보') { const r = await autoTrade.runSelection(true); if (r.ok) { await autoTrade.sendNotice(true); } else await sendTelegramTo(chatId, '후보 선정 중이에요. 잠시 뒤 다시 시도하세요.'); }
+      else { const on = c === '자동켜기'; const cur = await sbGet('auto_config?select=value&key=eq.main&limit=1').catch(() => []); const val = { perStockKrw: 1000000, ...((cur[0] && cur[0].value) || {}), on }; await sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'main', value: val, updated_at: new Date().toISOString() }]); await sendTelegramTo(chatId, on ? '🤖 자동매매를 켰어요. 평일 10:05에 후보를 고르고 10:15에 알려드려요.' : '⏹ 자동매매를 껐어요.'); }
+    } catch (e) { await sendTelegramTo(chatId, '실패: ' + e.message); }
+    return;
+  }
   if ((m = text.match(/^\/(승인|approve|거부|deny)(?:@\w+)?\s+(\d{4})\s*$/i))) {   // 거래 세션 승인/거부
     if (!TELEGRAM_CHAT_ID || String(chatId) !== String(TELEGRAM_CHAT_ID)) return;
     await sendTelegramTo(chatId, await trade.adminDecide(m[2], /^(승인|approve)$/i.test(m[1])));
@@ -3519,6 +3535,28 @@ function handleLiveMarket(req, res) {
   return true;
 }
 
+/* ── 자동매매 1단계(2026-11-15): 후보 선정·점수·텔레그램 알림·그림자 기록. 주문은 하지 않음(기획안 문서 참고) ── */
+const autoTrade = require('./auto').createAuto({
+  sbGet, sbWrite, sendTelegram,
+  kstNow: () => ({ date: kstDateStr(), min: kstMinutesNow() }),
+  isTradingDay: d => { const dow = new Date(`${d}T00:00:00Z`).getUTCDay(); return dow !== 0 && dow !== 6 && !KRX_HOLIDAYS.has(d); },
+  livePool: async () => {
+    const c = _liveTop.get(10000);
+    if (!c || Date.now() - c.at > 20000) await refreshLiveTop(10000, 'up');
+    const x = _liveTop.get(10000);
+    return (x && (x.all || x.rows)) || [];
+  },
+  fetchFlow: code => fetchFlowEst(code).catch(e => ({ err: e.message })),
+  fetchPower: code => fetchPower(code).catch(e => ({ err: e.message })),
+  fetchCttr: code => fetchCttr(code).catch(e => ({ err: e.message })),
+  marketState: async () => {
+    const m = await fetchLiveMarket(false);
+    const k = m.idx && m.idx.KOSPI;
+    return k && k.pct != null && k.pct <= -1 ? `코스피 ${k.pct.toFixed(2)}% — 장이 약한 날이에요. 신중하게 판단하세요.` : null;
+  },
+});
+setInterval(() => { autoTrade.tick().catch(e => console.error('[자동매매] tick 실패:', e.message)); }, 30000);
+
 /* ── 매매 화면 거래원·투자자 탭(2026-11-13): KIS 주식현재가 회원사(FHKST01010600) · 주식현재가 투자자(FHKST01010900). 30초 캐시.
    응답 필드명은 이름 패턴으로 읽음 — /stock-member?code=…&raw=1, /stock-investor?code=…&raw=1 로 원본 확인 ── */
 const _stkInfo = new Map();                                // key -> {at, v}
@@ -3689,6 +3727,13 @@ const server = http.createServer((req, res) => {
         res.writeHead(500, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: err.message }));
       });
+    return;
+  }
+  if (req.url && req.url.startsWith('/trigger-auto')) {   // 자동매매 깨우기: 외부 크론이 10분마다 호출 → 서버를 깨우고 tick(시각 창 안이면 선정·알림, 아니면 대기)
+    const u = new URL(req.url, 'http://internal');
+    if (DAILY_SUMMARY_TOKEN && u.searchParams.get('token') !== DAILY_SUMMARY_TOKEN) { res.writeHead(403, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: 'forbidden' })); return; }
+    autoTrade.tick().then(r => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(r)); })
+      .catch(e => { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: e.message })); });
     return;
   }
   if (req.url && req.url.startsWith('/trigger-security-summary')) {   // 2026-11-15: 매일 아침 보안 요약(GitHub Actions 가 호출)
