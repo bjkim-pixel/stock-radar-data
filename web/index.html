@@ -1693,6 +1693,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div class="lmk" id="liveMkt" style="margin-top:16px" aria-label="코스피·코스닥 지수와 외국인·기관 순매수"></div>
   <div class="card" style="margin-top:10px"><h3><span id="liveTitle">당일 상승률 TOP 10</span> <span class="r" id="liveStat">연결 중…</span></h3>
     <details id="lfBox" style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600">조회 조건 <span class="faint" style="font-weight:400;font-size:11px">종목상세와 같은 조건 · 선택한 조건을 모두 만족하는 종목만 표시</span> <span id="lfCnt" class="up" style="font-size:11px"></span></summary><div id="lfRows" style="margin-top:6px"></div></details>
+    <div class="tf-sel" id="liveSel"></div>
     <div class="qf seg" id="liveSide" style="margin-bottom:6px"><button class="fchip" data-v="up" aria-pressed="true">상승률</button><button class="fchip" data-v="down" aria-pressed="false">하락률</button></div>
     <div class="qf seg" id="liveCap" style="margin-bottom:8px"><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="10000" aria-pressed="false">1조 이상</button><button class="fchip" data-v="40000" aria-pressed="false">4조 이상</button><button class="fchip" data-v="100000" aria-pressed="false">10조 이상</button></div>
     <div class="qf seg" id="liveAmt" style="margin-bottom:8px"><span class="faint" style="font-size:11px;align-self:center;margin-right:4px">거래대금</span><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="1000" aria-pressed="false">1,000억↑</button><button class="fchip" data-v="500" aria-pressed="false">500억↑</button><button class="fchip" data-v="300" aria-pressed="false">300억↑</button><button class="fchip" data-v="100" aria-pressed="false">100억↑</button></div>
@@ -2890,7 +2891,10 @@ const SW_LIVE_MAX=20;
 const LIVE_TOP_N=10,LIVE_POOL=12,LIVE_SUB_GRACE=3,LIVE_EXCL=/스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/;
 S.liveMeta=S.liveMeta||{};   // code -> {mk, sc} (stocks.market · v_stock_sector.sector)
 S.live={min:0,on:false,pool:{},since:{},prev:{},log:[],timer:null,paint:0,at:0};
+function liveSelRender(){const L=S.live,el=$("#liveSel");if(!el)return;
+  el.innerHTML=lfSelHtml([`시총 ${L.min?(L.min>=10000?N(L.min/10000)+"조":N(L.min)+"억")+" 이상":"전체"}`,`거래대금 ${L.amt?N(L.amt)+"억↑":"전체"}`,...lfDesc(S.lf)]);}
 function liveStart(){
+  liveSelRender();
   try{lfBuild();lfSyncSectors();}catch(e){console.error("조회 조건 UI",e);}
   try{kwLoadMap();smxLoadMap().then(()=>smxFill()).catch(()=>{});}catch(e){}
   lmPaint();lmLoadDb();lmLoadLive();
@@ -2904,7 +2908,7 @@ async function liveDefaults(){
   L.min=10000;$$("#liveCap .fchip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v==="10000"?"true":"false"));
   S.lf.ma="a60";S.lf.smx="CONT,STALL";
   const a=$("#lf_dMaF"),b=$("#lf_dSmxF");if(a)a.value="a60";if(b)b.value="CONT,STALL";
-  const c=$("#lfCnt");if(c)c.textContent="· 2개 적용 중";
+  const c=$("#lfCnt");if(c)c.textContent="· 2개 적용 중";liveSelRender();
   try{await Promise.all([loadDetailMa(),smxLoadMap()]);}catch(e){console.error("기본 조건 데이터",e);}
 }
 /* ── 실시간 종목 상단 박스: 코스피·코스닥 지수 + 외국인·기관 시장 순매수(코스피+코스닥 합산, 억원) ──
@@ -2952,8 +2956,8 @@ function lmPaint(){
 }
 const fmtCap=v=>v>=1e12?N(v/1e12,1)+"조":N(v/1e8,0)+"억";
 $("#liveSide").addEventListener("seg-change",e=>{const L=S.live;L.side=e.detail==="down"?"down":"up";L.pool={};L.since={};L.prev={};L.log=[];$("#liveTitle").textContent=L.side==="down"?"당일 하락률 TOP 10":"당일 상승률 TOP 10";$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
-$("#liveAmt").addEventListener("seg-change",e=>{const L=S.live;L.amt=+e.detail||0;L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
-$("#liveCap").addEventListener("seg-change",e=>{const L=S.live;L.min=+e.detail;L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
+$("#liveAmt").addEventListener("seg-change",e=>{setTimeout(liveSelRender,0);const L=S.live;L.amt=+e.detail||0;L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
+$("#liveCap").addEventListener("seg-change",e=>{setTimeout(liveSelRender,0);const L=S.live;L.min=+e.detail;L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();});
 /* 외국인·기관 잠정(추정) 순매수 — 시총 1조↑ 구간만. 값은 수량이라 현재가를 곱해 금액으로 표시(증권사 집계 입력값, 갱신 시각은 칸에 함께 표시) */
 S.liveFlow=S.liveFlow||{};
 async function liveFlowFetch(){
@@ -3031,7 +3035,7 @@ function lfBuild(hostId="lfRows",pref="lf_",key="lf",onChg){
 function lfSyncSectors(bid="lf_dSec"){const a=$("#dSec"),b=$("#"+bid);if(a&&b&&a.options.length>1&&b.options.length<=1){const v=b.value;b.innerHTML=a.innerHTML;b.value=v;}}
 function lfChanged(){
   const n=["sec","ma","ph","kw","div","grS","grO","grE","dart","smx"].filter(k=>S.lf[k]!==""&&S.lf[k]!=null&&S.lf[k]!==undefined).length;
-  $("#lfCnt").textContent=n?`· ${n}개 적용 중`:"";
+  $("#lfCnt").textContent=n?`· ${n}개 적용 중`:"";liveSelRender();
   document.querySelectorAll("#v-live [data-smx]").forEach(e=>delete e.dataset.sw);smxFill();
   const L=S.live;if(L.on){L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';liveFetch();}
 }
