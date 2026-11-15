@@ -2692,6 +2692,7 @@ function telegramHelpText() {
       '/알림끄기 — 신고가·신저가·손절·목표가 알림 일시정지 (오늘의 종목 요약은 계속 발송)\n' +
       '/알림켜기 — 알림 다시 켜기\n' +
       '/status — 매매 상태(스위치·정지·세션)\n/lock — 열린 거래 세션 모두 종료\n/kill — 긴급 정지(신규 매수 차단)\n/승인 코드 · /거부 코드 — 거래 세션 열기 요청(새 기기·실전) 승인/거부\n' +
+      '/자동켜기 · /자동끄기 · /자동상태 — 자동매매(평일 10:05 선정 · 10:15 후보 알림)\n/매수 1 3 · /매수 전체 · /패스 — 후보 승인(10:30까지, 가상매매로 매수)\n/자동후보 — 후보 다시 고르기(승인 전만)\n' +
       '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
       `보유 종목의 당일 신고가·신저가 갱신(직전 알림 대비 ${ALERT_MIN_MOVE_PCT}% 이상 갱신 시), 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.`;
 }
@@ -2718,8 +2719,8 @@ async function handleTelegramCommand(chatId, text) {
     if (!TELEGRAM_CHAT_ID || String(chatId) !== String(TELEGRAM_CHAT_ID)) return;
     const c = m[1];
     try {
-      if (c === '자동상태') { const st = autoTrade.status(); const r = await sbGet('auto_config?select=value&key=eq.main&limit=1').catch(() => []); await sendTelegramTo(chatId, `🤖 자동매매 ${(r[0] && r[0].value && r[0].value.on) ? '켜짐' : '꺼짐'}\n오늘 기록: ${st.run ? `${st.run.status} · 후보 ${st.run.picks}개` : '없음'}${st.lastErr ? '\n최근 오류: ' + st.lastErr : ''}`); }
-      else if (c === '자동후보') { const r = await autoTrade.runSelection(true); if (r.ok) { await autoTrade.sendNotice(true); } else await sendTelegramTo(chatId, '후보 선정 중이에요. 잠시 뒤 다시 시도하세요.'); }
+      if (c === '자동상태') { const st = autoTrade.status(); const r = await sbGet('auto_config?select=value&key=eq.main&limit=1').catch(() => []); await sendTelegramTo(chatId, `🤖 자동매매 ${(r[0] && r[0].value && r[0].value.on) ? '켜짐' : '꺼짐'}\n오늘 기록: ${st.run ? `${st.run.status} · 후보 ${st.run.picks}개${Object.keys(st.run.orders || {}).length ? ' · 주문 ' + Object.entries(st.run.orders).map(([k, v]) => k + ' ' + v).join(', ') : ''}` : '없음'}${st.lastErr ? '\n최근 오류: ' + st.lastErr : ''}`); }
+      else if (c === '자동후보') { const r = await autoTrade.runSelection(true); if (r.ok) { await autoTrade.sendNotice(true); } else await sendTelegramTo(chatId, r.why || '후보 선정 중이에요. 잠시 뒤 다시 시도하세요.'); }
       else { const on = c === '자동켜기'; const cur = await sbGet('auto_config?select=value&key=eq.main&limit=1').catch(() => []); const val = { perStockKrw: 1000000, ...((cur[0] && cur[0].value) || {}), on }; await sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'main', value: val, updated_at: new Date().toISOString() }]); await sendTelegramTo(chatId, on ? '🤖 자동매매를 켰어요. 평일 10:05에 후보를 고르고 10:15에 알려드려요.' : '⏹ 자동매매를 껐어요.'); }
     } catch (e) { await sendTelegramTo(chatId, '실패: ' + e.message); }
     return;
@@ -3535,28 +3536,6 @@ function handleLiveMarket(req, res) {
   return true;
 }
 
-/* ── 자동매매 1단계(2026-11-15): 후보 선정·점수·텔레그램 알림·그림자 기록. 주문은 하지 않음(기획안 문서 참고) ── */
-const autoTrade = require('./auto').createAuto({
-  sbGet, sbWrite, sendTelegram,
-  kstNow: () => ({ date: kstDateStr(), min: kstMinutesNow() }),
-  isTradingDay: d => { const dow = new Date(`${d}T00:00:00Z`).getUTCDay(); return dow !== 0 && dow !== 6 && !KRX_HOLIDAYS.has(d); },
-  livePool: async () => {
-    const c = _liveTop.get(10000);
-    if (!c || Date.now() - c.at > 20000) await refreshLiveTop(10000, 'up');
-    const x = _liveTop.get(10000);
-    return (x && (x.all || x.rows)) || [];
-  },
-  fetchFlow: code => fetchFlowEst(code).catch(e => ({ err: e.message })),
-  fetchPower: code => fetchPower(code).catch(e => ({ err: e.message })),
-  fetchCttr: code => fetchCttr(code).catch(e => ({ err: e.message })),
-  marketState: async () => {
-    const m = await fetchLiveMarket(false);
-    const k = m.idx && m.idx.KOSPI;
-    return k && k.pct != null && k.pct <= -1 ? `코스피 ${k.pct.toFixed(2)}% — 장이 약한 날이에요. 신중하게 판단하세요.` : null;
-  },
-});
-setInterval(() => { autoTrade.tick().catch(e => console.error('[자동매매] tick 실패:', e.message)); }, 30000);
-
 /* ── 매매 화면 거래원·투자자 탭(2026-11-13): KIS 주식현재가 회원사(FHKST01010600) · 주식현재가 투자자(FHKST01010900). 30초 캐시.
    응답 필드명은 이름 패턴으로 읽음 — /stock-member?code=…&raw=1, /stock-investor?code=…&raw=1 로 원본 확인 ── */
 const _stkInfo = new Map();                                // key -> {at, v}
@@ -3674,6 +3653,32 @@ const trade = require('./trade').createTrade({
     return j;
   },
 });
+
+/* ── 자동매매(2026-11-15): 1단계 후보 선정·점수·텔레그램 알림·그림자 기록 + 2단계 승인 → 가상 매수(손절 5%·5분할 익절). 실전 주문 없음 ── */
+const autoTrade = require('./auto').createAuto({
+  sbGet, sbWrite, sendTelegram,
+  paper: trade.paper,                                     // 가상매매 엔진(없으면 승인은 기록만)
+  getQuote: code => trade.getQuote(code, true),
+  loadChart: async code => (await sbGet(`v_stock_chart?select=trade_date,close,high,low,trade_amount,individual_net&code=eq.${code}&order=trade_date.desc&limit=1000`)).reverse(),   // 최근 1000일(매매 화면과 같은 이력)
+  kstNow: () => ({ date: kstDateStr(), min: kstMinutesNow() }),
+  isTradingDay: d => { const dow = new Date(`${d}T00:00:00Z`).getUTCDay(); return dow !== 0 && dow !== 6 && !KRX_HOLIDAYS.has(d); },
+  livePool: async () => {
+    const c = _liveTop.get(10000);
+    if (!c || Date.now() - c.at > 20000) await refreshLiveTop(10000, 'up');
+    const x = _liveTop.get(10000);
+    return (x && (x.all || x.rows)) || [];
+  },
+  fetchFlow: code => fetchFlowEst(code).catch(e => ({ err: e.message })),
+  fetchPower: code => fetchPower(code).catch(e => ({ err: e.message })),
+  fetchCttr: code => fetchCttr(code).catch(e => ({ err: e.message })),
+  marketState: async () => {
+    const m = await fetchLiveMarket(false);
+    const k = m.idx && m.idx.KOSPI;
+    return k && k.pct != null && k.pct <= -1 ? `코스피 ${k.pct.toFixed(2)}% — 장이 약한 날이에요. 신중하게 판단하세요.` : null;
+  },
+});
+setInterval(() => { autoTrade.tick().catch(e => console.error('[자동매매] tick 실패:', e.message)); }, 30000);
+
 
 const server = http.createServer((req, res) => {
   if (trade.handle(req, res)) return;

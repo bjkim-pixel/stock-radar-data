@@ -1,5 +1,5 @@
 'use strict';
-/* 자동매매 1단계(2026-11-15) — 후보 선정·점수·텔레그램 알림·그림자 기록. 주문은 하지 않는다(2단계에서 승인 → 가상 매수 연결).
+/* 자동매매 1~2단계(2026-11-15) — 후보 선정·점수·텔레그램 알림·그림자 기록(1단계) + 승인 → 가상 매수·손절·5분할 익절(2단계, auto-exec.js).
    기획안 4·5장 그대로:
    · 대상 = 실시간 종목 기본 조건(시총 1조↑ · 종가>60일선>120일선 · 스마트머니 매집 CONT/STALL)
      + 당일 잠정 수급에서 외국인·기관·프로그램 모두 순매수 + 체결강도 100%↑ + 당일 상승 + 시가 대비 +8% 이하
@@ -144,7 +144,7 @@ function parseApproval(text, max) {
 /* ── 서버에 붙는 부분: deps 로 시세·DB·텔레그램을 받는다(테스트에서 가짜로 교체) ── */
 function createAuto(deps) {
   const D = deps;
-  const state = { date: null, ranDone: false, noticeDone: false, msgText: null, lastErr: null, running: false, run: null };
+  const state = { date: null, lastErr: null, running: false, run: null, checkedAt: 0 };
 
   const kstParts = () => D.kstNow();            // { date:'YYYY-MM-DD', min: 분 }
   const isTradingDay = date => D.isTradingDay(date);
@@ -152,9 +152,6 @@ function createAuto(deps) {
   async function enabled() {
     if (D.forceEnabled != null) return !!D.forceEnabled;
     try { const r = await D.sbGet('auto_config?select=key,value&key=eq.main&limit=1'); return !!(r[0] && r[0].value && r[0].value.on); } catch (_) { return false; }
-  }
-  async function amountEok() {
-    try { const r = await D.sbGet('auto_config?select=value&key=eq.main&limit=1'); return (r[0] && r[0].value && +r[0].value.perStockKrw) || 1000000; } catch (_) { return 1000000; }
   }
 
   async function loadScreener() {
@@ -177,8 +174,8 @@ function createAuto(deps) {
     }
     return map;
   }
-  async function loadHeld() {
-    try { const r = await D.sbGet('positions?select=code&portfolio=eq.VIRTUAL&status=eq.OPEN'); return new Set(r.map(x => x.code)); } catch (_) { return new Set(); }
+  async function loadHeld() {   // 가상매매에서 이미 보유·주문 중인 종목은 후보에서 제외
+    try { return D.paper && D.paper.heldCodes ? new Set(D.paper.heldCodes()) : new Set(); } catch (_) { return new Set(); }
   }
 
   /* 시장 상태: 코스피 -1% 이하 → 경고(기획안 8장). 지수 조회 실패는 경고 없이 진행 */
@@ -204,24 +201,46 @@ function createAuto(deps) {
     return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed };
   }
 
-  async function recordRun(date, status, payload) {
-    await D.sbWrite('auto_runs?on_conflict=trade_date', 'POST', [{ trade_date: date, status, payload, updated_at: new Date().toISOString() }]);
+  /* auto_runs 쓰기는 모두 이 잠금 안에서 "새로 읽기 → 고치기 → 저장" — 알림·승인·주문 관리가 서로 덮어쓰지 않게 */
+  let chain = Promise.resolve();
+  const lock = fn => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
+  async function writeRun(run) {
+    await D.sbWrite('auto_runs?on_conflict=trade_date', 'POST', [{ trade_date: run.trade_date, status: run.status, payload: run.payload, updated_at: new Date().toISOString() }]);
+    state.date = run.trade_date; state.run = run;
   }
   async function readRun(date) {
     const r = await D.sbGet(`auto_runs?select=*&trade_date=eq.${date}&limit=1`);
     return r[0] || null;
   }
+  function mutateRun(date, fn) {
+    return lock(async () => {
+      const run = await readRun(date);
+      if (!run) throw new Error('오늘 자동매매 기록이 없습니다');
+      run.payload = run.payload || {};
+      const ret = await fn(run);
+      await writeRun(run);
+      return ret;
+    });
+  }
 
-  /* 10:05 선정 + 그림자 기록 → 10:15 알림. 한 번만(auto_runs 에 오늘 기록이 있으면 건너뜀 — 서버 재시작·재호출 안전) */
+  async function perStock() {
+    try { const r = await D.sbGet('auto_config?select=value&key=eq.main&limit=1'); return (r[0] && r[0].value && +r[0].value.perStockKrw) || 1000000; } catch (_) { return 1000000; }
+  }
+  const exec = D.paper ? require('./auto-exec').createExec({
+    paper: D.paper, getQuote: D.getQuote, loadChart: D.loadChart, sendTelegram: D.sendTelegram, now: D.now,
+    mutateRun, readRun, perStock, opt: async () => ({}),
+  }) : null;
+
+  /* 10:05 선정 + 그림자 기록. 한 번만(오늘 기록이 있으면 건너뜀 — 서버 재시작·재호출 안전).
+     force(/자동후보)는 아직 승인·주문 전일 때만 다시 고름 */
   async function runSelection(force) {
     const { date } = kstParts();
     if (state.running) return { ok: false, why: '진행 중' };
     state.running = true;
     try {
-      if (!force) {
-        const ex = await readRun(date).catch(() => null);
-        if (ex) { state.date = date; state.run = ex; return { ok: true, skipped: true, status: ex.status }; }
-      }
+      const ex = await readRun(date).catch(() => null);
+      if (ex && !force) { state.date = date; state.run = ex; return { ok: true, skipped: true, status: ex.status }; }
+      if (ex && force && ((ex.payload && ex.payload.decision) || (ex.payload && ex.payload.orders))) return { ok: false, why: '오늘은 이미 승인·주문을 처리해서 다시 고를 수 없어요' };
       const warn = await marketWarn();
       const sel = await select();
       const shadow = sel.passedAll.map(c => ({
@@ -233,27 +252,27 @@ function createAuto(deps) {
         picks: sel.picks.slice(0, RULES.notifyTop).map(c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts })),
         shadow, dropped: sel.dropped, approved: [], decision: null, noticeSent: false,
       };
-      await recordRun(date, 'selected', payload);
-      state.date = date; state.run = { trade_date: date, status: 'selected', payload };
+      await lock(() => writeRun({ trade_date: date, status: 'selected', payload }));
       return { ok: true, picks: sel.picks.length, stat: sel.stat };
     } finally { state.running = false; }
   }
 
   async function sendNotice(force) {
     const { date, min } = kstParts();
-    const ex = state.run && state.run.trade_date === date ? state.run : await readRun(date).catch(() => null);
-    if (!ex) return { ok: false, why: '선정 기록 없음' };
-    if (ex.payload && ex.payload.noticeSent && !force) return { ok: true, skipped: true };
-    const picks = (ex.payload.picks || []).map(p => ({ ...p, score: { total: p.score, ratio: p.ratio || 0 }, warns: [] }));
-    const text = formatMessage(date, picks, { timeText: `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`, warn: ex.payload.warn, deadline: '10:30' });
-    await D.sendTelegram(text);
-    ex.payload.noticeSent = true; ex.payload.noticeAt = new Date().toISOString();
-    await recordRun(date, ex.status === 'selected' ? 'noticed' : ex.status, ex.payload);
-    state.run = { ...ex, status: ex.status === 'selected' ? 'noticed' : ex.status };
-    return { ok: true, picks: picks.length };
+    const hhmm = `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+    let text = null;
+    await mutateRun(date, run => {
+      if (run.payload.noticeSent && !force) return;
+      const picks = (run.payload.picks || []).map(p => ({ ...p, score: { total: p.score, ratio: p.ratio || 0 }, warns: [] }));
+      text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, deadline: '10:30' });
+      run.payload.noticeSent = true; run.payload.noticeAt = new Date().toISOString();
+      if (run.status === 'selected') run.status = 'noticed';
+    });
+    if (text) await D.sendTelegram(text);
+    return { ok: true, sent: !!text };
   }
 
-  /* 텔레그램 답장 기록(1단계는 기록만; 2단계에서 onApprove 로 가상 매수 연결) */
+  /* 텔레그램 답장: 승인 기록 → (2단계) 가상 매수 */
   async function handleApproval(text) {
     const { date, min } = kstParts();
     const ex = await readRun(date).catch(() => null);
@@ -263,36 +282,63 @@ function createAuto(deps) {
     if (!ex || !max) return '오늘은 승인할 후보가 없어요.';
     if (a.kind === 'bad') return `번호를 확인해 주세요. 1~${max} 중에서 골라요. 예) /매수 1 3`;
     if (min > 10 * 60 + 30 && !D.allowLateApproval) return '승인 마감(10:30)이 지났어요. 오늘은 취소 처리돼요.';
-    if (ex.payload.decision && ex.payload.decision.kind) return `이미 처리했어요: ${ex.payload.decision.kind === 'pass' ? '패스' : '매수 ' + ex.payload.decision.nums.join(',')}`;
-    const dec = a.kind === 'pass' ? { kind: 'pass', at: new Date().toISOString() } : { kind: 'buy', nums: a.nums, at: new Date().toISOString() };
-    ex.payload.decision = dec;
-    ex.payload.approved = a.kind === 'buy' ? a.nums.map(n => ex.payload.picks[n - 1].code) : [];
-    await recordRun(date, a.kind === 'pass' ? 'passed' : 'approved', ex.payload);
-    state.run = { ...ex, status: a.kind === 'pass' ? 'passed' : 'approved' };
+    const res = await mutateRun(date, run => {
+      if (run.payload.decision && run.payload.decision.kind) return { dup: run.payload.decision };
+      run.payload.decision = a.kind === 'pass' ? { kind: 'pass', at: new Date().toISOString() } : { kind: 'buy', nums: a.nums, at: new Date().toISOString() };
+      run.payload.approved = a.kind === 'buy' ? a.nums.map(n => run.payload.picks[n - 1].code) : [];
+      run.status = a.kind === 'pass' ? 'passed' : 'approved';
+      return { payload: JSON.parse(JSON.stringify(run.payload)) };
+    });
+    if (res.dup) return `이미 처리했어요: ${res.dup.kind === 'pass' ? '패스' : '매수 ' + res.dup.nums.join(',')}`;
     if (a.kind === 'pass') return '오늘 후보를 모두 패스로 기록했어요.';
-    const names = ex.payload.approved.map((c, i) => ex.payload.picks[a.nums[i] - 1].name).join(', ');
-    if (D.onApprove) { try { return await D.onApprove(date, ex.payload); } catch (e) { return `승인은 기록했지만 매수 연결 중 오류: ${e.message}`; } }
-    return `승인 기록: ${names}\n(자동 매수는 2단계에서 연결됩니다. 지금은 기록만 해요.)`;
+    if (!exec) return `승인 기록: ${res.payload.approved.join(', ')}\n(가상매매 엔진이 꺼져 있어 주문은 내지 않았어요.)`;
+    try { return await exec.approve(date, res.payload); } catch (e) { return `승인은 기록했지만 가상 매수 중 오류: ${e.message}`; }
   }
 
-  /* 주기 호출: 서버 타이머와 외부 깨우기(/trigger-auto) 둘 다 이걸 부른다. 깨우기가 10분 간격이라 시각 창을 넓게 잡고 "아직 안 했으면 지금 한다"로 보완 */
+  /* 승인 마감(10:30) 넘긴 알림은 '만료'로 기록 */
+  async function expireIfNeeded(date) {
+    let expired = false;
+    await mutateRun(date, run => { if (run.status === 'noticed' && !run.payload.decision) { run.status = 'expired'; run.payload.decision = { kind: 'expired', at: new Date().toISOString() }; expired = true; } });
+    if (expired) await D.sendTelegram('⌛ 10:30 승인 마감 — 오늘 자동매매 후보는 매수하지 않고 기록만 남겼어요.');
+  }
+
+  const activeOrders = run => Object.values((run && run.payload && run.payload.orders) || {}).some(v => v.st === 'intent' || v.st === 'open' || v.st === 'modified');
+
+  /* 주기 호출: 서버 타이머(30초)와 외부 깨우기(/trigger-auto) 둘 다 이걸 부른다. 깨우기가 10분 간격이라 "아직 안 했으면 지금 한다"로 보완 */
   async function tick() {
     const { date, min } = kstParts();
-    if (min < 10 * 60 + 5 || min >= 11 * 60) return { ok: true, idle: 'outside-window' };   // 창 밖에서는 DB 조회도 하지 않음
+    const inSel = min >= 10 * 60 + 5 && min < 11 * 60;
+    const inOrd = exec && min >= 9 * 60 && min < 15 * 60 + 30;    // 가상 KRX 지정가는 15:30 소멸
+    if (!inSel && !inOrd) return { ok: true, idle: 'outside-window' };
     if (!isTradingDay(date)) return { ok: true, idle: 'non-trading' };
-    const have = state.run && state.run.trade_date === date;
-    if (have && state.run.payload && state.run.payload.noticeSent) return { ok: true, idle: 'done' };
-    if (!have && state.checkedAt && Date.now() - state.checkedAt < 25000) return { ok: true, idle: 'busy' };
-    state.checkedAt = Date.now();
-    if (!(await enabled())) return { ok: true, idle: 'disabled' };
+    let have = state.run && state.run.trade_date === date;
     const out = {};
+    if (inOrd && !have && Date.now() - (state.loadedAt || 0) > 60000) {   // 재시작 직후: 오늘 기록을 한 번 읽어 주문 관리를 이어감(1분에 한 번만)
+      state.loadedAt = Date.now();
+      const r = await readRun(date).catch(() => null);
+      if (r) { state.date = date; state.run = r; have = true; }
+    }
+    if (inOrd && have && activeOrders(state.run)) {
+      out.follow = await exec.follow(date).catch(e => { state.lastErr = e.message; return { ok: false, err: e.message }; });
+    }
+    if (!inSel) return { ok: true, date, min, ...out };
+    if (have && state.run.payload && state.run.payload.noticeSent) {
+      if (min > 10 * 60 + 30 && state.run.status === 'noticed') await expireIfNeeded(date).catch(e => { state.lastErr = e.message; });
+      return { ok: true, date, min, idle: 'done', ...out };
+    }
+    if (!have && state.checkedAt && Date.now() - state.checkedAt < 25000) return { ok: true, idle: 'busy', ...out };
+    state.checkedAt = Date.now();
+    if (!(await enabled())) return { ok: true, idle: 'disabled', ...out };
     out.sel = await runSelection(false).catch(e => { state.lastErr = e.message; return { ok: false, err: e.message }; });
     if (min >= 10 * 60 + 15 && out.sel && out.sel.ok) out.notice = await sendNotice(false).catch(e => { state.lastErr = e.message; return { ok: false, err: e.message }; });
     return { ok: true, date, min, ...out };
   }
 
-  function status() { return { date: state.date, run: state.run && { status: state.run.status, picks: ((state.run.payload || {}).picks || []).length }, lastErr: state.lastErr }; }
-  return { tick, runSelection, sendNotice, handleApproval, status, _select: select };
+  function status() {
+    const r = state.run, o = (r && r.payload && r.payload.orders) || {};
+    return { date: state.date, run: r && { status: r.status, picks: ((r.payload || {}).picks || []).length, orders: Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.st])) }, lastErr: state.lastErr };
+  }
+  return { tick, runSelection, sendNotice, handleApproval, status, _select: select, _mutateRun: mutateRun, _readRun: readRun };
 }
 
 module.exports = { RULES, EXCL_NAME, baseFilter, evalFlow, scoreOne, rankAndPick, formatMessage, parseApproval, createAuto };
