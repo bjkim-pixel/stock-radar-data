@@ -1090,7 +1090,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="trhist">거래내역</button></div></div>
     <div class="ng" data-g="sum"><div class="ngh" role="button" tabindex="0" aria-expanded="true">요약</div><div class="ngi">
       <button data-v="ai">AI 브리핑</button>
-      <button data-v="fav">★ 관심</button>
+      <button data-v="fav">★ 내 종목</button>
       <button data-v="detail">종목 상세</button>
       <button data-v="journal">투자일지</button></div></div>
     <div class="ng" data-g="mkt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">시황</div><div class="ngi">
@@ -1468,12 +1468,12 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <div class="note">참고: 백테스트(20일 초과수익)에서 분산 진입(S1)은 이후에도 더 오르는 경향이 있어 매도 근거가 아니라 참고 표시입니다. 기준값은 <code>sm_core.py</code>와 화면 계산(<code>smSeries</code>)이 같습니다.</div>
     </details>
   </div>
-  <div class="card"><h3>종목 목록 <span class="r">★ 관심 종목은 각 목록 맨 위 고정 · ▸ = 가격·평단·국면 미리보기</span></h3>
+  <div class="card"><h3>종목 목록 <span class="r">★ 내 종목은 각 목록 맨 위 고정 · ▸ = 가격·평단·국면 미리보기</span></h3>
     <div class="qf seg" id="smTabs" style="margin-bottom:8px">
       <button class="fchip" data-v="buy" aria-pressed="true">매수 후보</button>
       <button class="fchip" data-v="sell">매도 경고</button>
       <button class="fchip" data-v="acc">매집 진행</button>
-      <button class="fchip" data-v="fav">★ 내 관심</button>
+      <button class="fchip" data-v="fav">★ 내 종목</button>
     </div>
     <div class="note" id="smNote" style="margin:0 0 8px"></div>
     <div class="tw tw-scroll"><table><thead><tr><th class="l"></th><th class="l">#</th><th class="l">종목</th><th class="l">단계 ①②③④</th><th class="l">신호</th>
@@ -1656,12 +1656,12 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 <!-- ═══════════ 짝꿍매매 ═══════════ -->
 <section id="v-fav" class="hide">
   <div class="card" style="margin-top:16px"><h3>내 종목 <span class="r" id="favCount"></span></h3>
-    <div class="tl-tabs" id="favTabs"><button data-t="all" class="on">전체</button><button data-t="fav">관심</button><button data-t="hold">투자</button><button data-t="ai">AI 추천</button><button data-t="th">테마</button></div>
-    <div class="fav-add hide" id="favThBar"><span class="faint" style="font-size:11px">테마</span><select id="favThSel" style="width:auto;font-size:12px;padding:3px 6px"></select><button class="btn ghost" id="favThAdd" type="button">이 테마 종목 → 내 종목(관심)에 추가</button><button class="btn ghost" id="favThDel" type="button">이 테마 종목 내 종목(관심)에서 제외</button></div>
+    <div class="tl-tabs" id="favTabs"><button data-t="all" class="on">전체</button><button data-t="fav">내 종목</button><button data-t="hold">투자</button><button data-t="ai">AI 추천</button><button data-t="th">테마</button></div>
+    <div class="fav-add hide" id="favThBar"><span class="faint" style="font-size:11px">테마</span><select id="favThSel" style="width:auto;font-size:12px;padding:3px 6px"></select><button class="btn ghost" id="favThAdd" type="button">이 테마 종목 → 내 종목에 추가</button><button class="btn ghost" id="favThDel" type="button">이 테마 종목 내 종목에서 제외</button></div>
     <div class="fav-add">
       <input type="text" id="favAddIn" list="favAddList" placeholder="종목명 또는 코드 입력" autocomplete="off">
       <datalist id="favAddList"></datalist>
-      <button class="btn ghost" id="favAddFav" type="button">+ 관심</button><button class="btn ghost" id="favAddHold" type="button">+ 투자</button>
+      <button class="btn ghost" id="favAddFav" type="button">+ 내 종목</button><button class="btn ghost" id="favAddHold" type="button">+ 투자</button>
       <span class="faint" id="favSync" style="font-size:11px"></span>
     </div>
     <div class="note" id="favNote"></div>
@@ -2211,7 +2211,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <div class="qf seg" id="aiRound"></div>
       <span class="faint" id="aiMeta" style="font-size:11px"></span>
     </div>
-    <details class="ai-sec" id="aiPerfBox" style="margin:0 0 10px;border-top:none" open><summary>AI 추천 성과 <span class="faint" style="font-weight:400;font-size:11px">· 관심 종목의 브리핑 기준일 종가 대비 이후 수익률 (KOSPI 비교)</span></summary>
+    <details class="ai-sec" id="aiPerfBox" style="margin:0 0 10px;border-top:none" open><summary>AI 추천 성과 <span class="faint" style="font-weight:400;font-size:11px">· 내 종목의 브리핑 기준일 종가 대비 이후 수익률 (KOSPI 비교)</span></summary>
       <div id="aiPerf"><div class="load sk"></div></div></details>
     <div id="aiBody"><div class="load sk"></div></div>
   </div>
@@ -8042,11 +8042,11 @@ function renderSm(){
   }else{
     const rk=r=>(r.changed_today?0:1)*10+(r.sell_score!=null?1:r.buy_score!=null?2:3);
     list=rows.filter(r=>favs.has(r.code)).sort((a,b)=>rk(a)-rk(b)||(+b.d_w)-(+a.d_w));scoreK=null;
-    note="★ 관심 종목 — 오늘 국면이 바뀐 종목 → 매도 경고 → 매수 후보 순";
+    note="★ 내 종목 — 오늘 국면이 바뀐 종목 → 매도 경고 → 매수 후보 순";
   }
   const sigOf=r=>S.smTab==="sell"&&!S.smPhase?[r.sell_sig,r.sell_sig_ago]:S.smTab==="buy"&&!S.smPhase?[r.buy_sig,r.buy_sig_ago]
     :(r.buy_sig_ago!=null&&(r.sell_sig_ago==null||r.buy_sig_ago<=r.sell_sig_ago))?[r.buy_sig,r.buy_sig_ago]:[r.sell_sig,r.sell_sig_ago];
-  /* 2026-10-30: 헤더 클릭 정렬(내림차순↔오름차순). 값이 없는 종목은 항상 맨 아래, ★ 관심 종목은 정렬 뒤에도 맨 위 고정 */
+  /* 2026-10-30: 헤더 클릭 정렬(내림차순↔오름차순). 값이 없는 종목은 항상 맨 아래, ★ 내 종목은 정렬 뒤에도 맨 위 고정 */
   const SMV={name:r=>r.name||r.code,phase:r=>SM_PH_IDX[r.phase]??0,sig:r=>{const a=sigOf(r)[1];return a==null?null:1000-a;},
     d_w:r=>r.d_w,hold_pct:r=>r.hold_pct,gap:r=>r.gap,transfer20:r=>r.transfer20,buy_days20:r=>r.buy_days20,ret_w:r=>r.ret_w,
     score:r=>(scoreK?r[scoreK]:(r.buy_score??r.sell_score)),trade_amount:r=>r.trade_amount};
@@ -9861,7 +9861,7 @@ function redraw(skipDetailReload){
   if(S.chart.code&&!skipDetailReload)loadDetail(S.chart.code).catch(()=>{});
 }
 
-/* ══ 2026-10-25 UI 보강: 주소(해시) 연결 · 표 열 묶음 · ⓘ 설명 접기 · 다시 시도 · 관심종목 ══ */
+/* ══ 2026-10-25 UI 보강: 주소(해시) 연결 · 표 열 묶음 · ⓘ 설명 접기 · 다시 시도 · 내 종목 ══ */
 // ── 주소 연결: #today, #detail/000660 처럼 화면(과 종목)을 주소에 담아 뒤로가기·즐겨찾기·링크 공유가 되게 함
 let _hashNav=false;
 
@@ -10018,7 +10018,7 @@ async function aiRender(b){
     const m=(lb,v)=>v==null||v===""?"":`<span class="ai-kv"><span class="faint">${lb}</span> ${v}</span>`;
     return `<div class="ai-pick"><div class="ai-pick-hd"><span class="faint">${i+1}</span> ${favStar(p.code)} <a class="lk nm" data-code="${E(p.code)}">${E(p.name)}</a>
       <span class="faint" style="font-size:11px">${E(p.sector||"")}</span>
-      ${c.진입판정?`<span class="mine-act ${ACT_CLS[c.진입판정]||"hld"}" style="font-size:12px;padding:1px 8px" title="관심종목 의견과 같은 기준(추세·RS·수급·스마트머니·고점위치·업종)의 진입 판정">${E(c.진입판정)}</span><span class="faint" style="font-size:11px">점수 ${c.진입점수>0?"+":""}${c.진입점수}</span>`:""}
+      ${c.진입판정?`<span class="mine-act ${ACT_CLS[c.진입판정]||"hld"}" style="font-size:12px;padding:1px 8px" title="내 종목 의견과 같은 기준(추세·RS·수급·스마트머니·고점위치·업종)의 진입 판정">${E(c.진입판정)}</span><span class="faint" style="font-size:11px">점수 ${c.진입점수>0?"+":""}${c.진입점수}</span>`:""}
       <span class="ai-pick-px">당시 ${p.close!=null?N(p.close,0):"–"} <span class="${sgn(p.chg)}">${p.chg!=null?pm(p.chg,1)+"%":""}</span> · 이후 ${ret(p)}</span></div>
       <div class="ai-kvs">${m("점수",c.규칙점수)}${m("거래대금",c.거래대금억!=null?N(c.거래대금억,0)+"억":null)}${m("외국인",c.외국인오늘억!=null?pm(c.외국인오늘억,0)+"억":null)}${m("기관",c.기관오늘억!=null?pm(c.기관오늘억,0)+"억":null)}${m("외기5일",c.외기합5일억!=null?pm(c.외기합5일억,0)+"억":null)}${m("연속양매수",c.연속양매수일!=null?c.연속양매수일+"일":null)}${m("RS5/20",c.RS5백분위!=null?`${c.RS5백분위}/${c.RS20백분위}`:null)}${m("고점대비",c["고점대비%"]!=null?pm(c["고점대비%"],1)+"%":null)}${m("업종RS",c.업종RS순위!=null?c.업종RS순위+"위":null)}${m("SM",c.스마트머니국면)}</div>
       <div class="ai-pick-bd"><div><b>근거</b> ${E(p.reason)}</div><div><b class="down">리스크</b> ${E(p.risk||"-")}</div><div><b class="faint">관심 제외 조건</b> ${E(p.invalidation||"-")}</div></div></div>`;}).join("");
@@ -10056,7 +10056,7 @@ async function aiRender(b){
     <div class="ai-sub">주목 업종</div>${chips(R.focus_sectors)}
     <div class="ai-sub">관심 종목 (단기 스윙)</div>
     <div class="ai-picks">${pickRows||'<div class="load">없음</div>'}</div>
-    ${(R.mine||[]).length?`<div class="ai-sub">내 종목 매수·보유·매도 의견 <span class="faint" style="font-weight:400;font-size:11px">관심·투자 종목 · 정량 점수 기반 · 행을 눌러 근거 보기</span></div>
+    ${(R.mine||[]).length?`<div class="ai-sub">내 종목 매수·보유·매도 의견 <span class="faint" style="font-weight:400;font-size:11px">내 종목·투자 종목 · 정량 점수 기반 · 행을 눌러 근거 보기</span></div>
       <div class="ai-picks">${R.mine.map(m=>`<details class="ai-pick"><summary style="cursor:pointer;list-style:none"><div class="ai-pick-hd">${holdBtn(m.code)}${favStar(m.code)} <a class="lk nm" data-code="${E(m.code)}">${E(m.name)}</a>
         <span class="tg ${m.kind==="투자"?"hold-t":"ai-t"}">${E(m.kind)}</span>${m.etype&&m.etype!=="주식"?` <span class="tg">${E(m.etype)}</span>`:""} <span class="mine-act ${ACT_CLS[m.action]||"hld"}" style="font-size:12px;padding:1px 8px">${E(m.action)}</span>
         <span class="faint" style="font-size:11px">점수 ${m.score>0?"+":""}${m.score}</span><span class="ai-pick-px">${m.close!=null?N(m.close,0):"–"} <span class="${sgn(m.chg)}">${m.chg!=null?pm(m.chg,1)+"%":""}</span></span></div>
@@ -10071,7 +10071,7 @@ async function aiRender(b){
       ${aiTable("aiSecBody","<th class=\"l\">업종</th><th title=\"20일 수익률 업종 순위\">RS20</th><th title=\"5일 수익률 업종 순위\">RS5</th><th>오늘 평균등락</th><th>거래대금 비중</th><th title=\"최근 5일÷이전 5일 거래대금\">주간증감</th><th>외국인 오늘(억)</th><th>기관 오늘(억)</th><th>외기합 5일(억)</th><th>개인 5일(억)</th>",secRows)}
       ${cl?`<div class="ai-sub">같은 업종 동반 매수 (외국인·기관)</div>${aiTable("","<th class=\"l\">업종</th><th>외국인 종목수</th><th>기관 종목수</th><th class=\"l\">종목</th>",cl)}`:""}
       `,true)}
-    ${sec("③ 종목 · 후보 30 점수·수급 비교 (★=관심 종목, 헤더 클릭 정렬)",`${txt(R.stocks_today)}
+    ${sec("③ 종목 · 후보 30 점수·수급 비교 (★=내 종목, 헤더 클릭 정렬)",`${txt(R.stocks_today)}
       <div class="tw ai-wide"><table class="ai-mini"><thead><tr><th class="l">#</th><th class="l">종목</th><th title="모멘텀·수급·추세·업종−리스크 규칙 점수">점수</th><th>등락</th><th>거래대금(억)</th><th>외국인(억)</th><th>기관(억)</th><th>외기합 5일(억)</th><th title="외국인+기관 오늘 순매수 ÷ 시가총액">외기합/시총</th><th>연속 양매수</th><th title="개별 RS 5일/20일 백분위(100=최상)">RS5/20</th><th>고점대비</th><th class="l">스마트머니</th><th class="l">리스크</th></tr></thead><tbody id="aiCandBody">${candRows}</tbody></table></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">${top3("등락률 상위",S2.등락률상위)}${top3("외기합 순매수 상위",S2.외기합순매수상위)}${top3("외기합 순매도 상위",S2.외기합순매도상위)}</div>
       ${(S2.신고가||[]).length?`<div class="ai-sub">신고가 종목</div><div class="ai-txt">${S2.신고가.map(E).join(" · ")}</div>`:""}`,true)}
@@ -11420,19 +11420,19 @@ function navFromHash(){
 }
 addEventListener("popstate",navFromHash);
 
-// ── 관심종목(이 브라우저의 localStorage에만 저장)
+// ── 내 종목(이 브라우저의 localStorage에만 저장)
 function favList(){try{const a=JSON.parse(localStorage.getItem("sr_fav")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
 function isFav(code){return favList().includes(code);}
-function favStar(code,cls){const on=isFav(code);return `<span class="fav${on?" on":""}${cls?" "+cls:""}" data-fav="${code}" title="${on?"관심종목에서 빼기":"관심종목에 담기"}">${on?"★":"☆"}</span>`;}
+function favStar(code,cls){const on=isFav(code);return `<span class="fav${on?" on":""}${cls?" "+cls:""}" data-fav="${code}" title="${on?"내 종목에서 빼기":"내 종목에 담기"}">${on?"★":"☆"}</span>`;}
 function toggleFav(code){
   let a=favList();a=a.includes(code)?a.filter(c=>c!==code):[...a,code];
   try{localStorage.setItem("sr_fav",JSON.stringify(a));}catch(e){}
   const on=a.includes(code);
-  $$(`.fav[data-fav="${code}"]`).forEach(x=>{x.classList.toggle("on",on);x.textContent=on?"★":"☆";x.title=on?"관심종목에서 빼기":"관심종목에 담기";});
+  $$(`.fav[data-fav="${code}"]`).forEach(x=>{x.classList.toggle("on",on);x.textContent=on?"★":"☆";x.title=on?"내 종목에서 빼기":"내 종목에 담기";});
   wlPushSoon();if(S.curTab==="fav")loadFav();
 }
 document.addEventListener("click",e=>{const f=e.target.closest&&e.target.closest(".fav");if(!f)return;e.preventDefault();e.stopPropagation();toggleFav(f.dataset.fav);},true);
-// ── 투자종목(hold): 관심과 같은 방식(localStorage) + 서버 동기화(토큰이 있을 때만) — AI 브리핑이 서버 목록을 읽어 의견을 만듭니다
+// ── 투자종목(hold): 내 종목과 같은 방식(localStorage) + 서버 동기화(토큰이 있을 때만) — AI 브리핑이 서버 목록을 읽어 의견을 만듭니다
 function holdList(){try{const a=JSON.parse(localStorage.getItem("sr_hold")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
 function isHold(code){return holdList().includes(code);}
 function holdBtn(code){const on=isHold(code);return `<span class="hold${on?" on":""}" data-hold="${code}" title="${on?"투자종목에서 빼기":"투자종목에 담기"}">💼</span>`;}
@@ -11524,12 +11524,12 @@ async function loadFav(){
   if(tab==="th")codes=[...new Set(ths.filter(t=>!S.favTh||t.id===S.favTh).flatMap(t=>t.codes))];
   else if(tab==="fav")codes=favs;else if(tab==="hold")codes=holds;else if(tab==="ai")codes=aiCodes;
   else codes=[...new Set([...holds,...favs,...aiCodes])];
-  $("#favCount").textContent=`관심 ${favs.length} · 투자 ${holds.length} · AI추천 ${aiCodes.length}`;
+  $("#favCount").textContent=`내 종목 ${favs.length} · 투자 ${holds.length} · AI추천 ${aiCodes.length}`;
   $("#favNote").innerHTML=({
-    all:"관심·투자·AI 추천 종목을 모아서 봅니다",fav:"☆로 담은 종목",hold:"💼로 담은 종목(내가 투자 중인 종목)",
-    th:"단체상승 테마로 묶은 종목 · 위 버튼으로 관심(내 종목)에 한꺼번에 추가·제외",
+    all:"내 종목·투자·AI 추천 종목을 모아서 봅니다",fav:"☆로 담은 종목",hold:"💼로 담은 종목(내가 투자 중인 종목)",
+    th:"단체상승 테마로 묶은 종목 · 위 버튼으로 내 종목에 한꺼번에 추가·제외",
     ai:`최신 AI 브리핑(${ai.date||"–"}) 추천 종목 · 성과는 AI 브리핑 탭 하단`})[tab]
-    +" · ☆ 관심 · 💼 투자 · 이 브라우저에 저장되고, 투자일지 토큰이 있으면 서버에도 동기화되어 <b>AI 브리핑이 매수·보유·매도 의견</b>을 달아줍니다"
+    +" · ☆ 내 종목 · 💼 투자 · 이 브라우저에 저장되고, 투자일지 토큰이 있으면 서버에도 동기화되어 <b>AI 브리핑이 매수·보유·매도 의견</b>을 달아줍니다"
     +(favHide().length?` · <a id="favHideRs" style="cursor:pointer;text-decoration:underline">숨긴 AI추천 ${favHide().length}개 복원</a>`:"")+(ai.mineDate?` · 최근 의견 ${ai.mineDate} ${ai.mineRound===0?"장중":ai.mineRound===1?"16시":"18시"} 브리핑`:"");
   if(!codes.length){body.innerHTML='<tr><td colspan="30" class="load">'+(tab==="ai"?"최신 AI 브리핑에 추천 종목이 없습니다":"아직 담은 종목이 없습니다 — 위 입력창이나 종목 이름 앞의 ☆·💼를 눌러 보세요")+"</td></tr>";return;}
   try{
@@ -11540,7 +11540,7 @@ async function loadFav(){
     const tags=c=>{const k=kindsOf(c),m=(ai.mine||{})[c];
       return (k.hold?'<span class="tg hold-t">투자</span>':"")+(k.ai?'<span class="tg ai-t">AI추천</span>':"")
         +(m?`<span class="tg act ${ACT_CLS[m.action]||"hld"}" data-ev="${c}" title="${accEsc(m.opinion||"")}">${accEsc(m.action)}</span>`:"");};
-    const nameCell=(r)=>scrNameCell(r).replace(favStar(r.code),holdBtn(r.code)+favStar(r.code)).replace(/<\/td>$/,tags(r.code)+thTags(r.code)+`<span class="fav-rm" data-rm="${r.code}" title="내 종목에서 제외(관심·투자·AI추천 모두)">✕</span></td>`);
+    const nameCell=(r)=>scrNameCell(r).replace(favStar(r.code),holdBtn(r.code)+favStar(r.code)).replace(/<\/td>$/,tags(r.code)+thTags(r.code)+`<span class="fav-rm" data-rm="${r.code}" title="내 종목에서 제외(내 종목·투자·AI추천 모두)">✕</span></td>`);
     let n=0;
     body.innerHTML=codes.map(c=>{const r=byCode[c];n++;
       if(r)return `<tr><td class="l rank">${n}</td>${nameCell(r)}${scrCells(r,SCR_ORD_FAV)}</tr>`;
@@ -11645,7 +11645,7 @@ async function loadSw(){
   // 실시간 체결가: ① 대상(오늘 매수·보유) 우선, 남는 슬롯은 ④ 바스켓
   setSwLiveCodes([...new Set([...P.map(r=>r.code),...B.map(r=>r.code)])]);
 }
-// ── 단체상승 테마(관심종목): 테마명·상승일·종목을 localStorage(sr_themes)에 저장 → 짝꿍매매로 비교
+// ── 단체상승 테마(내 종목): 테마명·상승일·종목을 localStorage(sr_themes)에 저장 → 짝꿍매매로 비교
 function thList(){try{const a=JSON.parse(localStorage.getItem("sr_themes")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
 function thSave(a,noPush){try{localStorage.setItem("sr_themes",JSON.stringify(a));if(!noPush)localStorage.setItem("sr_themes_ts",String(Date.now()));}catch(e){}if(!noPush)thPushSoon();}
 // 서버 동기화(릴레이 /themes, 투자일지 토큰): 묶음 전체를 저장하고 최신 시각(ts) 쪽이 이긴다
@@ -11685,11 +11685,11 @@ function thFavSet(id,on){
   const n=on?a.length-cur.length:cur.length-a.length;
   try{localStorage.setItem("sr_fav",JSON.stringify(a));}catch(e){}
   $$(".fav[data-fav]").forEach(x=>{const o=a.includes(x.dataset.fav);x.classList.toggle("on",o);x.textContent=o?"★":"☆";});
-  wlPushSoon();wlSyncMsg(on?`관심에 ${n}종목 추가`:`관심에서 ${n}종목 제외`);
+  wlPushSoon();wlSyncMsg(on?`내 종목에 ${n}종목 추가`:`내 종목에서 ${n}종목 제외`);
   loadFav();
 }
 function favHide(){try{const a=JSON.parse(localStorage.getItem("sr_fav_hide")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
-function favRemove(code){ // 이유(관심·투자·AI추천)와 상관없이 내 종목에서 제외 — AI추천은 이 브라우저에서만 숨김
+function favRemove(code){ // 이유(내 종목·투자·AI추천)와 상관없이 내 종목에서 제외 — AI추천은 이 브라우저에서만 숨김
   const wr=(k,a)=>{try{localStorage.setItem(k,JSON.stringify(a));}catch(e){}};
   wr("sr_fav",favList().filter(c=>c!==code));wr("sr_hold",holdList().filter(c=>c!==code));
   if(((S.favAi||{}).picks||[]).some(p=>p.code===code)&&!favHide().includes(code))wr("sr_fav_hide",[...favHide(),code]);
@@ -11729,12 +11729,12 @@ function thRender(){
       <button class="btn ghost th-cmp" type="button">짝꿍매매로 비교</button>
       <button class="btn ghost th-flow" type="button">상승일 수급</button>
       <button class="btn ghost th-del" type="button">삭제</button></div>
-    <div class="th-row"><span class="faint">내 종목</span><button class="btn ghost th-favAdd" type="button">이 테마 종목 → 내 종목(관심)에 추가</button><button class="btn ghost th-favDel" type="button">이 테마 종목 내 종목(관심)에서 제외</button></div>
+    <div class="th-row"><span class="faint">내 종목</span><button class="btn ghost th-favAdd" type="button">이 테마 종목 → 내 종목에 추가</button><button class="btn ghost th-favDel" type="button">이 테마 종목 내 종목에서 제외</button></div>
     <div class="th-row"><span class="faint">상승일</span>${(t.dates||[]).slice().sort().map(d=>`<span class="th-chip" data-d="${d}">${d}<i class="th-x">×</i></span>`).join("")||'<span class="faint">없음</span>'}
       <input type="date" class="th-dIn"><button class="btn ghost th-dAdd" type="button">+ 날짜</button></div>
     <div class="th-row"><span class="faint">종목</span>${t.codes.map(c=>`<span class="th-chip" data-c="${c}"><a class="lk" data-code="${c}">${accEsc(codeName(c))}</a><i class="th-x">×</i></span>`).join("")||'<span class="faint">없음</span>'}
       <input type="text" class="th-mIn" list="thMemList" placeholder="종목 추가" autocomplete="off"><button class="btn ghost th-mAdd" type="button">+ 종목</button>
-      <button class="btn ghost th-fromFav" type="button" title="관심종목 전체를 이 테마에 추가">관심 전부 추가</button></div>
+      <button class="btn ghost th-fromFav" type="button" title="내 종목 전체를 이 테마에 추가">내 종목 전부 추가</button></div>
     <div class="th-notes">${thNotes(t).slice().reverse().map(n=>`<div class="th-note" data-nid="${n.id}"><span class="faint">${n.d}</span><span class="th-nt">${accEsc(n.t)}</span><button class="btn ghost th-nDel" type="button">삭제</button></div>`).join("")}</div>
     <div class="th-row"><input type="text" class="th-memo" placeholder="메모 입력 후 저장 (계속 누적됩니다)"><button class="btn ghost th-nAdd" type="button">저장</button></div>
     ${thScenarioHtml(t)}
