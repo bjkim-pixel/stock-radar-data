@@ -122,6 +122,7 @@ function createExec(deps) {
   const stateOf = o => (o && o.status) || null;
 
   async function placeOne(date, code, notice, perStock, opt) {
+    try { if (D.paper.heldCodes && D.paper.heldCodes().includes(code)) return { st: 'skipped', why: '이미 보유·주문 중(다른 전략 또는 직접 매매)' }; } catch (_) {}   // 같은 종목은 한 포지션으로 합쳐지므로 겹쳐 사지 않음
     let q; try { q = await D.getQuote(code); } catch (e) { return { st: 'skipped', why: '시세 조회 실패: ' + e.message }; }
     const why = recheck(q, notice, opt);
     if (why.length) return { st: 'skipped', why: why.join(', ') };

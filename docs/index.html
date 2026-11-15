@@ -1011,6 +1011,8 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-sw span{width:34px;height:20px;border-radius:10px;background:var(--ink-3);position:relative;transition:background .15s}.au-sw span::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
 .au-sw.on span{background:var(--good)}.au-sw.on span::after{left:16px}
 .au-on{color:var(--good);font-weight:700}
+.au-letter{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;border-radius:5px;background:var(--ink);color:var(--surface);font-size:11px;font-weight:700;margin:0 5px 0 2px;padding:0 4px}
+.au-h4{margin:14px 0 6px;font-size:12px;color:var(--ink-3)}.au-new{width:100%;margin:0}
 .au-msg{font-size:12.5px;background:var(--surface-2);border-radius:8px;padding:8px 10px;white-space:pre-wrap}
 .au-lane{margin-top:8px}.au-lname{font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:6px}
 .au-tl{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px}
@@ -11182,7 +11184,7 @@ async function trdPeSave(code){
 }
 /* ── 자동매매 컨트롤 타워 (B단계) — 가상매매 전용. 서버(/trade/auto/*)가 계산·검증하고 화면은 보여 주고 고치게만 함 ──
    탭: 오늘(관제실) · 전략(조건 보기·편집·버전) · 성과. 상단 띠 = 전체 스위치 · 다음 단계 · 오늘 요약 */
-TRD.au=null;TRD.aus=null;TRD.auMsg=null;TRD.auTab="today";TRD.auEdit=null;TRD.auOpen={};TRD.auVer={};TRD.auSel={buy:new Set(),eod:new Set()};TRD.auArm=null;TRD.auPick=null;
+TRD.au=null;TRD.aus=null;TRD.auMsg=null;TRD.auTab="today";TRD.auEdit=null;TRD.auOpen={};TRD.auVer={};TRD.auSel={buy:{},eod:{}};TRD.auNew=null;TRD.auArm=null;TRD.auPick=null;
 const AU_STATUS={selected:"후보 선정됨",noticed:"알림 보냄 · 승인 대기",approved:"승인함",passed:"패스함",expired:"승인 시간 지나 건너뜀"};
 const AU_ORD={intent:"주문 준비 중",open:"체결 대기",modified:"가격 정정함",filled:"체결",partial_done:"일부 체결 후 취소",cancelled:"미체결 취소",skipped:"건너뜀",failed:"주문 실패",lost:"결과 확인 불가"};
 const AU_EOD={sell:"정리",keep:"유지",none:"해당 없음"};
@@ -11228,13 +11230,17 @@ async function auPost(path,body,okText){
 function auArmed(key){if(TRD.auArm&&TRD.auArm.k===key&&Date.now()-TRD.auArm.t<4000){TRD.auArm=null;return true;}TRD.auArm={k:key,t:Date.now()};trdAutoRender();clearTimeout(TRD.auArmT);TRD.auArmT=setTimeout(()=>{TRD.auArm=null;trdAutoRender();},4100);return false;}
 const auArmTx=(key,a,b)=>TRD.auArm&&TRD.auArm.k===key?b:a;
 
-/* ── 오늘: 단계 계산(서버 기록 + 전략 시각) ── */
-function auSteps(){
-  const A=TRD.au,G=TRD.aus,T=(G&&G.times)||{},D=A.today,min=auMinNow(),I=auStrat(G.active.intraday)||{},C=auStrat(G.active.closing)||{};
-  const st=(done,from,to,label)=>done?"done":min<from?"wait":min<to?"now":"miss";
-  const ords=D?D.orders:[],bought=ords.filter(o=>o.filled>0),active=ords.filter(o=>["intent","open","modified"].includes(o.st));
-  const ev=D&&D.eod,prevCarry=(A.carry||[]).filter(c=>c.from<A.date);
-  const L1=[
+/* ── 오늘: 단계 계산(서버 기록 + 전략 시각). 장중 전략마다 한 줄, 종가베팅 한 줄 ── */
+const auIds=()=>{const G=TRD.aus,A=TRD.au;return [...new Set([...(G.active.intraday||[]),...((A.todays||[]).map(t=>t.sid))])];};
+const auRun=sid=>(TRD.au.todays||[]).find(t=>t.sid===sid)||null;
+const auT=sid=>(TRD.aus.timesBy||{})[sid]||TRD.aus.times||{};
+const auLetter=sid=>((TRD.aus.active||{}).letters||{})[sid]||((auRun(sid)||{}).letter)||"";
+const auName=sid=>{const s=auStrat(sid),r=auRun(sid);return (s&&s.name)||(r&&r.strategy&&r.strategy.name)||sid;};
+function auStepsI(sid){
+  const T=auT(sid),D=auRun(sid),min=auMinNow(),I=auStrat(sid)||{};
+  const st=(done,from,to)=>done?"done":min<from?"wait":min<to?"now":"miss";
+  const ords=D?D.orders:[],bought=ords.filter(o=>o.filled>0),active=ords.filter(o=>["intent","open","modified"].includes(o.st)),ev=D&&D.eod;
+  return [
     {t:T.sel,label:"후보 선정",s:st(D&&D.selectedAt,T.sel,T.selEnd),note:D&&D.stat?`풀 ${N(D.stat.pool)} → 통과 ${N(D.stat.flowPass)}`:""},
     {t:T.notice,label:"텔레그램 알림",s:st(D&&D.noticeSent,T.notice,T.selEnd),note:D&&D.noticeSent?`후보 ${N(D.picks.length)}개`:""},
     {t:T.deadline,label:"승인 마감",s:D&&D.decision?"done":st(false,T.notice,T.deadline+1),note:D&&D.decision?(D.decision.kind==="buy"?`매수 ${(D.decision.nums||[]).join(",")}`:D.decision.kind==="pass"?"패스":"만료"):(I.params&&I.params.approval==="auto"?"자동 승인":"")},
@@ -11242,62 +11248,66 @@ function auSteps(){
     {t:T.judge,label:"종가 판정",s:st(ev&&ev.at,T.judge,T.reply),note:ev?(ev.none?"보유 없음":`${ev.items.length}종목 · 약함 ${ev.items.filter(i=>!i.ok).length}`):""},
     {t:T.reply,label:"약한 종목 정리",s:ev&&(ev.decision||ev.none||!ev.items.some(i=>!i.ok))?"done":st(false,T.judge,T.reply),note:ev&&ev.decision?(AU_EOD[ev.decision.kind]||ev.decision.kind)+(ev.decision.timeout?"(무응답)":ev.decision.auto?"(설정)":""):""},
   ];
-  const L2=[
-    {t:(T.slices||[])[0],label:"전날 이월분 아침 매도",s:!prevCarry.length?"skip":prevCarry.every(c=>c.state==="done")?"done":st(false,(T.slices||[])[0],(T.slices||[0]).slice(-1)[0]+1),note:prevCarry.length?`${prevCarry.length}종목 · ${(T.slices||[]).map(auHM).join("·")}`:"이월 없음"},
-    {t:T.judge,label:"판정 통과분 넘겨받기",s:ev&&ev.at?"done":st(false,T.judge,T.reply),note:ev&&ev.at?`${ev.items.filter(i=>i.ok).length}종목`:""},
-    {t:T.convert,label:"오버나잇 전환",s:st(D&&D.carry!=null,T.convert,1440),note:D&&D.carry?`${D.carry.length}종목 이월`:(C.enabled===false?"전략 꺼짐":"")},
-    {t:(T.slices||[])[0],label:"다음 날 분할 매도",s:"wait",note:`${(T.slices||[]).map(auHM).join("·")}`,next:true},
+}
+function auStepsC(){
+  const A=TRD.au,G=TRD.aus,T=G.times||{},min=auMinNow(),C=auStrat(G.active.closing)||{};
+  const st=(done,from,to)=>done?"done":min<from?"wait":min<to?"now":"miss";
+  const runs=A.todays||[],judged=runs.filter(r=>r.eod&&r.eod.at),prevCarry=(A.carry||[]).filter(c=>c.from<A.date),conv=runs.filter(r=>r.carry!=null);
+  const sl=(T.slices||[]);
+  return [
+    {t:sl[0],label:"전날 이월분 아침 매도",s:!prevCarry.length?"skip":prevCarry.every(c=>c.state==="done")?"done":st(false,sl[0],(sl.slice(-1)[0]||0)+1),note:prevCarry.length?`${prevCarry.length}종목 · ${sl.map(auHM).join("·")}`:"이월 없음"},
+    {t:T.judge,label:"판정 통과분 넘겨받기",s:runs.length&&judged.length===runs.length?"done":st(false,T.judge,T.reply),note:judged.length?`${judged.reduce((a,r)=>a+r.eod.items.filter(i=>i.ok).length,0)}종목`:""},
+    {t:T.convert,label:"오버나잇 전환",s:st(runs.length&&conv.length===runs.length,T.convert,1440),note:conv.length?`${conv.reduce((a,r)=>a+r.carry.length,0)}종목 이월`:(C.enabled===false?"전략 꺼짐":"")},
+    {t:sl[0],label:"다음 날 분할 매도",s:"wait",note:sl.map(auHM).join("·"),next:true},
   ];
-  return {L1,L2,min,T};
 }
 function auNext(){
-  const {L1,L2,min}=auSteps();
-  const all=[...L1.map(x=>({...x,lane:"장중"})),...L2.filter(x=>!x.next&&x.s!=="skip").map(x=>({...x,lane:"종가"}))].filter(x=>x.t!=null&&(x.s==="wait"||x.s==="now")).sort((a,b)=>a.t-b.t);
-  const n=all[0];if(!n)return "오늘 남은 단계 없음";
-  const d=n.t-min;return n.s==="now"?`지금: ${n.lane} ${n.label}`:`다음: ${auHM(n.t)} ${n.lane} ${n.label} (${d>=60?Math.floor(d/60)+"시간 ":""}${d%60}분 뒤)`;
+  const min=auMinNow(),all=[];
+  for(const sid of auIds())auStepsI(sid).forEach(x=>all.push({...x,lane:auLetter(sid)?`${auLetter(sid)} ${auName(sid)}`:auName(sid)}));
+  auStepsC().filter(x=>!x.next&&x.s!=="skip").forEach(x=>all.push({...x,lane:"종가"}));
+  const L=all.filter(x=>x.t!=null&&(x.s==="wait"||x.s==="now")).sort((a,b)=>a.t-b.t),n=L[0];
+  if(!n)return "오늘 남은 단계 없음";
+  const d=n.t-min;return n.s==="now"?`지금: ${n.lane} · ${n.label}`:`다음: ${auHM(n.t)} ${n.lane} · ${n.label} (${d>=60?Math.floor(d/60)+"시간 ":""}${d%60}분 뒤)`;
 }
 function auLane(name,L){
   const lab={done:"완료",now:"진행 중",wait:"대기",miss:"지남",skip:"없음"};
   return `<div class="au-lane"><div class="au-lname">${name}</div><div class="au-tl">${L.map(x=>`<div class="au-st ${x.s}"><div class="au-sh"><span class="au-t">${x.next?"내일 ":""}${x.t!=null?auHM(x.t):"–"}${x.range?" "+x.range:""}</span><span class="au-b">${lab[x.s]}</span></div><div class="au-sl">${trdEsc(x.label)}</div>${x.note?`<div class="au-sn">${trdEsc(x.note)}</div>`:""}</div>`).join("")}</div></div>`;
 }
-function auPartsBar(p){
+function auPartsBar(p,sid){
   if(!p)return "";
-  const W=(TRD.aus&&auStrat(TRD.aus.active.intraday)||{}).params?.weights||{flow:40,cttr:15,rise:15,amt:15,trend:15};
+  const W=((auStrat(sid)||{}).params||{}).weights||{flow:40,cttr:15,rise:15,amt:15,trend:15};
   return `<div class="au-parts">${Object.keys(AU_PART).map(k=>`<div><span>${AU_PART[k]}</span><div class="au-bar"><i style="width:${W[k]?Math.min(100,(p[k]||0)/W[k]*100):0}%"></i></div><b>${N(p[k],1)}/${W[k]}</b></div>`).join("")}</div>`;
 }
+const auTag=sid=>`<span class="au-letter">${trdEsc(auLetter(sid)||"·")}</span>${trdEsc(auName(sid))}`;
+/* 전략 하나의 오늘 카드들: 승인 · 정리 · 후보 · 주문 · 판정 결과 */
+function auRunHtml(sid){
+  const A=TRD.au,D=auRun(sid),T=auT(sid),min=auMinNow(),key=sid;
+  if(!D)return `<div class="card"><h3>${auTag(sid)} <span class="r faint" style="font-size:11px">후보 선정 전</span></h3><div class="load">${A.tradingDay?`${auHM(T.sel)} 이후 후보를 고릅니다.${A.cfg.on?"":" (지금은 전체 스위치가 꺼져 있습니다)"}`:"휴장일입니다."}</div></div>`;
+  let h="";
+  const selB=TRD.auSel.buy[key]=TRD.auSel.buy[key]||new Set(),selE=TRD.auSel.eod[key]=TRD.auSel.eod[key]||new Set();
+  if(D.status==="noticed"&&!D.decision&&min<=T.deadline&&D.picks.length)
+    h+=`<div class="card au-act"><h3>${auTag(sid)} · 승인 <span class="r faint" style="font-size:11px">${auHM(T.deadline)}까지 · 텔레그램 /매수 ${trdEsc(auLetter(sid))}1 과 같음</span></h3>
+      <div class="au-chks">${D.picks.map((p,i)=>`<label><input type="checkbox" data-aubuy="${i+1}" data-ausid="${sid}"${selB.has(i+1)?" checked":""}> ${trdEsc(auLetter(sid))}${i+1}. ${trdEsc(p.name)} <span class="faint">${N(p.score,1)}점</span></label>`).join("")}</div>
+      <div class="au-btns"><button type="button" class="btn" data-auapprove="sel" data-ausid="${sid}"${selB.size?"":" disabled"}>${auArmTx("buy-sel-"+sid,`선택 ${selB.size}종목 매수`,"한 번 더 누르면 매수")}</button><button type="button" class="btn ghost" data-auapprove="all" data-ausid="${sid}">${auArmTx("buy-all-"+sid,"전체 매수","한 번 더 누르면 전체 매수")}</button><button type="button" class="btn ghost" data-auapprove="pass" data-ausid="${sid}">${auArmTx("pass-"+sid,"패스","한 번 더 누르면 패스")}</button></div></div>`;
+  const ev=D.eod,weak=ev&&!ev.decision?ev.items.filter(i=>!i.ok):[];
+  if(weak.length&&min<T.reply)
+    h+=`<div class="card au-act"><h3>${auTag(sid)} · 약한 종목 정리 <span class="r faint" style="font-size:11px">${auHM(T.reply)}까지</span></h3>
+      <div class="au-chks">${weak.map((i,n)=>`<label><input type="checkbox" data-aueod="${n+1}" data-ausid="${sid}"${selE.has(n+1)?" checked":""}> ${trdEsc(auLetter(sid))}${n+1}. ${trdEsc(i.name)} <span class="faint">${trdEsc(i.why.join(", "))}</span></label>`).join("")}</div>
+      <div class="au-btns"><button type="button" class="btn" data-aueodgo="sel" data-ausid="${sid}"${selE.size?"":" disabled"}>${auArmTx("eod-sel-"+sid,`선택 ${selE.size}종목 정리`,"한 번 더 누르면 시장가 정리")}</button><button type="button" class="btn ghost" data-aueodgo="all" data-ausid="${sid}">${auArmTx("eod-all-"+sid,"전체 정리","한 번 더 누르면 전체 정리")}</button><button type="button" class="btn ghost" data-aueodgo="keep" data-ausid="${sid}">유지</button></div></div>`;
+  const pk=`${sid}|`;
+  const picks=D.picks.length?`<div class="trd-scroll"><table class="trd-tb au-pk"><thead><tr><th>#</th><th>종목</th><th>점수</th><th>선정가</th><th>등락</th><th>업종</th><th>근거</th></tr></thead><tbody>${D.picks.map((p,i)=>`<tr data-aupk="${pk}${p.code}" class="au-row"><td>${trdEsc(auLetter(sid))}${i+1}</td><td>${trdEsc(p.name||p.code)}<div class="faint" style="font-size:10.5px">${trdEsc(p.code)}</div></td><td><b>${N(p.score,1)}</b></td><td>${N(p.price)}</td><td class="${trdCls(p.changePct)}">${auPct(p.changePct)}</td><td>${trdEsc(p.sector||"–")}</td><td style="white-space:normal;min-width:150px">${trdEsc((p.reasons||[]).join(" · ")||"–")}</td></tr>${TRD.auPick===pk+p.code?`<tr><td colspan="7" class="au-det">${auPartsBar(p.parts,sid)}${p.m?`<div class="faint" style="font-size:11.5px;margin-top:6px">외국인 ${trdFmtAmt(p.m.fAmt||0)} · 기관 ${trdFmtAmt(p.m.oAmt||0)} · 프로그램 ${trdFmtAmt(p.m.pAmt||0)} · 체결강도 ${N(p.m.cttr)}% · 거래대금 대비 수급 ${p.ratio!=null?N(p.ratio*100,1)+"%":"–"}</div>`:""}</td></tr>`:""}`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">조건을 모두 통과한 후보가 없습니다.</div>';
+  const rej=D.rejected||[],drop=D.dropped||[];
+  h+=`<div class="card"><h3>${auTag(sid)} · 후보 <span class="r faint" style="font-size:11px">${trdEsc(AU_STATUS[D.status]||D.status)}${D.stat?` · 풀 ${N(D.stat.pool)} → 기본조건 ${N(D.stat.base)} → 수급 통과 ${N(D.stat.flowPass)}`:""}${D.strategy?` · v${D.strategy.version}`:""}</span></h3>${D.warn?`<div class="trd-halt" style="margin:0 0 8px">${trdEsc(D.warn)}</div>`:""}${picks}<div class="faint" style="font-size:11px;margin-top:6px">행을 누르면 항목별 배점이 보입니다. 조건을 통과한 ${N(D.shadow.length)}종목은 그림자 기록으로 성과 탭에서 비교됩니다.</div>
+    ${rej.length||drop.length?`<details class="au-rej"><summary>탈락한 종목 ${N(rej.length+drop.length)}개와 사유</summary><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>등락</th><th>탈락 사유</th></tr></thead><tbody>${rej.map(r=>`<tr><td>${trdEsc(r.name||r.code)}</td><td class="${trdCls(r.changePct)}">${auPct(r.changePct)}</td><td style="white-space:normal">${trdEsc(r.fails.join(", "))}</td></tr>`).join("")}${drop.map(r=>`<tr><td>${trdEsc(((D.shadow.find(s=>s.code===r.code))||{}).name||r.code)}</td><td>–</td><td>${trdEsc(r.why)}</td></tr>`).join("")}</tbody></table></div></details>`:""}
+    ${D.orders.length?`<h4 class="au-h4">주문</h4><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>상태</th><th>체결/주문</th><th>평균가</th><th>비고</th></tr></thead><tbody>${D.orders.map(o=>`<tr><td>${trdEsc(o.name)}</td><td>${trdEsc(AU_ORD[o.st]||o.st)}</td><td>${o.filled?N(o.filled):"–"}${o.qty?`<span class="faint"> / ${N(o.qty)}</span>`:""}</td><td>${o.avg?N(o.avg):"–"}</td><td style="white-space:normal">${trdEsc(o.why||"")}</td></tr>`).join("")}</tbody></table></div>`:""}
+    ${ev&&!ev.none&&ev.items.length?`<h4 class="au-h4">종가 판정</h4><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>결과</th><th>사유</th></tr></thead><tbody>${ev.items.map(i=>`<tr><td>${trdEsc(i.name)}</td><td class="${i.ok?"au-on":"faint"}">${i.ok?"넘길 자격 있음":"약함"}</td><td style="white-space:normal">${trdEsc(i.why.join(", ")||"–")}</td></tr>`).join("")}</tbody></table></div>${ev.decision?`<div class="faint" style="font-size:12px;margin-top:6px">결정: ${trdEsc(AU_EOD[ev.decision.kind]||ev.decision.kind)}${ev.decision.timeout?"(무응답)":ev.decision.auto?"(설정에 따라)":""}</div>`:""}`:""}</div>`;
+  return h;
+}
 function auTodayHtml(){
-  const A=TRD.au,D=A.today,G=TRD.aus,T=G.times,min=auMinNow();
-  const {L1,L2}=auSteps();
-  let h=`<div class="card"><h3>오늘 흐름 <span class="r faint" style="font-size:11px">${trdEsc(A.date)}${A.tradingDay?"":" · 휴장일"}</span></h3>${auLane("장중매매 · "+trdEsc((auStrat(G.active.intraday)||{}).name||""),L1)}${auLane("종가베팅 · "+trdEsc((auStrat(G.active.closing)||{}).name||""),L2)}</div>`;
-  if(!D){h+=`<div class="card"><div class="load">${A.tradingDay?`오늘 후보는 ${auHM(T.sel)} 이후 선정합니다.${A.cfg.on?"":" (지금은 전체 스위치가 꺼져 있습니다)"}`:"휴장일입니다."}</div></div>`;}
-  else{
-    // 사이트 승인
-    const canBuy=D.status==="noticed"&&!D.decision&&min<=T.deadline&&D.picks.length;
-    if(canBuy){
-      const sel=TRD.auSel.buy;
-      h+=`<div class="card au-act"><h3>승인 <span class="r faint" style="font-size:11px">${auHM(T.deadline)}까지 · 텔레그램 /매수와 같음</span></h3>
-        <div class="au-chks">${D.picks.map((p,i)=>`<label><input type="checkbox" data-aubuy="${i+1}"${sel.has(i+1)?" checked":""}> ${i+1}. ${trdEsc(p.name)} <span class="faint">${N(p.score,1)}점</span></label>`).join("")}</div>
-        <div class="au-btns"><button type="button" class="btn" data-auapprove="sel"${sel.size?"":" disabled"}>${auArmTx("buy-sel",`선택 ${sel.size}종목 매수`,"한 번 더 누르면 매수")}</button><button type="button" class="btn ghost" data-auapprove="all">${auArmTx("buy-all","전체 매수","한 번 더 누르면 전체 매수")}</button><button type="button" class="btn ghost" data-auapprove="pass">${auArmTx("pass","패스","한 번 더 누르면 패스")}</button></div></div>`;
-    }
-    // 15:10 정리
-    const ev=D.eod,weak=ev&&!ev.decision?ev.items.filter(i=>!i.ok):[];
-    if(weak.length&&min<T.reply){
-      const sel=TRD.auSel.eod;
-      h+=`<div class="card au-act"><h3>약한 종목 정리 <span class="r faint" style="font-size:11px">${auHM(T.reply)}까지 · 텔레그램 /정리와 같음</span></h3>
-        <div class="au-chks">${weak.map((i,n)=>`<label><input type="checkbox" data-aueod="${n+1}"${sel.has(n+1)?" checked":""}> ${n+1}. ${trdEsc(i.name)} <span class="faint">${trdEsc(i.why.join(", "))}</span></label>`).join("")}</div>
-        <div class="au-btns"><button type="button" class="btn" data-aueodgo="sel"${sel.size?"":" disabled"}>${auArmTx("eod-sel",`선택 ${sel.size}종목 정리`,"한 번 더 누르면 시장가 정리")}</button><button type="button" class="btn ghost" data-aueodgo="all">${auArmTx("eod-all","전체 정리","한 번 더 누르면 전체 정리")}</button><button type="button" class="btn ghost" data-aueodgo="keep">유지</button></div></div>`;
-    }
-    // 후보
-    const picks=D.picks.length?`<div class="trd-scroll"><table class="trd-tb au-pk"><thead><tr><th>#</th><th>종목</th><th>점수</th><th>선정가</th><th>등락</th><th>업종</th><th>근거</th></tr></thead><tbody>${D.picks.map((p,i)=>`<tr data-aupk="${p.code}" class="au-row"><td>${i+1}</td><td>${trdEsc(p.name||p.code)}<div class="faint" style="font-size:10.5px">${trdEsc(p.code)}</div></td><td><b>${N(p.score,1)}</b></td><td>${N(p.price)}</td><td class="${trdCls(p.changePct)}">${auPct(p.changePct)}</td><td>${trdEsc(p.sector||"–")}</td><td style="white-space:normal;min-width:150px">${trdEsc((p.reasons||[]).join(" · ")||"–")}</td></tr>${TRD.auPick===p.code?`<tr><td colspan="7" class="au-det">${auPartsBar(p.parts)}${p.m?`<div class="faint" style="font-size:11.5px;margin-top:6px">외국인 ${trdFmtAmt(p.m.fAmt||0)} · 기관 ${trdFmtAmt(p.m.oAmt||0)} · 프로그램 ${trdFmtAmt(p.m.pAmt||0)} · 체결강도 ${N(p.m.cttr)}% · 거래대금 대비 수급 ${p.ratio!=null?N(p.ratio*100,1)+"%":"–"}</div>`:""}</td></tr>`:""}`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">조건을 모두 통과한 후보가 없습니다.</div>';
-    const rej=(D.rejected||[]),drop=(D.dropped||[]);
-    h+=`<div class="card"><h3>후보 <span class="r faint" style="font-size:11px">${trdEsc(AU_STATUS[D.status]||D.status)}${D.stat?` · 풀 ${N(D.stat.pool)} → 기본조건 ${N(D.stat.base)} → 수급 통과 ${N(D.stat.flowPass)}`:""}${D.strategy?` · ${trdEsc(D.strategy.name||"")} v${D.strategy.version}`:""}</span></h3>${D.warn?`<div class="trd-halt" style="margin:0 0 8px">${trdEsc(D.warn)}</div>`:""}${picks}<div class="faint" style="font-size:11px;margin-top:6px">행을 누르면 항목별 배점이 보입니다. 조건을 통과한 ${N(D.shadow.length)}종목은 매수 여부와 상관없이 그림자 기록으로 성과 탭에서 비교됩니다.</div>
-      ${rej.length||drop.length?`<details class="au-rej"><summary>탈락한 종목 ${N(rej.length+drop.length)}개와 사유</summary><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>등락</th><th>탈락 사유</th></tr></thead><tbody>${rej.map(r=>`<tr><td>${trdEsc(r.name||r.code)}</td><td class="${trdCls(r.changePct)}">${auPct(r.changePct)}</td><td style="white-space:normal">${trdEsc(r.fails.join(", "))}</td></tr>`).join("")}${drop.map(r=>`<tr><td>${trdEsc(((D.shadow.find(s=>s.code===r.code))||{}).name||r.code)}</td><td>–</td><td>${trdEsc(r.why)}</td></tr>`).join("")}</tbody></table></div></details>`:""}</div>`;
-    // 주문
-    if(D.orders.length)h+=`<div class="card"><h3>주문</h3><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>상태</th><th>체결/주문</th><th>평균가</th><th>비고</th></tr></thead><tbody>${D.orders.map(o=>`<tr><td>${trdEsc(o.name)}</td><td>${trdEsc(AU_ORD[o.st]||o.st)}</td><td>${o.filled?N(o.filled):"–"}${o.qty?`<span class="faint"> / ${N(o.qty)}</span>`:""}</td><td>${o.avg?N(o.avg):"–"}</td><td style="white-space:normal">${trdEsc(o.why||"")}</td></tr>`).join("")}</tbody></table></div></div>`;
-    if(ev&&!ev.none&&ev.items.length)h+=`<div class="card"><h3>종가 판정 결과</h3><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>결과</th><th>사유</th></tr></thead><tbody>${ev.items.map(i=>`<tr><td>${trdEsc(i.name)}</td><td class="${i.ok?"au-on":"faint"}">${i.ok?"넘길 자격 있음":"약함"}</td><td style="white-space:normal">${trdEsc(i.why.join(", ")||"–")}</td></tr>`).join("")}</tbody></table></div>${ev.decision?`<div class="faint" style="font-size:12px;margin-top:6px">결정: ${trdEsc(AU_EOD[ev.decision.kind]||ev.decision.kind)}${ev.decision.timeout?"(무응답)":ev.decision.auto?"(설정에 따라)":""}</div>`:""}</div>`;
-  }
-  // 보유
-  if(A.positions.length||A.carry.length)h+=`<div class="card"><h3>자동매매 보유 <span class="r faint" style="font-size:11px">손절·익절은 가상매매 엔진이 감시</span></h3><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>전략</th><th>수량</th><th>평균가</th><th>현재가</th><th>평가</th><th>손절가</th></tr></thead><tbody>${A.positions.map(p=>{const pc=p.avg>0&&p.last>0?(p.last/p.avg-1)*100:null,cy=A.carry.find(c=>c.code===p.code);return `<tr><td>${trdEsc(p.name||p.code)}</td><td>${cy?`종가베팅 <span class="faint">(${trdEsc(cy.from.slice(5))} 이월${cy.state==="selling"?" · 매도 중":""})</span>`:"장중매매"}</td><td>${N(p.qty)}</td><td>${N(p.avg)}</td><td>${p.last?N(p.last):"–"}</td><td class="${trdCls(pc)}">${auPct(pc)}</td><td>${p.stop?N(p.stop):"–"}</td></tr>`;}).join("")}</tbody></table></div></div>`;
+  const A=TRD.au,G=TRD.aus,ids=auIds();
+  let h=`<div class="card"><h3>오늘 흐름 <span class="r faint" style="font-size:11px">${trdEsc(A.date)}${A.tradingDay?"":" · 휴장일"}</span></h3>${ids.length?ids.map(sid=>auLane(`장중매매 ${auTag(sid)}`,auStepsI(sid))).join(""):'<div class="faint" style="font-size:12.5px">켜진 장중 전략이 없습니다. 전략 탭에서 켜세요.</div>'}${auLane(`종가베팅 · ${trdEsc((auStrat(G.active.closing)||{}).name||"")}`,auStepsC())}</div>`;
+  for(const sid of ids)h+=auRunHtml(sid);
+  if(A.positions.length||A.carry.length)h+=`<div class="card"><h3>자동매매 보유 <span class="r faint" style="font-size:11px">손절·익절은 가상매매 엔진이 감시</span></h3><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>전략</th><th>수량</th><th>평균가</th><th>현재가</th><th>평가</th><th>손절가</th></tr></thead><tbody>${A.positions.map(p=>{const pc=p.avg>0&&p.last>0?(p.last/p.avg-1)*100:null,cy=A.carry.find(c=>c.code===p.code);return `<tr><td>${trdEsc(p.name||p.code)}</td><td>${cy?`종가베팅 <span class="faint">(${trdEsc(cy.from.slice(5))} ${trdEsc(cy.sid?auName(cy.sid):"")} 이월${cy.state==="selling"?" · 매도 중":""})</span>`:`장중 ${trdEsc(p.strategy||"")}`}</td><td>${N(p.qty)}</td><td>${N(p.avg)}</td><td>${p.last?N(p.last):"–"}</td><td class="${trdCls(pc)}">${auPct(pc)}</td><td>${p.stop?N(p.stop):"–"}</td></tr>`;}).join("")}</tbody></table></div></div>`;
   return h;
 }
 
@@ -11305,17 +11315,21 @@ function auTodayHtml(){
 function auStratHtml(){
   const G=TRD.aus,L=(G.strategies||[]).filter(s=>!s.archived);
   let h=G.missing?`<div class="trd-halt">전략 테이블이 아직 없습니다. GitHub Actions "DB 테이블·뷰 생성"을 auto_strategy 로 실행해야 저장할 수 있습니다. 지금은 기본값으로 동작합니다.</div>`:"";
-  h+=`<div class="faint" style="font-size:12px;margin:0 0 10px;line-height:1.6">바꾼 조건은 <b>다음 단계부터</b> 적용됩니다(예: 10:05 전에 바꾸면 오늘 선정부터, 이후면 다음 거래일부터). 이미 산 종목의 손절·익절은 살 때 값을 유지합니다. 저장할 때마다 버전이 올라가고 무엇을 바꿨는지 남습니다.</div>`;
+  const mx=(G.schema&&G.schema.maxActive)||{intraday:3,closing:1},NW=TRD.auNew;
+  h+=`<div class="faint" style="font-size:12px;margin:0 0 10px;line-height:1.6">바꾼 조건은 <b>다음 단계부터</b> 적용됩니다(예: 10:05 전에 바꾸면 오늘 선정부터, 이후면 다음 거래일부터). 이미 산 종목의 손절·익절은 살 때 값을 유지합니다. 장중 전략은 최대 ${mx.intraday}개까지 함께 켜지고 글자 A·B·C로 구분합니다(텔레그램 /매수 A1 B2). 종가베팅은 하나만 켜지며, 다른 것을 켜면 기존 것이 꺼집니다.</div>
+    <div class="au-btns" style="margin:0 0 12px">${NW?`<div class="card au-new"><b>새 전략</b><div class="au-kv" style="margin-top:8px"><label class="au-k" for="auNewKind">유형</label><div class="au-v"><select id="auNewKind" data-aunew="kind"><option value="intraday"${NW.kind==="intraday"?" selected":""}>장중매매</option><option value="closing"${NW.kind==="closing"?" selected":""}>종가베팅</option></select></div><label class="au-k" for="auNewName">이름</label><div class="au-v"><input id="auNewName" data-aunew="name" maxlength="30" value="${trdEsc(NW.name||"")}" placeholder="예: 보수형 장중"></div><label class="au-k" for="auNewDesc">설명</label><div class="au-v"><input id="auNewDesc" data-aunew="desc" maxlength="200" value="${trdEsc(NW.desc||"")}" placeholder="어떤 생각으로 만든 전략인지"></div></div><div class="faint" style="font-size:11.5px;margin-top:6px">기본값으로 만들어지고 꺼진 상태로 시작합니다. 만든 뒤 편집해서 조건을 바꾸세요.</div><div class="au-btns"><button type="button" class="btn" data-aunewgo="1">만들기</button><button type="button" class="btn ghost" data-aunewx="1">취소</button></div></div>`:`<button type="button" class="btn ghost" data-aunewopen="1">+ 새 전략</button>`}</div>`;
   for(const kind of ["intraday","closing"])for(const s of L.filter(x=>x.kind===kind))h+=auStratCard(s);
+  const ar=(G.strategies||[]).filter(s=>s.archived);
+  if(ar.length)h+=`<details class="au-rej"><summary>삭제(보관)한 전략 ${ar.length}개 — 지난 기록은 성과·일지에 남아 있습니다</summary><div style="font-size:12.5px;margin-top:6px">${ar.map(s=>`${trdEsc(s.name)} <span class="faint">v${s.version}</span>`).join(" · ")}</div></details>`;
   return h;
 }
 function auTimeLine(s){
-  const T=TRD.aus.times||{},act=TRD.aus.active[s.kind]===s.id;
-  if(!act)return "";
+  const act=s.kind==="intraday"?(TRD.aus.active.intraday||[]).includes(s.id):TRD.aus.active.closing===s.id,T=s.kind==="intraday"?auT(s.id):(TRD.aus.times||{});
+  if(!act||!s.enabled)return "";
   return s.kind==="intraday"?`${auHM(T.sel)} 선정 → ${auHM(T.notice)} 알림 → ${auHM(T.deadline)} 승인 마감 → 장중 손절·익절 → ${auHM(T.judge)} 판정`:`${auHM(T.judge)} 판정 통과분 인수 → ${auHM(T.convert)} 오버나잇 전환 → 다음 날 ${(T.slices||[]).map(auHM).join("·")} 분할 매도`;
 }
 function auStratCard(s){
-  const kindTx=(TRD.aus.schema.kinds||{})[s.kind]||s.kind,open=!!TRD.auOpen[s.id],E=TRD.auEdit&&TRD.auEdit.id===s.id?TRD.auEdit:null,act=TRD.aus.active[s.kind]===s.id;
+  const kindTx=(TRD.aus.schema.kinds||{})[s.kind]||s.kind,open=!!TRD.auOpen[s.id],E=TRD.auEdit&&TRD.auEdit.id===s.id?TRD.auEdit:null,act=s.kind==="intraday"?(TRD.aus.active.intraday||[]).includes(s.id):TRD.aus.active.closing===s.id,lt=s.kind==="intraday"&&act?auLetter(s.id):"";
   const fs=auFields(s.kind),groups=[...new Set(fs.map(f=>f.group))];
   let body="";
   if(open||E){
@@ -11325,8 +11339,8 @@ function auStratCard(s){
     const V=TRD.auVer[s.id];
     if(V)body+=`<div class="au-g"><h4>변경 이력</h4>${V.length?`<div class="au-ver">${V.map(v=>`<div><b>v${v.version}</b> <span class="faint">${trdEsc((v.at||"").replace("T"," ").slice(0,16))} · ${trdEsc(v.who||"")}</span><div>${(v.changed||[]).map(c=>`${trdEsc(c.label)}: ${trdEsc(c.from)} → ${trdEsc(c.to)}`).join(" · ")||"–"}</div></div>`).join("")}</div>`:'<div class="faint">이력이 없습니다.</div>'}</div>`;
   }
-  return `<div class="card au-sc${s.enabled?"":" off"}"><div class="au-sch"><div><div class="au-sn1">${trdEsc(s.name)} <span class="au-kind ${s.kind}">${trdEsc(kindTx)}</span> <span class="faint" style="font-size:11px">v${s.version}${act&&s.enabled?" · 사용 중":""}</span></div><div class="faint" style="font-size:12px;margin-top:2px">${trdEsc(s.desc||"")}</div>${auTimeLine(s)?`<div style="font-size:12px;margin-top:4px">${trdEsc(auTimeLine(s))}</div>`:""}${s.invalid?`<div class="trd-halt" style="margin-top:6px">저장된 조건 일부가 잘못돼 기본값으로 쓰는 중: ${trdEsc(s.invalid.join(", "))}</div>`:""}</div>
-    <div class="au-scb"><button type="button" class="chip${s.enabled?" on":""}" data-auston="${s.id}" aria-pressed="${s.enabled}">${s.enabled?"켜짐":"꺼짐"}</button>${E?"":`<button type="button" class="chip" data-auopen="${s.id}">${open?"접기":"조건 보기"}</button><button type="button" class="chip" data-auedit="${s.id}">편집</button><button type="button" class="chip" data-auver="${s.id}">이력</button>`}</div></div>${body}</div>`;
+  return `<div class="card au-sc${s.enabled?"":" off"}"><div class="au-sch"><div><div class="au-sn1">${lt?`<span class="au-letter">${lt}</span>`:""}${trdEsc(s.name)} <span class="au-kind ${s.kind}">${trdEsc(kindTx)}</span> <span class="faint" style="font-size:11px">v${s.version}${act&&s.enabled?" · 사용 중":""}</span></div><div class="faint" style="font-size:12px;margin-top:2px">${trdEsc(s.desc||"")}</div>${auTimeLine(s)?`<div style="font-size:12px;margin-top:4px">${trdEsc(auTimeLine(s))}</div>`:""}${s.invalid?`<div class="trd-halt" style="margin-top:6px">저장된 조건 일부가 잘못돼 기본값으로 쓰는 중: ${trdEsc(s.invalid.join(", "))}</div>`:""}</div>
+    <div class="au-scb"><button type="button" class="chip${s.enabled?" on":""}" data-auston="${s.id}" aria-pressed="${s.enabled}">${s.enabled?"켜짐":"꺼짐"}</button>${E?"":`<button type="button" class="chip" data-auopen="${s.id}">${open?"접기":"조건 보기"}</button><button type="button" class="chip" data-auedit="${s.id}">편집</button><button type="button" class="chip" data-auver="${s.id}">이력</button><button type="button" class="chip" data-aucopy="${s.id}">복제</button>${s.builtin?"":`<button type="button" class="chip" data-audel="${s.id}">${auArmTx("del-"+s.id,"삭제","한 번 더 누르면 삭제")}</button>`}`}</div></div>${body}</div>`;
 }
 function auInput(f,E){
   const v=E.draft[f.key],err=(E.errs||{})[f.key],id=`auf-${f.key}`;
@@ -11377,11 +11391,12 @@ function auPerfHtml(){
 function trdAutoHtml(){
   const A=TRD.au,G=TRD.aus;if(!A||!G)return "";
   if(TRD.mode==="REAL")return '<div class="card"><div class="load">자동매매는 가상매매 전용입니다.</div></div>';
-  const I=auStrat(G.active.intraday)||{},C=auStrat(G.active.closing)||{},on=A.cfg.on,msg=TRD.auMsg,D=A.today;
+  const Is=(G.active.intraday||[]).map(auStrat).filter(Boolean),C=auStrat(G.active.closing)||{},on=A.cfg.on,msg=TRD.auMsg,D=A.today,runs=A.todays||[];
   const pos=A.positions||[],pv=pos.reduce((a,p)=>a+(p.last||p.avg)*p.qty,0),pc=pos.reduce((a,p)=>a+p.avg*p.qty,0);
-  const sum=[D?`후보 ${D.picks.length}`:"후보 선정 전",D&&D.orders.length?`매수 ${D.orders.filter(o=>o.filled>0).length}종목`:"",pos.length?`보유 ${pos.length}종목 ${auPct(pc?(pv/pc-1)*100:null)}`:"",(A.carry||[]).length?`이월 ${A.carry.length}종목`:""].filter(Boolean).join(" · ");
+  const nP=runs.reduce((a,r)=>a+r.picks.length,0),nB=runs.reduce((a,r)=>a+r.orders.filter(o=>o.filled>0).length,0);
+  const sum=[runs.length?`후보 ${nP}`:"후보 선정 전",nB?`매수 ${nB}종목`:"",pos.length?`보유 ${pos.length}종목 ${auPct(pc?(pv/pc-1)*100:null)}`:"",(A.carry||[]).length?`이월 ${A.carry.length}종목`:""].filter(Boolean).join(" · ");
   const band=`<div class="card au-band${on?"":" off"}"><div class="au-bt"><button type="button" class="au-sw${on?" on":""}" data-auon="${on?0:1}" aria-pressed="${on}"${TRD.auBusy?" disabled":""}><span></span>${on?"전체 켜짐":"전체 꺼짐"}</button>
-      <div class="au-bi"><div><b>장중</b> ${trdEsc(I.name||"–")} <span class="${I.enabled?"au-on":"faint"}">${I.enabled?"켜짐":"꺼짐"}</span> · <b>종가</b> ${trdEsc(C.name||"–")} <span class="${C.enabled?"au-on":"faint"}">${C.enabled?"켜짐":"꺼짐"}</span> · 종목당 ${trdFmtAmt((I.params||{}).perStockKrw||0)}원</div>
+      <div class="au-bi"><div><b>장중</b> ${Is.length?Is.map(I=>`<span class="au-letter">${trdEsc(auLetter(I.id))}</span>${trdEsc(I.name)} <span class="faint">${trdFmtAmt(I.params.perStockKrw)}원</span>`).join(" · "):'<span class="faint">켜진 전략 없음</span>'} · <b>종가</b> ${trdEsc(C.name||"–")} <span class="${C.enabled?"au-on":"faint"}">${C.enabled?"켜짐":"꺼짐"}</span></div>
       <div class="faint">${A.tradingDay?trdEsc(auNext()):"휴장일"}${sum?" · "+trdEsc(sum):""}</div></div>
       <button type="button" class="chip" data-aur="1">새로고침</button></div>
     ${msg?`<div class="${msg.ok||msg.t==="처리 중…"?"au-msg":"trd-halt"}" style="margin-top:8px">${trdEsc(msg.t)}</div>`:""}${A.lastErr?`<div class="trd-halt" style="margin-top:8px">최근 서버 오류: ${trdEsc(A.lastErr)}</div>`:""}
@@ -11396,16 +11411,24 @@ function auClick(t){
   if((el=t.closest("[data-auon]"))){const on=el.dataset.auon==="1";auPost("/trade/auto/config",{on},()=>on?"전체 스위치를 켰습니다.":"전체 스위치를 껐습니다. 이미 산 종목 관리는 계속됩니다.").then(()=>trdLoadAuto());return true;}
   if(t.closest("[data-aur]")){TRD.auMsg=null;trdLoadAuto();return true;}
   if((el=t.closest("[data-aupk]"))){const c=el.dataset.aupk;TRD.auPick=TRD.auPick===c?null:c;trdAutoRender();return true;}
-  if((el=t.closest("[data-auapprove]"))){const k=el.dataset.auapprove,D=TRD.au.today;if(el.disabled)return true;
-    const key=k==="sel"?"buy-sel":k==="all"?"buy-all":"pass";if(!auArmed(key))return true;
-    const nums=k==="all"?D.picks.map((_,i)=>i+1):[...TRD.auSel.buy].sort((a,b)=>a-b);
-    auPost("/trade/auto/approve",k==="pass"?{kind:"pass"}:{kind:"buy",nums}).then(()=>{TRD.auSel.buy.clear();trdLoadAuto();});return true;}
-  if((el=t.closest("[data-aueodgo]"))){const k=el.dataset.aueodgo;if(el.disabled)return true;
-    if(k!=="keep"&&!auArmed(k==="sel"?"eod-sel":"eod-all"))return true;
-    const weak=TRD.au.today.eod.items.filter(i=>!i.ok),nums=k==="all"?weak.map((_,i)=>i+1):[...TRD.auSel.eod].sort((a,b)=>a-b);
-    auPost("/trade/auto/eod",k==="keep"?{kind:"keep"}:{kind:"sell",nums}).then(()=>{TRD.auSel.eod.clear();trdLoadAuto();});return true;}
+  if((el=t.closest("[data-auapprove]"))){const k=el.dataset.auapprove,sid=el.dataset.ausid,D=auRun(sid);if(el.disabled||!D)return true;
+    const key=(k==="sel"?"buy-sel-":k==="all"?"buy-all-":"pass-")+sid;if(!auArmed(key))return true;
+    const sel=TRD.auSel.buy[sid]||new Set(),nums=k==="all"?D.picks.map((_,i)=>i+1):[...sel].sort((a,b)=>a-b);
+    auPost("/trade/auto/approve",k==="pass"?{kind:"pass",strategy:sid}:{kind:"buy",nums,strategy:sid}).then(()=>{delete TRD.auSel.buy[sid];trdLoadAuto();});return true;}
+  if((el=t.closest("[data-aueodgo]"))){const k=el.dataset.aueodgo,sid=el.dataset.ausid,D=auRun(sid);if(el.disabled||!D||!D.eod)return true;
+    if(k!=="keep"&&!auArmed((k==="sel"?"eod-sel-":"eod-all-")+sid))return true;
+    const weak=D.eod.items.filter(i=>!i.ok),sel=TRD.auSel.eod[sid]||new Set(),nums=k==="all"?weak.map((_,i)=>i+1):[...sel].sort((a,b)=>a-b);
+    auPost("/trade/auto/eod",k==="keep"?{kind:"keep",strategy:sid}:{kind:"sell",nums,strategy:sid}).then(()=>{delete TRD.auSel.eod[sid];trdLoadAuto();});return true;}
+  if(t.closest("[data-aunewopen]")){TRD.auNew={kind:"intraday",name:"",desc:""};TRD.auMsg=null;trdAutoRender();return true;}
+  if(t.closest("[data-aunewx]")){TRD.auNew=null;trdAutoRender();return true;}
+  if(t.closest("[data-aunewgo]")){const n=TRD.auNew;if(!n)return true;
+    auPost("/trade/auto/strategy-new",{kind:n.kind,name:n.name,desc:n.desc},r=>`만들었습니다: ${r.strategy.name}(꺼짐). 편집해서 조건을 바꾸세요.`).then(r=>{if(r){TRD.auNew=null;TRD.auOpen[r.strategy.id]=true;trdLoadAuto();}else trdAutoRender();});return true;}
+  if((el=t.closest("[data-aucopy]"))){const s=auStrat(el.dataset.aucopy);if(!s)return true;
+    auPost("/trade/auto/strategy-new",{from:s.id},r=>`복제했습니다: ${r.strategy.name}(꺼짐)`).then(r=>{if(r){TRD.auOpen[r.strategy.id]=true;trdLoadAuto();}else trdAutoRender();});return true;}
+  if((el=t.closest("[data-audel]"))){const id=el.dataset.audel,s=auStrat(id);if(!auArmed("del-"+id))return true;
+    auPost("/trade/auto/strategy-delete",{id},()=>`삭제(보관)했습니다: ${s?s.name:id}`).then(r=>{if(r)trdLoadAuto();else trdAutoRender();});return true;}
   if((el=t.closest("[data-auston]"))){const s=auStrat(el.dataset.auston);if(!s)return true;const on=!s.enabled;
-    auPost("/trade/auto/strategy",{id:s.id,enabled:on},()=>`${s.name}: ${on?"켰습니다":"껐습니다"}`).then(r=>{if(r){delete TRD.auVer[s.id];trdLoadAuto();}else trdAutoRender();});return true;}
+    auPost("/trade/auto/strategy",{id:s.id,enabled:on},r=>`${s.name}: ${on?"켰습니다":"껐습니다"}${r.turnedOff&&r.turnedOff.length?` (종가베팅은 하나만 — ${r.turnedOff.join(", ")} 꺼짐)`:""}`).then(r=>{if(r){delete TRD.auVer[s.id];trdLoadAuto();}else trdAutoRender();});return true;}
   if((el=t.closest("[data-auopen]"))){const id=el.dataset.auopen;TRD.auOpen[id]=!TRD.auOpen[id];trdAutoRender();return true;}
   if((el=t.closest("[data-auedit]"))){const s=auStrat(el.dataset.auedit);if(s){TRD.auEdit={id:s.id,draft:JSON.parse(JSON.stringify(s.params)),errs:{}};TRD.auMsg=null;trdAutoRender();}return true;}
   if(t.closest("[data-aucancel]")){TRD.auEdit=null;TRD.auMsg=null;trdAutoRender();return true;}
@@ -11417,8 +11440,8 @@ function auClick(t){
 }
 /* 입력 처리: 편집 중인 값만 바꾸고 변경점 칸만 다시 그림(입력칸 포커스 유지) */
 function auInputEv(t){
-  if(t.dataset.aubuy){const n=+t.dataset.aubuy;t.checked?TRD.auSel.buy.add(n):TRD.auSel.buy.delete(n);trdAutoRender();return true;}
-  if(t.dataset.aueod){const n=+t.dataset.aueod;t.checked?TRD.auSel.eod.add(n):TRD.auSel.eod.delete(n);trdAutoRender();return true;}
+  if(t.dataset.aubuy||t.dataset.aueod){const g=t.dataset.aubuy?"buy":"eod",sid=t.dataset.ausid,n=+(t.dataset.aubuy||t.dataset.aueod),S2=TRD.auSel[g][sid]=TRD.auSel[g][sid]||new Set();t.checked?S2.add(n):S2.delete(n);trdAutoRender();return true;}
+  if(t.dataset.aunew&&TRD.auNew){TRD.auNew[t.dataset.aunew]=t.value;return true;}
   const k=t.dataset.auf,E=TRD.auEdit;if(!k||!E)return false;
   if(k==="weights"){E.draft.weights={...E.draft.weights,[t.dataset.wp]:t.value};const w=$("#auWsum");if(w)w.textContent="합계 "+Object.values(E.draft.weights).reduce((a,x)=>a+(+x||0),0);}
   else if(t.type==="checkbox"){E.draft[k]=t.checked;const l=t.parentElement;if(l&&l.lastChild)l.lastChild.textContent=" "+(t.checked?"켜기":"끄기");}

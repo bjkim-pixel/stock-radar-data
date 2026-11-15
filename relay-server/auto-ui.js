@@ -9,8 +9,9 @@ const kstDate = ts => new Date(Date.parse(ts) + 9 * 3600e3).toISOString().slice(
 function summarizeRun(r, full) {
   const p = (r && r.payload) || {}, ords = p.orders || {};
   const names = {}; (p.picks || []).forEach(x => { names[x.code] = x.name; }); (p.shadow || []).forEach(x => { if (!names[x.code]) names[x.code] = x.name; });
+  const sid = r.strategy_id || (p.strategy && p.strategy.id) || 'intraday-default';
   const out = {
-    date: r.trade_date, status: r.status,
+    date: r.trade_date, status: r.status, sid, key: `${r.trade_date}|${sid}`, letter: p.letter || null,
     decision: p.decision ? { kind: p.decision.kind, nums: p.decision.nums || null } : null,
     warn: p.warn || null, noticeSent: !!p.noticeSent,
     picks: (p.picks || []).map(x => full
@@ -37,12 +38,13 @@ function summarizeRun(r, full) {
 function attributeRealized(runs, sells) {
   const byDate = runs.slice().sort((a, b) => a.date < b.date ? -1 : 1);
   const res = {};
-  byDate.forEach(r => { res[r.date] = { realized: 0, n: 0 }; });
+  const K = r => r.key || r.date;
+  byDate.forEach(r => { res[K(r)] = { realized: 0, n: 0 }; });
   for (const s of sells) {
     const d = kstDate(s.ts);
     let hit = null;
     for (const r of byDate) { if (r.date <= d && r.orders.some(o => o.code === s.code && o.filled > 0)) hit = r; }   // 날짜 오름차순이라 마지막 일치 = 가장 최근
-    if (hit) { res[hit.date].realized += +s.realized || 0; res[hit.date].n++; }
+    if (hit) { res[K(hit)].realized += +s.realized || 0; res[K(hit)].n++; }
   }
   return res;
 }
@@ -61,10 +63,10 @@ function shadowReturns(run, closes) {
 function buildHistory(runs, realized, closes, today) {
   const rows = runs.map(r => {
     const cost = r.orders.reduce((a, o) => a + (o.filled || 0) * (o.avg || 0), 0);
-    const re = realized[r.date] || { realized: 0, n: 0 };
+    const re = realized[r.key || r.date] || { realized: 0, n: 0 };
     const sh = r.date < today ? shadowReturns(r, closes) : null;
     return {
-      date: r.date, status: r.status, decision: r.decision,
+      date: r.date, status: r.status, decision: r.decision, sid: r.sid || null, strategy: r.strategy ? r.strategy.name : null,
       picks: r.picks.length, shadowN: r.shadow.length,
       bought: r.orders.filter(o => o.filled > 0).map(o => ({ code: o.code, name: o.name, qty: o.filled, avg: o.avg })),
       cost: Math.round(cost), realized: Math.round(re.realized), sells: re.n,

@@ -161,7 +161,7 @@ function createEod(deps) {
       const p = H.get(code);
       if (!p || !(p.qty > 0)) continue;
       const e = await D.paper.editPlan({ code, stopPct: R.overnightStopPct, steps: [] });   // 분할 익절 끄기, 손절은 종가베팅 설정값(기본 −5%)
-      add.push({ code, name: p.name || nameOf(run, code), q0: p.qty, avg: p.avg, from: date, sold: 0, planOk: !!(e && e.ok) });
+      add.push({ code, name: p.name || nameOf(run, code), q0: p.qty, avg: p.avg, from: date, sold: 0, planOk: !!(e && e.ok), sid: D.tag || null });   // sid = 넘겨준 장중 전략
     }
     await D.mutateCarry(c => { c.items = c.items || {}; for (const a of add) c.items[a.code] = { ...a, at: now(), state: 'wait' }; });
     await D.mutateRun(date, r => { r.payload.carryDone = { at: now(), codes: add.map(a => a.code) }; });

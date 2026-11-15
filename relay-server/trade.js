@@ -664,9 +664,19 @@ function createTrade(deps = {}) {
       const kind = String(body.kind || ''), nums = Array.isArray(body.nums) ? [...new Set(body.nums.map(Number))] : [];
       if (!kinds.includes(kind)) return json(res, 400, { ok: false, error: 'bad kind' });
       if ((kind === 'buy' || kind === 'sell') && (!nums.length || nums.length > 20 || nums.some(n => !Number.isInteger(n) || n < 1 || n > 20))) return json(res, 400, { ok: false, error: '번호를 골라 주세요' });
-      const r = await autoRef[fn](kind, nums).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
-      audit(path === '/trade/auto/approve' ? 'auto_approve' : 'auto_eod', !!r.ok, { kind, nums }, req, 'VIRTUAL');
+      const sid = body.strategy == null ? null : String(body.strategy);
+      if (sid && !/^[a-z]+-[a-z0-9]{1,20}$/.test(sid)) return json(res, 400, { ok: false, error: 'bad strategy' });
+      const r = await autoRef[fn](kind, nums, sid).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
+      audit(path === '/trade/auto/approve' ? 'auto_approve' : 'auto_eod', !!r.ok, { kind, nums, strategy: sid }, req, 'VIRTUAL');
       return json(res, 200, r);
+    }
+    if (path === '/trade/auto/strategy-new' || path === '/trade/auto/strategy-delete') {   // 전략 추가(기본값/복제) · 삭제(보관)
+      const isNew = path === '/trade/auto/strategy-new', fn = isNew ? 'createStrategy' : 'deleteStrategy';
+      if (!autoRef || !autoRef[fn]) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      const arg = isNew ? { kind: body.kind, name: body.name, desc: body.desc, from: body.from } : String(body.id || '');
+      const r = await autoRef[fn](arg, 'site').catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
+      audit(isNew ? 'auto_strategy_new' : 'auto_strategy_delete', !!r.ok, isNew ? { kind: body.kind, from: body.from, id: r.strategy && r.strategy.id, error: r.error } : { id: arg, error: r.error }, req, 'VIRTUAL');
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
     }
     if (path === '/trade/auto/strategy') {   // 전략 조건값·켜기/끄기·이름 저장(버전 +1, 바뀐 항목 기록). 가상매매 전용
       if (!autoRef || !autoRef.saveStrategy) return json(res, 503, { ok: false, error: 'auto unavailable' });

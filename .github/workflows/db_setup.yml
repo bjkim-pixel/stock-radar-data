@@ -15,6 +15,7 @@ name: "[수시] DB 테이블·뷰 생성 | 수동 | 스키마 설정"
 #   live_trading  — 실전매매 기록 테이블 4개(163, relay 전용 · all 에 포함 안 됨)
 #   auto_trade    — 자동매매 후보·그림자 기록 테이블 2개(164, relay 전용 · all 에 포함 안 됨)
 #   auto_strategy — 자동매매 전략·버전 테이블 2개 + 기본 전략(165, relay 전용 · auto_trade 다음에 실행)
+#   auto_multi    — 자동매매 여러 전략 동시 실행: auto_runs 키를 (날짜, 전략)으로(166)
 #   all        — 위 전부 (drop_nxt 는 포함되지 않음)
 #   drop_nxt   — daily_price 의 NXT 컬럼 4개 삭제(120_drop_nxt_columns.sql, 되돌릴 수 없음 · all 에 포함 안 됨)
 on:
@@ -41,6 +42,7 @@ on:
           - live_trading
           - auto_trade
           - auto_strategy
+          - auto_multi
 
 permissions:
   contents: write
@@ -101,5 +103,5 @@ jobs:
           branch: db-setup-report
           file: ${{ inputs.target == 'data_version' && 'data_version_report.md' || 'flow_periods_fast_report.md' }}
       - name: 매매 보안 (감사 테이블·소유자 함수 / 데이터 잠금 / 잠금 해제)
-        if: inputs.target == 'trade_security' || inputs.target == 'lock_data' || inputs.target == 'unlock_data' || inputs.target == 'paper_trading' || inputs.target == 'live_trading' || inputs.target == 'auto_trade' || inputs.target == 'auto_strategy'
+        if: inputs.target == 'trade_security' || inputs.target == 'lock_data' || inputs.target == 'unlock_data' || inputs.target == 'paper_trading' || inputs.target == 'live_trading' || inputs.target == 'auto_trade' || inputs.target == 'auto_strategy' || inputs.target == 'auto_multi'
         run: python 160_trade_setup.py ${{ inputs.target }}
