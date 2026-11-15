@@ -1034,6 +1034,16 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .eh-t td,.eh-t th{padding:6px 7px;white-space:nowrap}.eh-t td.l,.eh-t th.l{text-align:left}
 .eh-g{border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin:6px 0}.eh-g.hot{border-color:color-mix(in srgb,var(--up) 45%,var(--border));background:color-mix(in srgb,var(--up) 6%,transparent)}
 .eh-gh{display:flex;justify-content:space-between;gap:8px;font-weight:650;margin-bottom:5px}
+.lv-b{display:inline-block;font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:1px}
+.lv-b.l{background:color-mix(in srgb,var(--up) 14%,transparent);color:var(--up)}.lv-b.i{background:color-mix(in srgb,var(--down) 14%,transparent);color:var(--down)}
+.lv-warn{font-size:12.5px;color:#b45309}
+.lv-mvps{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+.lv-mvp{border:2px solid;border-radius:14px;padding:12px 14px}.lv-mvp.lev{border-color:color-mix(in srgb,var(--up) 40%,var(--border));background:color-mix(in srgb,var(--up) 6%,transparent)}.lv-mvp.inv{border-color:color-mix(in srgb,var(--down) 40%,var(--border));background:color-mix(in srgb,var(--down) 6%,transparent)}
+.lv-mh{display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-bottom:6px}.lv-mn{font-size:17px;font-weight:800;margin-bottom:4px}
+.lv-ms{display:grid;grid-template-columns:repeat(3,auto) 1fr;gap:6px 14px;margin-top:8px;align-items:end}.lv-ms span{display:block;font-size:11.5px;color:var(--ink-3)}.lv-ms b{font-size:15px}.lv-mr{text-align:right}.lv-mr b{font-size:24px}
+.lv-row{display:flex;align-items:center;gap:6px;padding:9px 2px;border-bottom:1px solid var(--border)}.lv-row:last-child{border-bottom:0}.lv-rk{width:22px;text-align:center;color:var(--ink-3);font-size:13px}.lv-rn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}.lv-rv{min-width:64px;text-align:right;font-weight:700}
+.lv-sent{display:flex;align-items:center;gap:14px}.lv-big{font-size:30px;font-weight:800;min-width:88px}.lv-sp-w{flex:1;color:var(--accent,#2f6fed)}.lv-sp{width:100%;height:64px}
+.lv-tiles{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px}.lv-tiles span{display:block;font-size:11.5px;color:var(--ink-3)}.lv-tiles b{font-size:15px}
 .eh-chip{display:inline-block;background:var(--surface-2);border-radius:7px;padding:3px 8px;margin:2px 4px 2px 0;font-size:12px}
 .eh-mx table{font-size:11.5px}.eh-mx th{white-space:normal;min-width:62px;max-width:78px;font-size:10.5px;line-height:1.2;vertical-align:bottom}.eh-mx td{text-align:right;padding:5px 6px}
 .eh-mx td.l,.eh-mx th.l{position:sticky;left:0;background:var(--surface);z-index:2;text-align:left;min-width:96px}
@@ -1695,10 +1705,11 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 </section>
 <section id="v-etfhub" class="hide">
   <div class="card" style="margin-top:16px"><h3>ETF <span class="r" id="ehAsOf"></span></h3>
-    <div class="qf seg" id="ehTab"><button class="fchip" data-v="act" aria-pressed="true">액티브</button><button class="fchip" data-v="pas">패시브</button><button class="fchip" disabled title="준비 중">섹터 (준비 중)</button><button class="fchip" disabled title="준비 중">레버리지/인버스 (준비 중)</button></div>
-    <div class="note" style="margin-top:8px">액티브 ETF 운용역들이 <b>공통으로 담은 종목</b>을 찾고, 수익률·RS가 좋은 ETF를 비교합니다. 구성종목은 매일 장마감 후 KIS에서 수집(상위 30종목)합니다.</div></div>
+    <div class="qf seg" id="ehTab"><button class="fchip" data-v="act" aria-pressed="true">액티브</button><button class="fchip" data-v="pas">패시브</button><button class="fchip" disabled title="준비 중">섹터 (준비 중)</button><button class="fchip" data-v="lev">레버리지/인버스</button></div>
+    <div class="note" style="margin-top:8px">액티브·패시브 탭: 액티브 ETF 운용역들이 <b>공통으로 담은 종목</b>을 찾고, 수익률·RS가 좋은 ETF를 비교합니다. 구성종목은 매일 장마감 후 KIS에서 수집(상위 30종목)합니다.</div></div>
   <div id="ehAct"><div class="card"><div class="load sk"></div></div></div>
   <div id="ehPas" class="hide"></div>
+  <div id="ehLev" class="hide"></div>
 </section>
 <section id="v-seclog" class="hide">
   <div class="card" style="margin-top:16px"><h3>보안 로그 <span class="r" id="slSub"></span></h3>
@@ -3435,7 +3446,8 @@ const ehChip=(c,t)=>`<span class="eh-chip">${ehE(c)} <b>${t}</b></span>`;
 function ehRender(){
   const E=S.eh;
   $("#ehAsOf").textContent=E.d0?`구성 기준 ${E.d0}`:"";
-  $("#ehAct").classList.toggle("hide",E.tab!=="act");$("#ehPas").classList.toggle("hide",E.tab!=="pas");
+  $("#ehAct").classList.toggle("hide",E.tab!=="act");$("#ehPas").classList.toggle("hide",E.tab!=="pas");$("#ehLev").classList.toggle("hide",E.tab!=="lev");
+  if(E.tab==="lev"){ehLvRender();return;}
   if(E.tab==="act")ehRenderAct();else ehRenderPas();
 }
 function ehRenderAct(){
@@ -3509,7 +3521,7 @@ function ehRenderPas(){
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${seg("ehPg",[["all","전체"],["mkt","시장·배당"],["sec","업종·테마"],["glb","해외 국가"],["com","원자재"],["etc","채권·기타"]],E.pg)}${seg("ehPs",[["r1m","1개월"],["r3m","3개월"],["r6m","6개월"],["rs","RS"],["ntas","순자산"]],E.ps)}</div>
     <div class="tw"><table class="eh-t"><thead><tr><th>#</th><th class="l">ETF</th><th class="l">분야</th><th>1주</th><th>1개월</th><th>3개월</th><th>6개월</th><th>RS</th><th>순자산</th><th>괴리</th></tr></thead><tbody>
     ${rows.map((m,i)=>{const r=E.ret[m.code]||{},inf=E.info[m.code]||{};return `<tr><td>${i+1}</td><td class="l">${ehE(m.code)}</td><td class="l faint">${escH(m.subfield||m.field||"")}</td><td>${ehPct(r.r1w)}</td><td>${ehPct(r.r1m)}</td><td>${ehPct(r.r3m)}</td><td>${ehPct(r.r6m)}</td><td>${r.rs==null?"–":N(r.rs,0)}</td><td>${inf.ntas_eok==null?"–":N(+inf.ntas_eok,0)+"억"}</td><td>${inf.dprt==null?"–":pm(+inf.dprt,2)+"%"}</td></tr>`;}).join("")||'<tr><td colspan="10" class="load">데이터 없음</td></tr>'}</tbody></table></div>
-    <div class="note" style="margin-top:6px">인버스·레버리지 21개는 별도 탭(준비 중)에서 다룹니다. 패시브는 구성종목 변동을 추적하지 않습니다(지수 추종).</div></div>`;
+    <div class="note" style="margin-top:6px">인버스·레버리지는 "레버리지/인버스" 탭에서 다룹니다. 패시브는 구성종목 변동을 추적하지 않습니다(지수 추종).</div></div>`;
   // 액티브 vs 패시브
   const act=Object.values(S.etfMap||{}).filter(m=>m.mgmt==="액티브"&&m.watch_grp),pas=P.all;
   const avg=a=>{a=a.filter(v=>v!=null);return a.length?a.reduce((x,y)=>x+y,0)/a.length:null;};
@@ -3526,9 +3538,143 @@ function ehWire(){
   on("ehGrp",v=>{E.grp=v;ehRender();});on("ehPick",v=>{E.pick=v;ehRender();});on("ehSort",v=>{E.sort=v;E.cmore=false;ehRender();});
   on("ehPer",v=>{E.per=v;ehRender();});on("ehThr",v=>{E.thr=+v;ehRender();});on("ehLb",v=>{E.lb=v;ehRender();});
   on("ehPg",v=>{E.pg=v;ehRender();});on("ehPs",v=>{E.ps=v;ehRender();});
+  const L=E.lv;if(L){on("ehLvSort",v=>{L.sort=v;ehRender();});on("ehLvPg",v=>{L.pg=v;L.moreP=false;ehRender();});on("ehLvPer",v=>{L.per=v;ehRender();});on("ehLvRg",v=>{L.rg=v;ehRender();});on("ehLvRs",v=>{L.rs=v;ehRender();});on("ehLvEp",v=>{L.ep=v;ehRender();});
+    [["ehLvML","moreL"],["ehLvMI","moreI"],["ehLvMP","moreP"]].forEach(([id,k])=>{const b=$("#"+id);if(b)b.onclick=()=>{L[k]=!L[k];ehRender();};});}
   const mo=$("#ehCMore");if(mo)mo.onclick=()=>{E.cmore=!E.cmore;ehRender();};
 }
-$("#ehTab").addEventListener("seg-change",e=>{S.eh.tab=e.detail==="pas"?"pas":"act";ehLoad();});
+/* ══ ETF 허브 · 레버리지/인버스 탭 — 2026-11-15 ═══════════════════════════════════
+   대상: etf_master 의 분야 '인버스·레버리지'. 일봉(etf_daily)·순자산/상장좌수(etf_info·etf_flow_daily)로 계산. 기초자산 비교는 LV_BASE 에 있는 종목만. */
+const LV_BASE={ // 코드:[기초코드, 배수, 기초이름, 근사여부, 종류(stk=주식)]
+  "122630":["069500",2,"코스피200"],"252670":["069500",-2,"코스피200"],"114800":["069500",-1,"코스피200"],
+  "233740":["229200",2,"코스닥150"],"251340":["229200",-1,"코스닥150"],
+  "0193T0":["000660",2,"SK하이닉스","","stk"],"0197X0":["000660",-2,"SK하이닉스","","stk"],
+  "0193W0":["005930",2,"삼성전자","","stk"],"0193L0":["005930",-2,"삼성전자","","stk"],
+  "494310":["091160",2,"KODEX 반도체"],"243880":["139260",2,"TIGER 200 IT"],"412570":["364980",2,"TIGER 2차전지TOP10"],
+  "462330":["364980",2,"TIGER 2차전지TOP10","근사"],"0100K0":["449450",2,"PLUS K방산","근사"],
+  "236350":["453810",2,"KODEX 인도Nifty50","근사"],"204480":["283580",2,"KODEX 차이나CSI300","근사"]};
+const LV_PAIRS=[["코스피200","122630","252670"],["코스닥150","233740","251340"],["삼성전자","0193W0","0193L0"],["SK하이닉스","0193T0","0197X0"]];
+const LV_PER={r1w:[5,"1주"],r1m:[21,"1개월"],r3m:[63,"3개월"],r6m:[126,"6개월"],r1y:[250,"1년"]};
+const lvSeg=(id,arr,cur)=>`<div class="qf seg" id="${id}">${arr.map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>`;
+const lvPct2=v=>v==null?'<span class="dim">–</span>':`<span class="${sgn(v)}">${pm(v,2)}%</span>`;
+const lvVol=v=>v==null?"–":v>=1e4?N(v/1e4,0)+"만주":N(v,0)+"주";
+const lvAmt=v=>v==null?"–":v>=1e8?N(v/1e8,0)+"억":N(v/1e4,0)+"만";
+const lvBadge=x=>`<span class="lv-b ${x.grp==="lev"?"l":"i"}">${Math.abs(x.mult)}X</span>`;
+const lvName=x=>`${ehE(x.code)} ${lvBadge(x)}`;
+function lvMult(m){return /인버스/.test((m.subfield||"")+(m.flags||""))?(/2X/.test(m.name)?-2:-1):2;}
+async function ehLvLoad(force){
+  const E=S.eh,L=E.lv=E.lv||{loaded:false,busy:false,sort:"chg",per:"r1m",pg:"lev",rg:"all",rs:"chg",ep:"r1m",moreL:false,moreI:false,moreP:false};
+  if(L.loaded&&!force){ehRender();return;}if(L.busy)return;L.busy=true;
+  $("#ehLev").innerHTML='<div class="card"><div class="load sk"></div></div>';
+  try{
+    const list=Object.values(S.etfMap||{}).filter(m=>m.field==="인버스·레버리지");
+    const codes=list.map(m=>m.code),baseE=[...new Set(codes.map(c=>LV_BASE[c]).filter(b=>b&&b[4]!=="stk").map(b=>b[0]))],baseS=[...new Set(codes.map(c=>LV_BASE[c]).filter(b=>b&&b[4]==="stk").map(b=>b[0]))];
+    const all=[...new Set([...codes,...baseE])],chunks=[];for(let i=0;i<all.length;i+=3)chunks.push(all.slice(i,i+3));
+    const from=new Date(Date.now()-380*864e5).toISOString().slice(0,10),f30=new Date(Date.now()-45*864e5).toISOString().slice(0,10);
+    const [rows,stk,info,flow]=await Promise.all([
+      Promise.all(chunks.map(c=>q("etf_daily",`select=code,trade_date,close,volume,amount&code=in.(${c.join(",")})&trade_date=gte.${from}&order=trade_date.asc&limit=1000`).catch(()=>[]))),
+      Promise.all(baseS.map(c=>q("v_stock_chart",`select=trade_date,close&code=eq.${c}&order=trade_date.desc&limit=260`).then(r=>[c,r]).catch(()=>[c,[]]))),
+      codes.length?q("etf_info",`select=code,ntas_eok,listed,nav,dprt&code=in.(${codes.join(",")})`).catch(()=>[]):[],
+      codes.length?q("etf_flow_daily",`select=d,etf_code,listed,ntas_eok,nav&etf_code=in.(${codes.join(",")})&d=gte.${f30}&order=d.asc&limit=1500`).catch(()=>[]):[]]);
+    L.px={};rows.flat().forEach(r=>{(L.px[r.code]=L.px[r.code]||[]).push({d:r.trade_date,c:+r.close,v:+r.volume,a:+r.amount});});
+    stk.forEach(([c,r])=>{L.px[c]=[...r].reverse().map(x=>({d:x.trade_date,c:+x.close}));});
+    L.info={};info.forEach(r=>L.info[r.code]=r);L.flow={};flow.forEach(r=>{(L.flow[r.etf_code]=L.flow[r.etf_code]||[]).push(r);});
+    L.list=list;L.d0=list.map(m=>(L.px[m.code]||[]).slice(-1)[0]).filter(Boolean).map(x=>x.d).sort().pop()||null;
+    L.st=list.map(lvStat);
+    ["lev","inv"].forEach(g=>{const a=L.st.filter(x=>x.grp===g&&x.r1m!=null).map(x=>x.r1m);L.st.filter(x=>x.grp===g).forEach(x=>{x.rs=x.r1m==null||a.length<3?null:Math.round(a.filter(v=>v<=x.r1m).length/a.length*100);});});
+    L.loaded=true;
+  }catch(e){console.error("레버리지/인버스",e);}
+  L.busy=false;ehRender();
+}
+function lvRet(L,code,n){const s=L.px[code];if(!s||s.length<=n)return null;const a=s[s.length-1],b=s[s.length-1-n];return a.d===L.d0&&b.c?(a.c/b.c-1)*100:null;}
+function lvStat(m){
+  const L=S.eh.lv,s=L.px[m.code]||[],last=s[s.length-1],prev=s[s.length-2],fresh=last&&last.d===L.d0,inf=L.info[m.code]||{};
+  const mult=lvMult(m),r={code:m.code,m,mult,grp:mult>0?"lev":"inv",chg:fresh&&prev&&prev.c?(last.c/prev.c-1)*100:null,amt:fresh?last.a:null,vol:fresh?last.v:null,ntas:inf.ntas_eok==null?null:+inf.ntas_eok,close:last?last.c:null};
+  Object.keys(LV_PER).forEach(k=>{r[k]=lvRet(L,m.code,LV_PER[k][0]);});
+  if(s.length>=21){const w=s.slice(-20),av=w.reduce((a,x)=>a+x.c,0)/20;r.sma=(last.c/av-1)*100;
+    const rt=[];for(let i=s.length-20;i<s.length;i++)rt.push((s[i].c/s[i-1].c-1)*100);const mu=rt.reduce((a,b)=>a+b,0)/rt.length;r.vol20=Math.sqrt(rt.reduce((a,b)=>a+(b-mu)*(b-mu),0)/(rt.length-1));}
+  return r;
+}
+const lvVal=(x,k)=>x[k];
+function lvSpark(v){
+  if(!v||v.length<2)return "";const lo=Math.min(...v),hi=Math.max(...v),W=300,H=64,p=v.map((y,i)=>[i/(v.length-1)*W,H-4-(hi===lo?.5:(y-lo)/(hi-lo))*(H-8)]);
+  const l=p[p.length-1];return `<svg viewBox="0 0 ${W} ${H}" class="lv-sp" preserveAspectRatio="none"><polyline fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke" points="${p.map(a=>a[0].toFixed(1)+","+a[1].toFixed(1)).join(" ")}"/><circle cx="${l[0]}" cy="${l[1]}" r="3.5" fill="currentColor"/></svg>`;
+}
+function ehLvRender(){
+  const E=S.eh,L=E.lv,host=$("#ehLev");if(!L||!L.loaded)return;
+  if(!L.list.length||!L.d0){host.innerHTML='<div class="card"><div class="load" style="text-align:left">레버리지·인버스 ETF 일봉이 아직 없습니다. 장마감 후 수집이 돌면 채워집니다.</div></div>';return;}
+  $("#ehAsOf").textContent=`기준 ${L.d0}`;
+  const SK={chg:["등락률",x=>x.chg],amt:["거래대금",x=>x.amt],vol:["거래량",x=>x.vol],ntas:["순자산",x=>x.ntas]};
+  const fmt={chg:x=>lvPct2(x.chg),amt:x=>lvAmt(x.amt),vol:x=>lvVol(x.vol),ntas:x=>x.ntas==null?"–":N(x.ntas,0)+"억"};
+  const byS=(g,k)=>L.st.filter(x=>x.grp===g).sort((a,b)=>(SK[k][1](b)??-1e15)-(SK[k][1](a)??-1e15));
+  // ① 머리말 + 정렬 기준
+  const hdr=`<div class="card" style="margin-top:12px"><h3>레버리지 · 인버스 <span class="r">${L.list.length}종목 · 레버리지 ${L.st.filter(x=>x.grp==="lev").length} · 인버스 ${L.st.filter(x=>x.grp==="inv").length}</span></h3>
+    <div class="lv-warn" style="margin:2px 0 8px">⚠ 일간 수익률의 2배(또는 −1·−2배)를 추구하는 상품입니다. 오래 들고 있으면 지수가 제자리여도 값이 줄어듭니다(변동성 감쇠). 단기 매매용입니다.</div>
+    ${lvSeg("ehLvSort",Object.keys(SK).map(k=>[k,SK[k][0]]),L.sort)}</div>`;
+  // ② MVP
+  const mvp=(g,title)=>{const x=byS(g,L.sort).find(y=>SK[L.sort][1](y)!=null);if(!x)return "";
+    return `<div class="lv-mvp ${g}"><div class="lv-mh"><span>🏆 ${title}</span>${lvBadge(x)}</div><div class="lv-mn">${ehE(x.code)}</div>
+      <div class="lv-warn">⚠ ${Math.abs(x.mult)>=2?"고배수 · 변동성 주의":"하락 베팅 · 장기 보유 주의"}</div>
+      <div class="lv-ms"><div><span>거래대금</span><b>${lvAmt(x.amt)}</b></div><div><span>거래량</span><b>${lvVol(x.vol)}</b></div><div><span>순자산</span><b>${x.ntas==null?"–":N(x.ntas,0)+"억"}</b></div><div class="lv-mr"><span>등락률</span><b class="${sgn(x.chg)}">${x.chg==null?"–":pm(x.chg,2)+"%"}</b></div></div></div>`;};
+  const mv=`<div class="lv-mvps" style="margin-top:12px">${mvp("lev","오늘의 레버리지 MVP")}${mvp("inv","오늘의 인버스 MVP")}</div>`;
+  // ③ 그룹 리스트 (MVP 다음 순위부터)
+  const grpList=(g,title,more,id)=>{const a=byS(g,L.sort),rest=a.slice(1),show=more?rest:rest.slice(0,4);
+    return `<div class="card" style="margin-top:12px"><h3><span class="${g==="lev"?"up":"down"}">${title}</span> <span class="r">${a.length}종목 · ${SK[L.sort][0]} 순</span></h3>
+      ${show.map((x,i)=>`<div class="lv-row"><span class="lv-rk">${i+2}</span><span class="lv-rn">${ehE(x.code)}</span>${lvBadge(x)}<span class="lv-rv">${fmt[L.sort](x)}</span></div>`).join("")||'<div class="load">데이터 없음</div>'}
+      ${rest.length>4?`<div style="text-align:center;margin-top:6px"><button class="btn ghost" id="${id}">${more?"접기":`+${rest.length-4}종목 더보기`}</button></div>`:""}</div>`;};
+  const gl=grpList("lev","레버리지",L.moreL,"ehLvML")+grpList("inv","인버스",L.moreI,"ehLvMI");
+  // ④ 시장 심리 — 레버리지 vs 인버스 거래대금 비중
+  const dm={};L.st.forEach(x=>{(L.px[x.code]||[]).slice(-70).forEach(r=>{const o=dm[r.d]=dm[r.d]||{l:0,i:0};if(x.grp==="lev")o.l+=r.a||0;else o.i+=r.a||0;});});
+  const ds=Object.keys(dm).sort().slice(-60).filter(d=>dm[d].l+dm[d].i>0),sh=ds.map(d=>dm[d].l/(dm[d].l+dm[d].i)*100);
+  let sent='';
+  if(sh.length>=5){const t=sh[sh.length-1],a20=sh.slice(-20).reduce((a,b)=>a+b,0)/Math.min(20,sh.length),pc=Math.round(sh.filter(v=>v<=t).length/sh.length*100);
+    const lab=pc>=80?'<b class="up">레버리지 쏠림</b> — 낙관·과열 구간입니다. 개인 쏠림이 극단일 때는 단기 고점 신호로 보는 시각이 많습니다.':pc<=20?'<b class="down">인버스 쏠림</b> — 비관·헤지 수요가 늘어난 구간입니다. 공포가 클 때는 반등 가능성도 함께 봅니다.':'<b>중립</b> — 한쪽으로 크게 쏠리지 않았습니다.';
+    const c1=L.px["122630"],c2=L.px["252670"],a1=c1&&c1.length&&c1[c1.length-1].d===L.d0?c1[c1.length-1].a:null,a2=c2&&c2.length&&c2[c2.length-1].d===L.d0?c2[c2.length-1].a:null;
+    sent=`<div class="card" style="margin-top:12px"><h3>시장 심리 <span class="r">레버리지 거래대금 비중 · 최근 ${sh.length}일</span></h3>
+      <div class="lv-sent"><div class="lv-big">${N(t,1)}%</div><div class="lv-sp-w">${lvSpark(sh)}</div></div>
+      <div class="lv-tiles"><div><span>20일 평균</span><b>${N(a20,1)}%</b></div><div><span>${sh.length}일 중 순위</span><b>상위 ${Math.max(1,100-pc+1)}%</b></div>${a1&&a2?`<div><span>코스피200 롱 : 숏</span><b>${N(a1/a2,1)} : 1</b></div>`:""}</div>
+      <div style="margin-top:8px">${lab}</div><div class="note" style="margin-top:4px">비중 = 레버리지 전체 거래대금 ÷ (레버리지+인버스 전체 거래대금). 롱:숏은 KODEX 레버리지 ÷ KODEX 200선물인버스2X 거래대금.</div></div>`;}
+  // ⑤ 롱·숏 페어
+  const pr=LV_PAIRS.map(([nm,lc,sc])=>{const a=L.st.find(x=>x.code===lc),b=L.st.find(x=>x.code===sc);if(!a||!b)return "";
+    const w=Math.abs(a.mult)/Math.abs(b.mult),hg=a.r1m!=null&&b.r1m!=null?a.r1m+w*b.r1m:null,ar=a.amt!=null&&b.amt?a.amt/b.amt:null;
+    return `<tr><td class="l"><b>${nm}</b></td><td>${lvPct2(a.chg)}</td><td>${ehPct(a.r1m)}</td><td>${lvPct2(b.chg)}</td><td>${ehPct(b.r1m)}</td><td>${ar==null?"–":N(ar,1)+" : 1"}</td><td>${hg==null?"–":`<span class="${sgn(hg)}">${pm(hg,1)}%</span>`}</td></tr>`;}).join("");
+  const pair=`<div class="card" style="margin-top:12px"><h3>롱 · 숏 페어 <span class="r">같은 기초자산의 레버리지 vs 인버스</span></h3><div class="tw"><table class="eh-t"><thead><tr><th class="l">기초</th><th>롱 오늘</th><th>롱 1개월</th><th>숏 오늘</th><th>숏 1개월</th><th>거래대금 롱:숏</th><th>중립 헤지 1개월</th></tr></thead><tbody>${pr}</tbody></table></div>
+    <div class="note" style="margin-top:6px"><b>중립 헤지 1개월</b> = 롱 수익률 + (롱 배수÷숏 배수)×숏 수익률. 방향을 상쇄해 둔 채 한 달 들고 있었다면 손익입니다. 0보다 한참 낮을수록 변동성 감쇠로 값이 깎였다는 뜻입니다.</div></div>`;
+  // ⑥ 기간별 수익률
+  const pcols=Object.keys(LV_PER),pa=L.st.filter(x=>x.grp===L.pg).sort((a,b)=>(b[L.per]??-1e9)-(a[L.per]??-1e9)),pshow=L.moreP?pa:pa.slice(0,10);
+  const per=`<div class="card" style="margin-top:12px"><h3>기간별 수익률</h3><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${lvSeg("ehLvPg",[["lev","레버리지"],["inv","인버스"]],L.pg)}${lvSeg("ehLvPer",pcols.map(k=>[k,LV_PER[k][1]]),L.per)}</div>
+    ${pshow.map((x,i)=>`<div class="lv-row"><span class="lv-rk">${i+1}</span><span class="lv-rn">${ehE(x.code)}</span>${lvBadge(x)}<span class="lv-rv">${ehPct(x[L.per])}</span></div>`).join("")}
+    ${pa.length>10?`<div style="text-align:center;margin-top:6px"><button class="btn ghost" id="ehLvMP">${L.moreP?"접기":`+${pa.length-10}종목 더보기`}</button></div>`:""}</div>`;
+  // ⑦ 종목 랭킹
+  const rkv=x=>L.rs==="r1m"?x.r1m:SK[L.rs][1](x),rks=[...L.st.filter(x=>L.rg==="all"||x.grp===L.rg)].sort((a,b)=>(rkv(b)??-1e15)-(rkv(a)??-1e15));
+  const rank=`<div class="card" style="margin-top:12px"><h3>종목 랭킹 <span class="r">${rks.length}종목</span></h3><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">${lvSeg("ehLvRg",[["all","전체"],["lev","레버리지"],["inv","인버스"]],L.rg)}${lvSeg("ehLvRs",[["chg","등락률"],["amt","거래대금"],["ntas","순자산"],["r1m","1개월"]],L.rs)}</div>
+    <div class="tw"><table class="eh-t"><thead><tr><th>#</th><th class="l">ETF</th><th class="l">기초</th><th>등락률</th><th>1개월</th><th>RS</th><th>20일선</th><th>일변동성</th><th>거래대금</th><th>순자산</th></tr></thead><tbody>
+    ${rks.map((x,i)=>{const b=LV_BASE[x.code];return `<tr><td>${i+1}</td><td class="l">${lvName(x)}</td><td class="l faint">${escH(b?b[2]:(x.m.country||"–"))}</td><td>${lvPct2(x.chg)}</td><td>${ehPct(x.r1m)}</td><td>${x.rs==null?"–":N(x.rs,0)}</td><td>${x.sma==null?"–":`<span class="${sgn(x.sma)}">${x.sma>=0?"▲":"▼"} ${N(Math.abs(x.sma),1)}%</span>`}</td><td>${x.vol20==null?"–":N(x.vol20,1)+"%"}</td><td>${lvAmt(x.amt)}</td><td>${x.ntas==null?"–":N(x.ntas,0)+"억"}</td></tr>`;}).join("")}</tbody></table></div>
+    <div class="note" style="margin-top:6px">RS = 같은 그룹(레버리지끼리·인버스끼리) 안에서 1개월 수익률 백분위. 일변동성 = 최근 20일 일간 수익률의 표준편차(%). 20일선 = 종가가 20일 평균선 위(▲)·아래(▼)로 몇 % 떨어져 있는지.</div></div>`;
+  // ⑧ 레버리지 효율 체크
+  const bs=(code)=>L.px[code];
+  const eff=L.st.filter(x=>LV_BASE[x.code]).map(x=>{const b=LV_BASE[x.code],bp=bs(b[0]),sp=L.px[x.code],n=LV_PER[L.ep][0];
+    if(!bp||!sp||bp.length<=n||sp.length<=n||bp[bp.length-1].d!==L.d0)return null;
+    const br=(bp[bp.length-1].c/bp[bp.length-1-n].c-1)*100,ar=x[L.ep];if(ar==null)return null;const exp=x.mult*br;
+    const bm={};bp.forEach(r=>bm[r.d]=r.c);const xs=[],ys=[];for(let i=Math.max(1,sp.length-60);i<sp.length;i++){const d0=sp[i-1].d,d1=sp[i].d;if(bm[d0]&&bm[d1]){xs.push(bm[d1]/bm[d0]-1);ys.push(sp[i].c/sp[i-1].c-1);}}
+    const sxx=xs.reduce((a,v)=>a+v*v,0),sxy=xs.reduce((a,v,i)=>a+v*ys[i],0),beta=xs.length>=20&&sxx>0?sxy/sxx:null;
+    return {x,b,br,exp,ar,diff:ar-exp,beta};}).filter(Boolean);
+  const effT=eff.length?`<div class="tw"><table class="eh-t"><thead><tr><th class="l">ETF</th><th class="l">기초</th><th>기초 ${LV_PER[L.ep][1]}</th><th>단순 N배</th><th>실제</th><th>차이</th><th>실효 배수</th></tr></thead><tbody>${eff.map(e=>`<tr><td class="l">${lvName(e.x)}</td><td class="l faint">${escH(e.b[2])}${e.b[3]?` <span class="dim">(${e.b[3]})</span>`:""}</td><td>${ehPct(e.br)}</td><td>${ehPct(e.exp)}</td><td>${ehPct(e.ar)}</td><td><span class="${sgn(e.diff)}">${pm(e.diff,1)}%p</span></td><td>${e.beta==null?"–":N(e.beta,2)+"배"}</td></tr>`).join("")}</tbody></table></div>`:'<div class="load" style="text-align:left">기초자산 일봉(KODEX 200·코스닥150 등)이 아직 수집되지 않았습니다. 다음 장마감 수집부터 표시됩니다.</div>';
+  const effC=`<div class="card" style="margin-top:12px"><h3>레버리지 효율 체크 <span class="r">기초자산 대비 실제 성과</span></h3>${lvSeg("ehLvEp",[["r1m","1개월"],["r3m","3개월"],["r6m","6개월"]],L.ep)}<div style="height:8px"></div>${effT}
+    <div class="note" style="margin-top:6px"><b>단순 N배</b> = 기초자산 기간 수익률 × 배수(인버스는 −). <b>차이</b>가 −로 크면 변동성 감쇠·추적 오차·비용으로 기대에 못 미친 것입니다. <b>실효 배수</b>는 최근 60일 일간 수익률 회귀 기울기로, 2배 상품이 실제로 약 2배로 움직이는지 보여줍니다. (근사) 표시는 기초자산과 완전히 같지 않은 대용 ETF를 쓴 항목입니다.</div></div>`;
+  // ⑨ 자금 유입·유출
+  const fl=L.st.map(x=>{const r=L.flow[x.code]||[];if(r.length<2)return null;const a=r[Math.max(0,r.length-6)],b=r[r.length-1];if(a.listed==null||b.listed==null||b.nav==null)return null;
+    return {x,eok:(b.listed-a.listed)*(+b.nav)/1e8,pc:a.listed?(b.listed/a.listed-1)*100:null,days:r.length-Math.max(0,r.length-6)};}).filter(Boolean).sort((a,b)=>b.eok-a.eok);
+  const maxDays=Math.max(0,...L.st.map(x=>(L.flow[x.code]||[]).length));
+  let flC;
+  if(!fl.length)flC=`<div class="load" style="text-align:left">상장좌수 기록이 아직 ${maxDays}일치뿐입니다. 매 장마감 후 쌓이며, 이틀치 이상 모이면 자금 유입·유출을 계산합니다.</div>`;
+  else{const sh=fl.length>10?[...fl.slice(0,5),...fl.slice(-5)]:fl;
+    flC=`<div class="tw"><table class="eh-t"><thead><tr><th class="l">ETF</th><th>자금 증감</th><th>좌수 증감</th><th>기간</th></tr></thead><tbody>${sh.map(f=>`<tr><td class="l">${lvName(f.x)}</td><td><span class="${sgn(f.eok)}"><b>${pm(f.eok,0)}억</b></span></td><td>${ehPct(f.pc)}</td><td>${f.days}일</td></tr>`).join("")}</tbody></table></div>`;}
+  const flow=`<div class="card" style="margin-top:12px"><h3>자금 유입 · 유출 <span class="r">최근 최대 5거래일 · 상위·하위 5</span></h3>${flC}
+    <div class="note" style="margin-top:6px">상장좌수 증감 × 기준가격으로 추정한 신규 자금입니다. 좌수 기록은 11/14부터 쌓이고 있어 처음 며칠은 기간이 짧습니다.</div></div>`;
+  host.innerHTML=hdr+mv+gl+sent+pair+per+rank+effC+flow;ehWire();etfWire(host);
+}
+
+$("#ehTab").addEventListener("seg-change",e=>{S.eh.tab=e.detail==="pas"?"pas":e.detail==="lev"?"lev":"act";if(S.eh.tab==="lev")ehLvLoad();else ehLoad();});
 
 /* ══ 접속 기기 식별 · 보안 로그 — 2026-11-15 ═══════════════════════════════════
    모든 거래 요청에 기기 ID(무작위, 이 브라우저에만 저장)와 기기 이름·모델(Chrome UA-CH)을 실어 보냄 → 서버 감사 기록·텔레그램 알림에 표시. */
@@ -4284,7 +4430,7 @@ function go(v,detailCode){
       detailJustLoaded=true;
     }
   }
-  if(v==="etfhub")ehLoad();
+  if(v==="etfhub"){if(S.eh.tab==="lev")ehLvLoad();else ehLoad();}
   if(v==="seclog")slLoad();
   if(v==="etf"){const c=detailCode||S.etf.code;if(c&&(c!==S.etf.code||detailCode))etfLoad(c);}
   if(v==="proc")procEnter();

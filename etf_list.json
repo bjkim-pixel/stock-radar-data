@@ -1273,5 +1273,25 @@
   "watch_grp": "업종",
   "watch_sector": "2차전지",
   "watch_ord": 25
+ },
+ {
+  "code": "069500",
+  "name": "KODEX 200",
+  "field": "국내 시장지수",
+  "subfield": "시장대표",
+  "tags": "",
+  "country": "",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "229200",
+  "name": "KODEX 코스닥150",
+  "field": "국내 시장지수",
+  "subfield": "시장대표",
+  "tags": "",
+  "country": "",
+  "mgmt": "패시브",
+  "flags": ""
  }
 ]
