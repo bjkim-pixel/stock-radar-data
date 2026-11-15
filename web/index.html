@@ -9786,14 +9786,14 @@ const trdNow=()=>Date.now()+TRD.off;
 function trdNonce(){const a=new Uint8Array(12);crypto.getRandomValues(a);return [...a].map(x=>x.toString(36).padStart(2,"0")).join("").slice(0,20)+"x";}
 
 /* relay 호출: 로그인 토큰 + (있으면) 거래 세션. POST 에는 1회용 nonce·시각을 붙임 */
-async function trdApi(path,{method="GET",body}={}){
+async function trdApi(path,{method="GET",body,sess,timeout}={}){
   const tok=await authTok();
   if(!tok){const e=new Error("login");e.status=401;e.code="login";throw e;}
   const h={authorization:"Bearer "+tok};
-  if(TRD.sess)h["x-trade-session"]=TRD.sess;
+  if(sess||TRD.sess)h["x-trade-session"]=sess||TRD.sess;
   let b;
   if(method==="POST"){h["content-type"]="application/json";b=JSON.stringify({...(body||{}),nonce:trdNonce(),ts:trdNow()});}
-  const r=await fetch(RELAY_HTTP_BASE+path,{method,headers:h,body:b,cache:"no-store"});
+  const r=await fetch(RELAY_HTTP_BASE+path,{method,headers:h,body:b,cache:"no-store",...(timeout?{signal:AbortSignal.timeout(timeout)}:{})});
   const j=await r.json().catch(()=>({}));
   if(!r.ok){const e=new Error(j.error||("HTTP "+r.status));e.status=r.status;e.body=j;throw e;}
   return j;
@@ -9896,7 +9896,7 @@ async function trdEnter(){
   TRD.mode=S.tradeMode==="REAL"?"REAL":"VIRTUAL";
   setTimeout(()=>trdTab(TRD.pane||"order"),0);
   $("#trdBand").className="trd-band "+(TRD.mode==="REAL"?"real":"virt");
-  $("#trdBandTx").innerHTML=TRD.mode==="REAL"?"<b>실전</b> · KIS 실제 계좌 — 주문이 실제로 체결됩니다":"<b>가상</b> · 자체 체결 시뮬레이터 (실제 주문은 나가지 않음)";
+  $("#trdBandTx").innerHTML=TRD.mode==="REAL"?(TRD.st&&TRD.st.realEnabled===false?"<b>실전</b> · 서버 스위치 꺼짐(REAL_TRADING_ENABLED=0) — 주문 불가, 조회만 가능":"<b>실전</b> · KIS 실제 계좌 — 주문이 실제로 체결됩니다"):"<b>가상</b> · 자체 체결 시뮬레이터 (실제 주문은 나가지 않음)";
   trdRenderQ();
   if(!AUTH.s){$("#trdPinRow").classList.add("hide");trdGateMsg('로그인이 필요합니다. <button class="btn" id="trdLogin" type="button">로그인</button>');$("#trdLogin").onclick=()=>authShow();return;}
   try{
@@ -9970,6 +9970,7 @@ function trdRenderStatus(){
   const st=TRD.st||{},h=$("#trdHalt");
   const why=[st.halted?"긴급 정지 중 — 신규 매수가 막혀 있습니다":"",!st.enabled?"매매 기능이 꺼져 있습니다(서버 TRADING_ENABLED=0) — 조회·계산만 가능":""].filter(Boolean).join(" / ");
   h.textContent=why;h.classList.toggle("hide",!why);
+  if(TRD.mode==="REAL"){const bt=$("#trdBandTx");if(bt)bt.innerHTML=st.realEnabled===false?"<b>실전</b> · 서버 스위치 꺼짐(REAL_TRADING_ENABLED=0) — 주문 불가, 조회만 가능":"<b>실전</b> · KIS 실제 계좌 — 주문이 실제로 체결됩니다";}
   $("#trdKill").textContent=st.halted?"정지 해제":"긴급 정지";
   $("#trdKill").classList.toggle("on",!!st.halted);
   if(TRD.quote)trdRenderOrder();
@@ -9981,7 +9982,9 @@ async function trdKill(){
     await trdRefreshStatus();trdRenderStatus();
   }catch(e){alert(e.status===401?"해제하려면 PIN 세션이 필요합니다. 새로고침 후 PIN을 입력하세요.":"실패: "+e.message);}
 }
-async function trdLock(){try{await trdApi("/trade/lock",{method:"POST"});}catch(_){}trdSetSess(null);trdStop();trdShowPin("세션을 잠갔습니다.");}
+// 2026-11-15: 화면은 바로 잠그고(서버가 느리거나 재배포 중이어도 반응 없음 방지), 서버 세션 종료는 뒤에서 보냄.
+function trdLock(){const sess=TRD.sess;trdSetSess(null);trdStop();trdShowPin("세션을 잠갔습니다.");
+  if(sess)trdApi("/trade/lock",{method:"POST",sess,timeout:15000}).catch(()=>{});}
 
 /* ── 대기 목록 ── */
 function trdRenderQ(){
