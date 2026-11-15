@@ -657,6 +657,17 @@ function createTrade(deps = {}) {
       if (r.ok && kind === 'order') alert(`[실전] 주문 ${r.order.status === 'open' ? '접수' : '확인 중'}: ${body.code} ${body.side === 'buy' ? '매수' : '매도'} ${body.qty}주 ${body.type === 'market' ? '시장가' : body.price + '원'}`);
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, order: r.order });
     }
+    if (path === '/trade/auto/approve' || path === '/trade/auto/eod') {   // 사이트 승인(매수/패스) · 15:10 정리(정리/유지) — 텔레그램 명령과 같은 처리
+      const fn = path === '/trade/auto/approve' ? 'siteApprove' : 'siteEod';
+      if (!autoRef || !autoRef[fn]) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      const kinds = path === '/trade/auto/approve' ? ['buy', 'pass'] : ['sell', 'keep'];
+      const kind = String(body.kind || ''), nums = Array.isArray(body.nums) ? [...new Set(body.nums.map(Number))] : [];
+      if (!kinds.includes(kind)) return json(res, 400, { ok: false, error: 'bad kind' });
+      if ((kind === 'buy' || kind === 'sell') && (!nums.length || nums.length > 20 || nums.some(n => !Number.isInteger(n) || n < 1 || n > 20))) return json(res, 400, { ok: false, error: '번호를 골라 주세요' });
+      const r = await autoRef[fn](kind, nums).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
+      audit(path === '/trade/auto/approve' ? 'auto_approve' : 'auto_eod', !!r.ok, { kind, nums }, req, 'VIRTUAL');
+      return json(res, 200, r);
+    }
     if (path === '/trade/auto/strategy') {   // 전략 조건값·켜기/끄기·이름 저장(버전 +1, 바뀐 항목 기록). 가상매매 전용
       if (!autoRef || !autoRef.saveStrategy) return json(res, 503, { ok: false, error: 'auto unavailable' });
       const patch = {}; for (const k of ['params', 'enabled', 'name', 'desc']) if (body[k] !== undefined) patch[k] = body[k];

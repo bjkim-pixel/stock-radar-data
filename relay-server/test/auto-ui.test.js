@@ -124,6 +124,7 @@ test('/trade/auto/*: 세션 없으면 401 · 세션이 있으면 조회·설정,
   });
   const saved = [];
   const fake = { uiState: async () => ({ ok: true, hello: 1 }), setConfig: async b => (b.perStockKrw === 12345 ? { ok: false, status: 400, error: '금액 오류' } : { ok: true, cfg: { on: !!b.on, perStockKrw: 1 }, changed: b }),
+    siteApprove: async (k, n) => ({ ok: true, reply: `승인 ${k} ${n.join(',')}` }), siteEod: async (k, n) => ({ ok: true, reply: `정리 ${k} ${n.join(',')}` }),
     strategies: async () => ({ ok: true, strategies: [{ id: 'intraday-default' }] }), strategyVersions: async id => ({ ok: true, versions: [{ version: 2, id }] }),
     saveStrategy: async (id, patch, who) => { saved.push({ id, patch, who }); return patch.params && patch.params.cttrMin > 200 ? { ok: false, status: 400, error: '체결강도 범위', errs: [{ key: 'cttrMin' }] } : { ok: true, strategy: { id, version: 2 }, changed: [{ key: 'cttrMin', from: '100%', to: '120%' }] }; } };
   const server = http.createServer((req, res) => { if (!t.handle(req, res)) { res.writeHead(404); res.end(); } });
@@ -160,6 +161,15 @@ test('/trade/auto/*: 세션 없으면 401 · 세션이 있으면 조회·설정,
     await new Promise(r => setTimeout(r, 20));
     assert.ok(audits.some(a => a.event === 'auto_strategy' && a.ok === true && /cttrMin:100%→120%/.test(JSON.stringify(a.detail))));
     assert.ok(audits.some(a => a.event === 'auto_strategy_reject'));
+    assert.equal((await call('POST', '/trade/auto/approve', { body: { kind: 'buy', nums: [1] } })).status, 401);
+    assert.equal((await call('POST', '/trade/auto/approve', { session, body: { kind: 'buy', nums: [] } })).status, 400);
+    assert.equal((await call('POST', '/trade/auto/approve', { session, body: { kind: 'hack', nums: [1] } })).status, 400);
+    assert.equal((await call('POST', '/trade/auto/approve', { session, body: { kind: 'buy', nums: [1, 3, 3] } })).body.reply, '승인 buy 1,3');
+    assert.equal((await call('POST', '/trade/auto/approve', { session, body: { kind: 'pass' } })).body.reply, '승인 pass ');
+    assert.equal((await call('POST', '/trade/auto/eod', { session, body: { kind: 'sell', nums: [2] } })).body.reply, '정리 sell 2');
+    assert.equal((await call('POST', '/trade/auto/eod', { session, body: { kind: 'keep' } })).body.reply, '정리 keep ');
+    await new Promise(r => setTimeout(r, 20));
+    assert.ok(audits.some(a => a.event === 'auto_approve') && audits.some(a => a.event === 'auto_eod'));
     assert.ok(audits.some(a => a.event === 'auto_config' && a.ok === true));
     assert.ok(audits.some(a => a.event === 'auto_config_reject' && a.ok === false));
   } finally { await new Promise(r => server.close(r)); }

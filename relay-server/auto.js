@@ -200,18 +200,18 @@ function createAuto(deps) {
     const [scr, smx, held, pool] = await Promise.all([loadScreener(P), loadSmx(), loadHeld(), D.livePool(P.capMinEok)]);
     const base = baseFilter(pool, scr.map, smx, held, P).sort((a, b) => b.changePct - a.changePct);
     const stat = { pool: (pool || []).length, base: base.length, flowPass: 0, errs: 0 };
-    const passed = [];
+    const passed = [], rejected = [];
     for (const c of base.slice(0, 40)) {
       const [flow, power, cttr] = await Promise.all([D.fetchFlow(c.code), D.fetchPower(c.code), D.fetchCttr(c.code)]);
       const ev = evalFlow(c, flow, power, cttr, P);
       if (ev.fails.some(f => /없음/.test(f))) stat.errs++;
-      if (!ev.pass) { c.fails = ev.fails; c.m = ev.m; c.shadowOnly = false; continue; }
+      if (!ev.pass) { c.fails = ev.fails; c.m = ev.m; rejected.push({ code: c.code, name: c.name, changePct: c.changePct, fails: ev.fails }); continue; }
       c.m = ev.m; stat.flowPass++; passed.push(c);
     }
     const byAmt = passed.slice().sort((a, b) => a.amt - b.amt);
     passed.forEach(c => { c.score = scoreOne(c, c.m, byAmt.length > 1 ? byAmt.indexOf(c) / (byAmt.length - 1) : 1, P); c.reasons = reasonsFor(c, P); });
     const { pick, dropped } = rankAndPick(passed, P.poolTop, P.sectorMax);
-    return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed };
+    return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed, rejected };
   }
 
   /* auto_runs 쓰기는 모두 이 잠금 안에서 "새로 읽기 → 고치기 → 저장" — 알림·승인·주문 관리가 서로 덮어쓰지 않게 */
@@ -298,7 +298,7 @@ function createAuto(deps) {
         selectedAt: new Date().toISOString(), stat: sel.stat, scrDate: sel.scrDate, warn: warn || null,
         strategy: { id: I.id, version: I.version, name: I.name }, params: I.params,
         picks: sel.picks.slice(0, I.params.notifyTop).map(c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts })),
-        shadow, dropped: sel.dropped, approved: [], decision: null, noticeSent: false,
+        shadow, dropped: sel.dropped, rejected: sel.rejected.slice(0, 40), approved: [], decision: null, noticeSent: false,
       };
       await lock(() => writeRun({ trade_date: date, status: 'selected', payload }));
       return { ok: true, picks: sel.picks.length, stat: sel.stat };
@@ -478,6 +478,20 @@ function createAuto(deps) {
       today, positions, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
     };
   }
+  /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리). 결과는 텔레그램에도 남김 */
+  async function siteApprove(kind, nums) {
+    const text = kind === 'pass' ? '/패스' : `/매수 ${nums.join(' ')}`;
+    const r = await handleApproval(text);
+    if (r) await D.sendTelegram(`🖥 사이트에서 ${kind === 'pass' ? '패스' : '매수 ' + nums.join(',')} 선택\n${r}`).catch(() => {});
+    return { ok: !!r, reply: r || '처리할 수 없는 요청입니다.' };
+  }
+  async function siteEod(kind, nums) {
+    const text = kind === 'keep' ? '/유지' : `/정리 ${nums.join(' ')}`;
+    const r = await handleEod(text);
+    if (r) await D.sendTelegram(`🖥 사이트에서 ${kind === 'keep' ? '유지' : '정리 ' + nums.join(',')} 선택\n${r}`).catch(() => {});
+    return { ok: !!r, reply: r || '처리할 수 없는 요청입니다.' };
+  }
+
   /* 전략 조회·저장(컨트롤 타워) */
   async function strategies() {
     const [list, P] = await Promise.all([store.list(true), pair()]);
@@ -485,7 +499,7 @@ function createAuto(deps) {
   }
   const saveStrategy = (id, patch, who) => store.save(String(id || ''), patch, who);
   const strategyVersions = async id => ({ ok: true, versions: await store.versions(String(id || '')) });
-  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, _select: select, _mutateRun: mutateRun, _readRun: readRun, _readCarry: readCarry };
+  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, siteApprove, siteEod, _select: select, _mutateRun: mutateRun, _readRun: readRun, _readCarry: readCarry };
 }
 
 module.exports = { RULES, EXCL_NAME, baseFilter, evalFlow, scoreOne, rankAndPick, formatMessage, parseApproval, createAuto };
