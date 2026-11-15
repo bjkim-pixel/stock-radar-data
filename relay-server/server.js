@@ -2692,7 +2692,7 @@ function telegramHelpText() {
       '/알림끄기 — 신고가·신저가·손절·목표가 알림 일시정지 (오늘의 종목 요약은 계속 발송)\n' +
       '/알림켜기 — 알림 다시 켜기\n' +
       '/status — 매매 상태(스위치·정지·세션)\n/lock — 열린 거래 세션 모두 종료\n/kill — 긴급 정지(신규 매수 차단)\n/승인 코드 · /거부 코드 — 거래 세션 열기 요청(새 기기·실전) 승인/거부\n' +
-      '/자동켜기 · /자동끄기 · /자동상태 — 자동매매(평일 10:05 선정 · 10:15 후보 알림)\n/매수 1 3 · /매수 전체 · /패스 — 후보 승인(10:30까지, 가상매매로 매수)\n/자동후보 — 후보 다시 고르기(승인 전만)\n' +
+      '/자동켜기 · /자동끄기 · /자동상태 — 자동매매(평일 10:05 선정 · 10:15 후보 알림)\n/매수 1 3 · /매수 전체 · /패스 — 후보 승인(10:30까지, 가상매매로 매수)\n/자동후보 — 후보 다시 고르기(승인 전만)\n/정리 1 · /정리 전체 · /유지 — 15:10 종가 판정 답장(15:18까지)\n' +
       '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
       `보유 종목의 당일 신고가·신저가 갱신(직전 알림 대비 ${ALERT_MIN_MOVE_PCT}% 이상 갱신 시), 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.`;
 }
@@ -2712,6 +2712,12 @@ async function handleTelegramCommand(chatId, text) {
   if (/^\/?(?:매수|buy|패스|pass|skip)(?:@\w+)?(?:\s|$)/i.test(text)) {   // 자동매매 후보 승인(1단계: 기록만)
     if (!TELEGRAM_CHAT_ID || String(chatId) !== String(TELEGRAM_CHAT_ID)) return;
     const r = await autoTrade.handleApproval(text.replace(/@\w+/, '')).catch(e => '처리 실패: ' + e.message);
+    if (r) await sendTelegramTo(chatId, r);
+    return;
+  }
+  if (/^\/?(?:정리|유지)(?:@\w+)?(?:\s|$)/.test(text)) {   // 자동매매 15:10 종가 판정 답장
+    if (!TELEGRAM_CHAT_ID || String(chatId) !== String(TELEGRAM_CHAT_ID)) return;
+    const r = await autoTrade.handleEod(text.replace(/@\w+/, '')).catch(e => '처리 실패: ' + e.message);
     if (r) await sendTelegramTo(chatId, r);
     return;
   }
@@ -3671,6 +3677,8 @@ const autoTrade = require('./auto').createAuto({
   fetchFlow: code => fetchFlowEst(code).catch(e => ({ err: e.message })),
   fetchPower: code => fetchPower(code).catch(e => ({ err: e.message })),
   fetchCttr: code => fetchCttr(code).catch(e => ({ err: e.message })),
+  marketIdx: async () => { const m = await fetchLiveMarket(false); const g = k => (m.idx && m.idx[k] && m.idx[k].pct != null ? m.idx[k].pct : null); return { 코스피: g('KOSPI'), 코스닥: g('KOSDAQ') }; },
+  prevTradingDay: d => { const x = new Date(`${d}T00:00:00Z`); for (let i = 0; i < 14; i++) { x.setUTCDate(x.getUTCDate() - 1); const s2 = x.toISOString().slice(0, 10), w = x.getUTCDay(); if (w === 0 || w === 6 || KRX_HOLIDAYS.has(s2)) continue; return s2; } return null; },
   marketState: async () => {
     const m = await fetchLiveMarket(false);
     const k = m.idx && m.idx.KOSPI;

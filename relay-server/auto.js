@@ -144,7 +144,7 @@ function parseApproval(text, max) {
 /* ── 서버에 붙는 부분: deps 로 시세·DB·텔레그램을 받는다(테스트에서 가짜로 교체) ── */
 function createAuto(deps) {
   const D = deps;
-  const state = { date: null, lastErr: null, running: false, run: null, checkedAt: 0 };
+  const state = { date: null, lastErr: null, running: false, run: null, checkedAt: 0, carry: null, carryAt: 0 };
 
   const kstParts = () => D.kstNow();            // { date:'YYYY-MM-DD', min: 분 }
   const isTradingDay = date => D.isTradingDay(date);
@@ -226,6 +226,26 @@ function createAuto(deps) {
   async function perStock() {
     try { const r = await D.sbGet('auto_config?select=value&key=eq.main&limit=1'); return (r[0] && r[0].value && +r[0].value.perStockKrw) || 1000000; } catch (_) { return 1000000; }
   }
+  /* 종가 베팅 넘긴 종목(auto_config 'carry') — 같은 잠금 안에서 읽기 → 고치기 → 저장 */
+  async function readCarry() {
+    const r = await D.sbGet('auto_config?select=value&key=eq.carry&limit=1');
+    return (r[0] && r[0].value) || { items: {} };
+  }
+  function mutateCarry(fn) {
+    return lock(async () => {
+      const c = await readCarry(); c.items = c.items || {};
+      const ret = await fn(c);
+      for (const [k, v] of Object.entries(c.items)) if (v.state === 'done' && v.doneAt && Date.now() - v.doneAt > 7 * 864e5) delete c.items[k];   // 끝난 지 7일 지난 기록 정리
+      await D.sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'carry', value: c, updated_at: new Date().toISOString() }]);
+      state.carry = c; state.carryAt = Date.now();
+      return ret;
+    });
+  }
+  const eod = D.paper ? require('./auto-eod').createEod({
+    paper: D.paper, getQuote: D.getQuote, fetchFlow: D.fetchFlow, marketIdx: D.marketIdx || (async () => ({})), sendTelegram: D.sendTelegram, now: D.now,
+    mutateRun, readRun, mutateCarry, readCarry,
+  }) : null;
+
   const exec = D.paper ? require('./auto-exec').createExec({
     paper: D.paper, getQuote: D.getQuote, loadChart: D.loadChart, sendTelegram: D.sendTelegram, now: D.now,
     mutateRun, readRun, perStock, opt: async () => ({}),
@@ -304,41 +324,65 @@ function createAuto(deps) {
 
   const activeOrders = run => Object.values((run && run.payload && run.payload.orders) || {}).some(v => v.st === 'intent' || v.st === 'open' || v.st === 'modified');
 
-  /* 주기 호출: 서버 타이머(30초)와 외부 깨우기(/trigger-auto) 둘 다 이걸 부른다. 깨우기가 10분 간격이라 "아직 안 했으면 지금 한다"로 보완 */
+  /* 주기 호출: 서버 타이머(30초)와 외부 깨우기(/trigger-auto) 둘 다 이걸 부른다. 깨우기가 10분 간격이라 "아직 안 했으면 지금 한다"로 보완.
+     시간 창: 08:00~09:00 전날 종가 베팅 전환 보완 · 09:00~15:20 아침 3분할 매도 · 09:00~15:30 매수 주문 관리 · 10:05~11:00 선정·알림·만료
+              15:10~15:18 종가 판정 · 15:18~15:30 무응답 처리 · 20:00~ 종가 베팅 전환 */
   async function tick() {
     const { date, min } = kstParts();
-    const inSel = min >= 10 * 60 + 5 && min < 11 * 60;
-    const inOrd = exec && min >= 9 * 60 && min < 15 * 60 + 30;    // 가상 KRX 지정가는 15:30 소멸
-    if (!inSel && !inOrd) return { ok: true, idle: 'outside-window' };
+    const W = (a, b) => min >= a && min < b;
+    const inSel = W(605, 660), inOrd = !!exec && W(540, 930), inEodJ = !!eod && W(910, 918), inEodT = !!eod && W(918, 930);
+    const inConv = !!eod && min >= 1200, inPre = !!eod && W(480, 540), inMorn = !!eod && W(540, 920);
+    if (!inSel && !inOrd && !inEodJ && !inEodT && !inConv && !inPre && !inMorn) return { ok: true, idle: 'outside-window' };
     if (!isTradingDay(date)) return { ok: true, idle: 'non-trading' };
-    let have = state.run && state.run.trade_date === date;
     const out = {};
-    if (inOrd && !have && Date.now() - (state.loadedAt || 0) > 60000) {   // 재시작 직후: 오늘 기록을 한 번 읽어 주문 관리를 이어감(1분에 한 번만)
+    const err = e => { state.lastErr = e.message; return { ok: false, err: e.message }; };
+    let have = state.run && state.run.trade_date === date;
+    if (!have && Date.now() - (state.loadedAt || 0) > 60000) {   // 재시작 직후: 오늘 기록을 한 번 읽어 이어감(1분에 한 번만)
       state.loadedAt = Date.now();
       const r = await readRun(date).catch(() => null);
       if (r) { state.date = date; state.run = r; have = true; }
     }
-    if (inOrd && have && activeOrders(state.run)) {
-      out.follow = await exec.follow(date).catch(e => { state.lastErr = e.message; return { ok: false, err: e.message }; });
+    // 전날 종가 베팅 전환을 못 했으면(서버가 20시에 잠들어 있었음) 아침에 보완 — 아침 매도보다 먼저
+    if (state.prevConvChecked && state.prevConvChecked !== date) state.prevConvChecked = null;   // 날이 바뀌면 다시 확인
+    if ((inPre || inMorn) && D.prevTradingDay && !state.prevConvChecked) {
+      const prev = D.prevTradingDay(date);
+      const pr = prev ? await readRun(prev).catch(() => null) : null;
+      if (pr && !pr.payload.carryDone) out.conv = await eod.convert(prev).catch(err);
+      if (!out.conv || out.conv.ok) state.prevConvChecked = date;
     }
+    if (inMorn) {
+      if (!state.carry || Date.now() - (state.carryAt || 0) > 60000) { state.carry = await readCarry().catch(() => state.carry); state.carryAt = Date.now(); }
+      const pend = Object.values((state.carry && state.carry.items) || {}).some(i => i.from < date && i.state !== 'done');
+      if (pend) out.morning = await eod.morning(date, min).catch(err);
+    }
+    if (inOrd && have && activeOrders(state.run)) out.follow = await exec.follow(date).catch(err);
+    if (have && inEodJ && !(state.run.payload.eod && state.run.payload.eod.at)) out.judge = await eod.judge(date).catch(err);
+    if (have && inEodT && state.run.payload.eod && !state.run.payload.eod.decision) out.timeout = await eod.timeout(date).catch(err);
+    if (have && inConv && !state.run.payload.carryDone) out.convert = await eod.convert(date).catch(err);
     if (!inSel) return { ok: true, date, min, ...out };
     if (have && state.run.payload && state.run.payload.noticeSent) {
-      if (min > 10 * 60 + 30 && state.run.status === 'noticed') await expireIfNeeded(date).catch(e => { state.lastErr = e.message; });
+      if (min > 630 && state.run.status === 'noticed') await expireIfNeeded(date).catch(e => { state.lastErr = e.message; });
       return { ok: true, date, min, idle: 'done', ...out };
     }
     if (!have && state.checkedAt && Date.now() - state.checkedAt < 25000) return { ok: true, idle: 'busy', ...out };
     state.checkedAt = Date.now();
     if (!(await enabled())) return { ok: true, idle: 'disabled', ...out };
-    out.sel = await runSelection(false).catch(e => { state.lastErr = e.message; return { ok: false, err: e.message }; });
-    if (min >= 10 * 60 + 15 && out.sel && out.sel.ok) out.notice = await sendNotice(false).catch(e => { state.lastErr = e.message; return { ok: false, err: e.message }; });
+    out.sel = await runSelection(false).catch(err);
+    if (min >= 615 && out.sel && out.sel.ok) out.notice = await sendNotice(false).catch(err);
     return { ok: true, date, min, ...out };
+  }
+
+  async function handleEod(text) {
+    if (!eod) return null;
+    const { date, min } = kstParts();
+    return eod.handleCmd(date, text, min);
   }
 
   function status() {
     const r = state.run, o = (r && r.payload && r.payload.orders) || {};
     return { date: state.date, run: r && { status: r.status, picks: ((r.payload || {}).picks || []).length, orders: Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.st])) }, lastErr: state.lastErr };
   }
-  return { tick, runSelection, sendNotice, handleApproval, status, _select: select, _mutateRun: mutateRun, _readRun: readRun };
+  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, _select: select, _mutateRun: mutateRun, _readRun: readRun, _readCarry: readCarry };
 }
 
 module.exports = { RULES, EXCL_NAME, baseFilter, evalFlow, scoreOne, rankAndPick, formatMessage, parseApproval, createAuto };
