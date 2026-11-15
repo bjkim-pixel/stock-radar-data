@@ -1855,6 +1855,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div class="card" id="hmCard" style="margin-top:16px"><h3>업종 히트맵
     <span class="r" id="hmSub">면적 = 시가총액 · 색 = 등락률 · 시총 1천억원 이상</span></h3>
     <div class="tl-tabs" id="hmTabs"><button data-m="all" class="on">전체</button><button data-m="KOSPI">코스피</button><button data-m="KOSDAQ">코스닥</button></div>
+    <div class="tl-tabs" id="hmDays" style="margin-top:6px"></div>
     <div id="hmWrap"><div class="load sk" style="height:300px"></div></div>
     <div id="hmLegend"><span>하락</span><i style="background:#1c5cab"></i><i style="background:#6f9fd6"></i><i style="background:#555"></i><i style="background:#d96b6b"></i><i style="background:#c62828"></i><span>상승 (±5% 포화)</span></div>
     <div class="note" style="margin-top:6px">업종 이름 터치 = 그 업종 종목 목록 · 종목 터치 = 종목 상세</div>
@@ -5450,12 +5451,38 @@ async function loadHeatmap(){
   try{
     const raw=await loadFlowRawData();
     S.hmRows=raw.filter(r=>(r.market==="KOSPI"||r.market==="KOSDAQ")&&+r.market_cap>=TODAY_FLOW_CAP&&r.change_pct!=null&&r.sector);
-    renderHeatmap();
+    renderHeatmap();hmLoadDays();
   }catch(e){console.error("히트맵",e);host.innerHTML='<div class="load">불러오기 실패</div>';S.hmLoadedFail=true;}
+}
+/* 최근 5거래일: 날짜별 탭 + 5일 누적. 면적(시총)은 오늘 기준 고정, 색만 해당 기간 등락률 */
+S.hmMode=S.hmMode||"d0";
+async function hmLoadDays(){
+  try{
+    const ds=(await q("daily_price","select=trade_date&code=eq.005930&order=trade_date.desc&limit=5")).map(x=>x.trade_date);
+    if(ds.length<2)return;
+    const mp={};
+    await Promise.all(ds.map(async d=>{const m={};
+      for(let off=0;off<6000;off+=1000){
+        const r=await q("daily_price",`select=code,change_pct&trade_date=eq.${d}&market_cap=gte.${TODAY_FLOW_CAP}&order=code.asc&limit=1000&offset=${off}`);
+        r.forEach(x=>{if(x.change_pct!=null)m[x.code]=+x.change_pct;});if(r.length<1000)break;}
+      mp[d]=m;}));
+    S.hmDays=ds;S.hmDayMap=mp;hmDaysRender();renderHeatmap();
+  }catch(e){console.error("히트맵 5일",e);}
+}
+function hmDaysRender(){
+  const h=$("#hmDays");if(!h||!S.hmDays)return;
+  const md=d=>d.slice(5,7)+"/"+d.slice(8,10);
+  h.innerHTML=S.hmDays.map((d,i)=>`<button data-k="d${i}" class="${S.hmMode==="d"+i?"on":""}">${i?md(d):"오늘 "+md(d)}</button>`).join("")+`<button data-k="cum" class="${S.hmMode==="cum"?"on":""}" title="최근 ${S.hmDays.length}거래일 등락률을 복리로 누적">${S.hmDays.length}일 누적</button>`;
+  h.querySelectorAll("button").forEach(b=>b.onclick=()=>{S.hmMode=b.dataset.k;hmDaysRender();renderHeatmap();});
+}
+function hmVal(r){
+  const m=S.hmMode;if(m==="d0"||!S.hmDayMap)return +r.change_pct;
+  if(m==="cum"){let f=1,n=0;S.hmDays.forEach(d=>{const c=S.hmDayMap[d][r.code];if(c!=null){f*=1+c/100;n++;}});return n?(f-1)*100:null;}
+  const c=S.hmDayMap[S.hmDays[+m.slice(1)]][r.code];return c==null?null:c;
 }
 function renderHeatmap(){
   const host=$("#hmWrap");if(!host||!S.hmRows)return;
-  const mk=S.hmMkt;const rows=S.hmRows.filter(r=>mk==="all"||r.market===mk);
+  const mk=S.hmMkt;const rows=S.hmRows.filter(r=>mk==="all"||r.market===mk).map(r=>({...r,change_pct:hmVal(r)})).filter(r=>r.change_pct!=null);
   if(!rows.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
   const W=host.clientWidth||host.parentElement.clientWidth||600;
   const H=Math.round(W<520?Math.min(760,W*1.5):Math.min(620,W*0.62));
@@ -5484,7 +5511,7 @@ function renderHeatmap(){
     const t=e.target.closest(".ht");if(t){go("detail",t.dataset.code);return;}
     const l=e.target.closest(".hsl");if(l)goSectorStocks(l.dataset.sec);
   };
-  const tot=rows.length;$("#hmSub").textContent=`면적 = 시가총액 · 색 = 등락률 · ${S.date||""} · 시총 1천억원 이상 ${tot}종목`;
+  const tot=rows.length;$("#hmSub").textContent=`면적 = 시가총액 · 색 = 등락률 · ${S.hmMode==="cum"&&S.hmDays?S.hmDays[S.hmDays.length-1].slice(5)+"~"+S.hmDays[0].slice(5)+" 누적":(S.hmMode!=="d0"&&S.hmDays?S.hmDays[+S.hmMode.slice(1)]:S.date)||""} · 시총 1천억원 이상 ${tot}종목`;
 }
 $$("#hmTabs button").forEach(b=>b.onclick=()=>{S.hmMkt=b.dataset.m;$$("#hmTabs button").forEach(x=>x.classList.toggle("on",x===b));renderHeatmap();});
 window.addEventListener("resize",()=>{clearTimeout(S._hmT);S._hmT=setTimeout(()=>{if($("#v-sector")&&!$("#v-sector").classList.contains("hide"))renderHeatmap();},200);});
