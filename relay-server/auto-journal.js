@@ -1,5 +1,6 @@
 'use strict';
-const EXC = require('./auto-excursion');
+const EXC = require('./auto-excursion'), PERF = require('./auto-perf');
+const PERF_ADD = PERF.addDays, WEEKLY_AT = 960;
 /* 자동매매 D단계(2026-11-16) — 전략별 장부 + 자동 일지
    · 장부: 가상매매 체결(paper_fills)을 "어느 전략의 매매인지" 나눠 계산한다(직접 매매는 빠짐). 별도 테이블 없이 일지(auto_journal)에 담는다.
      - 매수 체결 → 그날 그 종목을 산 장중 전략(주문 id 우선, 없으면 종목)
@@ -212,7 +213,7 @@ function closingText(date, j) {
 
 function createJournal(deps) {
   const D = deps, now = D.now || Date.now;
-  const S = { at: {}, p1: {}, p2: {}, missing: 0, last: null };
+  const S = { at: {}, p1: {}, p2: {}, wk: {}, missing: 0, last: null };
   const due = (k, ms) => { const t = S.at[k] || 0; if (now() - t < ms) return false; S.at[k] = now(); return true; };
   const tg = t => (D.sendTelegram ? D.sendTelegram(t).catch(() => {}) : null);
   const inList = a => `(${a.map(encodeURIComponent).join(',')})`;
@@ -237,6 +238,12 @@ function createJournal(deps) {
     const r = await D.sbGet(`daily_price?select=code,high,low&trade_date=eq.${date}&code=in.${inList(codes)}&limit=2000`).catch(() => []);
     const m = {}; (r || []).forEach(x => { if (+x.high > 0 && +x.low > 0) m[x.code] = { high: +x.high, low: +x.low }; });
     return m;
+  }
+  async function loadKospi(rows) {   // 코스피 지수(초과수익·주간 요약용) — 가장 오래된 일지 하루 전부터
+    const dates = rows.map(r => r.trade_date).filter(Boolean).sort();
+    if (!dates.length || !D.sbGet) return [];
+    const from = PERF_ADD(dates[0], -7);
+    return D.sbGet(`market_daily?select=trade_date,index_close&market=eq.KOSPI&trade_date=gte.${from}&order=trade_date.asc&limit=2000`).catch(() => []);
   }
   async function marksNow() {
     try { const ps = D.paper && D.paper.state ? await D.paper.state() : null; const m = {}; if (ps && ps.ok) ps.positions.forEach(p => { if (p.last > 0) m[p.code] = p.last; }); return m; } catch (_) { return {}; }
@@ -301,6 +308,22 @@ function createJournal(deps) {
   }
 
   /* 서버 30초 타이머에서 호출 — 시각이 됐고 아직 안 했을 때만 일한다 */
+  /* E3: 금요일(휴장이면 그 주 마지막 거래일) 16:00 이후 주간 요약 텔레그램 — 주에 한 번(auto_config 'weekly') */
+  async function sendWeekly(date, force) {
+    const mon = PERF.mondayOf(date);
+    if (!force) {
+      const r = await D.sbGet('auto_config?select=value&key=eq.weekly&limit=1').catch(() => []);
+      if (r && r[0] && r[0].value && r[0].value.last === mon) return { ok: true, skipped: 'sent' };
+    }
+    const wk = await D.sbGet(`auto_journal?select=${LIGHT}&trade_date=gte.${mon}&trade_date=lte.${date}&order=trade_date.asc&limit=100`);
+    const all = await D.sbGet(`auto_journal?select=${LIGHT}&order=trade_date.desc&limit=600`).catch(() => []);
+    const kospi = await D.sbGet(`market_daily?select=trade_date,index_close&market=eq.KOSPI&trade_date=gte.${PERF.addDays(mon, -7)}&order=trade_date.asc&limit=100`).catch(() => []);
+    const ws = PERF.weekSummary(wk || [], kospi, date);
+    const exp = PERF.expectancy(PERF.tradesOf((all || []).filter(r => r.kind === 'intraday')));
+    if (ws.strategies.length && !force) await tg(PERF.weeklyText(ws, { exp }));
+    if (!force) await D.sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'weekly', value: { last: mon, at: now() }, updated_at: new Date().toISOString() }]);
+    return { ok: true, sent: ws.strategies.length > 0, week: mon, text: PERF.weeklyText(ws, { exp }) };
+  }
   async function tick(date, min, convertAt) {
     if (S.missing && now() - S.missing < 10 * 60e3) return { ok: true, idle: 'no-table' };
     const out = {};
@@ -313,6 +336,7 @@ function createJournal(deps) {
         out.finish = [];
         for (const d of ds) out.finish.push(await generateDay(d, { today: date, min, phase: 3 }));
       }
+      if (min >= WEEKLY_AT && min < 1380 && D.isTradingDay && !S.wk[date] && PERF.isLastTradingDayOfWeek(date, D.isTradingDay) && due('wk|' + date, 5 * 60e3)) { const r = await sendWeekly(date); if (r.ok) S.wk[date] = true; out.weekly = r; }
       S.missing = 0;
     } catch (e) {
       if (isMissing(e)) { S.missing = now(); S.last = '자동 일지 테이블이 없습니다(DB 설정 auto_journal 필요)'; return { ok: false, err: S.last }; }
@@ -321,7 +345,7 @@ function createJournal(deps) {
     return { ok: true, ...out };
   }
 
-  const LIGHT = 'trade_date,strategy_id,kind,strategy_version,strategy_name,status,net,cost,pct,n_pos,wins,losses,memo,updated_at,pos:payload->positions,shadow:payload->shadow';
+  const LIGHT = 'trade_date,strategy_id,kind,strategy_version,strategy_name,status,net,cost,pct,n_pos,wins,losses,memo,updated_at,pos:payload->positions,shadow:payload->shadow,regime:payload->regime';
   async function list({ sid, from, to, limit } = {}) {
     const q = [`select=${LIGHT}`, 'order=trade_date.desc,strategy_id.asc', `limit=${Math.min(Math.max(+limit || 400, 1), 1500)}`];
     if (sid && /^[a-z]+-[a-z0-9]{1,20}$/.test(sid)) q.push(`strategy_id=eq.${sid}`);
@@ -330,7 +354,17 @@ function createJournal(deps) {
     let rows;
     try { rows = await D.sbGet('auto_journal?' + q.join('&')); } catch (e) { if (isMissing(e)) return { ok: true, missing: true, rows: [], perf: summarize([]) }; throw e; }
     const light = (rows || []).map(r => ({ date: r.trade_date, sid: r.strategy_id, kind: r.kind, version: r.strategy_version, name: r.strategy_name, status: r.status, net: num(r.net), cost: num(r.cost), pct: num(r.pct), n: r.n_pos || 0, wins: r.wins || 0, losses: r.losses || 0, hasMemo: !!(r.memo && r.memo.trim()), updatedAt: r.updated_at }));
-    return { ok: true, rows: light, perf: summarize(rows || []) };
+    const kospi = await loadKospi(rows || []);
+    const perf = summarize(rows || []);
+    perf.extra = PERF.perfExtra(rows || [], kospi);
+    const latest = (rows || []).map(r => r.trade_date).sort().pop();
+    perf.weeks = latest ? [PERF.weekSummary(rows, kospi, latest), PERF.weekSummary(rows, kospi, PERF.addDays(PERF.mondayOf(latest), -3))] : [];
+    return { ok: true, rows: light, perf };
+  }
+  /* 안전장치용: 한 전략의 일지 행(가벼운 형태) */
+  async function raw(sid, limit = 400) {
+    if (!/^[a-z]+-[a-z0-9]{1,20}$/.test(String(sid || ''))) return [];
+    return (await D.sbGet(`auto_journal?select=${LIGHT}&strategy_id=eq.${sid}&order=trade_date.desc&limit=${limit}`).catch(() => [])) || [];
   }
   async function get(date, sid) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return { ok: false, status: 400, error: '날짜가 올바르지 않습니다' };
@@ -355,7 +389,7 @@ function createJournal(deps) {
     if (r.ok && r.none) return { ok: false, status: 404, error: '그 날짜의 자동매매 기록이 없습니다' };
     return r;
   }
-  return { tick, generateDay, list, get, memo, run, status: () => ({ last: S.last, missing: !!S.missing }) };
+  return { tick, sendWeekly, generateDay, raw, list, get, memo, run, status: () => ({ last: S.last, missing: !!S.missing }) };
 }
 
 module.exports = { attribute, buildIntraday, buildClosing, summarize, toRow, daySummaryText, closingText, normFill, whyOf, createJournal, JOURNAL_AT, FINISH_AT, FINISH_END, AFTER_CONVERT, MEMO_MAX };

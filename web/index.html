@@ -1011,6 +1011,9 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-sw span{width:34px;height:20px;border-radius:10px;background:var(--ink-3);position:relative;transition:background .15s}.au-sw span::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
 .au-sw.on span{background:var(--good)}.au-sw.on span::after{left:16px}
 .au-on{color:var(--good);font-weight:700}
+.au-note{font-size:11.5px;line-height:1.55;color:var(--warn);margin:4px 0 2px}.au-warnbox{border:1px solid var(--warn);border-radius:10px;padding:10px 12px;margin-top:10px;font-size:12.5px;line-height:1.6;background:var(--surface-2)}.au-wi{margin-top:6px}.au-wi.info b{color:var(--ink)}.au-wi b{color:var(--warn)}
+.au-scat{width:100%;max-width:420px;height:auto;display:block;margin:6px 0 2px}.au-scat .ax{stroke:var(--border);stroke-width:1}.au-scat .tx{font-size:9px;fill:var(--ink-3,var(--ink));opacity:.7}.au-scat circle.w{fill:var(--up);fill-opacity:.7}.au-scat circle.l{fill:var(--down);fill-opacity:.7}.au-scat circle.a{fill-opacity:.12;stroke:currentColor;stroke-width:1}.au-scat circle.w.a{stroke:var(--up)}.au-scat circle.l.a{stroke:var(--down)}
+.au-wks{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.au-wk .v{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;margin:2px 0}
 .au-ex{font-size:12.5px;line-height:1.6;margin-top:4px}.au-lossv{color:var(--crit)}.au-ev{display:inline-block;font-size:11.5px;border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:0 8px;color:var(--warn)}
 .ev-row{display:grid;grid-template-columns:78px 1fr;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px}.ev-row:last-of-type{border-bottom:0}.ev-d{font-variant-numeric:tabular-nums;font-weight:700}.ev-d i{display:block;font-style:normal;font-size:11px;font-weight:400;color:var(--ink-3,var(--ink))}
 .au-mr{font:inherit;font-size:12.5px;font-weight:700;border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:2px 10px;cursor:pointer;margin-top:4px;color:var(--ink)}.au-mr.mr-attack{color:var(--good)}.au-mr.mr-caution{color:var(--warn)}.au-mr.mr-defense{color:var(--crit)}
@@ -11282,7 +11285,7 @@ async function auPost(path,body,okText){
   if(TRD.auBusy)return null;TRD.auBusy=true;TRD.auMsg={t:"처리 중…"};trdAutoRender();
   let r=null;
   try{r=await trdApi(path,{method:"POST",body});TRD.auMsg={ok:true,t:okText?okText(r):(r.reply||"저장했습니다.")};}
-  catch(e){TRD.auBusy=false;if(auErr(e))return null;TRD.auMsg={t:"실패: "+trdErrTx(e)+(e.body&&e.body.errs?"":""),errs:e.body&&e.body.errs};r=null;}
+  catch(e){TRD.auBusy=false;if(auErr(e))return null;TRD.auMsg={t:"실패: "+trdErrTx(e)+(e.body&&e.body.errs?"":""),errs:e.body&&e.body.errs,needConfirm:e.body&&e.body.needConfirm,warnings:e.body&&e.body.warnings};r=null;}
   TRD.auBusy=false;return r;
 }
 /* 두 번 눌러야 실행되는 버튼(4초) */
@@ -11393,7 +11396,7 @@ function auStratCard(s){
   let body="";
   if(open||E){
     body=groups.map(g=>`<div class="au-g"><h4>${trdEsc(g)}</h4><div class="au-kv">${fs.filter(f=>f.group===g).map(f=>E?auInput(f,E):`<div class="au-k">${trdEsc(f.label)}</div><div class="au-v${JSON.stringify(s.params[f.key])!==JSON.stringify(f.def)?" chg":""}">${trdEsc(auShow(f,s.params[f.key]))}</div>`).join("")}</div></div>`).join("");
-    if(E)body+=`<div id="auDiff">${auDiffHtml(s,E)}</div><div class="au-btns"><button type="button" class="btn" data-ausave="${s.id}">${auArmTx("save-"+s.id,"변경 저장","한 번 더 누르면 저장")}</button><button type="button" class="btn ghost" data-aucancel="1">취소</button><button type="button" class="btn ghost" data-audef="${s.id}">기본값으로 채우기</button></div>`;
+    if(E)body+=`<div id="auDiff">${auDiffHtml(s,E)}</div>${auWarnHtml(s,E)}<div class="au-btns"><button type="button" class="btn" data-ausave="${s.id}">${auArmTx("save-"+s.id,"변경 저장","한 번 더 누르면 저장")}</button><button type="button" class="btn ghost" data-aucancel="1">취소</button><button type="button" class="btn ghost" data-audef="${s.id}">기본값으로 채우기</button></div>`;
     else body+=`<div class="faint" style="font-size:11px;margin-top:6px">굵게 표시된 값은 기본값과 다른 항목입니다.</div>`;
     const V=TRD.auVer[s.id];
     if(V)body+=`<div class="au-g"><h4>변경 이력</h4>${V.length?`<div class="au-ver">${V.map(v=>`<div><b>v${v.version}</b> <span class="faint">${trdEsc((v.at||"").replace("T"," ").slice(0,16))} · ${trdEsc(v.who||"")}</span><div>${(v.changed||[]).map(c=>`${trdEsc(c.label)}: ${trdEsc(c.from)} → ${trdEsc(c.to)}`).join(" · ")||"–"}</div></div>`).join("")}</div>`:'<div class="faint">이력이 없습니다.</div>'}</div>`;
@@ -11424,11 +11427,17 @@ function auDiffHtml(s,E){
   if(!ch.length)return '<div class="faint" style="font-size:12px;margin:8px 0">바뀐 항목이 없습니다.</div>';
   return `<div class="au-diff"><b>바뀌는 항목 ${ch.length}개 → 저장하면 v${s.version+1}</b>${ch.map(f=>`<div>${trdEsc(f.label)}: <span class="faint">${trdEsc(auShow(f,s.params[f.key]))}</span> → <b>${trdEsc(auShow(f,auNorm(f,E.draft[f.key])))}</b></div>`).join("")}</div>`;
 }
-async function auSave(id){
+/* 조건 변경 안전장치(E3): 서버가 돌려준 경고를 보여 주고 "그래도 저장"을 받음 */
+function auWarnHtml(s,E){
+  if(!E||!E.warn||!E.warn.length)return "";
+  return `<div id="auWarn" class="au-warnbox" role="alert"><b>저장하기 전에 확인하세요</b>${E.warn.map(w=>`<div class="au-wi ${w.level==="info"?"info":""}"><b>${trdEsc(w.title)}</b><div>${trdEsc(w.text)}</div></div>`).join("")}<div class="au-btns" style="margin-top:8px"><button type="button" class="btn" data-ausavec="${trdEsc(s.id)}">그래도 저장</button><button type="button" class="btn ghost" data-auwarnx="1">돌아가서 더 고민</button></div></div>`;
+}
+async function auSave(id,confirm){
   const s=auStrat(id),E=TRD.auEdit;if(!s||!E)return;
   const params={};for(const f of auFields(s.kind))params[f.key]=auNorm(f,E.draft[f.key]);
-  const r=await auPost("/trade/auto/strategy",{id,params},r=>r.unchanged?"바뀐 항목이 없습니다.":`저장했습니다 — v${r.strategy.version} (${r.changed.map(c=>c.label).join(", ")})`);
+  const r=await auPost("/trade/auto/strategy",confirm?{id,params,confirm:true}:{id,params},r=>r.unchanged?"바뀐 항목이 없습니다.":`저장했습니다 — v${r.strategy.version} (${r.changed.map(c=>c.label).join(", ")})`);
   if(r){TRD.auEdit=null;TRD.auOpen[id]=true;delete TRD.auVer[id];await trdLoadAuto();return;}
+  if(TRD.auMsg&&TRD.auMsg.needConfirm){E.warn=TRD.auMsg.warnings||[];TRD.auMsg=null;trdAutoRender();return;}
   if(TRD.auMsg&&TRD.auMsg.errs){E.errs=Object.fromEntries(TRD.auMsg.errs.map(e=>[e.key,e.msg]));}
   trdAutoRender();
 }
@@ -11505,6 +11514,42 @@ function auJDetailHtml(d,row){
 }
 
 /* ── 성과 탭: 전략별 누적 손익 곡선 · 승률 · 손익비 · 버전 비교 · 그림자 비교(일지에서 집계) + 4단계 일별 표(접힘) ── */
+/* ── 성과 보강(E3): 기대값 · 지수 대비 · 최고/최저(MFE·MAE) · 시장 단계별 · 주간 ── */
+function auExpHtml(s,X){
+  if(!X)return "";
+  const e=X.expectancy||{},ex=X.excess,xc=X.excursion,st=X.byStage;
+  let h=`<div class="au-h4">종목당 기대값 <span class="faint" style="font-weight:400">(한 종목 매매의 평균 수익률)</span></div>`;
+  if(!e.n)h+=`<div class="faint" style="font-size:12.5px">아직 평가할 매매가 없습니다.</div>`;
+  else h+=`<div class="trd-sum">${auTile("기대값",auPct(e.expPct),trdCls(e.expPct))}${auTile("평균 손익(원)",auWon(e.expKrw),trdCls(e.expKrw))}${auTile("평균 이익 / 손실",`${auPct(e.avgWinPct)} / ${auPct(e.avgLossPct)}`)}${auTile("매매 수",`${N(e.n)}종목`)}</div>${e.enough?"":`<div class="au-note">표본 ${N(e.n)}종목 — ${N(e.need)}종목 이상 쌓이기 전에는 참고용입니다(우연일 수 있음).</div>`}`;
+  if(ex){
+    h+=`<div class="au-h4">지수 대비 <span class="faint" style="font-weight:400">(그날 전략 수익률 − 그날 코스피 등락률, 매수한 날만)</span></div>`;
+    h+=ex.days?`<div class="trd-sum">${auTile("하루 평균 초과수익",(ex.avgExcess>0?"+":"")+N(ex.avgExcess,2)+"%p",trdCls(ex.avgExcess))}${auTile("전략 / 코스피 평균",`${auPct(ex.avgStrat)} / ${auPct(ex.avgIdx)}`)}${auTile("지수를 이긴 날",`${N(ex.hit,0)}% <span class="faint" style="font-size:11px">${N(ex.days)}일</span>`)}${auTile("누적 초과(일 합)",(ex.cum>0?"+":"")+N(ex.cum,2)+"%p",trdCls(ex.cum))}</div>${ex.days<20?`<div class="au-note">${N(ex.days)}일치 — 20일 이상은 쌓여야 의미가 생깁니다. 이월 종목의 다음 날 손익은 포함하지 않는 일 단위 근사입니다.</div>`:""}`:`<div class="faint" style="font-size:12.5px">코스피 자료와 맞출 수 있는 매수일이 아직 없습니다.</div>`;
+  }
+  if(xc&&xc.n){
+    h+=`<div class="au-h4">보유 중 최고 · 최저 <span class="faint" style="font-weight:400">(MFE · MAE, 매수가 대비)</span></div>${auScatter(xc.points)}
+      <div class="faint" style="font-size:12px;line-height:1.6">평균 최고 <b class="up">${auPct(xc.avgMfe)}</b>까지 갔다가 평균 최저 <b class="down">${auPct(xc.avgMae)}</b>까지 내렸고 최종 <b class="${trdCls(xc.avgPct)}">${auPct(xc.avgPct)}</b> → 최고점에서 평균 <b>${N(xc.giveBack,2)}%p</b> 반납했습니다. 서버 기록 ${N(xc.nLive)}종목 · 일봉 근사 ${N(xc.n-xc.nLive)}종목.</div>`;
+  }
+  if(st&&st.some(x=>x.days>0)){
+    h+=`<div class="au-h4">시장 상태별 성과 <span class="faint" style="font-weight:400">(선정한 날의 시장 단계)</span></div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>시장 단계</th><th>일수</th><th>종목</th><th>순손익</th><th>수익률</th><th>승률</th></tr></thead><tbody>${st.map(x=>`<tr><td>${trdEsc(x.label)}</td><td class="n">${N(x.days)}</td><td class="n">${N(x.n)}</td><td class="n ${trdCls(x.net)}">${x.days?auWon(x.net):"–"}</td><td class="n ${trdCls(x.pct)}">${auPct(x.pct)}</td><td class="n">${x.winRate==null?"–":N(x.winRate,0)+"%"}</td></tr>`).join("")}</tbody></table></div><div class="au-note">단계별 표본은 더 작습니다. 방어 단계 매수를 줄일지 정할 때 참고만 하세요.</div>`;
+  }
+  return h;
+}
+/* 최고/최저 산점도: 가로 = 최저(MAE, 0에서 왼쪽), 세로 = 최고(MFE), 색 = 최종 이익/손실 */
+function auScatter(pts){
+  if(!pts||!pts.length)return "";
+  const W=300,H=170,L=34,B=22,T=8,R=8,mx=Math.max(5,Math.ceil(Math.max(...pts.map(p=>p.mfe))/2)*2),mn=Math.min(-3,Math.floor(Math.min(...pts.map(p=>p.mae))/2)*2);
+  const x=v=>(L+(W-L-R)*(v-mn)/(0-mn||1)).toFixed(1),y=v=>(H-B-(H-B-T)*v/mx).toFixed(1);
+  const dots=pts.map(p=>`<circle cx="${x(p.mae)}" cy="${y(p.mfe)}" r="3.4" class="${p.pct>0?"w":"l"}${p.src==="daily"?" a":""}"><title>${trdEsc(p.name||"")} ${p.date.slice(5)} · 최고 ${auPct(p.mfe)} · 최저 ${auPct(p.mae)} · 최종 ${auPct(p.pct)}${p.src==="daily"?" (일봉 근사)":""}</title></circle>`).join("");
+  return `<svg class="au-scat" viewBox="0 0 ${W} ${H}" role="img" aria-label="종목별 최고·최저 산점도"><line x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}" class="ax"/><line x1="${x(0)}" x2="${x(0)}" y1="${T}" y2="${H-B}" class="ax"/><text x="${L}" y="${H-6}" class="tx">최저 ${mn}%</text><text x="${W-R}" y="${H-6}" class="tx" text-anchor="end">0</text><text x="4" y="${T+8}" class="tx">+${mx}%</text><text x="${W/2}" y="${H-6}" class="tx" text-anchor="middle">← 많이 내림 · 최저(MAE)</text>${dots}</svg>
+    <div class="faint" style="font-size:11px"><span class="up">●</span> 최종 이익 <span class="down">●</span> 최종 손실 · 속이 빈 점 = 일봉 근사. 위쪽·오른쪽일수록 좋은 흐름(많이 오르고 적게 내림).</div>`;
+}
+function auWeekHtml(W){
+  const w=(W||[]).filter(x=>x&&x.strategies&&x.strategies.length);
+  if(!w.length)return "";
+  const one=(x,t)=>`<div class="au-wk"><b>${t} <span class="faint" style="font-weight:400">${trdEsc(x.from.slice(5))}~${trdEsc(x.to.slice(5))}</span></b><div class="v ${trdCls(x.net)}">${auWon(x.net)}</div><div class="faint" style="font-size:11.5px;line-height:1.6">${N(x.tradedDays)}일 · ${N(x.n)}종목${x.pctAll!=null?` · 장중 ${auPct(x.pctAll)}`:""}${x.kospi!=null?` · 코스피 ${auPct(x.kospi)}`:""}${x.excess!=null?` · <b class="${trdCls(x.excess)}">지수 대비 ${x.excess>0?"+":""}${N(x.excess,2)}%p</b>`:""}${x.best?`<br>최고 ${trdEsc(x.best.name)} ${auPct(x.best.pct)}${x.worst?` · 최저 ${trdEsc(x.worst.name)} ${auPct(x.worst.pct)}`:""}`:""}${x.stages&&x.stages.length?`<br>시장 상태 ${trdEsc(x.stages.join("·"))}`:""}</div></div>`;
+  const cur=W[0]&&W[0].strategies&&W[0].strategies.length?W[0]:null,prev=W[1]&&W[1].strategies&&W[1].strategies.length?W[1]:null;
+  return `<div class="card"><h3>주간 요약 <span class="r faint" style="font-size:11px">금요일 16:00 텔레그램으로도 보내요</span></h3><div class="au-wks">${cur?one(cur,cur===W[0]&&prev?"최근 주":"최근 주"):""}${prev?one(prev,"그 전 주"):""}</div></div>`;
+}
 function auPerfHtml(){
   const J=TRD.auJ,A=TRD.au;
   if(J.missing)return `<div class="card"><div class="trd-halt">자동 일지 테이블이 아직 없습니다(DB 설정 auto_journal 필요). 일지가 쌓이면 이 탭에 전략별 성과가 나옵니다.</div></div>`+auOldHist();
@@ -11513,12 +11558,13 @@ function auPerfHtml(){
   if(!P.strategies.length)return `<div class="card"><h3>전략별 성과</h3><div class="faint" style="font-size:12.5px">일지가 아직 없습니다. 첫 거래일 15:40 이후부터 쌓입니다.</div></div>`+auOldHist();
   const tot=(P.total||{}).net||0;
   let h=`<div class="card"><h3>전체 누적 순손익 <span class="r ${trdCls(tot)}" style="font-size:15px">${auWon(tot)}</span></h3>${(P.combined||[]).length>1?auSpark(P.combined,"cum"):""}<div class="faint" style="font-size:11px;margin-top:4px">장중·종가베팅 전략 순손익의 합(수수료 반영, 직접 매매 제외). 확정 전 일지가 포함될 수 있습니다.</div></div>`;
+  h+=auWeekHtml(P.weeks);
   h+=P.strategies.map(s=>{
     const vs=(s.byVersion||[]).length>1?`<div class="au-h4">버전별 비교 <span class="faint" style="font-weight:400">(조건을 바꾼 전/후)</span></div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>버전</th><th>일수</th><th>순손익</th><th>수익률</th><th>승률</th><th>종목</th></tr></thead><tbody>${s.byVersion.map(v=>`<tr><td>v${v.version==null?"?":v.version}</td><td class="n">${N(v.days)}</td><td class="n ${trdCls(v.net)}">${auWon(v.net)}</td><td class="n ${trdCls(v.pct)}">${auPct(v.pct)}</td><td class="n">${v.winRate==null?"–":N(v.winRate,1)+"%"}</td><td class="n">${N(v.n)}</td></tr>`).join("")}</tbody></table></div>`:"";
     const sh=s.shadow?`<div class="faint" style="font-size:12px;margin-top:8px">그림자 평균(${N(s.shadow.n)}일): 통과 전체 <b class="${trdCls(s.shadow.all)}">${auPct(s.shadow.all)}</b> · 알림 후보 <b class="${trdCls(s.shadow.picked)}">${auPct(s.shadow.picked)}</b> · 실제 매수 <b class="${trdCls(s.shadow.bought)}">${auPct(s.shadow.bought)}</b></div>`:"";
     return `<div class="card"><h3>${trdEsc(s.name||s.sid)} <span class="au-kind">${s.kind==="closing"?"종가베팅":"장중"}</span>${s.pending?` <span class="faint" style="font-size:11px;font-weight:400">확정 전 ${N(s.pending)}일</span>`:""}</h3>
       <div class="trd-sum">${auTile("누적 순손익",auWon(s.net),trdCls(s.net))}${auTile("수익률(투입 대비 합산)",auPct(s.pct),trdCls(s.pct))}${auTile("승률(종목)",s.winRate==null?"–":`${N(s.winRate,1)}% <span class="faint" style="font-size:11px">${N(s.wins)}승 ${N(s.losses)}패</span>`)}${auTile("손익비",s.payoff==null?"–":N(s.payoff,2))}${auTile("평균 이익 / 손실",s.avgWin==null&&s.avgLoss==null?"–":`<span class="up">${s.avgWin==null?"–":auWon(s.avgWin)}</span> / <span class="down">${s.avgLoss==null?"–":auWon(s.avgLoss)}</span>`)}${auTile("최대 낙폭",s.maxDrawdown?"−"+N(s.maxDrawdown)+"원":"–")}${auTile("기록 / 매매한 날",`${N(s.days)} / ${N(s.tradedDays)}`)}</div>
-      ${s.curve.length>1?`<div class="au-h4">누적 순손익</div>${auSpark(s.curve,"cum")}`:""}${vs}${sh}</div>`;
+      ${s.curve.length>1?`<div class="au-h4">누적 순손익</div>${auSpark(s.curve,"cum")}`:""}${vs}${sh}${auExpHtml(s,(P.extra||{})[s.sid])}</div>`;
   }).join("");
   h+=`<div class="faint" style="font-size:11px;line-height:1.55;margin:2px 4px 10px">손익비 = 평균 이익 ÷ 평균 손실(종목 단위). 승률은 종목 단위입니다. 표본이 적을 때(수십 건 미만)는 우연일 수 있으니 조건 변경 판단에 단독으로 쓰지 마세요.</div>`;
   return h+auOldHist();
@@ -11595,6 +11641,8 @@ function auClick(t){
   if((el=t.closest("[data-auedit]"))){const s=auStrat(el.dataset.auedit);if(s){TRD.auEdit={id:s.id,draft:JSON.parse(JSON.stringify(s.params)),errs:{}};TRD.auMsg=null;trdAutoRender();}return true;}
   if(t.closest("[data-aucancel]")){TRD.auEdit=null;TRD.auMsg=null;trdAutoRender();return true;}
   if((el=t.closest("[data-audef]"))){const s=auStrat(el.dataset.audef);if(s&&TRD.auEdit){TRD.auEdit.draft=Object.fromEntries(auFields(s.kind).map(f=>[f.key,JSON.parse(JSON.stringify(f.def))]));TRD.auEdit.errs={};trdAutoRender();}return true;}
+  if((el=t.closest("[data-ausavec]"))){auSave(el.dataset.ausavec,true);return true;}
+  if(t.closest("[data-auwarnx]")){if(TRD.auEdit)TRD.auEdit.warn=null;trdAutoRender();return true;}
   if((el=t.closest("[data-ausave]"))){const id=el.dataset.ausave;if(!auArmed("save-"+id))return true;auSave(id);return true;}
   if((el=t.closest("[data-auver]"))){const id=el.dataset.auver;TRD.auOpen[id]=true;
     trdApi("/trade/auto/strategy-versions?id="+encodeURIComponent(id)).then(r=>{TRD.auVer[id]=r.versions||[];trdAutoRender();}).catch(e=>{if(!auErr(e)){TRD.auMsg={t:"이력을 불러오지 못했습니다: "+trdErrTx(e)};trdAutoRender();}});return true;}
@@ -11610,7 +11658,7 @@ function auInputEv(t){
   else if(t.type==="checkbox"){E.draft[k]=t.checked;const l=t.parentElement;if(l&&l.lastChild)l.lastChild.textContent=" "+(t.checked?"켜기":"끄기");}
   else E.draft[k]=t.value;
   if(E.errs&&E.errs[k])delete E.errs[k];
-  const s=auStrat(E.id),d=$("#auDiff");if(s&&d)d.innerHTML=auDiffHtml(s,E);
+  const s=auStrat(E.id),d=$("#auDiff");if(s&&d)d.innerHTML=auDiffHtml(s,E);{const w=$("#auWarn");if(w){w.remove();E.warn=null;}}
   return true;
 }
 /* ── 수익률 · 주문·체결 내역 (5단계) ── */

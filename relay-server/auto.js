@@ -196,7 +196,7 @@ function createAuto(deps) {
   const D = deps;
   const state = { date: null, lastErr: null, running: false, runs: {}, runsAt: 0, checkedAt: {}, carry: null, carryAt: 0, multi: false };
   const DEF_SID = 'intraday-default';
-  const RISK = require('./auto-risk'), EV = require('./auto-events'), EXC = require('./auto-excursion');
+  const RISK = require('./auto-risk'), EV = require('./auto-events'), EXC = require('./auto-excursion'), PERF = require('./auto-perf');
   const JR_AT = require('./auto-journal').JOURNAL_AT, JR_FIN = require('./auto-journal').FINISH_AT;
 
   const kstParts = () => D.kstNow();            // { date:'YYYY-MM-DD', min: 분 }
@@ -405,7 +405,7 @@ function createAuto(deps) {
   }) : null;
 
   /* D단계: 전략별 장부 + 자동 일지(15:40 작성 · 전환 뒤 이월 반영 · 다음 거래일 아침 종가베팅 결과로 확정) */
-  const JR = require('./auto-journal').createJournal({ sbGet: D.sbGet, sbWrite: D.sbWrite, sendTelegram: D.sendTelegram, now: D.now, paper: D.paper, readRuns, readCarry, actives, excursion: excStore });
+  const JR = require('./auto-journal').createJournal({ sbGet: D.sbGet, sbWrite: D.sbWrite, sendTelegram: D.sendTelegram, now: D.now, paper: D.paper, readRuns, readCarry, actives, excursion: excStore, isTradingDay: D.isTradingDay });
 
   /* 선정 + 그림자 기록(전략별 하루 한 번 — 오늘 기록이 있으면 건너뜀). force(/자동후보)는 아직 승인·주문 전일 때만 다시 고름 */
   async function runSelectionFor(I, force) {
@@ -729,7 +729,23 @@ function createAuto(deps) {
     const T0 = (A.Is[0] && A.Is[0].T) || ST.timesOf(DEFP, A.C.params);
     return { ok: true, missing: store.isMissing(), schema: ST.publicSchema(), strategies: list, active: { intraday: A.Is.map(i => i.id), closing: A.C.id, letters: Object.fromEntries(A.Is.map(I => [I.id, I.letter])) }, times: T0, timesBy };
   }
-  const saveStrategy = (id, patch, who) => store.save(String(id || ''), patch, who);
+  /* E3: 조건값을 바꾸는 저장은 안전장치 점검 — 경고가 있으면 confirm 없이는 저장하지 않고 409 로 돌려줌(화면이 "그래도 저장"을 물음) */
+  async function guardWarnings(id, patch) {
+    if (!patch || patch.params === undefined || !store.byId || !JR || !JR.raw) return [];
+    const cur = await store.byId(id).catch(() => null);
+    if (!cur || cur.kind !== 'intraday' && cur.kind !== 'closing') return [];
+    if (!ST.diff(cur.kind, cur.params, { ...cur.params, ...patch.params }).length) return [];   // 바뀐 조건이 없으면 점검 안 함
+    const [rows, versions] = await Promise.all([JR.raw(id), store.versions(id).catch(() => [])]);
+    return PERF.guards({ rows, versions, cur: cur.version, today: kstParts().date });
+  }
+  async function saveStrategy(id, patch, who, opts = {}) {
+    id = String(id || '');
+    if (!opts.confirm) {
+      const warnings = await guardWarnings(id, patch).catch(() => []);
+      if (warnings.length) return { ok: false, status: 409, needConfirm: true, error: '조건을 바꾸기 전에 확인이 필요합니다', warnings };
+    }
+    return store.save(id, patch, who);
+  }
   const strategyVersions = async id => ({ ok: true, versions: await store.versions(String(id || '')) });
   const createStrategy = (body, who) => (store.create ? store.create(body || {}, who) : { ok: false, status: 503, error: '지원하지 않음' });
   /* 삭제(보관): 오늘 미체결 주문이 있거나 아직 팔지 않은 이월 종목이 있으면 막음 */

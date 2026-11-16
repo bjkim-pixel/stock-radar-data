@@ -696,9 +696,9 @@ function createTrade(deps = {}) {
     if (path === '/trade/auto/strategy') {   // 전략 조건값·켜기/끄기·이름 저장(버전 +1, 바뀐 항목 기록). 가상매매 전용
       if (!autoRef || !autoRef.saveStrategy) return json(res, 503, { ok: false, error: 'auto unavailable' });
       const patch = {}; for (const k of ['params', 'enabled', 'name', 'desc']) if (body[k] !== undefined) patch[k] = body[k];
-      const r = await autoRef.saveStrategy(body.id, patch, 'site').catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
+      const r = await autoRef.saveStrategy(body.id, patch, 'site', { confirm: body.confirm === true }).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
       audit(r.ok ? 'auto_strategy' : 'auto_strategy_reject', !!r.ok, { id: body.id, version: r.strategy && r.strategy.version, changed: (r.changed || []).map(c => `${c.key}:${c.from}→${c.to}`).slice(0, 20), error: r.error }, req, 'VIRTUAL');
-      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, errs: r.errs });
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, errs: r.errs, needConfirm: r.needConfirm || undefined, warnings: r.warnings || undefined });
     }
     if (path === '/trade/auto/config') {   // 자동매매 켜기/끄기·종목당 금액(auto_config 'main'). 실전 주문과 무관 — 가상매매 설정
       if (!autoRef) return json(res, 503, { ok: false, error: 'auto unavailable' });
