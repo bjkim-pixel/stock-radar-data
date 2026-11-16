@@ -942,11 +942,31 @@ function createAuto(deps) {
     const owner = {};
     todays.forEach(t => t.orders.filter(o => o.filled > 0).forEach(o => { owner[o.code] = t.strategy ? t.strategy.name : t.sid; }));
     const carryItems = Object.values((carry && carry.items) || {}).filter(i => i.state !== 'done');
-    let positions = [];
+    let positions = [], trades = [], dayTot = null;
     try {
       const ps = D.paper && D.paper.state ? await D.paper.state() : null;
       const watch = new Set([...Object.keys(owner), ...carryItems.map(i => i.code)]);
-      if (ps && ps.ok) positions = ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop, plan: p.plan || null, dayHigh: p.dayHigh || null, dayLow: p.dayLow || null, avail: p.avail, strategy: owner[p.code] || null }));
+      if (ps && ps.ok) {
+        const nx = {};
+        try {
+          const cs = [...watch];
+          if (cs.length) (await D.sbGet(`stocks?select=code,nxt_ok&code=in.(${cs.join(',')})&limit=200`).catch(() => [])).forEach(r => { nx[r.code] = !!r.nxt_ok; });
+        } catch (_) {}
+        positions = ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop, plan: p.plan || null, dayHigh: p.dayHigh || null, dayLow: p.dayLow || null, avail: p.avail, strategy: owner[p.code] || null, nxt: nx[p.code] == null ? null : nx[p.code] }));
+        // 오늘 체결(자동매매 종목만): 시각순, 종목명은 포지션·주문에서 찾음
+        const nm = {};
+        ps.positions.forEach(p => { nm[p.code] = p.name; });
+        (ps.orders || []).forEach(o => { if (o.name) nm[o.code] = nm[o.code] || o.name; });
+        todays.forEach(t => t.orders.forEach(o => { if (o.name) nm[o.code] = nm[o.code] || o.name; }));
+        carryItems.forEach(i => { if (i.name) nm[i.code] = nm[i.code] || i.name; });
+        trades = (ps.fills || []).filter(f => watch.has(f.code)).map(f => ({ ts: f.ts, code: f.code, name: nm[f.code] || f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee || 0, realized: f.realized == null ? null : f.realized, reason: f.reason || null })).sort((x, y) => x.ts - y.ts);
+        const evalPl = positions.reduce((a, p) => a + (p.last > 0 ? (p.last - p.avg) * p.qty : 0), 0);
+        const evalAmt = positions.reduce((a, p) => a + (p.last > 0 ? p.last * p.qty : p.avg * p.qty), 0);
+        const rz = trades.reduce((a, f) => a + (f.realized || 0), 0);
+        dayTot = { realized: Math.round(rz), evalPl: Math.round(evalPl), evalAmt: Math.round(evalAmt), total: Math.round(rz + evalPl),
+          buyKrw: Math.round(trades.filter(f => f.side === 'buy').reduce((a, f) => a + (f.amount || 0), 0)), sellKrw: Math.round(trades.filter(f => f.side === 'sell').reduce((a, f) => a + (f.amount || 0), 0)),
+          fee: Math.round(trades.reduce((a, f) => a + (f.fee || 0), 0)), holds: positions.length, accountRealized: ps.realizedToday == null ? null : ps.realizedToday };
+      }
     } catch (_) {}
     // 화면용 실시간 시세: 아직 체결 전인 주문·손절/익절 감시 중인 종목·주문 전 후보(최대 8개). 장중에 화면을 열었을 때만 호출됨
     const quotes = {};
@@ -971,7 +991,7 @@ function createAuto(deps) {
     return {
       ok: true, now: Date.now(), date, tradingDay: isTradingDay(date),
       cfg: { on: !!cv.on, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
-      today: todays[0] || null, todays, quotes, active: A.Is.map(i => i.id), regime, exposure, events, positions, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
+      today: todays[0] || null, todays, quotes, active: A.Is.map(i => i.id), regime, exposure, events, positions, trades, dayTot, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
     };
   }
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */

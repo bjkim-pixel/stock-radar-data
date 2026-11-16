@@ -97,6 +97,21 @@ test('uiState: 설정·오늘 후보·보유·일별 성과를 한 번에 돌려
   assert.equal(s.totals.wins, 1);
   assert.deepEqual(s.limits, { min: U.PER_MIN, max: U.PER_MAX, step: U.PER_STEP });
 });
+test('uiState: 오늘 매매 내역·손익 합계·정규장/NXT 구분', async () => {
+  const { A } = fakeAuto({
+    cfg: { main: { on: true, perStockKrw: 2000000 } },
+    runs: [mkRun('2026-11-16', { picks: [{ code: 'A', name: '가', score: 80, price: 1000 }], shadow: [], decision: { kind: 'buy', nums: [1] }, orders: { A: { st: 'filled', filled: 10, avg: 1000 } } })],
+    paperState: { ok: true, realizedToday: 999,
+      positions: [{ code: 'A', name: '가', qty: 6, avg: 1000, last: 1100, stop: 950 }, { code: 'Q', name: '남', qty: 1, avg: 1, last: 1 }],
+      fills: [{ ts: 2000, code: 'A', side: 'sell', price: 1050, qty: 4, amount: 4200, fee: 5, realized: 190, reason: 'tp1' }, { ts: 1000, code: 'A', side: 'buy', price: 1000, qty: 10, amount: 10000, fee: 1, realized: null, reason: 'manual' }, { ts: 1500, code: 'Q', side: 'buy', price: 1, qty: 1, amount: 1, fee: 0, realized: null, reason: 'manual' }] },
+  });
+  const s = await A.uiState();
+  assert.deepEqual(s.trades.map(t => [t.code, t.side, t.reason]), [['A', 'buy', 'manual'], ['A', 'sell', 'tp1']]);   // 자동매매 종목만, 시간순
+  assert.equal(s.trades[0].name, '가');
+  assert.equal(s.dayTot.realized, 190); assert.equal(s.dayTot.evalPl, 600); assert.equal(s.dayTot.total, 790);
+  assert.equal(s.dayTot.buyKrw, 10000); assert.equal(s.dayTot.sellKrw, 4200); assert.equal(s.dayTot.holds, 1);
+  assert.ok('nxt' in s.positions[0]);   // stocks 조회가 비어도 필드는 있음(null)
+});
 test('uiState: 기록이 하나도 없어도 오류 없이 빈 상태', async () => {
   const { A } = fakeAuto({});
   const s = await A.uiState();

@@ -107,7 +107,7 @@ function createEod(deps) {
       if (!!(q && q.info && q.info.nxt) !== nx) { other.push({ code, name: p.name || nameOf(run, code) }); continue; }   // 다른 시간대에 판정할 종목
       try { flow = await D.fetchFlow(code); } catch (_) {}
       const why = R.closingOn ? carryCheck({ price: q && q.price, avg: p.avg, high: q && q.high, flow, idx }, R) : ['종가베팅 전략 꺼짐'];
-      items.push({ code, name: p.name || nameOf(run, code), qty: p.qty, avg: p.avg, price: q ? q.price : null, ok: !why.length, why });
+      items.push({ code, name: p.name || nameOf(run, code), qty: p.qty, avg: p.avg, price: q ? q.price : null, nxt: nx, ok: !why.length, why });
     }
     const weak = items.filter(i => !i.ok);
     // 약한 종목: 정리는 항상 사용자 승인 후에만(자동 매도 없음). 설정이 '유지'면 묻지 않고 유지
