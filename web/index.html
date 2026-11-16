@@ -5320,7 +5320,7 @@ function fwRender(){
   $("#fwRng").textContent=`${label} 순매수 · ${dates[0].slice(2).replace(/-/g,".")}~${dates.at(-1).slice(2).replace(/-/g,".")} · ${dates.length}거래일`;
 }
 async function fwOpen(){
-  if(!S._fwBound){S._fwBound=true;$$("#fwTabs button").forEach(b=>b.onclick=()=>{S.fwSubj=b.dataset.s;$$("#fwTabs button").forEach(x=>x.classList.toggle("on",x===b));fwRender();});
+  if(!S._fwBound){S._fwBound=true;$("#fwBody").addEventListener("click",e=>{const a=e.target.closest("a.lk[data-code]");if(a)go("detail",a.dataset.code);});$$("#fwTabs button").forEach(b=>b.onclick=()=>{S.fwSubj=b.dataset.s;$$("#fwTabs button").forEach(x=>x.classList.toggle("on",x===b));fwRender();});
     let rz;addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(S.fw&&!$("#v-fw").classList.contains("hide"))fwRender();},150);});}
   if(S.fw&&Date.now()-S.fwAt<10*60*1000){fwRender();return;}
   try{S.fw=await fwLoad();S.fwAt=Date.now();fwRender();}
