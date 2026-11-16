@@ -3080,9 +3080,11 @@ S.liveFlow=S.liveFlow||{};
 async function liveFlowFetch(){
   const L=S.live;if(!L.on||!L.min)return;
   const codes=Object.values(L.pool).sort((a,b)=>(L.side==="down"?a.changePct-b.changePct:b.changePct-a.changePct)).slice(0,LIVE_TOP_N).map(x=>x.code);
-  if(!codes.length||Date.now()-(L.flowAt||0)<30000)return;L.flowAt=Date.now();
-  try{const r=await fetch(RELAY_HTTP_BASE+"/live-flow?codes="+codes.join(","),{cache:"no-store"});const j=await r.json();
-    if(j.ok&&j.rows){Object.assign(S.liveFlow,j.rows);liveFlowPaint();}}catch(e){}
+  const miss=codes.filter(c=>!S.liveFlow[c]);   // 아직 값이 없는 종목은 30초 주기를 기다리지 않고 바로 받음
+  if(!codes.length||(!miss.length&&Date.now()-(L.flowAt||0)<30000)||L.flowBusy)return;
+  L.flowAt=Date.now();L.flowBusy=true;
+  try{const r=await fetch(RELAY_HTTP_BASE+"/live-flow?codes="+(miss.length?miss:codes).join(","),{cache:"no-store"});const j=await r.json();
+    if(j.ok&&j.rows){Object.assign(S.liveFlow,j.rows);liveFlowPaint();}}catch(e){}finally{L.flowBusy=false;}
 }
 function liveFlowFmt(q,t,price){
   if(q==null)return '<span class="dim">–</span>';
@@ -3093,7 +3095,8 @@ function liveFlowPaint(){
   const L=S.live;$$("#liveBody [data-flow]").forEach(e=>{
     const c=e.dataset.flow,w=e.dataset.w,v=S.liveFlow[c],x=L.pool[c];
     if(!L.min){e.textContent="";return;}
-    if(!v||!x||!x.price){e.innerHTML='<span class="dim">–</span>';return;}
+    if(!x||!x.price){e.innerHTML='<span class="dim">–</span>';return;}
+    if(!v){e.innerHTML='<span class="dim" title="수급 조회 중">…</span>';return;}
     if(v.err){e.innerHTML=w==="f"?'<span class="dim" title="'+escH(v.err)+'">조회 실패</span>':'<span class="dim">–</span>';return;}
     e.innerHTML=w==="f"?liveFlowFmt(v.fq,v.ft,x.price):liveFlowFmt(v.oq,v.ot,x.price);
   });

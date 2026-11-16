@@ -3536,7 +3536,7 @@ function handleLiveFlow(req, res) {
   if (!codes.length) { json(400, { ok: false, error: 'codes required' }); return true; }
   (async () => {
     const rows = {};
-    for (const c of codes) { try { rows[c] = await fetchFlowEst(c); } catch (e) { rows[c] = { err: e.message }; } }
+    await Promise.all(codes.map(async c => { try { rows[c] = await fetchFlowEst(c); } catch (e) { rows[c] = { err: e.message }; } }));   // 병렬 — KIS 호출 속도는 throttle 이 조절
     json(200, { ok: true, ts: Date.now(), rows });
   })();
   return true;
