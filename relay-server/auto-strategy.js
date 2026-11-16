@@ -28,6 +28,8 @@ const SCHEMA = {
     F('selectAt', '적용 시간', '후보 선정 시각', 'time', '10:05', { min: '09:10', max: '14:00' }),
     F('noticeAfter', '적용 시간', '선정 후 알림까지', 'num', 10, { min: 0, max: 30, step: 1, unit: '분' }),
     F('approveWindow', '적용 시간', '알림 후 승인 마감까지', 'num', 15, { min: 5, max: 60, step: 1, unit: '분' }),
+    F('roundMin', '적용 시간', '장중 반복 검토 간격(0=반복 안 함)', 'num', 30, { min: 0, max: 120, step: 5, unit: '분' }),
+    F('roundEnd', '적용 시간', '마지막 검토 시각', 'time', '14:30', { min: '10:30', max: '15:00' }),
     F('capMinEok', '대상', '시가총액 하한', 'num', 10000, { min: 1000, max: 100000, step: 1000, unit: '억원' }),
     F('maTrend', '대상', '종가 > 60일선 > 120일선', 'bool', true),
     F('smx', '대상', '스마트머니 상태', 'enum', 'cont_stall', { opts: ENUM.smx }),
@@ -40,6 +42,7 @@ const SCHEMA = {
     F('notifyTop', '후보 수', '알림에 싣는 수', 'num', 5, { min: 1, max: 10, step: 1, unit: '개' }),
     F('sectorMax', '후보 수', '같은 업종 최대', 'num', 2, { min: 1, max: 5, step: 1, unit: '개' }),
     F('weights', '점수', '배점(합계 100)', 'weights', { flow: 40, cttr: 15, rise: 15, amt: 15, trend: 15 }, { parts: { flow: '수급', cttr: '체결강도', rise: '상승률', amt: '거래대금', trend: '추세' } }),
+    F('maxBuys', '매수 주문', '하루 최대 매수 종목 수', 'num', 5, { min: 1, max: 20, step: 1, unit: '종목' }),
     F('perStockKrw', '매수 주문', '종목당 금액', 'num', 1000000, { min: 100000, max: 50000000, step: 10000, unit: '원' }),
     F('totalCapKrw', '매수 주문', '총액 상한(0=없음)', 'num', 0, { min: 0, max: 500000000, step: 1000000, unit: '원' }),
     F('buyPick', '매수 주문', '매수가', 'enum', 'q1', { opts: ENUM.buyPick }),
@@ -124,6 +127,10 @@ function validate(kind, input, base) {
     if (val.notifyTop > val.poolTop) errs.push({ key: 'notifyTop', msg: '알림에 싣는 수는 점수 상위 후보 수보다 클 수 없습니다' });
     const dl = tmin(val.selectAt) + val.noticeAfter + val.approveWindow;
     if (dl > 14 * 60 + 30) errs.push({ key: 'approveWindow', msg: `승인 마감이 ${hhmm(dl)}입니다(14:30 이전이어야 함)` });
+  }
+  if (!errs.length && kind === 'intraday' && val.roundMin > 0) {
+    if (tmin(val.roundEnd) <= tmin(val.selectAt)) errs.push({ key: 'roundEnd', msg: '마지막 검토 시각은 첫 선정 시각보다 늦어야 합니다' });
+    else if (tmin(val.roundEnd) + val.approveWindow > 15 * 60 + 15) errs.push({ key: 'roundEnd', msg: `마지막 검토의 승인 마감이 ${hhmm(tmin(val.roundEnd) + val.approveWindow)}입니다(15:15 이전이어야 함)` });
   }
   if (!errs.length && kind === 'closing' && tmin(val.slices[val.slices.length - 1]) >= 15 * 60 + 20) errs.push({ key: 'slices', msg: '분할 매도 시각이 너무 늦습니다' });
   return errs.length ? { errs } : { val };

@@ -13,10 +13,10 @@ function summarizeRun(r, full) {
   const out = {
     date: r.trade_date, status: r.status, sid, key: `${r.trade_date}|${sid}`, letter: p.letter || null,
     decision: p.decision ? { kind: p.decision.kind, nums: p.decision.nums || null } : null,
-    warn: p.warn || null, noticeSent: !!p.noticeSent,
+    warn: p.warn || null, noticeSent: !!p.noticeSent, roundN: p.roundN || 1, roundDeadline: p.roundDeadline || null,
     picks: (p.picks || []).map(x => full
-      ? { code: x.code, name: x.name, score: x.score, price: x.price, open: x.open, changePct: x.changePct, sector: x.sector, smx: x.smx, reasons: x.reasons || [], m: x.m || null, parts: x.parts || null, ratio: x.ratio || null, ev: x.ev || [] }
-      : { code: x.code, name: x.name, score: x.score, price: x.price }),
+      ? { code: x.code, name: x.name, score: x.score, price: x.price, open: x.open, changePct: x.changePct, sector: x.sector, smx: x.smx, reasons: x.reasons || [], m: x.m || null, parts: x.parts || null, ratio: x.ratio || null, ev: x.ev || [], round: x.round || 1, closed: !!x.closed }
+      : { code: x.code, name: x.name, score: x.score, price: x.price, round: x.round || 1, closed: !!x.closed }),
     orders: Object.entries(ords).map(([code, v]) => ({ code, name: names[code] || code, st: v.st, filled: v.filled || 0, avg: v.avg || null, buy: v.buy || null, qty: v.qty || null, why: v.why || null,
       ...(full ? { buy2: v.buy2 || null, target: v.target || (v.plan && v.plan.target) || null, mode: v.mode || null, pick: v.pick || null, plan: v.plan || null, snap: v.snap || null,
         at: v.at || null, placedAt: v.placedAt || null, modifiedAt: v.modifiedAt || null, filledAt: v.filledAt || null, cancelledAt: v.cancelledAt || null, lowSeen: v.lowSeen || null, noReprice: !!v.noReprice } : {}) })),

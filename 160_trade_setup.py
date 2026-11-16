@@ -8,7 +8,7 @@
    여러 번 실행해도 안전. 실행 후 anon/주인/타인 권한을 실제로 시험해서 결과를 출력(이메일은 일부만 표시)."""
 import os, sys, json, psycopg2
 
-FILES = {"trade_security": "160_trade_security.sql", "lock_data": "161_lock_data_to_login.sql", "unlock_data": "161_unlock_data.sql", "paper_trading": "162_paper_trading.sql", "live_trading": "163_live_trading.sql", "auto_trade": "164_auto_trade.sql", "auto_strategy": "165_auto_strategy.sql", "auto_multi": "166_auto_multi.sql", "auto_journal": "167_auto_journal.sql", "market_regime": "168_market_regime.sql", "market_events": "169_market_events.sql"}
+FILES = {"trade_security": "160_trade_security.sql", "lock_data": "161_lock_data_to_login.sql", "unlock_data": "161_unlock_data.sql", "paper_trading": "162_paper_trading.sql", "live_trading": "163_live_trading.sql", "auto_trade": "164_auto_trade.sql", "auto_strategy": "165_auto_strategy.sql", "auto_multi": "166_auto_multi.sql", "auto_journal": "167_auto_journal.sql", "market_regime": "168_market_regime.sql", "market_events": "169_market_events.sql", "auto_rounds": "170_auto_rounds.sql"}
 target = sys.argv[1] if len(sys.argv) > 1 else ""
 if target not in FILES: sys.exit("대상: " + " | ".join(FILES))
 url = os.environ.get("SUPABASE_DB_URL", "")

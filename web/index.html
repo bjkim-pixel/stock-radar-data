@@ -11356,7 +11356,7 @@ function auRunHtml(sid){
   const decided=D.decision&&D.decision.kind&&D.decision.kind!=="expired";
   if(!decided&&min<920&&D.picks.length&&["selected","noticed","expired"].includes(D.status)||(!decided&&min<920&&D.picks.length&&D.decision&&D.decision.kind==="expired"))
     h+=`<div class="card au-act"><h3>${auTag(sid)} · 승인 <span class="r faint" style="font-size:11px">${min<=T.deadline?`${auHM(T.deadline)}까지`:"마감이 지났어도 지금 승인하면 바로 진행(15:20까지)"} · 텔레그램 /매수 ${trdEsc(auLetter(sid))}1 과 같음</span></h3>
-      <div class="au-chks">${D.picks.map((p,i)=>`<label><input type="checkbox" data-aubuy="${i+1}" data-ausid="${sid}"${selB.has(i+1)?" checked":""}> ${trdEsc(auLetter(sid))}${i+1}. ${trdEsc(p.name)} <span class="faint">${N(p.score,1)}점</span></label>`).join("")}</div>
+      <div class="au-chks">${D.picks.map((p,i)=>p.closed?"":`<label><input type="checkbox" data-aubuy="${i+1}" data-ausid="${sid}"${selB.has(i+1)?" checked":""}> ${trdEsc(auLetter(sid))}${i+1}. ${trdEsc(p.name)} <span class="faint">${N(p.score,1)}점${(p.round||1)>1?` · ${p.round}회차`:""}</span></label>`).join("")}</div>
       <div class="au-btns"><button type="button" class="btn" data-auapprove="sel" data-ausid="${sid}"${selB.size?"":" disabled"}>${auArmTx("buy-sel-"+sid,`선택 ${selB.size}종목 매수`,"한 번 더 누르면 매수")}</button><button type="button" class="btn ghost" data-auapprove="all" data-ausid="${sid}">${auArmTx("buy-all-"+sid,"전체 매수","한 번 더 누르면 전체 매수")}</button><button type="button" class="btn ghost" data-auapprove="pass" data-ausid="${sid}">${auArmTx("pass-"+sid,"패스","한 번 더 누르면 패스")}</button></div></div>`;
   { const st=[], ev0=D.eod, bought=(D.orders||[]).some(o=>o.filled>0);
     if(!decided&&!(D.orders||[]).length&&min<920)st.push("select");
@@ -11635,7 +11635,7 @@ function auClick(t){
   if((el=t.closest("[data-aupk]"))){const c=el.dataset.aupk;TRD.auPick=TRD.auPick===c?null:c;trdAutoRender();return true;}
   if((el=t.closest("[data-auapprove]"))){const k=el.dataset.auapprove,sid=el.dataset.ausid,D=auRun(sid);if(el.disabled||!D)return true;
     const key=(k==="sel"?"buy-sel-":k==="all"?"buy-all-":"pass-")+sid;if(!auArmed(key))return true;
-    const sel=TRD.auSel.buy[sid]||new Set(),nums=k==="all"?D.picks.map((_,i)=>i+1):[...sel].sort((a,b)=>a-b);
+    const sel=TRD.auSel.buy[sid]||new Set(),nums=k==="all"?D.picks.map((p,i)=>p.closed?0:i+1).filter(Boolean):[...sel].sort((a,b)=>a-b);
     auPost("/trade/auto/approve",k==="pass"?{kind:"pass",strategy:sid}:{kind:"buy",nums,strategy:sid}).then(()=>{delete TRD.auSel.buy[sid];trdLoadAuto();});return true;}
   if((el=t.closest("[data-austage]"))){const k=el.dataset.austage,sid=el.dataset.ausid;if(!auArmed("stage-"+k+"-"+sid))return true;
     auPost("/trade/auto/stage",{stage:k,strategy:sid},r=>r.reply||"실행했습니다.").then(()=>trdLoadAuto());return true;}

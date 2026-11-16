@@ -3,8 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const A = require('../auto');
 
-const scr = { A: { close: 110, ma60: 100, ma120: 90, sector: '반도체', rs20_pctl: 90 }, B: { close: 95, ma60: 100, ma120: 90, sector: '반도체' }, C: { close: 110, ma60: 100, ma120: 90, sector: '반도체' }, D: { close: 110, ma60: 100, ma120: 90, sector: '2차전지' } };
-const smx = { A: 'CONT', B: 'CONT', C: 'LEAVE', D: 'STALL' };
+const scr = { E: { close: 110, ma60: 100, ma120: 90, sector: '2차전지' }, F: { close: 110, ma60: 100, ma120: 90, sector: '화학' }, A: { close: 110, ma60: 100, ma120: 90, sector: '반도체', rs20_pctl: 90 }, B: { close: 95, ma60: 100, ma120: 90, sector: '반도체' }, C: { close: 110, ma60: 100, ma120: 90, sector: '반도체' }, D: { close: 110, ma60: 100, ma120: 90, sector: '2차전지' } };
+const smx = { E: 'CONT', F: 'CONT', A: 'CONT', B: 'CONT', C: 'LEAVE', D: 'STALL' };
 const row = (code, o = {}) => ({ code, name: '종목' + code, price: 10500, open: 10000, changePct: 3, amt: 1e11, ...o });
 
 test('1차 필터: 정배열(종가>60>120)·매집(CONT/STALL)·상승·시가대비 +8% 이하', () => {
@@ -60,9 +60,10 @@ test('메시지: 후보 없음·쉬는 날·후보 목록', () => {
 });
 
 /* ── 흐름 테스트(가짜 DB·시세·텔레그램) ── */
-function harness({ min = 10 * 60 + 5, on = true, trading = true } = {}) {
+function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null } = {}) {
   const db = { auto_runs: {}, auto_config: { main: { on, perStockKrw: 1000000 } } };
   const sent = [];
+  let pool = ['A', 'B', 'C', 'D'];
   let clock = { date: '2026-11-16', min };
   const deps = {
     sbGet: async path => {
@@ -77,11 +78,12 @@ function harness({ min = 10 * 60 + 5, on = true, trading = true } = {}) {
     sbWrite: async (path, method, body) => { if (path.startsWith('auto_runs')) body.forEach(b => { db.auto_runs[b.trade_date] = b; }); },
     sendTelegram: async t => { sent.push(t); },
     kstNow: () => clock, isTradingDay: () => trading,
-    livePool: async () => [row('A'), row('B'), row('C'), row('D', { amt: 2e11 })],
+    livePool: async () => pool.map(c => row(c, c === 'D' ? { amt: 2e11 } : {})),
     fetchFlow: async c => ({ fq: 1000, oq: 800 }), fetchPower: async c => ({ pgQty: 200, w52: 11000 }), fetchCttr: async c => ({ cttr: 125 }),
     marketState: async () => null,
   };
-  return { A: A.createAuto(deps), db, sent, setMin: m => { clock = { date: clock.date, min: m }; } };
+  if (params) { const ST = require('../auto-strategy'), P = { ...ST.defaults('intraday'), ...params }, C = ST.defaults('closing'); deps.strategies = { pair: async () => ({ I: { id: 'intraday-default', name: '기본', version: 1, enabled: true, params: P }, C: { id: 'closing-default', version: 1, enabled: true, params: C }, T: ST.timesOf(P, C) }) }; }
+  return { A: A.createAuto(deps), db, sent, setPool: p => { pool = p; }, setMin: m => { clock = { date: clock.date, min: m }; } };
 }
 
 test('10:05 선정 → 기록, 10:15 알림 1회, 재호출은 중복 발송 없음', async () => {
@@ -170,4 +172,68 @@ test('수급 조건 미달 종목은 후보 제외, 모두 미달이면 "후보 
     fetchFlow: async () => ({ fq: -5, oq: 3 }), fetchPower: async () => ({ pgQty: 1 }), fetchCttr: async () => ({ cttr: 130 }), marketState: async () => null });
   await h.A.tick();
   assert.equal(h.sent.length, 1); assert.match(h.sent[0], /후보 없음/);
+});
+
+/* ── 장중 반복 검토 ── */
+test('반복 검토: 30분 뒤 새 후보만 이어 붙이고 번호를 이어서 알림', async () => {
+  const h = harness();
+  await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick();
+  assert.equal(h.sent.length, 1);
+  h.setPool(['A', 'B', 'C', 'D', 'E']);
+  h.setMin(10 * 60 + 30); await h.A.tick();
+  assert.equal(h.sent.length, 1);                                  // 아직 10:35 전
+  h.setMin(10 * 60 + 35);
+  const r = await h.A.tick();
+  assert.equal(r.round.fresh, 1);
+  const P = h.db.auto_runs['2026-11-16'].payload;
+  assert.deepEqual(P.picks.map(p => p.code).sort(), ['A', 'D', 'E']); assert.equal(P.picks[2].code, 'E');      // 기존 A·D 는 다시 넣지 않음
+  assert.equal(P.picks[2].round, 2); assert.equal(P.roundN, 2); assert.ok(P.picks[0].closed && !P.picks[2].closed);   // 이전 회차(만료) 후보는 닫힘
+  assert.equal(h.db.auto_runs['2026-11-16'].status, 'noticed');
+  const notes = h.sent.filter(t => /^📈 자동매매 후보/.test(t));
+  assert.equal(notes.length, 2);
+  assert.match(notes[1], /2회차/); assert.match(notes[1], /\n3\. 종목E/); assert.match(notes[1], /\/매수 3 4/);
+  assert.ok(P.log.some(l => l.k === 'round' && /새 후보 1개/.test(l.text)));
+  await h.A.tick(); await h.A.tick();
+  assert.equal(h.sent.filter(t => /^📈 자동매매 후보/.test(t)).length, 2);   // 같은 회차 중복 없음
+  const m = await h.A.handleApproval('/매수 1');
+  assert.match(m, /이전 회차/);                                       // 닫힌 후보는 살 수 없음
+});
+test('반복 검토: 새 후보가 없으면 알리지 않고 기록만 남김', async () => {
+  const h = harness();
+  await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick();
+  h.setMin(10 * 60 + 35); await h.A.tick();
+  assert.equal(h.sent.filter(t => /^📈 자동매매 후보/.test(t)).length, 1);
+  const P = h.db.auto_runs['2026-11-16'].payload;
+  assert.equal(P.picks.length, 2); assert.equal(P.roundN, 2);
+  assert.ok(P.log.some(l => l.k === 'round' && /새 후보 없음/.test(l.text)));
+});
+test('반복 검토: 하루 최대 매수 종목 수를 채우면 건너뜀', async () => {
+  const h = harness();
+  await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick();
+  const P0 = h.db.auto_runs['2026-11-16'].payload;
+  P0.orders = Object.fromEntries(['X1', 'X2', 'X3', 'X4', 'X5'].map(c => [c, { orderId: c, st: 'open' }]));
+  h.setPool(['A', 'B', 'C', 'D', 'E']); h.setMin(10 * 60 + 35); await h.A.tick();
+  assert.equal(h.sent.filter(t => /^📈 자동매매 후보/.test(t)).length, 1);
+  const P = h.db.auto_runs['2026-11-16'].payload;
+  assert.equal(P.picks.length, 2);
+  assert.ok(P.log.some(l => l.k === 'round' && /건너뜀/.test(l.text)));
+});
+test('반복 검토: 마지막 검토 시각(14:30) 뒤에는 돌지 않고, 첫 선정은 예전처럼 11:00 까지만', async () => {
+  const h = harness();
+  await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick();
+  h.setPool(['A', 'B', 'C', 'D', 'E']); h.setMin(14 * 60 + 40); await h.A.tick();
+  assert.equal(h.db.auto_runs['2026-11-16'].payload.picks.length, 2);
+  const h2 = harness({ min: 11 * 60 + 30 }); await h2.A.tick();
+  assert.equal(Object.keys(h2.db.auto_runs).length, 0);
+});
+test('반복 검토 + 자동 승인: 새 후보도 알림 직후 자동으로 승인 기록', async () => {
+  const h = harness({ params: { approval: 'auto' } });
+  await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick();
+  assert.deepEqual(h.db.auto_runs['2026-11-16'].payload.approved.slice().sort(), ['A', 'D']);
+  h.setPool(['A', 'B', 'C', 'D', 'E']); h.setMin(10 * 60 + 35); await h.A.tick();
+  const P = h.db.auto_runs['2026-11-16'].payload;
+  assert.deepEqual(P.approved.slice().sort(), ['A', 'D', 'E']);     // 이전 승인 + 새 후보
+  assert.equal(P.decision.kind, 'buy'); assert.deepEqual(P.decision.nums, [3]);
+  assert.equal(P.decisions.length, 1);
+  assert.equal(h.db.auto_runs['2026-11-16'].status, 'approved');
 });
