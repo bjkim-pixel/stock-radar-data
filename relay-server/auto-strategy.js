@@ -18,6 +18,7 @@ const ENUM = {
   carryFlow: { any: '외국인·기관 중 하나', both: '외국인·기관 둘 다', ignore: '보지 않음' },
   regimeMode: { info: '표시만', scale: '종목당 금액 조절' },
   repriceTo: { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' },
+  tpStyle: { r: '새 방식(+1R·중간·목표 25/25/50 + 러너)', even: '예전 방식(목표까지 균등 분할)' },
   unfilledEnd: { cancel: '취소', keep: '장 마감까지 유지' },
 };
 
@@ -60,6 +61,9 @@ const SCHEMA = {
     F('stopPct', '매도', '손절', 'num', 5, { min: 2, max: 10, step: 0.5, unit: '%' }),
     F('rr', '매도', '손익비(매물대 없을 때 목표)', 'num', 3, { min: 1, max: 5, step: 0.5, unit: '배' }),
     F('minRr', '매도', '손익비 하한(목표가 이익 ÷ 손절 손실, 미달이면 매수 안 함 · 0=끔)', 'num', 3, { min: 0, max: 5, step: 0.5, unit: '배' }),
+    F('tpStyle', '매도', '익절 방식', 'enum', 'r', { opts: ENUM.tpStyle }),
+    F('runnerPct', '매도', '러너 비중(목표 없이 트레일링만 · 새 방식에서만)', 'num', 20, { min: 0, max: 50, step: 5, unit: '%' }),
+    F('ratchet', '매도', '손절 올리기(1단계 체결 시 본전, 이후 단계마다 상승)', 'bool', true),
     F('split', '매도', '익절 분할 수', 'num', 5, { min: 1, max: 5, step: 1, unit: '회' }),
     F('minPct', '매도', '1단계 익절 최소', 'num', 3, { min: 1, max: 10, step: 0.5, unit: '%' }),
     F('trail', '매도', '트레일링', 'num', 2, { min: 0.5, max: 5, step: 0.1, unit: '%' }),

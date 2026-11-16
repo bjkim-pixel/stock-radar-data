@@ -22,6 +22,7 @@ const SNAP_WINDOW = 10, KEEP_DAYS = 14;
 const { T } = SES;
 const rnd = () => Math.random().toString(36).slice(2, 6);
 const TR = require('./trail');
+const RT = require('./ratchet');
 const isTp = o => /^tp[1-5]$/.test(String(o.reason || ''));
 
 /* 익절 단계 수량 배분(순수 함수).
@@ -190,7 +191,7 @@ function createPaper(deps) {
   }
   const heldCodes = () => { const s = new Set(positions.keys()); for (const o of orders.values()) if (isOpen(o) && o.side === 'buy') s.add(o.code); return s; };
   /* 손절가: 계획에 % 가 있으면 실제 평균 매수가 기준으로 계산(호가 단위 내림), 없으면 고정 가격 */
-  const stopOf = p => !p || !p.plan ? null : (p.plan.stopPct > 0 ? E.floorTick(p.avg * (1 - p.plan.stopPct / 100)) : (p.plan.stop > 0 ? p.plan.stop : null));
+  const stopOf = p => !p || !p.plan ? null : RT.ratchetStop(p.plan, p.avg, p.plan.peak || 0, E.floorTick);   // 손절 올리기(ratchet)가 켜진 계획은 고점·체결 단계에 따라 올라간 손절가
 
   /* 체결을 주문·보유·체결 목록·익절 진행에 반영 */
   function applyFills(o, list) {
@@ -245,11 +246,12 @@ function createPaper(deps) {
   function cleanPlan(p) {
     if (!p || typeof p !== 'object') return null;
     const num = (v, lo, hi) => { const x = Number(v); return Number.isFinite(x) && x >= lo && x <= hi ? x : null; };
-    const steps = Array.isArray(p.steps) ? p.steps.slice(0, 5).map(s => ({ n: Math.floor(num(s && s.n, 1, 5) || 0), p: num(s && s.p, 1, 1e8), q: Math.floor(num(s && s.q, 1, 1e7) || 0) }))
+    const steps = Array.isArray(p.steps) ? p.steps.slice(0, 5).map(s => ({ n: Math.floor(num(s && s.n, 1, 5) || 0), p: num(s && s.p, 1, 1e8), q: Math.floor(num(s && s.q, 1, 1e7) || 0), ...(s && s.runner ? { runner: true } : {}) }))
       .filter(s => s.n && s.p && s.q && E.validTick(s.p)) : [];
     const seen = new Set(), uniq = steps.filter(s => !seen.has(s.n) && seen.add(s.n));
     const stop = num(p.stop, 1, 1e8);
-    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop && E.validTick(stop) ? stop : (stop ? E.floorTick(stop) : null), target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq };
+    const rt = p.ratchet && typeof p.ratchet === 'object' ? { floorPct: num(p.ratchet.floorPct, 0, 5) == null ? 0.35 : num(p.ratchet.floorPct, 0, 5) } : null;
+    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop && E.validTick(stop) ? stop : (stop ? E.floorTick(stop) : null), target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq, ratchet: rt };
   }
   async function place(body) {
     if (!(await init())) return bad(503, missing ? 'paper tables missing' : 'paper store unavailable');
@@ -342,7 +344,9 @@ function createPaper(deps) {
       // 단계 수량은 비중 — 실제 걸 수량은 allocSteps 가 매도 가능 수량 전체를 이 비중대로 나눔(단계를 지우면 남은 단계가 그 수량을 나눠 가짐)
       if (p.steps.some(s => s.p <= pos.avg * 0.5)) return bad(400, '익절 가격이 너무 낮습니다');
       for (const o of openFor(code, o => o.side === 'sell' && isTp(o))) cancelOrder(o, 'plan_edit');
-      pos.plan = noStop && !p.steps.length ? null : { ...p, steps: TR.keepTrail(pos.plan && pos.plan.steps, p.steps.map(s => ({ ...s, sold: 0 }))), orderId: pos.plan && pos.plan.orderId || null, stopped: false };
+      const old = pos.plan || {}, oldRun = new Set((old.steps || []).filter(s => s.runner).map(s => s.n));
+      const rt = 'ratchet' in body ? p.ratchet : (old.ratchet || null);   // 화면에서 계획을 고쳐도 손절 올리기·러너 표시는 이어받음(body.ratchet:null 이면 해제)
+      pos.plan = noStop && !p.steps.length ? null : { ...p, ratchet: rt, ...(rt ? { peak: old.peak || 0 } : {}), steps: TR.keepTrail(old.steps, p.steps.map(s => ({ ...s, sold: 0, ...(s.runner || oldRun.has(s.n) ? { runner: true } : {}) }))), orderId: old.orderId || null, stopped: false };
       pos.updatedAt = now(); dirty.pos.set(code, pos);
       await flush();
       event('plan_edit', code, { stop: stopOf(pos), steps: p.steps.length });
@@ -355,6 +359,10 @@ function createPaper(deps) {
   async function stopCheck(code, q) {
     const pos = positions.get(code);
     if (!pos || !pos.plan) return false;
+    if (pos.plan.ratchet) {   // 보유 후 본 최고가(손절선을 올리는 기준) — 시세 사이에 찍은 새 고가도 반영
+      const prevHi = pos.highSeen, nh = q.high > 0 && prevHi != null && q.high > prevHi ? q.high : 0, pk = Math.max(pos.plan.peak || 0, q.price || 0, nh);
+      if (pk > (pos.plan.peak || 0)) { pos.plan.peak = pk; dirty.pos.set(code, pos); }
+    }
     const sp = stopOf(pos);
     const newLow = q.low > 0 && pos.lowSeen != null && q.low < pos.lowSeen;   // 시세 사이에 잠깐 찍고 올라온 저가도 잡음(재시작 직후 첫 시세는 기준만 잡음)
     if (q.low > 0) pos.lowSeen = pos.lowSeen == null ? q.low : Math.min(pos.lowSeen, q.low);
@@ -394,16 +402,17 @@ function createPaper(deps) {
     for (const o of tps) if (o.note !== 'trail') cancelOrder(o, 'to_trail');                  // 예전 방식(미리 걸어 둔 지정가) 익절 주문 정리
     const ses = SES.sessionOf(kst().min, q.info);
     if (!ses.open) return;
-    const trail = pos.plan.trail > 0 ? pos.plan.trail : TRAIL_PCT;
+    const trail0 = pos.plan.trail > 0 ? pos.plan.trail : TRAIL_PCT;
     const avail = pos.qty - remainOf(openFor(code, o => o.side === 'sell' && !isTp(o)));
     const want = allocSteps(pos.plan.steps, avail);
     let changed = false;
     for (const st of pos.plan.steps.slice().sort((a, b) => a.n - b.n)) {
       const w = want[st.n] || 0;
       if (w <= 0) continue;
+      const trail = st.runner ? RT.swingWidth((Math.max(st.peak || 0, q.price || 0, newHigh || 0) / pos.avg - 1) * 100) : trail0;   // 러너는 고점수익에 따라 −5/−4/−3%
       const u = TR.trailUpdate(st, q.price, newHigh, trail);
       if (u.changed) changed = true;
-      if (u.armedNow) { event('tp_arm', code, { step: st.n, price: q.price, tp: st.p, trail }); notify(`익절 ${st.n}단계 감시 시작: ${pos.name || code} 익절가 ${st.p.toLocaleString('ko-KR')}원 도달 — 고점 대비 -${trail}%에서 매도`, `tparm|${code}|${st.n}`); }
+      if (u.armedNow) { event('tp_arm', code, { step: st.n, price: q.price, tp: st.p, trail }); notify(`${st.runner ? '러너' : `익절 ${st.n}단계`} 감시 시작: ${pos.name || code} ${st.p.toLocaleString('ko-KR')}원 도달 — 고점 대비 -${trail}%에서 매도`, `tparm|${code}|${st.n}`); }
       if (!u.fire) continue;
       const my = openFor(code, o => o.side === 'sell' && o.reason === 'tp' + st.n);
       if (my.length) { if (my.some(o => now() - o.createdAt < STOP_RETRY_MS)) continue; for (const o of my) cancelOrder(o, 'tp_retry'); }

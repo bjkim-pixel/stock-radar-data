@@ -361,10 +361,10 @@ function createAuto(deps) {
   /* 엔진별로 쓰는 형태 */
   async function execOpt(sid) {
     const p = (await intraOf(sid)).I.params;
-    return { stopPct: p.stopPct, rr: p.rr, minRr: +p.minRr || 0, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3, cancelWaitMs: (p.cancelWaitMin || p.fillWaitMin) * 60e3, repriceTo: p.repriceTo || 'bid1', unfilledEnd: p.unfilledEnd || 'cancel', totalCapKrw: +p.totalCapKrw || 0 };
+    return { stopPct: p.stopPct, rr: p.rr, minRr: +p.minRr || 0, tpStyle: p.tpStyle || 'even', runnerPct: p.runnerPct == null ? 20 : +p.runnerPct, ratchet: !!p.ratchet, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3, cancelWaitMs: (p.cancelWaitMin || p.fillWaitMin) * 60e3, repriceTo: p.repriceTo || 'bid1', unfilledEnd: p.unfilledEnd || 'cancel', totalCapKrw: +p.totalCapKrw || 0 };
   }
   /* 종가베팅 저녁 매수 주문 조건: 손절은 밤새 유지할 값, 익절 없음, 체결강도·시가 대비는 안 봄, 알림가와의 차이는 3%까지 */
-  async function cbOpt(sid) { const { C } = await intraOf(sid); return { closing: true, noTp: true, minRr: 0, stopPct: C.params.overnightStopPct, recheckPct: 3 }; }
+  async function cbOpt(sid) { const { C } = await intraOf(sid); return { closing: true, noTp: true, minRr: 0, ratchet: false, stopPct: C.params.overnightStopPct, recheckPct: 3 }; }
   async function eodRule(sid) {
     const { I, C } = await intraOf(sid), c = C.params, T = ST.timesOf(I.params, c);
     return { highNear: 1 - c.highNearPct / 100, idxFloor: c.idxFloor, gapCut: c.gapCut, slices: T.slices, needAboveAvg: c.needAboveAvg, carryFlow: c.carryFlow,

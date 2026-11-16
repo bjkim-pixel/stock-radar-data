@@ -21,7 +21,7 @@ const ceilTick = p => { const t = tickOf(p); return Math.ceil(p / t - 1e-9) * t;
 const below = p => { let f = floorTick(p); if (f >= p - 1e-9) f -= tickOf(f - 1); return f; };
 
 const PROFILE_DOWN = 0.30, PROFILE_UP = 0.70;
-const DEF = Object.freeze({ stopPct: 5, rr: 3, minRr: 0, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', unfilledEnd: 'cancel', intentLostMs: 60e3 });
+const DEF = Object.freeze({ stopPct: 5, rr: 3, minRr: 0, tpStyle: 'even', runnerPct: 20, ratchet: false, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', unfilledEnd: 'cancel', intentLostMs: 60e3 });
 const REPRICE_KO = { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' };
 
 /* 주문 시점 스냅샷(F1): 호가·시가·재확인 수치 — 화면·일지에서 '왜 이 가격에 샀는지/못 샀는지' 복기용 */
@@ -88,6 +88,24 @@ function splitPlan(buy, target, qty, want = 5, minPct = 3) {
   return { steps };
 }
 const stopPrice = (buy, pct) => floorTick(buy * (1 - pct / 100));
+/* 새 익절 단계(2026-11-16): 코어 = +1R(손절폭만큼, 기본 +5%) · 중간(최대 +2R) · 목표가를 25/25/50 비중으로, 러너 = runnerPct% 는 목표가에 닿은 뒤 스윙형 트레일링만으로.
+   1단계에서 손절선이 본전으로 올라가므로(ratchet) 그 뒤로는 손실이 날 수 없다. 단계 q 는 비중(실제 수량은 매도 엔진이 나눔) */
+function splitPlanR(buy, target, qty, { stopPct = 5, runnerPct = 20, weights = [25, 25, 50] } = {}) {
+  qty = Math.floor(qty);
+  if (!(buy > 0) || !(target > buy) || qty < 1) return { steps: [] };
+  const p1 = Math.min(ceilTick(buy * (1 + stopPct / 100)), target);
+  let p2 = floorTick(Math.min((p1 + target) / 2, buy * (1 + 2 * stopPct / 100)));
+  const prices = [p1]; if (p2 > p1 && p2 < target) prices.push(p2); if (target > p1) prices.push(target);
+  const runQ = qty >= 5 ? Math.floor(qty * Math.min(50, Math.max(0, runnerPct)) / 100) : 0, coreQ = qty - runQ;
+  let w = prices.length === 3 ? weights.slice(0, 3) : prices.length === 2 ? [weights[0] + weights[1], weights[2]] : [100];
+  const W = w.reduce((a, x) => a + x, 0), quota = w.map(x => coreQ * x / W), q = quota.map(Math.floor);
+  let left = coreQ - q.reduce((a, x) => a + x, 0);
+  quota.map((x, i) => i).sort((a, b) => (quota[b] - q[b]) - (quota[a] - q[a]) || a - b).forEach(i => { if (left > 0) { q[i]++; left--; } });
+  const steps = []; prices.forEach((p, i) => { if (q[i] > 0) steps.push({ n: 0, p, q: q[i] }); });
+  if (runQ > 0) steps.push({ n: 0, p: target, q: runQ, runner: true });
+  steps.forEach((x, i) => { x.n = i + 1; });
+  return { steps };
+}
 
 /* 매수 주문 내용 계산: 시세(q) + 일봉(rows) → 가격·수량·계획 */
 function makeOrder({ q, rows, perStockKrw, opt = {} }) {
@@ -103,8 +121,8 @@ function makeOrder({ q, rows, perStockKrw, opt = {} }) {
   const capEok = Math.max(avg5, q.amt || 0) / EOK;
   const prevHigh = rows.length ? Math.max(...rows.map(r => (+r.high > 0 ? +r.high : +r.close))) : 0;
   const tgt = calcTarget({ cur, prof: buildProfile(rows), capEok, coef: o.coef, prevHigh, upper: q.upper, stopPct: o.stopPct, rr: o.rr });
-  const steps = tgt.target && !o.noTp ? splitPlan(buy, tgt.target, qty, o.split, o.minPct).steps.filter(s => s.q > 0) : [];   // noTp(종가베팅 저녁 매수): 익절 없이 손절만 걸고 다음 날 아침 분할 매도
-  const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q })) };
+  const steps = tgt.target && !o.noTp ? (o.tpStyle === 'r' ? splitPlanR(buy, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(buy, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];   // noTp(종가베팅 저녁 매수): 익절 없이 손절만 걸고 다음 날 아침 분할 매도
+  const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ...(o.ratchet && !o.noTp ? { ratchet: { floorPct: 0.35 } } : {}) };
   return { buy, qty, plan, target: tgt.target, mode: tgt.mode, pick: pick ? pick.k : 'cur' };
 }
 
@@ -137,7 +155,7 @@ function unfilledText(o) {
   return `${a} 다시 ${cm}분 뒤 남으면 ${o.unfilledEnd === 'keep' ? '장 마감까지 그대로 둬요' : '취소해요'}.`;
 }
 function planText(r, closing) {
-  const s = closing ? '익절 없음(다음 날 아침 분할 매도)' : r.plan.steps.length ? `익절 ${r.plan.steps.map(x => fmt(x.p)).join(' / ')}` : '익절 없음(목표가를 못 정함 — 매매 화면에서 직접 설정)';
+  const s = closing ? '익절 없음(다음 날 아침 분할 매도)' : r.plan.steps.length ? `익절 ${r.plan.steps.map(x => x.runner ? '러너(목표 도달 후 트레일링)' : fmt(x.p)).join(' / ')}${r.plan.ratchet ? ' · 1단계 체결 시 손절이 본전으로 상승' : ''}` : '익절 없음(목표가를 못 정함 — 매매 화면에서 직접 설정)';
   return `손절 ${fmt(r.plan.stop)}원(−${r.plan.stopPct}%) · ${s}`;
 }
 
@@ -297,4 +315,4 @@ function createExec(deps) {
   return { approve, follow };
 }
 
-module.exports = { tryNo, keepTries, retryable, foldTry, DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, rrOf, createExec };
+module.exports = { tryNo, keepTries, retryable, foldTry, DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, rrOf, splitPlanR, createExec };

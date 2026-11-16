@@ -93,7 +93,7 @@ async function setup(over) {
 }
 
 test('승인 → 가상 지정가 매수(잔량 최다 호가) + 손절·5분할 계획이 주문에 붙음', async () => {
-  const { db, c, A, runs, date } = await setup();
+  const { db, c, A, runs, date } = await setup({ tpStyle: 'even' });
   const msg = await A.handleApproval('/매수 1');
   assert.match(msg, /가상 매수/); assert.match(msg, /손절 9,500원/);
   const o = [...db.t.paper_orders.values()][0];

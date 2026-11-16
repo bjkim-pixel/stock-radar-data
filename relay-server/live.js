@@ -20,6 +20,7 @@ const E = require('./paper-engine');
 const SES = require('./session');
 const { allocSteps } = require('./paper');
 const TR = require('./trail');
+const RT = require('./ratchet');
 const { computeReport } = require('./paper-report');
 
 const MISSING = /42P01|PGRST205|does not exist/;
@@ -124,7 +125,7 @@ function createLive(deps) {
   const mine = (code, pred) => [...orders.values()].filter(o => LIVE.has(o.status) && o.code === code && (!pred || pred(o)));
   const remain = list => list.reduce((a, o) => a + (o.qty - o.filled), 0);
   const posOf = code => bal.positions.get(code) || null;
-  const stopOf = (p, pl) => !pl ? null : (pl.stopPct > 0 ? E.floorTick(p.avg * (1 - pl.stopPct / 100)) : (pl.stop > 0 ? pl.stop : null));
+  const stopOf = (p, pl) => !pl ? null : RT.ratchetStop(pl, p.avg, pl.peak || 0, E.floorTick);   // 손절 올리기(ratchet)가 켜진 계획은 고점·체결 단계에 따라 올라간 손절가
   function dayBuyKrw() {
     const since = dayStart(); let s = 0;
     for (const o of orders.values()) if (o.side === 'buy' && o.createdAt >= since && o.status !== 'rejected') s += LIVE.has(o.status) ? (o.price || o.refPrice || 0) * (o.qty - o.filled) + o.amt : o.amt;
@@ -230,6 +231,10 @@ function createLive(deps) {
   async function stopCheck(code, q) {
     const p = posOf(code), pl = plans.get(code);
     if (!p || !pl || !pl.plan) return false;
+    if (pl.plan.ratchet) {   // 보유 후 본 최고가(손절선을 올리는 기준) — 시세 사이에 찍은 새 고가도 반영
+      const prevHi = highSeen.get(code), nh = q.high > 0 && prevHi != null && q.high > prevHi ? q.high : 0, pk = Math.max(pl.plan.peak || 0, q.price || 0, nh);
+      if (pk > (pl.plan.peak || 0)) { pl.plan.peak = pk; dirty.plans.set(code, pl); }
+    }
     const sp = stopOf(p, pl.plan), prevLow = lowSeen.get(code);
     const newLow = q.low > 0 && prevLow != null && q.low < prevLow;
     if (q.low > 0) lowSeen.set(code, prevLow == null ? q.low : Math.min(prevLow, q.low));
@@ -273,16 +278,17 @@ function createLive(deps) {
     if (old) return;
     const ses = SES.sessionOf(kst().min, q.info);
     if (!ses.open) return;
-    const trail = pl.plan.trail > 0 ? pl.plan.trail : TRAIL_PCT;
+    const trail0 = pl.plan.trail > 0 ? pl.plan.trail : TRAIL_PCT;
     const avail = Math.min(p.qty - remain(mine(code, o => o.side === 'sell' && !isTp(o))), p.sellable + remain(tps));
     const want = allocSteps(pl.plan.steps, Math.max(0, avail));
     let changed = false;
     for (const st of pl.plan.steps.slice().sort((a, b) => a.n - b.n)) {
       const w = want[st.n] || 0;
       if (w <= 0) continue;
+      const trail = st.runner ? RT.swingWidth((Math.max(st.peak || 0, q.price || 0, newHigh || 0) / p.avg - 1) * 100) : trail0;   // 러너는 고점수익에 따라 −5/−4/−3%
       const u = TR.trailUpdate(st, q.price, newHigh, trail);
       if (u.changed) changed = true;
-      if (u.armedNow) { event('tp_arm', code, { step: st.n, price: q.price, tp: st.p, trail }); notify(`[실전] 익절 ${st.n}단계 감시 시작: ${p.name || code} 익절가 ${st.p.toLocaleString('ko-KR')}원 도달 — 고점 대비 -${trail}%에서 매도`, `tparm|${code}|${st.n}`); }
+      if (u.armedNow) { event('tp_arm', code, { step: st.n, price: q.price, tp: st.p, trail }); notify(`[실전] ${st.runner ? '러너' : `익절 ${st.n}단계`} 감시 시작: ${p.name || code} 익절가 ${st.p.toLocaleString('ko-KR')}원 도달 — 고점 대비 -${trail}%에서 매도`, `tparm|${code}|${st.n}`); }
       if (!u.fire) continue;
       const my = tps.filter(o => o.reason === 'tp' + st.n);
       if (my.length) {                                                                      // 이미 매도 진행 중 — 시간외 지정가가 오래 안 팔리면 취소 → 확인 후 다음 주기에 다시 냄
@@ -303,10 +309,11 @@ function createLive(deps) {
   function cleanPlan(p) {
     if (!p || typeof p !== 'object') return null;
     const num = (v, lo, hi) => { const x = Number(v); return Number.isFinite(x) && x >= lo && x <= hi ? x : null; };
-    const steps = Array.isArray(p.steps) ? p.steps.slice(0, 5).map(s => ({ n: Math.floor(num(s && s.n, 1, 5) || 0), p: num(s && s.p, 1, 1e8), q: Math.floor(num(s && s.q, 1, 1e7) || 0) })).filter(s => s.n && s.p && s.q && E.validTick(s.p)) : [];
+    const steps = Array.isArray(p.steps) ? p.steps.slice(0, 5).map(s => ({ n: Math.floor(num(s && s.n, 1, 5) || 0), p: num(s && s.p, 1, 1e8), q: Math.floor(num(s && s.q, 1, 1e7) || 0), ...(s && s.runner ? { runner: true } : {}) })).filter(s => s.n && s.p && s.q && E.validTick(s.p)) : [];
     const seen = new Set(), uniq = steps.filter(s => !seen.has(s.n) && seen.add(s.n));
     const stop = num(p.stop, 1, 1e8);
-    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop ? E.floorTick(stop) : null, target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq };
+    const rt = p.ratchet && typeof p.ratchet === 'object' ? { floorPct: num(p.ratchet.floorPct, 0, 5) == null ? 0.35 : num(p.ratchet.floorPct, 0, 5) } : null;
+    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop ? E.floorTick(stop) : null, target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq, ratchet: rt };
   }
   const ready = async () => { if (!(await init())) return bad(503, missing ? 'live tables missing' : 'live store unavailable'); if (!kis.configured()) return bad(503, 'account not configured'); return null; };
   async function place(body) {
@@ -411,7 +418,9 @@ function createLive(deps) {
       if (pl.steps.some(s => s.p <= p.avg * 0.5)) return bad(400, '익절 가격이 너무 낮습니다');
       for (const o of mine(code, o => o.side === 'sell' && isTp(o))) if (!(await cancelKis(o, 'plan_edit'))) return bad(409, '걸려 있는 익절 주문을 취소하지 못했습니다');
       const prev = plans.get(code);
-      const np = { name: p.name, plan: { ...pl, steps: TR.keepTrail(prev && prev.plan && prev.plan.steps, pl.steps.map(s => ({ ...s, sold: 0 }))), orderId: prev && prev.plan && prev.plan.orderId || null, stopped: false } };
+      const old = (prev && prev.plan) || {}, oldRun = new Set((old.steps || []).filter(s => s.runner).map(s => s.n));
+      const rt = 'ratchet' in body ? pl.ratchet : (old.ratchet || null);   // 화면에서 계획을 고쳐도 손절 올리기·러너 표시는 이어받음(body.ratchet:null 이면 해제)
+      const np = { name: p.name, plan: { ...pl, ratchet: rt, ...(rt ? { peak: old.peak || 0 } : {}), steps: TR.keepTrail(old.steps, pl.steps.map(s => ({ ...s, sold: 0, ...(s.runner || oldRun.has(s.n) ? { runner: true } : {}) }))), orderId: old.orderId || null, stopped: false } };
       if (noStop && !pl.steps.length) { plans.delete(code); dirty.plans.set(code, null); } else { plans.set(code, np); dirty.plans.set(code, np); }
       await flush();
       event('plan_edit', code, { stop: stopOf(p, np.plan), steps: pl.steps.length });
