@@ -17,7 +17,9 @@ function summarizeRun(r, full) {
     picks: (p.picks || []).map(x => full
       ? { code: x.code, name: x.name, score: x.score, price: x.price, open: x.open, changePct: x.changePct, sector: x.sector, smx: x.smx, reasons: x.reasons || [], m: x.m || null, parts: x.parts || null, ratio: x.ratio || null, ev: x.ev || [] }
       : { code: x.code, name: x.name, score: x.score, price: x.price }),
-    orders: Object.entries(ords).map(([code, v]) => ({ code, name: names[code] || code, st: v.st, filled: v.filled || 0, avg: v.avg || null, buy: v.buy || null, qty: v.qty || null, why: v.why || null })),
+    orders: Object.entries(ords).map(([code, v]) => ({ code, name: names[code] || code, st: v.st, filled: v.filled || 0, avg: v.avg || null, buy: v.buy || null, qty: v.qty || null, why: v.why || null,
+      ...(full ? { buy2: v.buy2 || null, target: v.target || (v.plan && v.plan.target) || null, mode: v.mode || null, pick: v.pick || null, plan: v.plan || null, snap: v.snap || null,
+        at: v.at || null, placedAt: v.placedAt || null, modifiedAt: v.modifiedAt || null, filledAt: v.filledAt || null, cancelledAt: v.cancelledAt || null, lowSeen: v.lowSeen || null, noReprice: !!v.noReprice } : {}) })),
     shadow: (p.shadow || []).map(s => ({ code: s.code, name: s.name, price: s.price, score: s.score, changePct: s.changePct, picked: !!s.picked })),
     stat: p.stat || null,
     eod: p.eod ? { at: p.eod.at, none: !!p.eod.none, items: (p.eod.items || []).map(i => ({ code: i.code, name: i.name, ok: !!i.ok, why: i.why || [] })), decision: p.eod.decision ? { kind: p.eod.decision.kind, timeout: !!p.eod.decision.timeout } : null } : null,
@@ -29,6 +31,7 @@ function summarizeRun(r, full) {
     out.dropped = (p.dropped || []).map(x => ({ code: x.code, why: x.why }));
     out.decisionAt = p.decision && p.decision.at || null; out.noticeAt = p.noticeAt || null; out.selectedAt = p.selectedAt || null;
     out.weak = p.eod && p.eod.weak || [];
+    out.log = Array.isArray(p.log) ? p.log : [];   // F1 진행 기록(시각순)
     out.shadow = (p.shadow || []).map(s => ({ code: s.code, name: s.name, price: s.price, score: s.score, changePct: s.changePct, picked: !!s.picked, parts: s.parts || null }));
   }
   return out;

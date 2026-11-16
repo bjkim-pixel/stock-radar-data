@@ -196,7 +196,7 @@ function createAuto(deps) {
   const D = deps;
   const state = { date: null, lastErr: null, running: false, runs: {}, runsAt: 0, checkedAt: {}, carry: null, carryAt: 0, multi: false };
   const DEF_SID = 'intraday-default';
-  const RISK = require('./auto-risk'), EV = require('./auto-events'), EXC = require('./auto-excursion'), PERF = require('./auto-perf');
+  const RISK = require('./auto-risk'), EV = require('./auto-events'), EXC = require('./auto-excursion'), PERF = require('./auto-perf'), LOG = require('./auto-log');
   const JR_AT = require('./auto-journal').JOURNAL_AT, JR_FIN = require('./auto-journal').FINISH_AT;
 
   const kstParts = () => D.kstNow();            // { date:'YYYY-MM-DD', min: 분 }
@@ -327,7 +327,7 @@ function createAuto(deps) {
   /* 엔진별로 쓰는 형태 */
   async function execOpt(sid) {
     const p = (await intraOf(sid)).I.params;
-    return { stopPct: p.stopPct, rr: p.rr, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3, totalCapKrw: +p.totalCapKrw || 0 };
+    return { stopPct: p.stopPct, rr: p.rr, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3, cancelWaitMs: (p.cancelWaitMin || p.fillWaitMin) * 60e3, repriceTo: p.repriceTo || 'bid1', unfilledEnd: p.unfilledEnd || 'cancel', totalCapKrw: +p.totalCapKrw || 0 };
   }
   async function eodRule(sid) {
     const { I, C } = await intraOf(sid), c = C.params, T = ST.timesOf(I.params, c);
@@ -366,6 +366,27 @@ function createAuto(deps) {
     let v = null; try { const r = await D.sbGet('auto_config?select=value&key=eq.excursion&limit=1'); v = r && r[0] && r[0].value; } catch (_) {}
     return (state.exc = v && typeof v === 'object' ? { pos: v.pos || {}, done: v.done || [] } : EXC.fresh());
   }
+  /* F1: 자동매매 종목의 매도 체결(손절·익절 n단계·정리)을 그 전략의 진행 기록에 남김. 체결 id 로 중복 방지 */
+  async function logSellFills(date, ps) {
+    const fills = (ps && ps.fills) || [];
+    if (!fills.length) return;
+    for (const r of Object.values(state.runs)) {
+      const ords = (r.payload && r.payload.orders) || {}, seen = new Set((r.payload && r.payload.loggedFills) || []);
+      const mine = fills.filter(f => f.side === 'sell' && ords[f.code] && (ords[f.code].filled > 0 || ords[f.code].st === 'filled') && !seen.has(f.id));
+      if (!mine.length) continue;
+      const sid = sidOf(r), names = {}; (r.payload.picks || []).forEach(p => { names[p.code] = p.name; });
+      await mutateRun(date, sid, run => {
+        const L = run.payload.loggedFills = Array.isArray(run.payload.loggedFills) ? run.payload.loggedFills : [];
+        for (const f of mine.slice().sort((a, b) => a.ts - b.ts)) {
+          if (L.includes(f.id)) continue;
+          L.push(f.id);
+          LOG.push(run.payload, f.reason === 'stop' ? 'stop' : /^tp/.test(f.reason || '') ? 'tp' : 'sell', `${names[f.code] || f.code}: ${LOG.sellReason(f.reason)} ${f.qty.toLocaleString('ko-KR')}주 @ ${Math.round(f.price).toLocaleString('ko-KR')}원${f.realized != null ? ` · 실현 ${f.realized >= 0 ? '+' : ''}${Math.round(f.realized).toLocaleString('ko-KR')}원` : ''}`, { code: f.code }, f.ts);
+        }
+        if (L.length > 500) L.splice(0, L.length - 500);
+        state.runs[sid] = run;
+      });
+    }
+  }
   async function excTick(date, min) {
     if (!D.paper || !D.paper.state || min < 540 || min > 935) return null;
     const ps = await D.paper.state();
@@ -374,6 +395,7 @@ function createAuto(deps) {
     if (!state.carry || Date.now() - (state.carryAt || 0) > 60000) { state.carry = await readCarry().catch(() => state.carry); state.carryAt = Date.now(); }
     for (const r of Object.values(state.runs)) for (const [code, o] of Object.entries((r.payload && r.payload.orders) || {})) if (['intent', 'open', 'modified', 'filled', 'partial_done'].includes(o.st) || o.filled > 0) watch.add(code);
     Object.values((state.carry && state.carry.items) || {}).filter(i => i.state !== 'done').forEach(i => watch.add(i.code));
+    await logSellFills(date, ps).catch(() => {});
     const st = await excStore(), nDone = st.done.length;
     const r = EXC.update(st, ps.positions, watch, date);
     if (r.changed) state.excDirty = true;
@@ -429,6 +451,9 @@ function createAuto(deps) {
       picks: sel.picks.slice(0, I.params.notifyTop).map(c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date) })),
       shadow, dropped: sel.dropped, rejected: sel.rejected.slice(0, 40), approved: [], decision: null, noticeSent: false,
     };
+    const st0 = sel.stat || {};
+    LOG.push(payload, 'select', `후보 선정${force ? '(사이트에서 지금 실행)' : ''}: 풀 ${st0.pool ?? '–'} → 기본조건 ${st0.base ?? '–'} → 수급 통과 ${st0.flowPass ?? '–'} → 후보 ${payload.picks.length}개${payload.picks.length ? ' (' + payload.picks.map(p => p.name).join(', ') + ')' : ''}`);
+    if (ex && ex.payload && Array.isArray(ex.payload.log)) payload.log = ex.payload.log.concat(payload.log);   // 다시 고른 경우 앞 기록 유지
     await lock(() => writeRun({ trade_date: date, strategy_id: I.id, status: 'selected', payload }));
     return { ok: true, picks: sel.picks.length, stat: sel.stat };
   }
@@ -458,6 +483,7 @@ function createAuto(deps) {
       text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, regime: regimeLine(rg, I.params, ps), exposure: exLine, events: EV.marketLine(run.payload.events), deadline: ST.hhmm(I.T.deadline), auto: I.params.approval === 'auto' && picks.length > 0 });
       if (state.multi && picks.length) text = text.replace(/\n(\d+)\. /g, `\n${run.payload.letter || 'A'}$1. `).replace('답장: /매수 1 3 5 (번호)', `답장: /매수 ${run.payload.letter || 'A'}1 ${run.payload.letter || 'A'}3 (글자+번호)`);
       run.payload.noticeSent = true; run.payload.noticeAt = new Date().toISOString();
+      LOG.push(run.payload, 'notice', `텔레그램 알림 전송 · 후보 ${picks.length}개 · 승인 마감 ${ST.hhmm(I.T.deadline)}${I.params.approval === 'auto' ? ' (자동 승인 설정)' : ''}`);
       if (run.status === 'selected') run.status = 'noticed';
       state.runs[sid] = run;
     });
@@ -486,6 +512,8 @@ function createAuto(deps) {
       run.payload.decision = a.kind === 'pass' ? { kind: 'pass', at: new Date().toISOString() } : { kind: 'buy', nums, at: new Date().toISOString() };
       run.payload.approved = a.kind === 'pass' ? [] : nums.map(n => run.payload.picks[n - 1].code);
       run.status = a.kind === 'pass' ? 'passed' : 'approved';
+      const via = { site: '사이트', telegram: '텔레그램', auto: '자동 승인' }[opts.via] || '텔레그램';
+      LOG.push(run.payload, a.kind === 'pass' ? 'pass' : 'approve', `${via}에서 ${a.kind === 'pass' ? '패스' : '매수 승인: ' + nums.map(n => run.payload.picks[n - 1].name).join(', ')}${min > I.T.deadline ? ' (승인 마감 뒤)' : ''}`);
       return { payload: JSON.parse(JSON.stringify(run.payload)) };
     });
     if (res.bad) return `번호를 확인해 주세요. 1~${res.bad} 중에서 골라요.`;
@@ -528,7 +556,7 @@ function createAuto(deps) {
   async function expireIfNeeded(date, sid) {
     let expired = false;
     const { I } = await intraOf(sid);
-    await mutateRun(date, sid, run => { if (run.status === 'noticed' && !run.payload.decision) { run.status = 'expired'; run.payload.decision = { kind: 'expired', at: new Date().toISOString() }; expired = true; } state.runs[sid] = run; });
+    await mutateRun(date, sid, run => { if (run.status === 'noticed' && !run.payload.decision) { run.status = 'expired'; run.payload.decision = { kind: 'expired', at: new Date().toISOString() }; expired = true; LOG.push(run.payload, 'expire', `승인 마감(${ST.hhmm(I.T.deadline)})까지 답이 없어 매수하지 않음 — 사이트에서는 15:20까지 승인 가능`); } state.runs[sid] = run; });
     if (expired) await tgFor(sid)(`⌛ ${ST.hhmm(I.T.deadline)} 승인 마감 — 오늘 자동매매 후보는 매수하지 않고 기록만 남겼어요.`);
   }
 
@@ -608,7 +636,7 @@ function createAuto(deps) {
   /* 승인 방식 '자동': 그 전략의 알림 후보 전체를 승인한 것으로 처리(가상매매) */
   async function autoApprove(sid) {
     const { date, min } = kstParts();
-    const msg = await approveRun(date, sid, { kind: 'all' }, min);
+    const msg = await approveRun(date, sid, { kind: 'all' }, min, { via: 'auto' });
     if (msg) await tgFor(sid)('🤖 자동 승인\n' + msg);
     return { ok: true };
   }
@@ -698,7 +726,7 @@ function createAuto(deps) {
     try {
       const ps = D.paper && D.paper.state ? await D.paper.state() : null;
       const watch = new Set([...Object.keys(owner), ...carryItems.map(i => i.code)]);
-      if (ps && ps.ok) positions = ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop, strategy: owner[p.code] || null }));
+      if (ps && ps.ok) positions = ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop, plan: p.plan || null, dayHigh: p.dayHigh || null, dayLow: p.dayLow || null, avail: p.avail, strategy: owner[p.code] || null }));
     } catch (_) {}
     const events = EV.marketNotes(await EV.loadEvents(D.sbGet, date, 0, 4), date, 3);
     let exposure = null;
@@ -713,7 +741,7 @@ function createAuto(deps) {
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */
   async function siteApprove(kind, nums, sid) {
     const text = kind === 'pass' ? '/패스' : `/매수 ${nums.join(' ')}`;
-    const r = await handleApproval(text, sid || null, { late: true });
+    const r = await handleApproval(text, sid || null, { late: true, via: 'site' });
     if (r) await D.sendTelegram(`🖥 사이트에서 ${sid ? `[${labelOf(sid)}] ` : ''}${kind === 'pass' ? '패스' : '매수 ' + nums.join(',')} 선택\n${r}`).catch(() => {});
     if (r && kind !== 'pass' && sid && D.paper) { try { await execFor(sid).follow(kstParts().date); } catch (_) {} }   // 승인 즉시 주문 관리를 한 번 돌려 다음 단계(체결 확인·익절 주문)로 넘김
     return { ok: !!r, reply: r || '처리할 수 없는 요청입니다.' };

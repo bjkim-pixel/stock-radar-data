@@ -1,4 +1,5 @@
 'use strict';
+const LOG = require('./auto-log');
 /* 자동매매 3단계(2026-11-15) — 장 마감 판정 · 종가 베팅 전환 · 다음 날 아침 3분할 매도 (가상매매)
    기획안 6·7장(확정):
    · 15:10 판정: 오늘 자동매매로 산 종목(아직 보유) 중 "넘길 자격"이 없는 종목을 텔레그램으로 알림 → /정리 1 3 · /정리 전체 · /유지
@@ -73,7 +74,7 @@ function createEod(deps) {
     const run = await D.readRun(date);
     if (!run || (run.payload.eod && run.payload.eod.at)) return { ok: true, skipped: true };
     const codes = boughtCodes(run);
-    if (!codes.length) { await D.mutateRun(date, r => { r.payload.eod = { at: now(), items: [], none: true }; }); return { ok: true, n: 0 }; }
+    if (!codes.length) { await D.mutateRun(date, r => { r.payload.eod = { at: now(), items: [], none: true }; LOG.push(r.payload, 'judge', '종가 판정: 오늘 산 종목이 없어 건너뜀', null, now()); }); return { ok: true, n: 0 }; }
     const H = await heldMap();
     let idx = {}; try { idx = (await D.marketIdx()) || {}; } catch (_) {}
     const R = await rule();
@@ -90,7 +91,8 @@ function createEod(deps) {
     const weak = items.filter(i => !i.ok);
     // 약한 종목 처리 방식(장중 전략 설정): ask=물어봄 · auto_sell=바로 정리 · keep=정리 안 함
     const pre = !weak.length ? { kind: 'none' } : R.eodWeak === 'auto_sell' ? { kind: 'sell', codes: weak.map(i => i.code), auto: true, at: now() } : R.eodWeak === 'keep' ? { kind: 'keep', auto: true, at: now() } : null;
-    await D.mutateRun(date, r => { r.payload.eod = { at: now(), items, weak: weak.map(i => i.code), decision: pre }; });
+    await D.mutateRun(date, r => { r.payload.eod = { at: now(), items, weak: weak.map(i => i.code), decision: pre };
+      LOG.push(r.payload, 'judge', `종가 판정: 보유 ${items.length}종목 · 넘길 자격 ${items.length - weak.length} · 약함 ${weak.length}${weak.length ? ' (' + weak.map(i => `${i.name}: ${i.why.join(', ')}`).join(' / ') + ')' : ''}${pre && pre.kind === 'sell' ? ' → 설정대로 바로 정리' : pre && pre.kind === 'keep' && weak.length ? ' → 설정대로 유지' : ''}`, null, now()); });
     const conv = hhmm(R.convertAt);
     const L = [`🕒 ${hhmm(Math.floor((now() + 9 * 3600e3) / 60e3) % 1440)} 종가 판정 · 자동매매 보유 ${items.length}종목`];
     items.filter(i => i.ok).forEach(i => L.push(`✓ ${i.name} ${fmt(i.qty)}주 — 넘길 자격 있음(${conv}까지 분할 익절 유지 후 종가 베팅)`));
@@ -128,14 +130,14 @@ function createEod(deps) {
     const R = await rule();
     if (opts.late ? min >= 930 : min >= R.replyEnd) return opts.late ? '장 마감(15:30)이 지나 정리할 수 없어요.' : `${hhmm(R.replyEnd)} 응답 마감이 지났어요. 설정에 따라 처리합니다.`;
     const pick = a.kind === 'sell' ? a.nums.map(n => weak[n - 1]) : [];
-    await D.mutateRun(date, r => { r.payload.eod.decision = { kind: a.kind, codes: pick, at: now() }; });
+    await D.mutateRun(date, r => { r.payload.eod.decision = { kind: a.kind, codes: pick, at: now() }; LOG.push(r.payload, 'eod', a.kind === 'keep' ? '약한 종목 유지 결정' : `약한 종목 정리 결정: ${pick.map(c => ((E.items || []).find(i => i.code === c) || {}).name || c).join(', ')}`, null, now()); });
     if (a.kind === 'keep') return `정리하지 않고 ${hhmm(R.convertAt)}까지 들고 갈게요.`;
     return ['🧹 종가 전 정리(시장가)', ...(await sellCodes(pick, E.items, 'eod'))].join('\n');
   }
   async function timeout(date) {
     const R = await rule(), sell = R.eodTimeout === 'sell';
     let hit = null;
-    await D.mutateRun(date, r => { const E = r.payload.eod; if (E && (E.weak || []).length && !E.decision) { E.decision = { kind: sell ? 'sell' : 'keep', codes: sell ? E.weak.slice() : undefined, timeout: true, at: now() }; hit = { codes: E.weak.slice(), items: E.items || [] }; } });
+    await D.mutateRun(date, r => { const E = r.payload.eod; if (E && (E.weak || []).length && !E.decision) { E.decision = { kind: sell ? 'sell' : 'keep', codes: sell ? E.weak.slice() : undefined, timeout: true, at: now() }; hit = { codes: E.weak.slice(), items: E.items || [] }; LOG.push(r.payload, 'eod', `정리 질문에 답이 없어 설정대로 ${sell ? '정리' : '유지'}`, null, now()); } });
     if (hit) {
       if (sell) await D.sendTelegram([`⌛ ${hhmm(R.replyEnd)} — 답이 없어 설정대로 정리합니다(시장가).`, ...(await sellCodes(hit.codes, hit.items, 'eod'))].join('\n'));
       else await D.sendTelegram(`⌛ ${hhmm(R.replyEnd)} — 답이 없어 정리하지 않았어요. ${hhmm(R.convertAt)}까지 들고 갑니다.`);
@@ -150,7 +152,7 @@ function createEod(deps) {
     const codes = boughtCodes(run);
     const R = await rule();
     if (!R.closingOn) {   // 종가베팅 전략이 꺼져 있으면 이월하지 않음
-      await D.mutateRun(date, r => { r.payload.carryDone = { at: now(), codes: [], off: true }; });
+      await D.mutateRun(date, r => { r.payload.carryDone = { at: now(), codes: [], off: true }; LOG.push(r.payload, 'convert', '이월 전환: 종가베팅 전략이 꺼져 있어 넘기지 않음', null, now()); });
       const H0 = await heldMap(), left = codes.filter(c => (H0.get(c) || {}).qty > 0);
       if (left.length) await D.sendTelegram(`🌙 ${date} 종가베팅 전략이 꺼져 있어 이월하지 않았어요. 남은 자동매매 보유 ${left.length}종목은 매매 화면에서 확인하세요.`);
       return { ok: true, n: 0, off: true };
@@ -164,7 +166,7 @@ function createEod(deps) {
       add.push({ code, name: p.name || nameOf(run, code), q0: p.qty, avg: p.avg, from: date, sold: 0, planOk: !!(e && e.ok), sid: D.tag || null });   // sid = 넘겨준 장중 전략
     }
     await D.mutateCarry(c => { c.items = c.items || {}; for (const a of add) c.items[a.code] = { ...a, at: now(), state: 'wait' }; });
-    await D.mutateRun(date, r => { r.payload.carryDone = { at: now(), codes: add.map(a => a.code) }; });
+    await D.mutateRun(date, r => { r.payload.carryDone = { at: now(), codes: add.map(a => a.code) }; LOG.push(r.payload, 'convert', add.length ? `이월 전환: ${add.map(a => `${a.name} ${a.q0}주`).join(', ')} — 분할 익절 끄고 손절 −${R.overnightStopPct}% 유지, 다음 날 ${R.slices.map(hhmm).join('·')} 분할 매도` : '이월 전환: 넘길 종목 없음(모두 정리됨)', null, now()); });
     const L = [`🌙 ${date} 종가 베팅 전환`];
     if (!add.length) L.push('넘길 종목이 없어요(모두 정리됨).');
     else {

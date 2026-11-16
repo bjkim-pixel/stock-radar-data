@@ -12,6 +12,7 @@
      같은 종목 매수 주문을 찾아 이어받고, 못 찾으면 다시 내지 않고 '확인 불가'로 알린다 */
 
 const { capCheck } = require('./auto-risk');
+const LOG = require('./auto-log');
 const TICKS = [[2000, 1], [5000, 5], [20000, 10], [50000, 50], [200000, 100], [500000, 500]];
 const EOK = 1e8;
 const tickOf = p => { for (const [lim, t] of TICKS) if (p < lim) return t; return 1000; };
@@ -20,7 +21,19 @@ const ceilTick = p => { const t = tickOf(p); return Math.ceil(p / t - 1e-9) * t;
 const below = p => { let f = floorTick(p); if (f >= p - 1e-9) f -= tickOf(f - 1); return f; };
 
 const PROFILE_DOWN = 0.30, PROFILE_UP = 0.70;
-const DEF = Object.freeze({ stopPct: 5, rr: 3, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, intentLostMs: 60e3 });
+const DEF = Object.freeze({ stopPct: 5, rr: 3, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', unfilledEnd: 'cancel', intentLostMs: 60e3 });
+const REPRICE_KO = { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' };
+
+/* 주문 시점 스냅샷(F1): 호가·시가·재확인 수치 — 화면·일지에서 '왜 이 가격에 샀는지/못 샀는지' 복기용 */
+function snapOf(q, notice, opt = {}) {
+  const o = { ...DEF, ...opt }, lv = a => (a || []).filter(x => x && x.p > 0).slice(0, 10).map(x => ({ p: x.p, q: x.q }));
+  if (!q) return null;
+  const r2 = v => (v == null || !isFinite(v) ? null : Math.round(v * 100) / 100);
+  return { price: q.price || null, open: q.open || null, high: q.high || null, low: q.low || null, upper: q.upper || null, lower: q.lower || null, prevClose: q.prevClose || null,
+    bids: lv(q.bids), asks: lv(q.asks), notice: (notice && notice.price) || null,
+    checks: { cttr: { v: q.strength == null ? null : r2(q.strength), min: o.cttrMin }, move: { v: notice && notice.price > 0 && q.price > 0 ? r2((q.price / notice.price - 1) * 100) : null, max: o.recheckPct },
+      openRise: { v: q.open > 0 && q.price > 0 ? r2((q.price / q.open - 1) * 100) : null, max: o.openRiseMax }, vi: !!q.vi } };
+}
 
 /* 매수 호가에서 추천: 잔량 1위·2위, 가장 낮은 호가 (trdRecBids) */
 function recBids(bids, cur) {
@@ -112,6 +125,11 @@ function recheck(q, notice, opt = {}) {
 }
 
 const fmt = v => Math.round(v).toLocaleString('ko-KR');
+function unfilledText(o) {
+  const wm = Math.round(o.fillWaitMs / 60e3), cm = Math.round(o.cancelWaitMs / 60e3);
+  const a = o.repriceTo === 'none' ? `미체결은 ${wm}분 뒤 정정하지 않고` : `미체결은 ${wm}분 뒤 ${REPRICE_KO[o.repriceTo] || '매수 1호가'}로 한 번 정정,`;
+  return `${a} 다시 ${cm}분 뒤 남으면 ${o.unfilledEnd === 'keep' ? '장 마감까지 그대로 둬요' : '취소해요'}.`;
+}
 function planText(r) {
   const s = r.plan.steps.length ? `익절 ${r.plan.steps.map(x => fmt(x.p)).join(' / ')}` : '익절 없음(목표가를 못 정함 — 매매 화면에서 직접 설정)';
   return `손절 ${fmt(r.plan.stop)}원(−${r.plan.stopPct}%) · ${s}`;
@@ -125,24 +143,29 @@ function createExec(deps) {
   async function placeOne(date, code, notice, perStock, opt) {
     try { if (D.paper.heldCodes && D.paper.heldCodes().includes(code)) return { st: 'skipped', why: '이미 보유·주문 중(다른 전략 또는 직접 매매)' }; } catch (_) {}   // 같은 종목은 한 포지션으로 합쳐지므로 겹쳐 사지 않음
     let q; try { q = await D.getQuote(code); } catch (e) { return { st: 'skipped', why: '시세 조회 실패: ' + e.message }; }
-    const why = recheck(q, notice, opt);
-    if (why.length) return { st: 'skipped', why: why.join(', ') };
+    const why = recheck(q, notice, opt), snap = snapOf(q, notice, opt);
+    if (snap) snap.at = now();
+    if (why.length) return { st: 'skipped', why: why.join(', '), snap };
     let rows; try { rows = await D.loadChart(code); } catch (e) { rows = []; }
-    if (!rows || !rows.length) return { st: 'skipped', why: '일봉 자료 없음' };
+    if (!rows || !rows.length) return { st: 'skipped', why: '일봉 자료 없음', snap };
     const ord = makeOrder({ q, rows, perStockKrw: perStock, opt });
-    if (ord.skip) return { st: 'skipped', why: ord.skip };
+    if (ord.skip) return { st: 'skipped', why: ord.skip, snap };
     // 1) 의도 먼저 저장(재시작 중복 방지)
     const at = now();
-    await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'intent', at, buy: ord.buy, qty: ord.qty, plan: ord.plan, mode: ord.mode, pick: ord.pick }; });
+    await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'intent', at, buy: ord.buy, qty: ord.qty, plan: ord.plan, mode: ord.mode, pick: ord.pick, target: ord.target, snap }; });
     // 2) 주문
     const r = await D.paper.place({ code, name: notice.name, side: 'buy', type: 'limit', price: ord.buy, qty: ord.qty, plan: ord.plan, cid: `auto${date.replace(/-/g, '')}${code}` });
     if (!r || !r.ok) {
-      await D.mutateRun(date, run => { run.payload.orders[code] = { ...run.payload.orders[code], st: 'failed', why: (r && r.error) || '주문 거부' }; });
+      await D.mutateRun(date, run => { run.payload.orders[code] = { ...run.payload.orders[code], st: 'failed', why: (r && r.error) || '주문 거부' }; LOG.push(run.payload, 'order_fail', `${notice.name}: 주문 실패 — ${(r && r.error) || '주문 거부'}`, { code }, now()); });
       return { st: 'failed', why: (r && r.error) || '주문 거부', ord };
     }
     const o = r.order, filled = o.filled || 0;
     const st = stateOf(o) === 'filled' ? 'filled' : 'open';
-    await D.mutateRun(date, run => { run.payload.orders[code] = { ...run.payload.orders[code], st, orderId: o.id, placedAt: at, filled, avg: o.avg || null }; });
+    await D.mutateRun(date, run => {
+      run.payload.orders[code] = { ...run.payload.orders[code], st, orderId: o.id, placedAt: at, filled, avg: o.avg || null };
+      LOG.push(run.payload, 'order', `${notice.name}: ${fmt(ord.buy)}원 ${fmt(ord.qty)}주 지정가 매수 주문(${LOG.PICK_KO[ord.pick] || ord.pick}) · 현재가 ${snap && snap.price ? fmt(snap.price) : '–'}원 · 손절 ${fmt(ord.plan.stop)} · 목표 ${ord.target ? fmt(ord.target) : '없음'}`, { code }, at);
+      if (st === 'filled') LOG.push(run.payload, 'filled', `${notice.name}: 바로 체결 ${fmt(filled)}주 평균 ${fmt(o.avg)}원`, { code }, now());
+    });
     return { st, ord, order: o };
   }
 
@@ -158,11 +181,11 @@ function createExec(deps) {
       let r;
       if (opt && opt.totalCapKrw > 0 && D.exposure) {   // 총액 상한: 새 주문이 상한을 넘으면 이 종목만 사지 않음(기존 보유는 그대로)
         const ck = capCheck(opt.totalCapKrw, await D.exposure().catch(() => null), perStock);
-        if (!ck.ok) { await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'skipped', why: ck.why, at: now() }; }); lines.push(`· ${notice.name}: 매수 안 함 — ${ck.why}`); continue; }
+        if (!ck.ok) { await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'skipped', why: ck.why, at: now() }; LOG.push(run.payload, 'skip', `${notice.name}: 매수 안 함 — ${ck.why}`, { code }, now()); }); lines.push(`· ${notice.name}: 매수 안 함 — ${ck.why}`); continue; }
       }
       try { r = await placeOne(date, code, notice, perStock, opt); } catch (e) { r = { st: 'failed', why: e.message }; }
       if (r.st === 'skipped') {
-        await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'skipped', why: r.why, at: now() }; });
+        await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'skipped', why: r.why, at: now(), snap: r.snap || null }; LOG.push(run.payload, 'skip', `${notice.name}: 승인 후 재확인에서 매수 안 함 — ${r.why}`, { code }, now()); });
         lines.push(`· ${notice.name}: 매수 안 함 — ${r.why}`);
       } else if (r.st === 'failed') lines.push(`· ${notice.name}: 주문 실패 — ${r.why}`);
       else {
@@ -171,8 +194,7 @@ function createExec(deps) {
         lines.push(`  ${planText(ord)}`);
       }
     }
-    const wm = Math.round(((opt && opt.fillWaitMs) || DEF.fillWaitMs) / 60e3);
-    lines.push('', `미체결은 ${wm}분 뒤 매수 1호가로 한 번 정정, 다시 ${wm}분 뒤 남으면 취소해요.`);
+    lines.push('', unfilledText({ ...DEF, ...(opt || {}) }));
     return lines.join('\n');
   }
 
@@ -181,7 +203,7 @@ function createExec(deps) {
     const run = await D.readRun(date);
     const ords = run && run.payload && run.payload.orders;
     if (!ords) return { ok: true, n: 0 };
-    const o2 = { ...DEF, ...(D.opt ? await D.opt().catch(() => ({})) : {}) }, wm = Math.round(o2.fillWaitMs / 60e3);
+    const o2 = { ...DEF, ...(D.opt ? await D.opt().catch(() => ({})) : {}) }, wm = Math.round(o2.fillWaitMs / 60e3), cm = Math.round(o2.cancelWaitMs / 60e3);
     const active = Object.entries(ords).filter(([, v]) => v.st === 'intent' || v.st === 'open' || v.st === 'modified');
     if (!active.length) return { ok: true, n: 0 };
     const S = await D.paper.state();
@@ -192,9 +214,9 @@ function createExec(deps) {
       const name = ((run.payload.picks || []).find(p => p.code === code) || {}).name || code;
       if (v.st === 'intent') {   // 재시작 등으로 결과 모름 → 의도 시각 이후 같은 종목 매수 주문을 찾아 이어받기
         const found = (S.orders || []).filter(o => o.code === code && o.side === 'buy' && o.ts >= v.at - 2000).sort((a, b) => a.ts - b.ts)[0];
-        if (found) await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: found.status === 'filled' ? 'filled' : 'open', orderId: found.id, placedAt: found.ts, filled: found.filled }; });
+        if (found) await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: found.status === 'filled' ? 'filled' : 'open', orderId: found.id, placedAt: found.ts, filled: found.filled }; LOG.push(r.payload, 'resume', `${name}: 재시작 뒤 주문을 찾아 이어받음`, { code }, now()); });
         else if (now() - v.at > DEF.intentLostMs) {
-          await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'lost' }; });
+          await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'lost' }; LOG.push(r.payload, 'lost', `${name}: 주문 결과 확인 불가(서버 재시작 추정) — 다시 내지 않음`, { code }, now()); });
           msgs.push(`⚠ ${name}: 주문 결과를 확인하지 못했어요(서버 재시작 추정). 중복을 막으려고 다시 내지 않았어요 — 매매 화면에서 확인하세요.`);
         }
         continue;
@@ -202,34 +224,43 @@ function createExec(deps) {
       const o = byId.get(v.orderId);
       if (!o) continue;
       if (o.status === 'filled') {
-        await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'filled', filled: o.filled, avg: o.avg }; });
+        await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'filled', filled: o.filled, avg: o.avg, filledAt: now() }; LOG.push(r.payload, 'filled', `${name}: 체결 ${fmt(o.filled)}주 평균 ${fmt(o.avg)}원 — 손절·익절 자동 관리 시작`, { code }, now()); });
         msgs.push(`✅ ${name}: 가상 매수 체결 ${fmt(o.filled)}주 평균 ${fmt(o.avg)}원 — 손절·익절 자동 관리 시작`);
         continue;
       }
       if (o.status !== 'open' && o.status !== 'partial') {   // 엔진이 취소·소멸시킨 경우
-        await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg }; });
+        await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg }; LOG.push(r.payload, 'cancel', `${name}: 엔진에서 주문 종료(${o.status})${o.filled ? ` · 일부 ${fmt(o.filled)}주 체결` : ''}`, { code }, now()); });
         continue;
       }
       const since = v.st === 'modified' ? v.modifiedAt : v.placedAt;
-      if (now() - since < o2.fillWaitMs) continue;
-      if (v.st === 'open') {   // 3분 미체결 → 매수 1호가로 한 번 정정
-        let q; try { q = await D.getQuote(code); } catch (_) { continue; }
-        const bid1 = ((q.bids || []).find(b => b.p > 0) || {}).p;
-        if (!(bid1 > 0) || bid1 === o.price) {   // 이미 1호가면 정정할 게 없음 → 정정한 것으로 보고 3분 더 기다림
-          await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'modified', modifiedAt: now() }; });
+      if (now() - since < (v.st === 'modified' ? o2.cancelWaitMs : o2.fillWaitMs)) continue;
+      if (v.st === 'open') {   // 미체결 → 설정한 가격으로 한 번 정정(정정 안 함이면 그대로 다음 대기로)
+        if (o2.repriceTo === 'none') {
+          await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'modified', modifiedAt: now(), noReprice: true }; LOG.push(r.payload, 'wait', `${name}: ${wm}분 미체결 — 정정하지 않고 ${cm}분 더 기다림`, { code }, now()); });
           continue;
         }
-        const m = await D.paper.modify({ id: o.id, price: bid1 });
+        let q; try { q = await D.getQuote(code); } catch (_) { continue; }
+        const px = o2.repriceTo === 'ask1' ? ((q.asks || []).filter(a => a.p > 0).reduce((m, a) => (!m || a.p < m ? a.p : m), 0) || null) : ((q.bids || []).find(b => b.p > 0) || {}).p;
+        if (!(px > 0) || px === o.price) {   // 이미 그 가격이면 정정할 게 없음 → 정정한 것으로 보고 더 기다림
+          await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'modified', modifiedAt: now() }; LOG.push(r.payload, 'wait', `${name}: ${wm}분 미체결 — 이미 ${REPRICE_KO[o2.repriceTo]}(${fmt(o.price)}원)라 정정 없이 ${cm}분 더 기다림 · 현재가 ${q.price ? fmt(q.price) : '–'}원`, { code }, now()); });
+          continue;
+        }
+        const m = await D.paper.modify({ id: o.id, price: px });
         if (m && m.ok) {
-          await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: m.order.status === 'filled' ? 'filled' : 'modified', orderId: m.order.id, modifiedAt: now(), from: o.id, buy2: bid1 }; });
-          msgs.push(`↪ ${name}: ${wm}분 미체결 → ${fmt(bid1)}원으로 정정${m.order.status === 'filled' ? ' · 체결' : ''}`);
+          await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: m.order.status === 'filled' ? 'filled' : 'modified', orderId: m.order.id, modifiedAt: now(), from: o.id, buy2: px, ...(m.order.status === 'filled' ? { filledAt: now(), filled: m.order.filled, avg: m.order.avg } : {}) };
+            LOG.push(r.payload, 'reprice', `${name}: ${wm}분 미체결 → ${fmt(o.price)}원에서 ${fmt(px)}원(${REPRICE_KO[o2.repriceTo]})으로 정정 · 현재가 ${q.price ? fmt(q.price) : '–'}원${m.order.status === 'filled' ? ' · 바로 체결' : ''}`, { code }, now()); });
+          msgs.push(`↪ ${name}: ${wm}분 미체결 → ${fmt(px)}원으로 정정${m.order.status === 'filled' ? ' · 체결' : ''}`);
         } else {
-          await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'cancelled', why: '정정 실패: ' + ((m && m.error) || '') }; });
+          await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'cancelled', why: '정정 실패: ' + ((m && m.error) || '') }; LOG.push(r.payload, 'cancel', `${name}: 정정 실패 — ${(m && m.error) || '알 수 없음'}`, { code }, now()); });
           msgs.push(`⚠ ${name}: 정정 실패 — ${(m && m.error) || '알 수 없음'}`);
         }
-      } else {                 // 정정 후 3분도 미체결 → 취소
+      } else {                 // 정정 후에도 미체결
+        if (o2.unfilledEnd === 'keep') continue;   // 설정: 장 마감까지 유지
+        let lo = null; try { const q = await D.getQuote(code); lo = q && q.low > 0 ? q.low : null; } catch (_) {}
         const c = await D.paper.cancel(o.id);
-        await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg, why: c && c.ok ? '미체결 취소' : '취소 실패' }; });
+        const missTx = lo != null ? ` · 주문가 ${fmt(o.price)}원, 그동안 최저가 ${fmt(lo)}원${lo > o.price ? '(주문가까지 내려오지 않음)' : ''}` : '';
+        await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg, why: c && c.ok ? '미체결 취소' : '취소 실패', cancelledAt: now(), lowSeen: lo };
+          LOG.push(r.payload, 'cancel', `${name}: 정정 후 ${cm}분 미체결 → 취소${o.filled ? ` (일부 ${fmt(o.filled)}주 보유)` : ''}${missTx}`, { code }, now()); });
         msgs.push(`✖ ${name}: 정정 후에도 미체결 → 취소${o.filled ? ` (일부 ${fmt(o.filled)}주는 보유·계획대로 관리)` : ''}`);
       }
     }
@@ -240,4 +271,4 @@ function createExec(deps) {
   return { approve, follow };
 }
 
-module.exports = { DEF, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, createExec };
+module.exports = { DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, createExec };

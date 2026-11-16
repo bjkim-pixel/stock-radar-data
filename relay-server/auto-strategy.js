@@ -17,6 +17,8 @@ const ENUM = {
   approval: { manual: '텔레그램 승인 필수', auto: '알림 후 자동 매수' },
   carryFlow: { any: '외국인·기관 중 하나', both: '외국인·기관 둘 다', ignore: '보지 않음' },
   regimeMode: { info: '표시만', scale: '종목당 금액 조절' },
+  repriceTo: { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' },
+  unfilledEnd: { cancel: '취소', keep: '장 마감까지 유지' },
 };
 
 /* type: num | time | times | bool | enum | weights. group 순서 = 화면 순서 */
@@ -42,7 +44,10 @@ const SCHEMA = {
     F('totalCapKrw', '매수 주문', '총액 상한(0=없음)', 'num', 0, { min: 0, max: 500000000, step: 1000000, unit: '원' }),
     F('buyPick', '매수 주문', '매수가', 'enum', 'q1', { opts: ENUM.buyPick }),
     F('recheckPct', '매수 주문', '승인 후 재확인 허용 변동', 'num', 1.5, { min: 0.5, max: 5, step: 0.1, unit: '%' }),
-    F('fillWaitMin', '매수 주문', '미체결 정정·취소 대기', 'num', 3, { min: 1, max: 10, step: 1, unit: '분' }),
+    F('fillWaitMin', '매수 주문', '미체결 → 정정까지 대기', 'num', 3, { min: 1, max: 30, step: 1, unit: '분' }),
+    F('repriceTo', '매수 주문', '정정 가격', 'enum', 'bid1', { opts: ENUM.repriceTo }),
+    F('cancelWaitMin', '매수 주문', '정정 후 → 끝낼 때까지 대기', 'num', 3, { min: 1, max: 60, step: 1, unit: '분' }),
+    F('unfilledEnd', '매수 주문', '그래도 미체결이면', 'enum', 'cancel', { opts: ENUM.unfilledEnd }),
     F('approval', '매수 주문', '승인 방식', 'enum', 'manual', { opts: ENUM.approval }),
     F('regimeMode', '시장 상태', '시장 상태 점수 반영', 'enum', 'info', { opts: ENUM.regimeMode }),
     F('regimeCaution', '시장 상태', '보수 단계(30~49점) 금액', 'num', 50, { min: 10, max: 100, step: 5, unit: '%' }),

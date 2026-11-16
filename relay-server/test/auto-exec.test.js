@@ -73,14 +73,14 @@ test('재확인: 체결강도·알림 후 ±1.5%·시가 대비 +8%·VI·경고'
 });
 
 /* ── 실제 가상매매 엔진(paper.js)과 붙인 흐름 ── */
-async function setup() {
+async function setup(over) {
   const db = fakeDb(), c = await boot(db);
   const runs = {}; const sent = [];
   const kst = () => { const d = new Date(c.st.clock + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes() }; };
   const rows = Array.from({ length: 30 }, (_, i) => ({ close: 9000 + i * 30, high: 9100 + i * 30, low: 8900 + i * 30, trade_amount: 5e10, individual_net: (i % 3 - 1) * 1e9 }));
   rows.push({ close: 10000, high: 10100, low: 9900, trade_amount: 5e10, individual_net: 1e9 });
   const A = createAuto({
-    sbGet: async p => { if (p.startsWith('auto_config')) return [{ value: { on: true, perStockKrw: 1000000 } }]; if (p.startsWith('auto_runs')) { const d = (p.match(/eq\.([\d-]+)/) || [])[1]; return runs[d] ? [JSON.parse(JSON.stringify(runs[d]))] : []; } return []; },
+    sbGet: async p => { if (over && p.startsWith('auto_strategies?')) return [{ id: 'intraday-default', name: '기본', kind: 'intraday', builtin: true, enabled: true, archived: false, version: 1, params: { ...require('../auto-strategy').defaults('intraday'), ...over } }, { id: 'closing-default', name: '종가', kind: 'closing', builtin: true, enabled: true, archived: false, version: 1, params: require('../auto-strategy').defaults('closing') }]; if (p.startsWith('auto_config')) return [{ value: { on: true, perStockKrw: 1000000 } }]; if (p.startsWith('auto_runs')) { const d = (p.match(/eq\.([\d-]+)/) || [])[1]; return runs[d] ? [JSON.parse(JSON.stringify(runs[d]))] : []; } return []; },
     sbWrite: async (p, m, b) => { b.forEach(x => { runs[x.trade_date] = JSON.parse(JSON.stringify(x)); }); },
     sendTelegram: async t => sent.push(t), kstNow: kst, isTradingDay: () => true, now: () => c.st.clock,
     paper: c.t.paper, getQuote: code => c.t.getQuote(code, true), loadChart: async () => rows,
@@ -169,5 +169,40 @@ test('10:30 지나 답이 없으면 만료 기록·알림', async () => {
   await A.tick(); await A.tick();
   assert.equal(runs[date].status, 'expired');
   assert.equal(sent.filter(t => /승인 마감/.test(t)).length, 1);
+  await c.close();
+});
+
+test('F1 진행 기록·스냅샷: 주문 시점 호가·재확인 수치 저장, 정정·취소가 기록에 남고 최저가로 미체결 이유 표시', async () => {
+  const { c, A, runs, date } = await setup();
+  await A.handleApproval('/매수 1');
+  const o = runs[date].payload.orders['005930'];
+  assert.ok(o.snap && o.snap.bids.length > 0 && o.snap.price > 0, '스냅샷');
+  assert.equal(o.snap.checks.cttr.min, 100); assert.ok(o.target > 0 || o.target === null);
+  c.st.bids = [[10020, 50], ...c.st.bids.slice(0, 9)]; c.st.asks = c.st.asks.map(([p, q]) => [p + 20, q]);
+  c.st.clock += 181e3; await A.tick(); c.st.clock += 181e3; await A.tick();
+  const L = runs[date].payload.log.map(x => x.k);
+  assert.deepEqual(L.filter(k => ['approve', 'order', 'reprice', 'cancel'].includes(k)), ['approve', 'order', 'reprice', 'cancel']);
+  assert.match(runs[date].payload.log.find(x => x.k === 'cancel').text, /최저가/);
+  assert.match(runs[date].payload.log.find(x => x.k === 'approve').text, /텔레그램에서 매수 승인: 삼성전자/);
+  await c.close();
+});
+test('미체결 설정: 정정하지 않음 + 장 마감까지 유지 → 정정·취소 없음', async () => {
+  const { c, A, runs, date, sent } = await setup({ repriceTo: 'none', unfilledEnd: 'keep', fillWaitMin: 2, cancelWaitMin: 5 });
+  const msg = await A.handleApproval('/매수 1');
+  assert.match(msg, /2분 뒤 정정하지 않고 다시 5분 뒤 남으면 장 마감까지 그대로/);
+  c.st.clock += 121e3; await A.tick();
+  assert.equal(runs[date].payload.orders['005930'].st, 'modified'); assert.equal(runs[date].payload.orders['005930'].buy2, undefined);
+  c.st.clock += 20 * 60e3; await A.tick();
+  assert.equal(runs[date].payload.orders['005930'].st, 'modified');
+  assert.ok(!sent.some(t => /취소/.test(t)));
+  await c.close();
+});
+test('미체결 설정: 최우선 매도 호가로 정정', async () => {
+  const { c, A, runs, date } = await setup({ repriceTo: 'ask1' });
+  await A.handleApproval('/매수 1');
+  const ask1 = Math.min(...c.st.asks.filter(([p]) => p > 0).map(([p]) => p));
+  c.st.clock += 181e3; await A.tick();
+  const o = runs[date].payload.orders['005930'];
+  assert.equal(o.buy2, ask1);
   await c.close();
 });
