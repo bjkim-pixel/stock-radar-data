@@ -14,13 +14,16 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   const js = [...sql.matchAll(/'(\{"[^']+\})'::jsonb/g)].map(m => JSON.parse(m[1]));
   const LATER = ['regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
   const I0 = Object.fromEntries(Object.entries(S.defaults('intraday')).filter(([k]) => !LATER.includes(k)));
+  I0.eodTimeout = 'keep';                                                           // 165 에는 있었지만 지금은 없는 설정(무응답이면 항상 유지) — 저장돼 있어도 검증이 버림
   assert.deepEqual(js[0], I0);
   assert.deepEqual(S.validate('intraday', js[0]).val, S.defaults('intraday'));
-  assert.deepEqual(js[1], S.defaults('closing'));
+  const LATER_C = ['nxtJudgeAt', 'nxtReplyMin'], C0 = Object.fromEntries(Object.entries(S.defaults('closing')).filter(([k]) => !LATER_C.includes(k)));
+  assert.deepEqual({ ...js[1], judgeAt: '15:00', replyMin: 20 }, C0);                 // 171 에서 판정 15:00·답 마감 20분으로 바뀜
+  assert.deepEqual(S.validate('closing', js[1]).val.nxtJudgeAt, '19:00');
 });
-test('기본 시각 = 1~3단계 값(선정 10:05 · 알림 10:15 · 마감 10:30 · 판정 15:10~15:18 · 전환 20:00)', () => {
+test('기본 시각(선정 10:05 · 알림 10:15 · 마감 10:30 · 정규장 판정 15:00~15:20 · NXT 판정 19:00~19:40 · 전환 20:00)', () => {
   const T = S.timesOf(S.defaults('intraday'), S.defaults('closing'));
-  assert.deepEqual(T, { sel: 605, notice: 615, deadline: 630, selEnd: 660, judge: 910, reply: 918, convert: 1200, slices: [545, 550, 555] });
+  assert.deepEqual(T, { sel: 605, notice: 615, deadline: 630, selEnd: 660, judge: 900, reply: 920, njudge: 1140, nreply: 1180, convert: 1200, slices: [545, 550, 555] });
 });
 test('검증: 범위·단위·배점 합계·교차 조건·시각 순서·선택지', () => {
   const v = (k, p) => S.validate(k, p);
@@ -175,21 +178,23 @@ function eodRig(rule) {
   });
   return { eod, run, sold, sent };
 }
-test('약한 종목: 자동 정리 설정이면 바로 시장가로 판다', async () => {
+test('약한 종목: 예전 자동 정리 설정이어도 자동으로 팔지 않고 승인을 기다린다', async () => {
   const g = eodRig({ eodWeak: 'auto_sell' });
   await g.eod.judge('D');
-  assert.equal(g.sold.length, 1); assert.equal(g.sold[0].type, 'market');
-  assert.equal(g.run.payload.eod.decision.kind, 'sell'); assert.match(g.sent[0], /바로 정리/);
+  assert.equal(g.sold.length, 0); assert.equal(g.run.payload.eod.decision, null);
+  assert.match(g.sent[0], /자동으로 팔지 않아요/);
+  assert.equal(S.validate('intraday', { eodWeak: 'auto_sell' }).val.eodWeak, 'ask');   // 저장돼 있던 값도 승인 후 정리로 읽음
+  assert.equal(S.validate('intraday', { eodTimeout: 'sell' }).val.eodTimeout, undefined);
 });
-test('약한 종목: 유지 설정이면 묻지 않고 유지, 무응답 정리 설정이면 마감 때 판다', async () => {
+test('약한 종목: 유지 설정이면 묻지 않고 유지, 무응답이면 마감 때 정리하지 않고 유지', async () => {
   const k = eodRig({ eodWeak: 'keep' });
   await k.eod.judge('D');
   assert.equal(k.sold.length, 0); assert.equal(k.run.payload.eod.decision.kind, 'keep');
-  const t = eodRig({ eodTimeout: 'sell' });
+  const t = eodRig({ eodTimeout: 'sell' });                                          // 예전 '무응답이면 정리' 값이 남아 있어도 무시
   await t.eod.judge('D');
-  assert.equal(t.run.payload.eod.decision, null); assert.match(t.sent[0], /15:18까지 답이 없으면 모두 정리/);
+  assert.equal(t.run.payload.eod.decision, null); assert.match(t.sent[0], /15:20까지 답이 없으면 정리하지 않고/);
   assert.equal(await t.eod.timeout('D'), true);
-  assert.equal(t.sold.length, 1); assert.equal(t.run.payload.eod.decision.kind, 'sell');
+  assert.equal(t.sold.length, 0); assert.equal(t.run.payload.eod.decision.kind, 'keep'); assert.equal(t.run.payload.eod.decision.timeout, true);
 });
 test('종가베팅 꺼짐: 모든 보유를 약한 종목으로 보고, 20시에 이월하지 않음', async () => {
   const g = eodRig({ closingOn: false });

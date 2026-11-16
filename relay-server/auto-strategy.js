@@ -12,8 +12,7 @@ const ENUM = {
   flow: { req: '필수', bonus: '가점만', ignore: '무시' },
   smx: { cont_stall: '매집 지속·정체', cont: '매집 지속만', off: '보지 않음' },
   buyPick: { q1: '잔량 최다 매수 호가', bid1: '최우선 매수 호가', low: '가장 낮은 매수 호가' },
-  eodWeak: { ask: '알림 후 승인 시 정리', auto_sell: '자동 정리', keep: '정리하지 않고 유지' },
-  eodTimeout: { keep: '유지', sell: '정리' },
+  eodWeak: { ask: '알림 후 승인 시에만 정리', keep: '묻지 않고 유지' },
   approval: { manual: '텔레그램 승인 필수', auto: '알림 후 자동 매수' },
   carryFlow: { any: '외국인·기관 중 하나', both: '외국인·기관 둘 다', ignore: '보지 않음' },
   regimeMode: { info: '표시만', scale: '종목당 금액 조절' },
@@ -62,12 +61,13 @@ const SCHEMA = {
     F('split', '매도', '익절 분할 수', 'num', 5, { min: 1, max: 5, step: 1, unit: '회' }),
     F('minPct', '매도', '1단계 익절 최소', 'num', 3, { min: 1, max: 10, step: 0.5, unit: '%' }),
     F('trail', '매도', '트레일링', 'num', 2, { min: 0.5, max: 5, step: 0.1, unit: '%' }),
-    F('eodWeak', '매도', '15:10 약한 종목 처리', 'enum', 'ask', { opts: ENUM.eodWeak }),
-    F('eodTimeout', '매도', '정리 질문 무응답 시', 'enum', 'keep', { opts: ENUM.eodTimeout }),
+    F('eodWeak', '매도', '약한 종목 처리(정리는 승인 후에만, 무응답이면 유지)', 'enum', 'ask', { opts: ENUM.eodWeak }),
   ],
   closing: [
-    F('judgeAt', '적용 시간', '종가 판정 시각', 'time', '15:10', { min: '14:50', max: '15:15' }),
-    F('replyMin', '적용 시간', '정리 답 마감까지', 'num', 8, { min: 3, max: 10, step: 1, unit: '분' }),
+    F('judgeAt', '적용 시간', '종가 판정 시각(정규장 종목)', 'time', '15:00', { min: '14:30', max: '15:10' }),
+    F('replyMin', '적용 시간', '정리 답 마감까지(정규장 종목)', 'num', 20, { min: 5, max: 25, step: 1, unit: '분' }),
+    F('nxtJudgeAt', '적용 시간', '종가 판정 시각(NXT 거래 종목)', 'time', '19:00', { min: '16:00', max: '19:30' }),
+    F('nxtReplyMin', '적용 시간', '정리 답 마감까지(NXT 거래 종목)', 'num', 40, { min: 5, max: 55, step: 1, unit: '분' }),
     F('convertAt', '적용 시간', '오버나잇 전환 시각', 'time', '20:00', { min: '15:30', max: '20:00' }),
     F('needAboveAvg', '넘길 자격', '현재가 > 매수 평균가', 'bool', true),
     F('highNearPct', '넘길 자격', '당일 고가 대비 이내', 'num', 2, { min: 0.5, max: 5, step: 0.5, unit: '%' }),
@@ -91,7 +91,8 @@ function validate(kind, input, base) {
   const src = input && typeof input === 'object' ? input : {}, b = { ...defaults(kind), ...(base || {}) }, val = {}, errs = [];
   const bad = (f, msg) => errs.push({ key: f.key, msg: `${f.label}: ${msg}` });
   for (const f of S) {
-    const v = src[f.key] === undefined ? b[f.key] : src[f.key];
+    let v = src[f.key] === undefined ? b[f.key] : src[f.key];
+    if (f.key === 'eodWeak' && v === 'auto_sell') v = 'ask';   // 예전 '자동 정리' 값 — 이제 정리는 항상 승인 후에만
     if (f.type === 'num') {
       const n = typeof v === 'string' && v.trim() !== '' ? +v : v;
       if (typeof n !== 'number' || !isFinite(n)) { bad(f, '숫자가 아닙니다'); continue; }
@@ -135,6 +136,12 @@ function validate(kind, input, base) {
     else if (tmin(val.roundEnd) + val.approveWindow > 15 * 60 + 15) errs.push({ key: 'roundEnd', msg: `마지막 검토의 승인 마감이 ${hhmm(tmin(val.roundEnd) + val.approveWindow)}입니다(15:15 이전이어야 함)` });
   }
   if (!errs.length && kind === 'closing' && tmin(val.slices[val.slices.length - 1]) >= 15 * 60 + 20) errs.push({ key: 'slices', msg: '분할 매도 시각이 너무 늦습니다' });
+  if (!errs.length && kind === 'closing') {
+    const reply = tmin(val.judgeAt) + val.replyMin, nreply = tmin(val.nxtJudgeAt) + val.nxtReplyMin;
+    if (reply > 15 * 60 + 25) errs.push({ key: 'replyMin', msg: `정규장 종목 답 마감이 ${hhmm(reply)}입니다(15:25 이전이어야 함)` });
+    else if (tmin(val.nxtJudgeAt) <= reply) errs.push({ key: 'nxtJudgeAt', msg: 'NXT 종목 판정 시각은 정규장 종목 답 마감보다 늦어야 합니다' });
+    else if (nreply > tmin(val.convertAt)) errs.push({ key: 'nxtReplyMin', msg: `NXT 종목 답 마감이 ${hhmm(nreply)}입니다(오버나잇 전환 ${val.convertAt} 이전이어야 함)` });
+  }
   return errs.length ? { errs } : { val };
 }
 
@@ -157,13 +164,13 @@ function diff(kind, a, b) {
 /* 엔진이 쓰는 형태로 풀어 줌(시각 → 분) */
 function timesOf(I, C) {
   const sel = tmin(I.selectAt), notice = sel + I.noticeAfter, deadline = notice + I.approveWindow;
-  const judge = tmin(C.judgeAt), reply = judge + C.replyMin;
-  return { sel, notice, deadline, selEnd: deadline + 30, judge, reply, convert: tmin(C.convertAt), slices: C.slices.map(tmin) };
+  const judge = tmin(C.judgeAt), reply = judge + C.replyMin, njudge = tmin(C.nxtJudgeAt), nreply = njudge + C.nxtReplyMin;
+  return { sel, notice, deadline, selEnd: deadline + 30, judge, reply, njudge, nreply, convert: tmin(C.convertAt), slices: C.slices.map(tmin) };
 }
 
 const BUILTIN = [
   { id: 'intraday-default', name: '수급 돌파 장중', kind: 'intraday', builtin: true, desc: '오전 외국인·기관·프로그램 동시 순매수 + 체결강도 강세 종목을 사서 당일 손절·5분할 익절' },
-  { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: '15:10까지 강한 장중 보유 종목을 들고 가서 다음 날 아침 3분할 매도' },
+  { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: '15:00(정규장 종목)·19:00(NXT 종목)에 약한 종목을 승인 후 정리하고, 강한 종목은 들고 가서 다음 날 아침 3분할 매도' },
 ];
 const builtinRow = b => ({ ...b, enabled: true, archived: false, version: 1, params: defaults(b.kind), updated_at: null });
 

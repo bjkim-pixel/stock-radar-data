@@ -64,12 +64,14 @@ const whyOf = (f, eodSell, closing) => {
   return eodSell && eodSell.has(f.code) ? '종가 전 정리' : '수동·기타';
 };
 
+const judgeOf = E => (E ? { at: E.at, none: !!E.none, items: (E.items || []).map(i => ({ code: i.code, name: i.name, ok: !!i.ok, why: i.why || [] })), weak: E.weak || [], decision: E.decision ? { kind: E.decision.kind, timeout: !!E.decision.timeout, auto: !!E.decision.auto } : null } : null);
+
 /* 장중 전략 하루 일지(순수). fills = 그 전략으로 귀속된 체결. closes = {종목: 공식 종가}(있으면), marks = {종목: 현재가}, prev = 지난 작성 때 값(넘긴 가격 고정용) */
 function buildIntraday({ date, run, fills, marks = {}, closes = {}, prev = {}, today, exc = null, daily = {} }) {
   const P = run.payload || {}, ords = P.orders || {};
   const codes = Object.entries(ords).filter(([, o]) => (o.filled || 0) > 0).map(([c]) => c);
   const names = {}; (P.picks || []).forEach(p => { names[p.code] = p.name; }); (P.shadow || []).forEach(p => { if (!names[p.code]) names[p.code] = p.name; });
-  const eodSell = new Set(P.eod && P.eod.decision && P.eod.decision.kind === 'sell' ? (P.eod.decision.codes || []) : []);
+  const eodSell = new Set([P.eod, P.eodN].flatMap(E => (E && E.decision && E.decision.kind === 'sell' ? (E.decision.codes || []) : [])));
   const carried = new Set(P.carryDone ? (P.carryDone.codes || []) : []);
   const frozen = prev.px0 || {};
   const positions = [], buys = [], sells = [];
@@ -114,7 +116,7 @@ function buildIntraday({ date, run, fills, marks = {}, closes = {}, prev = {}, t
     funnel,
     decision: P.decision ? { kind: P.decision.kind, nums: P.decision.nums || null } : null,
     buys, sells, positions, skipped, totals,
-    judge: E ? { at: E.at, none: !!E.none, items: (E.items || []).map(i => ({ code: i.code, name: i.name, ok: !!i.ok, why: i.why || [] })), weak: E.weak || [], decision: E.decision ? { kind: E.decision.kind, timeout: !!E.decision.timeout, auto: !!E.decision.auto } : null } : null,
+    judge: judgeOf(E), judgeN: judgeOf(P.eodN),
     carry: P.carryDone ? { at: P.carryDone.at || null, off: !!P.carryDone.off, codes: P.carryDone.codes || [] } : null,
     shadow: sh,
     px0: Object.fromEntries(positions.filter(p => p.px0).map(p => [p.code, p.px0])), px0src: Object.fromEntries(positions.filter(p => p.px0).map(p => [p.code, p.px0src])),

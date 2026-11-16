@@ -674,14 +674,14 @@ function createTrade(deps = {}) {
       if ((kind === 'buy' || kind === 'sell') && (!nums.length || nums.length > 20 || nums.some(n => !Number.isInteger(n) || n < 1 || n > 20))) return json(res, 400, { ok: false, error: '번호를 골라 주세요' });
       const sid = body.strategy == null ? null : String(body.strategy);
       if (sid && !/^[a-z]+-[a-z0-9]{1,20}$/.test(sid)) return json(res, 400, { ok: false, error: 'bad strategy' });
-      const r = await autoRef[fn](kind, nums, sid).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
+      const r = await autoRef[fn](kind, nums, sid, body.phase === 'nxt' || body.phase === 'reg' ? body.phase : undefined).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
       audit(path === '/trade/auto/approve' ? 'auto_approve' : 'auto_eod', !!r.ok, { kind, nums, strategy: sid }, req, 'VIRTUAL');
       return json(res, 200, r);
     }
     if (path === '/trade/auto/stage') {   // 단계 버튼: 예정 시각과 무관하게 지금 실행(후보 선정→알림 · 알림 · 종가 판정 · 이월 전환)
       if (!autoRef || !autoRef.siteStage) return json(res, 503, { ok: false, error: 'auto unavailable' });
       const stage = String(body.stage || ''), sid = body.strategy == null ? null : String(body.strategy);
-      if (!['select', 'notice', 'judge', 'convert'].includes(stage)) return json(res, 400, { ok: false, error: 'bad stage' });
+      if (!['select', 'notice', 'judge', 'judgeN', 'convert'].includes(stage)) return json(res, 400, { ok: false, error: 'bad stage' });
       if (!sid || !/^[a-z]+-[a-z0-9]{1,20}$/.test(sid)) return json(res, 400, { ok: false, error: 'bad strategy' });
       const r = await autoRef.siteStage(stage, sid).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
       audit('auto_stage', !!r.ok, { stage, strategy: sid }, req, 'VIRTUAL');

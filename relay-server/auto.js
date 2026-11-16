@@ -338,7 +338,7 @@ function createAuto(deps) {
   async function eodRule(sid) {
     const { I, C } = await intraOf(sid), c = C.params, T = ST.timesOf(I.params, c);
     return { highNear: 1 - c.highNearPct / 100, idxFloor: c.idxFloor, gapCut: c.gapCut, slices: T.slices, needAboveAvg: c.needAboveAvg, carryFlow: c.carryFlow,
-      overnightStopPct: c.overnightStopPct, replyEnd: T.reply, convertAt: T.convert, eodWeak: I.params.eodWeak, eodTimeout: I.params.eodTimeout, closingOn: !!C.enabled };
+      overnightStopPct: c.overnightStopPct, replyEnd: T.reply, nxtJudgeAt: T.njudge, nxtReplyEnd: T.nreply, convertAt: T.convert, eodWeak: I.params.eodWeak, closingOn: !!C.enabled };
   }
   /* 종가 베팅 넘긴 종목(auto_config 'carry') — 같은 잠금 안에서 읽기 → 고치기 → 저장 */
   async function readCarry() {
@@ -594,9 +594,9 @@ function createAuto(deps) {
     const roundEnd = I => (I.params.roundMin > 0 ? ST.tmin(I.params.roundEnd) : 0), selEndOf = I => Math.max(I.T.selEnd, roundEnd(I) + I.params.approveWindow);
     const selNow = A.Is.filter(I => W(I.T.sel, selEndOf(I)));
     const hasPaper = !!D.paper;
-    const inOrd = hasPaper && W(540, 930), inEodJ = hasPaper && W(T0.judge, T0.reply), inEodT = hasPaper && W(T0.reply, 930);
+    const inOrd = hasPaper && W(540, 930), inEodJ = hasPaper && W(T0.judge, T0.reply), inEodT = hasPaper && W(T0.reply, 930), inNxJ = hasPaper && W(T0.njudge, T0.nreply), inNxT = hasPaper && W(T0.nreply, T0.convert);
     const inJr = min >= JR_AT || W(JR_FIN, 930), inConv = hasPaper && min >= T0.convert, inPre = hasPaper && W(480, 540), inMorn = hasPaper && W(540, 920);
-    if (!selNow.length && !inJr && !inOrd && !inEodJ && !inEodT && !inConv && !inPre && !inMorn) return { ok: true, idle: 'outside-window' };
+    if (!selNow.length && !inJr && !inOrd && !inEodJ && !inEodT && !inNxJ && !inNxT && !inConv && !inPre && !inMorn) return { ok: true, idle: 'outside-window' };
     if (!isTradingDay(date)) return { ok: true, idle: 'non-trading' };
     const out = {};
     const err = e => { state.lastErr = e.message; return { ok: false, err: e.message }; };
@@ -623,10 +623,12 @@ function createAuto(deps) {
       if (pend) out.morning = await eodAny.morning(date, min).catch(err);
     }
     for (const r of runs()) {
-      const sid = sidOf(r), E = r.payload.eod;
+      const sid = sidOf(r), E = r.payload.eod, EN = r.payload.eodN, waiting = x => x && (x.weak || []).length && !x.decision;
       if (inOrd && activeOrders(r)) (out.follow = out.follow || {})[sid] = await execFor(sid).follow(date).catch(err);
-      if (inEodJ && !(E && E.at)) (out.judge = out.judge || {})[sid] = await eodFor(sid).judge(date).catch(err);
-      if (inEodT && E && !E.decision) (out.timeout = out.timeout || {})[sid] = await eodFor(sid).timeout(date).catch(err);
+      if (inEodJ && !(E && E.at)) (out.judge = out.judge || {})[sid] = await eodFor(sid).judge(date, 'reg').catch(err);
+      if (inEodT && waiting(E)) (out.timeout = out.timeout || {})[sid] = await eodFor(sid).timeout(date, 'reg').catch(err);
+      if (inNxJ && !(EN && EN.at)) (out.judgeN = out.judgeN || {})[sid] = await eodFor(sid).judge(date, 'nxt').catch(err);
+      if (inNxT && waiting(EN)) (out.timeoutN = out.timeoutN || {})[sid] = await eodFor(sid).timeout(date, 'nxt').catch(err);
       if (inConv && !r.payload.carryDone) (out.convert = out.convert || {})[sid] = await eodFor(sid).convert(date).catch(err);
     }
     out.exc = await excTick(date, min).catch(err);
@@ -756,11 +758,12 @@ function createAuto(deps) {
     const { date, min } = kstParts();
     const a = parseCmdMulti(text, 'eod');
     if (!a) return null;
-    const runs = (await readRuns(date).catch(() => [])).filter(r => (!onlySid || sidOf(r) === onlySid) && r.payload.eod && (r.payload.eod.weak || []).length);
+    const wk = (r, ph) => { const E = r.payload[ph === 'nxt' ? 'eodN' : 'eod']; return E && (E.weak || []).length ? E : null; };   // 정규장(15시) · NXT(19시) 두 판정 중 약한 종목이 있는 쪽
+    const runs = (await readRuns(date).catch(() => [])).filter(r => (!onlySid || sidOf(r) === onlySid) && (opts.phase ? wk(r, opts.phase) : (wk(r, 'reg') || wk(r, 'nxt'))));
     runs.forEach(r => { state.runs[sidOf(r)] = r; });
     if (!runs.length) return '지금 정리할지 물어본 종목이 없어요.';
     if (a.kind === 'bad') return `번호를 확인해 주세요. 예) /정리 1${runs.length > 1 ? ' · 전략이 여럿이면 /정리 A1 B2' : ''}`;
-    const pend = runs.filter(r => !r.payload.eod.decision);
+    const pend = runs.filter(r => (opts.phase ? !wk(r, opts.phase).decision : !!eodFor(sidOf(r)).pendingPhase(r.payload)));
     const jobs = [];
     if (a.kind === 'keep' || a.kind === 'all') (pend.length ? pend : runs).forEach(r => jobs.push([sidOf(r), a.kind === 'keep' ? '/유지' : '/정리 전체']));
     else {
@@ -871,16 +874,14 @@ function createAuto(deps) {
     if (r && kind !== 'pass' && sid && D.paper) { try { await execFor(sid).follow(kstParts().date); } catch (_) {} }   // 승인 즉시 주문 관리를 한 번 돌려 다음 단계(체결 확인·익절 주문)로 넘김
     return { ok: !!r, reply: r || '처리할 수 없는 요청입니다.' };
   }
-  /* 정리/유지를 정하면 바로 다음 단계(이월 전환)까지 진행 — 예정 시각을 기다리지 않음. 전략의 약한 종목이 모두 정해졌을 때만 */
-  async function siteEod(kind, nums, sid) {
+  /* 사이트에서 정리/유지(텔레그램 /정리·/유지 와 같은 처리). phase = 'reg'(15시 정규장 종목) | 'nxt'(19시 NXT 종목), 없으면 답을 기다리는 쪽.
+     정리는 승인한 종목만 — 이월 전환은 예정 시각(20:00)에 따로 진행 */
+  async function siteEod(kind, nums, sid, phase) {
     const text = kind === 'keep' ? '/유지' : `/정리 ${nums.join(' ')}`;
-    const r = await handleEod(text, sid || null, { late: true });
-    if (r) await D.sendTelegram(`🖥 사이트에서 ${sid ? `[${labelOf(sid)}] ` : ''}${kind === 'keep' ? '유지' : '정리 ' + nums.join(',')} 선택\n${r}`).catch(() => {});
-    let next = '';
-    if (r && sid && D.paper && !/이미 처리|번호를 확인|마감/.test(r)) {
-      try { const c = await eodFor(sid).convert(kstParts().date); next = c && c.skipped ? '' : `\n➡ 다음 단계: 이월 전환 완료(${c && c.n != null ? c.n + '종목' : '처리'})`; } catch (e) { next = `\n➡ 이월 전환은 지금 못 했어요(${e.message}) — 예정 시각에 다시 시도해요.`; }
-    }
-    return { ok: !!r, reply: r ? r + next : '처리할 수 없는 요청입니다.' };
+    const ph = phase === 'nxt' || phase === 'reg' ? phase : undefined;
+    const r = await handleEod(text, sid || null, { late: true, ...(ph ? { phase: ph } : {}) });
+    if (r) await D.sendTelegram(`🖥 사이트에서 ${sid ? `[${labelOf(sid)}] ` : ''}${ph === 'nxt' ? 'NXT ' : ''}${kind === 'keep' ? '유지' : '정리 ' + nums.join(',')} 선택\n${r}`).catch(() => {});
+    return { ok: !!r, reply: r || '처리할 수 없는 요청입니다.' };
   }
   /* 단계 버튼(사이트): select 후보 선정 → (알림까지 이어서) · notice 알림 · judge 종가 판정 · convert 이월 전환. 예정 시각과 무관하게 지금 실행 */
   async function siteStage(stage, sid) {
@@ -905,18 +906,19 @@ function createAuto(deps) {
       await log('알림 다시 전송');
       return { ok: true, reply: n.sent ? '텔레그램 알림을 보냈어요.' : '보낼 알림이 없어요.' };
     }
-    if (stage === 'judge') {
+    if (stage === 'judge' || stage === 'judgeN') {
       if (!D.paper) return { ok: false, reply: '가상매매 엔진이 꺼져 있어요.' };
-      if (P.eod && P.eod.at) return { ok: false, reply: '이미 판정했어요.' };
-      const r = await eodFor(sid).judge(date);
-      await log('종가 판정 실행');
-      return { ok: !!(r && r.ok), reply: r && r.ok ? `판정했어요: ${r.n}종목 중 약함 ${r.weak}. 약한 종목이 있으면 아래에서 정리/유지를 정하세요.` : '판정하지 못했어요.' };
+      const nx = stage === 'judgeN', E0 = nx ? P.eodN : P.eod;
+      if (E0 && E0.at) return { ok: false, reply: '이미 판정했어요.' };
+      if (nx && min < 940) return { ok: false, reply: 'NXT 애프터마켓 시세가 열리는 15:40 이후에 판정할 수 있어요.' };
+      const r = await eodFor(sid).judge(date, nx ? 'nxt' : 'reg');
+      await log(nx ? 'NXT 종가 판정 실행' : '종가 판정 실행');
+      return { ok: !!(r && r.ok), reply: r && r.ok ? `판정했어요: ${r.n}종목 중 약함 ${r.weak}.${r.other ? ` (${nx ? '정규장' : 'NXT'} 종목 ${r.other}개는 ${nx ? '앞서' : '19시에'} 판정)` : ''} 약한 종목이 있으면 아래에서 정리/유지를 정하세요.` : '판정하지 못했어요.' };
     }
     if (stage === 'convert') {
       if (!D.paper) return { ok: false, reply: '가상매매 엔진이 꺼져 있어요.' };
       if (P.carryDone) return { ok: false, reply: '이미 이월 전환했어요.' };
-      const E = P.eod;
-      if (E && (E.weak || []).length && !E.decision) return { ok: false, reply: '약한 종목 정리·유지를 먼저 정해 주세요.' };
+      if ([P.eod, P.eodN].some(E => E && (E.weak || []).length && !E.decision)) return { ok: false, reply: '약한 종목 정리·유지를 먼저 정해 주세요.' };
       const c = await eodFor(sid).convert(date);
       await log('이월 전환 실행');
       return { ok: !!(c && c.ok), reply: c && c.ok ? `이월 전환했어요(${c.n || 0}종목).` : '전환하지 못했어요.' };

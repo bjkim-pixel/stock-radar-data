@@ -5,6 +5,8 @@
 const mean = a => { const v = a.filter(x => x != null && isFinite(x)); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
 const kstDate = ts => new Date(Date.parse(ts) + 9 * 3600e3).toISOString().slice(0, 10);
 
+const eodOf = e => (e ? { at: e.at, none: !!e.none, items: (e.items || []).map(i => ({ code: i.code, name: i.name, ok: !!i.ok, why: i.why || [] })), other: e.other ? e.other.length : 0, decision: e.decision ? { kind: e.decision.kind, timeout: !!e.decision.timeout, auto: !!e.decision.auto } : null } : null);
+
 /* auto_runs 한 행 → 화면용 요약(큰 payload 를 그대로 보내지 않음). full=true 면 오늘용(후보 지표·사유 포함) */
 function summarizeRun(r, full) {
   const p = (r && r.payload) || {}, ords = p.orders || {};
@@ -22,7 +24,7 @@ function summarizeRun(r, full) {
         at: v.at || null, placedAt: v.placedAt || null, modifiedAt: v.modifiedAt || null, filledAt: v.filledAt || null, cancelledAt: v.cancelledAt || null, lowSeen: v.lowSeen || null, noReprice: !!v.noReprice, tries: v.tries || [] } : { nTries: (v.tries || []).length }) })),
     shadow: (p.shadow || []).map(s => ({ code: s.code, name: s.name, price: s.price, score: s.score, changePct: s.changePct, picked: !!s.picked })),
     stat: p.stat || null,
-    eod: p.eod ? { at: p.eod.at, none: !!p.eod.none, items: (p.eod.items || []).map(i => ({ code: i.code, name: i.name, ok: !!i.ok, why: i.why || [] })), decision: p.eod.decision ? { kind: p.eod.decision.kind, timeout: !!p.eod.decision.timeout } : null } : null,
+    eod: eodOf(p.eod), eodN: eodOf(p.eodN),
     carry: p.carryDone ? (p.carryDone.codes || []) : null,
     strategy: p.strategy || null, regime: p.regime || null, events: p.events || [],
   };
@@ -30,7 +32,7 @@ function summarizeRun(r, full) {
     out.rejected = (p.rejected || []).map(x => ({ code: x.code, name: x.name, changePct: x.changePct, fails: x.fails || [] }));
     out.dropped = (p.dropped || []).map(x => ({ code: x.code, why: x.why }));
     out.decisionAt = p.decision && p.decision.at || null; out.noticeAt = p.noticeAt || null; out.selectedAt = p.selectedAt || null;
-    out.weak = p.eod && p.eod.weak || [];
+    out.weak = p.eod && p.eod.weak || []; out.weakN = p.eodN && p.eodN.weak || [];
     out.log = Array.isArray(p.log) ? p.log : [];   // F1 진행 기록(시각순)
     out.shadow = (p.shadow || []).map(s => ({ code: s.code, name: s.name, price: s.price, score: s.score, changePct: s.changePct, picked: !!s.picked, parts: s.parts || null }));
   }
