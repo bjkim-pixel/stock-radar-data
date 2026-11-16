@@ -913,7 +913,8 @@ function createAuto(deps) {
     runs.forEach(r => { state.runs[sidOf(r)] = r; });
     if (!runs.length) return '지금 정리할지 물어본 종목이 없어요.';
     if (a.kind === 'bad') return `번호를 확인해 주세요. 예) /정리 1${runs.length > 1 ? ' · 전략이 여럿이면 /정리 A1 B2' : ''}`;
-    const pend = runs.filter(r => (opts.phase ? !wk(r, opts.phase).decision : !!eodFor(sidOf(r)).pendingPhase(r.payload)));
+    const AC = await actives(), nxtFrom = ((AC.Is[0] && AC.Is[0].T) || ST.timesOf(DEFP, AC.C.params)).njudge;
+    const pend = runs.filter(r => (opts.phase ? !wk(r, opts.phase).decision : !!eodFor(sidOf(r)).pendingPhase(r.payload, min, nxtFrom)));
     const jobs = [];
     if (a.kind === 'keep' || a.kind === 'all') (pend.length ? pend : runs).forEach(r => jobs.push([sidOf(r), a.kind === 'keep' ? '/유지' : '/정리 전체']));
     else {

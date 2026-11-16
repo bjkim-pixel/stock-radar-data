@@ -2,8 +2,8 @@
 const LOG = require('./auto-log');
 /* 자동매매 3단계(2026-11-15) — 장 마감 판정 · 종가 베팅 전환 · 다음 날 아침 3분할 매도 (가상매매)
    기획안 6·7장(확정) + 2026-11-16 개편(정규장/NXT 분리):
-   · 15:00 판정(reg): 정규장에서만 거래되는 보유 종목 중 "넘길 자격"이 없는 종목을 텔레그램·사이트로 알림 → /정리 1 3 · /정리 전체 · /유지. 답 마감 15:20
-   · 19:00 판정(nxt): NXT 거래 가능 보유 종목을 NXT 애프터마켓 시세로 같은 방식 판정. 답 마감 19:40, 정리는 지정가(매수 호가)
+   · 14:45 판정(reg): 정규장에서만 거래되는 보유 종목 중 "넘길 자격"이 없는 종목을 텔레그램·사이트로 알림 → /정리 1 3 · /정리 전체 · /유지. 답 마감 15:20
+   · 18:30 판정(nxt): NXT 거래 가능 보유 종목을 NXT 애프터마켓 시세로 같은 방식 판정. 답 마감 19:00(무응답이면 유지), 정리는 지정가(매수 호가)
      넘길 자격(모두 충족): 현재가 > 매수 평균가 · 현재가 ≥ 당일 고가 × 0.98 · 최근 잠정 수급에서 외국인·기관 중 하나 이상 순매수 · 코스피·코스닥 모두 −1% 초과
      정리는 반드시 사용자 승인(텔레그램·사이트) 후에만 — 자동 매도 없음. 답이 없으면 정리하지 않고 20시까지 들고 간다
    · 20:00 전환: 남은 수량은 5분할 익절을 끄고(손절선은 유지) 종가 베팅 매도 계획으로 넘김 → auto_config 'carry'
@@ -14,7 +14,7 @@ const LOG = require('./auto-log');
 const { hhmm } = require('./auto-strategy');
 /* 기본값 = 1~3단계 확정값. 실제 값은 전략 설정(deps.rule())에서 옴 */
 const RULE = Object.freeze({ highNear: 0.98, idxFloor: -1, gapCut: -3, slices: [9 * 60 + 5, 9 * 60 + 10, 9 * 60 + 15], needAboveAvg: true, carryFlow: 'any',
-  overnightStopPct: 5, replyEnd: 15 * 60 + 20, nxtJudgeAt: 19 * 60, nxtReplyEnd: 19 * 60 + 40, convertAt: 20 * 60, eodWeak: 'ask', closingOn: true });
+  overnightStopPct: 5, replyEnd: 15 * 60, nxtJudgeAt: 18 * 60 + 30, nxtReplyEnd: 19 * 60, convertAt: 20 * 60, eodWeak: 'ask', closingOn: true });
 const fmt = v => Math.round(v).toLocaleString('ko-KR');
 
 /* 넘길 자격 판정(순수) — why 가 비면 자격 있음 */
@@ -88,7 +88,7 @@ function createEod(deps) {
   const keyOf = ph => (ph === 'nxt' ? 'eodN' : 'eod');
   const kstHHMM = () => hhmm(Math.floor((now() + 9 * 3600e3) / 60e3) % 1440);
 
-  /* 판정(하루 한 번씩): phase 'reg' = 15:00 정규장 종목 · 'nxt' = 19:00 NXT 거래 종목 */
+  /* 판정(하루 한 번씩): phase 'reg' = 14:45 정규장 종목 · 'nxt' = 18:30 NXT 거래 종목 (알림 → 답 마감 15:00·19:00, 무응답이면 유지) */
   async function judge(date, phase = 'reg') {
     const key = keyOf(phase), nx = phase === 'nxt';
     const run = await D.readRun(date);
@@ -121,7 +121,7 @@ function createEod(deps) {
     if (weak.length) {
       L.push('', '넘길 자격이 없는 종목:');
       weak.forEach((i, n) => L.push(`${n + 1}. ${i.name} ${fmt(i.qty)}주 · 현재 ${i.price ? fmt(i.price) : '–'}원 (평균 ${fmt(i.avg)}원) — ${i.why.join(', ')}`));
-      if (!pre) L.push('', '정리는 답장하신 종목만 진행해요(자동으로 팔지 않아요).', `답장: /정리 1 2 (번호) · /정리 전체 · /유지   (사이트에서도 가능)`, `${hhmm(end)}까지 답이 없으면 정리하지 않고 ${conv}까지 들고 가요.${nx ? ' 정리는 NXT 지정가(매수 호가)로 내요.' : ''}`);
+      if (!pre) L.push('', '정리는 답장하신 종목만 진행해요(자동으로 팔지 않아요).', `답장: /정리 1 2 (번호) · /정리 전체 · /유지   (사이트에서도 가능)`, `${hhmm(end)}까지 답이 없으면 '유지'로 자동 결정해요(정리 안 함, ${conv}까지 들고 감).${nx ? ' 정리는 NXT 지정가(매수 호가)로 내요.' : ''}`);
       else L.push('', `설정에 따라 묻지 않고 ${conv}까지 들고 가요.`);
     }
     if (other.length && !nx) L.push('', `ℹ NXT 거래 가능 ${other.length}종목(${other.map(o => o.name).join(', ')})은 ${hhmm(R.nxtJudgeAt || 19 * 60)}에 따로 판정해요.`);
@@ -140,13 +140,19 @@ function createEod(deps) {
   }
 
   /* 지금 답을 기다리는 판정 시간대('nxt' | 'reg' | null) */
-  const pendingPhase = P => (P && P.eodN && (P.eodN.weak || []).length && !P.eodN.decision ? 'nxt' : P && P.eod && (P.eod.weak || []).length && !P.eod.decision ? 'reg' : null);
+  /* 2026-11-16: 정규장(reg)이 먼저 — 그리고 NXT 는 NXT 판정 시각(nxtFrom, 분)이 된 뒤에만 답을 받는다. 시각 전에 온 /유지·/정리 가 아직 안 온 NXT 종목을 처리하던 문제 방지 */
+  const pendingPhase = (P, min, nxtFrom) => {
+    const waitR = P && P.eod && (P.eod.weak || []).length && !P.eod.decision, waitN = P && P.eodN && (P.eodN.weak || []).length && !P.eodN.decision;
+    if (waitR) return 'reg';
+    if (waitN && (min == null || nxtFrom == null || min >= nxtFrom)) return 'nxt';
+    return null;
+  };
 
   /* /정리 · /유지 (opts.phase 없으면 답을 기다리는 시간대, 없으면 약한 종목이 있는 시간대) */
   async function handleCmd(date, text, min, opts = {}) {
     const run = await D.readRun(date).catch(() => null);
-    const P = (run && run.payload) || {};
-    const phase = opts.phase || pendingPhase(P) || ((P.eodN && (P.eodN.weak || []).length) ? 'nxt' : 'reg'), nx = phase === 'nxt', key = keyOf(phase);
+    const P = (run && run.payload) || {}, R = await rule();
+    const phase = opts.phase || pendingPhase(P, min, R.nxtJudgeAt) || ((P.eodN && (P.eodN.weak || []).length && min >= R.nxtJudgeAt) ? 'nxt' : 'reg'), nx = phase === 'nxt', key = keyOf(phase);
     const E = P[key];
     const weak = (E && E.weak) || [];
     const a = parseEodCmd(text, Math.max(weak.length, 1));
@@ -154,7 +160,7 @@ function createEod(deps) {
     if (!E || !weak.length) return '지금 정리할지 물어본 종목이 없어요.';
     if (a.kind === 'bad') return `번호를 확인해 주세요. 1~${weak.length} 중에서 골라요. 예) /정리 1`;
     if (E.decision) return `이미 처리했어요(${E.decision.kind === 'sell' ? '정리' : '유지'}).`;
-    const R = await rule(), end = nx ? R.nxtReplyEnd : R.replyEnd, hardEnd = nx ? 19 * 60 + 55 : 930;
+    const end = nx ? R.nxtReplyEnd : R.replyEnd, hardEnd = nx ? 19 * 60 + 55 : 930;
     if (opts.late ? min >= hardEnd : min >= end) return opts.late ? `${nx ? '거래 시간(20:00)이 거의 끝나' : '장 마감(15:30)이 지나'} 정리할 수 없어요.` : `${hhmm(end)} 응답 마감이 지났어요. 설정에 따라 처리합니다.`;
     const pick = a.kind === 'sell' ? a.nums.map(n => weak[n - 1]) : [];
     await D.mutateRun(date, r => { r.payload[key].decision = { kind: a.kind, codes: pick, at: now() }; LOG.push(r.payload, 'eod', a.kind === 'keep' ? `${nx ? 'NXT ' : ''}약한 종목 유지 결정` : `${nx ? 'NXT ' : ''}약한 종목 정리 결정(승인): ${pick.map(c => ((E.items || []).find(i => i.code === c) || {}).name || c).join(', ')}`, null, now()); });
@@ -166,7 +172,7 @@ function createEod(deps) {
     const R = await rule(), key = keyOf(phase), end = phase === 'nxt' ? R.nxtReplyEnd : R.replyEnd;
     let hit = false;
     await D.mutateRun(date, r => { const E = r.payload[key]; if (E && (E.weak || []).length && !E.decision) { E.decision = { kind: 'keep', timeout: true, at: now() }; hit = true; LOG.push(r.payload, 'eod', `${phase === 'nxt' ? 'NXT ' : ''}정리 질문에 답이 없어 유지`, null, now()); } });
-    if (hit) await D.sendTelegram(`⌛ ${hhmm(end)} — 답이 없어 정리하지 않았어요. ${hhmm(R.convertAt)}까지 들고 갑니다.`);
+    if (hit) await D.sendTelegram(`⌛ ${hhmm(end)} — 답이 없어 '유지'로 자동 결정했어요(정리 안 함). ${hhmm(R.convertAt)}까지 들고 갑니다.`);
     return hit;
   }
 

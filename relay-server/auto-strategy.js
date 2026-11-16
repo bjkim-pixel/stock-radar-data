@@ -70,10 +70,10 @@ const SCHEMA = {
     F('eodWeak', '매도', '약한 종목 처리(정리는 승인 후에만, 무응답이면 유지)', 'enum', 'ask', { opts: ENUM.eodWeak }),
   ],
   closing: [
-    F('judgeAt', '적용 시간', '종가 판정 시각(정규장 종목)', 'time', '15:00', { min: '14:30', max: '15:10' }),
-    F('replyMin', '적용 시간', '정리 답 마감까지(정규장 종목)', 'num', 20, { min: 5, max: 25, step: 1, unit: '분' }),
-    F('nxtJudgeAt', '적용 시간', '종가 판정 시각(NXT 거래 종목)', 'time', '19:00', { min: '16:00', max: '19:30' }),
-    F('nxtReplyMin', '적용 시간', '정리 답 마감까지(NXT 거래 종목)', 'num', 40, { min: 5, max: 55, step: 1, unit: '분' }),
+    F('judgeAt', '적용 시간', '종가 판정·알림 시각(정규장 종목)', 'time', '14:45', { min: '14:30', max: '15:10' }),
+    F('replyMin', '적용 시간', '정리 답 마감까지(정규장 종목)', 'num', 15, { min: 5, max: 25, step: 1, unit: '분' }),
+    F('nxtJudgeAt', '적용 시간', '종가 판정·알림 시각(NXT 거래 종목)', 'time', '18:30', { min: '16:00', max: '19:30' }),
+    F('nxtReplyMin', '적용 시간', '정리 답 마감까지(NXT 거래 종목)', 'num', 30, { min: 5, max: 55, step: 1, unit: '분' }),
     F('convertAt', '적용 시간', '오버나잇 전환 시각', 'time', '20:00', { min: '15:30', max: '20:00' }),
     F('needAboveAvg', '넘길 자격', '현재가 > 매수 평균가', 'bool', true),
     F('highNearPct', '넘길 자격', '당일 고가 대비 이내', 'num', 2, { min: 0.5, max: 5, step: 0.5, unit: '%' }),
@@ -198,7 +198,7 @@ function timesOf(I, C) {
 
 const BUILTIN = [
   { id: 'intraday-default', name: '수급 돌파 장중', kind: 'intraday', builtin: true, desc: '오전 외국인·기관·프로그램 동시 순매수 + 체결강도 강세 종목을 사서 당일 손절·5분할 익절' },
-  { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: '15:00(정규장 종목)·19:00(NXT 종목)에 약한 종목을 승인 후 정리하고, 18:00부터 30분마다 종가 강한 NXT 종목을 관찰해 19:30에 최종 선정해 사서, 강한 종목은 들고 가 다음 날 아침 3분할 매도' },
+  { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: '14:45(정규장 종목)·18:30(NXT 종목)에 약한 종목을 알려 승인 후 정리하고(15:00·19:00까지 답 없으면 유지), 18:00부터 30분마다 종가 강한 NXT 종목을 관찰해 19:30에 최종 선정해 사서, 강한 종목은 들고 가 다음 날 아침 3분할 매도' },
 ];
 const builtinRow = b => ({ ...b, enabled: true, archived: false, version: 1, params: defaults(b.kind), updated_at: null });
 
@@ -211,6 +211,11 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     let pr = r.params || {};
     // 2026-11-16: 예전 기본 시각(19:05 선정·19:45 마감)을 그대로 쓰던 종가 전략은 새 흐름(18:00 관찰 → 19:30 최종 선정·19:50 마감)으로 옮김
     if (r.kind === 'closing' && pr.closeBuyWatchMin === undefined && pr.closeBuyAt === '19:05' && pr.closeBuyEnd === '19:45') pr = { ...pr, closeBuyAt: '19:30', closeBuyEnd: '19:50' };
+    // 2026-11-16: 예전 기본 판정 시각(15:00/답 20분 · 19:00/답 40분)을 쓰던 종가 전략은 새 기본(14:45→15:00 · 18:30→19:00)으로 옮김
+    if (r.kind === 'closing') {
+      if (pr.judgeAt === '15:00' && +pr.replyMin === 20) pr = { ...pr, judgeAt: '14:45', replyMin: 15 };
+      if (pr.nxtJudgeAt === '19:00' && +pr.nxtReplyMin === 40) pr = { ...pr, nxtJudgeAt: '18:30', nxtReplyMin: 30 };
+    }
     const v = validate(r.kind, pr);
     return { id: r.id, name: r.name, kind: r.kind, desc: r.desc || '', enabled: !!r.enabled, archived: !!r.archived, builtin: !!r.builtin, version: +r.version || 1,
       params: v.val || defaults(r.kind), invalid: v.errs ? v.errs.map(e => e.msg) : null, updatedAt: r.updated_at || null };

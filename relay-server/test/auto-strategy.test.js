@@ -18,12 +18,12 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   assert.deepEqual(js[0], I0);
   assert.deepEqual(S.validate('intraday', js[0]).val, S.defaults('intraday'));
   const LATER_C = ['nxtJudgeAt', 'nxtReplyMin', 'closeBuyOn', 'closeBuyAt', 'closeBuyEnd', 'closeBuyMax', 'closeBuyHighPct', 'closeBuyPenaltyFrom', 'closeBuyPenaltyMax', 'closeBuyApproval', 'closeBuyWatchFrom', 'closeBuyWatchMin', 'closeBuyBonus'], C0 = Object.fromEntries(Object.entries(S.defaults('closing')).filter(([k]) => !LATER_C.includes(k)));
-  assert.deepEqual({ ...js[1], judgeAt: '15:00', replyMin: 20 }, C0);                 // 171 에서 판정 15:00·답 마감 20분으로 바뀜
-  assert.deepEqual(S.validate('closing', js[1]).val.nxtJudgeAt, '19:00');
+  assert.deepEqual({ ...js[1], judgeAt: '14:45', replyMin: 15 }, C0);                 // 165 의 15:10 판정은 171 에서 15:00 으로, 2026-11-16 에 다시 14:45·답 15분(기본값)으로 바뀜
+  assert.deepEqual(S.validate('closing', js[1]).val.nxtJudgeAt, '18:30');
 });
-test('기본 시각(선정 10:05 · 알림 10:15 · 마감 10:30 · 정규장 판정 15:00~15:20 · NXT 판정 19:00~19:40 · 전환 20:00)', () => {
+test('기본 시각(선정 10:05 · 알림 10:15 · 마감 10:30 · 정규장 판정 14:45~15:00 · NXT 판정 18:30~19:00 · 전환 20:00)', () => {
   const T = S.timesOf(S.defaults('intraday'), S.defaults('closing'));
-  assert.deepEqual(T, { sel: 605, notice: 615, deadline: 630, selEnd: 660, judge: 900, reply: 920, njudge: 1140, nreply: 1180, cbWatch: [1080, 1110, 1140], cbAt: 1170, cbEnd: 1190, convert: 1200, slices: [545, 550, 555] });
+  assert.deepEqual(T, { sel: 605, notice: 615, deadline: 630, selEnd: 660, judge: 885, reply: 900, njudge: 1110, nreply: 1140, cbWatch: [1080, 1110, 1140], cbAt: 1170, cbEnd: 1190, convert: 1200, slices: [545, 550, 555] });
 });
 test('검증: 범위·단위·배점 합계·교차 조건·시각 순서·선택지', () => {
   const v = (k, p) => S.validate(k, p);
@@ -192,7 +192,7 @@ test('약한 종목: 유지 설정이면 묻지 않고 유지, 무응답이면 �
   assert.equal(k.sold.length, 0); assert.equal(k.run.payload.eod.decision.kind, 'keep');
   const t = eodRig({ eodTimeout: 'sell' });                                          // 예전 '무응답이면 정리' 값이 남아 있어도 무시
   await t.eod.judge('D');
-  assert.equal(t.run.payload.eod.decision, null); assert.match(t.sent[0], /15:20까지 답이 없으면 정리하지 않고/);
+  assert.equal(t.run.payload.eod.decision, null); assert.match(t.sent[0], /15:00까지 답이 없으면 '유지'로 자동 결정/);
   assert.equal(await t.eod.timeout('D'), true);
   assert.equal(t.sold.length, 0); assert.equal(t.run.payload.eod.decision.kind, 'keep'); assert.equal(t.run.payload.eod.decision.timeout, true);
 });
@@ -255,4 +255,11 @@ test('종가베팅 관찰: 시작 시각은 최종 선정보다 빨라야 · 간
   const mine = { ...S.defaults('closing'), closeBuyAt: '19:10', closeBuyEnd: '19:45' }; delete mine.closeBuyWatchMin;   // 직접 바꾼 시각은 그대로
   const s2 = S.createStore({ sbGet: async () => [{ id: 'closing-default', name: 'x', kind: 'closing', enabled: true, builtin: true, version: 3, params: mine }], sbWrite: async () => {} });
   assert.equal((await s2.list(true)).find(r => r.id === 'closing-default').params.closeBuyAt, '19:10');
+});
+
+test('예전 기본 판정 시각(15:00/20분 · 19:00/40분)을 저장해 둔 종가 전략은 새 기본(14:45→15:00 · 18:30→19:00)으로 읽힘', async () => {
+  const old = { ...S.defaults('closing'), judgeAt: '15:00', replyMin: 20, nxtJudgeAt: '19:00', nxtReplyMin: 40 };
+  const st = S.createStore({ now: () => 0, sbGet: async () => [{ id: 'closing-default', name: 'x', kind: 'closing', builtin: true, enabled: true, version: 1, params: old }], sbPost: async () => [], sbPatch: async () => [] });
+  const r = (await st.list(true)).find(x => x.id === 'closing-default');
+  assert.deepEqual([r.params.judgeAt, r.params.replyMin, r.params.nxtJudgeAt, r.params.nxtReplyMin], ['14:45', 15, '18:30', 30]);
 });
