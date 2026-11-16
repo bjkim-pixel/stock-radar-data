@@ -45,12 +45,13 @@ function createDayLog(D) {
 
   async function save(date, { force = false } = {}) {
     if (!isDate(date)) return { ok: false, status: 400, error: '날짜가 올바르지 않습니다' };
-    const [state, strategies] = await Promise.all([D.uiState(), D.strategies()]);
-    if (state.date !== date) return { ok: false, status: 400, error: '오늘 날짜만 저장할 수 있습니다' };
+    const [state, strategies] = await Promise.all([D.uiState(date), D.strategies()]);
+    if (state.date !== date) return { ok: false, status: 400, error: '그 날짜를 저장할 수 없습니다' };
     const hasRun = (state.todays || []).length > 0;
+    if (state.rebuilt && !hasRun) return { ok: false, status: 404, error: '그날 자동매매 실행 기록이 없습니다' };
     if (!hasRun && !force) return { ok: true, skipped: 'no-run', date };
     const { state: st, strat } = slim(state, strategies);
-    let snap = { v: 1, savedAt: now(), state: st, strat };
+    let snap = { v: 1, savedAt: now(), rebuilt: !!state.rebuilt, state: st, strat };
     let json = JSON.stringify(snap);
     if (json.length > SNAP_MAX) {   // 그래도 크면 기록 줄을 더 줄인다
       const lite = r => r && Array.isArray(r.log) ? { ...r, log: r.log.slice(-30) } : r;

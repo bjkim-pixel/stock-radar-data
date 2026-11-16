@@ -698,7 +698,7 @@ function createTrade(deps = {}) {
     if (path === '/trade/auto/daylog-memo' || path === '/trade/auto/daylog-save') {   // 일지 메모 저장 · 오늘 일지 지금 저장
       const isMemo = path === '/trade/auto/daylog-memo';
       if (!autoRef || !autoRef.daylogMemo) return json(res, 503, { ok: false, error: 'auto unavailable' });
-      const r = await (isMemo ? autoRef.daylogMemo(String(body.date || ''), body.memo) : autoRef.daylogSave()).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 120) }));
+      const r = await (isMemo ? autoRef.daylogMemo(String(body.date || ''), body.memo) : autoRef.daylogSave(String(body.date || ''))).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 120) }));
       audit(isMemo ? 'auto_daylog_memo' : 'auto_daylog_save', !!r.ok, { date: body.date, len: isMemo && typeof body.memo === 'string' ? body.memo.length : undefined, error: r.error }, req, 'VIRTUAL');
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
     }

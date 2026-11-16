@@ -474,7 +474,7 @@ function createAuto(deps) {
   const JR = require('./auto-journal').createJournal({ sbGet: D.sbGet, sbWrite: D.sbWrite, sendTelegram: D.sendTelegram, now: D.now, paper: D.paper, readRuns, readCarry, actives, excursion: excStore, isTradingDay: D.isTradingDay });
 
   /* 2026-11-16: 오늘 탭 일지 — 20:30 에 오늘 탭 내용을 그대로 하루 한 행으로 저장(복기용) */
-  const DL = require('./auto-daylog').createDayLog({ sbGet: D.sbGet, sbWrite: D.sbWrite, now: D.now, isTradingDay: D.isTradingDay, uiState: () => uiState(), strategies: () => strategies() });
+  const DL = require('./auto-daylog').createDayLog({ sbGet: D.sbGet, sbWrite: D.sbWrite, now: D.now, isTradingDay: D.isTradingDay, uiState: d => uiState(d), strategies: () => strategies() });
 
   /* 선정 + 그림자 기록(전략별 하루 한 번 — 오늘 기록이 있으면 건너뜀). force(/자동후보)는 아직 승인·주문 전일 때만 다시 고름 */
   async function runSelectionFor(I, force) {
@@ -959,8 +959,31 @@ function createAuto(deps) {
       return { ok: true, cfg: { on: !!next.on, perStockKrw: await perStock() }, changed: c.val };
     });
   }
-  async function uiState() {
-    const { date } = kstParts();
+
+  /* 지난 날짜의 오늘 탭 재구성(자정이 지나 그날 일지를 못 만들었을 때) — 그날 실행 기록(auto_runs)과 체결(paper_fills)로 만든다.
+     실시간 값(보유·이월·호가)은 지난 날짜엔 없으므로 비운다. */
+  async function uiStatePast(date) {
+    const [cfgRows, todayRows, A] = await Promise.all([D.sbGet('auto_config?select=value&key=eq.main&limit=1').catch(() => []), readRuns(date), actives()]);
+    const cv = (cfgRows[0] && cfgRows[0].value) || {};
+    const todays = todayRows.map(r => UI.summarizeRun(r, true));
+    const owner = new Set();
+    todays.forEach(t => t.orders.filter(o => o.filled > 0).forEach(o => owner.add(o.code)));
+    let trades = [], dayTot = null;
+    if (owner.size) {
+      const fl = await D.sbGet(`paper_fills?select=*&ts=gte.${encodeURIComponent(date + 'T00:00:00+09:00')}&ts=lt.${encodeURIComponent(date + 'T23:59:59.999+09:00')}&order=ts.asc&limit=2000`).catch(() => []);
+      const nm = {};
+      todays.forEach(t => t.orders.forEach(o => { if (o.name) nm[o.code] = o.name; }));
+      trades = fl.filter(f => owner.has(f.code)).map(f => ({ ts: Date.parse(f.ts), code: f.code, name: nm[f.code] || f.code, side: f.side, price: +f.price, qty: +f.qty, amount: +f.amount, fee: +f.fee || 0, realized: f.realized == null ? null : +f.realized, reason: f.reason || null }));
+      const rz = trades.reduce((a, f) => a + (f.realized || 0), 0);
+      dayTot = { realized: Math.round(rz), evalPl: 0, evalAmt: 0, total: Math.round(rz), buyKrw: Math.round(trades.filter(f => f.side === 'buy').reduce((a, f) => a + (f.amount || 0), 0)), sellKrw: Math.round(trades.filter(f => f.side === 'sell').reduce((a, f) => a + (f.amount || 0), 0)), fee: Math.round(trades.reduce((a, f) => a + (f.fee || 0), 0)), holds: 0, accountRealized: null };
+    }
+    const regime = await regimeOf(date).catch(() => null);
+    return { ok: true, now: Date.now(), date, tradingDay: isTradingDay(date), rebuilt: true, cfg: { on: !!cv.on, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
+      today: todays[0] || null, todays, quotes: {}, active: A.Is.map(i => i.id), regime, exposure: null, events: [], positions: [], trades, dayTot, carry: [], history: [], totals: {}, lastErr: null };
+  }
+  async function uiState(forDate) {
+    const date = forDate || kstParts().date;
+    if (forDate && forDate !== kstParts().date) return uiStatePast(forDate);
     const [cfgRows, todayRows, carry, rows, A] = await Promise.all([
       D.sbGet('auto_config?select=value&key=eq.main&limit=1').catch(() => []),
       readRuns(date).catch(() => []),
@@ -1137,7 +1160,7 @@ function createAuto(deps) {
     return store.archive ? store.archive(id, who) : { ok: false, status: 503, error: '지원하지 않음' };
   }
   return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, siteApprove, siteEod,
-    daylogList: n => DL.list(n), daylogGet: d => DL.get(d), daylogMemo: (d, t) => DL.memo(d, t), daylogSave: () => DL.save(kstParts().date, { force: true }), siteStage, journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
+    daylogList: n => DL.list(n), daylogGet: d => DL.get(d), daylogMemo: (d, t) => DL.memo(d, t), daylogSave: d => DL.save(/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : kstParts().date, { force: true }), siteStage, journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
     _select: select, _mutateRun: mutateRun, _readRun: readRun, _readRuns: readRuns, _readCarry: readCarry, _exec: exec };
 }
 

@@ -58,3 +58,13 @@ test('목록은 요약만, 상세는 snap 포함 · 메모는 300자 제한이�
   const g = await k.dl.get('2026-11-16'); assert.equal(g.ok, true); assert.ok(g.snap.state);
   assert.equal((await k.dl.get('2026-11-01')).status, 404); assert.equal((await k.dl.memo('2026-11-01', 'x')).status, 404);
 });
+
+test('지난 날짜 재구성(rebuilt) 저장: 실행 기록이 있으면 저장하고 표시, 없으면 거절', async () => {
+  const r = rig({ state: { date: '2026-11-16', rebuilt: true, todays: [{ sid: 'intraday-a', picks: [{ code: 'A' }], log: [] }], trades: [], positions: [], carry: [], dayTot: { realized: 5 } } });
+  const ok = await r.dl.save('2026-11-16', { force: true });
+  assert.equal(ok.ok, true);
+  assert.equal(r.db.auto_daylog['2026-11-16'].snap.rebuilt, true);
+  const e = rig({ state: { date: '2026-11-16', rebuilt: true, todays: [] } });
+  const no = await e.dl.save('2026-11-16', { force: true });
+  assert.equal(no.ok, false); assert.equal(no.status, 404);
+});

@@ -11527,6 +11527,7 @@ const auWon=v=>v==null?"–":trdSgn(v)+"원";
 /* ── 일지(2026-11-16 개편): 20:30 에 저장해 둔 "오늘 탭" 그대로 날짜별 복기 ── */
 TRD.auL={rows:null,sel:null,snap:{},memo:{},busy:false,missing:false,err:null};
 const auWk=d=>"일월화수목금토"[new Date(d+"T00:00:00Z").getUTCDay()];
+function auMissingDays(rows,today){const have=new Set((rows||[]).map(r=>r.date)),out=[];if(!today)return out;let d=new Date(today+"T00:00:00Z");for(let i=0;i<7&&out.length<3;i++){d=new Date(d.getTime()-864e5);const w=d.getUTCDay(),k=d.toISOString().slice(0,10);if(w>0&&w<6&&!have.has(k))out.push(k);}return out;}
 async function auLLoad(){
   const L=TRD.auL;if(L.busy)return;L.busy=true;
   try{const r=await trdApi("/trade/auto/daylog");L.rows=r.rows||[];L.missing=!!r.missing;L.err=null;if(!L.sel&&L.rows.length)L.sel=L.rows[0].date;}
@@ -11560,7 +11561,7 @@ function auDayLogHtml(){
   const size=L.rows.reduce((a,r)=>a+(r.size||0),0);
   let h=`<div class="card"><h3>일지 <span class="r faint" style="font-size:11px">매 거래일 20:30 저장 · 날짜를 누르면 그날 오늘 탭을 그대로 봅니다</span></h3>
     ${L.rows.length?`<div class="au-fl au-dl">${chips}</div>`:`<div class="load" style="margin-top:8px">아직 저장된 일지가 없습니다. 오늘 거래일 20:30 부터 쌓입니다.</div>`}
-    <div class="faint" style="font-size:11px;margin-top:8px">${L.rows.length}일 · 누적 약 ${N(size/1024,0)}KB${A&&A.tradingDay&&!has?` · <button type="button" class="chip" data-aulrun="1" title="오늘 탭을 지금 그대로 저장합니다">오늘 지금 저장</button>`:""}</div></div>`;
+    <div class="faint" style="font-size:11px;margin-top:8px">${L.rows.length}일 · 누적 약 ${N(size/1024,0)}KB${A&&A.tradingDay&&!has?` · <button type="button" class="chip" data-aulrun="1" title="오늘 탭을 지금 그대로 저장합니다">오늘 지금 저장</button>`:""}${auMissingDays(L.rows,today).map(d=>` · <button type="button" class="chip" data-aulrun="${d}" title="그날 실행 기록·체결로 오늘 탭을 다시 만들어 저장합니다(보유·호가는 제외)">${d.slice(5).replace("-","/")} 일지 만들기</button>`).join("")}</div></div>`;
   const sel=L.sel,sn=sel?L.snap[sel]:undefined;
   if(sel){
     if(sn===undefined)h+=`<div class="card"><div class="load">불러오는 중…</div></div>`;
@@ -11729,7 +11730,7 @@ function auClick(t){
   if((el=t.closest("[data-aur]"))){el.classList.add("spin");TRD.auMsg=null;trdLoadAuto();if(TRD.auTab==="journal"){TRD.auL.rows=null;TRD.auL.snap={};auLLoad();}if(TRD.auTab==="perf"){TRD.auJ.detail={};auJLoad().then(()=>{const o=TRD.auJ.open;if(o&&TRD.auTab==="journal"){const [d,sd]=o.split("|");auJDetail(d,sd);}});}return true;}
   if((el=t.closest("[data-aul]"))){const d=el.dataset.aul,L=TRD.auL;L.sel=d;trdAutoRender();if(L.snap[d]===undefined)auLDetail(d);return true;}
   if((el=t.closest("[data-aulsave]"))){const d=el.dataset.aulsave;auPost("/trade/auto/daylog-memo",{date:d,memo:TRD.auL.memo[d]||""},()=>"메모를 저장했습니다.");return true;}
-  if((el=t.closest("[data-aulrun]"))){auPost("/trade/auto/daylog-save",{},r=>"오늘 일지를 저장했습니다.").then(r=>{if(r){TRD.auL.rows=null;TRD.auL.snap={};TRD.auL.sel=null;auLLoad();}});return true;}
+  if((el=t.closest("[data-aulrun]"))){auPost("/trade/auto/daylog-save",el.dataset.aulrun&&el.dataset.aulrun!=="1"?{date:el.dataset.aulrun}:{},r=>"일지를 저장했습니다.").then(r=>{if(r){TRD.auL.rows=null;TRD.auL.snap={};TRD.auL.sel=null;auLLoad();}});return true;}
   if((el=t.closest("[data-aujf]"))){TRD.auJ.filter=el.dataset.aujf;TRD.auJ.open=null;trdAutoRender();return true;}
   if((el=t.closest("[data-auj]"))){const k=el.dataset.auj,J=TRD.auJ;if(J.open===k){J.open=null;trdAutoRender();}else{J.open=k;const [d,sd]=k.split("|");trdAutoRender();if(J.detail[k]===undefined)auJDetail(d,sd);}return true;}
   if((el=t.closest("[data-aujmemo]"))){const k=el.dataset.aujmemo,[d,sd]=k.split("|");auPost("/trade/auto/journal-memo",{date:d,sid:sd,memo:TRD.auJ.memo[k]||""},()=>"메모를 저장했습니다.").then(r=>{if(r){if(TRD.auJ.detail[k])TRD.auJ.detail[k].memo=r.memo;TRD.auJ.memo[k]=r.memo;auJLoad();}trdAutoRender();});return true;}
