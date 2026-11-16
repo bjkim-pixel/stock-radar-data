@@ -473,12 +473,14 @@ function createAuto(deps) {
   }
 
   /* 승인 처리(한 전략): a = { kind: 'pass' } | { kind: 'buy', nums } | { kind: 'all' } */
-  async function approveRun(date, sid, a, min) {
+  async function approveRun(date, sid, a, min, opts = {}) {
     const { I } = await intraOf(sid);
-    if (min > I.T.deadline && !D.allowLateApproval) return `승인 마감(${ST.hhmm(I.T.deadline)})이 지났어요. 오늘은 취소 처리돼요.`;
+    const late = !!opts.late;   // 사이트에서 직접 누른 승인: 승인 마감이 지났어도(장 마감 15:20 전까지) 진행 — 만료된 기록도 되살림
+    if (late && min >= 920) return '장 마감이 가까워(15:20 이후) 새로 매수하지 않아요.';
+    if (min > I.T.deadline && !D.allowLateApproval && !late) return `승인 마감(${ST.hhmm(I.T.deadline)})이 지났어요. 오늘은 취소 처리돼요.`;
     const res = await mutateRun(date, sid, run => {
       const max = (run.payload.picks || []).length;
-      if (run.payload.decision && run.payload.decision.kind) return { dup: run.payload.decision };
+      if (run.payload.decision && run.payload.decision.kind && !(late && run.payload.decision.kind === 'expired')) return { dup: run.payload.decision };
       const nums = a.kind === 'all' ? Array.from({ length: max }, (_, i) => i + 1) : a.nums || [];
       if (a.kind !== 'pass' && (!nums.length || nums.some(n => n < 1 || n > max))) return { bad: max };
       run.payload.decision = a.kind === 'pass' ? { kind: 'pass', at: new Date().toISOString() } : { kind: 'buy', nums, at: new Date().toISOString() };
@@ -494,7 +496,7 @@ function createAuto(deps) {
     try { return await ex.approve(date, res.payload); } catch (e) { return `승인은 기록했지만 가상 매수 중 오류: ${e.message}`; }
   }
   /* 텔레그램 답장: 글자(A·B·C)로 전략을 고름. 대기 중인 전략이 하나면 글자 없이도 됨 */
-  async function handleApproval(text, onlySid) {
+  async function handleApproval(text, onlySid, opts = {}) {
     const { date, min } = kstParts();
     const a = parseCmdMulti(text, 'buy');
     if (!a) return null;
@@ -502,7 +504,7 @@ function createAuto(deps) {
     runs.forEach(r => { state.runs[sidOf(r)] = r; });
     if (!runs.length) return '오늘은 승인할 후보가 없어요.';
     if (a.kind === 'bad') return `번호를 확인해 주세요. 예) /매수 1 3${runs.length > 1 ? ' · 전략이 여럿이면 /매수 A1 B2' : ''}`;
-    const pend = runs.filter(r => !(r.payload.decision && r.payload.decision.kind));
+    const pend = runs.filter(r => !(r.payload.decision && r.payload.decision.kind) || (opts.late && r.payload.decision.kind === 'expired'));
     const byLetter = l => runs.find(r => (r.payload.letter || 'A') === l);
     const jobs = [];
     if (a.kind === 'pass' || a.kind === 'all') {
@@ -518,7 +520,7 @@ function createAuto(deps) {
       Object.entries(g).forEach(([sid, nums]) => jobs.push([sid, { kind: 'buy', nums: [...new Set(nums)] }]));
     }
     const out = [];
-    for (const [sid, job] of jobs) { const r = await approveRun(date, sid, job, min); out.push(jobs.length > 1 || runs.length > 1 ? `[${labelOf(sid)}]\n${r}` : r); }
+    for (const [sid, job] of jobs) { const r = await approveRun(date, sid, job, min, opts); out.push(jobs.length > 1 || runs.length > 1 ? `[${labelOf(sid)}]\n${r}` : r); }
     return out.join('\n\n');
   }
 
@@ -612,7 +614,7 @@ function createAuto(deps) {
   }
 
   /* /정리 A1 B2 · /정리 1(정리 대기 전략이 하나일 때) · /정리 전체 · /유지 */
-  async function handleEod(text, onlySid) {
+  async function handleEod(text, onlySid, opts = {}) {
     if (!D.paper) return null;
     const { date, min } = kstParts();
     const a = parseCmdMulti(text, 'eod');
@@ -634,7 +636,7 @@ function createAuto(deps) {
       Object.entries(g).forEach(([sid, nums]) => jobs.push([sid, '/정리 ' + [...new Set(nums)].join(' ')]));
     }
     const out = [];
-    for (const [sid, cmd] of jobs) { const r = await eodFor(sid).handleCmd(date, cmd, min); out.push(jobs.length > 1 || runs.length > 1 ? `[${labelOf(sid)}]\n${r}` : r); }
+    for (const [sid, cmd] of jobs) { const r = await eodFor(sid).handleCmd(date, cmd, min, opts); out.push(jobs.length > 1 || runs.length > 1 ? `[${labelOf(sid)}]\n${r}` : r); }
     return out.join('\n\n');
   }
 
@@ -711,15 +713,62 @@ function createAuto(deps) {
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */
   async function siteApprove(kind, nums, sid) {
     const text = kind === 'pass' ? '/패스' : `/매수 ${nums.join(' ')}`;
-    const r = await handleApproval(text, sid || null);
+    const r = await handleApproval(text, sid || null, { late: true });
     if (r) await D.sendTelegram(`🖥 사이트에서 ${sid ? `[${labelOf(sid)}] ` : ''}${kind === 'pass' ? '패스' : '매수 ' + nums.join(',')} 선택\n${r}`).catch(() => {});
+    if (r && kind !== 'pass' && sid && D.paper) { try { await execFor(sid).follow(kstParts().date); } catch (_) {} }   // 승인 즉시 주문 관리를 한 번 돌려 다음 단계(체결 확인·익절 주문)로 넘김
     return { ok: !!r, reply: r || '처리할 수 없는 요청입니다.' };
   }
+  /* 정리/유지를 정하면 바로 다음 단계(이월 전환)까지 진행 — 예정 시각을 기다리지 않음. 전략의 약한 종목이 모두 정해졌을 때만 */
   async function siteEod(kind, nums, sid) {
     const text = kind === 'keep' ? '/유지' : `/정리 ${nums.join(' ')}`;
-    const r = await handleEod(text, sid || null);
+    const r = await handleEod(text, sid || null, { late: true });
     if (r) await D.sendTelegram(`🖥 사이트에서 ${sid ? `[${labelOf(sid)}] ` : ''}${kind === 'keep' ? '유지' : '정리 ' + nums.join(',')} 선택\n${r}`).catch(() => {});
-    return { ok: !!r, reply: r || '처리할 수 없는 요청입니다.' };
+    let next = '';
+    if (r && sid && D.paper && !/이미 처리|번호를 확인|마감/.test(r)) {
+      try { const c = await eodFor(sid).convert(kstParts().date); next = c && c.skipped ? '' : `\n➡ 다음 단계: 이월 전환 완료(${c && c.n != null ? c.n + '종목' : '처리'})`; } catch (e) { next = `\n➡ 이월 전환은 지금 못 했어요(${e.message}) — 예정 시각에 다시 시도해요.`; }
+    }
+    return { ok: !!r, reply: r ? r + next : '처리할 수 없는 요청입니다.' };
+  }
+  /* 단계 버튼(사이트): select 후보 선정 → (알림까지 이어서) · notice 알림 · judge 종가 판정 · convert 이월 전환. 예정 시각과 무관하게 지금 실행 */
+  async function siteStage(stage, sid) {
+    const { date, min } = kstParts();
+    if (!isTradingDay(date)) return { ok: false, reply: '휴장일이에요.' };
+    if (!sid) return { ok: false, reply: '전략을 정해 주세요.' };
+    const run = await readRun(date, sid).catch(() => null), P = (run && run.payload) || {};
+    const log = async t => { await D.sendTelegram(`🖥 사이트에서 [${labelOf(sid)}] ${t}`).catch(() => {}); };
+    if (stage === 'select') {
+      if (min >= 920) return { ok: false, reply: '장 마감이 가까워(15:20 이후) 새로 고르지 않아요.' };
+      if (run && (P.decision && P.decision.kind && P.decision.kind !== 'expired' || Object.keys(P.orders || {}).length)) return { ok: false, reply: '이미 승인·주문이 진행돼 다시 고를 수 없어요.' };
+      const r = await runSelection(true, sid);
+      if (!r || !r.ok) return { ok: false, reply: (r && r.why) || '후보를 고르지 못했어요.' };
+      state.runs[sid] = await readRun(date, sid).catch(() => null) || state.runs[sid];
+      const n = await sendNoticeFor(sid, true).catch(e => ({ ok: false, err: e.message }));   // 다음 단계(알림)까지 바로
+      await log('후보 선정 → 알림 전송');
+      return { ok: true, reply: `후보 ${r.picks != null ? r.picks + '개' : ''}를 고르고 텔레그램 알림까지 보냈어요. 아래에서 승인하세요.${n && n.ok === false ? ' (알림 전송 실패)' : ''}` };
+    }
+    if (stage === 'notice') {
+      if (!run) return { ok: false, reply: '먼저 후보를 골라야 해요.' };
+      const n = await sendNoticeFor(sid, true);
+      await log('알림 다시 전송');
+      return { ok: true, reply: n.sent ? '텔레그램 알림을 보냈어요.' : '보낼 알림이 없어요.' };
+    }
+    if (stage === 'judge') {
+      if (!D.paper) return { ok: false, reply: '가상매매 엔진이 꺼져 있어요.' };
+      if (P.eod && P.eod.at) return { ok: false, reply: '이미 판정했어요.' };
+      const r = await eodFor(sid).judge(date);
+      await log('종가 판정 실행');
+      return { ok: !!(r && r.ok), reply: r && r.ok ? `판정했어요: ${r.n}종목 중 약함 ${r.weak}. 약한 종목이 있으면 아래에서 정리/유지를 정하세요.` : '판정하지 못했어요.' };
+    }
+    if (stage === 'convert') {
+      if (!D.paper) return { ok: false, reply: '가상매매 엔진이 꺼져 있어요.' };
+      if (P.carryDone) return { ok: false, reply: '이미 이월 전환했어요.' };
+      const E = P.eod;
+      if (E && (E.weak || []).length && !E.decision) return { ok: false, reply: '약한 종목 정리·유지를 먼저 정해 주세요.' };
+      const c = await eodFor(sid).convert(date);
+      await log('이월 전환 실행');
+      return { ok: !!(c && c.ok), reply: c && c.ok ? `이월 전환했어요(${c.n || 0}종목).` : '전환하지 못했어요.' };
+    }
+    return { ok: false, reply: '알 수 없는 단계예요.' };
   }
 
   /* 전략 조회·저장·추가·삭제(컨트롤 타워) */
@@ -758,7 +807,7 @@ function createAuto(deps) {
     return store.archive ? store.archive(id, who) : { ok: false, status: 503, error: '지원하지 않음' };
   }
   return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, siteApprove, siteEod,
-    journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
+    siteStage, journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
     _select: select, _mutateRun: mutateRun, _readRun: readRun, _readRuns: readRuns, _readCarry: readCarry, _exec: exec };
 }
 

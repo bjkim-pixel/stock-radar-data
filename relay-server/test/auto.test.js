@@ -132,6 +132,31 @@ test('승인 기록: 매수 번호·패스·중복·마감', async () => {
   const h3 = harness(); await h3.A.tick(); h3.setMin(10 * 60 + 15); await h3.A.tick();
   assert.match(await h3.A.handleApproval('/패스'), /패스/); assert.equal(h3.db.auto_runs['2026-11-16'].status, 'passed');
 });
+test('사이트 승인: 마감이 지나도 진행(텔레그램은 마감) · 만료 기록도 되살림 · 15:20 이후는 거절', async () => {
+  const h = harness(); await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick();
+  h.setMin(10 * 60 + 31);                                  // 승인 마감(10:30) 지남 → 텔레그램은 거절
+  assert.match(await h.A.handleApproval('/매수 1'), /마감/);
+  const r = await h.A.siteApprove('buy', [1], null);        // 사이트는 진행
+  assert.equal(r.ok, true); assert.doesNotMatch(r.reply, /마감/);
+  assert.equal(h.db.auto_runs['2026-11-16'].status, 'approved');
+  const h2 = harness(); await h2.A.tick(); h2.setMin(10 * 60 + 15); await h2.A.tick();
+  h2.setMin(10 * 60 + 31); await h2.A.tick();               // 틱이 만료 처리
+  assert.equal(h2.db.auto_runs['2026-11-16'].status, 'expired');
+  const r2 = await h2.A.siteApprove('buy', [1], null);
+  assert.equal(r2.ok, true); assert.equal(h2.db.auto_runs['2026-11-16'].status, 'approved');
+  const h3 = harness(); await h3.A.tick(); h3.setMin(10 * 60 + 15); await h3.A.tick();
+  h3.setMin(15 * 60 + 21);
+  assert.match((await h3.A.siteApprove('buy', [1], null)).reply, /장 마감이 가까워/);
+});
+test('단계 버튼: 후보 선정은 알림까지 이어지고, 승인·주문이 시작되면 다시 고르지 않음', async () => {
+  const h = harness({ min: 9 * 60 + 40 });
+  const sid = 'intraday-default';
+  const r = await h.A.siteStage('select', sid);
+  assert.equal(r.ok, true); assert.equal(h.db.auto_runs['2026-11-16'].status, 'noticed'); assert.ok(h.sent.length >= 1);
+  assert.equal((await h.A.siteStage('bogus', sid)).ok, false);
+  await h.A.siteApprove('buy', [1], sid);
+  assert.match((await h.A.siteStage('select', sid)).reply, /다시 고를 수 없어요|이미 승인/);
+});
 test('그림자 기록: 조건 통과 전체가 점수와 함께 남고 알림 대상 표시', async () => {
   const h = harness(); await h.A.tick();
   const sh = h.db.auto_runs['2026-11-16'].payload.shadow;

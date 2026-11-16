@@ -678,6 +678,15 @@ function createTrade(deps = {}) {
       audit(path === '/trade/auto/approve' ? 'auto_approve' : 'auto_eod', !!r.ok, { kind, nums, strategy: sid }, req, 'VIRTUAL');
       return json(res, 200, r);
     }
+    if (path === '/trade/auto/stage') {   // 단계 버튼: 예정 시각과 무관하게 지금 실행(후보 선정→알림 · 알림 · 종가 판정 · 이월 전환)
+      if (!autoRef || !autoRef.siteStage) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      const stage = String(body.stage || ''), sid = body.strategy == null ? null : String(body.strategy);
+      if (!['select', 'notice', 'judge', 'convert'].includes(stage)) return json(res, 400, { ok: false, error: 'bad stage' });
+      if (!sid || !/^[a-z]+-[a-z0-9]{1,20}$/.test(sid)) return json(res, 400, { ok: false, error: 'bad strategy' });
+      const r = await autoRef.siteStage(stage, sid).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
+      audit('auto_stage', !!r.ok, { stage, strategy: sid }, req, 'VIRTUAL');
+      return json(res, 200, r);
+    }
     if (path === '/trade/auto/journal-memo' || path === '/trade/auto/journal-run') {   // 일지 메모 저장 · 하루치 일지 다시 만들기(텔레그램 없음)
       const isMemo = path === '/trade/auto/journal-memo';
       if (!autoRef || !autoRef.journalMemo) return json(res, 503, { ok: false, error: 'auto unavailable' });

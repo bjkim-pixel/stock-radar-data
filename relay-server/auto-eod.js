@@ -116,7 +116,7 @@ function createEod(deps) {
   }
 
   /* /정리 · /유지 */
-  async function handleCmd(date, text, min) {
+  async function handleCmd(date, text, min, opts = {}) {
     const run = await D.readRun(date).catch(() => null);
     const E = run && run.payload && run.payload.eod;
     const weak = (E && E.weak) || [];
@@ -126,7 +126,7 @@ function createEod(deps) {
     if (a.kind === 'bad') return `번호를 확인해 주세요. 1~${weak.length} 중에서 골라요. 예) /정리 1`;
     if (E.decision) return `이미 처리했어요(${E.decision.kind === 'sell' ? '정리' : '유지'}).`;
     const R = await rule();
-    if (min >= R.replyEnd) return `${hhmm(R.replyEnd)} 응답 마감이 지났어요. 설정에 따라 처리합니다.`;
+    if (opts.late ? min >= 930 : min >= R.replyEnd) return opts.late ? '장 마감(15:30)이 지나 정리할 수 없어요.' : `${hhmm(R.replyEnd)} 응답 마감이 지났어요. 설정에 따라 처리합니다.`;
     const pick = a.kind === 'sell' ? a.nums.map(n => weak[n - 1]) : [];
     await D.mutateRun(date, r => { r.payload.eod.decision = { kind: a.kind, codes: pick, at: now() }; });
     if (a.kind === 'keep') return `정리하지 않고 ${hhmm(R.convertAt)}까지 들고 갈게요.`;
