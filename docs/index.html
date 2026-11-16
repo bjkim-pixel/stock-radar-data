@@ -1525,9 +1525,10 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 <!-- ═══════════ 사모 추종 ═══════════ -->
 <section id="v-pe" class="hide">
   <div class="card" style="margin-top:16px"><h3>사모 추종 — 사모 비중 TOP 10 일별 수급 <span class="r" id="peRng">불러오는 중…</span></h3>
-    <div class="tl-legend"><span><i style="width:12px;height:10px;background:color-mix(in srgb,var(--up) 45%,transparent);border-radius:2px"></i>순매수</span><span><i style="width:12px;height:10px;background:color-mix(in srgb,var(--down) 45%,transparent);border-radius:2px"></i>순매도</span><span>단위 억원 · 색 진하기는 종목별 최대치 기준 · 좌우로 밀어서 이동</span></div>
+    <div class="tl-tabs" id="peTabs"><button data-m="ratio" class="on">비중 변화(%p)</button><button data-m="amt">순매수(억원)</button></div>
+    <div class="tl-legend"><span><i style="width:12px;height:10px;background:color-mix(in srgb,var(--up) 45%,transparent);border-radius:2px"></i>순매수</span><span><i style="width:12px;height:10px;background:color-mix(in srgb,var(--down) 45%,transparent);border-radius:2px"></i>순매도</span><span id="peUnit">단위 %p(시총 대비 그날 사모 순매수) · 색 진하기는 종목별 최대치 기준 · 좌우로 밀어서 이동</span></div>
     <div id="peBody"><div class="load sk"></div></div>
-    <div class="note" style="margin-top:8px">오늘 기준, 최근 6개월 사모 누적 순매수가 시가총액 대비 가장 큰 종목 10개(시총 1천억원 이상·우선주·리츠·스팩 제외)입니다. 사모펀드의 실제 보유 비중은 공개되지 않아 누적 순매수 ÷ 시총으로 대신 봅니다. 종목은 업종별로 묶었고 이름 앞 숫자는 업종 내 순위(비중 큰 순)입니다. 종목 이름 아래는 시총과 오늘까지의 연속 순매수(+)/순매도(−) 일수입니다. 오른쪽 5·20·60일 열은 최근 거래일 합계입니다. 종목명을 누르면 종목 상세로 이동합니다.</div>
+    <div class="note" style="margin-top:8px">오늘 기준, 최근 6개월 사모 누적 순매수가 시가총액 대비 가장 큰 종목 10개(시총 1천억원 이상·우선주·리츠·스팩 제외)입니다. 사모펀드의 실제 보유 비중은 공개되지 않아 누적 순매수 ÷ 시총으로 대신 봅니다. <b>정렬 = 비중 큰 순</b>(이름 앞 숫자가 순위)이고, 종목 이름 아래 <b>비중</b>은 최근 6개월 사모 누적 순매수 ÷ 시총입니다(+연속 순매수/순매도 일수). <b>비중 변화(%p)</b> 보기는 그날 사모 순매수가 시총의 몇 %였는지(비중이 얼마나 늘고 줄었는지)이고, 오른쪽 5·20·60일 열은 그 기간 비중 증감(%p) 합계입니다. 맨 위 줄은 10종목 평균입니다. <b>순매수(억원)</b> 보기는 금액입니다. 종목명을 누르면 종목 상세로 이동합니다.</div>
   </div>
 </section>
 
@@ -5263,36 +5264,38 @@ function fwRender(o){
   const dates=[...new Set(D.flow.map(r=>r.trade_date))].filter(d=>wd(d)>=1&&wd(d)<=5).sort();
   if(!dates.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
   const val={};D.flow.forEach(r=>{(val[r.code]=val[r.code]||{})[r.trade_date]=fn(r);});
-  const bySec={};D.top.forEach(t=>{(bySec[t.sector]=bySec[t.sector]||[]).push(t);});
+  const bySec={};D.top.forEach(t=>{const k=o.flat||t.sector;(bySec[k]=bySec[k]||[]).push(t);});
   const secs=Object.keys(bySec).sort((a,b)=>bySec[b].reduce((x,t)=>x+t.cap,0)-bySec[a].reduce((x,t)=>x+t.cap,0));
+  const agg=(L,fn)=>o.avg?L.reduce((a,t)=>a+fn(t),0)/Math.max(1,L.length):L.reduce((a,t)=>a+fn(t),0);
   const W=host.clientWidth||360,lw=108,cw=Math.max(28,Math.floor((W-lw-2*10)/10));
-  const fmtC=v=>{const a=Math.abs(v),p=v>0?"+":v<0?"-":"";return a>=10000?p+N(a/10000,1)+"조":p+String(Math.round(a));};
+  const dv=o.div||EOK;
+  const fmtC=o.fmt||(v=>{const a=Math.abs(v),p=v>0?"+":v<0?"-":"";return a>=10000?p+N(a/10000,1)+"조":p+String(Math.round(a));});
   const wins=TL_WINS.map(([n])=>dates.slice(-n));
   const bg=(v,mx)=>`background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${Math.round(10+55*Math.abs(v)/(mx||1))}%,transparent)`;
   let h=`<div class="tl-chart"><div class="tl-scroll"><div class="tl-inner"><div class="tl-grid" style="--nc:${dates.length+3};--cw:${cw}px;--lw:${lw}px"><div class="tl-corner"></div>`
     +dates.map((d,i)=>tlHdCell(d,i,dates,WD,wd(d))).join("")+tlSumHd();
   secs.forEach(sn=>{
     const L=bySec[sn];
-    const sv=d=>L.reduce((a,t)=>a+((val[t.code]||{})[d]||0),0);
+    const sv=d=>agg(L,t=>(val[t.code]||{})[d]||0);
     const sMax=Math.max(1,...dates.map(d=>Math.abs(sv(d))));
     const sw=wins.map(w=>w.reduce((a,d)=>a+sv(d),0)),swMax=Math.max(1,...sw.map(Math.abs));
-    h+=`<div class="fw-gap"></div><div class="tl-rl fw-sec">${sn}<small>${L.length}종목 · ${N(L.reduce((a,t)=>a+t.cap,0)/1e12,0)}조</small></div>`
-      +dates.map(d=>{const v=sv(d)/EOK;return `<div class="tl-tot fw-st ${sgn(v)}" style="${bg(v,sMax/EOK)}" title="${sn} TOP100 합계(억원)">${fmtC(v)}</div>`;}).join("")
-      +sw.map(v=>`<div class="tl-tot sumc fw-st ${sgn(v)}" style="${bg(v,swMax)}">${fmtC(v/EOK)}</div>`).join("");
+    h+=`<div class="fw-gap"></div><div class="tl-rl fw-sec">${sn}<small>${o.flat?"":`${L.length}종목 · `}${N(L.reduce((a,t)=>a+t.cap,0)/1e12,0)}조</small></div>`
+      +dates.map(d=>{const v=sv(d)/dv;return `<div class="tl-tot fw-st ${sgn(v)}" style="${bg(v,sMax/dv)}" title="${sn} TOP100 합계(억원)">${fmtC(v)}</div>`;}).join("")
+      +sw.map(v=>`<div class="tl-tot sumc fw-st ${sgn(v)}" style="${bg(v,swMax)}">${fmtC(v/dv)}</div>`).join("");
     L.forEach((t,ti)=>{
       const vv=val[t.code]||{},mx=Math.max(1,...dates.map(d=>Math.abs(vv[d]||0)));
       let streak=0,sg=0;for(let k=dates.length-1;k>=0;k--){const x=vv[dates[k]];if(x==null||x===0)break;const g=x>0?1:-1;if(!sg)sg=g;if(g!==sg)break;streak++;}
       const tw=wins.map(w=>w.reduce((a,d)=>a+(vv[d]||0),0)),twMax=Math.max(1,...tw.map(Math.abs));
-      h+=`<div class="tl-rl fw-s"><span><span class="rk">${ti+1}</span><a class="lk nm" data-code="${t.code}">${t.name}</a></span><small>${N(t.cap/1e12,1)}조${streak?` · <span class="${sg>0?"up":"down"}">${sg>0?"+":"−"}${streak}일</span>`:""}</small></div>`
-        +dates.map(d=>{const v=vv[d]||0;return `<div class="tl-cell" style="${bg(v,mx)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`;}).join("")
-        +tw.map(v=>`<div class="tl-sum sumc" style="${bg(v,twMax)}"><span class="tl-v">${fmtC(v/EOK)}</span></div>`).join("");
+      h+=`<div class="tl-rl fw-s"><span><span class="rk">${ti+1}</span><a class="lk nm" data-code="${t.code}">${t.name}</a></span><small>${t.ratio!=null?`<b>비중 ${N(t.ratio,1)}%</b> · `:""}${N(t.cap/1e12,1)}조${streak?` · <span class="${sg>0?"up":"down"}">${sg>0?"+":"−"}${streak}일</span>`:""}</small></div>`
+        +dates.map(d=>{const v=vv[d]||0;return `<div class="tl-cell" style="${bg(v,mx)}"><span class="tl-v">${fmtC(v/dv)}</span></div>`;}).join("")
+        +tw.map(v=>`<div class="tl-sum sumc" style="${bg(v,twMax)}"><span class="tl-v">${fmtC(v/dv)}</span></div>`).join("");
     });
   });
   host.innerHTML=h+'</div></div></div></div>';
   const sc=host.querySelector(".tl-scroll");
   requestAnimationFrame(()=>{sc.scrollLeft=S[skey]==null?1e9:S[skey];});
   sc.addEventListener("scroll",()=>{S[skey]=sc.scrollLeft;},{passive:true});
-  rngEl.textContent=`${label} 순매수 · ${dates[0].slice(2).replace(/-/g,".")}~${dates.at(-1).slice(2).replace(/-/g,".")} · ${dates.length}거래일`;
+  rngEl.textContent=`${label}${o.fmt?"":" 순매수"} · ${dates[0].slice(2).replace(/-/g,".")}~${dates.at(-1).slice(2).replace(/-/g,".")} · ${dates.length}거래일`;
 }
 async function fwOpen(){
   if(!S._fwBound){S._fwBound=true;$("#fwBody").addEventListener("click",e=>{const a=e.target.closest("a.lk[data-code]");if(a)go("detail",a.dataset.code);});$$("#fwTabs button").forEach(b=>b.onclick=()=>{S.fwSubj=b.dataset.s;$$("#fwTabs button").forEach(x=>x.classList.toggle("on",x===b));fwRender();});
@@ -7859,9 +7862,17 @@ async function peLoad(){
   const sec=Object.fromEntries((await q("v_stock_sector",`select=code,sector&code=in.(${inl})`).catch(()=>[])).map(x=>[x.code,x.sector]));
   const d0=new Date(new Date(S.date+"T00:00:00+09:00").getTime()-110*864e5).toISOString().slice(0,10);
   const flow=await q("daily_flow",`select=code,trade_date,pe_net&code=in.(${inl})&trade_date=gte.${d0}&order=trade_date.asc,code.asc&limit=1500`);
-  S.peD={flow,top:cand.map(x=>({code:x.r.code,name:x.r.name,market:x.r.market,cap:+x.r.market_cap,sector:sec[x.r.code]||"미분류"}))};
+  S.peD={flow,top:cand.map(x=>({code:x.r.code,name:x.r.name,market:x.r.market,cap:+x.r.market_cap,ratio:x.ratio*100,sector:sec[x.r.code]||"미분류"}))};
 }
-function peRender(){fwRender({host:$("#peBody"),D:S.peD,fn:r=>+r.pe_net||0,label:"사모",rng:$("#peRng"),key:"peScroll"});}
+function peRender(){
+  const ratio=(S.peMode||"ratio")==="ratio",D=S.peD;if(!D)return;
+  if(!S._peTabs){S._peTabs=true;$$("#peTabs button").forEach(b=>b.onclick=()=>{S.peMode=b.dataset.m;$$("#peTabs button").forEach(x=>x.classList.toggle("on",x===b));peRender();});}
+  $("#peUnit").textContent=ratio?"단위 %p(시총 대비 그날 사모 순매수) · 색 진하기는 종목별 최대치 기준 · 좌우로 밀어서 이동":"단위 억원 · 색 진하기는 종목별 최대치 기준 · 좌우로 밀어서 이동";
+  const cap=Object.fromEntries(D.top.map(t=>[t.code,t.cap]));
+  const o={host:$("#peBody"),D,fn:r=>+r.pe_net||0,label:"사모",rng:$("#peRng"),key:"peScroll",flat:"사모 비중 TOP 10 (평균)"};
+  if(ratio){o.fn=r=>(+r.pe_net||0)/(cap[r.code]||1)*100;o.div=1;o.avg=true;o.label="사모 비중 변화(%p)";o.fmt=v=>(v>0?"+":v<0?"-":"")+Math.abs(v).toFixed(Math.abs(v)>=10?1:2);}
+  fwRender(o);
+}
 
 // 단계 막대 ①②③④ — 현재 칸은 진하게, 지나온 칸은 옅게, 중립이면 모두 빈 칸
 function smStageHtml(phase){
