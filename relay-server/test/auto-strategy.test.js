@@ -17,13 +17,13 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   I0.eodTimeout = 'keep';                                                           // 165 에는 있었지만 지금은 없는 설정(무응답이면 항상 유지) — 저장돼 있어도 검증이 버림
   assert.deepEqual(js[0], I0);
   assert.deepEqual(S.validate('intraday', js[0]).val, S.defaults('intraday'));
-  const LATER_C = ['nxtJudgeAt', 'nxtReplyMin', 'closeBuyOn', 'closeBuyAt', 'closeBuyEnd', 'closeBuyMax', 'closeBuyHighPct', 'closeBuyPenaltyFrom', 'closeBuyPenaltyMax', 'closeBuyApproval'], C0 = Object.fromEntries(Object.entries(S.defaults('closing')).filter(([k]) => !LATER_C.includes(k)));
+  const LATER_C = ['nxtJudgeAt', 'nxtReplyMin', 'closeBuyOn', 'closeBuyAt', 'closeBuyEnd', 'closeBuyMax', 'closeBuyHighPct', 'closeBuyPenaltyFrom', 'closeBuyPenaltyMax', 'closeBuyApproval', 'closeBuyWatchFrom', 'closeBuyWatchMin', 'closeBuyBonus'], C0 = Object.fromEntries(Object.entries(S.defaults('closing')).filter(([k]) => !LATER_C.includes(k)));
   assert.deepEqual({ ...js[1], judgeAt: '15:00', replyMin: 20 }, C0);                 // 171 에서 판정 15:00·답 마감 20분으로 바뀜
   assert.deepEqual(S.validate('closing', js[1]).val.nxtJudgeAt, '19:00');
 });
 test('기본 시각(선정 10:05 · 알림 10:15 · 마감 10:30 · 정규장 판정 15:00~15:20 · NXT 판정 19:00~19:40 · 전환 20:00)', () => {
   const T = S.timesOf(S.defaults('intraday'), S.defaults('closing'));
-  assert.deepEqual(T, { sel: 605, notice: 615, deadline: 630, selEnd: 660, judge: 900, reply: 920, njudge: 1140, nreply: 1180, cbAt: 1145, cbEnd: 1185, convert: 1200, slices: [545, 550, 555] });
+  assert.deepEqual(T, { sel: 605, notice: 615, deadline: 630, selEnd: 660, judge: 900, reply: 920, njudge: 1140, nreply: 1180, cbWatch: [1080, 1110, 1140], cbAt: 1170, cbEnd: 1190, convert: 1200, slices: [545, 550, 555] });
 });
 test('검증: 범위·단위·배점 합계·교차 조건·시각 순서·선택지', () => {
   const v = (k, p) => S.validate(k, p);
@@ -241,4 +241,18 @@ test('시장 상태: 기본은 표시만, 금액 조절은 보수·방어 단계
   assert.ok(S.validate('intraday', { regimeDefense: 0 }).errs);   // 0%(매수 중단)는 허용 안 함 — 결정: 방어도 줄이기만
   const m = A.formatMessage('2026-11-16', [{ code: 'A', name: '가', price: 1000, open: 990, changePct: 1, sector: 'x', reasons: [], m: { cttr: 120, fAmt: 1, oAmt: 1, pAmt: 1 }, score: { total: 80, ratio: 0.01 }, warns: [] }], { regime: A.regimeLine(rg('defense'), Q, 250000) });
   assert.match(m, /📊 시장 상태 방어 42점/);
+});
+
+test('종가베팅 관찰: 시작 시각은 최종 선정보다 빨라야 · 간격 0이면 관찰 없음 · 옛 기본 시각은 새 흐름으로 옮김', async () => {
+  assert.ok(S.validate('closing', { closeBuyWatchFrom: '19:00', closeBuyAt: '19:00' }).errs);
+  assert.ok(S.validate('closing', { closeBuyWatchMin: 0, closeBuyWatchFrom: '19:00', closeBuyAt: '19:00' }).val);
+  assert.deepEqual(S.timesOf(S.defaults('intraday'), { ...S.defaults('closing'), closeBuyWatchMin: 0 }).cbWatch, []);
+  assert.deepEqual(S.timesOf(S.defaults('intraday'), { ...S.defaults('closing'), closeBuyWatchFrom: '18:00', closeBuyWatchMin: 60 }).cbWatch, [1080, 1140]);
+  const old = { ...S.defaults('closing'), closeBuyAt: '19:05', closeBuyEnd: '19:45' }; ['closeBuyWatchFrom', 'closeBuyWatchMin', 'closeBuyBonus'].forEach(k => delete old[k]);
+  const store = S.createStore({ sbGet: async () => [{ id: 'closing-default', name: 'x', kind: 'closing', enabled: true, builtin: true, version: 3, params: old }], sbWrite: async () => {} });
+  const L = await store.list(true), C = L.find(r => r.id === 'closing-default');
+  assert.equal(C.params.closeBuyAt, '19:30'); assert.equal(C.params.closeBuyEnd, '19:50'); assert.equal(C.params.closeBuyWatchMin, 30);
+  const mine = { ...S.defaults('closing'), closeBuyAt: '19:10', closeBuyEnd: '19:45' }; delete mine.closeBuyWatchMin;   // 직접 바꾼 시각은 그대로
+  const s2 = S.createStore({ sbGet: async () => [{ id: 'closing-default', name: 'x', kind: 'closing', enabled: true, builtin: true, version: 3, params: mine }], sbWrite: async () => {} });
+  assert.equal((await s2.list(true)).find(r => r.id === 'closing-default').params.closeBuyAt, '19:10');
 });

@@ -306,6 +306,14 @@ function createAuto(deps) {
         } else if (dd != null) c.reasons = c.reasons.concat([`고가 대비 ${dd.toFixed(1)}%`]);
       }
     }
+    if (X && X.hist && X.hist.n > 0 && X.hist.max > 0) {   // 종가베팅 관찰 회차 통과 이력: 통과 횟수/관찰 횟수 × 최대 가점
+      passed.forEach(c => {
+        const k = X.hist.cnt[c.code] || 0, b = Math.round(X.hist.max * k / X.hist.n * 10) / 10;
+        c.hist = { k, n: X.hist.n };
+        if (b > 0) { c.score.bonus = b; c.score.total = Math.round((c.score.total + b) * 10) / 10; }
+        c.reasons = c.reasons.concat([`관찰 ${X.hist.n}회 중 ${k}회 통과${b > 0 ? ` (가점 +${b})` : ''}`]);
+      });
+    }
     const { pick, dropped } = rankAndPick(passed, P.poolTop, P.sectorMax);
     return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed, rejected };
   }
@@ -626,7 +634,7 @@ function createAuto(deps) {
     const roundEnd = I => (I.params.roundMin > 0 ? ST.tmin(I.params.roundEnd) : 0), selEndOf = I => Math.max(I.T.selEnd, roundEnd(I) + I.params.approveWindow);
     const selNow = A.Is.filter(I => W(I.T.sel, selEndOf(I)));
     const hasPaper = !!D.paper;
-    const inOrd = hasPaper && (W(540, 930) || W(T0.njudge, T0.convert)), inEodJ = hasPaper && W(T0.judge, T0.reply), inEodT = hasPaper && W(T0.reply, 930), inNxJ = hasPaper && W(T0.njudge, T0.nreply), inNxT = hasPaper && W(T0.nreply, T0.convert), inCb = hasPaper && A.C.enabled && !!A.C.params.closeBuyOn && W(T0.cbAt, T0.cbEnd);
+    const inOrd = hasPaper && (W(540, 930) || W(T0.njudge, T0.convert)), inEodJ = hasPaper && W(T0.judge, T0.reply), inEodT = hasPaper && W(T0.reply, 930), inNxJ = hasPaper && W(T0.njudge, T0.nreply), inNxT = hasPaper && W(T0.nreply, T0.convert), inCb = hasPaper && A.C.enabled && !!A.C.params.closeBuyOn && W(T0.cbWatch && T0.cbWatch.length ? T0.cbWatch[0] : T0.cbAt, T0.cbEnd);
     const inJr = min >= JR_AT || W(JR_FIN, 930), inConv = hasPaper && min >= T0.convert, inPre = hasPaper && W(480, 540), inMorn = hasPaper && W(540, 920);
     if (!selNow.length && !inJr && !inOrd && !inEodJ && !inEodT && !inNxJ && !inNxT && !inConv && !inPre && !inMorn) return { ok: true, idle: 'outside-window' };
     if (!isTradingDay(date)) return { ok: true, idle: 'non-trading' };
@@ -663,12 +671,21 @@ function createAuto(deps) {
       if (inNxT && waiting(EN)) (out.timeoutN = out.timeoutN || {})[sid] = await eodFor(sid).timeout(date, 'nxt').catch(err);
       if (inConv && !r.payload.carryDone) (out.convert = out.convert || {})[sid] = await eodFor(sid).convert(date).catch(err);
     }
-    if (inCb && (await masterOn())) {   // 종가베팅 저녁 매수: 19:05 이후 전략마다 한 번(실패하면 최대 3번까지 1분 간격으로 다시)
+    if (inCb && (await masterOn())) {   // 종가베팅 저녁 매수: 18:00부터 관찰 회차, 19:30 이후 최종 선정(전략마다 한 번(실패하면 최대 3번까지 1분 간격으로 다시)
       for (const I of A.Is) {
         const r = state.runs[I.id], cbx = r && r.payload && r.payload.cb;
         if (cbx && cbx.done) {
           const dl = cbx.deadline || T0.cbEnd;
           if (cbx.approval === 'auto' && r.status === 'noticed' && !r.payload.decision && min <= dl) (out.cb = out.cb || {})[I.id] = { auto: await autoApprove(I.id).catch(err) };   // 알림 직후 끊겼던 경우 보완
+          continue;
+        }
+        if (min < T0.cbAt) {   // 관찰 시간: 회차마다 후보만 기록(알림·매수 없음), 놓친 회차는 가장 최근 것 하나만
+          const due = (T0.cbWatch || []).filter(t => t <= min).length, key = `${date}|${I.id}|${due}`;
+          state.cbwSeen = state.cbwSeen || new Set();
+          if (due > 0 && !state.cbBusy && !state.cbwSeen.has(key)) {
+            state.cbwSeen.add(key); state.cbBusy = true;
+            try { (out.cbw = out.cbw || {})[I.id] = await runCbWatchFor(I, A.C, min, due).catch(err); } finally { state.cbBusy = false; }
+          }
           continue;
         }
         if (cbx && (cbx.tries >= 3 || Date.now() - Date.parse(cbx.at) < 60000 * cbx.tries) || state.cbBusy) continue;
@@ -792,22 +809,47 @@ function createAuto(deps) {
 
   /* 종가베팅 저녁 매수(19:05~): NXT 거래 가능 종목 중 장중과 같은 조건(정배열·매집·수급 동시 순매수)을 통과하고 종가가 당일 고가 가까이 마감한 종목을
      새로 골라(오늘 이미 후보·주문한 종목 제외) 알림 → 승인(기본 자동) → NXT 지정가 매수. 매수분은 20:00 전환에서 이월 종목으로 넘어가 다음 날 아침 분할 매도 */
-  async function runClosingBuyFor(I, C, min) {
-    const { date } = kstParts(), cp = C.params, hh = ST.hhmm(min), T = I.T, end = ST.tmin(cp.closeBuyEnd);
+  async function ensureCbRun(date, I) {
     let run = await readRun(date, I.id).catch(() => null);
     if (!run) {   // 오전 선정이 없던 날(서버가 쉬었던 날 등)도 저녁 매수는 할 수 있게 빈 기록을 만든다
       const payload = { selectedAt: new Date().toISOString(), strategy: { id: I.id, version: I.version, name: I.name }, params: I.params, letter: I.letter || 'A', picks: [], shadow: [], approved: [], decision: null, noticeSent: true, stat: null, log: [] };
       LOG.push(payload, 'select', '오전 후보 선정 기록이 없어 종가베팅 저녁 매수용으로 기록을 새로 만듦');
       await lock(() => writeRun({ trade_date: date, strategy_id: I.id, status: 'noticed', payload }));
     }
+  }
+  const cbSelect = (I, cp, known, hist) => select({ ...I.params, cttrMin: 0, openRiseMax: 99, noCttr: true }, { nxtOnly: true, skip: known, closeHigh: { maxPct: cp.closeBuyHighPct, from: cp.closeBuyPenaltyFrom, max: cp.closeBuyPenaltyMax }, ...(hist ? { hist } : {}) });
+  /* 종가베팅 관찰 회차(18:00~, 30분 간격): 최종 선정과 같은 조건으로 후보만 구해 기록. 알림·매수 없음. 통과 이력은 19:30 최종 점수의 가점이 됨 */
+  async function runCbWatchFor(I, C, min, k) {
+    const { date } = kstParts(), cp = C.params, hh = ST.hhmm(min);
+    await ensureCbRun(date, I);
+    const P0 = (await readRun(date, I.id)).payload;
+    if ((P0.cbw || []).some(e => e.k === k)) return { ok: true, dup: true };
+    await mutateRun(date, I.id, r => { r.payload.cbw = (r.payload.cbw || []).concat([{ k, at: new Date().toISOString(), hh, busy: true }]); state.runs[I.id] = r; });   // 자리부터 기록 → 같은 회차를 두 번 돌리지 않음
+    const known = new Set([...(P0.picks || []).map(p => p.code), ...Object.keys(P0.orders || {})]);
+    let ent;
+    try {
+      const sel = await cbSelect(I, cp, known, null), st = sel.stat || {};
+      ent = { k, at: new Date().toISOString(), hh, n: sel.passedAll.length, passed: sel.passedAll.map(c => ({ code: c.code, name: c.name, score: c.score.total, dd: c.dd == null ? null : Math.round(c.dd * 100) / 100, price: c.price, changePct: c.changePct })).sort((a, b) => b.score - a.score).slice(0, 20), stat: { pool: st.pool, base: st.base, nxtOut: st.nxtOut || 0, flowPass: st.flowPass, highOut: st.highOut || 0 } };
+    } catch (e) { ent = { k, at: new Date().toISOString(), hh, err: e.message }; }
+    await mutateRun(date, I.id, r => {
+      r.payload.cbw = (r.payload.cbw || []).map(e => e.k === k ? ent : e);
+      LOG.push(r.payload, 'cbw', ent.err ? `${hh} 관찰 ${k}회차 실패 — ${ent.err}` : `${hh} 관찰 ${k}회차: 조건 통과 ${ent.n}개${ent.passed.length ? ` (${ent.passed.slice(0, 4).map(x => x.name).join(', ')}${ent.n > 4 ? ' …' : ''})` : ''} · 풀 ${ent.stat.pool} → 기본조건 ${ent.stat.base}(NXT 아님 ${ent.stat.nxtOut} 제외) → 수급 통과 ${ent.stat.flowPass}${ent.stat.highOut ? `(고가 대비 낙폭 큼 ${ent.stat.highOut} 제외)` : ''}`);
+      state.runs[I.id] = r;
+    });
+    return { ok: !ent.err, k, n: ent.n };
+  }
+  async function runClosingBuyFor(I, C, min) {
+    const { date } = kstParts(), cp = C.params, hh = ST.hhmm(min), T = I.T, end = ST.tmin(cp.closeBuyEnd);
+    await ensureCbRun(date, I);
     let tries = 0;
     await mutateRun(date, I.id, r => { const c = r.payload.cb || {}; tries = (c.tries || 0) + 1; r.payload.cb = { ...c, at: c.at || new Date().toISOString(), tries, done: false, max: cp.closeBuyMax, deadline: end, approval: cp.closeBuyApproval }; state.runs[I.id] = r; });   // 먼저 기록 → 같은 선정을 두 번 돌리지 않음
     const P0 = (await readRun(date, I.id)).payload;
     const known = new Set([...(P0.picks || []).map(p => p.code), ...Object.keys(P0.orders || {})]);
     let sel;
     try {
-      const Pc = { ...I.params, cttrMin: 0, openRiseMax: 99, noCttr: true };
-      sel = await select(Pc, { nxtOnly: true, skip: known, closeHigh: { maxPct: cp.closeBuyHighPct, from: cp.closeBuyPenaltyFrom, max: cp.closeBuyPenaltyMax } });
+      const cbw = (P0.cbw || []).filter(e => !e.err && !e.busy), cnt = {};
+      cbw.forEach(e => (e.passed || []).forEach(p => { cnt[p.code] = (cnt[p.code] || 0) + 1; }));
+      sel = await cbSelect(I, cp, known, { n: cbw.length, cnt, max: +cp.closeBuyBonus || 0 });
     } catch (e) {
       await mutateRun(date, I.id, r => { LOG.push(r.payload, 'cb', `${hh} 종가베팅 후보 선정 실패(${tries}번째) — ${e.message}`); r.payload.cb.err = e.message; state.runs[I.id] = r; });
       return { ok: false, err: e.message };
@@ -821,7 +863,7 @@ function createAuto(deps) {
       return { ok: true, fresh: 0 };
     }
     const n = (P0.roundN || 1) + 1;
-    const mk = c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, high: c.high || null, dd: c.dd == null ? null : Math.round(c.dd * 100) / 100, penalty: c.score.penalty || 0, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date), round: n, cb: true });
+    const mk = c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, high: c.high || null, dd: c.dd == null ? null : Math.round(c.dd * 100) / 100, penalty: c.score.penalty || 0, bonus: c.score.bonus || 0, hist: c.hist || null, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date), round: n, cb: true });
     let text = null, nums = [];
     await mutateRun(date, I.id, r => {
       const P = r.payload; P.orders = P.orders || {};

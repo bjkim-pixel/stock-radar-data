@@ -80,8 +80,11 @@ const SCHEMA = {
     F('carryFlow', '넘길 자격', '수급', 'enum', 'any', { opts: ENUM.carryFlow }),
     F('idxFloor', '넘길 자격', '지수 하한(코스피·코스닥)', 'num', -1, { min: -3, max: 0, step: 0.1, unit: '%' }),
     F('closeBuyOn', '종가베팅 저녁 매수(NXT)', '저녁에 새 후보를 골라 매수', 'bool', true),
-    F('closeBuyAt', '종가베팅 저녁 매수(NXT)', '후보 선정·알림 시각', 'time', '19:05', { min: '16:00', max: '19:30' }),
-    F('closeBuyEnd', '종가베팅 저녁 매수(NXT)', '승인·주문 마감 시각', 'time', '19:45', { min: '16:10', max: '19:55' }),
+    F('closeBuyWatchFrom', '종가베팅 저녁 매수(NXT)', '관찰 시작 시각', 'time', '18:00', { min: '16:00', max: '19:00' }),
+    F('closeBuyWatchMin', '종가베팅 저녁 매수(NXT)', '관찰 간격(0=관찰 없이 바로 선정)', 'num', 30, { min: 0, max: 60, step: 5, unit: '분' }),
+    F('closeBuyBonus', '종가베팅 저녁 매수(NXT)', '관찰 통과 가점(최대)', 'num', 10, { min: 0, max: 20, step: 1, unit: '점' }),
+    F('closeBuyAt', '종가베팅 저녁 매수(NXT)', '최종 선정·알림 시각', 'time', '19:30', { min: '16:00', max: '19:30' }),
+    F('closeBuyEnd', '종가베팅 저녁 매수(NXT)', '승인·주문 마감 시각', 'time', '19:50', { min: '16:10', max: '19:55' }),
     F('closeBuyMax', '종가베팅 저녁 매수(NXT)', '하루 최대 매수 종목 수', 'num', 3, { min: 1, max: 10, step: 1, unit: '종목' }),
     F('closeBuyHighPct', '종가베팅 저녁 매수(NXT)', '당일 고가 대비 종가 낙폭 한도', 'num', 5, { min: 1, max: 10, step: 0.5, unit: '%' }),
     F('closeBuyPenaltyFrom', '종가베팅 저녁 매수(NXT)', '이 낙폭부터 점수 감점', 'num', 2, { min: 0.5, max: 5, step: 0.5, unit: '%' }),
@@ -157,6 +160,7 @@ function validate(kind, input, base) {
     else if (nreply > tmin(val.convertAt)) errs.push({ key: 'nxtReplyMin', msg: `NXT 종목 답 마감이 ${hhmm(nreply)}입니다(오버나잇 전환 ${val.convertAt} 이전이어야 함)` });
     else if (tmin(val.closeBuyEnd) <= tmin(val.closeBuyAt)) errs.push({ key: 'closeBuyEnd', msg: '종가베팅 매수 마감은 선정 시각보다 늦어야 합니다' });
     else if (tmin(val.closeBuyEnd) > tmin(val.convertAt) - 5) errs.push({ key: 'closeBuyEnd', msg: `종가베팅 매수 마감은 오버나잇 전환(${val.convertAt}) 5분 전까지여야 합니다` });
+    else if (val.closeBuyWatchMin > 0 && tmin(val.closeBuyWatchFrom) >= tmin(val.closeBuyAt)) errs.push({ key: 'closeBuyWatchFrom', msg: '관찰 시작 시각은 최종 선정 시각보다 빨라야 합니다' });
     else if (val.closeBuyPenaltyFrom >= val.closeBuyHighPct) errs.push({ key: 'closeBuyPenaltyFrom', msg: '감점 시작 낙폭은 낙폭 한도보다 작아야 합니다' });
   }
   return errs.length ? { errs } : { val };
@@ -179,15 +183,22 @@ function diff(kind, a, b) {
 }
 
 /* 엔진이 쓰는 형태로 풀어 줌(시각 → 분) */
+/* 종가베팅 저녁 관찰 회차 시각(분): 시작 시각부터 간격마다, 최종 선정 시각 전까지 */
+function cbWatchTimes(C) {
+  const out = [], step = +C.closeBuyWatchMin || 0;
+  if (!C.closeBuyOn || step <= 0) return out;
+  for (let t = tmin(C.closeBuyWatchFrom); t < tmin(C.closeBuyAt) && out.length < 12; t += step) out.push(t);
+  return out;
+}
 function timesOf(I, C) {
   const sel = tmin(I.selectAt), notice = sel + I.noticeAfter, deadline = notice + I.approveWindow;
   const judge = tmin(C.judgeAt), reply = judge + C.replyMin, njudge = tmin(C.nxtJudgeAt), nreply = njudge + C.nxtReplyMin;
-  return { sel, notice, deadline, selEnd: deadline + 30, judge, reply, njudge, nreply, cbAt: tmin(C.closeBuyAt), cbEnd: tmin(C.closeBuyEnd), convert: tmin(C.convertAt), slices: C.slices.map(tmin) };
+  return { sel, notice, deadline, selEnd: deadline + 30, judge, reply, njudge, nreply, cbWatch: cbWatchTimes(C), cbAt: tmin(C.closeBuyAt), cbEnd: tmin(C.closeBuyEnd), convert: tmin(C.convertAt), slices: C.slices.map(tmin) };
 }
 
 const BUILTIN = [
   { id: 'intraday-default', name: '수급 돌파 장중', kind: 'intraday', builtin: true, desc: '오전 외국인·기관·프로그램 동시 순매수 + 체결강도 강세 종목을 사서 당일 손절·5분할 익절' },
-  { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: '15:00(정규장 종목)·19:00(NXT 종목)에 약한 종목을 승인 후 정리하고, 19:05에 종가 강한 NXT 종목을 새로 골라 사서, 강한 종목은 들고 가 다음 날 아침 3분할 매도' },
+  { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: '15:00(정규장 종목)·19:00(NXT 종목)에 약한 종목을 승인 후 정리하고, 18:00부터 30분마다 종가 강한 NXT 종목을 관찰해 19:30에 최종 선정해 사서, 강한 종목은 들고 가 다음 날 아침 3분할 매도' },
 ];
 const builtinRow = b => ({ ...b, enabled: true, archived: false, version: 1, params: defaults(b.kind), updated_at: null });
 
@@ -197,7 +208,10 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
   let chain = Promise.resolve();
   const lock = fn => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
   const norm = r => {
-    const v = validate(r.kind, r.params || {});
+    let pr = r.params || {};
+    // 2026-11-16: 예전 기본 시각(19:05 선정·19:45 마감)을 그대로 쓰던 종가 전략은 새 흐름(18:00 관찰 → 19:30 최종 선정·19:50 마감)으로 옮김
+    if (r.kind === 'closing' && pr.closeBuyWatchMin === undefined && pr.closeBuyAt === '19:05' && pr.closeBuyEnd === '19:45') pr = { ...pr, closeBuyAt: '19:30', closeBuyEnd: '19:50' };
+    const v = validate(r.kind, pr);
     return { id: r.id, name: r.name, kind: r.kind, desc: r.desc || '', enabled: !!r.enabled, archived: !!r.archived, builtin: !!r.builtin, version: +r.version || 1,
       params: v.val || defaults(r.kind), invalid: v.errs ? v.errs.map(e => e.msg) : null, updatedAt: r.updated_at || null };
   };

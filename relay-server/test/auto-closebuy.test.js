@@ -5,15 +5,15 @@ const ST = require('../auto-strategy');
 const { createAuto } = require('../auto');
 const { fakeDb, boot } = require('./paper-harness');
 
-/* 종가베팅 저녁 매수(19:05~): NXT 종목만 · 종가가 고가 5% 이내(2% 넘게 내리면 감점) · 손절 −5%만 걸고 익절 없음 · 20:00 이월 */
+/* 종가베팅 저녁 매수(18:00 관찰 → 19:30 최종 선정): NXT 종목만 · 종가가 고가 5% 이내(2% 넘게 내리면 감점) · 손절 −5%만 걸고 익절 없음 · 20:00 이월 */
 const MIN = 60e3;
-async function rig({ approval = 'auto', cbMax = 3, cbOn = true } = {}) {
+async function rig({ approval = 'auto', cbMax = 3, cbOn = true, watchMin } = {}) {
   const db = fakeDb(), c = await boot(db);
   for (const k of ['035420', '051910']) db.t.stocks.set(k, { code: k, nxt_ok: true, security_type: 'STOCK' });
   db.t.stocks.set('999999', { code: '999999', nxt_ok: false, security_type: 'STOCK' });
   const runs = {}, cfg = { main: { on: true, perStockKrw: 1000000 } }, sent = [];
   const kst = () => { const d = new Date(c.st.clock + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes() }; };
-  const I = { ...ST.defaults('intraday') }, C = { ...ST.defaults('closing'), closeBuyApproval: approval, closeBuyMax: cbMax, closeBuyOn: cbOn };
+  const I = { ...ST.defaults('intraday') }, C = { ...ST.defaults('closing'), closeBuyApproval: approval, closeBuyMax: cbMax, closeBuyOn: cbOn, ...(watchMin != null ? { closeBuyWatchMin: watchMin } : {}) };
   const strategies = { pair: async () => ({ I: { id: 'intraday-default', name: '기본', version: 1, enabled: true, params: I }, C: { id: 'closing-default', version: 1, enabled: true, params: C }, T: ST.timesOf(I, C) }), isMissing: () => false, list: async () => [] };
   const rows = Array.from({ length: 30 }, (_, i) => ({ close: 9000 + i * 30, high: 9100 + i * 30, low: 8900 + i * 30, trade_amount: 5e10, individual_net: 1e9 }));
   const mk = (code, name, high, extra = {}) => ({ code, name, price: 10000, open: 9800, high, changePct: 2, vol: 1e6, amt: 5e10, ...extra });
@@ -42,9 +42,9 @@ async function rig({ approval = 'auto', cbMax = 3, cbOn = true } = {}) {
   return { db, c, A, runs, cfg, sent, date, at, px };
 }
 
-test('19:05 종가베팅: NXT 종목만 · 고가 5% 초과 낙폭 제외 · 2% 넘게 내린 종목은 감점 · 오전 기록이 없어도 진행', async () => {
+test('19:30 종가베팅(관찰 없이 바로 최종 선정): NXT 종목만 · 고가 5% 초과 낙폭 제외 · 2% 넘게 내린 종목은 감점 · 오전 기록이 없어도 진행', async () => {
   const { c, A, runs, sent, date, at, px } = await rig();
-  at(19, 6); px(10000); await A.tick();
+  at(19, 31); px(10000); await A.tick();
   const P = runs[date].payload;
   assert.equal(P.cb.done, true);
   const names = P.picks.map(p => p.name);
@@ -59,13 +59,13 @@ test('19:05 종가베팅: NXT 종목만 · 고가 5% 초과 낙폭 제외 · 2% 
 });
 test('자동 승인: NXT 지정가 매수 · 손절 −5% · 익절 없음 → 20:00 이월 등록', async () => {
   const { db, c, A, runs, cfg, sent, date, at, px } = await rig();
-  at(19, 6); px(10000); await A.tick();
+  at(19, 31); px(10000); await A.tick();
   assert.ok(sent.some(t => /🤖 자동 승인/.test(t)), sent.join('|'));
   const ords = runs[date].payload.orders;
   assert.equal(Object.keys(ords).length, 2);
   for (const o of Object.values(ords)) { assert.ok(['open', 'filled'].includes(o.st), o.st); assert.equal(o.plan.steps.length, 0); assert.equal(o.plan.stopPct, 5); }
-  at(19, 7); px(9990); c.st.vol += 5000; await c.t.paper.tick(); await A.tick();
-  at(19, 20); await A.tick();
+  at(19, 32); px(9990); c.st.vol += 5000; await c.t.paper.tick(); await A.tick();
+  at(19, 40); await A.tick();
   for (const code of ['000660', '035420']) assert.equal(db.t.paper_positions.get(code).qty, 100, code);
   assert.equal(db.t.paper_positions.get('000660').plan.steps.length, 0);
   at(20, 1); await A.tick();
@@ -75,37 +75,79 @@ test('자동 승인: NXT 지정가 매수 · 손절 −5% · 익절 없음 → 2
 });
 test('하루 최대 종목 수(1)면 점수 높은 종목만 · 꺼 두면 아무 것도 안 함', async () => {
   const a = await rig({ cbMax: 1 });
-  a.at(19, 6); a.px(10000); await a.A.tick();
+  a.at(19, 31); a.px(10000); await a.A.tick();
   assert.deepEqual(a.runs[a.date].payload.picks.map(p => p.name), ['SK하이닉스']);
   await a.c.close();
   const b = await rig({ cbOn: false });
-  b.at(19, 6); b.px(10000); await b.A.tick();
+  b.at(19, 31); b.px(10000); await b.A.tick();
   assert.equal(b.runs[b.date], undefined);
   await b.c.close();
 });
 test('직접 승인: 알림만 보내고 /매수 로 승인해야 주문 · 마감까지 답이 없으면 만료', async () => {
   const a = await rig({ approval: 'manual' });
-  a.at(19, 6); a.px(10000); await a.A.tick();
+  a.at(19, 31); a.px(10000); await a.A.tick();
   assert.equal(Object.keys(a.runs[a.date].payload.orders || {}).length, 0);
-  assert.ok(a.sent.some(t => /\/매수 1 2/.test(t) && /19:45까지/.test(t)), a.sent.join('|'));
-  a.at(19, 10); const r = await a.A.handleApproval('/매수 1');
+  assert.ok(a.sent.some(t => /\/매수 1 2/.test(t) && /19:50까지/.test(t)), a.sent.join('|'));
+  a.at(19, 35); const r = await a.A.handleApproval('/매수 1');
   assert.match(r, /가상 매수/);
   assert.equal(Object.keys(a.runs[a.date].payload.orders).length, 1);
   await a.c.close();
   const b = await rig({ approval: 'manual' });
-  b.at(19, 6); b.px(10000); await b.A.tick();
-  b.at(19, 46); await b.A.tick();
+  b.at(19, 31); b.px(10000); await b.A.tick();
+  b.at(19, 51); await b.A.tick();
   assert.equal(b.runs[b.date].status, 'expired');
-  assert.ok(b.sent.some(t => /19:45 승인 마감/.test(t)), b.sent.join('|'));
+  assert.ok(b.sent.some(t => /19:50 승인 마감/.test(t)), b.sent.join('|'));
   await b.c.close();
 });
 test('오전 장중 후보·주문이 있던 날: 저녁 후보는 새 종목만, 오전 후보는 닫고, 종목 수는 따로 셈', async () => {
   const { c, A, runs, date, at, px } = await rig();
   runs[date] = { trade_date: date, strategy_id: 'intraday-default', status: 'approved', payload: { picks: [{ code: '000660', name: 'SK하이닉스', price: 10000, score: 80, round: 1 }], noticeSent: true, approved: ['000660'], decision: { kind: 'buy', nums: [1] }, orders: { '000660': { st: 'filled', filled: 10, avg: 10000 } }, roundN: 3, log: [] } };
-  at(19, 6); px(10000); await A.tick();
+  at(19, 31); px(10000); await A.tick();
   const P = runs[date].payload;
   assert.equal(P.picks[0].closed, true);                                                    // 오전 후보 닫힘
   assert.deepEqual(P.picks.filter(p => p.cb).map(p => p.code), ['035420']);                  // 이미 산 SK하이닉스는 제외
   assert.equal(P.picks.find(p => p.cb).round, 4);
+  await c.close();
+});
+
+test('18:00부터 30분마다 관찰만(알림·매수 없음) → 19:30 최종 선정에 통과 이력 가점', async () => {
+  const { c, A, runs, sent, date, at, px } = await rig();
+  at(17, 59); px(10000); await A.tick();
+  assert.equal(runs[date], undefined);                                   // 관찰 전
+  at(18, 1); await A.tick();
+  let P = runs[date].payload;
+  assert.equal(P.cbw.length, 1); assert.equal(P.cbw[0].k, 1); assert.ok(!P.cbw[0].busy);
+  assert.deepEqual(P.cbw[0].passed.map(x => x.code).sort(), ['000660', '035420']);   // 비NXT·낙폭 큰 종목은 통과 못 함
+  assert.equal(P.picks.length, 0); assert.equal(Object.keys(P.orders || {}).length, 0); assert.equal(sent.length, 0);
+  await A.tick();                                                         // 같은 회차는 다시 돌지 않음
+  assert.equal(runs[date].payload.cbw.length, 1);
+  at(18, 31); await A.tick(); at(19, 1); await A.tick();
+  P = runs[date].payload; assert.deepEqual(P.cbw.map(e => e.k), [1, 2, 3]);
+  assert.equal(P.picks.length, 0); assert.equal(sent.length, 0);
+  at(19, 29); await A.tick(); assert.equal(runs[date].payload.picks.length, 0);       // 최종 선정 전
+  at(19, 31); await A.tick();
+  P = runs[date].payload;
+  assert.equal(P.cb.done, true);
+  const hy = P.picks.find(p => p.code === '000660');
+  assert.deepEqual(hy.hist, { k: 3, n: 3 }); assert.equal(hy.bonus, 10);
+  assert.ok(hy.reasons.some(r => /관찰 3회 중 3회 통과 \(가점 \+10\)/.test(r)));
+  assert.ok(sent.some(t => /종가베팅 후보/.test(t)));
+  await c.close();
+});
+test('관찰 이력이 적을수록 가점도 비례해 줄어든다 · 놓친 회차는 가장 최근 하나만 따라잡음', async () => {
+  const { c, A, runs, date, at, px } = await rig();
+  at(19, 1); px(10000); await A.tick();                                   // 18:00·18:30 놓치고 19:00 회차만
+  assert.deepEqual(runs[date].payload.cbw.map(e => e.k), [3]);
+  at(19, 31); await A.tick();
+  const hy = runs[date].payload.picks.find(p => p.code === '000660');
+  assert.deepEqual(hy.hist, { k: 1, n: 1 }); assert.equal(hy.bonus, 10);
+  await c.close();
+});
+test('관찰 간격 0이면 관찰 없이 19:30에 바로 선정', async () => {
+  const { c, A, runs, date, at, px } = await rig({ watchMin: 0 });
+  at(18, 31); px(10000); await A.tick();
+  assert.equal(runs[date], undefined);
+  at(19, 31); await A.tick();
+  assert.equal(runs[date].payload.cbw, undefined); assert.equal(runs[date].payload.cb.done, true);
   await c.close();
 });
