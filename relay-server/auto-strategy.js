@@ -58,6 +58,7 @@ const SCHEMA = {
     F('regimeDefense', '시장 상태', '방어 단계(30점 미만) 금액', 'num', 25, { min: 10, max: 100, step: 5, unit: '%' }),
     F('stopPct', '매도', '손절', 'num', 5, { min: 2, max: 10, step: 0.5, unit: '%' }),
     F('rr', '매도', '손익비(매물대 없을 때 목표)', 'num', 3, { min: 1, max: 5, step: 0.5, unit: '배' }),
+    F('minRr', '매도', '손익비 하한(목표가 이익 ÷ 손절 손실, 미달이면 매수 안 함 · 0=끔)', 'num', 3, { min: 0, max: 5, step: 0.5, unit: '배' }),
     F('split', '매도', '익절 분할 수', 'num', 5, { min: 1, max: 5, step: 1, unit: '회' }),
     F('minPct', '매도', '1단계 익절 최소', 'num', 3, { min: 1, max: 10, step: 0.5, unit: '%' }),
     F('trail', '매도', '트레일링', 'num', 2, { min: 0.5, max: 5, step: 0.1, unit: '%' }),

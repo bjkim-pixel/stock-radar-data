@@ -21,7 +21,7 @@ const ceilTick = p => { const t = tickOf(p); return Math.ceil(p / t - 1e-9) * t;
 const below = p => { let f = floorTick(p); if (f >= p - 1e-9) f -= tickOf(f - 1); return f; };
 
 const PROFILE_DOWN = 0.30, PROFILE_UP = 0.70;
-const DEF = Object.freeze({ stopPct: 5, rr: 3, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', unfilledEnd: 'cancel', intentLostMs: 60e3 });
+const DEF = Object.freeze({ stopPct: 5, rr: 3, minRr: 0, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', unfilledEnd: 'cancel', intentLostMs: 60e3 });
 const REPRICE_KO = { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' };
 
 /* 주문 시점 스냅샷(F1): 호가·시가·재확인 수치 — 화면·일지에서 '왜 이 가격에 샀는지/못 샀는지' 복기용 */
@@ -108,6 +108,12 @@ function makeOrder({ q, rows, perStockKrw, opt = {} }) {
   return { buy, qty, plan, target: tgt.target, mode: tgt.mode, pick: pick ? pick.k : 'cur' };
 }
 
+/* 손익비 = (목표가 − 매수가) ÷ (매수가 − 손절가). 목표가가 없으면 null */
+function rrOf(ord) {
+  if (!ord || !(ord.target > 0) || !(ord.buy > 0) || !ord.plan || !(ord.plan.stop > 0) || ord.buy <= ord.plan.stop) return null;
+  return (ord.target - ord.buy) / (ord.buy - ord.plan.stop);
+}
+
 /* 승인 직후 재확인 — 실패 사유 배열(빈 배열이면 통과) */
 function recheck(q, notice, opt = {}) {
   const o = { ...DEF, ...opt }, why = [];
@@ -144,7 +150,7 @@ const keepTries = (prev, o) => (prev && prev.tries && prev.tries.length ? { ...o
 function retryable(o, maxTries) {
   if (!o || (o.filled || 0) > 0) return false;
   if (!['cancelled', 'skipped', 'failed'].includes(o.st)) return false;
-  if (/이미 보유/.test(o.why || '')) return false;
+  if (/이미 보유|손익비/.test(o.why || '')) return false;   // 영구 사유: 다른 곳 보유·목표가가 낮아 손익비 미달
   return tryNo(o) < (+maxTries || 3);
 }
 /* 지난 시도를 이력(tries)으로 접고 'retry'(다시 승인·주문 대기) 상태로 바꾼 새 기록 */
@@ -165,6 +171,9 @@ function createExec(deps) {
     if (!rows || !rows.length) return { st: 'skipped', why: '일봉 자료 없음', snap };
     const ord = makeOrder({ q, rows, perStockKrw: perStock, opt });
     if (ord.skip) return { st: 'skipped', why: ord.skip, snap };
+    const rrv = rrOf(ord), minRr = +opt.minRr || 0;   // 손익비 하한: 목표가가 낮아 (이익÷손실)이 기준 미만이면 사지 않음(수수료까지 빼면 손해)
+    if (snap) snap.checks.rr = { v: rrv == null ? null : Math.round(rrv * 100) / 100, min: minRr || null, target: ord.target || null };
+    if (minRr > 0 && (rrv == null || rrv < minRr)) return { st: 'skipped', why: rrv == null ? `목표가를 정하지 못해 손익비 계산 불가(기준 1:${minRr})` : `손익비 1:${(Math.floor(rrv * 10) / 10).toFixed(1)} — 기준(1:${minRr}) 미달, 목표가 ${fmt(ord.target)}원(${((ord.target / ord.buy - 1) * 100).toFixed(1)}%) · 손절 −${ord.plan.stopPct}%`, snap };
     // 1) 의도 먼저 저장(재시작 중복 방지)
     const at = now();
     let tn = 1;
@@ -287,4 +296,4 @@ function createExec(deps) {
   return { approve, follow };
 }
 
-module.exports = { tryNo, keepTries, retryable, foldTry, DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, createExec };
+module.exports = { tryNo, keepTries, retryable, foldTry, DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, rrOf, createExec };

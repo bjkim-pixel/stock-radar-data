@@ -12,7 +12,7 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   for (const k of ['intraday', 'closing']) assert.deepEqual(S.validate(k, S.defaults(k)).val, S.defaults(k));
   const sql = fs.readFileSync(path.join(__dirname, '..', '..', '165_auto_strategy.sql'), 'utf8');
   const js = [...sql.matchAll(/'(\{"[^']+\})'::jsonb/g)].map(m => JSON.parse(m[1]));
-  const LATER = ['regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
+  const LATER = ['regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries', 'minRr'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
   const I0 = Object.fromEntries(Object.entries(S.defaults('intraday')).filter(([k]) => !LATER.includes(k)));
   I0.eodTimeout = 'keep';                                                           // 165 에는 있었지만 지금은 없는 설정(무응답이면 항상 유지) — 저장돼 있어도 검증이 버림
   assert.deepEqual(js[0], I0);

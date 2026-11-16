@@ -233,3 +233,24 @@ test('다시 시도 대상 판정: 한 주도 못 산 종료 상태만, 횟수 �
   assert.equal(X.retryable({ st: 'skipped', why: '이미 보유·주문 중' }, 3), false);
   assert.equal(X.retryable({ st: 'cancelled', tries: [{}, {}] }, 3), false); assert.equal(X.retryable({ st: 'cancelled', tries: [{}] }, 3), true);
 });
+test('손익비 하한: 목표가가 낮아 이익÷손실이 기준 미만이면 매수 안 함(재시도도 안 함), 기준 이하면 통과', async () => {
+  const X = require('../auto-exec');
+  assert.equal(X.rrOf({ buy: 38150, target: 38650, plan: { stop: 36243 } }) < 0.3, true);   // 한국가스공사 사례: +1.3% 목표 ÷ −5% 손절
+  assert.equal(X.rrOf({ buy: 100, target: 115, plan: { stop: 95 } }), 3);
+  assert.equal(X.rrOf({ buy: 100, target: null, plan: { stop: 95 } }), null);
+  assert.equal(X.retryable({ st: 'skipped', why: '손익비 1:0.2 — 기준(1:3) 미달' }, 3), false);
+  const s = await setup({ minRr: 5 });
+  const msg = await s.A.handleApproval('/매수 1');
+  assert.match(msg, /매수 안 함 — 손익비 1:[\d.]+ — 기준\(1:5\) 미달/);
+  const o = s.runs[s.date].payload.orders['005930'];
+  assert.equal(o.st, 'skipped'); assert.equal(s.db.t.paper_orders.size, 0);
+  assert.equal(o.snap.checks.rr.min, 5); assert.ok(o.snap.checks.rr.v < 5);
+  await s.c.close();
+  const s2 = await setup({ minRr: 0 });                 // 끔 → 기존처럼 주문
+  assert.match(await s2.A.handleApproval('/매수 1'), /가상 매수/); assert.equal(s2.db.t.paper_orders.size, 1);
+  await s2.c.close();
+  const s3 = await setup({ minRr: 0.5 });
+  const o3 = (await s3.A.handleApproval('/매수 1'), s3.runs[s3.date].payload.orders['005930']);
+  assert.notEqual(o3.st, 'skipped'); assert.ok(o3.snap.checks.rr.v >= 0.5);
+  await s3.c.close();
+});

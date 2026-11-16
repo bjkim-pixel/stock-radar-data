@@ -333,7 +333,7 @@ function createAuto(deps) {
   /* 엔진별로 쓰는 형태 */
   async function execOpt(sid) {
     const p = (await intraOf(sid)).I.params;
-    return { stopPct: p.stopPct, rr: p.rr, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3, cancelWaitMs: (p.cancelWaitMin || p.fillWaitMin) * 60e3, repriceTo: p.repriceTo || 'bid1', unfilledEnd: p.unfilledEnd || 'cancel', totalCapKrw: +p.totalCapKrw || 0 };
+    return { stopPct: p.stopPct, rr: p.rr, minRr: +p.minRr || 0, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3, cancelWaitMs: (p.cancelWaitMin || p.fillWaitMin) * 60e3, repriceTo: p.repriceTo || 'bid1', unfilledEnd: p.unfilledEnd || 'cancel', totalCapKrw: +p.totalCapKrw || 0 };
   }
   async function eodRule(sid) {
     const { I, C } = await intraOf(sid), c = C.params, T = ST.timesOf(I.params, c);
@@ -853,7 +853,7 @@ function createAuto(deps) {
       const codes = [...new Set(want)].slice(0, 8);
       await Promise.all(codes.map(c => Promise.race([D.getQuoteUi(c), new Promise((_, rej) => setTimeout(() => rej(new Error('t')), 3500))]).then(q => {
         if (q && q.price > 0) quotes[c] = { price: q.price, open: q.open || null, high: q.high || null, low: q.low || null, upper: q.upper || null, lower: q.lower || null, prevClose: q.prevClose || null, strength: q.strength == null ? null : q.strength, vi: !!q.vi,
-          bids: (q.bids || []).filter(x => x && x.p > 0).slice(0, 5).map(x => ({ p: x.p, q: x.q })), asks: (q.asks || []).filter(x => x && x.p > 0).slice(0, 5).map(x => ({ p: x.p, q: x.q })), at: Date.now() };
+          bids: (q.bids || []).filter(x => x && x.p > 0).slice(0, 10).map(x => ({ p: x.p, q: x.q })), asks: (q.asks || []).filter(x => x && x.p > 0).slice(0, 10).map(x => ({ p: x.p, q: x.q })), at: Date.now() };
       }).catch(() => {})));
     }
     const events = EV.marketNotes(await EV.loadEvents(D.sbGet, date, 0, 4), date, 3);

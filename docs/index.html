@@ -1041,12 +1041,12 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-bkr.ask .bar i{background:var(--down);opacity:.55}.au-bkr.bid .bar i{background:var(--up);opacity:.55}
 .au-bkr.me{outline:1.5px solid var(--warn);border-radius:3px;background:var(--surface-2)}.au-bkr.cur .p{font-weight:800}
 .au-bksp{height:4px}
-.au-ladder{padding:34px 14px 48px;position:relative}.au-axis{position:relative;height:8px;background:var(--surface-2);border-radius:4px}
+.au-ladder{padding:0 30px;position:relative}.au-lax{position:relative}.au-ladtx{font-size:11.5px;line-height:1.5;margin-top:6px;border-top:1px dashed var(--line,#8884);padding-top:6px}.au-ld{position:absolute;left:-.5px;width:1px;background:var(--ink-3);opacity:.45}.au-ld.hi{bottom:14px}.au-ld.lo{top:14px}.au-bkr.blank{visibility:hidden}.au-bkp{font-size:10.5px;margin-bottom:2px}.au-bkn{font-size:10.5px;margin-top:2px;min-height:15px}.au-axis{position:relative;height:8px;background:var(--surface-2);border-radius:4px}
 .au-seg{position:absolute;top:0;height:8px;opacity:.55}.au-seg.risk{background:var(--down)}.au-seg.gain{background:var(--up)}
 .au-tk{position:absolute;top:-3px;transform:translateX(-50%);width:0}.au-tk i{display:block;width:3px;height:14px;margin-left:-1.5px;border-radius:2px;background:var(--ink-2)}
 .au-tk.stop i{background:var(--down)}.au-tk.tp i,.au-tk.tgt i{background:var(--up)}.au-tk.cur i{background:var(--warn);height:20px;margin-top:-3px;width:4px}.au-tk.buy i{background:var(--ink)}
 .au-tkl{position:absolute;left:50%;transform:translateX(-50%);font-size:10.5px;line-height:1.25;text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums}
-.au-tk.hi .au-tkl{bottom:18px}.au-tk.lo .au-tkl{top:20px}.au-tk.cur .au-tkl{color:var(--warn);font-weight:800}
+.au-tk.cur .au-tkl{color:var(--warn);font-weight:800}
 @media (max-width:640px){.au-ocb{grid-template-columns:1fr}.au-bks{grid-template-columns:1fr 1fr}}
 .au-rv{border:1px solid var(--border);border-radius:8px;padding:6px 10px;background:var(--surface)}.au-rvl{font-size:12.5px;line-height:1.65;padding:3px 0 3px 8px;border-left:3px solid var(--ink-3);margin:3px 0}.au-rvl.good{border-left-color:var(--good)}.au-rvl.bad{border-left-color:var(--crit)}
 .au-upd{display:inline-flex;align-items:center;gap:8px}.au-rf{width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}.au-rf:hover{background:var(--surface-2)}.au-rf.spin svg{animation:auSpin .8s linear infinite}@keyframes auSpin{to{transform:rotate(360deg)}}
@@ -11418,15 +11418,18 @@ function auNowBar(){
   const ids=auIds();if(!ids.length)return "";
   return `<div class="card au-now"><div class="au-nowh">지금 <span class="faint" style="font-size:11px">${trdEsc(auHMs(trdNow()))} · 단계 블록을 누르면 아래 자세한 진행으로 이동해요</span></div>${ids.map(auNowLine).join("")}</div>`;
 }
-/* ── 호가 막대(F3): 위 매도 3단계 + 아래 매수 호가. 주문가·현재가 표시 ── */
+/* ── 호가 막대(F3): 위 매도 3단계 + 아래 매수 10단계 — 두 패널(주문 시점/지금)이 같은 줄 수·같은 안내문 ── */
 function auBook(b,buy,title){
   if(!b||(!(b.bids||[]).length&&!(b.asks||[]).length))return `<div class="au-bk"><div class="au-bkh">${title}</div><div class="faint" style="font-size:11px">호가 정보 없음</div></div>`;
-  const asks=(b.asks||[]).slice(0,3).slice().reverse(),bids=(b.bids||[]).slice(0,10),mx=Math.max(1,...asks.map(x=>x.q),...bids.map(x=>x.q));
-  const row=(l,s)=>`<div class="au-bkr ${s}${l.p===buy?" me":""}${b.price&&l.p===b.price?" cur":""}"><span class="p">${N(l.p)}</span><span class="bar"><i style="width:${Math.max(2,l.q/mx*100)}%"></i></span><span class="q">${N(l.q)}</span></div>`;
-  const idx=buy?bids.findIndex(x=>x.p===buy):-1;
-  return `<div class="au-bk"><div class="au-bkh">${title}${b.price?` <span class="faint">현재가 ${N(b.price)}</span>`:""}</div>${asks.map(l=>row(l,"ask")).join("")}<div class="au-bksp"></div>${bids.map(l=>row(l,"bid")).join("")}${buy&&idx<0&&bids.length?`<div class="faint" style="font-size:10.5px;margin-top:2px">주문가 ${N(buy)}원은 위 ${bids.length}단계 호가 밖이에요</div>`:buy&&idx>=0?`<div class="faint" style="font-size:10.5px;margin-top:2px">노란 테두리 = 주문가(매수 ${idx+1}호가)</div>`:""}</div>`;
+  const AN=3,BN=10,asks=(b.asks||[]).slice(0,AN).slice().reverse(),bids=(b.bids||[]).slice(0,BN),mx=Math.max(1,...asks.map(x=>x.q),...bids.map(x=>x.q));
+  const row=(l,s)=>`<div class="au-bkr ${s}${buy&&l.p===buy?" me":""}${b.price&&l.p===b.price?" cur":""}"><span class="p">${N(l.p)}</span><span class="bar"><i style="width:${Math.max(2,l.q/mx*100)}%"></i></span><span class="q">${N(l.q)}</span></div>`;
+  const blank=`<div class="au-bkr blank"><span class="p">&nbsp;</span><span class="bar"></span><span class="q"></span></div>`;
+  const pad=(n,rows)=>blank.repeat(Math.max(0,n-rows.length));
+  const idx=buy?bids.findIndex(x=>x.p===buy):-1,ask=buy?asks.findIndex(x=>x.p===buy):-1;
+  const note=!buy?"":idx>=0?`노란 테두리 = 주문가(매수 ${idx+1}호가)`:ask>=0?`노란 테두리 = 주문가(매도 호가 — 바로 체결되는 가격)`:`주문가 ${N(buy)}원은 위 호가 범위 밖이에요`;
+  return `<div class="au-bk"><div class="au-bkh">${title}</div><div class="faint au-bkp">${b.price?`현재가 ${N(b.price)}`:"&nbsp;"}</div>${pad(AN,asks)}${asks.map(l=>row(l,"ask")).join("")}<div class="au-bksp"></div>${bids.map(l=>row(l,"bid")).join("")}${pad(BN,bids)}<div class="faint au-bkn">${note||"&nbsp;"}</div></div>`;
 }
-/* ── 가격 사다리(F3): 손절 · 매수가 · 익절 단계 · 목표가 · 현재가를 한 줄 가격 축에 ── */
+/* ── 가격 사다리(F3): 손절 · 매수가 · 익절 단계 · 목표가 · 현재가를 한 줄 가격 축에 — 가까운 라벨은 위·아래 여러 층으로 비켜 놓아 겹치지 않게 ── */
 function auLadder(o,last){
   const pl=o.plan||{},base=o.avg||o.buy2||o.buy,lv=[];
   if(pl.stop)lv.push({p:pl.stop,k:"stop",t:"손절"});
@@ -11435,14 +11438,19 @@ function auLadder(o,last){
   if(o.target&&!(pl.steps||[]).some(s=>s.p===o.target))lv.push({p:o.target,k:"tgt",t:"목표"});
   if(last)lv.push({p:last,k:"cur",t:"현재"});
   if(lv.length<2)return `<div class="faint" style="font-size:11.5px">손절·익절 계획이 아직 없어요.</div>`;
-  const ps=lv.map(x=>x.p),lo=Math.min(...ps),hi=Math.max(...ps),pad=(hi-lo)*0.04||lo*0.01,a=lo-pad,b=hi+pad,pos=p=>((p-a)/(b-a)*100).toFixed(2);
-  const sorted=lv.slice().sort((x,y)=>x.p-y.p);
-  const ticks=sorted.map((x,i)=>`<div class="au-tk ${x.k}${i%2?" lo":" hi"}" style="left:${pos(x.p)}%"><span class="au-tkl">${trdEsc(x.t)}<br>${N(x.p)}</span><i></i></div>`).join("");
-  const seg=pl.stop&&base?`<div class="au-seg risk" style="left:${pos(pl.stop)}%;width:${(pos(base)-pos(pl.stop)).toFixed(2)}%"></div>`:"";
-  const top=Math.max(...(pl.steps||[]).map(s=>s.p),o.target||0),seg2=base&&top>base?`<div class="au-seg gain" style="left:${pos(base)}%;width:${(pos(top)-pos(base)).toFixed(2)}%"></div>`:"";
+  const ps=lv.map(x=>x.p),lo=Math.min(...ps),hi=Math.max(...ps),pad=(hi-lo)*0.04||lo*0.01,a=lo-pad,b=hi+pad,pos=p=>(p-a)/(b-a)*100;
+  /* 라벨 칸: 위0 → 아래0 → 위1 → 아래1 … 순서로, 앞 라벨과 22% 이상 떨어진 첫 칸에 둠 */
+  const SL=[["hi",0],["lo",0],["hi",1],["lo",1],["hi",2],["lo",2]],last_=SL.map(()=>-1e9),GAP=22,LH=28;
+  const sorted=lv.slice().sort((x,y)=>x.p-y.p||(x.k==="cur"?1:-1));
+  sorted.forEach(x=>{const x0=pos(x.p);let s=last_.findIndex(v=>x0-v>=GAP);if(s<0)s=last_.reduce((m,v,i)=>x0-v>x0-last_[m]?i:m,0);last_[s]=x0;x.s=s;x.x=x0;});
+  const nHi=Math.max(0,...sorted.filter(x=>SL[x.s][0]==="hi").map(x=>SL[x.s][1]+1)),nLo=Math.max(0,...sorted.filter(x=>SL[x.s][0]==="lo").map(x=>SL[x.s][1]+1));
+  const ticks=sorted.map(x=>{const [side,k]=SL[x.s],off=(side==="hi"?18:20)+k*LH;
+    return `<div class="au-tk ${x.k} ${side}" style="left:${x.x.toFixed(2)}%"><span class="au-tkl" style="${side==="hi"?"bottom":"top"}:${off}px">${trdEsc(x.t)}<br>${N(x.p)}</span>${k?`<b class="au-ld ${side}" style="height:${k*LH}px"></b>`:""}<i></i></div>`;}).join("");
+  const seg=pl.stop&&base?`<div class="au-seg risk" style="left:${pos(pl.stop).toFixed(2)}%;width:${(pos(base)-pos(pl.stop)).toFixed(2)}%"></div>`:"";
+  const top=Math.max(...(pl.steps||[]).map(s=>s.p),o.target||0),seg2=base&&top>base?`<div class="au-seg gain" style="left:${pos(base).toFixed(2)}%;width:${(pos(top)-pos(base)).toFixed(2)}%"></div>`:"";
   const pct=p=>base?auPct((p/base-1)*100):"";
   const txt=[pl.stop?`손절 ${N(pl.stop)}원(${pct(pl.stop)})`:"",(pl.steps||[]).length?`익절 ${(pl.steps||[]).map(s=>`${s.n}단계 ${N(s.p)}(${pct(s.p)})`).join(" · ")}`:"익절 단계 없음",last?`현재 ${N(last)}원(${pct(last)})`:""].filter(Boolean).join(" · ");
-  return `<div class="au-ladder"><div class="au-axis">${seg}${seg2}${ticks}</div><div class="faint" style="font-size:11.5px;margin-top:4px">${trdEsc(txt)}</div></div>`;
+  return `<div class="au-ladder"><div class="au-lax" style="padding:${(nHi?nHi*LH+10:8)}px 0 ${(nLo?nLo*LH+12:6)}px"><div class="au-axis">${seg}${seg2}${ticks}</div></div><div class="faint au-ladtx">${trdEsc(txt)}</div></div>`;
 }
 /* 대기 이유 문장 */
 function auWhy(o,q,P){
@@ -11478,7 +11486,7 @@ function auOrderCard(sid,o,RP){   // RP = 일지 복기용({P,log}): 지난 기�
       <div class="au-ocl"><div class="au-sub">왜 이 가격에 샀나</div>
         <div>${o.pick?`${trdEsc(AU_PICK[o.pick]||o.pick)}인 <b>${N(o.buy)}원</b>을 주문가로 골랐어요.`:off?"주문까지 가지 않았어요.":"주문가 정보 없음"}${o.buy2&&o.buy2!==o.buy?` 미체결이라 <b>${N(o.buy2)}원</b>으로 정정했어요.`:""}</div>
         <div class="faint" style="font-size:11.5px;margin-top:2px">알림 가격 ${sn.notice?N(sn.notice):"–"} · 주문 시점 현재가 ${sn.price?N(sn.price):"–"} · 시가 ${sn.open?N(sn.open):"–"}${sn.price&&sn.open?` (시가대비 ${auPct((sn.price/sn.open-1)*100)})`:""}${sn.upper?` · 상한가 ${N(sn.upper)}`:""}</div>
-        <div class="au-chips" style="margin-top:4px">${chip("체결강도",ck.cttr&&ck.cttr.v,ck.cttr&&ck.cttr.min!=null?`≥${ck.cttr.min}`:null,ck.cttr&&ck.cttr.v>=ck.cttr.min)}${chip("알림 대비",ck.move&&ck.move.v,ck.move&&ck.move.max!=null?`≤${ck.move.max}%`:null,ck.move&&Math.abs(ck.move.v)<=ck.move.max)}${chip("시가대비",ck.openRise&&ck.openRise.v,ck.openRise&&ck.openRise.max!=null?`≤${ck.openRise.max}%`:null,ck.openRise&&ck.openRise.v<=ck.openRise.max)}${ck.vi?'<span class="au-chip bad">VI 발동</span>':""}</div>
+        <div class="au-chips" style="margin-top:4px">${chip("체결강도",ck.cttr&&ck.cttr.v,ck.cttr&&ck.cttr.min!=null?`≥${ck.cttr.min}`:null,ck.cttr&&ck.cttr.v>=ck.cttr.min)}${chip("알림 대비",ck.move&&ck.move.v,ck.move&&ck.move.max!=null?`≤${ck.move.max}%`:null,ck.move&&Math.abs(ck.move.v)<=ck.move.max)}${chip("시가대비",ck.openRise&&ck.openRise.v,ck.openRise&&ck.openRise.max!=null?`≤${ck.openRise.max}%`:null,ck.openRise&&ck.openRise.v<=ck.openRise.max)}${ck.vi?'<span class="au-chip bad">VI 발동</span>':""}${ck.rr&&ck.rr.v!=null?`<span class="au-chip ${ck.rr.min&&ck.rr.v<ck.rr.min?"bad":"ok"}">손익비 1:${N(ck.rr.v,1)}${ck.rr.min?` / ≥1:${ck.rr.min}`:""}</span>`:""}</div>
         <div class="au-sub" style="margin-top:8px">지금 상태</div>
         <div>${trdEsc(RP&&["open","modified","intent"].includes(o.st)?"장 마감까지 체결되지 않았어요.":RP&&o.st==="filled"?"전량 체결됐어요.":auWhy(o,q,P))}</div>${tm}
         ${act||(RP&&["cancelled","partial_done","open","modified"].includes(o.st))?`<div class="faint" style="font-size:11.5px;margin-top:3px">규칙: ${trdEsc(auUnfilledRule(P))}</div>`:""}
