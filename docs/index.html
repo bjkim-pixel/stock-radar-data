@@ -11643,7 +11643,10 @@ function auStatusHtml(){
   const cl=v=>trdCls(v),w=v=>(v>0?"+":v<0?"-":"")+N(Math.abs(v),0)+"원";
   const tiles=`<div class="trd-sum" style="margin-bottom:10px"><div><div class="k">오늘 실현손익</div><div class="v ${cl(tot.realized)}">${w(tot.realized)}</div></div><div><div class="k">평가손익(보유)</div><div class="v ${cl(tot.evalPl)}">${w(tot.evalPl)}</div></div><div><div class="k">오늘 합계</div><div class="v ${cl(tot.total)}">${w(tot.total)}</div></div><div><div class="k">매수 / 매도 금액</div><div class="v" style="font-size:14px">${trdFmtAmt(tot.buyKrw)} / ${trdFmtAmt(tot.sellKrw)}</div></div><div><div class="k">보유</div><div class="v">${N(P.length)}종목</div></div></div>`;
   const hold=P.length?`<div class="au-h4">보유 종목</div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>전략</th><th>수량</th><th>평균가</th><th>현재가</th><th>수익률</th><th>평가손익</th><th>손절가</th><th>익절</th></tr></thead><tbody>${P.map(p=>{const pc=p.avg>0&&p.last>0?(p.last/p.avg-1)*100:null,pl=p.last>0?(p.last-p.avg)*p.qty:null,cy=C.find(c=>c.code===p.code),stp=((p.plan||{}).steps)||[],done=stp.filter(x=>x.sold>0).length;return `<tr><td>${trdEsc(p.name||p.code)}${auVn(p.nxt)}</td><td>${cy?`종가베팅 <span class="faint">(${trdEsc(cy.from.slice(5))} ${trdEsc(cy.sid?auName(cy.sid):"")} 이월${cy.state==="selling"?" · 매도 중":""})</span>`:`장중 ${trdEsc(p.strategy||"")}`}</td><td>${N(p.qty)}</td><td>${N(p.avg)}</td><td>${p.last?N(p.last):"–"}</td><td class="${trdCls(pc)}">${auPct(pc)}</td><td class="n ${trdCls(pl)}">${pl==null?"–":w(Math.round(pl))}</td><td>${p.stop?N(p.stop):"–"}</td><td>${stp.length?`${done}/${stp.length}단계`:"–"}</td></tr>`;}).join("")}</tbody></table></div>`:"";
-  const trd=F.length?`<div class="au-h4">오늘 매매 <span class="faint" style="font-weight:400">(시간순)</span></div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>시각</th><th>종목</th><th>구분</th><th>수량·가격</th><th>실현손익</th></tr></thead><tbody>${F.map(f=>`<tr><td>${auHMs(f.ts)}</td><td>${trdEsc(f.name)}</td><td><span class="au-sd ${f.side==="buy"?"sdbuy":"sdsell"}">${trdEsc(auFillTx(f))}</span></td><td class="n">${N(f.qty)}주 @${N(f.price)}</td><td class="n ${trdCls(f.realized)}">${f.side==="sell"&&f.realized!=null?w(Math.round(f.realized)):"–"}</td></tr>`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px;margin-top:6px">오늘 체결된 매매가 아직 없어요.</div>';
+  const B=F.filter(f=>f.side==="buy"),Sl=F.filter(f=>f.side==="sell"),pctOf=f=>f.realized!=null&&f.amount-f.realized>0?f.realized/(f.amount-f.realized)*100:null;
+  const buyT=`<div class="au-h4">오늘 매수 현황 <span class="faint" style="font-weight:400">${B.length?`${N(B.length)}건 · ${trdFmtAmt(tot.buyKrw)}원`:""}</span></div>${B.length?`<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>시각</th><th>종목</th><th>수량·가격</th><th>금액</th></tr></thead><tbody>${B.map(f=>`<tr><td>${auHMs(f.ts)}</td><td>${trdEsc(f.name)}</td><td class="n">${N(f.qty)}주 @${N(f.price)}</td><td class="n">${trdFmtAmt(f.amount)}</td></tr>`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">오늘 매수 체결이 아직 없어요.</div>'}`;
+  const sellT=`<div class="au-h4">오늘 매도 현황 <span class="faint" style="font-weight:400">${Sl.length?`${N(Sl.length)}건 · ${trdFmtAmt(tot.sellKrw)}원 · 실현 `:""}</span>${Sl.length?`<b class="${cl(tot.realized)}" style="font-weight:700">${w(tot.realized)}</b>`:""}</div>${Sl.length?`<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>시각</th><th>종목</th><th>구분</th><th>수량·가격</th><th>금액</th><th>실현손익</th><th>수익률</th></tr></thead><tbody>${Sl.map(f=>`<tr><td>${auHMs(f.ts)}</td><td>${trdEsc(f.name)}</td><td><span class="au-sd sdsell">${trdEsc(auFillTx(f))}</span></td><td class="n">${N(f.qty)}주 @${N(f.price)}</td><td class="n">${trdFmtAmt(f.amount)}</td><td class="n ${cl(f.realized)}">${f.realized!=null?w(Math.round(f.realized)):"–"}</td><td class="n ${cl(pctOf(f))}">${auPct(pctOf(f))}</td></tr>`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">오늘 매도 체결(익절·손절·정리)이 아직 없어요.</div>'}`;
+  const trd=buyT+sellT;
   return `<div class="card au-sec" id="au-sec-hold"><h3>자동매매 현황 <span class="r faint" style="font-size:11px">손절·익절은 가상매매 엔진이 감시 · 실현손익은 수수료 반영</span></h3>${tiles}${hold}${trd}</div>`;
 }
 function auTodayHtml(){
@@ -11954,7 +11957,7 @@ function auInputEv(t){
   return true;
 }
 /* ── 수익률 · 주문·체결 내역 (5단계) ── */
-TRD.pane="order";TRD.rp={mode:"month",off:0};TRD.rep=null;
+TRD.pane="order";TRD.rp={mode:"month",off:0};TRD.rep=null;TRD.per={mode:"day",open:null};
 function trdPeriod(){
   const d=new Date(Date.now()+9*3600e3),y=d.getUTCFullYear(),m=d.getUTCMonth(),R=TRD.rp,pad=n=>String(n).padStart(2,"0");
   if(R.mode==="all")return {from:null,to:null,label:"전체"};
@@ -12004,6 +12007,30 @@ function trdMonthChart(M){
 }
 const TRD_ST={pending:"전송 중",unknown:"접수 확인 중",open:"접수",partial:"부분 체결",filled:"체결",cancelled:"취소",rejected:"거부"};
 const TRD_NOTE={not_found:"접수 안 됨(체결조회에 없음)",expired:"장 마감 소멸",stop:"손절로 취소",resync:"수량 재배분",plan_edit:"계획 수정",manual_sell:"수동 매도로 취소",no_plan:"계획 없음",user:"직접 취소"};
+/* 일별·주별·월별 거래내역: 서버가 준 일별 요약(R.daily)을 묶고, 눌러서 그 기간의 체결(R.fills)을 펼침 */
+const trdFillWhy=f=>f.side==="buy"?"매수":f.reason==="stop"?"손절":/^tp\d$/.test(f.reason||"")?`익절 ${f.reason.slice(2)}단계`:"매도(정리·직접)";
+function trdWeekKey(day){const d=new Date(day+"T00:00:00Z"),w=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-w);return d.toISOString().slice(0,10);}
+function trdPeriodKey(day,mode){return mode==="week"?trdWeekKey(day):mode==="month"?day.slice(0,7):day;}
+function trdPeriodLabel(k,mode){
+  if(mode==="week"){const e=new Date(k+"T00:00:00Z");e.setUTCDate(e.getUTCDate()+6);return `${k.slice(5)} ~ ${e.toISOString().slice(5,10)}`;}
+  if(mode==="month")return k.replace("-","년 ")+"월";
+  const w=["일","월","화","수","목","금","토"][new Date(k+"T00:00:00Z").getUTCDay()];return `${k.slice(5)} (${w})`;
+}
+function trdPerHtml(R){
+  TRD.per=TRD.per||{mode:"day",open:null};
+  const m=TRD.per.mode,D=R.daily||[],F=R.fills||[];
+  const g=new Map();
+  for(const r of D){const k=trdPeriodKey(r.day,m),a=g.get(k)||{k,buys:0,sells:0,buyAmt:0,sellAmt:0,realized:0,costSold:0,fee:0,trades:0,wins:0};
+    for(const f of ["buys","sells","buyAmt","sellAmt","realized","costSold","fee","trades","wins"])a[f]+=r[f]||0;g.set(k,a);}
+  const rows=[...g.values()].sort((a,b)=>a.k<b.k?1:-1);
+  const b=(k,t)=>`<button type="button" class="chip${m===k?" on":""}" data-perm="${k}">${t}</button>`;
+  const body=rows.length?`<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>${m==="day"?"일":m==="week"?"주":"월"}</th><th>매수</th><th>매도</th><th>실현손익</th><th>수익률</th><th>매매(승)</th><th>체결</th></tr></thead><tbody>${rows.map(r=>{
+    const pct=r.costSold>0?r.realized/r.costSold*100:null,open=TRD.per.open===r.k;
+    const fl=open?F.filter(f=>trdPeriodKey(f.day,m)===r.k).sort((a,b)=>a.ts-b.ts):[];
+    return `<tr class="au-row" data-perk="${trdEsc(r.k)}"><td>${open?"▾":"▸"} ${trdEsc(trdPeriodLabel(r.k,m))}</td><td class="n">${r.buyAmt?trdFmtAmt(r.buyAmt):"–"}</td><td class="n">${r.sellAmt?trdFmtAmt(r.sellAmt):"–"}</td><td class="n ${trdCls(r.realized)}">${r.sells?trdWon(r.realized):"–"}</td><td class="n ${trdCls(pct)}">${pct==null?"–":trdPct(pct)}</td><td class="n">${r.trades?`${N(r.trades)}(${N(r.wins)})`:"–"}</td><td class="n">${N(r.buys+r.sells)}</td></tr>${open?`<tr><td colspan="7" class="au-det"><table class="trd-tb"><thead><tr><th>시각</th><th>종목</th><th>구분</th><th>수량·가격</th><th>금액</th><th>실현손익</th></tr></thead><tbody>${fl.map(f=>`<tr><td>${m==="day"?"":trdEsc(f.day.slice(5))+" "}${auHMs(f.ts)}</td><td>${trdEsc(f.name)}</td><td><span class="au-sd ${f.side==="buy"?"sdbuy":"sdsell"}">${trdEsc(trdFillWhy(f))}</span></td><td class="n">${N(f.qty)}주 @${N(f.price)}</td><td class="n">${trdFmtAmt(f.amount)}</td><td class="n ${trdCls(f.realized)}">${f.side==="sell"&&f.realized!=null?trdWon(f.realized):"–"}</td></tr>`).join("")||'<tr><td colspan="6" class="faint">체결 내역이 없습니다</td></tr>'}</tbody></table></td></tr>`:""}`;}).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">이 기간에 체결된 거래가 없습니다.</div>';
+  const note=F.length>=1500?'<div class="faint" style="font-size:11px;margin-top:6px">체결은 최근 1,500건까지만 펼쳐 볼 수 있어요. 기간을 좁혀 보세요.</div>':"";
+  return `<div class="card"><h3>기간별 거래내역 <span class="r" style="display:flex;gap:6px">${b("day","일별")}${b("week","주별")}${b("month","월별")}</span></h3>${body}<div class="faint" style="font-size:11px;margin-top:6px">위 기간 선택 안의 거래를 묶어 보여요 · 줄을 누르면 그 기간 체결이 펼쳐져요 · 수익률 = 실현손익 ÷ 판 주식의 매수원가</div>${note}</div>`;
+}
 function trdRenderReport(){
   const R=TRD.rep,P=TRD.repP;if(!R)return;
   const S2=R.summary,T=R.stats,SL=R.slippage;
@@ -12021,7 +12048,7 @@ function trdRenderReport(){
     <div class="card"><h3>체결 품질 <span class="r faint" style="font-size:11px">가상 체결 검증용</span></h3>${SL.rows.length?`<table class="trd-tb"><thead><tr><th>구분</th><th>주문</th><th>평균 불리</th><th>최대</th><th>금액</th></tr></thead><tbody>${SL.rows.map(x=>`<tr><td>${x.kind}</td><td>${N(x.orders)}</td><td>${N(x.avgPct,2)}%</td><td>${N(x.worstPct,2)}%</td><td>${trdFmtAmt(x.krw)}</td></tr>`).join("")}</tbody></table>`:'<div class="faint" style="font-size:12.5px">시장가·손절 체결이 아직 없습니다.</div>'}
       <div class="faint" style="font-size:11.5px;margin-top:6px">지정가 체결률 ${SL.limitFillRate==null?"–":N(SL.limitFillRate,1)+"%"} · 지정가 첫 체결까지 평균 ${SL.limitDelayMin==null?"–":N(SL.limitDelayMin,1)+"분"}<br>불리 = 시장가는 주문 순간 상대 1호가, 손절은 손절가보다 나쁘게 체결된 정도. 6단계 실전과 비교해 시뮬레이터 정확도를 확인합니다.</div></div>`+(R.shadow?`<div class="card"><h3>가상 대비 실제 체결 <span class="r faint" style="font-size:11px">같은 순간 호가로 계산한 가상 체결가와 비교</span></h3><div class="trd-sum"><div><div class="k">비교한 주문(시장가·손절)</div><div class="v">${N(R.shadow.orders)}</div></div><div><div class="k">실제가 더 불리한 정도(평균)</div><div class="v ${R.shadow.avgDiffPct>0?"down":""}">${R.shadow.avgDiffPct==null?"–":N(R.shadow.avgDiffPct,2)+"%"}</div></div></div><div class="faint" style="font-size:11.5px;margin-top:6px">0%에 가까울수록 가상매매 결과를 실전과 같다고 볼 수 있습니다. 양수면 실제 체결이 가상보다 나빴다는 뜻입니다.</div></div>`:"");
   const rj=R.rejects||[];
-  $("#trdPaneHist").innerHTML=trdPerBar(P)+`
+  $("#trdPaneHist").innerHTML=trdPerBar(P)+trdPerHtml(R)+`
     <div class="card"><h3>주문 내역 <span class="r faint" style="font-size:11px">${N(R.orders.length)}건</span><button type="button" class="chip" data-csv="1" style="margin-left:auto">CSV 내려받기</button></h3>${R.orders.length?R.orders.map(o=>`<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${trdEsc(o.name||trdNm(o.code))} ${o.type==="market"?"시장가":N(o.price)+"원"} × ${N(o.qty)}주</span><span class="faint" style="font-size:12px">${TRD_ST[o.status]||o.status}${o.note&&TRD_NOTE[o.note]?" · "+TRD_NOTE[o.note]:""}</span></div><div class="sub num">${new Date(o.ts).toLocaleString("ko-KR",{hour12:false})} · ${trdEsc(o.source)} · 체결 ${N(o.filled)}주${o.avg?" @ "+N(o.avg,0)+"원":""}</div></div>`).join(""):'<div class="faint" style="font-size:12.5px">이 기간 주문이 없습니다.</div>'}</div>
     <div class="card"><h3>거부된 요청</h3>${rj.length?rj.map(x=>`<div class="trd-hr"><div class="top"><span>${trdEsc(x.code?trdNm(x.code):"")} ${x.side==="buy"?"매수":x.side==="sell"?"매도":""} ${x.qty?N(x.qty)+"주":""}</span><span class="faint" style="font-size:12px">${new Date(x.ts).toLocaleString("ko-KR",{hour12:false})}</span></div><div class="sub down">${trdEsc(TRD_ERR[x.error]||x.error||"")}</div></div>`).join(""):'<div class="faint" style="font-size:12.5px">거부된 요청이 없습니다.</div>'}</div>`;
 }
@@ -12225,6 +12252,8 @@ document.addEventListener("click",e=>{
   if((el=t.closest("[data-rpm]"))){TRD.rp={mode:el.dataset.rpm,off:0};return trdLoadReport();}
   if((el=t.closest("[data-rpo]"))){if(el.disabled)return;TRD.rp.off=Math.min(0,TRD.rp.off+ +el.dataset.rpo);return trdLoadReport();}
   if(t.closest("[data-rpr]"))return trdLoadReport();
+  if((el=t.closest("[data-perm]"))){TRD.per={mode:el.dataset.perm,open:null};return trdRenderReport();}
+  if((el=t.closest("[data-perk]"))){const k=el.dataset.perk;TRD.per.open=TRD.per.open===k?null:k;return trdRenderReport();}
   if(t.closest("[data-csv]"))return trdCsv();
   if(t.closest("[data-qprobe]")){const box=$("#trdQp");box.textContent="시세 출처 점검 중…";
     trdApi("/trade/quote-probe?code="+TRD.cur).then(r=>{const nm={J:"KRX",NX:"NXT",UN:"통합"};

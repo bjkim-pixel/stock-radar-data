@@ -124,7 +124,18 @@ function computeReport({ fills = [], orders = [], positions = [], kospi = [], re
     filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, source: sourceOf(o), note: o.note || null,
   }));
 
-  return { ok: true, from, to, summary, stats, codes, monthly, slippage, orders: list, rejects: rejects.slice(0, 200) };
+  // 일별 거래 요약(기간 안) + 체결 목록(최신순, 기간 안) — 화면에서 주별·월별로 묶어 보여 줌
+  const dm = new Map();
+  const dayRow = d => { if (!dm.has(d)) dm.set(d, { day: d, buys: 0, sells: 0, buyAmt: 0, sellAmt: 0, realized: 0, costSold: 0, fee: 0, trades: 0, wins: 0 }); return dm.get(d); };
+  for (const f of F) {
+    const r = dayRow(kstDay(f.ts)); r.fee += f.fee || 0;
+    if (f.side === 'buy') { r.buys++; r.buyAmt += f.amount; } else { r.sells++; r.sellAmt += f.amount; r.realized += f.realized || 0; r.costSold += f.amount - (f.realized || 0); }
+  }
+  for (const t of trips) { const r = dayRow(kstDay(t.closeTs)); r.trades++; if (t.realized > 0) r.wins++; }
+  const daily = [...dm.values()].sort((a, b) => (a.day < b.day ? 1 : -1)).map(r => ({ ...r, buyAmt: Math.round(r.buyAmt), sellAmt: Math.round(r.sellAmt), realized: Math.round(r.realized), costSold: Math.round(r.costSold), fee: Math.round(r.fee) }));
+  const fillList = F.slice().sort((a, b) => b.ts - a.ts).slice(0, 1500).map(f => ({ ts: f.ts, day: kstDay(f.ts), code: f.code, name: nameOf(f.code), side: f.side, price: f.price, qty: f.qty, amount: Math.round(f.amount), fee: Math.round(f.fee || 0), realized: f.realized == null ? null : Math.round(f.realized), reason: f.reason || null }));
+
+  return { ok: true, from, to, summary, stats, codes, monthly, daily, fills: fillList, slippage, orders: list, rejects: rejects.slice(0, 200) };
 }
 
 module.exports = { computeReport, roundTrips, sourceOf, kstDay };

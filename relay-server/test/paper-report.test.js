@@ -75,3 +75,18 @@ test('API: 가상 운영 후 리포트(손절 슬리피지 기준=손절가 · �
   assert.equal((await c.call('GET', '/trade/paper/report?from=2027-1-1')).status, 400);
   await c.close();
 });
+
+test('일별 거래 요약(daily)·체결 목록(fills): 기간 안만, 최신순, 매매 승 집계', () => {
+  const fills = [
+    f('1', '2027-01-04T10:00:00', 'A', 'buy', 100, 10, null), f('2', '2027-01-05T10:00:00', 'A', 'sell', 120, 10, 200, 'tp1'),
+    f('3', '2027-01-05T11:00:00', 'B', 'buy', 200, 5, null), f('4', '2027-01-05T14:00:00', 'B', 'sell', 190, 5, -50, 'stop'),
+    f('5', '2026-12-30T10:00:00', 'Z', 'buy', 10, 1, null),   // 기간 밖
+  ];
+  const r = computeReport({ fills, orders: [], positions: [], kospi: [], from: '2027-01-01', to: '2027-01-31', names: { A: '에이', B: '비' } });
+  assert.deepEqual(r.daily.map(d => d.day), ['2027-01-05', '2027-01-04']);                       // 최신 날짜 먼저
+  const d5 = r.daily[0];
+  assert.equal(d5.sells, 2); assert.equal(d5.buys, 1); assert.equal(d5.realized, 150); assert.equal(d5.sellAmt, 1200 + 950);
+  assert.equal(d5.trades, 2); assert.equal(d5.wins, 1);                                          // 5일에 끝난 매매 2건(A 승 · B 손절 패)
+  assert.deepEqual(r.fills.map(x => x.code), ['B', 'B', 'A', 'A']);                              // 최신순, 기간 밖 제외
+  assert.equal(r.fills[0].name, '비'); assert.equal(r.fills[0].reason, 'stop');
+});
