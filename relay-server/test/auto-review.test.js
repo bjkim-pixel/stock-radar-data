@@ -59,3 +59,11 @@ test('일지에 복기·사지 못한 종목·복기 문장이 들어간다(buil
   assert.equal(j.v, 2); assert.equal(j.notBought.find(n => n.code === 'B').closePct, 5);
   assert.ok(j.review.some(x => x.k === 'missed')); assert.equal(j.replay.orders.length, 3);
 });
+test('다시 시도: 못 산 채 마감한 재시도 대기·시도 횟수가 사유에 붙고, 재시도 끝에 산 종목은 복기 문장에 나온다', () => {
+  const p = P(); p.orders.B = { st: 'retry', tries: [{ n: 1, st: 'cancelled' }] }; p.orders.C = { st: 'cancelled', buy: 4950, qty: 20, tries: [{ n: 1, st: 'skipped' }] };
+  const nb = RV.notBoughtOf(p, {}, {});
+  assert.match(nb.find(n => n.code === 'B').why, /다시 시도 대기 중 마감.*총 1번 시도/); assert.match(nb.find(n => n.code === 'C').why, /총 2번 시도/);
+  p.orders.A.tries = [{ n: 1, st: 'cancelled' }];
+  const L = RV.reviewOf({ P: p, positions: [{ code: 'A', name: '가', qty: 10, buyAvg: 10020, held: 0, state: 'closed', pnl: 1000, pct: 1, mfe: 3, mae: -1 }], sells: [], notBought: [], totals: { n: 1, wins: 1, losses: 0, net: 1000, pct: 1 }, funnel: {} });
+  assert.match(L.map(x => x.text).join('\n'), /2번째 시도에서 체결\(앞선 미체결 취소\)/);
+});

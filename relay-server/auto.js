@@ -7,7 +7,7 @@
    · 업종당 2종목까지(같은 업종 3번째부터 제외)
    · 승인하지 않은 후보도 auto_runs 에 남겨(그림자 기록) 점수와 내 판단을 나중에 비교한다 */
 
-const ST = require('./auto-strategy');
+const ST = require('./auto-strategy'), XE = require('./auto-exec');
 const DEFP = Object.freeze(ST.defaults('intraday'));   // 기본 장중 전략 조건값(= 1~3단계 확정값). 함수 인자를 안 주면 이 값
 const EXCL_NAME = /스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/;
 const RULES = Object.freeze({
@@ -122,6 +122,11 @@ function regimeLine(rg, P, perStock) {
   return `📊 시장 상태 ${REGIME_KO[rg.stage] || rg.stage} ${rg.score}점(${d} 종가 기준)` + (m < 1 ? ` — 종목당 금액 ${Math.round(m * 100)}%${perStock ? `(${fmtN(perStock)}원)` : ''}` : P && P.regimeMode === 'scale' ? '' : ' · 표시만');
 }
 
+/* 하루 최대 매수 종목 수에 세는 주문: 체결됐거나 진행 중인 것만(미체결 취소·재확인 탈락·주문 거부는 세지 않음) */
+const countsAsBuy = o => !!o && ((o.filled || 0) > 0 || ['intent', 'open', 'modified', 'filled', 'partial_done'].includes(o.st));
+const isOrdered = o => !!o && o.st !== 'retry';
+const RETRY_WHY = o => o.st === 'cancelled' ? '미체결로 취소' : o.st === 'skipped' ? `재확인 탈락(${o.why || '조건 미달'})` : `주문 실패(${o.why || '거부'})`;
+
 function formatMessage(date, picks, ctx = {}) {
   const head = `📈 자동매매 후보${ctx.round > 1 ? ` ${ctx.round}회차` : ''} · ${date} ${ctx.timeText || ''}`.trim();
   if (ctx.restDay) return `${head}\n\n오늘은 쉬는 날로 판단했어요.\n사유: ${ctx.restDay}`;
@@ -129,7 +134,8 @@ function formatMessage(date, picks, ctx = {}) {
   const lines = [head, ''];
   picks.forEach((c, i) => {
     const m = c.m, s = c.score;
-    lines.push(`${i + 1 + (ctx.startNum || 0)}. ${c.name}(${c.code}) ${s.total}점`);
+    lines.push(`${c.num || (i + 1 + (ctx.startNum || 0))}. ${c.name}(${c.code}) ${s.total}점${c.retry ? ' 🔁 재시도' : ''}`);
+    if (c.retry && c.retryWhy) lines.push(`   지난번: ${c.retryWhy}`);
     lines.push(`   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${c.changePct.toFixed(2)}% (시가대비 ${c.open > 0 ? ((c.price / c.open - 1) * 100).toFixed(1) : '–'}%) · 체결강도 ${m.cttr.toFixed(0)}%`);
     lines.push(`   순매수 외 ${won(m.fAmt)} · 기 ${won(m.oAmt)} · 프 ${won(m.pAmt)} (거래대금 대비 ${(s.ratio * 100).toFixed(1)}%)`);
     lines.push(`   ${c.sector} · ${(c.reasons || []).join(' · ')}`);
@@ -140,7 +146,7 @@ function formatMessage(date, picks, ctx = {}) {
   if (ctx.events) lines.push(ctx.regime || ctx.warn || ctx.exposure ? ctx.events : '\n' + ctx.events);
   if (ctx.exposure) lines.push(ctx.regime || ctx.warn ? ctx.exposure : '\n' + ctx.exposure);
   if (ctx.auto) lines.push('', '🤖 자동 매수 설정 — 알림 직후 위 후보를 모두 가상 매수합니다.');
-  else lines.push('', `답장: /매수 ${ctx.startNum ? `${ctx.startNum + 1} ${ctx.startNum + 2}` : '1 3 5'} (번호) · /매수 전체 · /패스`, `${ctx.deadline || '10:30'}까지 답이 없으면 전부 취소돼요. (자동으로 사지 않습니다)`);
+  else lines.push('', `답장: /매수 ${ctx.nums && ctx.nums.length ? ctx.nums.slice(0, 2).join(' ') : ctx.startNum ? `${ctx.startNum + 1} ${ctx.startNum + 2}` : '1 3 5'} (번호) · /매수 전체 · /패스`, `${ctx.deadline || '10:30'}까지 답이 없으면 전부 취소돼요. (자동으로 사지 않습니다)`);
   return lines.join('\n');
 }
 
@@ -511,12 +517,12 @@ function createAuto(deps) {
       const ords = run.payload.orders || {}, cap = +I.params.maxBuys || 5;
       const pk = n => run.payload.picks[n - 1];
       if (a.kind === 'buy' && (a.nums || []).some(n => pk(n) && pk(n).closed)) return { closedNum: (a.nums || []).filter(n => pk(n) && pk(n).closed) };
-      let nums = a.kind === 'all' ? Array.from({ length: max }, (_, i) => i + 1).filter(n => !ords[pk(n).code] && !pk(n).closed) : a.nums || [];   // 전체 = 아직 주문하지 않은 이번 회차 후보 전부
+      let nums = a.kind === 'all' ? Array.from({ length: max }, (_, i) => i + 1).filter(n => !isOrdered(ords[pk(n).code]) && !pk(n).closed) : a.nums || [];   // 전체 = 아직 주문하지 않은 이번 회차 후보 전부
       if (a.kind === 'all' && !nums.length) return { nothing: true };
       if (a.kind !== 'pass' && (!nums.length || nums.some(n => n < 1 || n > max))) return { bad: max };
       if (a.kind !== 'pass') {   // 하루 최대 매수 종목 수
-        const placed = Object.values(ords).filter(o => o.orderId || o.filled > 0 || ['intent', 'open', 'modified', 'filled', 'partial_done'].includes(o.st)).length;
-        const room = Math.max(0, cap - placed), fresh = nums.filter(n => !ords[run.payload.picks[n - 1].code]);
+        const placed = Object.values(ords).filter(countsAsBuy).length;
+        const room = Math.max(0, cap - placed), fresh = nums.filter(n => !isOrdered(ords[run.payload.picks[n - 1].code]));
         if (!room) return { capFull: cap };
         if (fresh.length > room) { LOG.push(run.payload, 'cap', `하루 최대 ${cap}종목 — 이번 승인 ${fresh.length}종목 중 ${room}종목만 매수(점수순)`); nums = nums.filter(n => !fresh.includes(n)).concat(fresh.slice(0, room)).sort((x, y) => x - y); }
       }
@@ -660,15 +666,17 @@ function createAuto(deps) {
     const { date } = kstParts();
     const run = await readRun(date, I.id).catch(() => null);
     if (!run) return { ok: false, why: '오늘 기록 없음' };
-    const P0 = run.payload, cap = +I.params.maxBuys || 5, hh = ST.hhmm(min);
-    const placedOf = P => Object.values(P.orders || {}).filter(o => o.orderId || o.filled > 0 || ['intent', 'open', 'modified', 'filled', 'partial_done'].includes(o.st)).length;
+    const P0 = run.payload, cap = +I.params.maxBuys || 5, hh = ST.hhmm(min), tries = +I.params.maxTries || 3, retryOn = I.params.retryUnfilled !== false;
+    const placedOf = P => Object.values(P.orders || {}).filter(countsAsBuy).length;
     await mutateRun(date, I.id, r => { r.payload.roundN = n; r.payload.roundAt = new Date().toISOString(); state.runs[I.id] = r; });   // 먼저 기록 → 오래 걸려도 같은 회차를 두 번 돌리지 않음
     if (placedOf(P0) >= cap) {
       await mutateRun(date, I.id, r => { LOG.push(r.payload, 'round', `${n}회차 ${hh} 검토 건너뜀 — 하루 최대 ${cap}종목을 이미 채움`); state.runs[I.id] = r; });
       return { ok: true, capped: true };
     }
     const sel = await select(I.params);
-    const known = new Set([...(P0.picks || []).map(p => p.code), ...Object.keys(P0.orders || {})]);
+    // 이미 알린·주문한 종목은 뺀다. 단, 한 주도 못 산 종목(미체결 취소·재확인 탈락·주문 거부)은 시도 횟수가 남았으면 다시 후보가 된다
+    const ords0 = P0.orders || {}, canRetry = code => retryOn && XE.retryable(ords0[code], tries);
+    const known = new Set([...(P0.picks || []).map(p => p.code), ...Object.keys(ords0)].filter(c => !canRetry(c)));
     const room = cap - placedOf(P0);
     const fresh = sel.picks.filter(c => !known.has(c.code)).slice(0, Math.min(I.params.notifyTop, room));
     const evs = await EV.loadEvents(D.sbGet, date).catch(() => []);
@@ -677,30 +685,42 @@ function createAuto(deps) {
       return { ok: true, fresh: 0 };
     }
     const mk = c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date), round: n });
-    let startNum = 0, text = null;
+    let startNum = 0, text = null, nums = [], nRetry = 0;
     await mutateRun(date, I.id, r => {
-      const P = r.payload; startNum = (P.picks || []).length;
-      P.picks = (P.picks || []).concat(fresh.map(mk));
+      const P = r.payload; startNum = (P.picks || []).length; P.orders = P.orders || {};
+      if (P.decision) { P.decisions = (P.decisions || []).concat([P.decision]); P.decision = null; (P.picks || []).forEach(p => { p.closed = true; }); }   // 이미 결정(승인·패스·만료)된 회차의 후보는 닫음
+      const shown = [];
+      for (const c of fresh) {
+        const at = (P.picks || []).findIndex(p => p.code === c.code);
+        if (at >= 0) {   // 다시 시도: 같은 번호의 후보를 새 값으로 갱신하고 지난 주문은 이력으로 접음
+          const old = P.orders[c.code], p = P.picks[at];
+          const why = old ? RETRY_WHY(old) : '';
+          if (old) P.orders[c.code] = XE.foldTry(old, Date.now());
+          Object.assign(p, mk(c), { round: p.round || 1, retry: (p.retry || 0) + 1, retryWhy: why, closed: false });
+          nums.push(at + 1); nRetry++; shown.push({ ...c, num: at + 1, retry: p.retry, retryWhy: why });
+        } else {
+          P.picks = (P.picks || []).concat([mk(c)]);
+          nums.push(P.picks.length); shown.push({ ...c, num: P.picks.length });
+        }
+      }
       const shadowKnown = new Set((P.shadow || []).map(x => x.code));
       P.shadow = (P.shadow || []).concat(sel.passedAll.filter(c => !shadowKnown.has(c.code)).map(c => ({ code: c.code, name: c.name, score: c.score.total, parts: c.score.parts, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, m: c.m, picked: fresh.some(f => f.code === c.code), round: n })));
-      if (P.decision) { P.decisions = (P.decisions || []).concat([P.decision]); P.decision = null; (P.picks || []).slice(0, startNum).forEach(p => { p.closed = true; }); }   // 이미 결정(승인·패스·만료)된 회차의 후보는 닫음
       r.status = 'noticed'; P.roundDeadline = min + I.params.approveWindow;
-      LOG.push(P, 'round', `${n}회차 ${hh} 검토: 새 후보 ${fresh.length}개 (${fresh.map(c => c.name).join(', ')}) · 풀 ${sel.stat.pool} → 기본조건 ${sel.stat.base} → 수급 통과 ${sel.stat.flowPass}`);
-      const letter = P.letter || 'A', ps = fresh.map(c => ({ ...c, score: { total: c.score.total, ratio: c.score.ratio || 0 }, warns: [] }));
-      text = formatMessage(date, ps, { timeText: hh, round: n, startNum, warn: P.warn, deadline: ST.hhmm(P.roundDeadline), auto: I.params.approval === 'auto' });
+      LOG.push(P, 'round', `${n}회차 ${hh} 검토: 새 후보 ${fresh.length - nRetry}개${nRetry ? ` · 다시 시도 ${nRetry}개` : ''} (${fresh.map(c => c.name + (shown.find(x => x.code === c.code).retry ? '🔁' : '')).join(', ')}) · 풀 ${sel.stat.pool} → 기본조건 ${sel.stat.base} → 수급 통과 ${sel.stat.flowPass}`);
+      const letter = P.letter || 'A', ps = shown.map(c => ({ ...c, score: { total: c.score.total, ratio: c.score.ratio || 0 }, warns: [] }));
+      text = formatMessage(date, ps, { timeText: hh, round: n, nums, warn: P.warn, deadline: ST.hhmm(P.roundDeadline), auto: I.params.approval === 'auto' });
       if (state.multi) text = text.replace(/\n(\d+)\. /g, `\n${letter}$1. `).replace(/답장: \/매수 (\d+) (\d+)(?: \d+)? \(번호\)/, `답장: /매수 ${letter}$1 ${letter}$2 (글자+번호)`);
       state.runs[I.id] = r;
     });
     if (text) await tgFor(I.id)(text);
     let auto = null;
     if (I.params.approval === 'auto') {
-      const nums = fresh.map((_, i) => startNum + i + 1);
       const msg = await approveRun(date, I.id, { kind: 'buy', nums }, min, { via: 'auto' });
       if (msg) await tgFor(I.id)('🤖 자동 승인\n' + msg);
       auto = { ok: true };
     }
     state.runs[I.id] = await readRun(date, I.id).catch(() => null) || state.runs[I.id];
-    return { ok: true, fresh: fresh.length, auto };
+    return { ok: true, fresh: fresh.length, retry: nRetry, auto };
   }
 
   /* 승인 방식 '자동': 그 전략의 알림 후보 전체를 승인한 것으로 처리(가상매매) */

@@ -16,7 +16,7 @@ function replayOf(P) {
     log: (P.log || []).slice(-300),
     picks: (P.picks || []).map(p => ({ code: p.code, name: p.name, score: p.score, price: p.price, open: p.open || null, changePct: p.changePct == null ? null : p.changePct, sector: p.sector || null, reasons: p.reasons || [], parts: p.parts || null, m: p.m || null, round: p.round || 1, closed: !!p.closed })),
     orders: Object.entries(ords).map(([code, o]) => ({ code, st: o.st, buy: o.buy || null, buy2: o.buy2 || null, qty: o.qty || null, filled: o.filled || 0, avg: o.avg || null, pick: o.pick || null, mode: o.mode || null, target: o.target || (o.plan && o.plan.target) || null,
-      plan: o.plan || null, snap: o.snap || null, at: o.at || null, placedAt: o.placedAt || null, modifiedAt: o.modifiedAt || null, filledAt: o.filledAt || null, cancelledAt: o.cancelledAt || null, why: o.why || null, lowSeen: o.lowSeen || null, noReprice: !!o.noReprice })),
+      plan: o.plan || null, snap: o.snap || null, tries: o.tries || [], at: o.at || null, placedAt: o.placedAt || null, modifiedAt: o.modifiedAt || null, filledAt: o.filledAt || null, cancelledAt: o.cancelledAt || null, why: o.why || null, lowSeen: o.lowSeen || null, noReprice: !!o.noReprice })),
     rounds: { n: P.roundN || 1, at: P.roundAt || null },
     notice: P.noticeAt || null, selectedAt: P.selectedAt || null, decisionAt: P.decision && P.decision.at || null,
   };
@@ -33,12 +33,14 @@ function notBoughtOf(P, closes = {}, daily = {}) {
     else if (o && (o.st === 'cancelled' || o.st === 'partial_done')) { kind = 'unfilled'; why = '미체결로 취소'; }
     else if (o && o.st === 'failed') { kind = 'failed'; why = `주문 거부: ${o.why || ''}`; }
     else if (o && o.st === 'lost') { kind = 'lost'; why = '주문 결과 확인 불가'; }
+    else if (o && o.st === 'retry') { kind = 'retry'; why = '다시 시도 대기 중 마감(승인·주문 전)'; }
     else if (o) { kind = 'open'; why = '장 마감까지 체결되지 않음'; }
     else if (p.closed) { kind = 'closed'; why = '그 회차 승인에서 고르지 않음·만료'; }
     else if (!dec || dec.kind === 'expired') { kind = 'expired'; why = '승인 시간이 지나 사지 않음'; }
     else if (dec.kind === 'pass') { kind = 'pass'; why = '패스'; }
     else if (dec.kind === 'buy' && !(dec.nums || []).includes(i + 1)) { kind = 'unpicked'; why = '승인 때 고르지 않음'; }
     else { kind = 'cap'; why = '하루 최대 매수 종목 수 제한 또는 주문 전'; }
+    if (o && o.tries && o.tries.length) why += ` · 총 ${o.tries.length + (o.st === 'retry' ? 0 : 1)}번 시도`;
     const c = closes[p.code] > 0 ? closes[p.code] : null, d = daily[p.code] || null;
     const px = o && (o.buy2 || o.buy) || null;
     out.push({ code: p.code, name: p.name, kind, why, round: p.round || 1, pickPx: p.price || null, orderPx: px, close: c, high: d ? d.high : null, low: d ? d.low : null,
@@ -60,6 +62,7 @@ function reviewOf({ P, positions = [], sells = [], notBought = [], totals = {}, 
   for (const x of positions) {
     const o = ords[x.code] || {}, pl = o.plan || {}, tp1 = pl.steps && pl.steps[0] ? pct(pl.steps[0].p, x.buyAvg) : null;
     const parts = [];
+    if (o.tries && o.tries.length) parts.push(`${o.tries.length + 1}번째 시도에서 체결(앞선 ${o.tries.map(t => t.st === 'cancelled' ? '미체결 취소' : t.st === 'skipped' ? '재확인 탈락' : '주문 실패').join('·')})`);
     if (o.placedAt && o.filledAt) { const m = Math.round((o.filledAt - o.placedAt) / 60000); parts.push(`${m <= 0 ? '바로' : m + '분 만에'} 체결${o.buy2 && o.buy2 !== o.buy ? '(정정 후)' : ''}`); }
     const pk = (P.picks || []).find(p => p.code === x.code);
     if (pk && pk.price) parts.push(`알림가 대비 ${sp(pct(x.buyAvg, pk.price))}에 매수`);
@@ -81,7 +84,7 @@ function reviewOf({ P, positions = [], sells = [], notBought = [], totals = {}, 
   const missed = notBought.filter(n => n.closePct != null && n.closePct >= 3), dodged = notBought.filter(n => n.closePct != null && n.closePct <= -3);
   if (notBought.length) {
     const byK = {}; notBought.forEach(n => { byK[n.kind] = (byK[n.kind] || 0) + 1; });
-    const KO = { recheck: '재확인 탈락', unfilled: '미체결 취소', failed: '주문 거부', lost: '확인 불가', open: '미체결', closed: '이전 회차 마감', expired: '승인 시간 초과', pass: '패스', unpicked: '선택 안 함', cap: '종목 수 제한' };
+    const KO = { retry: '다시 시도 대기', recheck: '재확인 탈락', unfilled: '미체결 취소', failed: '주문 거부', lost: '확인 불가', open: '미체결', closed: '이전 회차 마감', expired: '승인 시간 초과', pass: '패스', unpicked: '선택 안 함', cap: '종목 수 제한' };
     add('missed', 'info', `사지 못한 후보 ${notBought.length}종목(${Object.entries(byK).map(([k, v]) => `${KO[k] || k} ${v}`).join(' · ')}).`);
     if (missed.length) add('missed', 'bad', `이 중 ${missed.length}종목은 선정가보다 종가가 3% 이상 높았어요: ${missed.map(n => `${n.name} ${sp(n.closePct)}`).join(', ')}.`);
     if (dodged.length) add('missed', 'good', `${dodged.length}종목은 종가가 3% 이상 낮아 안 사길 잘했어요: ${dodged.map(n => `${n.name} ${sp(n.closePct)}`).join(', ')}.`);

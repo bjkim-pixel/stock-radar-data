@@ -136,6 +136,21 @@ function planText(r) {
 }
 
 /* deps: paper{place,modify,cancel,state} · getQuote(code) · loadChart(code)→rows · mutateRun(date, fn(run)→void) · readRun(date) · sendTelegram · now · perStock()→원 · opt()→설정 */
+/* 다시 시도(2026-11-16): 못 산 주문은 기록(orders[code])에 이력(tries)으로 접어 두고 새 주문을 낸다 */
+const tryNo = o => ((o && o.tries) || []).length + 1;
+const keepTries = (prev, o) => (prev && prev.tries && prev.tries.length ? { ...o, tries: prev.tries } : o);
+
+/* 다시 시도 대상: 한 주도 못 산 종료 상태(미체결 취소·재확인 탈락·주문 거부), 시도 횟수가 남았고 영구 사유(다른 곳에서 보유 중)가 아닐 때 */
+function retryable(o, maxTries) {
+  if (!o || (o.filled || 0) > 0) return false;
+  if (!['cancelled', 'skipped', 'failed'].includes(o.st)) return false;
+  if (/이미 보유/.test(o.why || '')) return false;
+  return tryNo(o) < (+maxTries || 3);
+}
+/* 지난 시도를 이력(tries)으로 접고 'retry'(다시 승인·주문 대기) 상태로 바꾼 새 기록 */
+function foldTry(o, nowMs) {
+  return { st: 'retry', tries: [...((o && o.tries) || []), { n: tryNo(o), st: o.st, why: o.why || null, buy: o.buy2 || o.buy || null, qty: o.qty || null, at: o.at || null, placedAt: o.placedAt || null, price: (o.snap && o.snap.price) || null, endedAt: nowMs }] };
+}
 function createExec(deps) {
   const D = deps, now = D.now || Date.now;
   const stateOf = o => (o && o.status) || null;
@@ -152,9 +167,10 @@ function createExec(deps) {
     if (ord.skip) return { st: 'skipped', why: ord.skip, snap };
     // 1) 의도 먼저 저장(재시작 중복 방지)
     const at = now();
-    await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'intent', at, buy: ord.buy, qty: ord.qty, plan: ord.plan, mode: ord.mode, pick: ord.pick, target: ord.target, snap }; });
+    let tn = 1;
+    await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; const prev = run.payload.orders[code]; tn = tryNo(prev); run.payload.orders[code] = keepTries(prev, { st: 'intent', at, buy: ord.buy, qty: ord.qty, plan: ord.plan, mode: ord.mode, pick: ord.pick, target: ord.target, snap }); });
     // 2) 주문
-    const r = await D.paper.place({ code, name: notice.name, side: 'buy', type: 'limit', price: ord.buy, qty: ord.qty, plan: ord.plan, cid: `auto${date.replace(/-/g, '')}${code}` });
+    const r = await D.paper.place({ code, name: notice.name, side: 'buy', type: 'limit', price: ord.buy, qty: ord.qty, plan: ord.plan, cid: `auto${date.replace(/-/g, '')}${code}${tn > 1 ? 't' + tn : ''}` });
     if (!r || !r.ok) {
       await D.mutateRun(date, run => { run.payload.orders[code] = { ...run.payload.orders[code], st: 'failed', why: (r && r.error) || '주문 거부' }; LOG.push(run.payload, 'order_fail', `${notice.name}: 주문 실패 — ${(r && r.error) || '주문 거부'}`, { code }, now()); });
       return { st: 'failed', why: (r && r.error) || '주문 거부', ord };
@@ -163,7 +179,7 @@ function createExec(deps) {
     const st = stateOf(o) === 'filled' ? 'filled' : 'open';
     await D.mutateRun(date, run => {
       run.payload.orders[code] = { ...run.payload.orders[code], st, orderId: o.id, placedAt: at, filled, avg: o.avg || null };
-      LOG.push(run.payload, 'order', `${notice.name}: ${fmt(ord.buy)}원 ${fmt(ord.qty)}주 지정가 매수 주문(${LOG.PICK_KO[ord.pick] || ord.pick}) · 현재가 ${snap && snap.price ? fmt(snap.price) : '–'}원 · 손절 ${fmt(ord.plan.stop)} · 목표 ${ord.target ? fmt(ord.target) : '없음'}`, { code }, at);
+      LOG.push(run.payload, 'order', `${notice.name}${tn > 1 ? ` (${tn}번째 시도)` : ''}: ${fmt(ord.buy)}원 ${fmt(ord.qty)}주 지정가 매수 주문(${LOG.PICK_KO[ord.pick] || ord.pick}) · 현재가 ${snap && snap.price ? fmt(snap.price) : '–'}원 · 손절 ${fmt(ord.plan.stop)} · 목표 ${ord.target ? fmt(ord.target) : '없음'}`, { code }, at);
       if (st === 'filled') LOG.push(run.payload, 'filled', `${notice.name}: 바로 체결 ${fmt(filled)}주 평균 ${fmt(o.avg)}원`, { code }, now());
     });
     return { st, ord, order: o };
@@ -177,15 +193,15 @@ function createExec(deps) {
     for (const code of payload.approved || []) {
       const notice = (payload.picks || []).find(p => p.code === code) || { code, name: code };
       const cur = payload.orders && payload.orders[code];
-      if (cur && cur.st) { lines.push(`· ${notice.name}: 이미 처리됨(${cur.st})`); continue; }
+      if (cur && cur.st && cur.st !== 'retry') { lines.push(`· ${notice.name}: 이미 처리됨(${cur.st})`); continue; }
       let r;
       if (opt && opt.totalCapKrw > 0 && D.exposure) {   // 총액 상한: 새 주문이 상한을 넘으면 이 종목만 사지 않음(기존 보유는 그대로)
         const ck = capCheck(opt.totalCapKrw, await D.exposure().catch(() => null), perStock);
-        if (!ck.ok) { await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'skipped', why: ck.why, at: now() }; LOG.push(run.payload, 'skip', `${notice.name}: 매수 안 함 — ${ck.why}`, { code }, now()); }); lines.push(`· ${notice.name}: 매수 안 함 — ${ck.why}`); continue; }
+        if (!ck.ok) { await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = keepTries(run.payload.orders[code], { st: 'skipped', why: ck.why, at: now() }); LOG.push(run.payload, 'skip', `${notice.name}: 매수 안 함 — ${ck.why}`, { code }, now()); }); lines.push(`· ${notice.name}: 매수 안 함 — ${ck.why}`); continue; }
       }
       try { r = await placeOne(date, code, notice, perStock, opt); } catch (e) { r = { st: 'failed', why: e.message }; }
       if (r.st === 'skipped') {
-        await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'skipped', why: r.why, at: now(), snap: r.snap || null }; LOG.push(run.payload, 'skip', `${notice.name}: 승인 후 재확인에서 매수 안 함 — ${r.why}`, { code }, now()); });
+        await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = keepTries(run.payload.orders[code], { st: 'skipped', why: r.why, at: now(), snap: r.snap || null }); LOG.push(run.payload, 'skip', `${notice.name}: 승인 후 재확인에서 매수 안 함 — ${r.why}`, { code }, now()); });
         lines.push(`· ${notice.name}: 매수 안 함 — ${r.why}`);
       } else if (r.st === 'failed') lines.push(`· ${notice.name}: 주문 실패 — ${r.why}`);
       else {
@@ -271,4 +287,4 @@ function createExec(deps) {
   return { approve, follow };
 }
 
-module.exports = { DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, createExec };
+module.exports = { tryNo, keepTries, retryable, foldTry, DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, createExec };

@@ -206,3 +206,30 @@ test('미체결 설정: 최우선 매도 호가로 정정', async () => {
   assert.equal(o.buy2, ask1);
   await c.close();
 });
+test('다시 시도: 이력(tries)을 접어 둔 기록에 승인하면 새 주문(번호 구분 cid)을 내고 이력을 보존한다', async () => {
+  const X = require('../auto-exec');
+  const { db, c, A, runs, date } = await setup();
+  await A.handleApproval('/매수 1');
+  c.st.clock += 181e3; await A.tick(); c.st.clock += 181e3; await A.tick();       // 정정 후 취소
+  const P = runs[date].payload; assert.equal(P.orders['005930'].st, 'cancelled');
+  // 다음 검토가 하는 일: 지난 시도를 접고 승인 상태를 되돌림
+  P.orders['005930'] = X.foldTry(P.orders['005930'], c.st.clock); P.decision = null; P.picks[0].closed = false; runs[date].status = 'noticed';
+  assert.equal(X.tryNo(P.orders['005930']), 2);
+  const msg = await A.handleApproval('/매수 1');
+  assert.match(msg, /가상 매수/);
+  const o = runs[date].payload.orders['005930'];
+  assert.equal(o.st, 'open'); assert.equal(o.tries.length, 1); assert.equal(o.tries[0].st, 'cancelled');
+  assert.equal(db.t.paper_orders.size, 2);                                       // 새 주문이 실제로 나감(같은 cid 로 막히지 않음)
+  assert.ok(runs[date].payload.log.some(l => l.k === 'order' && /2번째 시도/.test(l.text)));
+  await c.close();
+});
+test('다시 시도 대상 판정: 한 주도 못 산 종료 상태만, 횟수 남았을 때만', () => {
+  const X = require('../auto-exec');
+  assert.equal(X.retryable({ st: 'cancelled', filled: 0 }, 3), true);
+  assert.equal(X.retryable({ st: 'skipped', why: '체결강도' }, 3), true);
+  assert.equal(X.retryable({ st: 'failed', why: '거부' }, 3), true);
+  assert.equal(X.retryable({ st: 'partial_done', filled: 3 }, 3), false);
+  assert.equal(X.retryable({ st: 'open' }, 3), false); assert.equal(X.retryable({ st: 'lost' }, 3), false);
+  assert.equal(X.retryable({ st: 'skipped', why: '이미 보유·주문 중' }, 3), false);
+  assert.equal(X.retryable({ st: 'cancelled', tries: [{}, {}] }, 3), false); assert.equal(X.retryable({ st: 'cancelled', tries: [{}] }, 3), true);
+});

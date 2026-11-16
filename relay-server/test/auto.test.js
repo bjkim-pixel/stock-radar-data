@@ -191,7 +191,7 @@ test('반복 검토: 30분 뒤 새 후보만 이어 붙이고 번호를 이어�
   assert.equal(h.db.auto_runs['2026-11-16'].status, 'noticed');
   const notes = h.sent.filter(t => /^📈 자동매매 후보/.test(t));
   assert.equal(notes.length, 2);
-  assert.match(notes[1], /2회차/); assert.match(notes[1], /\n3\. 종목E/); assert.match(notes[1], /\/매수 3 4/);
+  assert.match(notes[1], /2회차/); assert.match(notes[1], /\n3\. 종목E/); assert.match(notes[1], /\/매수 3 \(번호\)/);
   assert.ok(P.log.some(l => l.k === 'round' && /새 후보 1개/.test(l.text)));
   await h.A.tick(); await h.A.tick();
   assert.equal(h.sent.filter(t => /^📈 자동매매 후보/.test(t)).length, 2);   // 같은 회차 중복 없음
@@ -236,4 +236,54 @@ test('반복 검토 + 자동 승인: 새 후보도 알림 직후 자동으로 �
   assert.equal(P.decision.kind, 'buy'); assert.deepEqual(P.decision.nums, [3]);
   assert.equal(P.decisions.length, 1);
   assert.equal(h.db.auto_runs['2026-11-16'].status, 'approved');
+});
+
+/* ── 못 산 종목 다시 시도 ── */
+async function roundWith(params, orders, pool = ['A', 'B', 'C', 'D']) {
+  const h = harness(params ? { params } : {});
+  await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick();
+  const P0 = h.db.auto_runs['2026-11-16'].payload;
+  P0.orders = JSON.parse(JSON.stringify(orders(P0)));
+  h.setPool(pool); h.setMin(10 * 60 + 35);
+  const r = await h.A.tick();
+  return { h, r, P: h.db.auto_runs['2026-11-16'].payload };
+}
+const codesOf = P => P.picks.map(p => p.code);
+test('다시 시도: 미체결 취소된 종목이 다음 검토에서 같은 번호로 다시 후보가 되고, 지난 주문은 이력으로 접힌다', async () => {
+  const { h, r, P } = await roundWith({ approval: 'manual' }, P0 => { const [a, d] = codesOf(P0); return { [a]: { st: 'cancelled', buy: 10300, qty: 10, orderId: 'o1', placedAt: 1, at: 1 }, [d]: { st: 'filled', filled: 5, avg: 10000, orderId: 'o2' } }; });
+  assert.equal(r.round.retry, 1); assert.equal(P.picks.length, 2);                          // 새 종목 없이 기존 후보 갱신
+  const pk = P.picks.find(p => p.retry === 1), code = pk.code, num = P.picks.indexOf(pk) + 1;
+  assert.equal(pk.closed, false); assert.match(pk.retryWhy, /미체결/);
+  assert.equal(P.orders[code].st, 'retry'); assert.equal(P.orders[code].tries.length, 1); assert.equal(P.orders[code].tries[0].st, 'cancelled');
+  const note = h.sent.filter(t => /^📈 자동매매 후보/.test(t))[1];
+  assert.match(note, /🔁 재시도/); assert.match(note, /지난번: 미체결로 취소/); assert.match(note, new RegExp(`\\n${num}\\. `));
+  assert.ok(P.log.some(l => l.k === 'round' && /다시 시도 1개/.test(l.text)));
+});
+test('다시 시도: 직접 승인 — 재시도 후보만 승인되고, 이미 산 종목 번호는 닫힘', async () => {
+  const { h, P } = await roundWith({ approval: 'manual' }, P0 => { const [a, d] = codesOf(P0); return { [a]: { st: 'skipped', why: '체결강도 90%', at: 1 }, [d]: { st: 'filled', filled: 5, avg: 10000, orderId: 'o2' } }; });
+  const re = P.picks.findIndex(p => p.retry) + 1, bought = P.picks.findIndex(p => !p.retry) + 1;
+  assert.match(await h.A.handleApproval(`/매수 ${bought}`), /이전 회차/);
+  const m = await h.A.handleApproval(`/매수 ${re}`);
+  assert.match(m, /승인 기록/);
+  assert.equal(h.db.auto_runs['2026-11-16'].payload.decision.nums[0], re);
+});
+test('다시 시도: 자동 승인이면 재시도 후보도 알림 직후 승인 기록', async () => {
+  const { h, P } = await roundWith({ approval: 'auto' }, P0 => ({ [codesOf(P0)[0]]: { st: 'cancelled', buy: 1, qty: 1, orderId: 'o1' } }));
+  const re = P.picks.findIndex(p => p.retry) + 1;
+  assert.deepEqual(P.decision.nums, [re]); assert.equal(P.decision.kind, 'buy');
+});
+test('다시 시도: 시도 횟수를 다 썼거나(maxTries)·설정을 끄거나·다른 곳에서 보유 중이면 다시 하지 않음', async () => {
+  const two = { st: 'cancelled', buy: 1, qty: 1, orderId: 'x', tries: [{ n: 1, st: 'cancelled' }, { n: 2, st: 'cancelled' }] };   // 이미 3번째 시도까지 씀
+  let x = await roundWith({ approval: 'manual' }, P0 => ({ [codesOf(P0)[0]]: two }));
+  assert.equal(x.r.round.fresh, 0);
+  x = await roundWith({ approval: 'manual', retryUnfilled: false }, P0 => ({ [codesOf(P0)[0]]: { st: 'cancelled', buy: 1, qty: 1, orderId: 'x' } }));
+  assert.equal(x.r.round.fresh, 0);
+  x = await roundWith({ approval: 'manual' }, P0 => ({ [codesOf(P0)[0]]: { st: 'skipped', why: '이미 보유·주문 중(다른 전략 또는 직접 매매)' } }));
+  assert.equal(x.r.round.fresh, 0);
+  x = await roundWith({ approval: 'manual', maxTries: 2 }, P0 => ({ [codesOf(P0)[0]]: { st: 'cancelled', buy: 1, qty: 1, orderId: 'x' } }));   // 2번째 시도까지 → 1번 했으니 한 번 더 가능
+  assert.equal(x.r.round.retry, 1);
+});
+test('하루 최대 종목 수: 못 산(취소·탈락) 주문은 세지 않는다', async () => {
+  const { h, P } = await roundWith({ approval: 'manual', retryUnfilled: false }, P0 => Object.fromEntries(['X1', 'X2', 'X3', 'X4', 'X5'].map(c => [c, { st: 'cancelled', orderId: c, buy: 1, qty: 1 }])), ['A', 'B', 'C', 'D', 'E']);
+  assert.ok(codesOf(P).includes('E'));                              // 예전엔 취소 주문 5개가 한도를 채워 검토를 건너뜀
 });
