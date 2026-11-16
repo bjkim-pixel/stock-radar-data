@@ -473,6 +473,9 @@ function createAuto(deps) {
   /* D단계: 전략별 장부 + 자동 일지(15:40 작성 · 전환 뒤 이월 반영 · 다음 거래일 아침 종가베팅 결과로 확정) */
   const JR = require('./auto-journal').createJournal({ sbGet: D.sbGet, sbWrite: D.sbWrite, sendTelegram: D.sendTelegram, now: D.now, paper: D.paper, readRuns, readCarry, actives, excursion: excStore, isTradingDay: D.isTradingDay });
 
+  /* 2026-11-16: 오늘 탭 일지 — 20:30 에 오늘 탭 내용을 그대로 하루 한 행으로 저장(복기용) */
+  const DL = require('./auto-daylog').createDayLog({ sbGet: D.sbGet, sbWrite: D.sbWrite, now: D.now, isTradingDay: D.isTradingDay, uiState: () => uiState(), strategies: () => strategies() });
+
   /* 선정 + 그림자 기록(전략별 하루 한 번 — 오늘 기록이 있으면 건너뜀). force(/자동후보)는 아직 승인·주문 전일 때만 다시 고름 */
   async function runSelectionFor(I, force) {
     const { date } = kstParts();
@@ -695,6 +698,7 @@ function createAuto(deps) {
     }
     for (const r of runs()) if (r.payload.cb && r.status === 'noticed' && !r.payload.decision && min > (r.payload.roundDeadline || 0) && min < 1200) await expireIfNeeded(date, sidOf(r)).catch(e => { state.lastErr = e.message; });
     out.exc = await excTick(date, min).catch(err);
+    if (min >= require('./auto-daylog').SAVE_AT) out.daylog = await DL.tick(date, min).catch(err);
     if (inJr) out.journal = await JR.tick(date, min, T0.convert).catch(err);   // 일지는 자동매매를 껐어도 지난 기록을 정리한다
     if (!selNow.length) return { ok: true, date, min, ...out };
     if (!(await masterOn())) return { ok: true, date, min, idle: 'disabled', ...out };
@@ -1133,7 +1137,7 @@ function createAuto(deps) {
     return store.archive ? store.archive(id, who) : { ok: false, status: 503, error: '지원하지 않음' };
   }
   return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, siteApprove, siteEod,
-    siteStage, journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
+    daylogList: n => DL.list(n), daylogGet: d => DL.get(d), daylogMemo: (d, t) => DL.memo(d, t), daylogSave: () => DL.save(kstParts().date, { force: true }), siteStage, journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
     _select: select, _mutateRun: mutateRun, _readRun: readRun, _readRuns: readRuns, _readCarry: readCarry, _exec: exec };
 }
 

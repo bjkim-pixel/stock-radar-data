@@ -1076,6 +1076,9 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-w{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}.au-w label{display:flex;flex-direction:column;font-size:11px;color:var(--ink-3)}.au-w input{width:58px!important}
 .au-diff{margin:12px 0 0;padding:10px;border-radius:8px;background:var(--surface-2);font-size:12.5px;line-height:1.7}
 .au-ver{display:flex;flex-direction:column;gap:8px;font-size:12px}
+.au-dl{max-height:150px;overflow:auto}.au-dl .chip .up{color:var(--up)}.au-dl .chip .dn{color:var(--down)}.au-dl .chip.on .up,.au-dl .chip.on .dn{color:inherit}
+.au-replay button:not(.au-keep){pointer-events:none;opacity:.55}.au-replay .au-now{display:none}
+.au-memo{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.5;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink);resize:vertical}
 .au-fl{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.au-fl .chip{cursor:pointer;font:inherit;font-size:12.5px}.au-fl .chip.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
 .au-stt{font-size:11px;font-weight:600;border-radius:6px;padding:1px 6px;background:var(--surface-2);color:var(--ink-2)}.au-stt.final{color:var(--good)}.au-stt.open,.au-stt.draft{color:var(--warn)}
 .au-memo{width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink);resize:vertical}
@@ -11059,7 +11062,7 @@ const AU_EOD={sell:"정리",keep:"유지",none:"해당 없음"};
 const AU_PART={flow:"수급",cttr:"체결강도",rise:"상승률",amt:"거래대금",trend:"추세"};
 const auPct=v=>v==null?"–":(v>0?"+":"")+N(v,2)+"%";
 const auHM=m=>`${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
-const auMinNow=()=>{const d=new Date(trdNow()+9*3600e3);return d.getUTCHours()*60+d.getUTCMinutes();};
+const auMinNow=()=>{const d=new Date((TRD.rpNow||trdNow())+9*3600e3);return d.getUTCHours()*60+d.getUTCMinutes();};
 const auErr=e=>{if(e&&e.status===401&&e.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");return true;}return false;};
 function auShow(f,v){
   if(v==null)return "–";
@@ -11521,6 +11524,57 @@ function auSpark(curve,key){
   return `<svg class="au-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="누적 손익 곡선 — 마지막 ${trdEsc(auWon(last))}"><line x1="${P}" x2="${W-P}" y1="${y(0)}" y2="${y(0)}" class="z"/><polyline points="${pts}" class="${last>0?"up":last<0?"down":""}"/>${curve.length===1?`<circle cx="${x(0)}" cy="${y(vs[0])}" r="3"/>`:""}</svg><div class="au-sparx"><span>${trdEsc(curve[0].date.slice(5))}</span><span>${trdEsc(curve[curve.length-1].date.slice(5))}</span></div>`;
 }
 const auWon=v=>v==null?"–":trdSgn(v)+"원";
+/* ── 일지(2026-11-16 개편): 20:30 에 저장해 둔 "오늘 탭" 그대로 날짜별 복기 ── */
+TRD.auL={rows:null,sel:null,snap:{},memo:{},busy:false,missing:false,err:null};
+const auWk=d=>"일월화수목금토"[new Date(d+"T00:00:00Z").getUTCDay()];
+async function auLLoad(){
+  const L=TRD.auL;if(L.busy)return;L.busy=true;
+  try{const r=await trdApi("/trade/auto/daylog");L.rows=r.rows||[];L.missing=!!r.missing;L.err=null;if(!L.sel&&L.rows.length)L.sel=L.rows[0].date;}
+  catch(e){L.busy=false;if(auErr(e))return;L.err=trdErrTx(e);}
+  L.busy=false;if(TRD.auTab==="journal")trdAutoRender();
+  if(TRD.auTab==="journal"&&L.sel&&L.snap[L.sel]===undefined)auLDetail(L.sel);
+}
+async function auLDetail(d){
+  const L=TRD.auL;
+  try{const r=await trdApi("/trade/auto/daylog?date="+encodeURIComponent(d));L.snap[d]=r.snap||null;if(L.memo[d]===undefined)L.memo[d]=r.memo||"";}
+  catch(e){if(auErr(e))return;L.snap[d]=null;TRD.auMsg={t:"일지를 불러오지 못했습니다: "+trdErrTx(e)};}
+  trdAutoRender();
+}
+/* 저장해 둔 그날의 오늘 탭을 같은 모양으로 그린다(현재 화면 데이터는 잠깐 바꿔 끼웠다가 되돌림) */
+function auReplayHtml(snap){
+  const keep={au:TRD.au,aus:TRD.aus,rp:TRD.rpNow,pk:TRD.auPick};
+  try{
+    TRD.au=snap.state;TRD.aus=snap.strat;TRD.rpNow=snap.savedAt||snap.state.now;TRD.auPick=null;
+    let h=`<div class="card"><h3>그날의 흐름 <span class="r faint" style="font-size:11px">${trdEsc(snap.state.date)} ${trdEsc(auWk(snap.state.date))} · ${trdEsc(auHMs(snap.savedAt||snap.state.now))} 저장본</span></h3></div>`;
+    for(const sid of auIds())h+=auRunHtml(sid);
+    return h+auStatusHtml();
+  }catch(e){console.error("일지 복기",e);return '<div class="card"><div class="load">이 날짜 일지를 그리지 못했습니다.</div></div>';}
+  finally{TRD.au=keep.au;TRD.aus=keep.aus;TRD.rpNow=keep.rp;TRD.auPick=keep.pk;}
+}
+function auDayLogHtml(){
+  const L=TRD.auL,A=TRD.au;
+  if(L.missing)return `<div class="card"><div class="trd-halt">일지 테이블이 아직 없습니다. GitHub Actions "DB 테이블·뷰 생성"에서 대상 auto_daylog 를 실행하세요.</div></div>`;
+  if(L.rows===null)return `<div class="card"><div class="load">${L.err?trdEsc("불러오지 못했습니다: "+L.err):"불러오는 중…"}</div></div>`;
+  const today=A&&A.date,has=L.rows.some(r=>r.date===today);
+  const chips=L.rows.map(r=>{const n=(r.sum||{}).net;return `<button type="button" class="chip${L.sel===r.date?" on":""}" data-aul="${trdEsc(r.date)}">${trdEsc(r.date.slice(5).replace("-","/"))}(${auWk(r.date)})${n!=null?` <span class="${n>0?"up":n<0?"dn":""}">${trdEsc(trdSgn(n))}</span>`:""}</button>`;}).join("");
+  const size=L.rows.reduce((a,r)=>a+(r.size||0),0);
+  let h=`<div class="card"><h3>일지 <span class="r faint" style="font-size:11px">매 거래일 20:30 저장 · 날짜를 누르면 그날 오늘 탭을 그대로 봅니다</span></h3>
+    ${L.rows.length?`<div class="au-fl au-dl">${chips}</div>`:`<div class="load" style="margin-top:8px">아직 저장된 일지가 없습니다. 오늘 거래일 20:30 부터 쌓입니다.</div>`}
+    <div class="faint" style="font-size:11px;margin-top:8px">${L.rows.length}일 · 누적 약 ${N(size/1024,0)}KB${A&&A.tradingDay&&!has?` · <button type="button" class="chip" data-aulrun="1" title="오늘 탭을 지금 그대로 저장합니다">오늘 지금 저장</button>`:""}</div></div>`;
+  const sel=L.sel,sn=sel?L.snap[sel]:undefined;
+  if(sel){
+    if(sn===undefined)h+=`<div class="card"><div class="load">불러오는 중…</div></div>`;
+    else if(sn===null)h+=`<div class="card"><div class="load">불러오지 못했습니다</div></div>`;
+    else{
+      const memo=L.memo[sel]||"";
+      h+=`<div class="au-replay">${auReplayHtml(sn)}</div>
+        <div class="card"><h3>메모 <span class="r faint" style="font-size:11px">${trdEsc(sel.slice(5))} · 최대 300자</span></h3>
+          <textarea class="au-memo" data-aulm="${trdEsc(sel)}" maxlength="300" rows="3" placeholder="이 날 짧게 남길 메모">${trdEsc(memo)}</textarea>
+          <div style="margin-top:6px"><button type="button" class="chip" data-aulsave="${trdEsc(sel)}">메모 저장</button></div></div>`;
+    }
+  }
+  return h;
+}
 const auTile=(k,v,c)=>`<div><div class="k">${k}</div><div class="v ${c||""}">${v}</div></div>`;
 function auJournalHtml(){
   const J=TRD.auJ,A=TRD.au;
@@ -11663,16 +11717,19 @@ function trdAutoHtml(){
     ${msg?`<div class="${msg.ok||msg.t==="처리 중…"?"au-msg":"trd-halt"}" style="margin-top:8px">${trdEsc(msg.t)}</div>`:""}${A.lastErr?`<div class="trd-halt" style="margin-top:8px">최근 서버 오류: ${trdEsc(A.lastErr)}</div>`:""}
     <div class="faint" style="font-size:11px;margin-top:6px">가상매매 전용 · 실제 주문 없음. 전체 스위치를 끄면 새 매수만 멈추고 이미 산 종목의 손절·익절·아침 매도는 계속됩니다.</div></div>`;
   const tab=(k,t)=>`<button type="button" data-aut="${k}"${TRD.auTab===k?' class="on"':""}>${t}</button>`;
-  return band+`<div class="trd-tabs" role="tablist">${tab("today","오늘")}${tab("strat","전략")}${tab("journal","일지")}${tab("perf","성과")}</div>`+(TRD.auTab==="strat"?auStratHtml():TRD.auTab==="journal"?auJournalHtml():TRD.auTab==="perf"?auPerfHtml():auTodayHtml());
+  return band+`<div class="trd-tabs" role="tablist">${tab("today","오늘")}${tab("strat","전략")}${tab("journal","일지")}${tab("perf","성과")}</div>`+(TRD.auTab==="strat"?auStratHtml():TRD.auTab==="journal"?auDayLogHtml():TRD.auTab==="perf"?auPerfHtml():auTodayHtml());
 }
 /* 클릭 처리(공통 클릭 위임에서 호출). 처리했으면 true */
 function auClick(t){
   let el;
   if((el=t.closest("a.au-nm"))){go("detail",el.dataset.code);return true;}
-  if((el=t.closest("[data-aut]"))){TRD.auTab=el.dataset.aut;TRD.auMsg=null;trdAutoRender();if((TRD.auTab==="journal"||TRD.auTab==="perf")&&TRD.auJ.rows===null)auJLoad();return true;}
+  if((el=t.closest("[data-aut]"))){TRD.auTab=el.dataset.aut;TRD.auMsg=null;trdAutoRender();if(TRD.auTab==="journal"&&TRD.auL.rows===null)auLLoad();if(TRD.auTab==="perf"&&TRD.auJ.rows===null)auJLoad();return true;}
   if((el=t.closest("[data-auon]"))){const on=el.dataset.auon==="1";auPost("/trade/auto/config",{on},()=>on?"전체 스위치를 켰습니다.":"전체 스위치를 껐습니다. 이미 산 종목 관리는 계속됩니다.").then(()=>trdLoadAuto());return true;}
   if(t.closest("[data-aumkt]")){go("proc");setTimeout(()=>{const c=$("#mrCard");if(c)c.scrollIntoView({block:"start"});},300);return true;}
-  if((el=t.closest("[data-aur]"))){el.classList.add("spin");TRD.auMsg=null;trdLoadAuto();if(TRD.auTab==="journal"||TRD.auTab==="perf"){TRD.auJ.detail={};auJLoad().then(()=>{const o=TRD.auJ.open;if(o&&TRD.auTab==="journal"){const [d,sd]=o.split("|");auJDetail(d,sd);}});}return true;}
+  if((el=t.closest("[data-aur]"))){el.classList.add("spin");TRD.auMsg=null;trdLoadAuto();if(TRD.auTab==="journal"){TRD.auL.rows=null;TRD.auL.snap={};auLLoad();}if(TRD.auTab==="perf"){TRD.auJ.detail={};auJLoad().then(()=>{const o=TRD.auJ.open;if(o&&TRD.auTab==="journal"){const [d,sd]=o.split("|");auJDetail(d,sd);}});}return true;}
+  if((el=t.closest("[data-aul]"))){const d=el.dataset.aul,L=TRD.auL;L.sel=d;trdAutoRender();if(L.snap[d]===undefined)auLDetail(d);return true;}
+  if((el=t.closest("[data-aulsave]"))){const d=el.dataset.aulsave;auPost("/trade/auto/daylog-memo",{date:d,memo:TRD.auL.memo[d]||""},()=>"메모를 저장했습니다.");return true;}
+  if((el=t.closest("[data-aulrun]"))){auPost("/trade/auto/daylog-save",{},r=>"오늘 일지를 저장했습니다.").then(r=>{if(r){TRD.auL.rows=null;TRD.auL.snap={};TRD.auL.sel=null;auLLoad();}});return true;}
   if((el=t.closest("[data-aujf]"))){TRD.auJ.filter=el.dataset.aujf;TRD.auJ.open=null;trdAutoRender();return true;}
   if((el=t.closest("[data-auj]"))){const k=el.dataset.auj,J=TRD.auJ;if(J.open===k){J.open=null;trdAutoRender();}else{J.open=k;const [d,sd]=k.split("|");trdAutoRender();if(J.detail[k]===undefined)auJDetail(d,sd);}return true;}
   if((el=t.closest("[data-aujmemo]"))){const k=el.dataset.aujmemo,[d,sd]=k.split("|");auPost("/trade/auto/journal-memo",{date:d,sid:sd,memo:TRD.auJ.memo[k]||""},()=>"메모를 저장했습니다.").then(r=>{if(r){if(TRD.auJ.detail[k])TRD.auJ.detail[k].memo=r.memo;TRD.auJ.memo[k]=r.memo;auJLoad();}trdAutoRender();});return true;}
@@ -11713,6 +11770,7 @@ function auClick(t){
 }
 /* 입력 처리: 편집 중인 값만 바꾸고 변경점 칸만 다시 그림(입력칸 포커스 유지) */
 function auInputEv(t){
+  if(t.dataset.aulm){TRD.auL.memo[t.dataset.aulm]=t.value;return true;}
   if(t.dataset.aujm){TRD.auJ.memo[t.dataset.aujm]=t.value;return true;}
   if(t.dataset.aubuy||t.dataset.aueod){const g=t.dataset.aubuy?"buy":"eod",sid=t.dataset.ausid+(g==="eod"&&t.dataset.auph==="nxt"?"#n":""),n=+(t.dataset.aubuy||t.dataset.aueod),S2=TRD.auSel[g][sid]=TRD.auSel[g][sid]||new Set();t.checked?S2.add(n):S2.delete(n);trdAutoRender();return true;}
   if(t.dataset.aunew&&TRD.auNew){TRD.auNew[t.dataset.aunew]=t.value;return true;}

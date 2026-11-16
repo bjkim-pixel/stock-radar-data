@@ -587,6 +587,14 @@ function createTrade(deps = {}) {
       try { return json(res, 200, await autoRef.uiState()); }
       catch (e) { console.warn('[trade] 자동매매 상태 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'auto state failed' }); }
     }
+    if (path === '/trade/auto/daylog' && req.method === 'GET') {   // 오늘 탭 일지: 목록(가벼운 요약) 또는 하루 상세(?date)
+      if (!autoRef || !autoRef.daylogList) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      try {
+        const sp = new URL(req.url, 'http://x').searchParams;
+        const r = sp.get('date') ? await autoRef.daylogGet(sp.get('date')) : await autoRef.daylogList(sp.get('limit'));
+        return json(res, r.ok ? 200 : (r.status || 400), r);
+      } catch (e) { console.warn('[trade] 일지 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'daylog read failed' }); }
+    }
     if (path === '/trade/auto/journal' && req.method === 'GET') {   // 자동 일지: 목록+성과(?sid&from&to) 또는 하루 상세(?date&sid)
       if (!autoRef || !autoRef.journalList) return json(res, 503, { ok: false, error: 'auto unavailable' });
       try {
@@ -686,6 +694,13 @@ function createTrade(deps = {}) {
       const r = await autoRef.siteStage(stage, sid).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
       audit('auto_stage', !!r.ok, { stage, strategy: sid }, req, 'VIRTUAL');
       return json(res, 200, r);
+    }
+    if (path === '/trade/auto/daylog-memo' || path === '/trade/auto/daylog-save') {   // 일지 메모 저장 · 오늘 일지 지금 저장
+      const isMemo = path === '/trade/auto/daylog-memo';
+      if (!autoRef || !autoRef.daylogMemo) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      const r = await (isMemo ? autoRef.daylogMemo(String(body.date || ''), body.memo) : autoRef.daylogSave()).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 120) }));
+      audit(isMemo ? 'auto_daylog_memo' : 'auto_daylog_save', !!r.ok, { date: body.date, len: isMemo && typeof body.memo === 'string' ? body.memo.length : undefined, error: r.error }, req, 'VIRTUAL');
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
     }
     if (path === '/trade/auto/journal-memo' || path === '/trade/auto/journal-run') {   // 일지 메모 저장 · 하루치 일지 다시 만들기(텔레그램 없음)
       const isMemo = path === '/trade/auto/journal-memo';
