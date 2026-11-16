@@ -3437,6 +3437,48 @@ function parseFlowEst(j) {
     if (f) { if (!(lastF.gb >= gb)) { lastF.gb = gb; lastF.v = f; } } if (o) { if (!(lastO.gb >= gb)) { lastO.gb = gb; lastO.v = o; } } });
   return { fq: lastF.v == null ? null : lastF.v, ft: lastF.gb ? BSOP_HOUR[lastF.gb] || null : null, oq: lastO.v == null ? null : lastO.v, ot: lastO.gb ? BSOP_HOUR[lastO.gb] || null : null };
 }
+/* ── 마감 뒤(NXT 시간 ~20시)에도 외국인·기관 수급을 채우는 보완 (2026-11-16) ──
+   KIS 잠정 집계(HHPTJ04160200)는 장중 슬롯(14:30까지)만 값이 있고 마감 뒤엔 비어요. 그래서 비면 차례로:
+   ① 주식현재가 투자자(FHKST01010900)의 오늘자 행(마감 뒤 집계, 정규장 기준) ② 장중 마지막 잠정값(14:40·15:05·15:25에 상위 종목을 미리 받아 저장) */
+const _flowSnap = new Map();                              // code -> {d, fq, ft, oq, ot}
+let _flowSnapLoaded = false, _flowSnapDirty = false, _flowFbLog = 0;
+async function flowSnapLoad() {
+  if (_flowSnapLoaded) return;
+  _flowSnapLoaded = true;
+  try {
+    const r = await sbGet('auto_config?select=value&key=eq.flow_snap&limit=1');
+    const v = r && r[0] && r[0].value;
+    if (v && v.d === kstDateStr() && v.rows) Object.entries(v.rows).forEach(([c, x]) => { if (!_flowSnap.has(c)) _flowSnap.set(c, { d: v.d, ...x }); });
+  } catch (_) {}
+}
+async function flowSnapSave() {
+  if (!_flowSnapDirty) return;
+  _flowSnapDirty = false;
+  const d = kstDateStr(), rows = {};
+  _flowSnap.forEach((x, c) => { if (x.d === d) rows[c] = { fq: x.fq, ft: x.ft, oq: x.oq, ot: x.ot }; });
+  try { await sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'flow_snap', value: { d, rows }, updated_at: new Date().toISOString() }]); } catch (e) { _flowSnapDirty = true; console.error('[수급 스냅샷] 저장 실패:', e.message); }
+}
+function flowSnapPut(code, v) {
+  const d = kstDateStr(), old = _flowSnap.get(code);
+  const o = old && old.d === d ? old : { d };
+  const n = { d, fq: v.fq != null ? v.fq : (o.fq == null ? null : o.fq), ft: v.fq != null ? v.ft : (o.ft || null), oq: v.oq != null ? v.oq : (o.oq == null ? null : o.oq), ot: v.oq != null ? v.ot : (o.ot || null) };
+  if (!old || old.fq !== n.fq || old.oq !== n.oq || old.ft !== n.ft || old.ot !== n.ot) { _flowSnap.set(code, n); _flowSnapDirty = true; }
+}
+async function flowFallback(code) {
+  await flowSnapLoad();
+  const d = kstDateStr();
+  if (kstMinutesNow() >= 930) {
+    try {
+      const r = await kisQuoteGet('/uapi/domestic-stock/v1/quotations/inquire-investor', 'FHKST01010900', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code });
+      const row = r.ok ? parseInvestor(r.body).find(x => x.d === d.replace(/-/g, '')) : null;
+      if (_flowFbLog++ < 8) console.log(`[수급 대체] ${code} 오늘자 투자자 행: ${row ? `외국인 ${row.frgnQ} · 기관 ${row.orgnQ}` : (r.ok ? '없음' : 'HTTP ' + r.http)}`);
+      if (row && (row.frgnQ || row.orgnQ)) return { fq: row.frgnQ || null, ft: '마감', oq: row.orgnQ || null, ot: '마감', src: 'day' };
+    } catch (_) {}
+  }
+  const s = _flowSnap.get(code);
+  if (s && s.d === d && (s.fq != null || s.oq != null)) return { fq: s.fq, ft: s.ft, oq: s.oq, ot: s.ot, src: 'snap' };
+  return null;
+}
 async function fetchFlowEst(code, raw) {
   const c = _flowEst.get(code);
   if (!raw && c && Date.now() - c.at < FLOW_TTL) return c.v;
@@ -3445,9 +3487,38 @@ async function fetchFlowEst(code, raw) {
   const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/quotations/investor-trend-estimate?${new URLSearchParams({ MKSC_SHRN_ISCD: code })}`, { headers: kisRestHeaders(token, 'HHPTJ04160200'), signal: AbortSignal.timeout(8000) });
   const j = await res.json().catch(() => ({}));
   if (raw) return { http: res.status, body: j };
-  if (!res.ok || j.rt_cd !== '0') { const v = { err: j.msg1 || ('HTTP ' + res.status) }; _flowEst.set(code, { at: Date.now() - FLOW_TTL + 15e3, v }); return v; }   // 실패는 15초 뒤 재시도
-  const v = parseFlowEst(j); _flowEst.set(code, { at: Date.now(), v }); return v;
+  let v = (!res.ok || j.rt_cd !== '0') ? { err: j.msg1 || ('HTTP ' + res.status) } : parseFlowEst(j);
+  if (v.err || (v.fq == null && v.oq == null)) {   // 비었거나 실패 → 마감 뒤 대체값
+    const fb = await flowFallback(code).catch(() => null);
+    if (fb) v = fb;
+  } else { v.src = 'est'; flowSnapPut(code, v); }
+  _flowEst.set(code, { at: v.err ? Date.now() - FLOW_TTL + 15e3 : Date.now(), v });   // 실패는 15초 뒤 재시도
+  return v;
 }
+/* 장중 마지막 잠정값 미리 받기: 14:40·15:05·15:25 에 등락률 상위 종목(1조↑·전체)을 낮은 우선순위로 조회해 저장 */
+const _flowWarmDone = new Set();
+async function flowWarm() {
+  const d = kstDateStr(), m = kstMinutesNow(), dow = new Date(`${d}T00:00:00Z`).getUTCDay();
+  if (dow === 0 || dow === 6 || KRX_HOLIDAYS.has(d)) return;
+  const slot = [880, 905, 925].filter(t => m >= t && m < t + 8)[0];
+  const id = slot != null ? d + slot : null;
+  if (!id || _flowWarmDone.has(id)) return;
+  _flowWarmDone.add(id);
+  await flowSnapLoad();
+  await _kisPrio.run(2, async () => {
+    const seen = new Map();
+    for (const k of [10000, 0]) {
+      await refreshLiveTop(k, 'up').catch(() => {});
+      const x = _liveTop.get(k); ((x && (x.all || x.rows)) || []).forEach(r => { if (r && r.code && !seen.has(r.code)) seen.set(r.code, r.changePct || 0); });
+    }
+    const codes = [...seen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 45).map(x => x[0]);
+    let n = 0;
+    for (const code of codes) { try { const v = await fetchFlowEst(code); if (v && v.src === 'est') n++; } catch (_) {} }
+    await flowSnapSave();
+    console.log(`[수급 스냅샷] ${d} ${Math.floor(slot / 60)}:${String(slot % 60).padStart(2, '0')} 상위 ${codes.length}종목 중 ${n}종목 잠정값 저장`);
+  });
+}
+setInterval(() => { flowWarm().catch(e => console.error('[수급 스냅샷] 실패:', e.message)); }, 60e3).unref();
 function handleLiveFlow(req, res) {
   const path = (req.url || '').split('?')[0];
   if (path !== '/live-flow') return false;
