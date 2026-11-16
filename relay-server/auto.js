@@ -137,6 +137,8 @@ function formatMessage(date, picks, ctx = {}) {
   });
   if (ctx.warn) lines.push('', `⚠ ${ctx.warn}`);
   if (ctx.regime) lines.push(ctx.warn ? ctx.regime : '\n' + ctx.regime);
+  if (ctx.events) lines.push(ctx.regime || ctx.warn || ctx.exposure ? ctx.events : '\n' + ctx.events);
+  if (ctx.exposure) lines.push(ctx.regime || ctx.warn ? ctx.exposure : '\n' + ctx.exposure);
   if (ctx.auto) lines.push('', '🤖 자동 매수 설정 — 알림 직후 위 후보를 모두 가상 매수합니다.');
   else lines.push('', `답장: /매수 1 3 5 (번호) · /매수 전체 · /패스`, `${ctx.deadline || '10:30'}까지 답이 없으면 전부 취소돼요. (자동으로 사지 않습니다)`);
   return lines.join('\n');
@@ -194,6 +196,7 @@ function createAuto(deps) {
   const D = deps;
   const state = { date: null, lastErr: null, running: false, runs: {}, runsAt: 0, checkedAt: {}, carry: null, carryAt: 0, multi: false };
   const DEF_SID = 'intraday-default';
+  const RISK = require('./auto-risk'), EV = require('./auto-events'), EXC = require('./auto-excursion');
   const JR_AT = require('./auto-journal').JOURNAL_AT, JR_FIN = require('./auto-journal').FINISH_AT;
 
   const kstParts = () => D.kstNow();            // { date:'YYYY-MM-DD', min: 분 }
@@ -324,7 +327,7 @@ function createAuto(deps) {
   /* 엔진별로 쓰는 형태 */
   async function execOpt(sid) {
     const p = (await intraOf(sid)).I.params;
-    return { stopPct: p.stopPct, rr: p.rr, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3 };
+    return { stopPct: p.stopPct, rr: p.rr, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3, totalCapKrw: +p.totalCapKrw || 0 };
   }
   async function eodRule(sid) {
     const { I, C } = await intraOf(sid), c = C.params, T = ST.timesOf(I.params, c);
@@ -349,10 +352,47 @@ function createAuto(deps) {
   /* 전략이 여럿이면 텔레그램 메시지 앞에 [A · 이름]을 붙인다(답할 때 번호 앞에 그 글자) */
   const labelOf = sid => { const r = state.runs[sid]; const p = r && r.payload; return p && p.letter ? `${p.letter} · ${(p.strategy && p.strategy.name) || sid}` : sid; };
   const tgFor = sid => t => D.sendTelegram(state.multi ? `[${labelOf(sid)}] ${(state.runs[sid] && state.runs[sid].payload.letter) ? `— 답할 때 번호 앞에 ${state.runs[sid].payload.letter} (예: ${state.runs[sid].payload.letter}1)` : ''}\n${t}` : t);
+  /* E2-1: 자동매매가 들고 있는(또는 주문 중인) 종목의 총 노출·손절 시 손실. 자동매매 종목 = 오늘 모든 전략의 주문 + 아직 안 판 이월 종목 */
+  async function autoCodes(date) {
+    const set = new Set();
+    for (const r of await readRuns(date).catch(() => [])) for (const [code, o] of Object.entries((r.payload && r.payload.orders) || {})) if (['intent', 'open', 'modified', 'filled', 'partial_done'].includes(o.st) || o.filled > 0) set.add(code);
+    const c = await readCarry().catch(() => ({ items: {} }));
+    Object.values((c && c.items) || {}).filter(i => i.state !== 'done').forEach(i => set.add(i.code));
+    return set;
+  }
+  /* E2-3: 보유 중 최고·최저(MFE·MAE) 기록 — 30초 tick 마다 자동매매 종목의 현재가를 훑음. 저장은 바뀔 때 최대 60초에 한 번 */
+  async function excStore() {
+    if (state.exc) return state.exc;
+    let v = null; try { const r = await D.sbGet('auto_config?select=value&key=eq.excursion&limit=1'); v = r && r[0] && r[0].value; } catch (_) {}
+    return (state.exc = v && typeof v === 'object' ? { pos: v.pos || {}, done: v.done || [] } : EXC.fresh());
+  }
+  async function excTick(date, min) {
+    if (!D.paper || !D.paper.state || min < 540 || min > 935) return null;
+    const ps = await D.paper.state();
+    if (!ps || !ps.ok) return null;                      // 상태를 못 읽었을 때 "다 팔았다"로 오해하지 않도록 건너뜀
+    const watch = new Set();
+    if (!state.carry || Date.now() - (state.carryAt || 0) > 60000) { state.carry = await readCarry().catch(() => state.carry); state.carryAt = Date.now(); }
+    for (const r of Object.values(state.runs)) for (const [code, o] of Object.entries((r.payload && r.payload.orders) || {})) if (['intent', 'open', 'modified', 'filled', 'partial_done'].includes(o.st) || o.filled > 0) watch.add(code);
+    Object.values((state.carry && state.carry.items) || {}).filter(i => i.state !== 'done').forEach(i => watch.add(i.code));
+    const st = await excStore(), nDone = st.done.length;
+    const r = EXC.update(st, ps.positions, watch, date);
+    if (r.changed) state.excDirty = true;
+    if (state.excDirty && (st.done.length !== nDone || Date.now() - (state.excSavedAt || 0) > 60e3)) {
+      state.excSavedAt = Date.now(); state.excDirty = false;
+      await D.sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'excursion', value: st, updated_at: new Date().toISOString() }]).catch(() => { state.excDirty = true; });
+    }
+    return { n: Object.keys(st.pos).length };
+  }
+  async function exposureNow() {
+    if (!D.paper || !D.paper.state) return null;
+    const ps = await D.paper.state();
+    if (!ps || !ps.ok) return null;
+    return RISK.exposureOf(ps, await autoCodes(kstParts().date));
+  }
   const execs = {}, eods = {};
   const execFor = sid => D.paper ? (execs[sid] = execs[sid] || require('./auto-exec').createExec({
     paper: D.paper, getQuote: D.getQuote, loadChart: D.loadChart, sendTelegram: tgFor(sid), now: D.now,
-    mutateRun: (d, fn) => mutateRun(d, sid, fn), readRun: d => readRun(d, sid), perStock: () => perStockOf(sid), opt: () => execOpt(sid),
+    mutateRun: (d, fn) => mutateRun(d, sid, fn), readRun: d => readRun(d, sid), perStock: () => perStockOf(sid), opt: () => execOpt(sid), exposure: exposureNow,
   })) : null;
   const eodFor = sid => D.paper ? (eods[sid] = eods[sid] || require('./auto-eod').createEod({
     paper: D.paper, getQuote: D.getQuote, fetchFlow: D.fetchFlow, marketIdx: D.marketIdx || (async () => ({})), sendTelegram: tgFor(sid), now: D.now,
@@ -365,7 +405,7 @@ function createAuto(deps) {
   }) : null;
 
   /* D단계: 전략별 장부 + 자동 일지(15:40 작성 · 전환 뒤 이월 반영 · 다음 거래일 아침 종가베팅 결과로 확정) */
-  const JR = require('./auto-journal').createJournal({ sbGet: D.sbGet, sbWrite: D.sbWrite, sendTelegram: D.sendTelegram, now: D.now, paper: D.paper, readRuns, readCarry, actives });
+  const JR = require('./auto-journal').createJournal({ sbGet: D.sbGet, sbWrite: D.sbWrite, sendTelegram: D.sendTelegram, now: D.now, paper: D.paper, readRuns, readCarry, actives, excursion: excStore });
 
   /* 선정 + 그림자 기록(전략별 하루 한 번 — 오늘 기록이 있으면 건너뜀). force(/자동후보)는 아직 승인·주문 전일 때만 다시 고름 */
   async function runSelectionFor(I, force) {
@@ -376,6 +416,7 @@ function createAuto(deps) {
     const warn = await marketWarn();
     const regime = await regimeOf(date);
     const sel = await select(I.params);
+    const evs = await EV.loadEvents(D.sbGet, date);
     const shadow = sel.passedAll.map(c => ({
       code: c.code, name: c.name, score: c.score.total, parts: c.score.parts, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector,
       m: c.m, picked: sel.picks.some(p => p.code === c.code),
@@ -384,7 +425,8 @@ function createAuto(deps) {
       selectedAt: new Date().toISOString(), stat: sel.stat, scrDate: sel.scrDate, warn: warn || null,
       regime: regime ? { date: regime.date, score: regime.score, stage: regime.stage, mult: regimeMult(I.params, regime), mode: I.params.regimeMode || 'info' } : null,
       strategy: { id: I.id, version: I.version, name: I.name }, params: I.params, letter: I.letter || 'A',
-      picks: sel.picks.slice(0, I.params.notifyTop).map(c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts })),
+      events: EV.marketNotes(evs, date, 1),
+      picks: sel.picks.slice(0, I.params.notifyTop).map(c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date) })),
       shadow, dropped: sel.dropped, rejected: sel.rejected.slice(0, 40), approved: [], decision: null, noticeSent: false,
     };
     await lock(() => writeRun({ trade_date: date, strategy_id: I.id, status: 'selected', payload }));
@@ -408,11 +450,12 @@ function createAuto(deps) {
     const hhmm = ST.hhmm(min);
     let text = null;
     const { I } = await intraOf(sid);
+    const exLine = await exposureNow().then(e => RISK.exposureLine(e, I.params.totalCapKrw)).catch(() => null);
     await mutateRun(date, sid, run => {
       if (run.payload.noticeSent && !force) return;
-      const picks = (run.payload.picks || []).map(p => ({ ...p, score: { total: p.score, ratio: p.ratio || 0 }, warns: [] }));
+      const picks = (run.payload.picks || []).map(p => ({ ...p, score: { total: p.score, ratio: p.ratio || 0 }, warns: p.ev || [] }));
       const rg = run.payload.regime, ps = rg && rg.mult < 1 ? Math.max(10000, Math.floor(I.params.perStockKrw * rg.mult / 10000) * 10000) : null;
-      text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, regime: regimeLine(rg, I.params, ps), deadline: ST.hhmm(I.T.deadline), auto: I.params.approval === 'auto' && picks.length > 0 });
+      text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, regime: regimeLine(rg, I.params, ps), exposure: exLine, events: EV.marketLine(run.payload.events), deadline: ST.hhmm(I.T.deadline), auto: I.params.approval === 'auto' && picks.length > 0 });
       if (state.multi && picks.length) text = text.replace(/\n(\d+)\. /g, `\n${run.payload.letter || 'A'}$1. `).replace('답장: /매수 1 3 5 (번호)', `답장: /매수 ${run.payload.letter || 'A'}1 ${run.payload.letter || 'A'}3 (글자+번호)`);
       run.payload.noticeSent = true; run.payload.noticeAt = new Date().toISOString();
       if (run.status === 'selected') run.status = 'noticed';
@@ -534,6 +577,7 @@ function createAuto(deps) {
       if (inEodT && E && !E.decision) (out.timeout = out.timeout || {})[sid] = await eodFor(sid).timeout(date).catch(err);
       if (inConv && !r.payload.carryDone) (out.convert = out.convert || {})[sid] = await eodFor(sid).convert(date).catch(err);
     }
+    out.exc = await excTick(date, min).catch(err);
     if (inJr) out.journal = await JR.tick(date, min, T0.convert).catch(err);   // 일지는 자동매매를 껐어도 지난 기록을 정리한다
     if (!selNow.length) return { ok: true, date, min, ...out };
     if (!(await masterOn())) return { ok: true, date, min, idle: 'disabled', ...out };
@@ -654,11 +698,14 @@ function createAuto(deps) {
       const watch = new Set([...Object.keys(owner), ...carryItems.map(i => i.code)]);
       if (ps && ps.ok) positions = ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop, strategy: owner[p.code] || null }));
     } catch (_) {}
+    const events = EV.marketNotes(await EV.loadEvents(D.sbGet, date, 0, 4), date, 3);
+    let exposure = null;
+    try { const ex = await exposureNow(); if (ex) { const caps = A.Is.map(i => +i.params.totalCapKrw || 0).filter(v => v > 0); exposure = { ...ex, rows: undefined, cap: caps.length ? Math.min(...caps) : 0 }; } } catch (_) {}
     const ci = carryItems.map(i => ({ code: i.code, name: i.name, q0: i.q0, avg: i.avg, from: i.from, sold: i.sold || 0, state: i.state, sid: i.sid || null }));
     return {
       ok: true, now: Date.now(), date, tradingDay: isTradingDay(date),
       cfg: { on: !!cv.on, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
-      today: todays[0] || null, todays, active: A.Is.map(i => i.id), regime, positions, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
+      today: todays[0] || null, todays, active: A.Is.map(i => i.id), regime, exposure, events, positions, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
     };
   }
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */

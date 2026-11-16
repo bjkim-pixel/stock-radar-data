@@ -15,14 +15,14 @@ function summarizeRun(r, full) {
     decision: p.decision ? { kind: p.decision.kind, nums: p.decision.nums || null } : null,
     warn: p.warn || null, noticeSent: !!p.noticeSent,
     picks: (p.picks || []).map(x => full
-      ? { code: x.code, name: x.name, score: x.score, price: x.price, open: x.open, changePct: x.changePct, sector: x.sector, smx: x.smx, reasons: x.reasons || [], m: x.m || null, parts: x.parts || null, ratio: x.ratio || null }
+      ? { code: x.code, name: x.name, score: x.score, price: x.price, open: x.open, changePct: x.changePct, sector: x.sector, smx: x.smx, reasons: x.reasons || [], m: x.m || null, parts: x.parts || null, ratio: x.ratio || null, ev: x.ev || [] }
       : { code: x.code, name: x.name, score: x.score, price: x.price }),
     orders: Object.entries(ords).map(([code, v]) => ({ code, name: names[code] || code, st: v.st, filled: v.filled || 0, avg: v.avg || null, buy: v.buy || null, qty: v.qty || null, why: v.why || null })),
     shadow: (p.shadow || []).map(s => ({ code: s.code, name: s.name, price: s.price, score: s.score, changePct: s.changePct, picked: !!s.picked })),
     stat: p.stat || null,
     eod: p.eod ? { at: p.eod.at, none: !!p.eod.none, items: (p.eod.items || []).map(i => ({ code: i.code, name: i.name, ok: !!i.ok, why: i.why || [] })), decision: p.eod.decision ? { kind: p.eod.decision.kind, timeout: !!p.eod.decision.timeout } : null } : null,
     carry: p.carryDone ? (p.carryDone.codes || []) : null,
-    strategy: p.strategy || null, regime: p.regime || null,
+    strategy: p.strategy || null, regime: p.regime || null, events: p.events || [],
   };
   if (full) {
     out.rejected = (p.rejected || []).map(x => ({ code: x.code, name: x.name, changePct: x.changePct, fails: x.fails || [] }));

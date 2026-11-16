@@ -1,4 +1,5 @@
 'use strict';
+const EXC = require('./auto-excursion');
 /* 자동매매 D단계(2026-11-16) — 전략별 장부 + 자동 일지
    · 장부: 가상매매 체결(paper_fills)을 "어느 전략의 매매인지" 나눠 계산한다(직접 매매는 빠짐). 별도 테이블 없이 일지(auto_journal)에 담는다.
      - 매수 체결 → 그날 그 종목을 산 장중 전략(주문 id 우선, 없으면 종목)
@@ -63,7 +64,7 @@ const whyOf = (f, eodSell, closing) => {
 };
 
 /* 장중 전략 하루 일지(순수). fills = 그 전략으로 귀속된 체결. closes = {종목: 공식 종가}(있으면), marks = {종목: 현재가}, prev = 지난 작성 때 값(넘긴 가격 고정용) */
-function buildIntraday({ date, run, fills, marks = {}, closes = {}, prev = {}, today }) {
+function buildIntraday({ date, run, fills, marks = {}, closes = {}, prev = {}, today, exc = null, daily = {} }) {
   const P = run.payload || {}, ords = P.orders || {};
   const codes = Object.entries(ords).filter(([, o]) => (o.filled || 0) > 0).map(([c]) => c);
   const names = {}; (P.picks || []).forEach(p => { names[p.code] = p.name; }); (P.shadow || []).forEach(p => { if (!names[p.code]) names[p.code] = p.name; });
@@ -86,9 +87,11 @@ function buildIntraday({ date, run, fills, marks = {}, closes = {}, prev = {}, t
     }
     const carryMark = held > 0 ? (px0 - buyAvg) * held : 0;
     const pnl = re + carryMark - bf - sf;
+    const ex = EXC.excursionFor(exc, daily, code, date, buyAvg);
     const state = held <= 0 ? 'closed' : carried.has(code) ? 'carried' : P.carryDone ? 'held' : 'pending';
     positions.push({ code, name: names[code] || code, qty: bq, buyAvg: round(buyAvg), sellQty: sq, sellAvg: sq ? round(sa / sq) : null, held, px0: px0 ? round(px0) : null, px0src: src,
-      realized: round(re), carryMark: round(carryMark), fees: round(bf + sf), pnl: round(pnl), cost: round(ba), pct: ba > 0 ? +(pnl / ba * 100).toFixed(2) : null, state });
+      realized: round(re), carryMark: round(carryMark), fees: round(bf + sf), pnl: round(pnl), cost: round(ba), pct: ba > 0 ? +(pnl / ba * 100).toFixed(2) : null, state,
+      mfe: ex ? ex.mfe : null, mae: ex ? ex.mae : null, exSrc: ex ? ex.src : null });
     fb.forEach(f => buys.push({ code, name: names[code] || code, qty: f.qty, price: f.price, amount: round(f.amount), at: f.ts }));
     fs.forEach(f => sells.push({ code, name: names[code] || code, qty: f.qty, price: f.price, amount: round(f.amount), realized: f.realized == null ? null : round(f.realized), fee: round(f.fee), why: whyOf(f, eodSell, false), at: f.ts }));
   }
@@ -229,6 +232,12 @@ function createJournal(deps) {
     const m = {}; (r || []).forEach(x => { if (+x.close > 0) m[x.code] = +x.close; });
     return m;
   }
+  async function loadDaily(date, codes) {   // 그날 일봉 고저(MFE·MAE 근사용)
+    if (!codes.length) return {};
+    const r = await D.sbGet(`daily_price?select=code,high,low&trade_date=eq.${date}&code=in.${inList(codes)}&limit=2000`).catch(() => []);
+    const m = {}; (r || []).forEach(x => { if (+x.high > 0 && +x.low > 0) m[x.code] = { high: +x.high, low: +x.low }; });
+    return m;
+  }
   async function marksNow() {
     try { const ps = D.paper && D.paper.state ? await D.paper.state() : null; const m = {}; if (ps && ps.ok) ps.positions.forEach(p => { if (p.last > 0) m[p.code] = p.last; }); return m; } catch (_) { return {}; }
   }
@@ -247,13 +256,15 @@ function createJournal(deps) {
     const want = new Set([...runs.flatMap(r => Object.keys((r.payload && r.payload.orders) || {})), ...runs.flatMap(r => ((r.payload && r.payload.shadow) || []).map(s => s.code))]);
     const closes = date < (today || '9999') ? await loadCloses(date, [...want]) : {};
     const marks = date === today ? await marksNow() : {};
+    const exc = D.excursion ? await D.excursion().catch(() => null) : null;
+    const daily = date <= (today || '9999') ? await loadDaily(date, [...want]) : {};
     const days = today ? daysBetween(date, today) : 0;
     const rowsOut = [], sums = [];
     const px0All = {};
     for (const run of runs) {
       const sid = run.strategy_id || (run.payload.strategy && run.payload.strategy.id);
       const prev = ex[sid] && ex[sid].payload ? ex[sid].payload : {};
-      const j = buildIntraday({ date, run, fills: att.filter(f => f.sid === sid && f.leg === 'intraday'), marks, closes, prev: { px0: prev.px0, src: prev.px0src }, today });
+      const j = buildIntraday({ date, run, fills: att.filter(f => f.sid === sid && f.leg === 'intraday'), marks, closes, prev: { px0: prev.px0, src: prev.px0src }, today, exc, daily });
       // 공식 종가가 아직 없어도 4일이 지나면 확정(더 기다려도 오지 않음)
       if (!j.closeFinal && days >= 4) j.closeFinal = true;
       const settled = phase >= 2 || date < (today || '9999');

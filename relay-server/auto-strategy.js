@@ -39,6 +39,7 @@ const SCHEMA = {
     F('sectorMax', '후보 수', '같은 업종 최대', 'num', 2, { min: 1, max: 5, step: 1, unit: '개' }),
     F('weights', '점수', '배점(합계 100)', 'weights', { flow: 40, cttr: 15, rise: 15, amt: 15, trend: 15 }, { parts: { flow: '수급', cttr: '체결강도', rise: '상승률', amt: '거래대금', trend: '추세' } }),
     F('perStockKrw', '매수 주문', '종목당 금액', 'num', 1000000, { min: 100000, max: 50000000, step: 10000, unit: '원' }),
+    F('totalCapKrw', '매수 주문', '총액 상한(0=없음)', 'num', 0, { min: 0, max: 500000000, step: 1000000, unit: '원' }),
     F('buyPick', '매수 주문', '매수가', 'enum', 'q1', { opts: ENUM.buyPick }),
     F('recheckPct', '매수 주문', '승인 후 재확인 허용 변동', 'num', 1.5, { min: 0.5, max: 5, step: 0.1, unit: '%' }),
     F('fillWaitMin', '매수 주문', '미체결 정정·취소 대기', 'num', 3, { min: 1, max: 10, step: 1, unit: '분' }),

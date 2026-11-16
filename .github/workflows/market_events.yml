@@ -1,0 +1,34 @@
+name: "[상시6] 시장 이벤트(실적·IR·만기일) | 평일 08:30·10:00·20:50 | 169_market_events"
+
+# 자동매매 보강 E2(2026-11-16): 후보 종목의 실적 발표·IR 공시(DART)와 선물·옵션 만기일·지수 정기변경·FOMC 일정을 market_events 에 저장 — 표시용(매수 제외 안 함)
+#  · 평일 08:30 KST(장전) · 10:00(장중 공시) · 20:50(장 마감 뒤 공시 → 다음 날 표시)
+#  · 수동 일정은 market_events_manual.json 을 고치면 다음 실행 때 반영
+on:
+  schedule:
+    - cron: "30 23 * * 0-4"   # 08:30 KST 월~금
+    - cron: "0 1 * * 1-5"     # 10:00 KST
+    - cron: "50 11 * * 1-5"   # 20:50 KST
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'DART 조회 일수(백필은 10)'
+        default: '3'
+permissions:
+  contents: write
+jobs:
+  events:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency: { group: market-events, cancel-in-progress: false }
+    env:
+      DART_API_KEY: ${{ secrets.DART_API_KEY }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install psycopg2-binary requests holidays
+      - run: python 169_market_events.py "${{ github.event.inputs.days || '3' }}" | tee market_events_report.md
+      - if: always()
+        uses: ./.github/actions/publish-report
+        with: { branch: market-events-report, file: market_events_report.md }

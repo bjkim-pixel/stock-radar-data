@@ -11,6 +11,7 @@
    · 중복 방지: 주문 전에 auto_runs 에 '주문 의도(intent)'를 먼저 저장. 서버가 재시작돼 결과를 모르면 가상매매 주문 목록에서
      같은 종목 매수 주문을 찾아 이어받고, 못 찾으면 다시 내지 않고 '확인 불가'로 알린다 */
 
+const { capCheck } = require('./auto-risk');
 const TICKS = [[2000, 1], [5000, 5], [20000, 10], [50000, 50], [200000, 100], [500000, 500]];
 const EOK = 1e8;
 const tickOf = p => { for (const [lim, t] of TICKS) if (p < lim) return t; return 1000; };
@@ -155,6 +156,10 @@ function createExec(deps) {
       const cur = payload.orders && payload.orders[code];
       if (cur && cur.st) { lines.push(`· ${notice.name}: 이미 처리됨(${cur.st})`); continue; }
       let r;
+      if (opt && opt.totalCapKrw > 0 && D.exposure) {   // 총액 상한: 새 주문이 상한을 넘으면 이 종목만 사지 않음(기존 보유는 그대로)
+        const ck = capCheck(opt.totalCapKrw, await D.exposure().catch(() => null), perStock);
+        if (!ck.ok) { await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'skipped', why: ck.why, at: now() }; }); lines.push(`· ${notice.name}: 매수 안 함 — ${ck.why}`); continue; }
+      }
       try { r = await placeOne(date, code, notice, perStock, opt); } catch (e) { r = { st: 'failed', why: e.message }; }
       if (r.st === 'skipped') {
         await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = { st: 'skipped', why: r.why, at: now() }; });

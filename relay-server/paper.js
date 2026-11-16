@@ -434,7 +434,7 @@ function createPaper(deps) {
   /* ── 조회 ── */
   const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, queueAhead: o.queueAhead, reason: o.reason, note: o.note, venue: o.venue || null });
   const pubFill = f => ({ id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee, realized: f.realized, reason: f.reason });
-  const pubPos = p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, plan: p.plan, stop: stopOf(p), last: (lastPx.get(p.code) || {}).price || null,
+  const pubPos = p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, plan: p.plan, stop: stopOf(p), last: (lastPx.get(p.code) || {}).price || null, dayHigh: p.highSeen || null, dayLow: p.lowSeen || null,
     avail: p.qty - remainOf(openFor(p.code, o => o.side === 'sell' && !isTp(o))) });
   async function state() {
     if (!(await init())) return bad(503, missing ? 'paper tables missing' : 'paper store unavailable');
