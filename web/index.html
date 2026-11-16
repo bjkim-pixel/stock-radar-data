@@ -1027,6 +1027,9 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-chip.ok{border-color:var(--good);color:var(--good)}.au-chip.bad{border-color:var(--crit);color:var(--crit)}
 .au-chips{display:flex;flex-wrap:wrap;gap:4px}
 .au-tm{font-variant-numeric:tabular-nums;color:var(--warn)}.au-tmr{margin-top:4px;font-size:12.5px}
+.au-no{display:inline-block;min-width:17px;height:17px;line-height:17px;margin-right:5px;padding:0 4px;box-sizing:border-box;border-radius:9px;background:var(--ink-3);color:#fff;font-size:10.5px;font-weight:700;text-align:center;vertical-align:1px;font-variant-numeric:tabular-nums}
+.au-no.done{background:var(--good)}.au-no.now{background:var(--warn)}.au-no.idle,.au-no.wait,.au-no.skip{background:var(--ink-3)}.au-no.miss{background:var(--ink-3);opacity:.7}
+.au-sec.au-s-done{border-left:4px solid var(--good)}.au-sec.au-s-now{border-left:4px solid var(--warn)}.au-sec.au-s-wait,.au-sec.au-s-idle,.au-sec.au-s-miss{border-left:4px solid var(--ink-3)}
 .au-sec{scroll-margin-top:70px}.au-flash{animation:auFlash 1.8s ease-out}
 @keyframes auFlash{0%{box-shadow:0 0 0 3px var(--warn)}100%{box-shadow:0 0 0 0 transparent}}
 .au-flow{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin-bottom:6px;font-size:12px}.au-flow span{padding:2px 8px;border-radius:6px;border:1px solid var(--border);color:var(--ink-3)}.au-flow span.on{border-color:var(--good);color:var(--ink);font-weight:600}.au-flow i{color:var(--ink-3);font-style:normal}
@@ -11165,7 +11168,7 @@ function auStepsI(sid){
 }
 function auLane(name,L,sid){
   const lab={done:"완료",idle:"무응답·유지",now:"진행 중",wait:"대기",miss:"지남",skip:"없음"};
-  return `<div class="au-lane"><div class="au-lname">${name}</div><div class="au-tl">${L.map(x=>`<div class="au-st ${x.s}${x.key?" au-go":""}"${x.key?` data-austep="${trdEsc(x.sid||sid||"")}|${x.key}" role="button" tabindex="0" title="누르면 아래 자세한 진행으로 이동"`:""}><div class="au-sh"><span class="au-t">${x.next?"내일 ":""}${x.t!=null?auHM(x.t):"–"}${x.range?" "+x.range:""}</span><span class="au-b">${lab[x.s]}</span></div><div class="au-sl">${trdEsc(x.label)}</div>${x.note?`<div class="au-sn">${trdEsc(x.note)}</div>`:""}</div>`).join("")}</div></div>`;
+  return `<div class="au-lane"><div class="au-lname">${name}</div><div class="au-tl">${L.map((x,xi)=>`<div class="au-st ${x.s}${x.key?" au-go":""}"${x.key?` data-austep="${trdEsc(x.sid||sid||"")}|${x.key}" role="button" tabindex="0" title="누르면 아래 자세한 진행으로 이동"`:""}><div class="au-sh"><span class="au-t"><span class="au-no ${x.s}">${xi+1}</span>${x.next?"내일 ":""}${x.t!=null?auHM(x.t):"–"}${x.range?" "+x.range:""}</span><span class="au-b">${lab[x.s]}</span></div><div class="au-sl">${trdEsc(x.label)}</div>${x.note?`<div class="au-sn">${trdEsc(x.note)}</div>`:""}</div>`).join("")}</div></div>`;
 }
 /* 상단 '지금' 바: 전략마다 한 줄 — 지금 하는 일 · 남은 시간 · 오늘 매수 수 · 다음 검토 */
 function auNowLine(sid){
@@ -11288,7 +11291,17 @@ function auPendingCard(sid,p,D){
       <div class="au-bks">${q?auBook(q,buy,"지금 호가"):""}</div></div></div>`;
 }
 /* 섹션 머리 + 앵커 */
-const auSec=(sid,key,title,sub,body,open)=>`<div class="card au-sec" id="au-sec-${trdEsc(sid)}-${key}"><h3>${auTag(sid)} · ${title} <span class="r faint" style="font-size:11px">${sub||""}</span></h3>${body}</div>`;
+/* 위 단계 블록과 같은 번호·색: 섹션 key에 해당하는 단계 번호(여러 개면 2·3)와 진행 상태(진행 중>지남>완료>무응답>대기) */
+function auSecStep(sid,key){
+  let L=[];
+  try{L=(key==="cb"||key==="judgeN")?auStepsC():auStepsI(sid);}catch(e){}
+  const m=[];L.forEach((x,i)=>{if(x.key===key&&x.s!=="skip")m.push({n:i+1,s:x.s});});
+  if(!m.length)return {no:"",s:""};
+  const ss=m.map(x=>x.s),has=v=>ss.includes(v);
+  const s=has("now")?"now":has("miss")?"miss":ss.every(v=>v==="done")?"done":ss.every(v=>v==="done"||v==="idle")?"idle":"wait";
+  return {no:m.map(x=>x.n).join("·"),s};
+}
+const auSec=(sid,key,title,sub,body,open)=>{const z=auSecStep(sid,key);return `<div class="card au-sec${z.s?" au-s-"+z.s:""}" id="au-sec-${trdEsc(sid)}-${key}"><h3>${z.no?`<span class="au-no ${z.s}">${z.no}</span>`:""}${auTag(sid)} · ${title} <span class="r faint" style="font-size:11px">${sub||""}</span></h3>${body}</div>`;};
 function auGo(sid,key){
   const el=document.getElementById(`au-sec-${sid}-${key}`)||document.getElementById("au-sec-hold");
   if(!el)return;
@@ -11352,7 +11365,7 @@ function auRunHtml(sid){
   if(R.on){
     const rounds=[];for(let n=1;n<=Math.max(R.cur,1);n++)rounds.push(n);
     h+=auSec(sid,"rounds","장중 반복 검토",`${R.rm}분마다 · ${auHM(auT(sid).sel)}~${auHM(R.end)} · 오늘 매수 ${auPlaced(D)}/${R.cap}종목 · ${R.next?`다음 ${auHM(R.next.t)}(${R.next.n}회차)`:"검토 종료"}`,
-      `<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>회차</th><th>새 후보</th><th>결과</th></tr></thead><tbody>${rounds.map(n=>{const ps=D.picks.filter(x=>(x.round||1)===n);return `<tr><td>${n}회차${n===1?` <span class="faint">${auHM(auT(sid).sel)}</span>`:""}</td><td style="white-space:normal">${ps.length?ps.map(x=>trdEsc(x.name)).join(", "):'<span class="faint">없음</span>'}</td><td style="white-space:normal">${ps.length?ps.map(x=>{const o=D.orders.find(y=>y.code===x.code);return `${trdEsc(x.name)}: ${o?trdEsc(AU_ORD[o.st]||o.st)+(o.tries&&o.tries.length?` (${o.tries.length+(o.st==="retry"?0:1)}번 시도)`:""):x.closed?"사지 않음":"주문 전"}`;}).join(" · "):""}</td></tr>`;}).join("")}</tbody></table></div>${lg(["round"]).map(lgLine).join("")}`);
+      `<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>회차</th><th>새 후보</th><th>결과</th></tr></thead><tbody>${rounds.map(n=>{const ps=D.picks.filter(x=>(x.round||1)===n);return `<tr><td>${n}회차${n===1?` <span class="faint">${auHM(auT(sid).sel)}</span>`:""}</td><td style="white-space:normal">${ps.length?ps.map(x=>trdEsc(x.name)).join(", "):'<span class="faint">없음</span>'}</td><td style="white-space:normal">${ps.length?ps.map(x=>{const o=D.orders.find(y=>y.code===x.code);return `${trdEsc(x.name)}: ${o?trdEsc(AU_ORD[o.st]||o.st)+(o.tries&&o.tries.length?` (${o.tries.length+(o.st==="retry"?0:1)}번 시도)`:""):x.closed?"사지 않음":"주문 전"}`;}).join(" · "):""}</td></tr>`;}).join("")}</tbody></table></div>${lg(["round"]).length?`<details class="au-rej"><summary>회차별 검토 기록 ${N(lg(["round"]).length)}건</summary>${lg(["round"]).map(lgLine).join("")}</details>`:""}`);
   }
   const ordsR=D.orders.filter(o=>o.st!=="retry"),noOrd=D.picks.filter(x=>!x.closed&&!ordsR.some(o=>o.code===x.code));
   h+=auSec(sid,"order","매수 · 손절 · 익절",`${ordsR.length?`주문 ${ordsR.length}종목 · 체결 ${ordsR.filter(o=>o.filled>0).length}`:"아직 주문 없음"}${R.on?` · 하루 최대 ${R.cap}종목`:""}`,
