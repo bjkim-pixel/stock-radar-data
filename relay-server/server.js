@@ -504,12 +504,12 @@ function handleProgramTradeMessage(countStr, dataStr) {
 // 양은 SCAN 2건/분 + 간헐적 시세조회뿐이라 5건/초로 낮춰도 손해가 없고,
 // 배치(12) + 릴레이(5) = 17건/초로 한도 안에 들어온다.
 const KIS_REST_RATE_MIN_INTERVAL_MS = 200; // 초당 5회
-let _kisRestLastCall = 0;
-async function kisRestThrottle() {
-  const wait = KIS_REST_RATE_MIN_INTERVAL_MS - (Date.now() - _kisRestLastCall);
-  if (wait > 0) await new Promise(r => setTimeout(r, wait));
-  _kisRestLastCall = Date.now();
-}
+/* 2026-11-16: 예전 구현은 동시에 들어온 호출이 같은 시간만 기다리고 한꺼번에 나가는 버스트가 있었다 → 호출마다 자기 차례를 즉시 예약(kis-throttle.js) */
+const KIS_THROTTLE = require('./kis-throttle');
+const _kisThrottle = KIS_THROTTLE.createThrottle({ intervalMs: KIS_REST_RATE_MIN_INTERVAL_MS });
+const kisStats = KIS_THROTTLE.createStats({ log: m => console.log(m) });
+setInterval(() => { try { kisStats.flush(); } catch (_) {} }, 15000).unref();
+async function kisRestThrottle() { return _kisThrottle.wait(); }
 
 let kisAccessToken = null;
 let kisAccessTokenExpiresAt = 0; // ms epoch
@@ -3546,11 +3546,18 @@ function handleLiveMarket(req, res) {
    응답 필드명은 이름 패턴으로 읽음 — /stock-member?code=…&raw=1, /stock-investor?code=…&raw=1 로 원본 확인 ── */
 const _stkInfo = new Map();                                // key -> {at, v}
 async function kisQuoteGet(path, tr, params) {
-  await kisRestThrottle();
-  const token = await getKisRestToken();
-  const res = await fetch(`${KIS_REST_BASE}${path}?${new URLSearchParams(params)}`, { headers: kisRestHeaders(token, tr), signal: AbortSignal.timeout(8000) });
-  const j = await res.json().catch(() => ({}));
-  return { http: res.status, ok: res.ok && j.rt_cd === '0', body: j };
+  const t0 = Date.now(); const waitMs = await kisRestThrottle();
+  try {
+    const token = await getKisRestToken();
+    const res = await fetch(`${KIS_REST_BASE}${path}?${new URLSearchParams(params)}`, { headers: kisRestHeaders(token, tr), signal: AbortSignal.timeout(8000) });
+    const j = await res.json().catch(() => ({}));
+    const ok = res.ok && j.rt_cd === '0';
+    kisStats.record({ trId: tr, ok, kind: ok ? null : (j.msg_cd === 'EGW00201' || res.status === 429 ? 'ratelimit' : 'other'), waitMs, ms: Date.now() - t0, msg: ok ? null : `${tr} ${res.status} ${j.msg_cd || ''}` });
+    return { http: res.status, ok, body: j };
+  } catch (e) {
+    kisStats.record({ trId: tr, ok: false, kind: KIS_THROTTLE.classify(e), waitMs, ms: Date.now() - t0, msg: `${tr} ${e.message}`.slice(0, 120) });
+    throw e;
+  }
 }
 const numOf = v => { if (v == null || v === '') return null; const n = Number(String(v).replace(/,/g, '')); return Number.isFinite(n) ? n : null; };
 function parseMember(j) {
@@ -3634,14 +3641,32 @@ const trade = require('./trade').createTrade({
   env: { ...process.env, SUPABASE_URL, SUPABASE_ANON_KEY }, sbWrite, sbGet: SUPABASE_SERVICE_KEY ? sbGet : null, allowedOrigins: ALLOWED_ORIGINS,
   notify: (text, opts) => notifyAll(text, opts),
   // KIS 시세 조회(읽기 전용): 기존 REST 토큰·호출 간격 제한을 그대로 사용
+  /* 2026-11-16: 읽기 전용이라 일시 오류(한도 초과·타임아웃·네트워크)는 짧게 한 번 더 시도하고, 실패하면 원인을 로그에 남긴다 */
   kisGet: async (path, trId, params) => {
-    await kisRestThrottle();
-    const token = await getKisRestToken();
-    const res = await fetch(`${KIS_REST_BASE}${path}?${new URLSearchParams(params)}`, { headers: kisRestHeaders(token, trId), signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`KIS ${trId} ${res.status}`);
-    const j = await res.json();
-    if (j.rt_cd !== '0') throw new Error(`KIS ${trId} ${j.msg_cd || ''}`);
-    return j;
+    const who = (params && (params.FID_INPUT_ISCD || params.PDNO)) || '';
+    let retried = false;
+    for (let attempt = 0; ; attempt++) {
+      const t0 = Date.now(); let waitMs = 0;
+      try {
+        waitMs = await kisRestThrottle();
+        const token = await getKisRestToken();
+        const res = await fetch(`${KIS_REST_BASE}${path}?${new URLSearchParams(params)}`, { headers: kisRestHeaders(token, trId), signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw new Error(`KIS ${trId} ${res.status}`);
+        const j = await res.json();
+        if (j.rt_cd !== '0') throw new Error(`KIS ${trId} ${j.msg_cd || ''} ${j.msg1 || ''}`.trim());
+        kisStats.record({ trId, ok: true, waitMs, ms: Date.now() - t0, retried });
+        return j;
+      } catch (e) {
+        const kind = KIS_THROTTLE.classify(e), ms = Date.now() - t0;
+        const cause = e && e.cause && (e.cause.code || e.cause.message) ? ` (${e.cause.code || e.cause.message})` : '';
+        const willRetry = attempt < 1 && KIS_THROTTLE.retryable(kind);
+        console.log(`[KIS실패] ${trId} ${who} ${kind} ${ms}ms 대기 ${waitMs}ms${willRetry ? ' → 재시도' : ''} — ${e.message}${cause}`);
+        kisStats.record({ trId, ok: false, kind, waitMs, ms, retried, msg: `${trId} ${who} ${e.message}`.slice(0, 120) });
+        if (!willRetry) throw e;
+        retried = true;
+        await new Promise(r => setTimeout(r, kind === 'ratelimit' ? 600 : 250));
+      }
+    }
   },
   /* 실전 주문 전용(kis-order.js 만 사용). 자동 재시도 없음 — 응답을 못 받으면 code='UNKNOWN'(주문이 들어갔을 수도 있음),
      KIS 가 처리를 거부하면 code='REJECT'(주문 안 됨). 요청 본문(계좌번호 포함)은 로그에 남기지 않음 */

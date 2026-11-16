@@ -92,6 +92,7 @@ function createPaper(deps) {
     if (key) { const t = warned.get(key); if (t && now() - t < 600000) return; warned.set(key, now()); }
     try { deps.alert && deps.alert(text, '가상매매'); } catch (_) {}
   }
+  const QW = require('./quote-watch').createQuoteWatch({ tag: 'paper', notify: (t, k) => notify(t, k), now: () => now() });
   function event(kind, code, detail) {
     W('paper_events', 'POST', [{ ts: new Date(now()).toISOString(), kind, code: code || null, detail: detail || null }]).catch(() => {});
   }
@@ -479,7 +480,8 @@ function createPaper(deps) {
 
   /* 종목 하나 점검: 시세 → 체결 판단 → 손절 → 익절(트레일링) → 호가 스냅. 5초 루프와 틱 깨우기(kick)가 같은 코드를 씀 */
   async function checkCode(code, t, fresh) {
-    let q; try { q = await deps.getQuote(code, fresh); } catch (_) { notify(`시세 조회 실패로 감시가 멈춰 있습니다: ${code}`, 'quotefail|' + code); return; }
+    let q; try { q = await deps.getQuote(code, fresh); } catch (e) { QW.fail(code, e); return; }
+    QW.ok(code);
     if (await closedReason(q)) return;
     lastPx.set(code, { price: q.price, ts: now() });
     await lock(async () => {

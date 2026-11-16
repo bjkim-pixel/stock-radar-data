@@ -64,6 +64,7 @@ function createLive(deps) {
     if (key) { const t = warned.get(key); if (t && now() - t < 600000) return; warned.set(key, now()); }
     try { deps.alert && deps.alert(text, '실전매매'); } catch (_) {}
   }
+  const QW = require('./quote-watch').createQuoteWatch({ tag: 'live', notify: (t, k) => notify(t.replace(/^/, '[실전] '), k), now: () => now() });
   const W = (path, method, body) => deps.sbWrite(path, method, body);
   function event(kind, code, detail) { W('live_events', 'POST', [{ ts: new Date(now()).toISOString(), kind, code: code || null, detail: detail || null }]).catch(() => {}); }
 
@@ -504,7 +505,8 @@ function createLive(deps) {
   }
   /* 종목 하나 점검(시세 → 손절 → 트레일링 익절). 5초 루프와 틱 깨우기(kick)가 같은 코드를 씀 */
   async function checkCode(code, fresh) {
-    let q; try { q = await deps.getQuote(code, fresh); } catch (_) { notify(`[실전] 시세 조회 실패로 감시가 멈춰 있습니다: ${code}`, 'quotefail|' + code); return; }
+    let q; try { q = await deps.getQuote(code, fresh); } catch (e) { QW.fail(code, e); return; }
+    QW.ok(code);
     if (await closedReason(q)) return;
     lastPx.set(code, { price: q.price, ts: now() });
     await lock(async () => { const stopped = await stopCheck(code, q); if (!stopped) await syncTp(code, q); await flush(); });
