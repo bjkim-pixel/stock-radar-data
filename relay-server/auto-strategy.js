@@ -14,6 +14,7 @@ const ENUM = {
   buyPick: { q1: '잔량 최다 매수 호가', bid1: '최우선 매수 호가', low: '가장 낮은 매수 호가' },
   eodWeak: { ask: '알림 후 승인 시에만 정리', keep: '묻지 않고 유지' },
   approval: { manual: '텔레그램 승인 필수', auto: '알림 후 자동 매수' },
+  cbApproval: { auto: '알림 직후 자동 매수', manual: '텔레그램·사이트 승인 필수' },
   carryFlow: { any: '외국인·기관 중 하나', both: '외국인·기관 둘 다', ignore: '보지 않음' },
   regimeMode: { info: '표시만', scale: '종목당 금액 조절' },
   repriceTo: { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' },
@@ -74,6 +75,14 @@ const SCHEMA = {
     F('highNearPct', '넘길 자격', '당일 고가 대비 이내', 'num', 2, { min: 0.5, max: 5, step: 0.5, unit: '%' }),
     F('carryFlow', '넘길 자격', '수급', 'enum', 'any', { opts: ENUM.carryFlow }),
     F('idxFloor', '넘길 자격', '지수 하한(코스피·코스닥)', 'num', -1, { min: -3, max: 0, step: 0.1, unit: '%' }),
+    F('closeBuyOn', '종가베팅 저녁 매수(NXT)', '저녁에 새 후보를 골라 매수', 'bool', true),
+    F('closeBuyAt', '종가베팅 저녁 매수(NXT)', '후보 선정·알림 시각', 'time', '19:05', { min: '16:00', max: '19:30' }),
+    F('closeBuyEnd', '종가베팅 저녁 매수(NXT)', '승인·주문 마감 시각', 'time', '19:45', { min: '16:10', max: '19:55' }),
+    F('closeBuyMax', '종가베팅 저녁 매수(NXT)', '하루 최대 매수 종목 수', 'num', 3, { min: 1, max: 10, step: 1, unit: '종목' }),
+    F('closeBuyHighPct', '종가베팅 저녁 매수(NXT)', '당일 고가 대비 종가 낙폭 한도', 'num', 5, { min: 1, max: 10, step: 0.5, unit: '%' }),
+    F('closeBuyPenaltyFrom', '종가베팅 저녁 매수(NXT)', '이 낙폭부터 점수 감점', 'num', 2, { min: 0.5, max: 5, step: 0.5, unit: '%' }),
+    F('closeBuyPenaltyMax', '종가베팅 저녁 매수(NXT)', '낙폭 한도에서의 최대 감점', 'num', 30, { min: 0, max: 60, step: 5, unit: '점' }),
+    F('closeBuyApproval', '종가베팅 저녁 매수(NXT)', '매수 승인 방식', 'enum', 'auto', { opts: ENUM.cbApproval }),
     F('overnightStopPct', '오버나잇', '밤새 유지할 손절', 'num', 5, { min: 2, max: 10, step: 0.5, unit: '%' }),
     F('gapCut', '다음 날 매도', '갭 하락 즉시 전량', 'num', -3, { min: -10, max: -1, step: 0.5, unit: '%' }),
     F('slices', '다음 날 매도', '분할 매도 시각', 'times', ['09:05', '09:10', '09:15'], { min: '09:01', max: '10:00', maxLen: 5 }),
@@ -142,6 +151,9 @@ function validate(kind, input, base) {
     if (reply > 15 * 60 + 25) errs.push({ key: 'replyMin', msg: `정규장 종목 답 마감이 ${hhmm(reply)}입니다(15:25 이전이어야 함)` });
     else if (tmin(val.nxtJudgeAt) <= reply) errs.push({ key: 'nxtJudgeAt', msg: 'NXT 종목 판정 시각은 정규장 종목 답 마감보다 늦어야 합니다' });
     else if (nreply > tmin(val.convertAt)) errs.push({ key: 'nxtReplyMin', msg: `NXT 종목 답 마감이 ${hhmm(nreply)}입니다(오버나잇 전환 ${val.convertAt} 이전이어야 함)` });
+    else if (tmin(val.closeBuyEnd) <= tmin(val.closeBuyAt)) errs.push({ key: 'closeBuyEnd', msg: '종가베팅 매수 마감은 선정 시각보다 늦어야 합니다' });
+    else if (tmin(val.closeBuyEnd) > tmin(val.convertAt) - 5) errs.push({ key: 'closeBuyEnd', msg: `종가베팅 매수 마감은 오버나잇 전환(${val.convertAt}) 5분 전까지여야 합니다` });
+    else if (val.closeBuyPenaltyFrom >= val.closeBuyHighPct) errs.push({ key: 'closeBuyPenaltyFrom', msg: '감점 시작 낙폭은 낙폭 한도보다 작아야 합니다' });
   }
   return errs.length ? { errs } : { val };
 }
@@ -166,12 +178,12 @@ function diff(kind, a, b) {
 function timesOf(I, C) {
   const sel = tmin(I.selectAt), notice = sel + I.noticeAfter, deadline = notice + I.approveWindow;
   const judge = tmin(C.judgeAt), reply = judge + C.replyMin, njudge = tmin(C.nxtJudgeAt), nreply = njudge + C.nxtReplyMin;
-  return { sel, notice, deadline, selEnd: deadline + 30, judge, reply, njudge, nreply, convert: tmin(C.convertAt), slices: C.slices.map(tmin) };
+  return { sel, notice, deadline, selEnd: deadline + 30, judge, reply, njudge, nreply, cbAt: tmin(C.closeBuyAt), cbEnd: tmin(C.closeBuyEnd), convert: tmin(C.convertAt), slices: C.slices.map(tmin) };
 }
 
 const BUILTIN = [
   { id: 'intraday-default', name: '수급 돌파 장중', kind: 'intraday', builtin: true, desc: '오전 외국인·기관·프로그램 동시 순매수 + 체결강도 강세 종목을 사서 당일 손절·5분할 익절' },
-  { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: '15:00(정규장 종목)·19:00(NXT 종목)에 약한 종목을 승인 후 정리하고, 강한 종목은 들고 가서 다음 날 아침 3분할 매도' },
+  { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: '15:00(정규장 종목)·19:00(NXT 종목)에 약한 종목을 승인 후 정리하고, 19:05에 종가 강한 NXT 종목을 새로 골라 사서, 강한 종목은 들고 가 다음 날 아침 3분할 매도' },
 ];
 const builtinRow = b => ({ ...b, enabled: true, archived: false, version: 1, params: defaults(b.kind), updated_at: null });
 

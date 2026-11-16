@@ -103,7 +103,7 @@ function makeOrder({ q, rows, perStockKrw, opt = {} }) {
   const capEok = Math.max(avg5, q.amt || 0) / EOK;
   const prevHigh = rows.length ? Math.max(...rows.map(r => (+r.high > 0 ? +r.high : +r.close))) : 0;
   const tgt = calcTarget({ cur, prof: buildProfile(rows), capEok, coef: o.coef, prevHigh, upper: q.upper, stopPct: o.stopPct, rr: o.rr });
-  const steps = tgt.target ? splitPlan(buy, tgt.target, qty, o.split, o.minPct).steps.filter(s => s.q > 0) : [];
+  const steps = tgt.target && !o.noTp ? splitPlan(buy, tgt.target, qty, o.split, o.minPct).steps.filter(s => s.q > 0) : [];   // noTp(종가베팅 저녁 매수): 익절 없이 손절만 걸고 다음 날 아침 분할 매도
   const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q })) };
   return { buy, qty, plan, target: tgt.target, mode: tgt.mode, pick: pick ? pick.k : 'cur' };
 }
@@ -120,13 +120,13 @@ function recheck(q, notice, opt = {}) {
   if (!q || !(q.price > 0)) return ['시세 없음'];
   if (q.vi) why.push('VI 발동 중');
   if ((q.warnings || []).some(w => /거래정지|정리매매|관리종목|투자위험|투자경고/.test(w))) why.push(`경고 종목(${q.warnings.join(',')})`);
-  if (q.strength == null) why.push('체결강도 없음'); else if (q.strength < o.cttrMin) why.push(`체결강도 ${Math.round(q.strength)}%`);
+  if (!o.closing) { if (q.strength == null) why.push('체결강도 없음'); else if (q.strength < o.cttrMin) why.push(`체결강도 ${Math.round(q.strength)}%`); }   // 종가베팅 저녁 매수는 애프터마켓이라 체결강도·시가 대비는 보지 않음
   if (notice && notice.price > 0) {
     const d = (q.price / notice.price - 1) * 100;
     if (d > o.recheckPct) why.push(`알림 후 +${d.toFixed(1)}% 더 오름`);
     if (d < -o.recheckPct) why.push(`알림 후 ${d.toFixed(1)}% 밀림`);
   }
-  if (q.open > 0 && Math.round((q.price / q.open - 1) * 1e4) / 100 > o.openRiseMax) why.push(`시가 대비 +${((q.price / q.open - 1) * 100).toFixed(1)}%`);
+  if (!o.closing && q.open > 0 && Math.round((q.price / q.open - 1) * 1e4) / 100 > o.openRiseMax) why.push(`시가 대비 +${((q.price / q.open - 1) * 100).toFixed(1)}%`);
   return why;
 }
 
@@ -136,8 +136,8 @@ function unfilledText(o) {
   const a = o.repriceTo === 'none' ? `미체결은 ${wm}분 뒤 정정하지 않고` : `미체결은 ${wm}분 뒤 ${REPRICE_KO[o.repriceTo] || '매수 1호가'}로 한 번 정정,`;
   return `${a} 다시 ${cm}분 뒤 남으면 ${o.unfilledEnd === 'keep' ? '장 마감까지 그대로 둬요' : '취소해요'}.`;
 }
-function planText(r) {
-  const s = r.plan.steps.length ? `익절 ${r.plan.steps.map(x => fmt(x.p)).join(' / ')}` : '익절 없음(목표가를 못 정함 — 매매 화면에서 직접 설정)';
+function planText(r, closing) {
+  const s = closing ? '익절 없음(다음 날 아침 분할 매도)' : r.plan.steps.length ? `익절 ${r.plan.steps.map(x => fmt(x.p)).join(' / ')}` : '익절 없음(목표가를 못 정함 — 매매 화면에서 직접 설정)';
   return `손절 ${fmt(r.plan.stop)}원(−${r.plan.stopPct}%) · ${s}`;
 }
 
@@ -197,13 +197,14 @@ function createExec(deps) {
   /* 승인 처리: 승인한 종목을 차례로 주문. 반환 = 텔레그램 답장 */
   async function approve(date, payload) {
     const ps0 = D.perStock ? await D.perStock() : null, perStock = ps0 > 0 ? ps0 : 1000000;
-    const opt = D.opt ? await D.opt() : {};
+    const opt0 = D.opt ? await D.opt() : {};
     const lines = [`🛒 가상 매수 · 종목당 ${fmt(perStock)}원`];
     for (const code of payload.approved || []) {
       const notice = (payload.picks || []).find(p => p.code === code) || { code, name: code };
       const cur = payload.orders && payload.orders[code];
       if (cur && cur.st && cur.st !== 'retry') { lines.push(`· ${notice.name}: 이미 처리됨(${cur.st})`); continue; }
       let r;
+      const opt = notice.cb ? { ...opt0, ...(D.optCb ? await D.optCb() : { closing: true, noTp: true, minRr: 0 }) } : opt0;   // 종가베팅 저녁 매수 후보는 별도 조건(손절 −5%·익절 없음·체결강도 안 봄)
       if (opt && opt.totalCapKrw > 0 && D.exposure) {   // 총액 상한: 새 주문이 상한을 넘으면 이 종목만 사지 않음(기존 보유는 그대로)
         const ck = capCheck(opt.totalCapKrw, await D.exposure().catch(() => null), perStock);
         if (!ck.ok) { await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; run.payload.orders[code] = keepTries(run.payload.orders[code], { st: 'skipped', why: ck.why, at: now() }); LOG.push(run.payload, 'skip', `${notice.name}: 매수 안 함 — ${ck.why}`, { code }, now()); }); lines.push(`· ${notice.name}: 매수 안 함 — ${ck.why}`); continue; }
@@ -216,10 +217,10 @@ function createExec(deps) {
       else {
         const o = r.order, ord = r.ord;
         lines.push(`· ${notice.name}: ${o.status === 'filled' ? `체결 ${fmt(o.filled)}주 평균 ${fmt(o.avg)}원` : `${fmt(ord.buy)}원 ${fmt(ord.qty)}주 지정가 대기${o.filled ? ` (일부 ${fmt(o.filled)}주 체결)` : ''}`}`);
-        lines.push(`  ${planText(ord)}`);
+        lines.push(`  ${planText(ord, !!notice.cb)}`);
       }
     }
-    lines.push('', unfilledText({ ...DEF, ...(opt || {}) }));
+    lines.push('', unfilledText({ ...DEF, ...(opt0 || {}) }));
     return lines.join('\n');
   }
 

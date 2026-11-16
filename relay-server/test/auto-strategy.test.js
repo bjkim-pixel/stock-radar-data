@@ -17,13 +17,13 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   I0.eodTimeout = 'keep';                                                           // 165 에는 있었지만 지금은 없는 설정(무응답이면 항상 유지) — 저장돼 있어도 검증이 버림
   assert.deepEqual(js[0], I0);
   assert.deepEqual(S.validate('intraday', js[0]).val, S.defaults('intraday'));
-  const LATER_C = ['nxtJudgeAt', 'nxtReplyMin'], C0 = Object.fromEntries(Object.entries(S.defaults('closing')).filter(([k]) => !LATER_C.includes(k)));
+  const LATER_C = ['nxtJudgeAt', 'nxtReplyMin', 'closeBuyOn', 'closeBuyAt', 'closeBuyEnd', 'closeBuyMax', 'closeBuyHighPct', 'closeBuyPenaltyFrom', 'closeBuyPenaltyMax', 'closeBuyApproval'], C0 = Object.fromEntries(Object.entries(S.defaults('closing')).filter(([k]) => !LATER_C.includes(k)));
   assert.deepEqual({ ...js[1], judgeAt: '15:00', replyMin: 20 }, C0);                 // 171 에서 판정 15:00·답 마감 20분으로 바뀜
   assert.deepEqual(S.validate('closing', js[1]).val.nxtJudgeAt, '19:00');
 });
 test('기본 시각(선정 10:05 · 알림 10:15 · 마감 10:30 · 정규장 판정 15:00~15:20 · NXT 판정 19:00~19:40 · 전환 20:00)', () => {
   const T = S.timesOf(S.defaults('intraday'), S.defaults('closing'));
-  assert.deepEqual(T, { sel: 605, notice: 615, deadline: 630, selEnd: 660, judge: 900, reply: 920, njudge: 1140, nreply: 1180, convert: 1200, slices: [545, 550, 555] });
+  assert.deepEqual(T, { sel: 605, notice: 615, deadline: 630, selEnd: 660, judge: 900, reply: 920, njudge: 1140, nreply: 1180, cbAt: 1145, cbEnd: 1185, convert: 1200, slices: [545, 550, 555] });
 });
 test('검증: 범위·단위·배점 합계·교차 조건·시각 순서·선택지', () => {
   const v = (k, p) => S.validate(k, p);

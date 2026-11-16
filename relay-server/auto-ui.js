@@ -11,15 +11,17 @@ const eodOf = e => (e ? { at: e.at, none: !!e.none, items: (e.items || []).map(i
 function summarizeRun(r, full) {
   const p = (r && r.payload) || {}, ords = p.orders || {};
   const names = {}; (p.picks || []).forEach(x => { names[x.code] = x.name; }); (p.shadow || []).forEach(x => { if (!names[x.code]) names[x.code] = x.name; });
+  const cbCodes = new Set((p.picks || []).filter(x => x.cb).map(x => x.code));
   const sid = r.strategy_id || (p.strategy && p.strategy.id) || 'intraday-default';
   const out = {
     date: r.trade_date, status: r.status, sid, key: `${r.trade_date}|${sid}`, letter: p.letter || null,
     decision: p.decision ? { kind: p.decision.kind, nums: p.decision.nums || null } : null,
     warn: p.warn || null, noticeSent: !!p.noticeSent, roundN: p.roundN || 1, roundDeadline: p.roundDeadline || null,
+    cb: p.cb ? { at: p.cb.at || null, done: !!p.cb.done, tries: p.cb.tries || 0, max: p.cb.max || null, deadline: p.cb.deadline || null, approval: p.cb.approval || null, picks: p.cb.picks == null ? null : p.cb.picks, err: p.cb.err || null } : null,
     picks: (p.picks || []).map(x => full
-      ? { code: x.code, name: x.name, score: x.score, price: x.price, open: x.open, changePct: x.changePct, sector: x.sector, smx: x.smx, reasons: x.reasons || [], m: x.m || null, parts: x.parts || null, ratio: x.ratio || null, ev: x.ev || [], round: x.round || 1, closed: !!x.closed, retry: x.retry || 0, retryWhy: x.retryWhy || null }
-      : { code: x.code, name: x.name, score: x.score, price: x.price, round: x.round || 1, closed: !!x.closed, retry: x.retry || 0, retryWhy: x.retryWhy || null }),
-    orders: Object.entries(ords).map(([code, v]) => ({ code, name: names[code] || code, st: v.st, filled: v.filled || 0, avg: v.avg || null, buy: v.buy || null, qty: v.qty || null, why: v.why || null,
+      ? { code: x.code, name: x.name, score: x.score, price: x.price, open: x.open, changePct: x.changePct, sector: x.sector, smx: x.smx, reasons: x.reasons || [], m: x.m || null, parts: x.parts || null, ratio: x.ratio || null, ev: x.ev || [], round: x.round || 1, closed: !!x.closed, retry: x.retry || 0, retryWhy: x.retryWhy || null, cb: !!x.cb, dd: x.dd == null ? null : x.dd, penalty: x.penalty || 0 }
+      : { code: x.code, name: x.name, score: x.score, price: x.price, round: x.round || 1, closed: !!x.closed, retry: x.retry || 0, retryWhy: x.retryWhy || null, cb: !!x.cb }),
+    orders: Object.entries(ords).map(([code, v]) => ({ code, name: names[code] || code, cb: cbCodes.has(code), st: v.st, filled: v.filled || 0, avg: v.avg || null, buy: v.buy || null, qty: v.qty || null, why: v.why || null,
       ...(full ? { buy2: v.buy2 || null, target: v.target || (v.plan && v.plan.target) || null, mode: v.mode || null, pick: v.pick || null, plan: v.plan || null, snap: v.snap || null,
         at: v.at || null, placedAt: v.placedAt || null, modifiedAt: v.modifiedAt || null, filledAt: v.filledAt || null, cancelledAt: v.cancelledAt || null, lowSeen: v.lowSeen || null, noReprice: !!v.noReprice, tries: v.tries || [] } : { nTries: (v.tries || []).length }) })),
     shadow: (p.shadow || []).map(s => ({ code: s.code, name: s.name, price: s.price, score: s.score, changePct: s.changePct, picked: !!s.picked })),
