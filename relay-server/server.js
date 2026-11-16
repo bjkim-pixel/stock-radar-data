@@ -509,7 +509,11 @@ const KIS_THROTTLE = require('./kis-throttle');
 const _kisThrottle = KIS_THROTTLE.createThrottle({ intervalMs: KIS_REST_RATE_MIN_INTERVAL_MS });
 const kisStats = KIS_THROTTLE.createStats({ log: m => console.log(m) });
 setInterval(() => { try { kisStats.flush(); } catch (_) {} }, 15000).unref();
-async function kisRestThrottle() { return _kisThrottle.wait(); }
+/* 우선순위 0 = 가상·실전매매 감시 / 1 = 자동매매(1조↑ 후보 풀·보조지표) / 2 = 화면 조회(기본). 호출 경로는 AsyncLocalStorage 로 전달 */
+const _kisPrio = new (require('async_hooks').AsyncLocalStorage)();
+async function kisRestThrottle(prio) { return _kisThrottle.wait(prio != null ? prio : (_kisPrio.getStore() != null ? _kisPrio.getStore() : 2)); }
+/* 2026-11-16: 옛 전략성과1·2(스윙·상따) 감시는 완전 중지 — 다시 켜려면 Render 환경변수 LEGACY_STRATEGY_MONITOR=1 (KIS 호출·구독 용량을 매매 감시에 우선 배분) */
+const LEGACY_STRATEGY_MONITOR = process.env.LEGACY_STRATEGY_MONITOR === '1';
 
 let kisAccessToken = null;
 let kisAccessTokenExpiresAt = 0; // ms epoch
@@ -1274,6 +1278,7 @@ const SCAN_INTERVAL_MS = 60 * 1000;
 const CANDIDATE_HEARTBEAT_MS = 15 * 1000;
 
 async function candidateEngineHeartbeat() {
+  if (!LEGACY_STRATEGY_MONITOR) return;   // 2026-11-16 상따 후보 발굴(REST 순위·시세 조회) 중지
   // 장 마감 후 "다음 거래일" 장전배치 선생성 (2026-09-16 신설)
   await runEveningPreMarket().catch(err => console.error('[상따후보] 저녁 장전배치 오류:', err.message));
 
@@ -1578,6 +1583,7 @@ async function sbWriteReturning(path, method, body) {
 }
 
 async function refreshSangttaCandidates() {
+  if (!LEGACY_STRATEGY_MONITOR) return;   // 2026-11-16 상따 후보 추적 중지
   try {
     const today = kstDateStr();
     // created_at desc로 정렬해 "가장 최근에 (재)선정된" 순서를 얻되, 동일한
@@ -2143,6 +2149,7 @@ function sangttaLiveSnapshot(code, rec, price, now) {
 // handleKisMessage의 체결 틱 루프에서 매 틱 호출 — 후보/보유 종목이 아니면
 // 즉시 리턴하므로 관계없는 종목(기존 VIRTUAL 보유분 등) 처리에 부담을 주지 않음.
 function handleSangttaTick(code, price, rec, now) {
+  if (!LEGACY_STRATEGY_MONITOR) return;   // 2026-11-16 상따 진입·청산 판정 중지
   now = now || Date.now();
   if (sangttaOpenPositions.has(code)) {
     checkSangttaExit(code, price, now);
@@ -2438,6 +2445,7 @@ async function notifyAll(text, opts = {}) {
 }
 
 async function refreshHoldings() {
+  if (!LEGACY_STRATEGY_MONITOR) return;   // 2026-11-16 전략성과1(스윙) 보유 종목 감시 중지 — 고점 추적·목표가 알림 포함
   try {
     // entry_price는 2026-09-15 추가 — 손절선 계산(고점수익 구간별 트레일링 폭 +
     // 손익분기 보호선)이 "최초 매수가" 기준이라 반드시 필요함(checkAlerts 참고).
@@ -3290,7 +3298,7 @@ const _liveBusy = new Map();
 function refreshLiveTop(min, side = 'up') {
   const key = side === 'down' ? min + 'd' : min;
   if (_liveBusy.has(key)) return _liveBusy.get(key);
-  const pr = (async () => {
+  const pr = _kisPrio.run(min ? 1 : 2, async () => {   // 시총 기준(1조↑ 등) 풀은 자동매매가 쓰므로 우선순위 1, 순위 목록은 화면 전용(2)
     const shares = c => listedSharesMap.get(c) || 0;
     try {
       let rows;
@@ -3324,7 +3332,7 @@ function refreshLiveTop(min, side = 'up') {
       else put(key, fin(rows));
     } catch (e) { const old = _liveTop.get(key); _liveTop.set(key, { at: Date.now(), rows: old ? old.rows : [], all: old ? old.all : undefined, err: e.message }); }
     finally { _liveBusy.delete(key); }
-  })();
+  });
   _liveBusy.set(key, pr);
   return pr;
 }
@@ -3546,8 +3554,9 @@ function handleLiveMarket(req, res) {
    응답 필드명은 이름 패턴으로 읽음 — /stock-member?code=…&raw=1, /stock-investor?code=…&raw=1 로 원본 확인 ── */
 const _stkInfo = new Map();                                // key -> {at, v}
 async function kisQuoteGet(path, tr, params) {
-  const t0 = Date.now(); const waitMs = await kisRestThrottle();
+  const t0 = Date.now(); let waitMs = 0;
   try {
+    waitMs = await kisRestThrottle();
     const token = await getKisRestToken();
     const res = await fetch(`${KIS_REST_BASE}${path}?${new URLSearchParams(params)}`, { headers: kisRestHeaders(token, tr), signal: AbortSignal.timeout(8000) });
     const j = await res.json().catch(() => ({}));
@@ -3648,7 +3657,7 @@ const trade = require('./trade').createTrade({
     for (let attempt = 0; ; attempt++) {
       const t0 = Date.now(); let waitMs = 0;
       try {
-        waitMs = await kisRestThrottle();
+        waitMs = await kisRestThrottle(0);
         const token = await getKisRestToken();
         const res = await fetch(`${KIS_REST_BASE}${path}?${new URLSearchParams(params)}`, { headers: kisRestHeaders(token, trId), signal: AbortSignal.timeout(8000) });
         if (!res.ok) throw new Error(`KIS ${trId} ${res.status}`);
@@ -3689,7 +3698,7 @@ const trade = require('./trade').createTrade({
 const autoTrade = require('./auto').createAuto({
   sbGet, sbWrite, sendTelegram,
   paper: trade.paper,                                     // 가상매매 엔진(없으면 승인은 기록만)
-  getQuote: code => trade.getQuote(code, true),
+  getQuote: code => _kisPrio.run(1, () => trade.getQuote(code, true)),
   loadChart: async code => (await sbGet(`v_stock_chart?select=trade_date,close,high,low,trade_amount,individual_net&code=eq.${code}&order=trade_date.desc&limit=1000`)).reverse(),   // 최근 1000일(매매 화면과 같은 이력)
   kstNow: () => ({ date: kstDateStr(), min: kstMinutesNow() }),
   isTradingDay: d => { const dow = new Date(`${d}T00:00:00Z`).getUTCDay(); return dow !== 0 && dow !== 6 && !KRX_HOLIDAYS.has(d); },
@@ -3699,9 +3708,9 @@ const autoTrade = require('./auto').createAuto({
     const x = _liveTop.get(cap);
     return (x && (x.all || x.rows)) || [];
   },
-  fetchFlow: code => fetchFlowEst(code).catch(e => ({ err: e.message })),
-  fetchPower: code => fetchPower(code).catch(e => ({ err: e.message })),
-  fetchCttr: code => fetchCttr(code).catch(e => ({ err: e.message })),
+  fetchFlow: code => _kisPrio.run(1, () => fetchFlowEst(code)).catch(e => ({ err: e.message })),
+  fetchPower: code => _kisPrio.run(1, () => fetchPower(code)).catch(e => ({ err: e.message })),
+  fetchCttr: code => _kisPrio.run(1, () => fetchCttr(code)).catch(e => ({ err: e.message })),
   marketIdx: async () => { const m = await fetchLiveMarket(false); const g = k => (m.idx && m.idx[k] && m.idx[k].pct != null ? m.idx[k].pct : null); return { 코스피: g('KOSPI'), 코스닥: g('KOSDAQ') }; },
   prevTradingDay: d => { const x = new Date(`${d}T00:00:00Z`); for (let i = 0; i < 14; i++) { x.setUTCDate(x.getUTCDate() - 1); const s2 = x.toISOString().slice(0, 10), w = x.getUTCDay(); if (w === 0 || w === 6 || KRX_HOLIDAYS.has(s2)) continue; return s2; } return null; },
   marketState: async () => {
@@ -3993,12 +4002,12 @@ function startSelfPing() {
 
 issueApprovalKey()
   .then(() => {
+    console.log(`[감시] 옛 전략성과1·2(스윙·상따) 감시 ${LEGACY_STRATEGY_MONITOR ? '켜짐' : '중지(LEGACY_STRATEGY_MONITOR=1 로 재개)'} · KIS 호출 우선순위: 매매 > 자동매매 > 화면`);
     connectKisWs();
     refreshHoldings();
     loadTargetPrices();
     loadPushSubscriptions();
-    primeSangttaEntryCounts();
-    primeSangttaOpenPositions();
+    if (LEGACY_STRATEGY_MONITOR) { primeSangttaEntryCounts(); primeSangttaOpenPositions(); }
     loadListedSharesCache(); // SCAN 무게(weight) 재정렬용 상장주식수 캐시
     refreshSangttaCandidates();
     // 2026-09-14: primeCandidateStageFlags()가 오늘자 기존 후보를 확인해 완료

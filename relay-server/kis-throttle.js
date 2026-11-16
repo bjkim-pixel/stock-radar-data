@@ -4,18 +4,33 @@
    모두 같은 시간만큼 기다린 뒤 한꺼번에 나갔다(보유 종목·상따 후보·실시간 화면이 동시에 호출 → 순간 버스트 →
    KIS 초당 한도(EGW00201)·타임아웃). 여기서는 호출마다 '자기 차례 시각'을 즉시 예약해 일렬로 세운다. */
 
-function createThrottle({ intervalMs = 200, now = Date.now, sleep = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
-  let next = 0;
-  /* 반환: 실제로 기다린 ms */
-  async function wait() {
-    const t = now();
-    const at = Math.max(t, next);
-    next = at + intervalMs;          // 기다리기 전에 예약 — 동시에 온 호출이 같은 칸을 쓰지 못하게
-    const w = at - t;
-    if (w > 0) await sleep(w);
-    return w;
+/* 우선순위(작을수록 먼저): 0 = 가상·실전매매 감시, 1 = 자동매매(1조↑ 후보 풀 등), 2 = 화면 조회(사용자가 페이지를 열었을 때만).
+   슬롯은 intervalMs 마다 하나씩 나가고, 슬롯이 나갈 때마다 가장 높은 우선순위의 가장 오래 기다린 호출이 가져간다.
+   화면 조회(2)는 대기열이 maxQueue[2] 를 넘으면 바로 거절해 대기열이 끝없이 쌓이지 않게 한다. */
+function createThrottle({ intervalMs = 200, now = Date.now, sleep = ms => new Promise(r => setTimeout(r, ms)), maxQueue = { 2: 40 } } = {}) {
+  let next = 0, pumping = false;
+  const queues = [[], [], []];
+  async function pump() {
+    if (pumping) return; pumping = true;
+    try {
+      while (queues.some(q => q.length)) {
+        const d = next - now();
+        if (d > 0) await sleep(d);
+        const q = queues.find(x => x.length); if (!q) break;
+        const w = q.shift();
+        next = now() + intervalMs;
+        w.resolve(now() - w.t);
+      }
+    } finally { pumping = false; }
   }
-  return { wait, backlogMs: () => Math.max(0, next - now()) };
+  /* 반환: 실제로 기다린 ms. prio 기본 2(화면) */
+  function wait(prio = 2) {
+    const p = prio < 0 ? 0 : prio > 2 ? 2 : prio;
+    const cap = maxQueue[p];
+    if (cap != null && queues[p].length >= cap) { const e = new Error('KIS 대기열 포화(화면 조회 잠시 제한)'); e.busy = true; return Promise.reject(e); }
+    return new Promise(resolve => { queues[p].push({ resolve, t: now() }); pump(); });
+  }
+  return { wait, queued: () => queues.map(q => q.length), backlogMs: () => Math.max(0, next - now()) + queues.reduce((a, q) => a + q.length, 0) * intervalMs };
 }
 
 /* 실패 원인 분류 — 로그·알림에 그대로 쓴다 */

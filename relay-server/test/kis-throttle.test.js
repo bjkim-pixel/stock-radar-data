@@ -6,14 +6,29 @@ const T = require('../kis-throttle');
 const { createQuoteWatch } = require('../quote-watch');
 
 test('동시에 온 호출도 200ms 간격으로 일렬로 선다(버스트 없음)', async () => {
-  let clock = 1000; const slept = [];
-  const th = T.createThrottle({ intervalMs: 200, now: () => clock, sleep: async ms => { slept.push(ms); } });
+  let clock = 1000;
+  const th = T.createThrottle({ intervalMs: 200, now: () => clock, sleep: ms => new Promise(r => setImmediate(() => { clock += ms; r(); })) });
   const ws = await Promise.all([th.wait(), th.wait(), th.wait(), th.wait()]);
   assert.deepEqual(ws, [0, 200, 400, 600]);          // 예전 구현은 [0,200,200,200] 처럼 겹쳤다
-  assert.equal(th.backlogMs(), 800);
+});
+test('우선순위: 매매(0) > 자동매매(1) > 화면(2), 같은 순위는 먼저 온 순서', async () => {
+  let clock = 0; const order = [];
+  const th = T.createThrottle({ intervalMs: 100, now: () => clock, sleep: ms => new Promise(r => setImmediate(() => { clock += ms; r(); })) });
+  const run = (name, p) => th.wait(p).then(() => order.push(name));
+  await th.wait(2);                       // 첫 슬롯 소진 → 이후 호출은 대기열에서 경쟁
+  await Promise.all([run('화면1', 2), run('화면2', 2), run('자동', 1), run('매매', 0), run('매매2', 0)]);
+  assert.deepEqual(order, ['매매', '매매2', '자동', '화면1', '화면2']);
+});
+test('화면 조회 대기열이 가득 차면 거절(매매·자동은 거절 없음)', async () => {
+  let clock = 0; const th = T.createThrottle({ intervalMs: 100, now: () => clock, sleep: ms => new Promise(r => setImmediate(() => { clock += ms; r(); })), maxQueue: { 2: 2 } });
+  await th.wait(2);
+  const a = th.wait(2), b = th.wait(2);
+  await assert.rejects(th.wait(2), e => e.busy === true);
+  await assert.doesNotReject(Promise.all([th.wait(0), th.wait(1)]));
+  await Promise.all([a, b]);
 });
 test('한가하면 기다리지 않는다', async () => {
-  let clock = 0; const th = T.createThrottle({ intervalMs: 200, now: () => clock, sleep: async () => {} });
+  let clock = 0; const th = T.createThrottle({ intervalMs: 200, now: () => clock, sleep: ms => new Promise(r => setImmediate(() => { clock += ms; r(); })) });
   assert.equal(await th.wait(), 0); clock = 500; assert.equal(await th.wait(), 0);
 });
 test('실패 분류·재시도 대상', () => {

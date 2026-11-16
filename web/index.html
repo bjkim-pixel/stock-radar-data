@@ -2935,7 +2935,8 @@ function reconcileLiveSubscription(){
   liveSendPrio();
   // 아직 연결 전이면 onopen 핸들러가 S.liveSubscribed 전체를 구독 요청함
 }
-function setSwingLiveCodes(codes){ S.swingWanted=new Set(codes); reconcileLiveSubscription(); }
+const SWING_LIVE_PAUSED=true;   // 2026-11-16: 전략 성과(스윙) 실시간 웹소켓 연동 중단 — 매매 감시·자동매매 우선(릴레이 LEGACY_STRATEGY_MONITOR 와 짝)
+function setSwingLiveCodes(codes){ S.swingWanted=new Set(SWING_LIVE_PAUSED?[]:codes); reconcileLiveSubscription(); }
 const FAV_LIVE_MAX=25;   // KIS 슬롯 36 중 보유·청산용 여유를 남기는 상한
 function setFavLiveCodes(codes){ S.favWanted=new Set(codes); reconcileLiveSubscription(); }
 // 내 종목 표: 종가·등락률 셀을 KIS 실시간 체결가로 덮어쓴다(전략성과2와 같은 릴레이 웹소켓 사용)
