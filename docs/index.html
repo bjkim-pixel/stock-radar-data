@@ -1182,7 +1182,6 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="gm">글로벌 시황</button>
       <button data-v="sector">업종·테마</button></div></div>
     <div class="ng" data-g="flow"><div class="ngh" role="button" tabindex="0" aria-expanded="true">수급</div><div class="ngi">
-      <button data-v="flow">수급 동향</button>
       <button data-v="sm">스마트머니</button>
       <button data-v="fw">외국인 추종</button>
       <button data-v="pe">사모 추종</button>
@@ -1473,60 +1472,6 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   </div>
 </section>
 
-
-<!-- ═══════════ 수급 동향 ═══════════ -->
-<section id="v-flow" class="hide">
-  <!-- STEP 2 -->
-  <div class="step-hd" id="s2" style="margin-top:16px"><h2>업종 순위·수급</h2>
-    <span class="q">돈이 어디로 몰리고 있나?</span>
-    <span class="out" id="secOut"></span></div>
-
-  <div class="g-2-1">
-    <div class="card"><h3>업종별 거래대금
-      <span class="r">헤더 클릭 = 그 기준 상위5·하위5 · 다시 누르면 오름차순 <span class="tag-d b">조합</span></span></h3>
-      <div class="note">
-        <b>주간증감</b> = 최근 5거래일 거래대금 합계 ÷ 이전 5거래일 거래대금 합계.
-        <b>평균 등락률</b> = 그날 업종 소속 종목들의 당일 등락률 단순평균.
-        <b>RS20</b> = 업종 평균 등락률의 20거래일(≈1개월) 복리 누적수익률을 업종끼리 비교한 순위입니다
-        (KOSPI/KOSDAQ 지수 등 외부 벤치마크 대비가 아니라 업종 간 상대 순위이며,
-        최소 15거래일 데이터 · 소속 3종목 이상인 업종만 순위를 매깁니다 · <b>자체 산출</b>).
-        <b>RS5</b>는 같은 방식의 5거래일(≈1주) 버전으로, 빠른 순환매를 더 민감하게 잡아냅니다.
-        <span class="up">신흥 주도</span> = RS5 상위 5위가 2일 연속 유지됐지만 아직 RS20 상위 5위는
-        아닌 업종(막 뜨기 시작). <span class="down">이탈 조짐</span> = RS20은 아직 상위 5위인데
-        RS5가 당장 5위 밖으로 밀린 업종(꺾이기 시작 — 진입은 2일 연속으로 신중히, 이탈은 하루만으로
-        빠르게 표시합니다).
-      </div>
-      <div class="faint" id="secLblTop" style="font-size:11px;margin:10px 0 4px">상위 5</div>
-      <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadTop"></tr></thead>
-        <tbody id="secBodyTop"><tr><td colspan="8" class="load sk"></td></tr></tbody></table></div>
-      <div class="faint" id="secLblBot" style="font-size:11px;margin:14px 0 4px">하위 5</div>
-      <div class="tw tw-scroll tw-rank"><table><thead><tr id="secHeadBot"></tr></thead>
-        <tbody id="secBodyBot"><tr><td colspan="8" class="load sk"></td></tr></tbody></table></div>
-      <div class="note">행을 누르면 오른쪽 수급 차트와 아래 "업종 안의 강한 종목"이 그 업종으로 바뀝니다.</div>
-    </div>
-    <div class="card"><h3><span id="secFlowTitle">업종 수급주체</span>
-      <span class="r">2025-09-01~오늘 누적 · 억원</span></h3>
-      <div class="chart" id="cSecFlow"></div>
-      <div class="note" id="secFlowNote"></div>
-    </div>
-  </div>
-
-
-  <!-- STEP 3 -->
-  <div class="step-hd" id="s3" style="margin-top:20px"><h2>업종 안의 강한 종목</h2>
-    <span class="q">그 섹터에서 가장 강한 종목은?</span>
-    <span class="out" id="stkOut"></span></div>
-
-  <div class="card"><h3>구성 종목 <span class="r" id="secName"></span></h3>
-    <div class="tw tw-scroll tw-rank"><table><thead><tr>
-      <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th class="grp">시총</th>
-      <th class="opt">거래대금</th><th class="opt">거래량비</th>
-      <th>무게/주식수</th><th class="grp" title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록">매집 6월</th><th title="최근 ÷ 8월 첫 기록">매집 8월</th>
-      <th class="grp opt">종가위치</th><th class="opt">52주 신고가</th><th class="opt">신고가일</th><th>단계</th>
-    </tr></thead><tbody id="stkBody"><tr><td colspan="15" class="load">업종을 선택하세요</td></tr></tbody></table></div>
-    <div class="note">종목명을 누르면 종목 상세로 이동합니다.</div>
-  </div>
-</section>
 
 <!-- ═══════════ 스마트머니 ═══════════ -->
 <section id="v-sm" class="hide">
@@ -1975,7 +1920,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   </div>
 
   <!-- 시장 매크로 STEP2·3 에서 이동 -->
-  <div class="card"><h3>업종별 수급 현황
+  <div class="card" id="s2"><h3>업종별 수급 현황
     <span class="r">전체 업종 · 헤더 클릭 = 그 기준 정렬(다시 클릭하면 오름차순↔내림차순 전환) · 기본 거래대금 내림차순</span></h3>
     <div class="tw"><table><thead><tr id="sectorTrendHead"></tr></thead>
       <tbody id="sectorTrendBody"><tr><td colspan="10" class="load sk"></td></tr></tbody></table></div>
@@ -1985,6 +1930,17 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div class="card"><h3><span id="sectorTrendMinisTitle">업종을 선택하세요</span>
     <span class="r">전 기간 · 억원 · 각 차트 오른쪽 끝이 오늘</span></h3>
     <div class="grid5" id="sectorTrendMinis"></div>
+  </div>
+
+  <!-- 2026-11-16: 수급 동향 페이지 삭제 — 업종 연결 기능(구성 종목)만 이곳으로 이동 -->
+  <div class="card" id="s3"><h3>업종 안의 강한 종목 <span class="r" id="secName"></span></h3>
+    <div class="tw tw-scroll tw-rank"><table><thead><tr>
+      <th class="l">#</th><th class="l">종목</th><th>종가</th><th>등락률</th><th class="grp">시총</th>
+      <th class="opt">거래대금</th><th class="opt">거래량비</th>
+      <th>무게/주식수</th><th class="grp" title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록">매집 6월</th><th title="최근 ÷ 8월 첫 기록">매집 8월</th>
+      <th class="grp opt">종가위치</th><th class="opt">52주 신고가</th><th class="opt">신고가일</th><th>단계</th>
+    </tr></thead><tbody id="stkBody"><tr><td colspan="15" class="load">업종을 선택하세요</td></tr></tbody></table></div>
+    <div class="note"><span id="stkOut"></span> 종목명을 누르면 종목 상세로 이동합니다.</div>
   </div>
 
 </section>
@@ -4870,7 +4826,7 @@ function go(v,detailCode){
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===vOrig));
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   document.documentElement.classList.toggle("wide",v==="scr"||v==="trend"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -4964,7 +4920,7 @@ window.addEventListener("resize",setStickyOffset);
 window.addEventListener("load",setStickyOffset);
 $("#brandHome").onclick=()=>location.reload();
 /* 5단계 퍼널: 각 단계가 있는 탭으로 이동한 뒤 그 위치로 스크롤 (2026-11 재배치: 단계별 카드가 시장/업종·테마/수급 동향/오늘의 종목으로 나뉨) */
-const FUNNEL_GO={s1:["proc","s1"],s2:["flow","s2"],s3:["flow","s3"],s4:["today","s4"],s5:["today","s5"]};
+const FUNNEL_GO={s1:["proc","s1"],s2:["sector","s2"],s3:["sector","s3"],s4:["today","s4"],s5:["today","s5"]};
 $$("#funnel .fstep").forEach(f=>f.onclick=()=>{
   $$("#funnel .fstep").forEach(x=>x.classList.toggle("on",x===f));
   const [v,a]=FUNNEL_GO[f.dataset.g]||["today",f.dataset.g];
@@ -5088,42 +5044,6 @@ const SEC_COLS=[
     :s.is_weakening_leader?'<span class="down">이탈 조짐</span>':""},
   {k:"stock_count",  l:"종목수", opt:true, fmt:s=>s.stock_count, cls:()=>"faint"},
 ];
-S.secSort=S.secSort||"total_amount";
-S.secDir=S.secDir||"desc";   // 2026-10-09: 같은 헤더를 다시 누르면 asc/desc 토글(짝꿍매매와 동일)
-function secHeadRow(){
-  return `<th class="l">#</th><th class="l">업종</th>`+SEC_COLS.map(c=>
-    `<th class="${c.opt?"opt ":""}sortable${c.k===S.secSort?" active":""}" data-key="${c.k}">${c.l}${c.k===S.secSort?(S.secDir==="asc"?" ▴":" ▾"):""}</th>`).join("");
-}
-function secBodyRows(list){
-  return list.length?list.map((s,i)=>`
-    <tr class="clk" data-sec="${s.sector}" ${S.sector===s.sector?'aria-selected="true"':''}>
-      <td class="l rank">${i+1}</td><td class="l"><span class="nm">${s.sector}</span></td>
-      ${SEC_COLS.map(c=>`<td class="${c.opt?"opt ":""}${c.cls?c.cls(s):""}">${c.fmt(s)}</td>`).join("")}
-    </tr>`).join(""):`<tr><td colspan="10" class="load">데이터 없음</td></tr>`;
-}
-function renderSectors(){
-  // 내림차순: 첫 표=상위 5·둘째 표=하위 5 / 오름차순: 첫 표=값이 가장 작은 5개(하위 5)·둘째 표=가장 큰 5개(상위 5)
-  const sign=S.secDir==="asc"?-1:1, asc=S.secDir==="asc";
-  const sorted=[...S.sectors].sort((a,b)=>{
-    const av=a[S.secSort],bv=b[S.secSort];
-    if(av==null&&bv==null)return 0; if(av==null)return 1; if(bv==null)return -1;
-    return sign*(+bv-+av);
-  });
-  $("#secLblTop").textContent=asc?"하위 5 (오름차순)":"상위 5";
-  $("#secLblBot").textContent=asc?"상위 5":"하위 5";
-  const top=sorted.slice(0,5), bot=sorted.length>5?sorted.slice(-5).reverse():[];
-  $("#secHeadTop").innerHTML=secHeadRow();
-  $("#secHeadBot").innerHTML=secHeadRow();
-  $("#secBodyTop").innerHTML=secBodyRows(top);
-  $("#secBodyBot").innerHTML=secBodyRows(bot);
-  $$("#secHeadTop th.sortable,#secHeadBot th.sortable").forEach(th=>
-    th.onclick=()=>{
-      if(th.dataset.key===S.secSort)S.secDir=S.secDir==="asc"?"desc":"asc";
-      else{S.secSort=th.dataset.key;S.secDir="desc";}
-      renderSectors();});
-  $$("#secBodyTop tr[data-sec],#secBodyBot tr[data-sec]").forEach(tr=>
-    tr.onclick=()=>selectSector(tr.dataset.sec));
-}
 // 2026-09-23: 시장매크로(STEP2)·짝꿍매매·업종동향 세 화면이 각자 따로
 // v_sector_rank 전체를 fetch하고 있었음(짝꿍매매는 별도 변수 S.pairSectorRows로
 // 완전히 중복 요청, 시장매크로는 캐시 확인 없이 매번 재요청) — 오늘 하루치
@@ -5136,46 +5056,18 @@ async function getSectorRank(){
 }
 async function loadSectors(){
   S.sectors=await getSectorRank();
-  renderSectors();
   const lead=S.sectors.filter(s=>s.rs_rank&&s.rs_rank<=5).length;
-  $("#secOut").innerHTML=`RS 상위 <b>${lead}개</b> / 전체 ${S.sectors.length}업종`;
   $("#fn2").innerHTML=`${lead}<small>/${S.sectors.length} 업종</small>`;
   const secOptions='<option value="">전체</option>'+S.sectors.map(s=>`<option>${s.sector}</option>`).join("");
   $("#fSector").innerHTML=secOptions;
   $("#gSector").innerHTML=secOptions;
-  if(S.sectors.length)await selectSector(S.sectors[0].sector);
+  if(S.sectors.length)await loadSectorStocks(S.sectors[0].sector);
 }
-async function selectSector(sec){
+// 2026-11-16: 수급 동향 페이지 삭제 후 — 업종 구성 종목(상위 10)은 업종·테마 화면 하단에 표시.
+// 퍼널 3단계 숫자(#fn3)도 이 함수가 채운다.
+async function loadSectorStocks(sec){
   S.sector=sec;
-  $$("#secBodyTop tr[data-sec],#secBodyBot tr[data-sec]").forEach(t=>
-    t.toggleAttribute("aria-selected",t.dataset.sec===sec));
-  $("#secFlowTitle").textContent=`${sec} 수급주체`;
   $("#secName").textContent=`${sec} · 거래대금 내림차순`;
-  // 일별 수급주체 누적 (2025-09-01~오늘)
-  const fl=await q("v_sector_flow_daily",
-    `select=*&sector=eq.${encodeURIComponent(sec)}&order=trade_date.asc`);
-  if(fl.length){
-    const lb=fl.map(p=>p.trade_date.slice(5).replace("-","/"));
-    lineChart($("#cSecFlow"),[
-      {n:"외국인",v:fl.map(p=>+p.foreign_cum/EOK),c:"--s1"},
-      {n:"기관",v:fl.map(p=>+p.inst_cum/EOK),c:"--s2"},
-      {n:"개인",v:fl.map(p=>+p.individual_cum/EOK),c:"--s3"},
-      {n:"기타법인",v:fl.map(p=>+p.corp_other_cum/EOK),c:"--s4"}],lb,
-      {h:230,pr:66,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
-    const last=fl.at(-1),since=fl.length>=5?fl.at(-5):fl[0];
-    const arr=[["외국인",+last.foreign_cum-+since.foreign_cum],
-               ["기관",+last.inst_cum-+since.inst_cum],
-               ["개인",+last.individual_cum-+since.individual_cum],
-               ["기타법인",+last.corp_other_cum-+since.corp_other_cum]];
-    const t=arr.filter(a=>a[1]>0).sort((a,b)=>b[1]-a[1])[0];
-    $("#secFlowNote").innerHTML=t
-      ? `최근 5거래일 기준 <b>${t[0]}</b>이 <b class="up">${pm(t[1]/EOK,0)}억</b>으로 이 업종을 가장 많이 사들였습니다.`
-      : `최근 5거래일 기준 순매수 주체가 없습니다 — 자금이 빠지고 있는 업종입니다.`;
-  }else{
-    $("#cSecFlow").innerHTML='<div class="load">데이터 없음</div>';
-    $("#secFlowNote").innerHTML="";
-  }
-  // 구성 종목
   S.stocks=await q("v_sector_stocks",
     `select=*&sector=eq.${encodeURIComponent(sec)}&trade_date=eq.${S.date}&order=trade_amount.desc`);
   const stkShow=S.stocks.slice(0,10);
@@ -5246,8 +5138,8 @@ function renderSectorTrendTable(){
 // 누적 차트)" 기능(selectSector)을 그대로 재사용. 처음엔 종목후보 화면으로 보냈는데
 // 조건 검색 방식이라 복잡하다는 피드백으로 변경. ?sector= 딥링크도 같은 함수 사용.
 async function goSectorStocks(sec){
-  go("flow");
-  try{await selectSector(sec);}
+  go("sector");
+  try{await selectSectorTrend(sec);}
   catch(e){status("err","업종 조회 실패: "+e.message);return;}
   $("#s3").scrollIntoView({behavior:"smooth",block:"start"});
 }
@@ -5727,12 +5619,13 @@ const SECTOR_MINI_K_OF={"금융투자":"fin_inv_cum","투신":"inv_trust_cum","�
   "개인":"individual_cum","기타법인":"corp_other_cum"};
 async function selectSectorTrend(sec){
   S.sectorTrendSel=sec;
+  const pStk=loadSectorStocks(sec).catch(()=>{});   // 하단 구성 종목 표
   $$("#sectorTrendBody tr[data-sec]").forEach(t=>t.toggleAttribute("aria-selected",t.dataset.sec===sec));
   $("#sectorTrendMinisTitle").textContent=`${sec} · 수급 주체별 누적`;
   $("#sectorTrendMinis").innerHTML='<div class="load sk"></div>';
   const fl=await q("v_sector_flow_daily",
     `select=*&sector=eq.${encodeURIComponent(sec)}&order=trade_date.asc`);
-  if(!fl.length){$("#sectorTrendMinis").innerHTML='<div class="load">데이터 없음</div>';return;}
+  if(!fl.length){$("#sectorTrendMinis").innerHTML='<div class="load">데이터 없음</div>';await pStk;return;}
   const lb=fl.map(p=>p.trade_date.slice(2).replace(/-/g,"/"));
   const cumOf=k=>fl.map(p=>+p[k]/EOK);
   const cumFg=cumOf("foreign_cum"), cumInst=cumOf("inst_cum");
@@ -5756,6 +5649,7 @@ async function selectSectorTrend(sec){
   minis.forEach(([n,arr],i)=>lineChart($("#stMini_"+i),
     [{n,v:arr,c:"--s1"}],lb,{h:110,w:300,pr:8,pl:38,zero:true,labelEnds:false,
       fy:v=>N(v,0),ft:v=>pm(v,0)+"억"}));
+  await pStk;
 }
 
 /* ══ STEP4 수급 / STEP5 타점 ══ */
@@ -10084,7 +9978,6 @@ async function renderCandProfileChart(strat,code){
 function redraw(skipDetailReload){
   loadMarketAmount().catch(()=>{});
   if(S.market.length)loadMarket().catch(()=>{});
-  if(S.sector)selectSector(S.sector).catch(()=>{});
   if(S.sectorTrendSel)selectSectorTrend(S.sectorTrendSel).catch(()=>{});
   // 2026-09-19(2차): go()가 detail 뷰 전환 시 이미 loadDetail()을 호출했으면
   // (detailJustLoaded→skipDetailReload) 같은 종목을 또 조회하지 않는다 — 위
@@ -12344,7 +12237,7 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
 /* 자동매매 컨트롤 타워 입력(체크박스·선택은 change, 글자는 input) */
 document.addEventListener("input",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&t.type!=="checkbox"&&t.tagName!=="SELECT")auInputEv(t);});
 document.addEventListener("change",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&(t.type==="checkbox"||t.tagName==="SELECT"))auInputEv(t);});
-const VIEW_IDS=["seclog","etfhub","etf","trend","proc","gm","today","flow","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
+const VIEW_IDS=["seclog","etfhub","etf","trend","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
 function setHash(v,code){
   const h="#"+v+(code?"/"+code:"");
   if(location.hash!==h)history.pushState(null,"",h);
