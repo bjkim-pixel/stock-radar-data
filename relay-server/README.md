@@ -436,3 +436,17 @@ KIS 잠정 집계는 장중 슬롯(~14:30)만 값이 있어 마감 뒤엔 비어
 - 기존 `auto_journal`(성과 탭·주간 요약·안전장치가 사용)은 그대로 두고 일지 탭 화면만 새 방식으로 바꿨다.
 - DB 준비: GitHub Actions "DB 테이블·뷰 생성"에서 대상 **auto_daylog** 를 한 번 실행해야 한다(없으면 일지 탭에 안내 문구).
 - API: `GET /trade/auto/daylog`(목록) · `?date=`(상세) · `POST /trade/auto/daylog-memo` · `POST /trade/auto/daylog-save`.
+
+## GitHub Actions 정시 실행기 (`gh-cron.js`)
+GitHub의 `schedule`(cron)은 큐가 밀리면 몇 시간씩 늦거나 건너뜁니다(실측: [상시1] 16:05 예약이 밤 0시경 실행, 18:05 예약은 미실행).
+그래서 항상 켜져 있는 이 서버가 KST 정시에 `workflow_dispatch`를 직접 호출합니다.
+
+| 시각(KST) | 요일 | 워크플로 |
+|---|---|---|
+| 16:05, 18:05 | 월~금 | `daily_collect.yml` ([상시1] → 2·4·5 이어서 실행) |
+| 06:30 | 화~토 | `global_collect.yml` ([상시3] 미국 마감 후) |
+| 08:15 | 월~금 | `market_regime.yml` |
+
+- Render 환경변수 `GH_DISPATCH_TOKEN` 필요: GitHub → Settings → Developer settings → Fine-grained tokens, 저장소 `stock-radar-data` 하나만 선택, 권한 **Actions: Read and write**. 없으면 로그에 안내만 남기고 꺼져 있습니다.
+- 서버가 잠들었다 늦게 깨어나도 150분 안이면 실행하고, 그 시각 이후 이미 실행된 기록이 있으면 건너뜁니다(중복 방지).
+- 기존 GitHub 예약은 보조로 남겨 둡니다(겹쳐도 upsert라 안전).
