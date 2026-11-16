@@ -798,6 +798,22 @@ function createAuto(deps) {
       const watch = new Set([...Object.keys(owner), ...carryItems.map(i => i.code)]);
       if (ps && ps.ok) positions = ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop, plan: p.plan || null, dayHigh: p.dayHigh || null, dayLow: p.dayLow || null, avail: p.avail, strategy: owner[p.code] || null }));
     } catch (_) {}
+    // 화면용 실시간 시세: 아직 체결 전인 주문·손절/익절 감시 중인 종목·주문 전 후보(최대 8개). 장중에 화면을 열었을 때만 호출됨
+    const quotes = {};
+    const { min: nowMin } = kstParts();
+    if (D.getQuoteUi && nowMin >= 540 && nowMin < 935) {
+      const want = [];
+      todays.forEach(t => {
+        t.orders.forEach(o => { if (['intent', 'open', 'modified', 'skipped'].includes(o.st) || o.filled > 0) want.push(o.code); });
+        const have = new Set(t.orders.map(o => o.code));
+        t.picks.filter(p => !p.closed && !have.has(p.code)).forEach(p => want.push(p.code));
+      });
+      const codes = [...new Set(want)].slice(0, 8);
+      await Promise.all(codes.map(c => Promise.race([D.getQuoteUi(c), new Promise((_, rej) => setTimeout(() => rej(new Error('t')), 3500))]).then(q => {
+        if (q && q.price > 0) quotes[c] = { price: q.price, open: q.open || null, high: q.high || null, low: q.low || null, upper: q.upper || null, lower: q.lower || null, prevClose: q.prevClose || null, strength: q.strength == null ? null : q.strength, vi: !!q.vi,
+          bids: (q.bids || []).filter(x => x && x.p > 0).slice(0, 5).map(x => ({ p: x.p, q: x.q })), asks: (q.asks || []).filter(x => x && x.p > 0).slice(0, 5).map(x => ({ p: x.p, q: x.q })), at: Date.now() };
+      }).catch(() => {})));
+    }
     const events = EV.marketNotes(await EV.loadEvents(D.sbGet, date, 0, 4), date, 3);
     let exposure = null;
     try { const ex = await exposureNow(); if (ex) { const caps = A.Is.map(i => +i.params.totalCapKrw || 0).filter(v => v > 0); exposure = { ...ex, rows: undefined, cap: caps.length ? Math.min(...caps) : 0 }; } } catch (_) {}
@@ -805,7 +821,7 @@ function createAuto(deps) {
     return {
       ok: true, now: Date.now(), date, tradingDay: isTradingDay(date),
       cfg: { on: !!cv.on, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
-      today: todays[0] || null, todays, active: A.Is.map(i => i.id), regime, exposure, events, positions, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
+      today: todays[0] || null, todays, quotes, active: A.Is.map(i => i.id), regime, exposure, events, positions, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
     };
   }
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */

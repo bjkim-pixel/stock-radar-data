@@ -3699,6 +3699,7 @@ const autoTrade = require('./auto').createAuto({
   sbGet, sbWrite, sendTelegram,
   paper: trade.paper,                                     // 가상매매 엔진(없으면 승인은 기록만)
   getQuote: code => _kisPrio.run(1, () => trade.getQuote(code, true)),
+  getQuoteUi: code => _kisPrio.run(2, () => trade.getQuote(code)),   // 사이트 자동매매 화면용(우선순위 최하, 1.5초 캐시)
   loadChart: async code => (await sbGet(`v_stock_chart?select=trade_date,close,high,low,trade_amount,individual_net&code=eq.${code}&order=trade_date.desc&limit=1000`)).reverse(),   // 최근 1000일(매매 화면과 같은 이력)
   kstNow: () => ({ date: kstDateStr(), min: kstMinutesNow() }),
   isTradingDay: d => { const dow = new Date(`${d}T00:00:00Z`).getUTCDay(); return dow !== 0 && dow !== 6 && !KRX_HOLIDAYS.has(d); },

@@ -54,7 +54,7 @@ test('일별 성과 표: 비용·손익·승률·오늘은 그림자 제외', ()
 });
 
 /* ── createAuto.uiState / setConfig (가짜 DB) ── */
-function fakeAuto({ runs = [], cfg = {}, fills = [], closes = [], paperState = null } = {}) {
+function fakeAuto({ runs = [], cfg = {}, fills = [], closes = [], paperState = null, getQuoteUi = undefined } = {}) {
   const store = { cfg: JSON.parse(JSON.stringify(cfg)), writes: [] };
   const A = createAuto({
     sbGet: async p => {
@@ -68,7 +68,7 @@ function fakeAuto({ runs = [], cfg = {}, fills = [], closes = [], paperState = n
     sbWrite: async (p, m, b) => { store.writes.push([p, b]); b.forEach(x => { if (p.startsWith('auto_config')) store.cfg[x.key] = x.value; }); },
     sendTelegram: async () => {}, kstNow: () => ({ date: '2026-11-16', min: 600 }), isTradingDay: () => true, now: () => Date.now(),
     paper: paperState ? { state: async () => paperState } : undefined,
-    getQuote: async () => ({}), loadChart: async () => [], livePool: async () => [], fetchFlow: async () => ({}), fetchPower: async () => ({}), fetchCttr: async () => ({}), marketState: async () => null,
+    getQuoteUi, getQuote: async () => ({}), loadChart: async () => [], livePool: async () => [], fetchFlow: async () => ({}), fetchPower: async () => ({}), fetchCttr: async () => ({}), marketState: async () => null,
   });
   return { A, store };
 }
@@ -182,4 +182,21 @@ test('/trade/auto/*: 세션 없으면 401 · 세션이 있으면 조회·설정,
     assert.ok(audits.some(a => a.event === 'auto_config' && a.ok === true));
     assert.ok(audits.some(a => a.event === 'auto_config_reject' && a.ok === false));
   } finally { await new Promise(r => server.close(r)); }
+});
+
+test('uiState: 화면용 실시간 시세는 주문 전 후보·미체결 주문 종목만, 실패한 종목은 빠짐', async () => {
+  const calls = [];
+  const { A } = fakeAuto({
+    runs: [mkRun('2026-11-16', { picks: [{ code: 'T', name: '오늘주', score: 77, price: 5000 }, { code: 'C', name: '닫힘', score: 70, price: 100, closed: true }, { code: 'F', name: '실패', score: 60, price: 200 }],
+      shadow: [], decision: null, noticeSent: true, orders: { O: { st: 'open', buy: 100, qty: 1 } } }, 'noticed')],
+    getQuoteUi: async c => { calls.push(c); if (c === 'F') throw new Error('x'); return { price: 5100, open: 4900, bids: [{ p: 5090, q: 10 }, { p: 5080, q: 20 }, { p: 0, q: 5 }], asks: [{ p: 5100, q: 7 }], strength: 111 }; },
+  });
+  const s = await A.uiState();
+  assert.deepEqual(calls.sort(), ['F', 'O', 'T']);              // 닫힌 후보(C)는 조회하지 않음
+  assert.deepEqual(Object.keys(s.quotes).sort(), ['O', 'T']);
+  assert.equal(s.quotes.T.price, 5100); assert.equal(s.quotes.T.bids.length, 2); assert.equal(s.quotes.T.strength, 111);
+});
+test('uiState: 시세 조회 함수가 없으면 quotes 는 빈 객체', async () => {
+  const { A } = fakeAuto({ runs: [mkRun('2026-11-16', { picks: [{ code: 'T', name: 'a', score: 1, price: 1 }], shadow: [], noticeSent: true }, 'noticed')] });
+  assert.deepEqual((await A.uiState()).quotes, {});
 });
