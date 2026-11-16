@@ -1048,6 +1048,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-tkl{position:absolute;left:50%;transform:translateX(-50%);font-size:10.5px;line-height:1.25;text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums}
 .au-tk.hi .au-tkl{bottom:18px}.au-tk.lo .au-tkl{top:20px}.au-tk.cur .au-tkl{color:var(--warn);font-weight:800}
 @media (max-width:640px){.au-ocb{grid-template-columns:1fr}.au-bks{grid-template-columns:1fr 1fr}}
+.au-rv{border:1px solid var(--border);border-radius:8px;padding:6px 10px;background:var(--surface)}.au-rvl{font-size:12.5px;line-height:1.65;padding:3px 0 3px 8px;border-left:3px solid var(--ink-3);margin:3px 0}.au-rvl.good{border-left-color:var(--good)}.au-rvl.bad{border-left-color:var(--crit)}
 .au-lane{margin-top:8px}.au-lname{font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:6px}
 .au-tl{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px}
 .au-st{border:1px solid var(--border);border-left:4px solid var(--ink-3);border-radius:8px;padding:6px 8px;font-size:12px;background:var(--surface)}
@@ -11459,15 +11460,15 @@ function auUnfilledRule(P){
   const f=+P.fillWaitMin||3,c=+P.cancelWaitMin||3;
   return `${f}분 안에 안 사지면 ${P.repriceTo==="none"?"정정하지 않고":`${AU_REP[P.repriceTo]||"최우선 매수 호가"}로 한 번 정정하고`} 다시 ${c}분 기다린 뒤 ${P.unfilledEnd==="keep"?"장 마감까지 그대로 둬요":"남으면 취소해요"}.`;
 }
-function auOrderCard(sid,o){
-  const I=auStrat(sid)||{},P=I.params||{},q=auQ(o.code),pl=o.plan||{},sn=o.snap||{},px=o.buy2||o.buy,live=o.filled>0&&q?q.price:(q?q.price:null);
+function auOrderCard(sid,o,RP){   // RP = 일지 복기용({P,log}): 지난 기록이라 실시간 시세·타이머 없이 그날 설정으로 그림
+  const I=auStrat(sid)||{},P=RP?(RP.P||{}):(I.params||{}),q=RP?null:auQ(o.code),pl=o.plan||{},sn=o.snap||{},px=o.buy2||o.buy,live=o.filled>0&&q?q.price:(q?q.price:null);
   const ck=sn.checks||{},chip=(t,v,lim,ok)=>v==null?"":`<span class="au-chip ${ok?"ok":"bad"}">${t} ${N(v,1)}${lim!=null?` / ${lim}`:""}</span>`;
   const act=["open","modified"].includes(o.st),off=["skipped","failed","lost"].includes(o.st);
   let tm="";
-  if(o.st==="open"&&o.placedAt)tm=`<div class="au-tmr">${auTimer(o.placedAt+(+P.fillWaitMin||3)*60e3,"미체결 정정까지 ","")}</div>`;
+  if(RP){}else if(o.st==="open"&&o.placedAt)tm=`<div class="au-tmr">${auTimer(o.placedAt+(+P.fillWaitMin||3)*60e3,"미체결 정정까지 ","")}</div>`;
   else if(o.st==="modified"&&o.modifiedAt)tm=`<div class="au-tmr">${auTimer(o.modifiedAt+(+P.cancelWaitMin||3)*60e3,P.unfilledEnd==="keep"?"장 마감까지 유지(마지막 확인까지 ":"미체결 취소까지 ",P.unfilledEnd==="keep"?")":"")}</div>`;
   const evs=[["주문 준비",o.at],["주문 접수",o.placedAt],o.modifiedAt?["가격 정정",o.modifiedAt]:null,o.filledAt?["체결",o.filledAt]:null,o.cancelledAt?["취소",o.cancelledAt]:null].filter(x=>x&&x[1]);
-  const sells=(D=>(D&&D.log||[]).filter(x=>x.code===o.code&&["stop","tp","sell"].includes(x.k)))(auRun(sid));
+  const sells=(D=>(D&&D.log||[]).filter(x=>x.code===o.code&&["stop","tp","sell"].includes(x.k)))(RP?{log:RP.log}:auRun(sid));
   return `<div class="au-oc ${o.filled>0?"held":act?"wait":"off"}"><div class="au-och"><b>${trdEsc(o.name)}</b> <span class="faint">${trdEsc(o.code)}</span><span class="au-ost">${trdEsc(AU_ORD[o.st]||o.st)}</span><span class="r">${px?`${N(px)}원`:""}${o.qty?` × ${N(o.qty)}주`:""}${o.filled?` · 체결 ${N(o.filled)}주${o.avg?` @ ${N(o.avg)}`:""}`:""}</span></div>
     <div class="au-ocb">
       <div class="au-ocl"><div class="au-sub">왜 이 가격에 샀나</div>
@@ -11475,13 +11476,13 @@ function auOrderCard(sid,o){
         <div class="faint" style="font-size:11.5px;margin-top:2px">알림 가격 ${sn.notice?N(sn.notice):"–"} · 주문 시점 현재가 ${sn.price?N(sn.price):"–"} · 시가 ${sn.open?N(sn.open):"–"}${sn.price&&sn.open?` (시가대비 ${auPct((sn.price/sn.open-1)*100)})`:""}${sn.upper?` · 상한가 ${N(sn.upper)}`:""}</div>
         <div class="au-chips" style="margin-top:4px">${chip("체결강도",ck.cttr&&ck.cttr.v,ck.cttr&&ck.cttr.min!=null?`≥${ck.cttr.min}`:null,ck.cttr&&ck.cttr.v>=ck.cttr.min)}${chip("알림 대비",ck.move&&ck.move.v,ck.move&&ck.move.max!=null?`≤${ck.move.max}%`:null,ck.move&&Math.abs(ck.move.v)<=ck.move.max)}${chip("시가대비",ck.openRise&&ck.openRise.v,ck.openRise&&ck.openRise.max!=null?`≤${ck.openRise.max}%`:null,ck.openRise&&ck.openRise.v<=ck.openRise.max)}${ck.vi?'<span class="au-chip bad">VI 발동</span>':""}</div>
         <div class="au-sub" style="margin-top:8px">지금 상태</div>
-        <div>${trdEsc(auWhy(o,q,P))}</div>${tm}
-        ${act?`<div class="faint" style="font-size:11.5px;margin-top:3px">규칙: ${trdEsc(auUnfilledRule(P))}</div>`:""}
+        <div>${trdEsc(RP&&["open","modified","intent"].includes(o.st)?"장 마감까지 체결되지 않았어요.":RP&&o.st==="filled"?"전량 체결됐어요.":auWhy(o,q,P))}</div>${tm}
+        ${act||(RP&&["cancelled","partial_done","open","modified"].includes(o.st))?`<div class="faint" style="font-size:11.5px;margin-top:3px">규칙: ${trdEsc(auUnfilledRule(P))}</div>`:""}
         ${evs.length?`<div class="au-evs">${evs.map(e=>`<span>${trdEsc(e[0])} ${trdEsc(auHMs(e[1]))}</span>`).join("")}</div>`:""}
       </div>
       <div class="au-bks">${off?"":auBook(sn.bids&&{bids:sn.bids,asks:sn.asks,price:sn.price},o.buy,"주문 시점 호가")}${q&&!off?auBook(q,px,"지금 호가"):""}</div>
     </div>
-    ${off?"":`<div class="au-sub" style="margin-top:8px">손절·익절 계획</div>${auLadder(o,live)}`}
+    ${off||(RP&&!o.plan)?"":`<div class="au-sub" style="margin-top:8px">손절·익절 계획</div>${auLadder(o,live)}`}
     ${o.mode?`<div class="faint" style="font-size:11.5px;margin-top:4px">목표가 기준: ${trdEsc(AU_MODE[o.mode]||(/-none$/.test(o.mode)?"목표가를 정하지 못함(익절 계획 없음)":o.mode))}${o.target?` → 목표 ${N(o.target)}원`:""} · 손절 −${pl.stopPct!=null?pl.stopPct:"–"}%${pl.trail?` · 추적 ${pl.trail}%`:""}</div>`:""}
     ${sells.length?`<div class="au-sub" style="margin-top:8px">매도 기록</div>${sells.map(x=>`<div style="font-size:12.5px"><span class="faint">${trdEsc(new Date(Date.parse(x.t)+9*3600e3).toISOString().slice(11,19))}</span> ${trdEsc(x.text)}</div>`).join("")}`:""}</div>`;
 }
@@ -11704,7 +11705,14 @@ function auJDetailHtml(d,row){
     if((p.positions||[]).length)h+=`<div class="au-h4">종목별 손익</div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>매수</th><th>매도</th><th>넘긴 가격</th><th>손익</th><th>수익률</th><th title="매수 뒤 가장 올랐던 / 가장 내렸던 정도(매수가 대비). 근사 = 서버 기록이 없어 그날 일봉 고저로 계산(매수 전 시간대가 섞일 수 있음)">최고/최저</th><th>상태</th></tr></thead><tbody>${p.positions.map(x=>`<tr><td>${trdEsc(x.name)}</td><td class="n">${N(x.qty)}주 @${N(x.buyAvg)}</td><td class="n">${x.sellQty?`${N(x.sellQty)}주 @${N(x.sellAvg)}`:"–"}</td><td class="n">${x.px0?`${N(x.px0)} <span class="faint">${x.px0src==="close"?"종가":"임시"}</span>`:"–"}</td><td class="n ${trdCls(x.pnl)}">${auWon(x.pnl)}</td><td class="n ${trdCls(x.pct)}">${auPct(x.pct)}</td><td class="n">${x.mfe!=null?`<span class="up">${auPct(x.mfe)}</span> / <span class="down">${auPct(x.mae)}</span>${x.exSrc==="daily"?` <span class="faint">근사</span>`:""}`:"–"}</td><td>${trdEsc(AUJ_POS[x.state]||x.state)}</td></tr>`).join("")}</tbody></table></div>`;
     if((p.sells||[]).length)h+=`<div class="au-h4">매도 내역</div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>시각</th><th>종목</th><th>수량·가격</th><th>사유</th><th>실현손익</th></tr></thead><tbody>${p.sells.map(x=>`<tr><td>${auHMs(x.at)}</td><td>${trdEsc(x.name)}</td><td class="n">${N(x.qty)}주 @${N(x.price)}</td><td>${trdEsc(x.why)}</td><td class="n ${trdCls(x.realized)}">${auWon(x.realized)}</td></tr>`).join("")}</tbody></table></div>`;
     if(p.judge&&!p.judge.none&&(p.judge.items||[]).length)h+=`<div class="au-h4">종가 판정</div><div style="font-size:12.5px;line-height:1.7">${p.judge.items.map(i=>`${trdEsc(i.name)} — ${i.ok?"넘길 자격 있음":`<span class="au-err" style="display:inline">약함 (${trdEsc((i.why||[]).join(", "))})</span>`}`).join("<br>")}${p.judge.decision&&p.judge.decision.kind!=="none"?`<br>결정: ${trdEsc(AU_EOD[p.judge.decision.kind]||p.judge.decision.kind)}${p.judge.decision.timeout?"(무응답)":p.judge.decision.auto?"(설정)":""}`:""}</div>`;
-    if((p.skipped||[]).length)h+=`<div class="au-h4">사지 못한 종목</div><div style="font-size:12.5px;line-height:1.7">${p.skipped.map(x=>`${trdEsc(x.name)} — ${trdEsc(x.why||AU_ORD[x.st]||x.st)}`).join("<br>")}</div>`;
+    if((p.review||[]).length)h=h.replace(/(<div class="au-h4">후보에서 매수까지<\/div>)/,`<div class="au-h4">자동 복기</div><div class="au-rv">${p.review.map(x=>`<div class="au-rvl ${x.tone}">${trdEsc(x.text)}</div>`).join("")}</div>$1`);
+    if((p.notBought||[]).length)h+=`<div class="au-h4">사지 못한 종목 <span class="faint" style="font-weight:400">(선정가 기준 — 그 뒤 얼마나 올랐나)</span></div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>사유</th><th>선정가</th><th>종가</th><th>일중 고점</th><th>판단</th></tr></thead><tbody>${p.notBought.map(n=>{const v=n.closePct==null?"종가 대기":n.closePct>=3?"놓침":n.closePct<=-3?"안 사서 다행":"비슷함";return `<tr><td>${trdEsc(n.name)}${(n.round||1)>1?` <span class="faint">${n.round}회차</span>`:""}</td><td style="white-space:normal">${trdEsc(n.why)}${n.reached===true?" · 일중 저점이 주문가에 닿음":n.reached===false?" · 주문가까지 안 내려옴":""}</td><td class="n">${n.pickPx?N(n.pickPx):"–"}</td><td class="n ${trdCls(n.closePct)}">${n.close?`${N(n.close)} (${auPct(n.closePct)})`:"–"}</td><td class="n ${trdCls(n.highPct)}">${n.high?`${N(n.high)} (${auPct(n.highPct)})`:"–"}</td><td class="${n.closePct>=3?"up":n.closePct<=-3?"down":"faint"}">${v}</td></tr>`;}).join("")}</tbody></table></div>`;
+    else if((p.skipped||[]).length)h+=`<div class="au-h4">사지 못한 종목</div><div style="font-size:12.5px;line-height:1.7">${p.skipped.map(x=>`${trdEsc(x.name)} — ${trdEsc(x.why||AU_ORD[x.st]||x.st)}`).join("<br>")}</div>`;
+    if(p.replay&&((p.replay.log||[]).length||(p.replay.orders||[]).length)){const R=p.replay,nm=c=>((R.picks||[]).find(x=>x.code===c)||{}).name||c;
+      h+=`<details class="au-rej"><summary>그날 진행 다시 보기 (진행 기록 ${N((R.log||[]).length)}건 · 주문 ${N((R.orders||[]).length)}종목${R.rounds&&R.rounds.n>1?` · ${R.rounds.n}회차 검토`:""})</summary>
+        <div class="au-h4">시각순 진행 기록</div><div style="font-size:12.5px;line-height:1.7">${(R.log||[]).map(x=>`<div><span class="faint">${trdEsc(new Date(Date.parse(x.t)+9*3600e3).toISOString().slice(11,19))}</span> ${trdEsc(x.text)}</div>`).join("")||'<span class="faint">기록 없음(이 기능 전의 일지)</span>'}</div>
+        ${(R.picks||[]).length?`<div class="au-h4">그날 후보</div><div style="font-size:12.5px;line-height:1.7">${R.picks.map((x,i)=>`${trdEsc((p.letter||"")+(i+1))}. ${trdEsc(x.name)} <span class="faint">${N(x.score,1)}점 · ${N(x.price)}원 ${auPct(x.changePct)}${(x.round||1)>1?` · ${x.round}회차`:""}</span>`).join("<br>")}</div>`:""}
+        ${(R.orders||[]).length?`<div class="au-h4">주문 카드</div>${R.orders.map(o=>auOrderCard(d.sid,{...o,name:nm(o.code)},{P:p.params||{},log:R.log||[]})).join("")}`:""}</details>`;}
     if(p.shadow)h+=`<div class="au-h4">그림자 비교 <span class="faint" style="font-weight:400">(선정가 → 그날 종가, 수수료 제외)</span></div><div style="font-size:12.5px">통과 전체 <b class="${trdCls(p.shadow.all)}">${auPct(p.shadow.all)}</b> · 알림 후보 <b class="${trdCls(p.shadow.picked)}">${auPct(p.shadow.picked)}</b> · 실제 매수 <b class="${trdCls(p.shadow.bought)}">${auPct(p.shadow.bought)}</b></div>`;
     if(p.params){const fs=auFields("intraday");h+=`<details class="au-rej"><summary>그날 적용된 조건 (${trdEsc((p.strategy&&p.strategy.name)||"")} v${(p.strategy&&p.strategy.version)||"?"})</summary><div class="au-kv" style="margin-top:6px">${fs.filter(f=>p.params[f.key]!==undefined).map(f=>`<div class="au-k">${trdEsc(f.label)}</div><div class="au-v">${trdEsc(auShow(f,p.params[f.key]))}</div>`).join("")}</div></details>`;}
   }

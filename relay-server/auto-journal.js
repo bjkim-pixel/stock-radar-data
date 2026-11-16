@@ -8,7 +8,7 @@ const PERF_ADD = PERF.addDays, WEEKLY_AT = 960;
    · 손익: 장중 전략 = 그날 실현손익 + 이월 종목은 "넘긴 가격(종가)" 기준 평가손익 − 수수료. 종가베팅 = (판 가격 − 넘겨받은 가격) × 수량 − 수수료
      → 같은 손익을 두 전략이 이중으로 갖지 않는다(넘긴 순간까지는 장중 전략, 그 뒤는 종가베팅)
    · 일지: 거래일 15:40 첫 작성(텔레그램 요약) → 전환(20:00) 5분 뒤 이월 반영 → 다음 거래일 09:20 이후 종가베팅 결과·공식 종가 반영해 확정. 다시 만들어도 같은 결과(멱등), 메모는 건드리지 않음 */
-const UI = require('./auto-ui');
+const UI = require('./auto-ui'), RV = require('./auto-review');
 
 const DAY = 864e5, KST = 9 * 3600e3;
 const JOURNAL_AT = 15 * 60 + 40, FINISH_AT = 9 * 60 + 20, FINISH_END = 15 * 60 + 30, AFTER_CONVERT = 5;
@@ -106,9 +106,12 @@ function buildIntraday({ date, run, fills, marks = {}, closes = {}, prev = {}, t
   const sh = Object.keys(closes).length && sm.shadow.length ? UI.shadowReturns(sm, { [date]: closes }) : null;
   const skipped = Object.entries(ords).filter(([, o]) => !((o.filled || 0) > 0)).map(([code, o]) => ({ code, name: names[code] || code, st: o.st, why: o.why || null }));
   const E = P.eod;
+  const funnel = { ...(P.stat || {}), picks: (P.picks || []).length, approved: (P.approved || []).length, bought: positions.length };
+  const notBought = RV.notBoughtOf(P, closes, daily);
+  const review = RV.reviewOf({ P, positions, sells, notBought, totals, shadow: sh, funnel, params: P.params || null });
   return {
-    v: 1, kind: 'intraday', date, strategy: P.strategy || null, letter: P.letter || null, params: P.params || null, warn: P.warn || null, regime: P.regime || null,
-    funnel: { ...(P.stat || {}), picks: (P.picks || []).length, approved: (P.approved || []).length, bought: positions.length },
+    v: 2, kind: 'intraday', replay: RV.replayOf(P), notBought, review, date, strategy: P.strategy || null, letter: P.letter || null, params: P.params || null, warn: P.warn || null, regime: P.regime || null,
+    funnel,
     decision: P.decision ? { kind: P.decision.kind, nums: P.decision.nums || null } : null,
     buys, sells, positions, skipped, totals,
     judge: E ? { at: E.at, none: !!E.none, items: (E.items || []).map(i => ({ code: i.code, name: i.name, ok: !!i.ok, why: i.why || [] })), weak: E.weak || [], decision: E.decision ? { kind: E.decision.kind, timeout: !!E.decision.timeout, auto: !!E.decision.auto } : null } : null,
