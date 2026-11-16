@@ -2938,7 +2938,7 @@ function reconcileLiveSubscription(){
 const SWING_LIVE_PAUSED=true;   // 2026-11-16: 전략 성과(스윙) 실시간 웹소켓 연동 중단 — 매매 감시·자동매매 우선(릴레이 LEGACY_STRATEGY_MONITOR 와 짝)
 function setSwingLiveCodes(codes){ S.swingWanted=new Set(SWING_LIVE_PAUSED?[]:codes); reconcileLiveSubscription(); }
 const FAV_LIVE_MAX=25;   // KIS 슬롯 36 중 보유·청산용 여유를 남기는 상한
-const FAV_LIVE_PAUSED=true;   // 2026-11-16: 내 종목(관심종목) 실시간 구독 중단 — 실시간 가격은 주식주문·실시간 종목 화면만
+const FAV_LIVE_PAUSED=false;   // 2026-11-16: 내 종목(관심종목)은 페이지를 보는 동안만 구독(다른 탭으로 가면 해제)
 function setFavLiveCodes(codes){ S.favWanted=new Set(FAV_LIVE_PAUSED?[]:codes); reconcileLiveSubscription(); }
 // 내 종목 표: 종가·등락률 셀을 KIS 실시간 체결가로 덮어쓴다(전략성과2와 같은 릴레이 웹소켓 사용)
 function updateFavLive(code,m){
