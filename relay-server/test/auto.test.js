@@ -287,3 +287,15 @@ test('하루 최대 종목 수: 못 산(취소·탈락) 주문은 세지 않는�
   const { h, P } = await roundWith({ approval: 'manual', retryUnfilled: false }, P0 => Object.fromEntries(['X1', 'X2', 'X3', 'X4', 'X5'].map(c => [c, { st: 'cancelled', orderId: c, buy: 1, qty: 1 }])), ['A', 'B', 'C', 'D', 'E']);
   assert.ok(codesOf(P).includes('E'));                              // 예전엔 취소 주문 5개가 한도를 채워 검토를 건너뜀
 });
+test('다시 시도 대기: 다음 검토에서 조건을 통과하지 못하면 대기에서 빼고 지난 시도 상태로 되돌림', async () => {
+  const tr = [{ n: 1, st: 'cancelled', why: null, buy: 10300, qty: 10, at: 1, placedAt: 2 }];
+  const { P } = await roundWith({ approval: 'manual' }, P0 => ({ [codesOf(P0)[0]]: { st: 'retry', tries: tr } }), ['B', 'C']);   // 후보 A 가 더는 조건을 통과하지 못함
+  const a = P.picks[0], o = P.orders[a.code];
+  assert.equal(o.st, 'cancelled'); assert.equal(o.buy, 10300); assert.equal(o.tries, undefined); assert.equal(a.closed, true);
+  assert.ok(P.log.some(l => l.k === 'round' && /재시도 대기에서 뺌/.test(l.text)));
+});
+test('다시 시도 대기: 조건을 계속 통과하면 대기에 남아 다시 승인 대상이 됨(빼지 않음)', async () => {
+  const { P } = await roundWith({ approval: 'manual' }, P0 => ({ [codesOf(P0)[0]]: { st: 'cancelled', buy: 1, qty: 1, orderId: 'o' } }));
+  const a = P.picks.find(p => p.retry);
+  assert.equal(P.orders[a.code].st, 'retry'); assert.equal(a.closed, false);
+});

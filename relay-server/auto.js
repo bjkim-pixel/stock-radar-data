@@ -662,6 +662,23 @@ function createAuto(deps) {
   }
 
   /* 장중 반복 검토(2회차~): 이미 알린·주문한·보유 종목을 뺀 새 후보만 기존 기록에 이어 붙이고 알림(번호는 이어서). 하루 최대 매수 종목 수를 채웠으면 건너뜀 */
+  /* 재시도 대기(승인·주문 전)인데 이번 검토에서 조건을 다시 통과하지 못했거나 더 살 자리가 없으면 대기에서 뺀다 — 지난 시도 상태로 되돌리고 후보는 닫음 */
+  async function dropStaleRetry(date, sid, keep, why, hh) {
+    let dropped = [];
+    await mutateRun(date, sid, r => {
+      const P = r.payload, ords = P.orders || {};
+      for (const [code, o] of Object.entries(ords)) {
+        if (!o || o.st !== 'retry' || keep.has(code)) continue;
+        const tr = (o.tries || []).slice(), last = tr.pop() || {};
+        ords[code] = { st: last.st || 'cancelled', why: last.why || null, buy: last.buy || null, qty: last.qty || null, at: last.at || null, placedAt: last.placedAt || null, ...(tr.length ? { tries: tr } : {}) };
+        const pk = (P.picks || []).find(p => p.code === code); if (pk) pk.closed = true;
+        dropped.push((pk && pk.name) || code);
+      }
+      if (dropped.length) LOG.push(P, 'round', `${hh} 검토: ${dropped.join(', ')} — ${why}, 재시도 대기에서 뺌`);
+      state.runs[sid] = r;
+    });
+    return dropped;
+  }
   async function runRoundFor(I, n, min) {
     const { date } = kstParts();
     const run = await readRun(date, I.id).catch(() => null);
@@ -671,6 +688,7 @@ function createAuto(deps) {
     await mutateRun(date, I.id, r => { r.payload.roundN = n; r.payload.roundAt = new Date().toISOString(); state.runs[I.id] = r; });   // 먼저 기록 → 오래 걸려도 같은 회차를 두 번 돌리지 않음
     if (placedOf(P0) >= cap) {
       await mutateRun(date, I.id, r => { LOG.push(r.payload, 'round', `${n}회차 ${hh} 검토 건너뜀 — 하루 최대 ${cap}종목을 이미 채움`); state.runs[I.id] = r; });
+      await dropStaleRetry(date, I.id, new Set(), `하루 최대 ${cap}종목을 채워 더 사지 않아`, hh);
       return { ok: true, capped: true };
     }
     const sel = await select(I.params);
@@ -680,9 +698,10 @@ function createAuto(deps) {
     const room = cap - placedOf(P0);
     const fresh = sel.picks.filter(c => !known.has(c.code)).slice(0, Math.min(I.params.notifyTop, room));
     const evs = await EV.loadEvents(D.sbGet, date).catch(() => []);
+    const dropped = await dropStaleRetry(date, I.id, new Set(fresh.map(c => c.code)), '이번 검토 조건을 통과하지 못해', hh);
     if (!fresh.length) {
       await mutateRun(date, I.id, r => { LOG.push(r.payload, 'round', `${n}회차 ${hh} 검토: 새 후보 없음 (풀 ${sel.stat.pool} → 기본조건 ${sel.stat.base} → 수급 통과 ${sel.stat.flowPass})`); state.runs[I.id] = r; });
-      return { ok: true, fresh: 0 };
+      return { ok: true, fresh: 0, dropped: dropped.length };
     }
     const mk = c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date), round: n });
     let startNum = 0, text = null, nums = [], nRetry = 0;
