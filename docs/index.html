@@ -2938,7 +2938,8 @@ function reconcileLiveSubscription(){
 const SWING_LIVE_PAUSED=true;   // 2026-11-16: 전략 성과(스윙) 실시간 웹소켓 연동 중단 — 매매 감시·자동매매 우선(릴레이 LEGACY_STRATEGY_MONITOR 와 짝)
 function setSwingLiveCodes(codes){ S.swingWanted=new Set(SWING_LIVE_PAUSED?[]:codes); reconcileLiveSubscription(); }
 const FAV_LIVE_MAX=25;   // KIS 슬롯 36 중 보유·청산용 여유를 남기는 상한
-function setFavLiveCodes(codes){ S.favWanted=new Set(codes); reconcileLiveSubscription(); }
+const FAV_LIVE_PAUSED=true;   // 2026-11-16: 내 종목(관심종목) 실시간 구독 중단 — 실시간 가격은 주식주문·실시간 종목 화면만
+function setFavLiveCodes(codes){ S.favWanted=new Set(FAV_LIVE_PAUSED?[]:codes); reconcileLiveSubscription(); }
 // 내 종목 표: 종가·등락률 셀을 KIS 실시간 체결가로 덮어쓴다(전략성과2와 같은 릴레이 웹소켓 사용)
 function updateFavLive(code,m){
   if(m.price==null)return;
@@ -3255,7 +3256,8 @@ function liveRender(){
   $("#liveLog").innerHTML=L.log.length?L.log.map(t=>`<div>${t}</div>`).join(""):"아직 변동이 없습니다";
   $("#liveStat").textContent=`${hm(now)} 갱신 · 후보 ${Object.keys(L.pool).length}종목 실시간 구독`+(lfActive()?` · 조건 충족 ${arr.length}/${L.cand||"?"}`:"")+(S.live.amt?` · 거래대금 ${N(S.live.amt)}억↑ ${S.live.cand||0}종목`:"");
 }
-function setSwLiveCodes(codes){ S.swLiveWanted=new Set(codes.slice(0,SW_LIVE_MAX)); reconcileLiveSubscription(); }
+const SW_LIVE_PAUSED=true;   // 2026-11-16: 국면 전략 실시간 구독 중단
+function setSwLiveCodes(codes){ S.swLiveWanted=new Set(SW_LIVE_PAUSED?[]:codes.slice(0,SW_LIVE_MAX)); reconcileLiveSubscription(); }
 function updateSwLive(code,m){
   if(m.price==null)return;
   $$(`#v-sw td[data-sclose="${code}"]`).forEach(c=>{c.textContent=N(+m.price,0);c.title="KIS 실시간 체결가";});
