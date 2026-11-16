@@ -14,7 +14,7 @@ const LOG = require('./auto-log');
 const { hhmm } = require('./auto-strategy');
 /* 기본값 = 1~3단계 확정값. 실제 값은 전략 설정(deps.rule())에서 옴 */
 const RULE = Object.freeze({ highNear: 0.98, idxFloor: -1, gapCut: -3, slices: [9 * 60 + 5, 9 * 60 + 10, 9 * 60 + 15], needAboveAvg: true, carryFlow: 'any',
-  overnightStopPct: 5, replyEnd: 15 * 60, nxtJudgeAt: 18 * 60 + 30, nxtReplyEnd: 19 * 60, convertAt: 20 * 60, eodWeak: 'ask', closingOn: true });
+  overnightStopPct: 5, replyEnd: 15 * 60, nxtJudgeAt: 18 * 60 + 30, nxtReplyEnd: 19 * 60, convertAt: 20 * 60, eodWeak: 'ask', closingOn: true, holdOn: true, holdMode: 'both' });
 const fmt = v => Math.round(v).toLocaleString('ko-KR');
 
 /* 넘길 자격 판정(순수) — why 가 비면 자격 있음 */
@@ -93,7 +93,7 @@ function createEod(deps) {
     const key = keyOf(phase), nx = phase === 'nxt';
     const run = await D.readRun(date);
     if (!run || (run.payload[key] && run.payload[key].at)) return { ok: true, skipped: true };
-    const codes = boughtCodes(run), tag = nx ? 'NXT 종가 판정' : '종가 판정';
+    const codes = [...new Set([...boughtCodes(run), ...(D.intraCodes ? D.intraCodes(date) : [])])], tag = nx ? 'NXT 종가 판정' : '종가 판정';
     if (!codes.length) { await D.mutateRun(date, r => { r.payload[key] = { at: now(), items: [], none: true }; LOG.push(r.payload, 'judge', `${tag}: 오늘 산 종목이 없어 건너뜀`, null, now()); }); return { ok: true, n: 0 }; }
     const H = await heldMap();
     let idx = {}; try { idx = (await D.marketIdx()) || {}; } catch (_) {}
@@ -193,8 +193,9 @@ function createEod(deps) {
     for (const code of codes) {
       const p = H.get(code);
       if (!p || !(p.qty > 0)) continue;
+      const pl = p.plan || null, plan0 = pl ? { stopPct: pl.stopPct || null, steps: (pl.steps || []).map(x => ({ n: x.n, p: x.p, q: x.q, ...(x.runner ? { runner: true } : {}) })), ratchet: pl.ratchet || null } : null;   // 아침에 보류·장중 전환할 때 되돌릴 원래 매도 계획
       const e = await D.paper.editPlan({ code, stopPct: R.overnightStopPct, steps: [], ratchet: null });   // 분할 익절 끄기, 손절은 종가베팅 설정값(기본 −5%)
-      add.push({ code, name: p.name || nameOf(run, code), q0: p.qty, avg: p.avg, from: date, sold: 0, planOk: !!(e && e.ok), sid: D.tag || null });   // sid = 넘겨준 장중 전략
+      add.push({ code, name: p.name || nameOf(run, code), q0: p.qty, avg: p.avg, from: date, sold: 0, planOk: !!(e && e.ok), sid: D.tag || null, ...(plan0 ? { plan0 } : {}) });   // sid = 넘겨준 장중 전략
     }
     await D.mutateCarry(c => { c.items = c.items || {}; for (const a of add) c.items[a.code] = { ...a, at: now(), state: 'wait' }; });
     await D.mutateRun(date, r => { r.payload.carryDone = { at: now(), codes: add.map(a => a.code) }; LOG.push(r.payload, 'convert', add.length ? `이월 전환: ${add.map(a => `${a.name} ${a.q0}주`).join(', ')} — 분할 익절 끄고 손절 −${R.overnightStopPct}% 유지, 다음 날 ${R.slices.map(hhmm).join('·')} 분할 매도` : '이월 전환: 넘길 종목 없음(모두 정리됨)', null, now()); });
@@ -208,10 +209,42 @@ function createEod(deps) {
     return { ok: true, n: add.length };
   }
 
+  /* 아침 보류: 종가베팅 매도 대신 원래(장중) 매도 계획을 다시 걸고 carry 상태를 'intra' 로 바꿈 → 오늘 장중 정리 판정·20:00 재이월 대상 */
+  async function hold(it, p, q, date) {
+    let plan = null;
+    try { plan = D.restorePlan ? await D.restorePlan(it, p) : null; } catch (_) {}
+    if (!plan || !(plan.stopPct > 0)) return null;
+    const e = await D.paper.editPlan({ code: it.code, stopPct: plan.stopPct, steps: plan.steps || [], ratchet: plan.ratchet || null });
+    if (!e || !e.ok) return null;
+    await D.mutateCarry(c => { const x = c.items[it.code]; x.state = 'intra'; x.holdDate = date; x.holdAt = now(); x.holdOpen = q.open; x.holdPrice = q.price; x.holdSrc = plan.src || null; x.log = [...(x.log || []), { at: now(), hold: true, open: q.open, price: q.price }]; });
+    const tp = (plan.steps || []).length ? `익절 ${plan.steps.length}단계` : '익절 없음';
+    return `⏸ ${it.name}: 시가 ${fmt(q.open)}원 · 현재 ${fmt(q.price)}원 — 매수 평균 ${fmt(p.avg)}원보다 낮아 아침 매도를 보류하고 장중 전략으로 전환 (손절 −${plan.stopPct}% · ${tp}${plan.src ? ' · ' + plan.src : ''})`;
+  }
+
+  /* 20:00: 장중으로 전환했던 종목을 다시 종가베팅 이월로 되돌림(기존 규칙대로 재이월) */
+  async function reconvert(date) {
+    const C = await D.readCarry();
+    const items = Object.values((C && C.items) || {}).filter(i => i.state === 'intra' && i.holdDate === date);
+    if (!items.length) return { ok: true, n: 0 };
+    const H = await heldMap(), R = await rule(), add = [], gone = [];
+    for (const it of items) {
+      const p = H.get(it.code);
+      if (!p || !(p.qty > 0) || !R.closingOn) { gone.push([it.code, !p || !(p.qty > 0) ? 'gone' : 'closing-off']); continue; }
+      const e = await D.paper.editPlan({ code: it.code, stopPct: R.overnightStopPct, steps: [], ratchet: null });
+      add.push({ code: it.code, q0: p.qty, avg: p.avg, ok: !!(e && e.ok), name: it.name });
+    }
+    await D.mutateCarry(c => {
+      for (const [code, why] of gone) { const x = c.items[code]; if (x) { x.state = 'done'; x.doneAt = now(); x.why = why; } }
+      for (const a of add) { const x = c.items[a.code]; if (x) { x.state = 'wait'; x.from = date; x.q0 = a.q0; x.avg = a.avg; x.sold = 0; x.reconv = (x.reconv || 0) + 1; x.at = now(); } }
+    });
+    if (add.length) await D.sendTelegram(`🌙 ${date} 장중 전환 종목 재이월: ${add.map(a => `${a.name} ${fmt(a.q0)}주`).join(', ')} — 다시 종가베팅 매도 계획(손절 −${R.overnightStopPct}% 유지)으로 넘겼어요.`);
+    return { ok: true, n: add.length };
+  }
+
   /* 다음 날 아침 매도(09:00~09:40 주기) */
   async function morning(date, min) {
     const C = await D.readCarry();
-    const items = Object.values((C && C.items) || {}).filter(i => i.from < date && i.state !== 'done');
+    const items = Object.values((C && C.items) || {}).filter(i => i.from < date && i.state !== 'done' && !(i.state === 'intra' && i.holdDate === date));   // 오늘 장중 전환한 종목은 아침 매도 대상 아님
     if (!items.length) return { ok: true, n: 0 };
     const H = await heldMap(), R = await rule(), last = R.slices[R.slices.length - 1];
     const msgs = [];
@@ -223,6 +256,10 @@ function createEod(deps) {
       }
       let q = null; try { q = await D.getQuote(it.code); } catch (_) { continue; }
       if (!(q && q.price > 0)) continue;
+      if (R.holdOn !== false && it.state !== 'intra' && !(it.sold > 0) && q.open > 0 && p.avg > 0) {   // 매수가보다 낮게 시작 → 급히 팔지 않고 장중 전략 계획으로 전환
+        const below = R.holdMode === 'price' ? q.price < p.avg : (q.open < p.avg && q.price < p.avg);
+        if (below) { const h = await hold(it, p, q, date); if (h) { msgs.push(h); continue; } }
+      }
       const pc = q.prevClose > 0 ? q.prevClose : null, chg = pc ? (q.price / pc - 1) * 100 : 0;
       const cut = pc && chg <= R.gapCut;
       let want;
@@ -241,7 +278,7 @@ function createEod(deps) {
     return { ok: true, n: items.length, msgs };
   }
 
-  return { judge, handleCmd, timeout, convert, morning, pendingPhase };
+  return { judge, handleCmd, timeout, convert, morning, reconvert, pendingPhase };
 }
 
 module.exports = { RULE, carryCheck, sliceTarget, parseEodCmd, createEod, limitSellPrice };

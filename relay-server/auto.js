@@ -376,7 +376,7 @@ function createAuto(deps) {
   async function eodRule(sid) {
     const { I, C } = await intraOf(sid), c = C.params, T = ST.timesOf(I.params, c);
     return { highNear: 1 - c.highNearPct / 100, idxFloor: c.idxFloor, gapCut: c.gapCut, slices: T.slices, needAboveAvg: c.needAboveAvg, carryFlow: c.carryFlow,
-      overnightStopPct: c.overnightStopPct, replyEnd: T.reply, nxtJudgeAt: T.njudge, nxtReplyEnd: T.nreply, convertAt: T.convert, eodWeak: I.params.eodWeak, closingOn: !!C.enabled };
+      overnightStopPct: c.overnightStopPct, replyEnd: T.reply, nxtJudgeAt: T.njudge, nxtReplyEnd: T.nreply, convertAt: T.convert, eodWeak: I.params.eodWeak, closingOn: !!C.enabled, holdOn: c.holdOn !== false, holdMode: c.holdMode || 'both' };
   }
   /* 종가 베팅 넘긴 종목(auto_config 'carry') — 같은 잠금 안에서 읽기 → 고치기 → 저장 */
   async function readCarry() {
@@ -460,14 +460,28 @@ function createAuto(deps) {
     paper: D.paper, getQuote: D.getQuote, loadChart: D.loadChart, sendTelegram: tgFor(sid), now: D.now,
     mutateRun: (d, fn) => mutateRun(d, sid, fn), readRun: d => readRun(d, sid), perStock: () => perStockOf(sid), opt: () => execOpt(sid), optCb: () => cbOpt(sid), exposure: exposureNow,
   })) : null;
+  /* 아침 보류 때 다시 걸 매도 계획: ① 넘기기 전에 저장해 둔 원래 계획 ② 산 날 주문의 계획 ③ 평균 매수가 기준으로 새로 계산(종가베팅 저녁 매수 종목) */
+  async function restorePlan(it, p) {
+    const sid = it.sid || DEF_SID, opt = await execOpt(sid);
+    const norm = (pl, src) => ({ stopPct: pl.stopPct > 0 ? pl.stopPct : opt.stopPct, steps: (pl.steps || []).map(x => ({ n: x.n, p: x.p, q: x.q, ...(x.runner ? { runner: true } : {}) })), ratchet: pl.ratchet || null, src });
+    if (it.plan0 && (it.plan0.steps || []).length) return norm(it.plan0, '원래 계획');
+    try {
+      const r0 = await readRun(it.from, sid), o = r0 && r0.payload && r0.payload.orders && r0.payload.orders[it.code];
+      if (o && o.plan && (o.plan.steps || []).length) return norm(o.plan, '산 날 계획');
+    } catch (_) {}
+    const [q, rows] = await Promise.all([D.getQuote(it.code).catch(() => null), D.loadChart(it.code).catch(() => [])]);
+    const pl = XE.planFromAvg({ q: q || {}, rows, avg: p.avg, qty: p.qty, opt });
+    return norm(pl, '새로 계산');
+  }
+  const intraCodesFor = sid => date => Object.values((state.carry && state.carry.items) || {}).filter(i => i.state === 'intra' && i.holdDate === date && (!i.sid || i.sid === sid)).map(i => i.code);
   const eodFor = sid => D.paper ? (eods[sid] = eods[sid] || require('./auto-eod').createEod({
     paper: D.paper, getQuote: D.getQuote, fetchFlow: D.fetchFlow, marketIdx: D.marketIdx || (async () => ({})), sendTelegram: tgFor(sid), now: D.now,
-    mutateRun: (d, fn) => mutateRun(d, sid, fn), readRun: d => readRun(d, sid), mutateCarry, readCarry, rule: () => eodRule(sid), tag: sid,
+    mutateRun: (d, fn) => mutateRun(d, sid, fn), readRun: d => readRun(d, sid), mutateCarry, readCarry, rule: () => eodRule(sid), tag: sid, restorePlan, intraCodes: intraCodesFor(sid),
   })) : null;
   const exec = D.paper ? execFor(DEF_SID) : null;   // 아래 존재 여부 확인용
   const eodAny = D.paper ? require('./auto-eod').createEod({   // 아침 매도: 이월 종목 전체(전략 구분 없음)
     paper: D.paper, getQuote: D.getQuote, fetchFlow: D.fetchFlow, marketIdx: D.marketIdx || (async () => ({})), sendTelegram: D.sendTelegram, now: D.now,
-    mutateRun: (d, fn) => mutateRun(d, DEF_SID, fn), readRun: d => readRun(d, DEF_SID), mutateCarry, readCarry, rule: () => eodRule(DEF_SID),
+    mutateRun: (d, fn) => mutateRun(d, DEF_SID, fn), readRun: d => readRun(d, DEF_SID), mutateCarry, readCarry, rule: () => eodRule(DEF_SID), restorePlan,
   }) : null;
 
   /* D단계: 전략별 장부 + 자동 일지(15:40 작성 · 전환 뒤 이월 반영 · 다음 거래일 아침 종가베팅 결과로 확정) */
@@ -674,6 +688,7 @@ function createAuto(deps) {
       if (inNxT && waiting(EN)) (out.timeoutN = out.timeoutN || {})[sid] = await eodFor(sid).timeout(date, 'nxt').catch(err);
       if (inConv && !r.payload.carryDone) (out.convert = out.convert || {})[sid] = await eodFor(sid).convert(date).catch(err);
     }
+    if (inConv && Object.values((state.carry && state.carry.items) || {}).some(i => i.state === 'intra' && i.holdDate === date)) out.reconvert = await eodAny.reconvert(date).catch(err);   // 아침에 장중으로 전환한 종목 → 20:00 다시 이월
     if (inCb && (await masterOn())) {   // 종가베팅 저녁 매수: 18:00부터 관찰 회차, 19:30 이후 최종 선정(전략마다 한 번(실패하면 최대 3번까지 1분 간격으로 다시)
       for (const I of A.Is) {
         const r = state.runs[I.id], cbx = r && r.payload && r.payload.cb;

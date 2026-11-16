@@ -107,6 +107,18 @@ function splitPlanR(buy, target, qty, { stopPct = 5, runnerPct = 20, weights = [
   return { steps };
 }
 
+
+/* 이미 들고 있는 종목의 매도 계획을 평균 매수가 기준으로 새로 계산(종가베팅 저녁 매수 종목을 장중 전략으로 전환할 때) */
+function planFromAvg({ q, rows, avg, qty, opt = {} }) {
+  const o = { ...DEF, ...opt };
+  const last5 = (rows || []).slice(-5), avg5 = last5.length ? last5.reduce((a, r) => a + (+r.trade_amount || 0), 0) / last5.length : 0;
+  const capEok = Math.max(avg5, (q && q.amt) || 0) / EOK;
+  const prevHigh = rows && rows.length ? Math.max(...rows.map(r => (+r.high > 0 ? +r.high : +r.close))) : 0;
+  const tgt = calcTarget({ cur: avg, prof: buildProfile(rows || []), capEok, coef: o.coef, prevHigh, upper: q && q.upper, stopPct: o.stopPct, rr: o.rr });
+  const steps = tgt.target ? (o.tpStyle === 'r' ? splitPlanR(avg, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(avg, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];
+  return { stopPct: o.stopPct, target: tgt.target || null, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ratchet: o.ratchet ? { floorPct: 0.35 } : null };
+}
+
 /* 매수 주문 내용 계산: 시세(q) + 일봉(rows) → 가격·수량·계획 */
 function makeOrder({ q, rows, perStockKrw, opt = {} }) {
   const o = { ...DEF, ...opt };
@@ -315,4 +327,4 @@ function createExec(deps) {
   return { approve, follow };
 }
 
-module.exports = { tryNo, keepTries, retryable, foldTry, DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, rrOf, splitPlanR, createExec };
+module.exports = { planFromAvg, tryNo, keepTries, retryable, foldTry, DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, rrOf, splitPlanR, createExec };
