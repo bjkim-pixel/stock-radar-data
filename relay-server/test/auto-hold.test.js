@@ -58,3 +58,14 @@ test('계획을 복원하지 못하면 보류하지 않고 기존대로 매도',
   await r.eod.morning('2026-11-17', MIN);
   assert.ok(r.placed.length >= 1);
 });
+
+test('전환 효과 비교: 그냥 팔았다면 vs 전환 후(매도 실현 + 남은 수량 평가)', () => {
+  const { holdCompare } = require('../auto-ui');
+  const it = { code: 'A', name: '가', avg: 10000, holdDate: '2026-11-17', holdPrice: 9850, holdQty: 10, holdAt: 1000 };
+  const r = holdCompare([it], [{ code: 'A', side: 'sell', qty: 4, ts: 2000, realized: 2000 }], [{ code: 'A', last: 10100 }], '2026-11-17');
+  assert.deepEqual(r[0], { code: 'A', name: '가', qty: 10, avg: 10000, holdPrice: 9850, soldQty: 4, restQty: 6, last: 10100, straight: -1500, actual: 2600, diff: 4100 });
+  assert.equal(holdCompare([it], [], [], '2026-11-17').length, 0);              // 현재가를 모르면 비교 안 함
+  assert.equal(holdCompare([it], [], [{ code: 'A', last: 9900 }], '2026-11-18').length, 0);   // 다른 날짜
+  const rig2 = rig({ open: 9800, price: 9850 });
+  return rig2.eod.morning('2026-11-17', MIN).then(() => assert.equal(rig2.carry.items.A.holdQty, 10));
+});

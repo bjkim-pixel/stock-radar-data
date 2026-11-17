@@ -389,7 +389,7 @@ function createAuto(deps) {
   async function eodRule(sid) {
     const { I, C } = await intraOf(sid), c = C.params, T = ST.timesOf(I.params, c);
     return { highNear: 1 - c.highNearPct / 100, idxFloor: c.idxFloor, gapCut: c.gapCut, slices: T.slices, needAboveAvg: c.needAboveAvg, carryFlow: c.carryFlow,
-      overnightStopPct: c.overnightStopPct, replyEnd: T.reply, nxtJudgeAt: T.njudge, nxtReplyEnd: T.nreply, convertAt: T.convert, eodWeak: I.params.eodWeak, closingOn: !!C.enabled, holdOn: c.holdOn !== false, holdMode: c.holdMode || 'both' };
+      overnightStopPct: c.overnightStopPct, replyEnd: T.reply, nxtJudgeAt: T.njudge, nxtReplyEnd: T.nreply, convertAt: T.convert, eodWeak: I.params.eodWeak, closingOn: !!C.enabled, holdOn: c.holdOn !== false, holdMode: c.holdMode || 'price', holdGraceMin: +c.holdGraceMin > 0 ? +c.holdGraceMin : 0 };
   }
   /* 종가 베팅 넘긴 종목(auto_config 'carry') — 같은 잠금 안에서 읽기 → 고치기 → 저장 */
   async function readCarry() {
@@ -489,11 +489,16 @@ function createAuto(deps) {
   const intraCodesFor = sid => date => Object.values((state.carry && state.carry.items) || {}).filter(i => i.state === 'intra' && i.holdDate === date && (!i.sid || i.sid === sid)).map(i => i.code);
   /* 이월 종목(어제 종가베팅으로 넘긴 종목)은 09:00 전(NXT 프리마켓)에는 손절·매도하지 않는다 → paper 엔진이 물어봄 */
   let preHoldCache = { at: 0, items: {} };
-  if (D.paper && D.paper.setPreHold) D.paper.setPreHold(async code => {
+  if (D.paper && D.paper.setPreHold) D.paper.setPreHold(async (code, min) => {
     const t = Date.now();
     if (t - preHoldCache.at > 20000) { try { preHoldCache = { at: t, items: (await readCarry()).items || {} }; } catch (_) { preHoldCache.at = t; } }
-    const i = preHoldCache.items[code];
-    return !!i && i.state !== 'done' && i.state !== 'intra' && i.from < kstParts().date;
+    const i = preHoldCache.items[code], today = kstParts().date;
+    if (!i) return false;
+    if (min == null || min < 540) return i.state !== 'done' && i.state !== 'intra' && i.from < today;
+    /* 정규장: 아침 보류로 장중 전환한 종목은 설정한 시간(09:00부터 N분) 동안 손절하지 않음 — 시초 흔들기에 털리지 않게 */
+    if (i.state !== 'intra' || i.holdDate !== today) return false;
+    const g = (await eodRule(i.sid || DEF_SID).catch(() => ({}))).holdGraceMin || 0;
+    return g > 0 && min < 540 + g;
   });
   const eodFor = sid => D.paper ? (eods[sid] = eods[sid] || require('./auto-eod').createEod({
     paper: D.paper, getQuote: D.getQuote, fetchFlow: D.fetchFlow, marketIdx: D.marketIdx || (async () => ({})), sendTelegram: tgFor(sid), now: D.now,
@@ -1125,11 +1130,14 @@ function createAuto(deps) {
     let exposure = null;
     try { const ex = await exposureNow(); if (ex) { const caps = A.Is.map(i => +i.params.totalCapKrw || 0).filter(v => v > 0); exposure = { ...ex, rows: undefined, cap: caps.length ? Math.min(...caps) : 0 }; } } catch (_) {}
     const ci = carryItems.map(i => ({ code: i.code, name: i.name, q0: i.q0, avg: i.avg, from: i.from, sold: i.sold || 0, state: i.state, sid: i.sid || null }));
+    /* 아침 보류(장중 전환) 효과 비교: 09:00 에 그냥 팔았다면(보류 시점 현재가) vs 전환 후 실제(그날 매도 실현 + 남은 수량 평가) */
+    let holdCmp = [];
+    try { holdCmp = UI.holdCompare([...carryItems, ...carryDoneToday], trades, positions, date); } catch (_) {}
     const cd = carryDoneToday.map(i => ({ code: i.code, name: i.name, q0: i.q0, avg: i.avg, from: i.from, sold: i.sold || 0, state: 'done', why: i.why || null, sid: i.sid || null }));
     return {
       ok: true, now: Date.now(), date, tradingDay: isTradingDay(date),
       cfg: { on: !!cv.on, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
-      today: todays[0] || null, todays, quotes, active: A.Is.map(i => i.id), regime, exposure, events, positions, trades, dayTot, carry: ci, carryDone: cd, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
+      today: todays[0] || null, todays, quotes, active: A.Is.map(i => i.id), regime, exposure, events, positions, trades, dayTot, carry: ci, carryDone: cd, history: hist.rows, totals: hist.totals, holdCmp, lastErr: state.lastErr || null,
     };
   }
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */

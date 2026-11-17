@@ -106,4 +106,18 @@ function checkConfig(b) {
   return { val: out };
 }
 
-module.exports = { summarizeRun, attributeRealized, shadowReturns, buildHistory, checkConfig, kstDate, PER_MIN, PER_MAX, PER_STEP };
+
+/* 아침 보류(장중 전환) 효과 비교 — 09:00 에 그냥 팔았다면(보류 시점 현재가) vs 전환 후 실제(그날 매도 실현 + 남은 수량 평가) */
+function holdCompare(items, trades, positions, date) {
+  const hs = (items || []).filter(i => i.holdDate === date && i.holdPrice > 0 && i.holdQty > 0 && i.avg > 0);
+  return hs.map(i => {
+    const sells = (trades || []).filter(f => f.code === i.code && f.side === 'sell' && (!i.holdAt || f.ts >= i.holdAt - 60e3));
+    const soldQty = Math.min(i.holdQty, sells.reduce((a, f) => a + f.qty, 0)), realized = sells.reduce((a, f) => a + (f.realized || 0), 0);
+    const pos = (positions || []).find(p => p.code === i.code), rest = Math.max(0, i.holdQty - soldQty), last = pos && pos.last > 0 ? pos.last : null;
+    if (rest > 0 && !last) return null;   // 남은 수량의 현재가를 모르면 비교하지 않음
+    const straight = Math.round((i.holdPrice - i.avg) * i.holdQty), actual = Math.round(realized + (rest > 0 ? (last - i.avg) * rest : 0));
+    return { code: i.code, name: i.name, qty: i.holdQty, avg: i.avg, holdPrice: i.holdPrice, soldQty, restQty: rest, last, straight, actual, diff: actual - straight };
+  }).filter(Boolean);
+}
+
+module.exports = { holdCompare, summarizeRun, attributeRealized, shadowReturns, buildHistory, checkConfig, kstDate, PER_MIN, PER_MAX, PER_STEP };

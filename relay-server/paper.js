@@ -360,7 +360,7 @@ function createPaper(deps) {
   async function stopCheck(code, q) {
     const pos = positions.get(code);
     if (!pos || !pos.plan) return false;
-    if (preHold && kst().min < 9 * 60 && await preHold(code)) return false;   // 이월 종목은 NXT 프리마켓(08:00~09:00)에 손절·매도하지 않음 — 얇은 호가로 가격을 흔드는 시간대, 09:00 정규장부터 판단
+    { const m0 = kst().min; if (preHold && m0 < 12 * 60 && await preHold(code, m0)) return false; }   // 이월 종목은 NXT 프리마켓(08:00~09:00)에 손절·매도하지 않음 — 얇은 호가로 가격을 흔드는 시간대, 09:00 정규장부터 판단
     if (pos.plan.ratchet) {   // 보유 후 본 최고가(손절선을 올리는 기준) — 시세 사이에 찍은 새 고가도 반영
       const prevHi = pos.highSeen, nh = q.high > 0 && prevHi != null && q.high > prevHi ? q.high : 0, pk = Math.max(pos.plan.peak || 0, q.price || 0, nh);
       if (pk > (pos.plan.peak || 0)) { pos.plan.peak = pk; dirty.pos.set(code, pos); }

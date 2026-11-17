@@ -11514,7 +11514,7 @@ function auFillTx(f){
 }
 function auStatusHtml(){
   const A=TRD.au,P=A.positions||[],C=A.carry||[],F=A.trades||[],T=A.dayTot;
-  if(!P.length&&!C.length&&!F.length)return "";
+  if(!P.length&&!C.length&&!F.length&&!(A.holdCmp||[]).length)return "";
   const tot=T||{realized:0,evalPl:0,total:0,buyKrw:0,sellKrw:0,holds:P.length,fee:0};
   const cl=v=>trdCls(v),w=v=>(v>0?"+":v<0?"-":"")+N(Math.abs(v),0)+"원";
   const tiles=`<div class="trd-sum" style="margin-bottom:10px"><div><div class="k">오늘 실현손익</div><div class="v ${cl(tot.realized)}">${w(tot.realized)}</div></div><div><div class="k">평가손익(보유)</div><div class="v ${cl(tot.evalPl)}">${w(tot.evalPl)}</div></div><div><div class="k">오늘 합계</div><div class="v ${cl(tot.total)}">${w(tot.total)}</div></div><div><div class="k">매수 / 매도 금액</div><div class="v" style="font-size:14px">${trdFmtAmt(tot.buyKrw)} / ${trdFmtAmt(tot.sellKrw)}</div></div><div><div class="k">보유</div><div class="v">${N(P.length)}종목</div></div></div>`;
@@ -11523,7 +11523,10 @@ function auStatusHtml(){
   const buyT=`<div class="au-h4">오늘 매수 현황 <span class="faint" style="font-weight:400">${B.length?`${N(B.length)}건 · ${trdFmtAmt(tot.buyKrw)}원`:""}</span></div>${B.length?`<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>시각</th><th>종목</th><th>수량·가격</th><th>금액</th></tr></thead><tbody>${B.map(f=>`<tr><td>${auHMs(f.ts)}</td><td>${auNm(f.name,f.code)}</td><td class="n">${N(f.qty)}주 @${N(f.price)}</td><td class="n">${trdFmtAmt(f.amount)}</td></tr>`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">오늘 매수 체결이 아직 없어요.</div>'}`;
   const sellT=`<div class="au-h4">오늘 매도 현황 <span class="faint" style="font-weight:400">${Sl.length?`${N(Sl.length)}건 · ${trdFmtAmt(tot.sellKrw)}원 · 실현 `:""}</span>${Sl.length?`<b class="${cl(tot.realized)}" style="font-weight:700">${w(tot.realized)}</b>`:""}</div>${Sl.length?`<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>시각</th><th>종목</th><th>구분</th><th>수량·가격</th><th>금액</th><th>실현손익</th><th>수익률</th></tr></thead><tbody>${Sl.map(f=>`<tr><td>${auHMs(f.ts)}</td><td>${auNm(f.name,f.code)}</td><td><span class="au-sd sdsell">${trdEsc(auFillTx(f))}</span></td><td class="n">${N(f.qty)}주 @${N(f.price)}</td><td class="n">${trdFmtAmt(f.amount)}</td><td class="n ${cl(f.realized)}">${f.realized!=null?w(Math.round(f.realized)):"–"}</td><td class="n ${cl(pctOf(f))}">${auPct(pctOf(f))}</td></tr>`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">오늘 매도 체결(익절·손절·정리)이 아직 없어요.</div>'}`;
   const trd=buyT+sellT;
-  return `<div class="card au-sec" id="au-sec-hold"><h3>자동매매 현황 <span class="r faint" style="font-size:11px">손절·익절은 가상매매 엔진이 감시 · 실현손익은 수수료 반영</span></h3>${tiles}${hold}${trd}</div>`;
+  const HC=A.holdCmp||[];
+  const holdCmpT=HC.length?(()=>{const sS=HC.reduce((a,x)=>a+x.straight,0),sA=HC.reduce((a,x)=>a+x.actual,0);
+    return `<div class="au-h4">아침 보류 효과 <span class="faint" style="font-weight:400">09:00에 그냥 팔았다면 vs 장중 전환 후 · 수수료 제외</span></div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>보류 시점가</th><th>그냥 팔았다면</th><th>전환 후 실제</th><th>차이</th></tr></thead><tbody>${HC.map(x=>`<tr><td>${auNm(x.name,x.code)}<div class="faint" style="font-size:11px">매수가 ${N(x.avg)}원 · ${N(x.qty)}주${x.soldQty?` · 매도 ${N(x.soldQty)}주`:""}${x.restQty?` · 보유 ${N(x.restQty)}주(현재 ${N(x.last)}원)`:""}</div></td><td>${N(x.holdPrice)}원</td><td class="${cl(x.straight)}">${w(x.straight)}</td><td class="${cl(x.actual)}">${w(x.actual)}</td><td class="${cl(x.diff)}"><b>${w(x.diff)}</b></td></tr>`).join("")}</tbody><tfoot><tr><td colspan="2"><b>합계</b></td><td class="${cl(sS)}">${w(sS)}</td><td class="${cl(sA)}">${w(sA)}</td><td class="${cl(sA-sS)}"><b>${w(sA-sS)}</b></td></tr></tfoot></table></div><div class="faint" style="font-size:11.5px;margin:4px 0 8px">차이가 +이면 보류가 이득, −이면 그냥 파는 게 나았다는 뜻입니다. 남은 수량은 현재가(마감 후엔 종가)로 평가한 값입니다.</div>`;})():"";
+  return `<div class="card au-sec" id="au-sec-hold"><h3>자동매매 현황 <span class="r faint" style="font-size:11px">손절·익절은 가상매매 엔진이 감시 · 실현손익은 수수료 반영</span></h3>${tiles}${hold}${holdCmpT}${trd}</div>`;
 }
 function auTodayHtml(){
   const A=TRD.au,G=TRD.aus,ids=auIds();

@@ -14,7 +14,7 @@ const LOG = require('./auto-log');
 const { hhmm } = require('./auto-strategy');
 /* 기본값 = 1~3단계 확정값. 실제 값은 전략 설정(deps.rule())에서 옴 */
 const RULE = Object.freeze({ highNear: 0.98, idxFloor: -1, gapCut: -3, slices: [9 * 60 + 5, 9 * 60 + 10, 9 * 60 + 15], needAboveAvg: true, carryFlow: 'any',
-  overnightStopPct: 5, replyEnd: 15 * 60, nxtJudgeAt: 18 * 60 + 30, nxtReplyEnd: 19 * 60, convertAt: 20 * 60, eodWeak: 'ask', closingOn: true, holdOn: true, holdMode: 'price' });
+  overnightStopPct: 5, replyEnd: 15 * 60, nxtJudgeAt: 18 * 60 + 30, nxtReplyEnd: 19 * 60, convertAt: 20 * 60, eodWeak: 'ask', closingOn: true, holdOn: true, holdMode: 'price', holdGraceMin: 0 });
 const fmt = v => Math.round(v).toLocaleString('ko-KR');
 
 /* 넘길 자격 판정(순수) — why 가 비면 자격 있음 */
@@ -216,7 +216,7 @@ function createEod(deps) {
     if (!plan || !(plan.stopPct > 0)) return null;
     const e = await D.paper.editPlan({ code: it.code, stopPct: plan.stopPct, steps: plan.steps || [], ratchet: plan.ratchet || null });
     if (!e || !e.ok) return null;
-    await D.mutateCarry(c => { const x = c.items[it.code]; x.state = 'intra'; x.holdDate = date; x.holdAt = now(); x.holdOpen = q.open; x.holdPrice = q.price; x.holdSrc = plan.src || null; x.log = [...(x.log || []), { at: now(), hold: true, open: q.open, price: q.price }]; });
+    await D.mutateCarry(c => { const x = c.items[it.code]; x.state = 'intra'; x.holdDate = date; x.holdAt = now(); x.holdOpen = q.open; x.holdPrice = q.price; x.holdQty = p.qty; x.holdSrc = plan.src || null; x.log = [...(x.log || []), { at: now(), hold: true, open: q.open, price: q.price }]; });
     const tp = (plan.steps || []).length ? `익절 ${plan.steps.length}단계` : '익절 없음';
     return `⏸ ${it.name}: 시가 ${fmt(q.open)}원 · 현재 ${fmt(q.price)}원 — 매수 평균 ${fmt(p.avg)}원보다 낮아 아침 매도를 보류하고 장중 전략으로 전환 (손절 −${plan.stopPct}% · ${tp}${plan.src ? ' · ' + plan.src : ''})`;
   }

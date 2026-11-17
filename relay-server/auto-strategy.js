@@ -84,6 +84,7 @@ const SCHEMA = {
     F('carryFlow', '넘길 자격', '수급', 'enum', 'any', { opts: ENUM.carryFlow }),
     F('holdOn', '아침 보류(장중 전환)', '매수가보다 낮게 시작하면 매도 보류 → 장중 전략으로 전환', 'bool', true),
     F('holdMode', '아침 보류(장중 전환)', '보류 조건', 'enum', 'price', { opts: ENUM.holdMode }),
+    F('holdGraceMin', '아침 보류(장중 전환)', '전환 종목 손절 유예(09:00부터)', 'num', 0, { min: 0, max: 180, step: 5, unit: '분' }),
     F('idxFloor', '넘길 자격', '지수 하한(코스피·코스닥)', 'num', -1, { min: -3, max: 0, step: 0.1, unit: '%' }),
     F('closeBuyOn', '종가베팅 저녁 매수(NXT)', '저녁에 새 후보를 골라 매수', 'bool', true),
     F('closeBuyWatchFrom', '종가베팅 저녁 매수(NXT)', '관찰 시작 시각', 'time', '18:00', { min: '16:00', max: '19:00' }),

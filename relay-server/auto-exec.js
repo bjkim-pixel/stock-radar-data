@@ -312,7 +312,7 @@ function createExec(deps) {
           msgs.push(`⚠ ${name}: 정정 실패 — ${(m && m.error) || '알 수 없음'}`);
         }
       } else {                 // 정정 후에도 미체결
-        if (o2.unfilledEnd === 'keep') continue;   // 설정: 장 마감까지 유지
+        if (o2.unfilledEnd === 'keep' || v.userEdit) continue;   // 설정: 장 마감까지 유지 · 사용자가 주문 화면에서 직접 정정한 주문은 자동으로 취소하지 않음(직접 취소 전까지)
         let lo = null; try { const q = await D.getQuote(code); lo = q && q.low > 0 ? q.low : null; } catch (_) {}
         const c = await D.paper.cancel(o.id);
         const missTx = lo != null ? ` · 주문가 ${fmt(o.price)}원, 그동안 최저가 ${fmt(lo)}원${lo > o.price ? '(주문가까지 내려오지 않음)' : ''}` : '';

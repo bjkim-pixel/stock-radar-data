@@ -471,3 +471,9 @@ GitHub의 `schedule`(cron)은 큐가 밀리면 몇 시간씩 늦거나 건너뜁
 - 체결 대기 중인 자동 매수 종목을 고르면 호가창 위에서 **같은 주문**을 정정(가격·수량)·취소·"매도1호가로(바로 체결)" 할 수 있음. 별도 주문이 아님.
 - `POST /trade/auto/order-edit` `{code, action:'modify'|'cancel', price, qty}` → `auto.siteOrderEdit` → `auto-exec.userEdit`: paper 주문을 정정(새 주문번호)하고 자동매매 기록(orderId·buy·qty·plan·target)을 갱신, 체결 전이면 손절·익절 계획을 새 매수가·수량 기준으로 다시 계산(`makeOrder(force)`). 정정 뒤 상태는 `modified`(자동 재정정은 건너뛰고 이후 미체결 규칙만 적용). 일부 체결됐으면 남은 수량만 정정 가능.
 - 같은 종목에 자동 매수가 체결 대기 중이면 `/trade/paper/order` 직접 매수는 409 로 막고, 일반 정정·취소 화면(`/trade/paper/modify`·`/cancel`)에서 눌러도 같은 처리로 보내 자동매매 추적(orderId)이 끊기지 않게 함.
+
+## 추가 (2026-11-17 오후)
+- **직접 정정한 자동 주문은 자동으로 취소하지 않음**: `userEdit` 표시가 붙은 주문은 정정 뒤 미체결 취소 단계를 건너뛰고 직접 취소하거나 장 마감(당일 주문 만료)까지 유지.
+- **아침 보류 효과 비교**(`holdCmp`, `auto-ui.holdCompare`): 장중 전환 종목마다 "보류 시점 현재가로 그냥 팔았다면" vs "전환 후 실제(그날 매도 실현 + 남은 수량 평가)"를 자동매매 현황 카드에 표시 → 일지에 그대로 저장됨. 전환 시 수량은 `holdQty` 로 기록(이전에 전환된 종목은 비교 대상 아님).
+- **전환 종목 손절 유예**(종가베팅 전략 `holdGraceMin`, 기본 0=끔, 0~180분): 아침 보류로 장중 전환한 종목은 09:00부터 N분 동안 손절하지 않음(`paper.setPreHold(code, min)` 콜백이 정규장 구간도 판단). 익절은 영향 없음.
+- 서버 `eodRule` 의 `holdMode` 누락 시 기본값이 'both' 로 남아 있던 것을 'price' 로 수정.

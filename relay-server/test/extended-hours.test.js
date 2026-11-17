@@ -97,7 +97,7 @@ test('이월 종목: 08:00~09:00 NXT 프리마켓에는 손절이 걸리지 않�
   const db = fakeDb(), c = await boot(db, { clock: at('15:20') }); await c.login();
   const b = await c.order({ code: '000660', side: 'buy', type: 'limit', price: 10010, qty: 10, plan: { stopPct: 5, steps: [] } });
   assert.equal(b.status, 200, JSON.stringify(b.body));
-  c.t.paper.setPreHold(async code => code === '000660');
+  c.t.paper.setPreHold(async (code, min) => code === '000660' && (min == null || min < 540));
   const stops = () => [...db.t.paper_orders.values()].filter(o => o.reason === 'stop');
   c.st.clock = at('08:02'); move(c, 9400, { step: 1000 });          // 손절가(9510) 아래, NXT 프리마켓
   await c.t.paper.tick();
