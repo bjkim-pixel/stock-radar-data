@@ -29,13 +29,13 @@ test('시가·현재가 모두 매수가보다 낮으면 매도 보류 + 장중 
   assert.equal(r.carry.items.A.state, 'intra'); assert.equal(r.carry.items.A.holdDate, '2026-11-17');
   assert.match(r.sent.join(), /보류/);
 });
-test('시가가 매수가 이상이면 기존대로 분할 매도', async () => {
-  const r = rig({ open: 10100, price: 9850 });
+test('보류 조건을 "둘 다"로 하면 시가가 매수가 이상일 때 기존대로 분할 매도', async () => {
+  const r = rig({ open: 10100, price: 9850, rule: { holdMode: 'both' } });
   await r.eod.morning('2026-11-17', MIN);
   assert.equal(r.edits.length, 0); assert.ok(r.placed.length >= 1);
 });
 test('현재가만 보는 모드, 끄면 보류 안 함, 이미 판 종목은 보류 안 함', async () => {
-  const a = rig({ open: 10100, price: 9850, rule: { holdMode: 'price' } }); await a.eod.morning('2026-11-17', MIN);
+  const a = rig({ open: 10100, price: 9850 }); await a.eod.morning('2026-11-17', MIN);   // 기본값 = 현재가만
   assert.equal(a.carry.items.A.state, 'intra');
   const b = rig({ open: 9800, price: 9850, rule: { holdOn: false } }); await b.eod.morning('2026-11-17', MIN);
   assert.equal(b.carry.items.A.state === 'intra', false);

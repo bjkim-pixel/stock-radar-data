@@ -14,7 +14,7 @@ const LOG = require('./auto-log');
 const { hhmm } = require('./auto-strategy');
 /* 기본값 = 1~3단계 확정값. 실제 값은 전략 설정(deps.rule())에서 옴 */
 const RULE = Object.freeze({ highNear: 0.98, idxFloor: -1, gapCut: -3, slices: [9 * 60 + 5, 9 * 60 + 10, 9 * 60 + 15], needAboveAvg: true, carryFlow: 'any',
-  overnightStopPct: 5, replyEnd: 15 * 60, nxtJudgeAt: 18 * 60 + 30, nxtReplyEnd: 19 * 60, convertAt: 20 * 60, eodWeak: 'ask', closingOn: true, holdOn: true, holdMode: 'both' });
+  overnightStopPct: 5, replyEnd: 15 * 60, nxtJudgeAt: 18 * 60 + 30, nxtReplyEnd: 19 * 60, convertAt: 20 * 60, eodWeak: 'ask', closingOn: true, holdOn: true, holdMode: 'price' });
 const fmt = v => Math.round(v).toLocaleString('ko-KR');
 
 /* 넘길 자격 판정(순수) — why 가 비면 자격 있음 */

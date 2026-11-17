@@ -85,14 +85,13 @@ test('자격 있는 종목: 14:45 판정만 알림 → 20:00 익절 끄고(손�
   assert.equal(sent.filter(t => /🔔 삼성전자/.test(t)).length, 3);
   await c.close();
 });
-test('다음 날 시가가 전일 종가 대비 −3% 이하 → 09:05 기다리지 않고 즉시 전량', async () => {
+test('다음 날 갭 하락(−3%)이어도 현재가가 매수가보다 낮으면 즉시 팔지 않고 장중 전환(아침 보류)', async () => {
   const { db, c, A, cfg, sent, at, px } = await setup();
   at(14, 46); px(10100); c.st.high = 10150; await A.tick();
   at(20, 1); await A.tick();
   at(9, 1, 1); px(9700); await A.tick();                                             // 전일 종가(10,000) 대비 −3%
-  assert.equal(db.t.paper_positions.has('005930'), false);
-  assert.ok(sent.some(t => /⚡ 삼성전자: 100주/.test(t)), sent.join('|'));
-  assert.equal(cfg.carry.items['005930'].state, 'done');
+  assert.equal(db.t.paper_positions.has('005930'), true);
+  assert.equal(cfg.carry.items['005930'].state, 'intra');
   await c.close();
 });
 test('자격 없는 종목: 14:45 알림 → /정리 1 → 시장가 전량 매도, 20시 넘길 게 없음', async () => {
