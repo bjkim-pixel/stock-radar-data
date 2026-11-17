@@ -92,3 +92,18 @@ test('시세 출처가 바뀌면(15:45 NX → 16:05 UN) 대기 주문의 거래�
   assert.equal([...db.t.paper_orders.values()][0].filled_qty, 3);
   await c.close();
 });
+
+test('이월 종목: 08:00~09:00 NXT 프리마켓에는 손절이 걸리지 않고, 09:00 정규장부터 걸림', async () => {
+  const db = fakeDb(), c = await boot(db, { clock: at('15:20') }); await c.login();
+  const b = await c.order({ code: '000660', side: 'buy', type: 'limit', price: 10010, qty: 10, plan: { stopPct: 5, steps: [] } });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  c.t.paper.setPreHold(async code => code === '000660');
+  const stops = () => [...db.t.paper_orders.values()].filter(o => o.reason === 'stop');
+  c.st.clock = at('08:02'); move(c, 9400, { step: 1000 });          // 손절가(9510) 아래, NXT 프리마켓
+  await c.t.paper.tick();
+  assert.equal(stops().length, 0); assert.equal(db.t.paper_positions.get('000660').qty, 10);
+  c.st.clock = at('09:01'); move(c, 9400, { step: 1000 });          // 정규장 시작
+  await c.t.paper.tick();
+  assert.equal(stops().length, 1);
+  await c.close();
+});

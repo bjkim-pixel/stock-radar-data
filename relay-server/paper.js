@@ -191,6 +191,7 @@ function createPaper(deps) {
   }
   const heldCodes = () => { const s = new Set(positions.keys()); for (const o of orders.values()) if (isOpen(o) && o.side === 'buy') s.add(o.code); return s; };
   /* 손절가: 계획에 % 가 있으면 실제 평균 매수가 기준으로 계산(호가 단위 내림), 없으면 고정 가격 */
+  let preHold = null;   // (code)=>boolean|Promise — 자동매매가 이월 종목인지 알려 줌
   const stopOf = p => !p || !p.plan ? null : RT.ratchetStop(p.plan, p.avg, p.plan.peak || 0, E.floorTick);   // 손절 올리기(ratchet)가 켜진 계획은 고점·체결 단계에 따라 올라간 손절가
 
   /* 체결을 주문·보유·체결 목록·익절 진행에 반영 */
@@ -359,6 +360,7 @@ function createPaper(deps) {
   async function stopCheck(code, q) {
     const pos = positions.get(code);
     if (!pos || !pos.plan) return false;
+    if (preHold && kst().min < 9 * 60 && await preHold(code)) return false;   // 이월 종목은 NXT 프리마켓(08:00~09:00)에 손절·매도하지 않음 — 얇은 호가로 가격을 흔드는 시간대, 09:00 정규장부터 판단
     if (pos.plan.ratchet) {   // 보유 후 본 최고가(손절선을 올리는 기준) — 시세 사이에 찍은 새 고가도 반영
       const prevHi = pos.highSeen, nh = q.high > 0 && prevHi != null && q.high > prevHi ? q.high : 0, pk = Math.max(pos.plan.peak || 0, q.price || 0, nh);
       if (pk > (pos.plan.peak || 0)) { pos.plan.peak = pk; dirty.pos.set(code, pos); }
@@ -584,7 +586,7 @@ function createPaper(deps) {
   function start(ms = 5000) { if (timer) return; timer = setInterval(() => { tick(); }, ms); if (timer.unref) timer.unref(); }
   function stop() { if (timer) clearInterval(timer); timer = null; }
 
-  return { place, cancel, modify, editPlan, state, report, tick, start, stop, init, watchLines, kick, heldCodes: () => { const s = heldCodes(); for (const o of orders.values()) if (isOpen(o)) s.add(o.code); return s; }, _orders: orders, _positions: positions, _dirty: dirty };
+  return { setPreHold: fn => { preHold = typeof fn === 'function' ? fn : null; }, place, cancel, modify, editPlan, state, report, tick, start, stop, init, watchLines, kick, heldCodes: () => { const s = heldCodes(); for (const o of orders.values()) if (isOpen(o)) s.add(o.code); return s; }, _orders: orders, _positions: positions, _dirty: dirty };
 }
 
 module.exports = { createPaper, allocSteps };

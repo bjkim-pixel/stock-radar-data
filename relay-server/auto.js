@@ -474,6 +474,14 @@ function createAuto(deps) {
     return norm(pl, '새로 계산');
   }
   const intraCodesFor = sid => date => Object.values((state.carry && state.carry.items) || {}).filter(i => i.state === 'intra' && i.holdDate === date && (!i.sid || i.sid === sid)).map(i => i.code);
+  /* 이월 종목(어제 종가베팅으로 넘긴 종목)은 09:00 전(NXT 프리마켓)에는 손절·매도하지 않는다 → paper 엔진이 물어봄 */
+  let preHoldCache = { at: 0, items: {} };
+  if (D.paper && D.paper.setPreHold) D.paper.setPreHold(async code => {
+    const t = Date.now();
+    if (t - preHoldCache.at > 20000) { try { preHoldCache = { at: t, items: (await readCarry()).items || {} }; } catch (_) { preHoldCache.at = t; } }
+    const i = preHoldCache.items[code];
+    return !!i && i.state !== 'done' && i.state !== 'intra' && i.from < kstParts().date;
+  });
   const eodFor = sid => D.paper ? (eods[sid] = eods[sid] || require('./auto-eod').createEod({
     paper: D.paper, getQuote: D.getQuote, fetchFlow: D.fetchFlow, marketIdx: D.marketIdx || (async () => ({})), sendTelegram: tgFor(sid), now: D.now,
     mutateRun: (d, fn) => mutateRun(d, sid, fn), readRun: d => readRun(d, sid), mutateCarry, readCarry, rule: () => eodRule(sid), tag: sid, restorePlan, intraCodes: intraCodesFor(sid),
