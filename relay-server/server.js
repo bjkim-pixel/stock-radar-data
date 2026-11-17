@@ -3464,17 +3464,21 @@ function flowSnapPut(code, v) {
   const n = { d, fq: v.fq != null ? v.fq : (o.fq == null ? null : o.fq), ft: v.fq != null ? v.ft : (o.ft || null), oq: v.oq != null ? v.oq : (o.oq == null ? null : o.oq), ot: v.oq != null ? v.ot : (o.ot || null) };
   if (!old || old.fq !== n.fq || old.oq !== n.oq || old.ft !== n.ft || old.ot !== n.ot) { _flowSnap.set(code, n); _flowSnapDirty = true; }
 }
+/* 정규장 마감 집계(주식현재가 투자자의 오늘자 행) */
+async function flowDay(code) {
+  const d = kstDateStr();
+  try {
+    const r = await kisQuoteGet('/uapi/domestic-stock/v1/quotations/inquire-investor', 'FHKST01010900', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code });
+    const row = r.ok ? parseInvestor(r.body).find(x => x.d === d.replace(/-/g, '')) : null;
+    if (_flowFbLog++ < 8) console.log(`[수급 대체] ${code} 오늘자 투자자 행: ${row ? `외국인 ${row.frgnQ} · 기관 ${row.orgnQ}` : (r.ok ? '없음' : 'HTTP ' + r.http)}`);
+    if (row && (row.frgnQ || row.orgnQ)) return { fq: row.frgnQ || null, ft: '마감', oq: row.orgnQ || null, ot: '마감', src: 'day' };
+  } catch (_) {}
+  return null;
+}
 async function flowFallback(code) {
   await flowSnapLoad();
   const d = kstDateStr();
-  if (kstMinutesNow() >= 930) {
-    try {
-      const r = await kisQuoteGet('/uapi/domestic-stock/v1/quotations/inquire-investor', 'FHKST01010900', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code });
-      const row = r.ok ? parseInvestor(r.body).find(x => x.d === d.replace(/-/g, '')) : null;
-      if (_flowFbLog++ < 8) console.log(`[수급 대체] ${code} 오늘자 투자자 행: ${row ? `외국인 ${row.frgnQ} · 기관 ${row.orgnQ}` : (r.ok ? '없음' : 'HTTP ' + r.http)}`);
-      if (row && (row.frgnQ || row.orgnQ)) return { fq: row.frgnQ || null, ft: '마감', oq: row.orgnQ || null, ot: '마감', src: 'day' };
-    } catch (_) {}
-  }
+  if (kstMinutesNow() >= 930) { const fd = await flowDay(code); if (fd) return fd; }
   const s = _flowSnap.get(code);
   if (s && s.d === d && (s.fq != null || s.oq != null)) return { fq: s.fq, ft: s.ft, oq: s.oq, ot: s.ot, src: 'snap' };
   return null;
@@ -3482,6 +3486,11 @@ async function flowFallback(code) {
 async function fetchFlowEst(code, raw) {
   const c = _flowEst.get(code);
   if (!raw && c && Date.now() - c.at < FLOW_TTL) return c.v;
+  /* 15:45 이후엔 14:30 잠정치 대신 정규장 마감 집계를 우선(마감 집계가 아직 안 올라왔으면 아래 잠정치 그대로) */
+  if (!raw && kstMinutesNow() >= 945 && !(c && c.v && c.v.src === 'day')) {
+    const dv = await flowDay(code);
+    if (dv) { _flowEst.set(code, { at: Date.now(), v: dv }); return dv; }
+  }
   await kisRestThrottle();
   const token = await getKisRestToken();
   const res = await fetch(`${KIS_REST_BASE}/uapi/domestic-stock/v1/quotations/investor-trend-estimate?${new URLSearchParams({ MKSC_SHRN_ISCD: code })}`, { headers: kisRestHeaders(token, 'HHPTJ04160200'), signal: AbortSignal.timeout(8000) });
