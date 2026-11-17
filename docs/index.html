@@ -11250,6 +11250,26 @@ function auLadder(o,last){
   return `<div class="au-ladder"><div class="au-lax" style="padding:${(nHi?nHi*LH+10:8)}px 0 ${(nLo?nLo*LH+12:6)}px"><div class="au-axis">${seg}${seg2}${ticks}</div></div><div class="faint au-ladtx">${trdEsc(txt)}</div></div>`;
 }
 /* 대기 이유 문장 */
+/* 목표가·익절 단계 근거 설명(주문에 저장된 계산 내역 tinfo 기반; 예전 주문은 mode 문구만) */
+function auTgtWhy(o,pl){
+  const t=o.tinfo||null,N0=v=>N(Math.round(v)),eok=v=>v==null?"–":(Math.abs(v)>=100?N0(v):(Math.round(v*10)/10))+"억",tg=o.target||pl.target||null,buy=o.buy2||o.buy||o.avg;
+  const L=[];
+  if(/-none$/.test(o.mode||""))L.push("계산한 목표가가 주문 시점 가격 이하라 <b>익절 목표가 없어요</b>(손절만 감시).");
+  else if(t&&o.mode==="normal")L.push(`주문 가격 위쪽 가격대의 <b>개인 순매수(=차익 매물)</b>를 가까운 곳부터 쌓아 보니 ${eok(t.cum)}으로, 이 종목이 하루에 소화할 수 있는 거래대금(${eok(t.cap)}${t.coef&&t.coef!==1?` = ${eok(t.capEok)}×${t.coef}`:""}) 안이라 <b>통과 가능한 매물</b>로 봤어요. 그 위에서 소화하기 어려운 가장 큰 매물대(${t.topLo?`${N0(t.topLo)}원대, `:""}${eok(t.topV)}) 바로 아래인 <b>${tg?N(tg)+"원":"–"}</b>을 목표로 잡았어요.`);
+  else if(t&&o.mode==="blocked")L.push(`바로 위 가격대의 개인 순매수(${t.topLo?`${N0(t.topLo)}원대 `:""}${eok(t.topV)})가 하루 소화 가능량(${eok(t.cap)})을 넘어서 <b>그 매물대 바로 아래 ${tg?N(tg)+"원":"–"}</b>까지만 오를 것으로 봤어요.`);
+  else if(t&&o.mode==="no-supply")L.push(`위쪽에 쌓인 매물대가 없어, <b>전고점${t.prevHigh?` ${N0(t.prevHigh)}원`:""}</b>과 <b>손익비(손절 ${t.stopPct}% × ${t.rr}배 = ${t.rrT?N0(t.rrT)+"원":"–"})</b> 중 높은 값 <b>${tg?N(tg)+"원":"–"}</b>을 목표로 잡았어요.`);
+  else if(o.mode)L.push(AU_MODE[o.mode]?`목표가 기준: ${AU_MODE[o.mode]}${tg?` → ${N(tg)}원`:""}`:"");
+  if(t&&t.clipped)L.push(`계산값이 상한가(${t.upper?N(t.upper):"–"})를 넘어 <b>상한가로 낮췄어요</b>.`);
+  if(tg&&buy&&pl.stop&&buy>pl.stop){const up=(tg/buy-1)*100,dn=(1-pl.stop/buy)*100;L.push(`목표 ${auPct(up)} · 손절 −${dn.toFixed(1)}% → <b>손익비 1 : ${(up/dn).toFixed(1)}</b>${t&&t.minRr>0?` (최소 1:${t.minRr})`:""}.`);}
+  const st=pl.steps||[];
+  if(st.length){
+    const runner=st.some(x=>x.runner)||(t&&t.tpStyle==="r"),sp=t?t.stopPct:pl.stopPct;
+    if(runner)L.push(`익절은 <b>1단계 = +1R</b>(손절폭 ${sp!=null?sp:"–"}%만큼 오르면 일부)${st.length>2?" → 중간 단계":""} → <b>목표가</b>에서 나눠 팔고, <b>러너</b>(일부 ${t&&t.runnerPct!=null?t.runnerPct+"%":""})는 목표 도달 뒤 추적(${pl.trail||2}%)으로 끝까지 따라가요.`);
+    else L.push(`익절은 목표가까지 <b>${st.length}단계로 나눠</b> 팔아요${t&&t.minPct?`(첫 단계는 최소 +${t.minPct}% 이상)`:""}. 고점 대비 ${pl.trail||2}% 내리면 그 단계를 매도해요.`);
+    if(pl.ratchet||(t&&t.ratchet))L.push("1단계가 체결되면 <b>손절선이 본전 부근으로 올라가</b> 이후엔 손실이 나지 않아요.");
+  }
+  return L.length?`<div class="au-sub" style="margin-top:8px">왜 이 목표가인가</div>${L.map(x=>`<div style="font-size:12.5px;line-height:1.55;margin-top:2px">${x}</div>`).join("")}`:"";
+}
 function auWhy(o,q,P){
   const px=o.buy2||o.buy;
   if(o.st==="skipped")return `재확인에서 걸러져 사지 않았어요: ${o.why||"조건 미달"}`;
@@ -11293,7 +11313,7 @@ function auOrderCard(sid,o,RP){   // RP = 일지 복기용({P,log}): 지난 기�
       <div class="au-bks">${off?"":auBook(sn.bids&&{bids:sn.bids,asks:sn.asks,price:sn.price},o.buy,"주문 시점 호가")}${q&&!off?auBook(q,px,"지금 호가"):""}</div>
     </div>
     ${off||(RP&&!o.plan)?"":`<div class="au-sub" style="margin-top:8px">손절·익절 계획</div>${auLadder(o,live)}`}
-    ${o.cb?`<div class="faint" style="font-size:11.5px;margin-top:4px">종가베팅 저녁 매수 — 익절 없이 손절 −${pl.stopPct!=null?pl.stopPct:"–"}%만 걸고, 20:00에 이월 등록되어 다음 날 아침 나눠 팝니다.</div>`:o.mode?`<div class="faint" style="font-size:11.5px;margin-top:4px">목표가 기준: ${trdEsc(AU_MODE[o.mode]||(/-none$/.test(o.mode)?"목표가를 정하지 못함(익절 계획 없음)":o.mode))}${o.target?` → 목표 ${N(o.target)}원`:""} · 손절 −${pl.stopPct!=null?pl.stopPct:"–"}%${pl.trail?` · 추적 ${pl.trail}%`:""}</div>`:""}
+    ${o.cb?`<div class="faint" style="font-size:11.5px;margin-top:4px">종가베팅 저녁 매수 — 익절 없이 손절 −${pl.stopPct!=null?pl.stopPct:"–"}%만 걸고, 20:00에 이월 등록되어 다음 날 아침 나눠 팝니다.</div>`:o.mode?`${auTgtWhy(o,pl)}<div class="faint" style="font-size:11.5px;margin-top:4px">손절 −${pl.stopPct!=null?pl.stopPct:"–"}%${pl.trail?` · 추적 ${pl.trail}%`:""}</div>`:""}
     ${sells.length?`<div class="au-sub" style="margin-top:8px">매도 기록</div>${sells.map(x=>`<div style="font-size:12.5px"><span class="faint">${trdEsc(new Date(Date.parse(x.t)+9*3600e3).toISOString().slice(11,19))}</span> ${trdEsc(x.text)}</div>`).join("")}`:""}</div>`;
 }
 /* 주문 전 후보 카드: 예상 주문가(호가 기준)와 현재가를 미리 보여줌 */

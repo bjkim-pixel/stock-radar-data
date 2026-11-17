@@ -64,19 +64,19 @@ function calcTarget({ cur, prof, capEok, coef = 1, prevHigh = 0, upper = 0, stop
   let cum = 0, ri = -1;
   for (let i = 0; i < above.length; i++) { const v = Math.max(0, above[i].v); if (cum + v <= cap) { cum += v; ri = i; } else break; }
   const rest = above.slice(ri + 1).filter(b => b.v > 0);
-  let target = null, mode;
+  let target = null, mode, topLo = null, topV = null, rrT = null, clipped = false;
   if (rest.length) {
     const top = ri < 0 ? rest[0] : rest.reduce((m, b) => (b.v > m.v ? b : m), rest[0]);
     mode = ri < 0 ? 'blocked' : 'normal';
-    target = below(top.lo);
+    target = below(top.lo); topLo = top.lo; topV = top.v;
   } else {
     mode = 'no-supply';
-    const rrT = cur > 0 && stopPct > 0 && rr > 0 ? floorTick(cur * (1 + stopPct / 100 * rr)) : null;
+    rrT = cur > 0 && stopPct > 0 && rr > 0 ? floorTick(cur * (1 + stopPct / 100 * rr)) : null;
     target = Math.max(prevHigh > cur ? floorTick(prevHigh) : 0, rrT || 0) || null;
   }
-  if (target != null && upper > 0 && target > upper) target = floorTick(upper);
+  if (target != null && upper > 0 && target > upper) { target = floorTick(upper); clipped = true; }
   if (target != null && target <= cur) { target = null; mode += '-none'; }
-  return { target, mode, cap, cum };
+  return { target, mode, cap, cum, topLo, topV, rrT, clipped, prevHigh: prevHigh > 0 ? prevHigh : null, nAbove: above.length };
 }
 /* 익절 단계 (trdPlan) */
 function splitPlan(buy, target, qty, want = 5, minPct = 3) {
@@ -135,7 +135,8 @@ function makeOrder({ q, rows, perStockKrw, opt = {} }) {
   const tgt = calcTarget({ cur, prof: buildProfile(rows), capEok, coef: o.coef, prevHigh, upper: q.upper, stopPct: o.stopPct, rr: o.rr });
   const steps = tgt.target && !o.noTp ? (o.tpStyle === 'r' ? splitPlanR(buy, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(buy, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];   // noTp(종가베팅 저녁 매수): 익절 없이 손절만 걸고 다음 날 아침 분할 매도
   const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ...(o.ratchet && !o.noTp ? { ratchet: { floorPct: 0.35 } } : {}) };
-  return { buy, qty, plan, target: tgt.target, mode: tgt.mode, pick: pick ? pick.k : 'cur' };
+  const tinfo = { cap: tgt.cap, cum: tgt.cum, topLo: tgt.topLo, topV: tgt.topV, rrT: tgt.rrT, clipped: tgt.clipped, prevHigh: tgt.prevHigh, upper: q.upper || null, capEok, coef: o.coef, stopPct: o.stopPct, rr: o.rr, minRr: o.minRr, tpStyle: o.tpStyle, split: o.split, minPct: o.minPct, runnerPct: o.runnerPct, ratchet: !!(o.ratchet && !o.noTp), ref: cur };
+  return { buy, qty, plan, target: tgt.target, mode: tgt.mode, pick: pick ? pick.k : 'cur', tinfo };
 }
 
 /* 손익비 = (목표가 − 매수가) ÷ (매수가 − 손절가). 목표가가 없으면 null */
@@ -207,7 +208,7 @@ function createExec(deps) {
     // 1) 의도 먼저 저장(재시작 중복 방지)
     const at = now();
     let tn = 1;
-    await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; const prev = run.payload.orders[code]; tn = tryNo(prev); run.payload.orders[code] = keepTries(prev, { st: 'intent', at, buy: ord.buy, qty: ord.qty, plan: ord.plan, mode: ord.mode, pick: ord.pick, target: ord.target, snap }); });
+    await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; const prev = run.payload.orders[code]; tn = tryNo(prev); run.payload.orders[code] = keepTries(prev, { st: 'intent', at, buy: ord.buy, qty: ord.qty, plan: ord.plan, mode: ord.mode, pick: ord.pick, target: ord.target, tinfo: ord.tinfo || null, snap }); });
     // 2) 주문
     const r = await D.paper.place({ code, name: notice.name, side: 'buy', type: 'limit', price: ord.buy, qty: ord.qty, plan: ord.plan, cid: `auto${date.replace(/-/g, '')}${code}${tn > 1 ? 't' + tn : ''}` });
     if (!r || !r.ok) {

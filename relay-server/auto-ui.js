@@ -22,7 +22,7 @@ function summarizeRun(r, full) {
       ? { code: x.code, name: x.name, score: x.score, price: x.price, open: x.open, changePct: x.changePct, sector: x.sector, smx: x.smx, reasons: x.reasons || [], m: x.m || null, parts: x.parts || null, ratio: x.ratio || null, ev: x.ev || [], round: x.round || 1, closed: !!x.closed, retry: x.retry || 0, retryWhy: x.retryWhy || null, cb: !!x.cb, dd: x.dd == null ? null : x.dd, penalty: x.penalty || 0, bonus: x.bonus || 0, hist: x.hist || null }
       : { code: x.code, name: x.name, score: x.score, price: x.price, round: x.round || 1, closed: !!x.closed, retry: x.retry || 0, retryWhy: x.retryWhy || null, cb: !!x.cb }),
     orders: Object.entries(ords).map(([code, v]) => ({ code, name: names[code] || code, cb: cbCodes.has(code), st: v.st, filled: v.filled || 0, avg: v.avg || null, buy: v.buy || null, qty: v.qty || null, why: v.why || null,
-      ...(full ? { buy2: v.buy2 || null, target: v.target || (v.plan && v.plan.target) || null, mode: v.mode || null, pick: v.pick || null, plan: v.plan || null, snap: v.snap || null,
+      ...(full ? { buy2: v.buy2 || null, target: v.target || (v.plan && v.plan.target) || null, mode: v.mode || null, tinfo: v.tinfo || null, pick: v.pick || null, plan: v.plan || null, snap: v.snap || null,
         at: v.at || null, placedAt: v.placedAt || null, modifiedAt: v.modifiedAt || null, filledAt: v.filledAt || null, cancelledAt: v.cancelledAt || null, lowSeen: v.lowSeen || null, noReprice: !!v.noReprice, tries: v.tries || [] } : { nTries: (v.tries || []).length }) })),
     shadow: (p.shadow || []).map(s => ({ code: s.code, name: s.name, price: s.price, score: s.score, changePct: s.changePct, picked: !!s.picked })),
     stat: p.stat || null,
