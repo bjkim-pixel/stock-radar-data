@@ -120,14 +120,14 @@ function planFromAvg({ q, rows, avg, qty, opt = {} }) {
 }
 
 /* 매수 주문 내용 계산: 시세(q) + 일봉(rows) → 가격·수량·계획 */
-function makeOrder({ q, rows, perStockKrw, opt = {} }) {
+function makeOrder({ q, rows, perStockKrw, opt = {}, force = null }) {   // force = {buy, qty}: 사용자가 가격·수량을 직접 정한 경우 계획만 다시 계산
   const o = { ...DEF, ...opt };
   const cur = q.price > 0 ? q.price : +(rows[rows.length - 1] || {}).close;
   const rec = recBids(q.bids, cur);
   const bid1 = (q.bids || []).filter(b => b.p > 0 && b.q > 0).reduce((m, b) => (!m || b.p > m.p ? b : m), null);   // 최우선 매수 호가
   const pick = (o.buyPick === 'low' ? rec.find(r => r.k === 'low') : o.buyPick === 'bid1' ? (bid1 && { k: 'bid1', p: bid1.p }) : rec[0]) || null;
-  const buy = pick ? pick.p : floorTick(cur);
-  const qty = Math.floor(perStockKrw / buy);
+  const buy = force && force.buy > 0 ? force.buy : pick ? pick.p : floorTick(cur);
+  const qty = force && force.qty > 0 ? force.qty : Math.floor(perStockKrw / buy);
   if (qty < 1) return { skip: `금액 ${perStockKrw.toLocaleString('ko-KR')}원으로 1주도 못 삼(${buy.toLocaleString('ko-KR')}원)` };
   const last5 = rows.slice(-5), avg5 = last5.length ? last5.reduce((a, r) => a + (+r.trade_amount || 0), 0) / last5.length : 0;
   const capEok = Math.max(avg5, q.amt || 0) / EOK;
@@ -325,7 +325,47 @@ function createExec(deps) {
     return { ok: true, n: active.length, msgs };
   }
 
-  return { approve, follow };
+  /* 사용자가 사이트 주문 화면에서 체결 대기 중인 자동 매수를 직접 정정·취소 — 별도 주문이 아니라 같은 주문을 고침.
+     정정: 가격(·수량, 아직 체결 전일 때만)을 바꾸고 손절·익절 계획을 새 매수가 기준으로 다시 계산. 이후 자동 관리(체결 확인·익절 걸기)는 그대로 이어짐 */
+  async function userEdit(date, code, body) {
+    const run = await D.readRun(date), v = run && run.payload && run.payload.orders && run.payload.orders[code];
+    if (!v || !['open', 'modified'].includes(v.st) || !v.orderId) return { ok: false, status: 409, error: '체결 대기 중인 자동 매수 주문이 아닙니다' };
+    const S = await D.paper.state();
+    const o = S && S.ok ? (S.orders || []).find(x => x.id === v.orderId) : null;
+    if (!o || (o.status !== 'open' && o.status !== 'partial')) return { ok: false, status: 409, error: '이미 체결되었거나 끝난 주문입니다' };
+    const name = o.name || code;
+    if (body.action === 'cancel') {
+      const c = await D.paper.cancel(o.id);
+      if (!c || !c.ok) return { ok: false, status: (c && c.status) || 400, error: (c && c.error) || '취소 실패' };
+      await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg, why: '직접 취소', cancelledAt: now() };
+        LOG.push(r.payload, 'cancel', `${name}: 사용자가 주문 화면에서 직접 취소${o.filled ? ` (일부 ${fmt(o.filled)}주는 보유·계획대로 관리)` : ''}`, { code }, now()); });
+      return { ok: true, action: 'cancel' };
+    }
+    const price = Number(body.price), left = o.qty - o.filled;
+    const qty = o.filled > 0 || body.qty == null || body.qty === '' ? left : Number(body.qty);   // 일부 체결됐으면 남은 수량만(수량 변경 불가)
+    if (!(price > 0)) return { ok: false, status: 400, error: '가격을 입력하세요' };
+    if (!Number.isInteger(qty) || qty < 1 || qty > 1e7) return { ok: false, status: 400, error: '수량이 올바르지 않습니다' };
+    if (price === o.price && qty === o.qty) return { ok: false, status: 400, error: '바뀐 내용이 없습니다' };
+    let plan, ord = null;
+    if (o.filled === 0) {
+      const [q, rows] = await Promise.all([D.getQuote(code).catch(() => null), D.loadChart(code).catch(() => [])]);
+      if (q && rows && rows.length) {
+        const opt0 = D.opt ? await D.opt() : {};
+        const opt = v.cb ? { ...opt0, ...(D.optCb ? await D.optCb() : { closing: true, noTp: true, minRr: 0 }) } : opt0;
+        ord = makeOrder({ q, rows, perStockKrw: price * qty, opt, force: { buy: price, qty } });
+        if (!ord.skip) plan = ord.plan;
+      }
+    }
+    const m = await D.paper.modify({ id: o.id, price, qty, resize: true, ...(plan ? { plan } : {}) });
+    if (!m || !m.ok) return { ok: false, status: (m && m.status) || 400, error: (m && m.error) || '정정 실패' };
+    const no = m.order, filledNow = no.status === 'filled';
+    await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: filledNow ? 'filled' : 'modified', orderId: no.id, modifiedAt: now(), from: o.id, userEdit: true, buy: price, qty: o.filled > 0 ? r.payload.orders[code].qty : qty,
+        ...(plan ? { plan, target: ord.target, tinfo: ord.tinfo || null } : {}), ...(filledNow ? { filledAt: now(), filled: no.filled, avg: no.avg } : {}) };
+      LOG.push(r.payload, 'reprice', `${name}: 사용자가 주문 화면에서 직접 정정 — ${fmt(o.price)}원 ${fmt(o.qty - o.filled)}주 → ${fmt(price)}원 ${fmt(qty)}주${plan ? ` · 손절 ${fmt(plan.stop)}원·익절 계획을 새 매수가 기준으로 다시 계산` : ''}${filledNow ? ' · 바로 체결' : ''}`, { code }, now()); });
+    return { ok: true, action: 'modify', order: no, planned: !!plan };
+  }
+
+  return { approve, follow, userEdit };
 }
 
 module.exports = { planFromAvg, tryNo, keepTries, retryable, foldTry, DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, rrOf, splitPlanR, createExec };

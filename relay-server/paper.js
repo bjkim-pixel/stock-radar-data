@@ -325,10 +325,10 @@ function createPaper(deps) {
     if (isTp(o) || o.reason === 'stop') return bad(409, '자동 매도 주문은 매도 계획에서 바꾸세요');
     const left = o.qty - o.filled, price = Number(body.price), qty = body.qty == null || body.qty === '' ? left : Number(body.qty);
     if (!E.validTick(price)) return bad(400, '호가 단위에 맞지 않는 가격입니다');
-    if (!Number.isInteger(qty) || qty < 1 || qty > left) return bad(400, `정정 수량은 1~${left}주입니다`);
+    if (!Number.isInteger(qty) || qty < 1 || (qty > left && !(body.resize && o.filled === 0))) return bad(400, `정정 수량은 1~${left}주입니다`);
     const c = await cancel(o.id); if (!c.ok) return c;
     o.note = 'modified'; dirty.orders.set(o.id, o); await flush();
-    const r = await place({ code: o.code, name: o.name, side: o.side, type: 'limit', price, qty, plan: o.side === 'buy' ? o.plan : null });
+    const r = await place({ code: o.code, name: o.name, side: o.side, type: 'limit', price, qty, plan: o.side === 'buy' ? (body.plan !== undefined ? body.plan : o.plan) : null });
     if (!r.ok) return { ...r, error: '원주문은 취소됐고 새 주문은 거부됐습니다: ' + r.error };
     return { ok: true, order: r.order, fills: r.fills, from: o.id };
   }

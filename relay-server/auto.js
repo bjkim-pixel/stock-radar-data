@@ -1140,6 +1140,30 @@ function createAuto(deps) {
     if (r && kind !== 'pass' && sid && D.paper) { try { await execFor(sid).follow(kstParts().date); } catch (_) {} }   // 승인 즉시 주문 관리를 한 번 돌려 다음 단계(체결 확인·익절 주문)로 넘김
     return { ok: !!r, reply: r || '처리할 수 없는 요청입니다.' };
   }
+  /* 사이트 주문 화면: 체결 대기 중인 자동 매수 주문을 직접 정정·취소(같은 주문을 고침 — 별도 주문 아님) */
+  async function activeBuy(code) {
+    const date = kstParts().date;
+    for (const r of await readRuns(date).catch(() => [])) {
+      const v = r.payload && r.payload.orders && r.payload.orders[code];
+      if (v && ['open', 'modified'].includes(v.st) && v.orderId) return { sid: r.strategy_id, date, orderId: v.orderId };
+    }
+    return null;
+  }
+  async function siteOrderEdit(body) {
+    const code = String(body.code || ''), a = /^\d{6}$/.test(code) ? await activeBuy(code) : null;
+    if (!a) return { ok: false, status: 409, error: '체결 대기 중인 자동 매수 주문이 아닙니다' };
+    const ex = execFor(a.sid); if (!ex) return { ok: false, status: 503, error: 'auto unavailable' };
+    const r = await ex.userEdit(a.date, code, { action: body.action === 'cancel' ? 'cancel' : 'modify', price: body.price, qty: body.qty });
+    if (r && r.ok) { const nm = (r.order && r.order.name) || code; await D.sendTelegram(`🖥 사이트에서 [${labelOf(a.sid)}] ${nm} 자동 매수 주문을 ${r.action === 'cancel' ? '취소' : `정정(${Number(body.price).toLocaleString('ko-KR')}원${body.qty ? ' ' + body.qty + '주' : ''})`}했어요.`).catch(() => {}); }
+    return r;
+  }
+  /* 사이트 주문 화면: 같은 종목에 자동 매수 주문이 걸려 있는지(직접 별도 매수 막기용) */
+  async function pendingAutoBuy(code) { const a = await activeBuy(code).catch(() => null); return a ? a.orderId : null; }
+  /* 주문번호로 자동 매수 주문인지(일반 정정·취소 화면에서 눌러도 자동매매 추적이 끊기지 않게 같은 처리로 보냄) */
+  async function autoOrderCode(orderId) {
+    for (const r of await readRuns(kstParts().date).catch(() => [])) for (const [code, v] of Object.entries((r.payload && r.payload.orders) || {})) if (v && v.orderId === orderId && ['open', 'modified'].includes(v.st)) return code;
+    return null;
+  }
   /* 사이트에서 정리/유지(텔레그램 /정리·/유지 와 같은 처리). phase = 'reg'(15시 정규장 종목) | 'nxt'(19시 NXT 종목), 없으면 답을 기다리는 쪽.
      정리는 승인한 종목만 — 이월 전환은 예정 시각(20:00)에 따로 진행 */
   async function siteEod(kind, nums, sid, phase) {
@@ -1227,7 +1251,7 @@ function createAuto(deps) {
     if (Object.values(c.items || {}).some(i => i.sid === id && i.state !== 'done')) return { ok: false, status: 400, error: '아직 팔지 않은 이월 종목이 있어 삭제할 수 없습니다' };
     return store.archive ? store.archive(id, who) : { ok: false, status: 503, error: '지원하지 않음' };
   }
-  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, siteApprove, siteEod,
+  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode,
     daylogList: n => DL.list(n), daylogGet: d => DL.get(d), daylogMemo: (d, t) => DL.memo(d, t), daylogSave: d => DL.save(/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : kstParts().date, { force: true }), siteStage, journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
     _select: select, _mutateRun: mutateRun, _readRun: readRun, _readRuns: readRuns, _readCarry: readCarry, _exec: exec };
 }

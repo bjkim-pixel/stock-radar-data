@@ -686,6 +686,12 @@ function createTrade(deps = {}) {
       audit(path === '/trade/auto/approve' ? 'auto_approve' : 'auto_eod', !!r.ok, { kind, nums, strategy: sid }, req, 'VIRTUAL');
       return json(res, 200, r);
     }
+    if (path === '/trade/auto/order-edit') {   // 체결 대기 중인 자동 매수 주문 정정·취소 (주문 화면) — 가상매매 전용
+      if (!autoRef || !autoRef.siteOrderEdit) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      const r = await autoRef.siteOrderEdit(body).catch(e => ({ ok: false, status: 500, error: String((e && e.message) || e).slice(0, 200) }));
+      audit('auto_order_edit', !!r.ok, { code: body.code, action: body.action, price: body.price, qty: body.qty, error: r.error }, req, 'VIRTUAL');
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
+    }
     if (path === '/trade/auto/stage') {   // 단계 버튼: 예정 시각과 무관하게 지금 실행(후보 선정→알림 · 알림 · 종가 판정 · 이월 전환)
       if (!autoRef || !autoRef.siteStage) return json(res, 503, { ok: false, error: 'auto unavailable' });
       const stage = String(body.stage || ''), sid = body.strategy == null ? null : String(body.strategy);
@@ -738,6 +744,8 @@ function createTrade(deps = {}) {
     }
     if (path === '/trade/paper/modify') {
       if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
+      { const ac = autoRef && autoRef.autoOrderCode ? await autoRef.autoOrderCode(String(body.id || '')).catch(() => null) : null;
+        if (ac) { const r2 = await autoRef.siteOrderEdit({ code: ac, action: 'modify', price: body.price, qty: body.qty }); audit('auto_order_edit', !!r2.ok, { code: ac, action: 'modify', price: body.price, qty: body.qty, error: r2.error }, req, 'VIRTUAL'); return json(res, r2.ok ? 200 : (r2.status || 400), r2.ok ? r2 : { ok: false, error: r2.error }); } }
       const r = await paper.modify(body);
       audit(r.ok ? 'paper_modify' : 'paper_reject', !!r.ok, { path, id: body.id, price: body.price, qty: body.qty, error: r.error }, req, 'VIRTUAL');
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
@@ -745,6 +753,14 @@ function createTrade(deps = {}) {
     if (path === '/trade/paper/order' || path === '/trade/paper/cancel') {
       if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
       const isOrder = path === '/trade/paper/order';
+      if (isOrder && body.side === 'buy' && autoRef && autoRef.pendingAutoBuy) {   // 자동 매수가 체결 대기 중인 종목은 별도 매수 대신 그 주문을 정정하게 함
+        const pid = await autoRef.pendingAutoBuy(String(body.code || '')).catch(() => null);
+        if (pid) return json(res, 409, { ok: false, error: '이 종목은 자동매매 매수 주문이 체결 대기 중입니다. 별도 주문 대신 "자동 주문 수정"으로 가격·수량을 바꾸거나 취소하세요.' });
+      }
+      if (!isOrder && autoRef && autoRef.autoOrderCode) {   // 자동 매수 주문의 취소는 자동매매 기록에도 '직접 취소'로 남김
+        const ac = await autoRef.autoOrderCode(String(body.id || '')).catch(() => null);
+        if (ac) { const r2 = await autoRef.siteOrderEdit({ code: ac, action: 'cancel' }); audit('auto_order_edit', !!r2.ok, { code: ac, action: 'cancel', error: r2.error }, req, 'VIRTUAL'); return json(res, r2.ok ? 200 : (r2.status || 400), r2.ok ? { ok: true, order: { id: body.id } } : { ok: false, error: r2.error }); }
+      }
       const r = isOrder ? await paper.place(body, req) : await paper.cancel(body.id);
       if (!r.ok) {
         audit('paper_reject', false, { path, error: r.error, code: body.code, side: body.side, type: body.type, qty: body.qty, price: body.price }, req, 'VIRTUAL');

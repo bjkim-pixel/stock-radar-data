@@ -254,3 +254,38 @@ test('손익비 하한: 목표가가 낮아 이익÷손실이 기준 미만이�
   assert.notEqual(o3.st, 'skipped'); assert.ok(o3.snap.checks.rr.v >= 0.5);
   await s3.c.close();
 });
+
+/* ── 주문 화면에서 체결 대기 중인 자동 매수를 직접 정정·취소(별도 주문이 아니라 같은 주문) ── */
+test('직접 정정: 같은 주문이 새 가격·수량으로 바뀌고 계획이 다시 계산되며 자동 추적이 이어짐', async () => {
+  const { db, c, A, runs, date } = await setup();
+  await A.handleApproval('/매수 1');
+  assert.equal(await A.pendingAutoBuy('005930') != null, true);
+  const r = await A.siteOrderEdit({ code: '005930', action: 'modify', price: 9900, qty: 120 });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const open = [...db.t.paper_orders.values()].filter(o => o.status === 'open' && o.side === 'buy');
+  assert.equal(open.length, 1);                                   // 별도 주문이 아니라 1건만
+  assert.equal(+open[0].price, 9900); assert.equal(open[0].qty, 120);
+  assert.equal(open[0].plan.stop, Math.floor(9900 * 0.95 / 10) * 10 || open[0].plan.stop);
+  assert.equal(open[0].plan.steps.reduce((a, s) => a + s.q, 0), 120);
+  const v = runs[date].payload.orders['005930'];
+  assert.equal(v.orderId, open[0].id); assert.equal(v.buy, 9900); assert.equal(v.qty, 120); assert.equal(v.userEdit, true); assert.equal(v.st, 'modified');
+  // 체결되면 자동매매가 그대로 이어받음
+  c.st.asks = c.st.asks.map(([p, q], i) => [9890 + i * 10, q]);   // 매도호가가 주문가 아래로 내려와 바로 체결
+  c.st.clock += 5000; c.st.vol += 5000; await c.t.paper.tick(); await A.tick();
+  assert.equal(runs[date].payload.orders['005930'].st, 'filled');
+  await c.close();
+});
+test('직접 취소: 주문이 취소되고 자동매매 기록에 직접 취소로 남음, 같은 종목 별도 매수 감지', async () => {
+  const { db, c, A, runs, date } = await setup();
+  await A.handleApproval('/매수 1');
+  const id = await A.autoOrderCode([...db.t.paper_orders.values()][0].id);
+  assert.equal(id, '005930');
+  const r = await A.siteOrderEdit({ code: '005930', action: 'cancel' });
+  assert.equal(r.ok, true);
+  assert.equal([...db.t.paper_orders.values()].filter(o => o.status === 'open').length, 0);
+  const v = runs[date].payload.orders['005930'];
+  assert.equal(v.st, 'cancelled'); assert.equal(v.why, '직접 취소');
+  assert.equal(await A.pendingAutoBuy('005930'), null);
+  assert.equal((await A.siteOrderEdit({ code: '005930', action: 'cancel' })).ok, false);   // 이미 끝난 주문
+  await c.close();
+});

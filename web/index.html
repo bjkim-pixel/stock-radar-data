@@ -10601,13 +10601,54 @@ function trdRenderQ(){
     return `<span class="trd-chip${c===TRD.cur?" on":""}${a?" au":""}" data-code="${c}"><button type="button" class="trd-chip-n" data-pick="${c}"${a?` title="자동매매 · ${trdEsc(a.tx)}"`:""}>${trdEsc(trdNm(c)||(a&&a.name)||c)}</button>${bd?`<span class="bd ${bd[1]}">${bd[0]}</span>`:""}<button type="button" class="trd-chip-x" data-del="${c}" aria-label="대기 목록에서 빼기">×</button></span>`;}).join(""):'<span class="faint" style="font-size:12px">대기 목록이 비어 있습니다. 후보·종목상세에서 "주문 대기에 담기"를 누르면 여기에 쌓입니다.</span>';
   trdRenderAuNote();
 }
-/* 선택한 종목이 자동매매 중이면 호가창 위에 상태 표시 — 직접 주문도 가능하다는 안내 포함 */
+/* 선택한 종목이 자동매매 중이면 호가창 위에 상태 표시.
+   체결 대기 중인 자동 매수는 별도 주문이 아니라 그 주문 자체를 여기서 정정·취소(서버가 자동매매 기록·손절·익절 계획까지 같이 고침) */
+const trdAuPend=()=>{const a=TRD.cur?trdAuMap()[TRD.cur]:null;return a&&(a.st==="wait"||a.st==="part")?a:null;};
+const trdAuLive=()=>{const P=TRD.ps;return P&&P.orders&&TRD.cur?P.orders.find(o=>o.code===TRD.cur&&o.side==="buy"&&(o.status==="open"||o.status==="partial"))||null:null;};
 function trdRenderAuNote(){
   const e=$("#trdAuNote");if(!e)return;
   const a=TRD.cur?trdAuMap()[TRD.cur]:null;
-  if(!a){e.innerHTML="";return;}
+  if(!a){e.innerHTML="";e.dataset.h="";TRD.aue=null;return;}
+  if(e.contains(document.activeElement)&&/INPUT/.test(document.activeElement.tagName))return;   // 입력 중엔 다시 그리지 않음
   const lab={wait:'<b class="w">자동매매 · 체결 대기 중</b>',part:'<b class="w">자동매매 · 일부 체결, 나머지 대기 중</b>',sell:'<b class="w">자동매매 · 매도 진행</b>',done:'<b class="k">자동매매 · 체결 완료</b>'}[a.st];
-  e.innerHTML=`<div class="trd-aun">${lab}<br><span class="faint">${trdEsc(a.tx)} · 호가창에서 대기 가격을 확인하세요.</span><br><span class="faint">자동매매 중인 종목이어도 아래에서 직접 주문할 수 있습니다. 직접 낸 주문은 자동 주문과 별개로 접수됩니다(가상).</span></div>`;
+  let h=`${lab}<br><span class="faint">${trdEsc(a.tx)} · 호가창에서 대기 가격을 확인하세요.</span>`;
+  const pend=trdAuPend(),o=pend?trdAuLive():null;
+  if(pend&&o){
+    if(!TRD.aue||TRD.aue.id!==o.id){TRD.aue={code:TRD.cur,id:o.id,price:o.price,qty:o.filled>0?o.qty-o.filled:o.qty};}
+    const E=TRD.aue,left=o.qty-o.filled,armed=TRD.aueArm&&TRD.aueArm.code===TRD.cur&&Date.now()-TRD.aueArm.t<4000;
+    const m=TRD.aueMsg&&Date.now()-TRD.aueMsg.t<15000?`<div class="${TRD.aueMsg.ok?"trd-ok":"trd-wn"}" style="margin-top:6px">${trdEsc(TRD.aueMsg.text)}</div>`:"";
+    h+=`<div class="sub" style="margin-top:6px"><b>이 자동 주문을 직접 고칠 수 있어요</b> — 새로 사는 게 아니라 같은 주문이 바뀝니다. 가격은 호가를 눌러도 입력됩니다.${o.filled>0?` (일부 체결돼 수량은 남은 ${N(left)}주 고정)`:""}</div>
+      <div class="trd-sell" style="margin-top:6px"><input data-aue-p inputmode="numeric" placeholder="가격" value="${E.price||""}" style="width:96px"><input data-aue-q inputmode="numeric" placeholder="수량" value="${E.qty||""}" style="width:76px"${o.filled>0?" disabled":""}>
+      <button type="button" class="btn" data-aue="modify">정정</button><button type="button" class="btn ghost" data-aue="ask1">매도1호가로(바로 체결)</button><button type="button" class="btn ghost" data-aue="cancel">${armed?"한 번 더 누르면 취소":"주문 취소"}</button></div>
+      <div class="faint" style="font-size:11.5px;margin-top:4px">정정하면 손절·익절 계획을 새 매수가 기준으로 다시 계산합니다. 정정 뒤에도 체결되면 자동매매가 그대로 이어받고, 오래 안 걸리면 자동 규칙대로 정리됩니다.</div>${m}`;
+  }else if(pend){
+    h+='<br><span class="faint">주문 정보를 불러오는 중…</span>';
+  }else{
+    h+='<br><span class="faint">직접 매수·매도도 아래에서 할 수 있습니다(가상). 직접 낸 주문은 자동 주문과 별개로 접수됩니다.</span>';
+  }
+  if(e.dataset.h!==h){e.dataset.h=h;e.innerHTML=`<div class="trd-aun">${h}</div>`;}
+}
+async function trdAuEdit(kind){
+  const e=$("#trdAuNote"),o=trdAuLive();if(!e||!o||!TRD.cur)return;
+  const code=TRD.cur,num=v=>Math.floor(+String(v||"").replace(/,/g,""))||0;
+  let price=num((e.querySelector("[data-aue-p]")||{}).value),qty=num((e.querySelector("[data-aue-q]")||{}).value);
+  if(kind==="cancel"){
+    if(!(TRD.aueArm&&TRD.aueArm.code===code&&Date.now()-TRD.aueArm.t<4000)){TRD.aueArm={code,t:Date.now()};e.dataset.h="";trdRenderAuNote();setTimeout(()=>{e.dataset.h="";trdRenderAuNote();},4100);return;}
+    TRD.aueArm=null;
+  }else{
+    if(kind==="ask1"){const A=((TRD.quote&&TRD.quote.asks)||[]).filter(x=>x.p>0).map(x=>x.p);if(!A.length){TRD.aueMsg={ok:false,t:Date.now(),text:"매도 1호가를 받지 못했습니다"};e.dataset.h="";trdRenderAuNote();return;}price=Math.min(...A);}
+    if(!(price>0)){TRD.aueMsg={ok:false,t:Date.now(),text:"가격을 입력하세요"};e.dataset.h="";trdRenderAuNote();return;}
+    if(trdFloor(price)!==price){TRD.aueMsg={ok:false,t:Date.now(),text:`${N(price)}원은 호가 단위에 맞지 않습니다 (${N(trdFloor(price))}원 등)`};e.dataset.h="";trdRenderAuNote();return;}
+  }
+  try{
+    const r=await trdApi("/trade/auto/order-edit",{method:"POST",body:kind==="cancel"?{code,action:"cancel"}:{code,action:"modify",price,...(o.filled>0?{}:{qty})}});
+    TRD.aueMsg={ok:true,t:Date.now(),text:r.action==="cancel"?"자동 매수 주문을 취소했습니다.":`자동 매수 주문을 ${N(price)}원으로 정정했습니다${r.planned?" (손절·익절 계획 다시 계산)":""}.`};
+  }catch(err){
+    if(err.status===401&&err.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");return;}
+    TRD.aueMsg={ok:false,t:Date.now(),text:"실패: "+trdErrTx(err)};
+  }
+  TRD.aue=null;e.dataset.h="";
+  await trdLoadState();await trdAuSync();trdRenderAuNote();
 }
 /* 주문 화면이 열려 있는 동안 자동매매 상태를 가볍게 따로 읽어 대기 목록에 반영 */
 async function trdAuSync(){
@@ -10996,7 +11037,7 @@ async function trdSubmitBuy(cid){
 async function trdLoadState(){
   try{TRD.ps=await trdApi(trdBase()+"/state");TRD.psErr=null;}
   catch(e){TRD.ps=null;TRD.psErr=e;if(e.status===401||e.status===403){trdStop();trdEnter();return;}}
-  trdRenderHold();if(TRD.pane==="plan")trdRenderPlanAll();if(TRD.pane==="mod")trdRenderMod();if(TRD.pane==="sell")trdRenderSellPick();if(TRD.quote&&TRD.data)trdRenderPlan();else if(TRD.quote)trdRenderOrder();
+  trdRenderHold();trdRenderAuNote();if(TRD.pane==="plan")trdRenderPlanAll();if(TRD.pane==="mod")trdRenderMod();if(TRD.pane==="sell")trdRenderSellPick();if(TRD.quote&&TRD.data)trdRenderPlan();else if(TRD.quote)trdRenderOrder();
 }
 /* 손익비 한 줄: 손절 시 손실(전량) vs 남은 익절 단계대로 팔았을 때 예상 수익 — 표의 손익 칸과 같은 계산 */
 function trdRrLine(h){
@@ -12099,6 +12140,7 @@ document.addEventListener("click",e=>{const t=e.target;if(!t.closest||!t.closest
   if((el=t.closest("[data-spx]"))){TRD.sell.type="limit";TRD.sell.price=+el.dataset.spx;trdRenderSell();return;}
   if(t.closest("#trdSBtn"))return void trdSellGo();
   if((el=t.closest("[data-mod]")))return void trdModGo(el.dataset.mod);
+  if((el=t.closest("[data-aue]")))return void trdAuEdit(el.dataset.aue);
   if((el=t.closest("[data-hsell]"))){const c=el.dataset.hsell;if(!TRD.q.includes(c)){trdQAdd([c]);trdRenderQ();}TRD.cur=c;trdTab("sell");trdSelect(c);window.scrollTo(0,0);return;}
 });
 /* ── 입력 이벤트 ── */
@@ -12108,7 +12150,7 @@ document.addEventListener("click",e=>{
   let el;
   if((el=t.closest("[data-pick]")))return void(TRD.cur!==el.dataset.pick&&trdSelect(el.dataset.pick));
   if((el=t.closest("[data-del]"))){const c=el.dataset.del;TRD.q=TRD.q.filter(x=>x!==c);(TRD.auHide=TRD.auHide||{})[c]=1;trdSaveQ();trdRenderQ();if(TRD.cur===c){TRD.cur=trdQAll()[0]||null;if(TRD.cur)trdSelect(TRD.cur);else trdRenderEmpty();}return;}
-  if((el=t.closest(".trd-r[data-px],.tb [data-px]"))&&+el.dataset.px>0){if(TRD.pane==="sell"){TRD.sell.type="limit";TRD.sell.price=+el.dataset.px;return trdRenderSell();}return trdSetBuy(+el.dataset.px);}
+  if((el=t.closest(".trd-r[data-px],.tb [data-px]"))&&+el.dataset.px>0){if(TRD.pane!=="sell"&&trdAuPend()&&trdAuLive()){const pi=$("#trdAuNote [data-aue-p]");if(pi){pi.value=el.dataset.px;if(TRD.aue)TRD.aue.price=+el.dataset.px;}return;}if(TRD.pane==="sell"){TRD.sell.type="limit";TRD.sell.price=+el.dataset.px;return trdRenderSell();}return trdSetBuy(+el.dataset.px);}
   if((el=t.closest(".trd-rec")))return trdSetBuy(+el.dataset.px);
   if((el=t.closest("[data-stop]"))){const hb=trdHeld();TRD.stopPct=Math.max(0.1,Math.round((1-+el.dataset.stop/Math.max(1,hb?+hb.avg:trdFloor(TRD.buy)))*1000)/10);TRD.edited=null;trdRenderPlan();return;}
   if((el=t.closest(".trd-pf"))){const lo=+el.dataset.lo,hi=+el.dataset.hi,b=$("#trdPfPick");
