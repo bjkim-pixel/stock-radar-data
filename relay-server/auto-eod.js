@@ -18,18 +18,27 @@ const RULE = Object.freeze({ highNear: 0.98, idxFloor: -1, gapCut: -3, slices: [
 const fmt = v => Math.round(v).toLocaleString('ko-KR');
 
 /* 넘길 자격 판정(순수) — why 가 비면 자격 있음 */
-function carryCheck({ price, avg, high, flow, idx }, R = RULE) {
-  const why = [];
-  if (!(price > 0)) return ['시세 없음'];
-  if (R.needAboveAvg && !(price > avg)) why.push(`매수가 이하(${((price / avg - 1) * 100).toFixed(1)}%)`);
-  if (high > 0 && price < high * R.highNear) why.push(`고가 대비 ${((price / high - 1) * 100).toFixed(1)}%`);
-  const fq = flow && flow.err == null ? flow.fq : null, oq = flow && flow.err == null ? flow.oq : null;
+/* 넘길 자격 판정 사유(2026-11-17 개편): 종목 자체 사유(가격·수급)를 숫자와 함께 먼저, 시장 사유는 '시장 약세'로 따로 묶어 표시 */
+const f0 = n => Math.round(Math.abs(n)).toLocaleString('ko-KR');
+const sq = n => n == null ? '–' : `${n > 0 ? '+' : n < 0 ? '−' : ''}${f0(n)}주`;
+function carryParts({ price, avg, high, flow, idx }, R = RULE) {
+  const stock = [], market = [], facts = [];
+  if (!(price > 0)) return { stock: ['시세 없음'], market, facts };
+  const pa = avg > 0 ? (price / avg - 1) * 100 : null;
+  if (pa != null) facts.push(`매수가 대비 ${pa >= 0 ? '+' : ''}${pa.toFixed(1)}% (평균 ${f0(avg)}원 → 현재 ${f0(price)}원)`);
+  if (R.needAboveAvg && !(price > avg)) stock.push(`매수가 이하(${pa.toFixed(1)}%) — ${pa < 0 ? `평균 매수가 ${f0(avg)}원보다 ${f0(avg - price)}원 낮음` : '수익 없이 본전'}`);
+  if (high > 0 && price < high * R.highNear) stock.push(`고가 대비 ${((price / high - 1) * 100).toFixed(1)}% — 장중 고가 ${f0(high)}원에서 밀려 상승분 반납`);
+  const ok = flow && flow.err == null, fq = ok ? flow.fq : null, oq = ok ? flow.oq : null;
   const fp = fq != null && fq > 0, op = oq != null && oq > 0;
-  if (R.carryFlow === 'any' && !(fp || op)) why.push('외국인·기관 모두 순매수 아님');
-  if (R.carryFlow === 'both' && !(fp && op)) why.push(`${fp ? '기관' : op ? '외국인' : '외국인·기관'} 순매수 아님`);
-  for (const [k, v] of Object.entries(idx || {})) if (v != null && v <= R.idxFloor) why.push(`${k} ${v.toFixed(2)}%`);
-  return why;
+  const fx = `외국인 ${sq(fq)} · 기관 ${sq(oq)}`;
+  if (ok && (fq != null || oq != null)) facts.push(`오늘 잠정 순매수 ${fx}`);
+  if (R.carryFlow === 'any' && !(fp || op)) stock.push(!ok || (fq == null && oq == null) ? '외국인·기관 수급 확인 안 됨(잠정치 없음)' : `외국인·기관 모두 순매수 아님(${fx}) — 수급 주체 이탈`);
+  if (R.carryFlow === 'both' && !(fp && op)) stock.push(`${fp ? '기관' : op ? '외국인' : '외국인·기관'} 순매수 아님(${fx})`);
+  const low = Object.entries(idx || {}).filter(([, v]) => v != null && v <= R.idxFloor);
+  if (low.length) market.push(`시장 약세 ${low.map(([k, v]) => `${k} ${v.toFixed(2)}%`).join('·')} (기준 ${R.idxFloor}% 이하 — 종목과 무관하게 밤사이 갭 하락 위험)`);
+  return { stock, market, facts };
 }
+function carryCheck(x, R = RULE) { const p = carryParts(x, R); return [...p.stock, ...p.market]; }
 
 /* 아침 3분할: 지금 시각까지 팔았어야 할 누적 수량(순수) */
 function sliceTarget(q0, min, slices = RULE.slices) {
@@ -106,8 +115,9 @@ function createEod(deps) {
       try { q = await D.getQuote(code); } catch (_) {}
       if (!!(q && q.info && q.info.nxt) !== nx) { other.push({ code, name: p.name || nameOf(run, code) }); continue; }   // 다른 시간대에 판정할 종목
       try { flow = await D.fetchFlow(code); } catch (_) {}
-      const why = R.closingOn ? carryCheck({ price: q && q.price, avg: p.avg, high: q && q.high, flow, idx }, R) : ['종가베팅 전략 꺼짐'];
-      items.push({ code, name: p.name || nameOf(run, code), qty: p.qty, avg: p.avg, price: q ? q.price : null, nxt: nx, ok: !why.length, why });
+      const pt = R.closingOn ? carryParts({ price: q && q.price, avg: p.avg, high: q && q.high, flow, idx }, R) : { stock: ['종가베팅 전략 꺼짐'], market: [], facts: [] };
+      const why = [...pt.stock, ...pt.market];
+      items.push({ code, name: p.name || nameOf(run, code), qty: p.qty, avg: p.avg, price: q ? q.price : null, nxt: nx, nxtKnown: !!(q && q.info && q.info.nxt != null), ok: !why.length, why, whyS: pt.stock, whyM: pt.market, facts: pt.facts, mktOnly: !pt.stock.length && pt.market.length > 0 });
     }
     const weak = items.filter(i => !i.ok);
     // 약한 종목: 정리는 항상 사용자 승인 후에만(자동 매도 없음). 설정이 '유지'면 묻지 않고 유지
@@ -120,7 +130,7 @@ function createEod(deps) {
     items.filter(i => i.ok).forEach(i => L.push(`✓ ${i.name} ${fmt(i.qty)}주 — 넘길 자격 있음(${conv}까지 분할 익절 유지 후 종가 베팅)`));
     if (weak.length) {
       L.push('', '넘길 자격이 없는 종목:');
-      weak.forEach((i, n) => L.push(`${n + 1}. ${i.name} ${fmt(i.qty)}주 · 현재 ${i.price ? fmt(i.price) : '–'}원 (평균 ${fmt(i.avg)}원) — ${i.why.join(', ')}`));
+      weak.forEach((i, n) => { L.push(`${n + 1}. ${i.name} ${fmt(i.qty)}주 · 현재 ${i.price ? fmt(i.price) : '–'}원 (평균 ${fmt(i.avg)}원)`); (i.whyS || []).forEach(w => L.push(`   - ${w}`)); (i.whyM || []).forEach(w => L.push(`   - ${w}`)); if (i.mktOnly) L.push(`   ※ 종목 자체(가격·수급)는 기준 충족 — 시장 하락만 해당${(i.facts || []).length ? ': ' + i.facts.join(' / ') : ''}`); });
       if (!pre) L.push('', '정리는 답장하신 종목만 진행해요(자동으로 팔지 않아요).', `답장: /정리 1 2 (번호) · /정리 전체 · /유지   (사이트에서도 가능)`, `${hhmm(end)}까지 답이 없으면 '유지'로 자동 결정해요(정리 안 함, ${conv}까지 들고 감).${nx ? ' 정리는 NXT 지정가(매수 호가)로 내요.' : ''}`);
       else L.push('', `설정에 따라 묻지 않고 ${conv}까지 들고 가요.`);
     }
@@ -281,4 +291,4 @@ function createEod(deps) {
   return { judge, handleCmd, timeout, convert, morning, reconvert, pendingPhase };
 }
 
-module.exports = { RULE, carryCheck, sliceTarget, parseEodCmd, createEod, limitSellPrice };
+module.exports = { carryParts, RULE, carryCheck, sliceTarget, parseEodCmd, createEod, limitSellPrice };

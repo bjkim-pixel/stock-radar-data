@@ -11204,6 +11204,17 @@ function auEodNote(e){
   const d=e&&e.decision;if(!d)return e&&!e.none&&(e.items||[]).some(i=>!i.ok)?"승인 대기":(e&&e.at&&!e.none?"약한 종목 없음":"");
   return d.timeout?"응답 없음 → 유지(정리 안 함)":d.auto?(AU_EOD[d.kind]||d.kind)+" (설정)":(AU_EOD[d.kind]||d.kind)+" · 직접 선택";
 }
+/* 종가 판정 사유: 종목 사유(가격·수급)를 먼저, 시장 사유는 따로, 참고 수치(매수가 대비·잠정 수급)도 함께 */
+function auEodWhy(i){
+  if(!i.whyS&&!i.whyM)return trdEsc((i.why||[]).join(", ")||"–");
+  const L=[];
+  (i.whyS||[]).forEach(w=>L.push(`<div>• <b>${trdEsc(w)}</b></div>`));
+  (i.whyM||[]).forEach(w=>L.push(`<div class="faint">• ${trdEsc(w)}</div>`));
+  if(i.mktOnly)L.push('<div class="au-on" style="font-size:11.5px">종목 자체(가격·수급)는 기준 충족 — 시장 하락만 해당</div>');
+  if(i.ok&&!L.length)L.push('<div>–</div>');
+  if((i.facts||[]).length)L.push(`<div class="faint" style="font-size:11.5px;margin-top:2px">${i.facts.map(trdEsc).join("<br>")}</div>`);
+  return L.join("");
+}
 const auNm=(name,code)=>code?`<a class="lk nm au-nm" data-code="${trdEsc(code)}" title="종목 상세로 이동">${trdEsc(name||code)}</a>`:trdEsc(name||"");
 const auVn=nx=>nx==null?"":`<span class="au-vn${nx?" nx":""}">${nx?"NXT":"정규장"}</span>`;
 function auStepsC(){
@@ -11500,7 +11511,7 @@ function auRunHtml(sid){
   for(const ph of ["reg","nxt"]){
     const e=ph==="nxt"?evN:ev,nx0=ph==="nxt";
     if(e&&!e.none&&e.items.length)h+=auSec(sid,ph==="nxt"?"judgeN":"judge",ph==="nxt"?"NXT 종목 종가 판정 · 정리":"종가 판정 · 정리(정규장 종목)",e.decision?`결정: ${trdEsc(AU_EOD[e.decision.kind]||e.decision.kind)}${e.decision.timeout?"(무응답)":e.decision.auto?"(설정에 따라)":""}`:"결정 전",
-      `<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>결과</th><th>사유</th></tr></thead><tbody>${e.items.map(i=>`<tr><td>${auNm(i.name,i.code)}${auVn(i.nxt==null?nx0:i.nxt)}</td><td class="${i.ok?"au-on":"faint"}">${i.ok?"넘길 자격 있음":"약함"}</td><td style="white-space:normal">${trdEsc(i.why.join(", ")||"–")}</td></tr>`).join("")}</tbody></table></div>`);
+      `<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>결과</th><th>사유</th></tr></thead><tbody>${e.items.map(i=>`<tr><td>${auNm(i.name,i.code)}${auVn(i.nxt==null?nx0:i.nxt)}</td><td class="${i.ok?"au-on":"faint"}">${i.ok?"넘길 자격 있음":"약함"}</td><td style="white-space:normal">${auEodWhy(i)}</td></tr>`).join("")}</tbody></table></div>`);
   }
   if((D.log||[]).length)h+=`<div class="card au-sec" id="au-sec-${trdEsc(sid)}-log"><h3>${auTag(sid)} · 진행 기록 <span class="r faint" style="font-size:11px">${N(D.log.length)}건 · 최신순</span></h3><details class="au-rej"><summary>전체 보기</summary><div style="margin-top:6px">${D.log.slice().reverse().map(lgLine).join("")}</div></details></div>`;
   return h;

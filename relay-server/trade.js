@@ -378,6 +378,14 @@ function createTrade(deps = {}) {
         else v = { nxt: null, etf: true, known: true };   // stocks 에 없는 종목(ETF·ETN 등)
       } catch (e) { console.warn('[trade] 종목 구분 조회 실패', code, e && e.message); }
     }
+    /* DB 에 NXT 여부가 비어 있으면(아직 148_nxt_flag 미확인 종목) KIS 주식기본조회로 직접 확인 — 종가 판정이 정규장/NXT 를 잘못 나누지 않게 */
+    if (v.nxt == null && !(v.known && v.etf) && deps.kisGet && /^\d{6}$/.test(code)) {
+      try {
+        const j = await deps.kisGet('/uapi/domestic-stock/v1/quotations/search-stock-info', 'CTPF1002R', { PRDT_TYPE_CD: '300', PDNO: code });
+        const o = (j && j.output) || {}, yn = o.cptt_trad_tr_psbl_yn;
+        if (yn === 'Y' || yn === 'N') v = { ...v, nxt: yn === 'Y' && o.nxt_tr_stop_yn !== 'Y', known: true };
+      } catch (e) { console.warn('[trade] NXT 여부 KIS 조회 실패', code, e && e.message); }
+    }
     infoCache.set(code, { t: now(), v });
     if (infoCache.size > 500) infoCache.delete(infoCache.keys().next().value);
     return v;
