@@ -293,6 +293,7 @@ svg.tl-paths{position:absolute;left:0;top:0;width:100%;height:100%;pointer-event
 /* 종목후보 결과표·오늘의 종목 표: 스크롤 없이 표 전체를 옆으로 쭉 펼침(열이 많아 화면보다 넓어짐 → 모바일은 확대해서 보기).
    go()가 해당 화면에서만 html.wide를 붙여 body의 가로 숨김을 풀어, 페이지 자체가 넓어질 수 있게 합니다. */
 html.wide,html.wide body{overflow-x:visible}
+html:not(.wide) #scrWrap,html:not(.wide) .scrlike{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 #scrWrap,.scrlike{overflow:visible}
 /* 2026-11-08: min-width:100%를 빼서 "열 보기"로 열을 줄여도 표가 카드 폭만큼 늘어나(셀이 넓어짐) 않고 항상 내용 폭으로 촘촘하게 유지 */
 #scrWrap table,.scrlike table{width:max-content;min-width:0;table-layout:auto}
@@ -3295,7 +3296,7 @@ function trRender(){
   const T=S.tr;if(!T.raw)return;
   const {rows,n,nCand}=trList();
   const card=T.view==="card";
-  document.documentElement.classList.toggle("wide",!card);setPageW();   // 카드 보기: 페이지를 화면 폭에 맞춰 차트가 오른쪽 끝까지
+  wideSet(!card);setPageW();   // 카드 보기: 페이지를 화면 폭에 맞춰 차트가 오른쪽 끝까지
   $("#trWrap").classList.toggle("hide",card);$("#trCards").classList.toggle("hide",!card);$("#trCard").classList.toggle("cardmode",card);
   {const cs=[`시총 ${T.min?(T.min>=10000?N(T.min/10000)+"조":N(T.min)+"억")+" 이상":"전체"}`,`거래대금 ${T.amt?N(T.amt)+"억↑":"전체"}`,...fcDesc(T),...lfDesc(S.tf)];$("#trSel").innerHTML=lfSelHtml(cs);}
   $("#trStat").textContent=`${S.date} 기준 · 조건 충족 ${N(n)}종목`+(n>TR_N?` 중 상위 ${TR_N}`:"")+(n!==nCand?` / 후보 ${N(nCand)}`:"");
@@ -4805,7 +4806,7 @@ function go(v,detailCode){
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===vOrig));
   if(typeof navSync==="function")navSync();
   ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
-  document.documentElement.classList.toggle("wide",v==="scr"||v==="trend"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
+  wideSet(v==="scr"||v==="trend"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
   // "아직 종목상세를 한 번도 안 봤으면(S.chart.code 없음) 디폴트 SK하이닉스를
@@ -4878,6 +4879,8 @@ setInterval(()=>{ if(S.curTab==="perf2") loadPerf2().catch(()=>{}); }, 30000);
 // 표 헤더가 sticky로 붙는 위치(--stick-top)를 전역 헤더의 실제 렌더 높이로
 // 맞춥니다. 고정폭을 하드코딩하면 모바일에서 헤더 줄바꿈 등으로 어긋나므로,
 // 항상 실측치를 씁니다. 표는 안쪽 스크롤 없이 페이지 스크롤을 그대로 씁니다.
+/* 2026-11-17: 표를 화면 밖으로 펼치는 html.wide 모드 해제 — 모든 화면을 폭에 맞추고 표는 카드 안에서 좌우 스크롤(거래내역 화면과 동일). 다시 펼치려면 WIDE=true */
+var WIDE=false;function wideSet(on){document.documentElement.classList.toggle("wide",WIDE&&!!on);}
 function setPageW(){
   const r=document.documentElement,st=r.style;
   st.setProperty("--pw","0px");st.setProperty("--cw","0px");
@@ -11803,7 +11806,7 @@ function trdTab(p){
   $("#trdPaneRep").classList.toggle("hide",p!=="rep");$("#trdPaneHist").classList.toggle("hide",p!=="hist");
   $("#trdPanePlan").classList.toggle("hide",p!=="plan");$("#trdPaneAuto").classList.toggle("hide",p!=="auto");$("#trdPaneHold").classList.toggle("hide",p!=="hold");
   $("#trdPaneMod").classList.toggle("hide",p!=="mod");{const b=$("#trdBkHint");if(b)b.textContent=p==="sell"?"호가 클릭 = 매도가 입력":"호가 클릭 = 매수가 입력";}$("#trdPaneFills").classList.toggle("hide",p!=="fills");
-  if(S.curTab==="trade"){document.documentElement.classList.toggle("wide",p==="plan"||p==="auto"||TRD_ORDER_P.includes(p));setPageW();setTimeout(setPageW,400);}   // 매도 계획만 넓게(표가 오른쪽으로 펼쳐짐)
+  if(S.curTab==="trade"){wideSet(p==="plan"||p==="auto"||TRD_ORDER_P.includes(p));setPageW();setTimeout(setPageW,400);}   // 매도 계획만 넓게(표가 오른쪽으로 펼쳐짐)
   {const h=$("#v-trade>.pg-title");if(h)h.textContent=TRD_PANE_T[p]+(TRD.mode==="REAL"?" · 실전":" · 가상");}
   $$(".trd-pmode button").forEach(b=>b.classList.toggle("on",b.dataset.pmode===TRD.mode));
   $("#trdMode").classList.toggle("hide",p==="auto");   // 자동매매는 가상 전용이라 가상/실전 전환을 숨김
