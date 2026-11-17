@@ -1035,10 +1035,13 @@ function createAuto(deps) {
     const owner = {};
     todays.forEach(t => t.orders.filter(o => o.filled > 0).forEach(o => { owner[o.code] = t.strategy ? t.strategy.name : t.sid; }));
     const carryItems = Object.values((carry && carry.items) || {}).filter(i => i.state !== 'done');
+    const dayOf = ms => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10);
+    const carryDoneToday = Object.values((carry && carry.items) || {}).filter(i => i.state === 'done' && i.doneAt && dayOf(i.doneAt) === date);   // 오늘 이미 전량 정리된 이월 종목도 매매 내역·단계 진행에 포함
     let positions = [], trades = [], dayTot = null;
     try {
       const ps = D.paper && D.paper.state ? await D.paper.state() : null;
       const watch = new Set([...Object.keys(owner), ...carryItems.map(i => i.code)]);
+      const watchTr = new Set([...watch, ...carryDoneToday.map(i => i.code)]);   // 체결 내역용(이미 다 판 종목 포함)
       if (ps && ps.ok) {
         const nx = {};
         try {
@@ -1051,8 +1054,8 @@ function createAuto(deps) {
         ps.positions.forEach(p => { nm[p.code] = p.name; });
         (ps.orders || []).forEach(o => { if (o.name) nm[o.code] = nm[o.code] || o.name; });
         todays.forEach(t => t.orders.forEach(o => { if (o.name) nm[o.code] = nm[o.code] || o.name; }));
-        carryItems.forEach(i => { if (i.name) nm[i.code] = nm[i.code] || i.name; });
-        trades = (ps.fills || []).filter(f => watch.has(f.code)).map(f => ({ ts: f.ts, code: f.code, name: nm[f.code] || f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee || 0, realized: f.realized == null ? null : f.realized, reason: f.reason || null })).sort((x, y) => x.ts - y.ts);
+        carryItems.concat(carryDoneToday).forEach(i => { if (i.name) nm[i.code] = nm[i.code] || i.name; });
+        trades = (ps.fills || []).filter(f => watchTr.has(f.code)).map(f => ({ ts: f.ts, code: f.code, name: nm[f.code] || f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee || 0, realized: f.realized == null ? null : f.realized, reason: f.reason || null })).sort((x, y) => x.ts - y.ts);
         const evalPl = positions.reduce((a, p) => a + (p.last > 0 ? (p.last - p.avg) * p.qty : 0), 0);
         const evalAmt = positions.reduce((a, p) => a + (p.last > 0 ? p.last * p.qty : p.avg * p.qty), 0);
         const rz = trades.reduce((a, f) => a + (f.realized || 0), 0);
@@ -1081,10 +1084,11 @@ function createAuto(deps) {
     let exposure = null;
     try { const ex = await exposureNow(); if (ex) { const caps = A.Is.map(i => +i.params.totalCapKrw || 0).filter(v => v > 0); exposure = { ...ex, rows: undefined, cap: caps.length ? Math.min(...caps) : 0 }; } } catch (_) {}
     const ci = carryItems.map(i => ({ code: i.code, name: i.name, q0: i.q0, avg: i.avg, from: i.from, sold: i.sold || 0, state: i.state, sid: i.sid || null }));
+    const cd = carryDoneToday.map(i => ({ code: i.code, name: i.name, q0: i.q0, avg: i.avg, from: i.from, sold: i.sold || 0, state: 'done', why: i.why || null, sid: i.sid || null }));
     return {
       ok: true, now: Date.now(), date, tradingDay: isTradingDay(date),
       cfg: { on: !!cv.on, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
-      today: todays[0] || null, todays, quotes, active: A.Is.map(i => i.id), regime, exposure, events, positions, trades, dayTot, carry: ci, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
+      today: todays[0] || null, todays, quotes, active: A.Is.map(i => i.id), regime, exposure, events, positions, trades, dayTot, carry: ci, carryDone: cd, history: hist.rows, totals: hist.totals, lastErr: state.lastErr || null,
     };
   }
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */
