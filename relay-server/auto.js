@@ -281,12 +281,18 @@ function createAuto(deps) {
     const nBase0 = base.length;
     if (X && X.nxtOnly) base = await nxtOnly(base);
     const stat = { pool: (pool || []).length, base: base.length, flowPass: 0, errs: 0, ...(X && X.nxtOnly ? { nxtOut: nBase0 - base.length } : {}) };
-    const passed = [], rejected = [];
+    const passed = [], rejected = [], altPool = [];
     for (const c of base.slice(0, 40)) {
       const [flow, power, cttr] = await Promise.all([D.fetchFlow(c.code), D.fetchPower(c.code), D.fetchCttr(c.code)]);
       const ev = evalFlow(c, flow, power, cttr, P);
       if (ev.fails.some(f => /없음/.test(f))) stat.errs++;
-      if (!ev.pass) { c.fails = ev.fails; c.m = ev.m; rejected.push({ code: c.code, name: c.name, changePct: c.changePct, fails: ev.fails }); continue; }
+      if (!ev.pass) {
+        c.fails = ev.fails; c.m = ev.m; rejected.push({ code: c.code, name: c.name, changePct: c.changePct, fails: ev.fails });
+        // 대체 후보: 외국인·기관 순매도 때문에만 떨어졌고, 둘의 순매수 합계가 기준(억원) 이상이면 후보로 보관
+        const sumFO = ev.m.fAmt != null && ev.m.oAmt != null ? ev.m.fAmt + ev.m.oAmt : null;
+        if (P.altFlowOn !== false && !(X && X.nxtOnly) && ev.fails.length && ev.fails.every(f => f === '외국인 순매도' || f === '기관 순매도') && sumFO != null && sumFO >= (+P.altFlowMinEok || 1) * 1e8) { c.altSum = sumFO; altPool.push(c); }
+        continue;
+      }
       c.m = ev.m; stat.flowPass++; passed.push(c);
     }
     const byAmt = passed.slice().sort((a, b) => a.amt - b.amt);
@@ -315,7 +321,14 @@ function createAuto(deps) {
       });
     }
     const { pick, dropped } = rankAndPick(passed, P.poolTop, P.sectorMax);
-    return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed, rejected };
+    let alt = [];
+    if (altPool.length) {
+      const byA = altPool.slice().sort((x, y) => x.amt - y.amt);
+      altPool.forEach(c => { c.score = scoreOne(c, c.m, byA.length > 1 ? byA.indexOf(c) / (byA.length - 1) : 1, P); c.reasons = [`⚠ 대체 조건: 외국인+기관 합계 ${won(c.altSum)}`].concat(reasonsFor(c, { ...P, flowForeign: 'bonus' }).slice(1)); c.alt = true; });
+      alt = rankAndPick(altPool, P.poolTop, P.sectorMax).pick;
+    }
+    stat.altN = alt.length;
+    return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed, rejected, alt };
   }
 
   /* auto_runs(날짜+전략) 쓰기는 모두 이 잠금 안에서 "새로 읽기 → 고치기 → 저장" — 알림·승인·주문 관리가 서로 덮어쓰지 않게 */
@@ -507,17 +520,19 @@ function createAuto(deps) {
     const warn = await marketWarn();
     const regime = await regimeOf(date);
     const sel = await select(I.params);
+    const useAlt = !sel.picks.length && I.params.altFlowOn !== false && (sel.alt || []).length > 0;   // 원래 조건 통과 종목이 없으면 외국인+기관 합계로 보충(승인 필요)
+    const listP = useAlt ? sel.alt : sel.picks;
     const evs = await EV.loadEvents(D.sbGet, date);
     const shadow = sel.passedAll.map(c => ({
       code: c.code, name: c.name, score: c.score.total, parts: c.score.parts, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector,
-      m: c.m, picked: sel.picks.some(p => p.code === c.code),
+      m: c.m, picked: listP.some(p => p.code === c.code),
     }));
     const payload = {
       selectedAt: new Date().toISOString(), stat: sel.stat, scrDate: sel.scrDate, warn: warn || null,
       regime: regime ? { date: regime.date, score: regime.score, stage: regime.stage, mult: regimeMult(I.params, regime), mode: I.params.regimeMode || 'info' } : null,
       strategy: { id: I.id, version: I.version, name: I.name }, params: I.params, letter: I.letter || 'A',
       events: EV.marketNotes(evs, date, 1),
-      picks: sel.picks.slice(0, I.params.notifyTop).map(c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date) })),
+      picks: listP.slice(0, I.params.notifyTop).map(c => ({ ...(useAlt ? { alt: true, altSum: Math.round(c.altSum || 0) } : {}), code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date) })),
       shadow, dropped: sel.dropped, rejected: sel.rejected.slice(0, 40), approved: [], decision: null, noticeSent: false,
     };
     const st0 = sel.stat || {};
@@ -549,7 +564,8 @@ function createAuto(deps) {
       if (run.payload.noticeSent && !force) return;
       const picks = (run.payload.picks || []).map(p => ({ ...p, score: { total: p.score, ratio: p.ratio || 0 }, warns: p.ev || [] }));
       const rg = run.payload.regime, ps = rg && rg.mult < 1 ? Math.max(10000, Math.floor(I.params.perStockKrw * rg.mult / 10000) * 10000) : null;
-      text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, regime: regimeLine(rg, I.params, ps), exposure: exLine, events: EV.marketLine(run.payload.events), deadline: ST.hhmm(I.T.deadline), auto: I.params.approval === 'auto' && picks.length > 0 });
+      text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, regime: regimeLine(rg, I.params, ps), exposure: exLine, events: EV.marketLine(run.payload.events), deadline: ST.hhmm(I.T.deadline), auto: I.params.approval === 'auto' && picks.length > 0 && !picks.every(p => p.alt) });
+      if (picks.length && picks.every(p => p.alt)) text = text.replace('\n', `\n⚠️ 대체 조건 후보 — 외국인·기관 모두 순매수인 종목이 없어 "외국인+기관 합계 ${I.params.altFlowMinEok || 1}억 이상"으로 골랐어요. 매수하려면 승인하세요. 승인하지 않아도 다음 검토에도 후보면 자동 매수해요.\n`);
       if (state.multi && picks.length) text = text.replace(/\n(\d+)\. /g, `\n${run.payload.letter || 'A'}$1. `).replace('답장: /매수 1 3 5 (번호)', `답장: /매수 ${run.payload.letter || 'A'}1 ${run.payload.letter || 'A'}3 (글자+번호)`);
       run.payload.noticeSent = true; run.payload.noticeAt = new Date().toISOString();
       LOG.push(run.payload, 'notice', `텔레그램 알림 전송 · 후보 ${picks.length}개 · 승인 마감 ${ST.hhmm(I.T.deadline)}${I.params.approval === 'auto' ? ' (자동 승인 설정)' : ''}`);
@@ -788,7 +804,28 @@ function createAuto(deps) {
     const ords0 = P0.orders || {}, canRetry = code => retryOn && XE.retryable(ords0[code], tries);
     const known = new Set([...(P0.picks || []).map(p => p.code), ...Object.keys(ords0)].filter(c => !canRetry(c)));
     const room = cap - placedOf(P0);
-    const fresh = sel.picks.filter(c => !known.has(c.code)).slice(0, Math.min(I.params.notifyTop, room));
+    // 대체 후보 자동 매수: 지난 검토에서 올린 대체 후보가 승인 없이 이번에도 후보(원래 조건 또는 대체 조건)이면 사 줌 — 사용자가 패스·다른 종목 승인한 회차는 존중
+    if (I.params.altAutoBuy !== false && room > 0) {
+      const still = new Set([...sel.picks, ...(sel.alt || [])].map(c => c.code));
+      const P1 = ((await readRun(date, I.id).catch(() => null)) || run).payload, o1 = P1.orders || {}, dk = P1.decision && P1.decision.kind;
+      const cand = (P1.picks || []).map((p, i) => ({ p, n: i + 1 })).filter(({ p }) => p.alt && !p.altAuto && still.has(p.code) && !isOrdered(o1[p.code]) && !(P1.approved || []).includes(p.code));
+      if (cand.length && dk !== 'pass' && dk !== 'buy') {
+        const nums = cand.slice(0, room).map(x => x.n);
+        await mutateRun(date, I.id, r => {
+          const P = r.payload; if (P.decision && P.decision.kind === 'expired') P.decision = null;
+          nums.forEach(n => { P.picks[n - 1].closed = false; P.picks[n - 1].altAuto = true; });
+          LOG.push(P, 'round', `${n}회차 ${hh} 검토: 대체 후보 ${nums.map(k => P.picks[k - 1].name).join(', ')} — 승인 없이 이번에도 후보라 자동 매수`); state.runs[I.id] = r;
+        });
+        const msg = await approveRun(date, I.id, { kind: 'buy', nums }, min, { via: 'auto', late: true });
+        if (msg) await tgFor(I.id)('🤖 대체 후보 자동 매수 (승인은 없었지만 이번 검토에도 후보)\n' + msg);
+      }
+    }
+    let fresh = sel.picks.filter(c => !known.has(c.code)).slice(0, Math.min(I.params.notifyTop, room));
+    let useAlt = false;   // 원래 조건 통과 종목이 없으면 외국인+기관 합계로 보충(승인 필요)
+    if (!fresh.length && I.params.altFlowOn !== false && room > 0) {
+      const af = (sel.alt || []).filter(c => !known.has(c.code)).slice(0, Math.min(I.params.notifyTop, room));
+      if (af.length) { fresh = af; useAlt = true; }
+    }
     const evs = await EV.loadEvents(D.sbGet, date).catch(() => []);
     const dropped = await dropStaleRetry(date, I.id, new Set(fresh.map(c => c.code)), '이번 검토 조건을 통과하지 못해', hh);
     if (!fresh.length) {
@@ -819,13 +856,15 @@ function createAuto(deps) {
       r.status = 'noticed'; P.roundDeadline = min + I.params.approveWindow;
       LOG.push(P, 'round', `${n}회차 ${hh} 검토: 새 후보 ${fresh.length - nRetry}개${nRetry ? ` · 다시 시도 ${nRetry}개` : ''} (${fresh.map(c => c.name + (shown.find(x => x.code === c.code).retry ? '🔁' : '')).join(', ')}) · 풀 ${sel.stat.pool} → 기본조건 ${sel.stat.base} → 수급 통과 ${sel.stat.flowPass}`);
       const letter = P.letter || 'A', ps = shown.map(c => ({ ...c, score: { total: c.score.total, ratio: c.score.ratio || 0 }, warns: [] }));
-      text = formatMessage(date, ps, { timeText: hh, round: n, nums, warn: P.warn, deadline: ST.hhmm(P.roundDeadline), auto: I.params.approval === 'auto' });
+      text = formatMessage(date, ps, { timeText: hh, round: n, nums, warn: P.warn, deadline: ST.hhmm(P.roundDeadline), auto: I.params.approval === 'auto' && !useAlt });
       if (state.multi) text = text.replace(/\n(\d+)\. /g, `\n${letter}$1. `).replace(/답장: \/매수 (\d+) (\d+)(?: \d+)? \(번호\)/, `답장: /매수 ${letter}$1 ${letter}$2 (글자+번호)`);
+      if (useAlt) fresh.forEach(c => { const pk = P.picks.find(p => p.code === c.code); if (pk) { pk.alt = true; pk.altSum = Math.round(c.altSum || 0); } });
       state.runs[I.id] = r;
     });
+    if (text && useAlt) text = text.replace('\n', `\n⚠️ 대체 조건 후보 — 외국인·기관 모두 순매수인 종목이 없어 "외국인+기관 합계 ${I.params.altFlowMinEok || 1}억 이상"으로 골랐어요. 매수하려면 승인하세요. 승인하지 않아도 다음 검토에도 후보면 자동 매수해요.\n`);
     if (text) await tgFor(I.id)(text);
     let auto = null;
-    if (I.params.approval === 'auto') {
+    if (I.params.approval === 'auto' && !useAlt) {
       const msg = await approveRun(date, I.id, { kind: 'buy', nums }, min, { via: 'auto' });
       if (msg) await tgFor(I.id)('🤖 자동 승인\n' + msg);
       auto = { ok: true };
@@ -924,6 +963,8 @@ function createAuto(deps) {
   /* 승인 방식 '자동': 그 전략의 알림 후보 전체를 승인한 것으로 처리(가상매매) */
   async function autoApprove(sid) {
     const { date, min } = kstParts();
+    const cur = await readRun(date, sid).catch(() => null), open = ((cur && cur.payload && cur.payload.picks) || []).filter(p => !p.closed);
+    if (open.length && open.every(p => p.alt)) return { ok: true, skipped: '대체 후보는 승인 필요' };   // 대체 조건 후보는 자동 승인하지 않음
     const msg = await approveRun(date, sid, { kind: 'all' }, min, { via: 'auto' });
     if (msg) await tgFor(sid)('🤖 자동 승인\n' + msg);
     return { ok: true };

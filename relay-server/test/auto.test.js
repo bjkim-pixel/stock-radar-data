@@ -64,6 +64,7 @@ function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null }
   const db = { auto_runs: {}, auto_config: { main: { on, perStockKrw: 1000000 } } };
   const sent = [];
   let pool = ['A', 'B', 'C', 'D'];
+  let flowFn = () => ({ fq: 1000, oq: 800 });
   let clock = { date: '2026-11-16', min };
   const deps = {
     sbGet: async path => {
@@ -79,11 +80,11 @@ function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null }
     sendTelegram: async t => { sent.push(t); },
     kstNow: () => clock, isTradingDay: () => trading,
     livePool: async () => pool.map(c => row(c, c === 'D' ? { amt: 2e11 } : {})),
-    fetchFlow: async c => ({ fq: 1000, oq: 800 }), fetchPower: async c => ({ pgQty: 200, w52: 11000 }), fetchCttr: async c => ({ cttr: 125 }),
+    fetchFlow: async c => flowFn(c), fetchPower: async c => ({ pgQty: 200, w52: 11000 }), fetchCttr: async c => ({ cttr: 125 }),
     marketState: async () => null,
   };
   if (params) { const ST = require('../auto-strategy'), P = { ...ST.defaults('intraday'), ...params }, C = ST.defaults('closing'); deps.strategies = { pair: async () => ({ I: { id: 'intraday-default', name: '기본', version: 1, enabled: true, params: P }, C: { id: 'closing-default', version: 1, enabled: true, params: C }, T: ST.timesOf(P, C) }) }; }
-  return { A: A.createAuto(deps), db, sent, setPool: p => { pool = p; }, setMin: m => { clock = { date: clock.date, min: m }; } };
+  return { A: A.createAuto(deps), db, sent, setFlow: f => { flowFn = f; }, setPool: p => { pool = p; }, setMin: m => { clock = { date: clock.date, min: m }; } };
 }
 
 test('10:05 선정 → 기록, 10:15 알림 1회, 재호출은 중복 발송 없음', async () => {
@@ -298,4 +299,53 @@ test('다시 시도 대기: 조건을 계속 통과하면 대기에 남아 다�
   const { P } = await roundWith({ approval: 'manual' }, P0 => ({ [codesOf(P0)[0]]: { st: 'cancelled', buy: 1, qty: 1, orderId: 'o' } }));
   const a = P.picks.find(p => p.retry);
   assert.equal(P.orders[a.code].st, 'retry'); assert.equal(a.closed, false);
+});
+
+/* ── 대체 후보: 외국인·기관 모두 순매수 통과 종목이 없으면 외국인+기관 합계로 보충 ── */
+test('대체 후보: 외국인 순매도라도 외·기 합계가 1억 이상이면 후보(승인 필요), 합계 미달이면 제외', async () => {
+  const h = harness();
+  h.setFlow(() => ({ fq: -1000, oq: 30000 }));            // 합계 +29,000주 × 10,500원 ≈ 3.0억
+  await h.A.tick();
+  const P = h.db.auto_runs['2026-11-16'].payload;
+  assert.deepEqual(P.picks.map(p => p.code).sort(), ['A', 'D']);
+  assert.ok(P.picks.every(p => p.alt && p.altSum > 1e8));
+  assert.match(P.picks[0].reasons[0], /대체 조건/);
+  const h2 = harness(); h2.setFlow(() => ({ fq: -1000, oq: 5000 }));   // 합계 +4,000주 ≈ 0.42억 → 미달
+  await h2.A.tick();
+  assert.equal(h2.db.auto_runs['2026-11-16'].payload.picks.length, 0);
+  const hh = harness({ params: { altFlowOn: false } }); hh.setFlow(() => ({ fq: -1000, oq: 30000 }));
+  await hh.A.tick();
+  assert.equal(hh.db.auto_runs['2026-11-16'].payload.picks.length, 0);   // 끄면 대체 후보 없음
+});
+test('대체 후보: 원래 조건 통과 종목이 하나라도 있으면 대체 후보는 쓰지 않음', async () => {
+  const h = harness();
+  h.setFlow(c => (c === 'A' ? { fq: 1000, oq: 800 } : { fq: -1000, oq: 30000 }));
+  await h.A.tick();
+  const P = h.db.auto_runs['2026-11-16'].payload;
+  assert.deepEqual(P.picks.map(p => p.code), ['A']); assert.ok(!P.picks[0].alt);
+});
+test('대체 후보: 자동 승인 설정이어도 승인 대기, 알림에 안내', async () => {
+  const h = harness({ params: { approval: 'auto' } });
+  h.setFlow(() => ({ fq: -1000, oq: 30000 }));
+  await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick(); await h.A.tick();
+  assert.equal(h.db.auto_runs['2026-11-16'].status, 'noticed');
+  assert.match(h.sent[0], /대체 조건 후보/);
+  assert.ok(!(h.db.auto_runs['2026-11-16'].payload.approved || []).length);
+});
+test('대체 후보: 승인이 없어도 다음 검토에도 후보면 자동 매수, 패스한 건 존중', async () => {
+  const h = harness();
+  h.setFlow(() => ({ fq: -1000, oq: 30000 }));
+  await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick();
+  h.setMin(10 * 60 + 31); await h.A.tick();                       // 승인 마감 → 만료
+  assert.equal(h.db.auto_runs['2026-11-16'].status, 'expired');
+  h.setMin(10 * 60 + 35); await h.A.tick();                       // 2회차: 여전히 후보 → 자동 매수
+  const P = h.db.auto_runs['2026-11-16'].payload;
+  assert.deepEqual((P.approved || []).slice().sort(), ['A', 'D']);
+  assert.ok(P.picks.every(p => p.altAuto));
+  assert.ok(P.log.some(l => /대체 후보.*자동 매수/.test(l.text)));
+  const g = harness(); g.setFlow(() => ({ fq: -1000, oq: 30000 }));
+  await g.A.tick(); g.setMin(10 * 60 + 15); await g.A.tick();
+  await g.A.handleApproval('/패스');                              // 사용자가 패스
+  g.setMin(10 * 60 + 35); await g.A.tick();
+  assert.ok(!(g.db.auto_runs['2026-11-16'].payload.approved || []).length);
 });
