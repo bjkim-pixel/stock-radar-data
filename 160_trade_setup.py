@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""매매 보안 기반 DB 설정 — 인자: trade_security | lock_data | unlock_data | paper_trading | live_trading | auto_trade | auto_strategy | auto_multi | auto_journal | market_regime | market_events
+"""매매 보안 기반 DB 설정 — 인자: trade_security | lock_data | unlock_data | paper_trading | live_trading | auto_trade | auto_strategy | auto_multi | auto_journal | market_regime | market_events | auto_daylog | engine_lock
    trade_security : 160_trade_security.sql (trade_audit 테이블 + is_owner())  — 기존 화면에 영향 없음
    lock_data      : 161_lock_data_to_login.sql (anon 읽기 차단, 로그인한 주인만 읽기)
    unlock_data    : 161_unlock_data.sql (잠금 되돌리기)
@@ -8,7 +8,7 @@
    여러 번 실행해도 안전. 실행 후 anon/주인/타인 권한을 실제로 시험해서 결과를 출력(이메일은 일부만 표시)."""
 import os, sys, json, psycopg2
 
-FILES = {"trade_security": "160_trade_security.sql", "lock_data": "161_lock_data_to_login.sql", "unlock_data": "161_unlock_data.sql", "paper_trading": "162_paper_trading.sql", "live_trading": "163_live_trading.sql", "auto_trade": "164_auto_trade.sql", "auto_strategy": "165_auto_strategy.sql", "auto_multi": "166_auto_multi.sql", "auto_journal": "167_auto_journal.sql", "market_regime": "168_market_regime.sql", "market_events": "169_market_events.sql", "auto_rounds": "170_auto_rounds.sql", "auto_eod_split": "171_auto_eod_split.sql", "auto_daylog": "172_auto_daylog.sql"}
+FILES = {"trade_security": "160_trade_security.sql", "lock_data": "161_lock_data_to_login.sql", "unlock_data": "161_unlock_data.sql", "paper_trading": "162_paper_trading.sql", "live_trading": "163_live_trading.sql", "auto_trade": "164_auto_trade.sql", "auto_strategy": "165_auto_strategy.sql", "auto_multi": "166_auto_multi.sql", "auto_journal": "167_auto_journal.sql", "market_regime": "168_market_regime.sql", "market_events": "169_market_events.sql", "auto_rounds": "170_auto_rounds.sql", "auto_eod_split": "171_auto_eod_split.sql", "auto_daylog": "172_auto_daylog.sql", "engine_lock": "173_engine_lock.sql"}
 target = sys.argv[1] if len(sys.argv) > 1 else ""
 if target not in FILES: sys.exit("대상: " + " | ".join(FILES))
 url = os.environ.get("SUPABASE_DB_URL", "")
@@ -49,6 +49,9 @@ def probe(role, email, query):
 if target == "auto_multi":
     cur.execute("select pg_get_constraintdef(oid) from pg_constraint where conrelid='public.auto_runs'::regclass and contype='p'"); print("· auto_runs 기본키:", cur.fetchone()[0])
     cur.execute("select trade_date, strategy_id, status from public.auto_runs order by trade_date desc limit 5"); print("· 최근 기록:", cur.fetchall())
+if target == "engine_lock":
+    cur.execute("select count(*) from public.engine_lock"); print("· engine_lock 행 수:", cur.fetchone()[0])
+    print("· engine_lock anon 읽기(차단이어야 정상):", probe("anon", None, "select count(*) from public.engine_lock"))
 if target == "market_regime":
     cur.execute("select count(*) from public.market_regime"); print("· market_regime 행 수:", cur.fetchone()[0])
     print("· market_regime 주인 로그인 읽기:", probe("authenticated", owner, "select count(*) from public.market_regime"))

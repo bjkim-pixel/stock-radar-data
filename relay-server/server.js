@@ -3728,9 +3728,35 @@ function handleAccessLog(req, res) {
   return false;
 }
 
+/* ── 주문 권한 잠금(실거래 전환 0단계, 2026-11-18): 배포 중 옛·새 인스턴스가 겹쳐도 주문·손절은 한쪽만 — relay-server/engine-guard.js ──
+   Supabase engine_lock 한 줄(30초 임대, 5초마다 연장, 종료 때 반납). 테이블이 없으면 잠금 없이 동작하고 알린다.
+   ORDER_LOCK=0 이면 잠금을 쓰지 않는다(로컬 시험용). */
+const BOOT_AT = Date.now();
+const ENGINE_INSTANCE = `${process.env.RENDER_INSTANCE_ID || require('os').hostname()}-${process.pid}-${Math.random().toString(36).slice(2, 6)}`;
+async function sbRest(path, method, body, prefer) {   // 잠금 전용: PostgREST 응답을 그대로(조건부 PATCH·중복 무시 POST 에 필요한 Prefer 지정)
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`, 'content-type': 'application/json', ...(prefer ? { Prefer: prefer } : {}) },
+    body: body != null ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(6000),
+  });
+  const text = await res.text().catch(() => '');
+  if (!res.ok) throw new Error(`${method} ${path.split('?')[0]} ${res.status} ${text.slice(0, 200)}`);
+  if (!text) return [];
+  try { const j = JSON.parse(text); return Array.isArray(j) ? j : [j]; } catch (_) { return []; }
+}
+const orderLock = require('./engine-guard').createOrderLock({
+  rest: (SUPABASE_SERVICE_KEY && process.env.ORDER_LOCK !== '0') ? sbRest : null,
+  instanceId: ENGINE_INSTANCE,
+  log: m => console.log(m),
+  notify: t => { notifyAll(t, { tag: 'engine-lock' }).catch(() => {}); },
+  onAcquire: () => { try { trade.reloadEngines(); } catch (_) {} },   // 권한을 새로 얻으면 그 사이 다른 인스턴스가 바꾼 주문·보유 기록을 다시 읽는다
+});
+
 /* ── 매매 보안 기반(1단계): 로그인 토큰·거래 PIN·재전송 방어·긴급 정지·한도·감사 — relay-server/trade.js ── */
 const trade = require('./trade').createTrade({
   env: { ...process.env, SUPABASE_URL, SUPABASE_ANON_KEY }, sbWrite, sbGet: SUPABASE_SERVICE_KEY ? sbGet : null, allowedOrigins: ALLOWED_ORIGINS,
+  authority: () => orderLock.hasAuthority(),
   notify: (text, opts) => notifyAll(text, opts),
   // KIS 시세 조회(읽기 전용): 기존 REST 토큰·호출 간격 제한을 그대로 사용
   /* 2026-11-16: 읽기 전용이라 일시 오류(한도 초과·타임아웃·네트워크)는 짧게 한 번 더 시도하고, 실패하면 원인을 로그에 남긴다 */
@@ -3804,7 +3830,8 @@ const autoTrade = require('./auto').createAuto({
   },
 });
 trade.attachAuto(autoTrade);   // 사이트 자동매매 카드(/trade/auto/state·config)
-setInterval(() => { autoTrade.tick().catch(e => console.error('[자동매매] tick 실패:', e.message)); }, 30000);
+// 재시작·교체 직후에는 보유 종목 손절 점검을 한 바퀴 먼저 마친 뒤에야(trade.sweepReady) 자동매매가 새 주문·선정을 시작한다. 주문 권한이 없는 인스턴스도 쉰다.
+setInterval(() => { if (!trade.sweepReady()) return; autoTrade.tick().catch(e => console.error('[자동매매] tick 실패:', e.message)); }, 30000);
 
 // GitHub 예약(cron)이 수시간 늦거나 빠지는 문제 → 이 서버가 KST 정시에 [상시1·3·5] 워크플로를 직접 실행 요청(gh-cron.js, 토큰 GH_DISPATCH_TOKEN)
 const ghCron = require('./gh-cron').createGhCron({ token: process.env.GH_DISPATCH_TOKEN || '' });
@@ -3921,6 +3948,19 @@ const server = http.createServer((req, res) => {
       candidates: [...sangttaCandidates],
       openPositions: [...sangttaOpenPositions.keys()],
     }));
+    return;
+  }
+  if (req.url === '/health/engine' || req.url.startsWith('/health/engine?')) {
+    // 외부 크론(cron-job.org)이 1분마다 부르는 "손절 감시가 살아 있나" 확인. 정상 200 / 감시 중단 503(크론이 실패로 보고 → 알림).
+    // 잠든 서버를 깨우는 역할도 겸한다(07:50 부터 부르면 08:00 전에 깨어 감시를 시작). 보유 종목 코드는 노출하지 않고 개수만 낸다.
+    const day = kstDateStr(), dow = new Date(`${day}T00:00:00Z`).getUTCDay();
+    let heldN = 0; try { heldN = trade.heldCodes().size; } catch (_) {}
+    const h = require('./engine-guard').evalHealth({
+      now: Date.now(), min: kstMinutesNow(), tradingDay: dow !== 0 && dow !== 6 && !KRX_HOLIDAYS.has(day), bootAt: BOOT_AT,
+      engines: trade.engineHealth(), token: { ok: !!kisAccessToken && Date.now() < kisAccessTokenExpiresAt }, held: heldN, authority: orderLock.status(),
+    });
+    res.writeHead(h.ok ? 200 : 503, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(h));
     return;
   }
   if (req.url === '/health') {
@@ -4105,6 +4145,7 @@ issueApprovalKey()
     primeCandidateStageFlags().then(() => candidateEngineHeartbeat()); // 서버 재시작이 장중 시간대에 일어나도 그 즉시 해당 단계를 따라잡음(단, 오늘 이미 실행된 단계는 제외)
     server.listen(PORT, () => {
       console.log(`[server] 릴레이 서버 실행 중 (port ${PORT})`);
+      orderLock.start();
       startSelfPing();
     });
   })
@@ -4132,7 +4173,8 @@ function gracefulShutdown(signal) {
   } catch (err) {
     console.error('[server] 종료 중 구독 해제 실패(무시하고 계속):', err.message);
   }
-  // 해제 프레임이 KIS로 실제 전송될 시간을 조금 준 뒤 소켓을 닫는다.
+  // 해제 프레임이 KIS로 실제 전송될 시간을 조금 준 뒤 소켓을 닫는다. 주문 권한 잠금은 바로 반납(새 인스턴스가 만료를 기다리지 않고 이어받음).
+  orderLock.release().catch(() => {});
   setTimeout(() => {
     try { kisWs && kisWs.close(); } catch (_) {}
     process.exit(0);

@@ -60,7 +60,7 @@ function createPaper(deps) {
   let fills = [];                                   // 오늘 체결(최신이 앞)
   const snapDone = new Set(), cids = new Map(), warned = new Map(), reopen = new Set(), srcOf = new Map();   // reopen: 전날 소멸한 익절 주문을 다시 거는 종목(내역에 '장 시작 재접수'로 표시)
   const dirty = { orders: new Map(), fills: new Map(), pos: new Map() };
-  const hb = { day: '', open: false, close: false, lastTick: 0, restartPending: false };
+  const hb = { day: '', open: false, close: false, lastTick: 0, restartPending: false, sweptAt: 0, closedDay: '' };   // sweptAt: 이 프로세스가 감시를 한 바퀴 마친 시각(재시작 복구용) · closedDay: 휴장으로 확인된 날
   let loaded = false, missing = false, ticking = false, lastPurge = '', persistAlerted = false;
 
   /* ── 시간 ── */
@@ -552,6 +552,7 @@ function createPaper(deps) {
   /* ── 장중 루프: 체결 판단 → 손절 → 익절 주문 맞추기 → 호가 스냅 ── */
   async function tick() {
     if (ticking || !deps.enabled()) return;
+    if (deps.authority && !deps.authority()) return;   // 주문 권한이 다른 인스턴스에 있으면(배포 중복 구간) 손절·체결 처리를 하지 않음
     ticking = true;
     try {
       if (!(await init())) return;
@@ -571,22 +572,27 @@ function createPaper(deps) {
         }
         return;
       }
-      if (deps.isOpenDay) { let od = null; try { od = await deps.isOpenDay(t.day); } catch (_) {} if (od === false) return; }
+      if (deps.isOpenDay) { let od = null; try { od = await deps.isOpenDay(t.day); } catch (_) {} if (od === false) { hb.closedDay = t.day; return; } }
       hb.lastTick = now();
       const planned = [...positions.values()].filter(p => p.plan && !p.plan.stopped);
       if (!hb.open) { hb.open = true; if (planned.length) notify(`가상 자동 매도 감시 시작 — 보유 ${planned.length}종목`); }
-      if (hb.restartPending) { hb.restartPending = false; notify(`relay 재시작 — 가상 보유 ${planned.length}종목 자동 매도 감시를 다시 시작했습니다`); }
       const codes = new Set([...heldCodes()]);
       for (const o of orders.values()) if (isOpen(o)) codes.add(o.code);
       for (const code of codes) { if (kicking.has(code)) continue; await checkCode(code, t); }   // 틱으로 깨운 점검이 도는 종목은 이번 주기에서 건너뜀
+      if (!hb.sweptAt) hb.sweptAt = now();   // 재시작 뒤 첫 한 바퀴(손절 점검)를 마쳤다 → 이제야 자동매매가 새 주문을 낼 수 있다
+      if (hb.restartPending) { hb.restartPending = false; notify(`relay 재시작 — 가상 보유 ${planned.length}종목 손절 점검을 먼저 마치고 자동 매도 감시를 다시 시작했습니다`); }
     } catch (e) { console.warn('[paper] 루프 오류:', e.message); }
     finally { ticking = false; }
   }
   let timer = null;
   function start(ms = 5000) { if (timer) return; timer = setInterval(() => { tick(); }, ms); if (timer.unref) timer.unref(); }
   function stop() { if (timer) clearInterval(timer); timer = null; }
+  /* 외부 감시(/health/engine)용: 감시 루프가 마지막으로 돈 시각 등 */
+  function health() { const t = kst(); return { enabled: !!deps.enabled(), lastTick: hb.lastTick || 0, running: !!timer, inSession: inSession(t), closedToday: hb.closedDay === t.day, swept: !deps.enabled() || !inSession(t) || hb.closedDay === t.day || hb.sweptAt > 0 }; }
+  /* 주문 권한을 새로 얻었을 때(배포로 인스턴스가 바뀜): 그 사이 다른 인스턴스가 바꾼 기록을 다시 읽도록 */
+  function reload() { loaded = false; hb.sweptAt = 0; }
 
-  return { setPreHold: fn => { preHold = typeof fn === 'function' ? fn : null; }, place, cancel, modify, editPlan, state, report, tick, start, stop, init, watchLines, kick, heldCodes: () => { const s = heldCodes(); for (const o of orders.values()) if (isOpen(o)) s.add(o.code); return s; }, _orders: orders, _positions: positions, _dirty: dirty };
+  return { health, reload, setPreHold: fn => { preHold = typeof fn === 'function' ? fn : null; }, place, cancel, modify, editPlan, state, report, tick, start, stop, init, watchLines, kick, heldCodes: () => { const s = heldCodes(); for (const o of orders.values()) if (isOpen(o)) s.add(o.code); return s; }, _orders: orders, _positions: positions, _dirty: dirty };
 }
 
 module.exports = { createPaper, allocSteps };

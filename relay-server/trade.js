@@ -334,6 +334,8 @@ function createTrade(deps = {}) {
     return null;
   }
 
+  /* 주문 권한(engine-guard.js 의 잠금). 잠금을 안 쓰는 환경(시험·로컬)에서는 항상 true */
+  const hasAuthority = () => { try { return deps.authority ? !!deps.authority() : true; } catch (_) { return false; } };
   /* ── 주문 전 점검(3단계 이후 주문 코드가 호출) ── */
   const inHours = () => {
     const d = new Date(now() + 9 * 3600e3), m = d.getUTCHours() * 60 + d.getUTCMinutes();
@@ -342,6 +344,7 @@ function createTrade(deps = {}) {
   /* kind: 'buy' | 'sell' | 'cancel'. 긴급 정지·시간대는 신규 매수에만 적용(보유 종목 매도·취소는 정지 중에도 허용) */
   function guard(kind, mode) {
     if (!cfg.enabled) return { ok: false, error: 'trading disabled' };
+    if (!hasAuthority()) return { ok: false, error: 'not order authority holder' };   // 배포 중 옛·새 인스턴스가 겹치는 동안 한쪽만 주문
     if (mode === 'REAL' && !cfg.realEnabled) return { ok: false, error: 'real trading disabled' };
     if (kind === 'buy' && state.halted) return { ok: false, error: 'halted' };
     if (kind === 'buy' && !inHours()) return { ok: false, error: 'outside trading hours' };
@@ -473,7 +476,7 @@ function createTrade(deps = {}) {
   const paper = (deps.sbGet && deps.sbWrite)
     ? createPaper({
       now, sbGet: deps.sbGet, sbWrite: deps.sbWrite, getQuote, guard, alert, isOpenDay,
-      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.VIRTUAL, enabled: () => cfg.enabled,
+      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.VIRTUAL, enabled: () => cfg.enabled, authority: hasAuthority,
       fees: { buy: numEnv(env.PAPER_FEE_BUY_PCT, 0), sell: numEnv(env.PAPER_FEE_SELL_PCT, 0) }, ...extOpts,
     })
     : null;
@@ -485,7 +488,7 @@ function createTrade(deps = {}) {
   const kisOrder = (deps.kisGet && deps.kisPost) ? createKisOrder({ kisGet: deps.kisGet, kisPost: deps.kisPost, account }) : null;
   const live = (paper && kisOrder)
     ? createLive({ now, sbGet: deps.sbGet, sbWrite: deps.sbWrite, getQuote, guard, alert, isOpenDay, kis: kisOrder,
-      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.REAL, enabled: () => cfg.enabled && cfg.realEnabled, ...extOpts })
+      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.REAL, enabled: () => cfg.enabled && cfg.realEnabled, authority: hasAuthority, ...extOpts })
     : null;
   if (live && !deps.skipLoop) live.start();
 
@@ -858,6 +861,10 @@ function createTrade(deps = {}) {
     // 체결 틱 깨우기(2026-11-13): 엔진별 감시선 · 깨우기(판정은 엔진이 REST 시세로)
     watchLines: code => [['paper', paper], ['live', live]].filter(([, e]) => e && e.watchLines).map(([k, e]) => { try { return [k, e.watchLines(code)]; } catch (_) { return [k, null]; } }).filter(([, L]) => L),
     kick: (eng, code) => { const e = eng === 'live' ? live : paper; return e && e.kick ? e.kick(code) : Promise.resolve(false); },
+    /* 외부 감시·재시작 복구용(0단계): 엔진별 마지막 점검 시각 / 재시작 뒤 손절 점검을 한 바퀴 마쳤는지 / 권한을 새로 얻었을 때 기록 다시 읽기 */
+    engineHealth: () => ({ paper: paper && paper.health ? paper.health() : null, live: live && live.health ? live.health() : null }),
+    sweepReady: () => hasAuthority() && [paper, live].every(e => !e || !e.health || e.health().swept),
+    hasAuthority, reloadEngines: () => { for (const e of [paper, live]) { try { e && e.reload && e.reload(); } catch (_) {} } },
     heldCodes: () => { const s = new Set(); for (const e of [paper, live]) { if (e && e.heldCodes) { try { for (const c of e.heldCodes()) s.add(c); } catch (_) {} } } return s; }, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
 }
 

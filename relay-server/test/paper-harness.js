@@ -47,7 +47,7 @@ function fakeDb() {
   };
 }
 
-async function boot(db, { envExtra = {}, clock: c0 = T0, kx = null } = {}) {
+async function boot(db, { envExtra = {}, clock: c0 = T0, kx = null, extraDeps = {} } = {}) {
   const st = { clock: c0, price: 10000, vol: 100000, low: 9900, high: 10100, warnings: [], vi: false, hourOverride: null, alerts: [] };
   st.asks = [[10010, 100], [10020, 200], [10030, 300], [10040, 400], [10050, 500], [10060, 100], [10070, 100], [10080, 100], [10090, 100], [10100, 100]];
   st.bids = [[10000, 500], [9990, 400], [9980, 300], [9970, 200], [9960, 100], [9950, 100], [9940, 100], [9930, 100], [9920, 100], [9910, 100]];
@@ -71,7 +71,7 @@ async function boot(db, { envExtra = {}, clock: c0 = T0, kx = null } = {}) {
   const env = { ALLOWED_EMAIL: 'owner@example.com', SUPABASE_ANON_KEY: 'anon', TRADE_PIN_HASH: pinHash, TRADING_ENABLED: '1', TRADE_HOURS: '08:00-20:00', TRADE_APPROVAL: '0', TRADE_MAX_SESSIONS: '3', ...envExtra };
   const fakeFetch = async url => String(url).includes('/auth/v1/user')
     ? { ok: true, status: 200, json: async () => ({ id: 'uid-1', email: 'owner@example.com' }) } : { ok: true, status: 200 };
-  const t = createTrade({ env, now: () => st.clock, fetch: fakeFetch, allowedOrigins: [ORIGIN], clientIp: () => '1.1.1.1', sbGet: db.sbGet, sbWrite: db.sbWrite, kisGet, kisPost: kx ? kx.post : undefined, skipLoop: true, notify: async (text) => { st.alerts.push(text); } });
+  const t = createTrade({ env, now: () => st.clock, fetch: fakeFetch, allowedOrigins: [ORIGIN], clientIp: () => '1.1.1.1', sbGet: db.sbGet, sbWrite: db.sbWrite, kisGet, kisPost: kx ? kx.post : undefined, skipLoop: true, notify: async (text) => { st.alerts.push(text); }, ...extraDeps });
   const server = http.createServer((req, res) => { if (!t.handle(req, res)) { res.writeHead(404); res.end(); } });
   await new Promise(r => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;

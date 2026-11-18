@@ -42,7 +42,7 @@ function createLive(deps) {
   let fills = [];
   const bal = { positions: new Map(), cash: null, at: 0, keys: null };
   const dirty = { orders: new Map(), fills: new Map(), plans: new Map() };
-  const hb = { day: '', open: false, close: false, lastTick: 0, lastSync: 0, dayCancel: false };
+  const hb = { day: '', open: false, close: false, lastTick: 0, lastSync: 0, dayCancel: false, sweptAt: 0, closedDay: '', restartPending: false };   // sweptAt: 이 프로세스가 감시를 한 바퀴 마친 시각(재시작 복구용)
   let loaded = false, missing = false, ticking = false, needBal = true;
 
   /* ── 시간 ── */
@@ -111,6 +111,7 @@ function createLive(deps) {
       for (const r of pl) plans.set(r.code, { name: r.name, plan: r.plan });
       fills = fl.map(fromFill);
       loaded = true; missing = false; needBal = true;
+      { const t = kst(); if (plans.size && t.dow !== 0 && t.dow !== 6 && t.min >= T.START && t.min < T.END) hb.restartPending = true; }   // 장중 재시작이면 첫 한 바퀴를 마친 뒤 알림
       const unsure = [...orders.values()].filter(o => UNSURE.has(o.status)).length;
       console.log(`[live] 복구: 진행 중 주문 ${open.length}건(확인 필요 ${unsure}) · 계획 ${pl.length}종목 · 오늘 체결 ${fl.length}건`);
       if (unsure) notify(`relay 재시작 — 접수 확인이 필요한 실전 주문 ${unsure}건을 체결조회로 대조합니다`);
@@ -476,6 +477,7 @@ function createLive(deps) {
   /* ── 루프 ── */
   async function tick() {
     if (ticking || !deps.enabled() || !kis.configured()) return;
+    if (deps.authority && !deps.authority()) return;   // 주문 권한이 다른 인스턴스에 있으면(배포 중복 구간) 주문·손절을 하지 않음
     ticking = true;
     try {
       if (!(await init())) return;
@@ -493,7 +495,7 @@ function createLive(deps) {
         if (t.min >= T.SETTLE && hb.open && !hb.close) { hb.close = true; const tf = fills.filter(f => f.ts >= dayStart()); notify(`[실전] 마감(20:00): 오늘 체결 ${tf.length}건 · 실현손익 ${Math.round(tf.reduce((a, f) => a + (f.realized || 0), 0)).toLocaleString('ko-KR')}원`); }
         return;
       }
-      if (deps.isOpenDay) { let od = null; try { od = await deps.isOpenDay(t.day); } catch (_) {} if (od === false) return; }
+      if (deps.isOpenDay) { let od = null; try { od = await deps.isOpenDay(t.day); } catch (_) {} if (od === false) { hb.closedDay = t.day; return; } }
       hb.lastTick = now();
       await lock(async () => {
         try { if ([...orders.values()].some(o => LIVE.has(o.status))) await syncOrders(); } catch (e) { notify(`[실전] 체결조회 실패: ${e.message}`, 'syncfail'); }
@@ -505,10 +507,12 @@ function createLive(deps) {
         }
         await flush();
       });
-      if (t.min >= DAY_CANCEL) return;                                                       // 마감 정리 중에는 새 자동 매도 주문을 내지 않음
+      if (t.min >= DAY_CANCEL) { if (!hb.sweptAt) hb.sweptAt = now(); return; }              // 마감 정리 중에는 새 자동 매도 주문을 내지 않음
       const planned = [...plans.keys()].filter(c => bal.positions.has(c));
       if (!hb.open) { hb.open = true; if (planned.length) notify(`[실전] 자동 매도 감시 시작 — 보유 ${planned.length}종목`); }
       for (const code of planned) { if (kicking.has(code)) continue; await checkCode(code); }   // 틱으로 깨운 점검이 도는 종목은 이번 주기에서 건너뜀
+      if (!hb.sweptAt) hb.sweptAt = now();   // 재시작 뒤 첫 한 바퀴(손절 점검)를 마쳤다 → 이제야 자동매매가 새 주문을 낼 수 있다
+      if (hb.restartPending) { hb.restartPending = false; notify(`[실전] relay 재시작 — 보유 ${planned.length}종목 손절 점검을 먼저 마치고 자동 매도 감시를 다시 시작했습니다`); }
     } catch (e) { console.warn('[live] 루프 오류:', e.message); }
     finally { ticking = false; }
   }
@@ -541,7 +545,14 @@ function createLive(deps) {
   let timer = null;
   function start(ms = 5000) { if (timer) return; timer = setInterval(() => { tick(); }, ms); if (timer.unref) timer.unref(); }
   function stop() { if (timer) clearInterval(timer); timer = null; }
-  return { place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, watchLines, kick, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
+  /* 외부 감시(/health/engine)용 */
+  function health() {
+    const t = kst(), active = !!deps.enabled() && kis.configured(), sess = !(t.dow === 0 || t.dow === 6 || t.min < T.START || t.min >= T.END);
+    return { enabled: active, lastTick: hb.lastTick || 0, running: !!timer, inSession: sess, closedToday: hb.closedDay === t.day, swept: !active || !sess || hb.closedDay === t.day || hb.sweptAt > 0 };
+  }
+  /* 주문 권한을 새로 얻었을 때(배포로 인스턴스가 바뀜): 그 사이 다른 인스턴스가 바꾼 주문·체결을 다시 읽고 대조하도록 */
+  function reload() { loaded = false; hb.sweptAt = 0; }
+  return { health, reload, place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, watchLines, kick, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
 }
 
 module.exports = { createLive };
