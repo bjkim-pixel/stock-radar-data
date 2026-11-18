@@ -239,11 +239,20 @@ function createTrade(deps = {}) {
     console.warn('[trade] 재시작 복구 실패 — 안전을 위해 신규 매수 정지로 시작:', lastErr && lastErr.message);
     alert('서버 재시작 후 매매 상태를 읽지 못해 신규 매수를 정지했습니다. 확인 후 해제하세요.');
   }
+  /* 검토 #7: 주문 권한을 새로 얻을 때 긴급 정지 상태를 감사 기록에서 다시 읽음(배포 겹침 중 옛 인스턴스가 받은 /정지 가 새 인스턴스에 전달되게).
+     못 읽으면 안전 쪽(정지)으로 + 알림 */
+  async function reloadKill(soft) {
+    if (!deps.sbGet) return;
+    try { const k = await deps.sbGet('trade_audit?select=event,ts&event=in.(kill,resume)&order=ts.desc&limit=1'); const h = !!(k[0] && k[0].event === 'kill'); if (k[0] && Date.parse(k[0].ts) < (state.haltSetAt || 0) - 1000) return; if (!k[0] && state.haltSetAt) return; /* 이 서버에서 방금 바꾼 상태(기록 저장 실패 포함)를 옛 기록으로 되돌리지 않음 */ if (h && !state.halted) console.log('[trade] 권한 획득 — 긴급 정지 상태를 이어받음'); state.halted = h; }
+    catch (e) { if (soft || /42P01|PGRST205|does not exist/.test(String(e.message))) return; state.halted = true; alert('주문 권한을 넘겨받았지만 긴급 정지 상태를 읽지 못해 신규 매수를 정지했습니다. 확인 후 해제하세요.'); }
+  }
   async function announce() {
     if (deps.skipLoop || !deps.notify) return;
     await alert(`🔁 서버 시작${BUILD ? ' (' + BUILD + ')' : ''}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치 ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 긴급정지 ${state.halted ? 'ON(유지)' : '해제'}`, '서버 상태');
   }
   if (deps.sbGet && !deps.skipRestore) ready = restore().then(announce, announce);
+  /* 다른 인스턴스(배포 겹침)가 받은 /정지·해제도 15초 안에 따라가도록 주기적으로 다시 읽음(읽기 실패는 그대로 둠) */
+  if (deps.sbGet && !deps.skipRestore && !deps.skipLoop) { const kt = setInterval(() => { ready.then(() => reloadKill(true)).catch(() => {}); }, 15000); if (kt.unref) kt.unref(); }
   /* 인증 실패처럼 반복될 수 있는 기록은 IP·사유별로 분당 1회만 */
   function auditOnce(event, detail, req) {
     const k = event + '|' + (req ? clientIp(req) : '');
@@ -755,7 +764,7 @@ function createTrade(deps = {}) {
       const patch = {}; for (const k of ['params', 'enabled', 'name', 'desc']) if (body[k] !== undefined) patch[k] = body[k];
       /* 2단계: 실행 모드를 실전으로 바꿀 때는 거래 PIN 을 한 번 더(틀리면 PIN 실패 횟수에 들어감·잠금 규칙 그대로). 확인은 여기서, 바꿀 수 있는지는 auto 가 판단 */
       let pinOk = false;
-      if (body.params && body.params.execMode === 'live' && body.pin != null) {
+      if (body.params && (body.params.execMode === 'live' || body.params.liveAutoOk === true) && body.pin != null) {   // 실전 자동 승인 켜기도 PIN(검토 #14)
         const pr = await checkPin(String(body.pin));
         if (!pr.ok) { audit('auto_exec_mode_pin_fail', false, { id: body.id }, req, 'REAL'); return json(res, pr.status === 423 ? 423 : 403, { ok: false, needPin: true, error: pr.status === 423 ? `PIN 이 잠겼습니다(${pr.retrySec || ''}초 뒤 다시)` : 'PIN 이 맞지 않습니다' }); }
         pinOk = true;
@@ -820,7 +829,7 @@ function createTrade(deps = {}) {
       return json(res, 200, { ok: true });
     }
     if (path === '/trade/kill') {
-      state.halted = true;
+      state.halted = true; state.haltSetAt = now();
       const saved = await audit('kill', true, {}, req);
       alert(`🛑 긴급 정지: 신규 매수가 막혔습니다. (보유 종목 매도·취소는 가능)\n${whoText(classify(req))}` + (saved ? '' : ' ⚠ 기록 저장 실패 — 서버 재시작 시 Render 의 TRADING_ENABLED=0 으로 막으세요'));
       return json(res, 200, { ok: true, halted: true, saved });
@@ -828,7 +837,7 @@ function createTrade(deps = {}) {
     if (path === '/trade/resume') {
       const saved = await audit('resume', true, {}, req);
       if (!saved) return json(res, 503, { ok: false, error: 'audit unavailable' });   // 해제 기록이 안 남으면 재시작 때 다시 정지되므로 해제하지 않음
-      state.halted = false;
+      state.halted = false; state.haltSetAt = now();
       alert(`▶ 긴급 정지가 해제되었습니다.\n${whoText(classify(req))}`);
       return json(res, 200, { ok: true, halted: false });
     }
@@ -865,7 +874,7 @@ function createTrade(deps = {}) {
     return '해당 코드의 대기 중인 요청이 없어요 (만료됐거나 이미 처리됨).';
   }
   async function adminLock(via) { const n = sessions.size; sessions.clear(); await audit('session_close_all', true, { via, n }, null); return n; }
-  async function adminKill(via) { state.halted = true; return audit('kill', true, { via }, null); }
+  async function adminKill(via) { state.halted = true; state.haltSetAt = now(); return audit('kill', true, { via }, null); }
   async function securitySummary(hours = 24) {
     const since = new Date(now() - hours * 3600e3).toISOString(), q = encodeURIComponent(since);
     const rows = await deps.sbGet(`trade_audit?select=ts,event,ok,mode,ip,detail&ts=gte.${q}&order=ts.asc&limit=2000`);
@@ -899,7 +908,7 @@ function createTrade(deps = {}) {
     /* 외부 감시·재시작 복구용(0단계): 엔진별 마지막 점검 시각 / 재시작 뒤 손절 점검을 한 바퀴 마쳤는지 / 권한을 새로 얻었을 때 기록 다시 읽기 */
     engineHealth: () => ({ paper: paper && paper.health ? paper.health() : null, live: live && live.health ? live.health() : null }),
     sweepReady: () => hasAuthority() && [paper, live].every(e => !e || !e.health || e.health().swept),
-    hasAuthority, reloadEngines: () => { for (const e of [paper, live]) { try { e && e.reload && e.reload(); } catch (_) {} } },
+    hasAuthority, reloadEngines: () => { for (const e of [paper, live]) { try { e && e.reload && e.reload(); } catch (_) {} } reloadKill().catch(() => {}); }, reloadKill,
     heldCodes: () => { const s = new Set(); for (const e of [paper, live]) { if (e && e.heldCodes) { try { for (const c of e.heldCodes()) s.add(c); } catch (_) {} } } return s; }, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
 }
 

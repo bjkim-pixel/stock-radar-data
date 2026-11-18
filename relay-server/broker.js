@@ -27,7 +27,7 @@ const KINDS = ['paper', 'live'];
 const LABEL = { paper: '가상', live: '실전', dryrun: '드라이런' };
 const MODES = new Set(['paper', 'dryrun', 'live']);
 /* 실전 계좌 보기: 자동매매 계획에 자동매매 몫(own)이 있으면 그 수량만 자동매매 보유로 보여 줌(qtyAll = 계좌 전체 수량) */
-const ownView = p => (p && p.plan && p.plan.own != null ? { ...p, qtyAll: p.qty, qty: Math.min(p.qty, p.plan.own), avail: Math.min(p.avail == null ? p.qty : p.avail, p.plan.own) } : p);
+const ownView = p => (p && p.plan && p.plan.own != null ? { ...p, qtyAll: p.qty, qty: Math.min(p.qty, p.plan.own), avail: Math.min(p.avail == null ? p.qty : p.avail, p.ownFree != null ? p.ownFree : p.plan.own) } : p);   // 진행 중 자동매매 매도를 뺀 남은 몫(검토 #2)
 const noEngine = kind => ({ ok: false, status: 503, error: `${LABEL[kind] || kind}매매 엔진을 쓸 수 없습니다` });
 
 function createBroker(deps = {}) {

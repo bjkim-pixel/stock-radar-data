@@ -20,10 +20,11 @@ function createOrderLock(deps = {}) {
   const ttl = deps.ttlMs || 30000, renewMs = deps.renewMs || 5000, SAFETY = 5000;
   const log = deps.log || (() => {}), notify = deps.notify || (() => {});
   let mode = rest ? 'init' : 'disabled';                      // init(첫 확인 전) · ok · unavailable(테이블 없음) · disabled
-  let heldUntil = 0, otherHolder = null, lastErr = null, lastAttemptAt = 0, timer = null, busy = false, warned = false, acquiredAt = 0;
+  let heldUntil = 0, otherHolder = null, lastErr = null, lastAttemptAt = 0, timer = null, busy = false, warned = false, acquiredAt = 0, errs = 0, lostWarned = false;
+  const strict = () => { try { return !!(deps.strict && deps.strict()); } catch (_) { return true; } };   // 실전 스위치가 켜져 있으면 잠금 테이블 없이 주문하지 않음(검토 #12)
 
   const held = () => now() < heldUntil;
-  function hasAuthority() { return mode === 'disabled' || mode === 'unavailable' ? true : held(); }
+  function hasAuthority() { return mode === 'disabled' ? true : mode === 'unavailable' ? !strict() : held(); }
 
   async function attempt() {
     if (!rest || busy) return;
@@ -37,7 +38,8 @@ function createOrderLock(deps = {}) {
       if (!rows || !rows.length) rows = await rest('engine_lock', 'POST', [{ name, holder: id, expires_at: exp, beat_at: nowIso }], 'resolution=ignore-duplicates,return=representation');
       const wasHeld = mode === 'ok' && held();
       if (mode === 'unavailable') { mode = 'ok'; warned = false; }
-      mode = 'ok'; lastErr = null;
+      mode = 'ok'; lastErr = null; errs = 0;
+      if (lostWarned) { lostWarned = false; notify('✅ 주문 권한 잠금 갱신이 다시 됩니다.'); }
       if (rows && rows.length) {
         heldUntil = t0 + ttl - SAFETY; otherHolder = null;
         if (!wasHeld) { acquiredAt = t0; log(`[주문권한] 획득 (${id})`); try { deps.onAcquire && deps.onAcquire(); } catch (e) { log('[주문권한] onAcquire 오류: ' + e.message); } }
@@ -54,6 +56,8 @@ function createOrderLock(deps = {}) {
       } else {
         lastErr = msg.slice(0, 160);   // 네트워크 오류: 임대 만료 시각까지는 권한 유지, 그 뒤엔 자동으로 false
         log('[주문권한] 갱신 실패: ' + lastErr);
+        errs++;
+        if (!held() && errs >= 2 && !lostWarned) { lostWarned = true; notify(`🚨 주문 권한 잠금을 갱신하지 못해(${lastErr.slice(0, 60)}) 이 서버가 주문·손절 감시를 멈췄습니다. 보유 종목은 한국투자증권 앱에서 확인하세요.`); }   // 검토 #6
       }
     } finally { busy = false; }
   }
@@ -105,7 +109,9 @@ function evalHealth(i) {
   out.token = { ok: !!(i.token && i.token.ok) };
   out.held = i.held || 0;
   if (act && auth.held && out.held > 0 && !out.token.ok) reasons.push(`KIS 접속 토큰이 없거나 만료 — 보유·미체결 ${out.held}종목의 시세를 못 받을 수 있습니다`);
-  if (auth.mode === 'unavailable') out.warning = '주문 권한 잠금 테이블이 없어 잠금 없이 동작 중';
+  if (auth.mode === 'unavailable') out.warning = auth.held ? '주문 권한 잠금 테이블이 없어 잠금 없이 동작 중' : '주문 권한 잠금 테이블이 없어 실전 주문을 멈춤';
+  /* 검토 #6: 주문 권한을 아무도 확실히 쥐고 있지 않으면(잠금 갱신 오류·보유자 모름·테이블 없음+실전) 장중엔 실패 — "대기(standby)"로 덮지 않음 */
+  if (act && !auth.held && (auth.lastErr || !auth.holder || auth.mode === 'unavailable')) reasons.push(`주문 권한을 가진 서버가 확인되지 않습니다${auth.lastErr ? ' — ' + String(auth.lastErr).slice(0, 80) : auth.mode === 'unavailable' ? ' — engine_lock 테이블 없음' : ''}`);
   if (reasons.length) { out.ok = false; out.status = (act && out.uptimeSec * 1000 < graceMs) ? 'warming' : 'down'; }
   else { out.ok = true; out.status = !auth.held ? 'standby' : act ? 'ok' : 'idle'; }
   return out;

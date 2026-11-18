@@ -120,6 +120,7 @@ test('트레일링 익절: 도달 → 감시 → 고점 대비 2% 하락 시 시
   const sells = posts(x.kx, 'TTTC0011U').map(p => p.body);
   assert.deepEqual(sells.map(b => [b.ORD_DVSN, b.ORD_QTY]), [['01', '2'], ['01', '3']]);
   move(x.c, 10140); await x.c.t.live.tick();                                     // 체결 대조
+  move(x.c, 10140); await x.c.t.live.tick();                                     // 잔고에서 두 번 연속 안 보여야 계획 종료(검토 #9)
   assert.deepEqual(x.db.t.live_plans.get('005930') ? x.db.t.live_plans.get('005930').plan.steps.map(s => s.sold) : 'gone', 'gone');   // 전량 매도 → 계획 종료
   const f = [...x.db.t.live_fills.values()].find(f => f.reason === 'tp1');
   assert.equal(f.qty, 2); assert.equal(Math.round(f.realized), (10140 - 10010) * 2);
@@ -143,6 +144,7 @@ test('손절: 걸려 있는 매도 주문 취소(전량 취소 규격) → 잔�
   assert.equal(x.kx.hold.get('005930').qty, 0);
   assert.equal(posts(x.kx, 'TTTC0011U').filter(p => p.body.ORD_DVSN === '01').length, 1);   // 손절 주문은 한 번만
   move(x.c, 9790); await x.c.t.live.tick();
+  move(x.c, 9790); await x.c.t.live.tick();   // 두 번 연속 확인(검토 #9)
   assert.equal(x.db.t.live_plans.has('005930'), false);                                      // 보유가 없어지면 계획 종료
   await x.c.close();
 });

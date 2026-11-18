@@ -20,7 +20,7 @@ function blocked(m, p, t) { const e = new Error(`허용되지 않은 KIS 호출 
 /* get/post 를 감싼 새 함수 쌍. 막히면 KIS 로 아무것도 보내지 않고 code='BLOCKED' 오류 */
 function guardKis({ kisGet, kisPost }) {
   return {
-    kisGet: kisGet && (async (path, tr, params) => { if (!isAllowed('GET', path, tr)) throw blocked('GET', path, tr); return kisGet(path, tr, params); }),
+    kisGet: kisGet && (async (path, tr, params, opts) => { if (!isAllowed('GET', path, tr)) throw blocked('GET', path, tr); return kisGet(path, tr, params, opts); }),
     kisPost: kisPost && (async (path, tr, body) => { if (!isAllowed('POST', path, tr)) throw blocked('POST', path, tr); return kisPost(path, tr, body); }),
   };
 }

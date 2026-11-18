@@ -52,24 +52,39 @@ function createKisOrder({ kisGet, kisPost, account }) {
     if (!o.ODNO) { const e = new Error('no order number'); e.code = 'UNKNOWN'; throw e; }
     return { odno: String(o.ODNO), orgno: String(o.KRX_FWDG_ORD_ORGNO || orgno || '') };
   }
+  /* 연속 조회(검토 #9): 응답 머리말 tr_cont 가 F·M 이면 다음 페이지가 있음 → CTX_AREA_FK100/NK100 을 넘기고 tr_cont=N 으로 다시 요청(최대 20쪽).
+     kisGet 이 머리말을 돌려주지 않는 환경(테스트 등)에서는 한 쪽만 읽는다. output2(합계)는 첫 쪽 것을 쓴다 */
+  async function pages(path, tr, params) {
+    const out1 = []; let first = null, p = params, trCont = '';
+    for (let i = 0; i < 20; i++) {
+      const j = await kisGet(path, tr, p, trCont ? { trCont } : undefined);
+      if (!first) first = j;
+      out1.push(...(j.output1 || []));
+      const more = j.__trCont === 'F' || j.__trCont === 'M', fk = j.ctx_area_fk100 || j.CTX_AREA_FK100, nk = j.ctx_area_nk100 || j.CTX_AREA_NK100;
+      if (!more || !String(nk || '').trim()) return { out1, first, pages: i + 1 };
+      p = { ...params, CTX_AREA_FK100: fk || '', CTX_AREA_NK100: nk }; trCont = 'N';
+    }
+    const e = new Error('연속 조회가 20쪽을 넘었습니다'); e.code = 'PAGING'; throw e;
+  }
   /* 오늘(또는 지정일) 주문·체결 목록 */
   async function dailyOrders(ymd) {
-    const j = await kisGet('/uapi/domestic-stock/v1/trading/inquire-daily-ccld', 'TTTC0081R', {
+    const rows1 = await pages('/uapi/domestic-stock/v1/trading/inquire-daily-ccld', 'TTTC0081R', {
       ...acct(), INQR_STRT_DT: ymd, INQR_END_DT: ymd, SLL_BUY_DVSN_CD: '00', INQR_DVSN: '00', PDNO: '', CCLD_DVSN: '00', ORD_GNO_BRNO: '', ODNO: '',
       INQR_DVSN_3: '00', INQR_DVSN_1: '', CTX_AREA_FK100: '', CTX_AREA_NK100: '', EXCG_ID_DVSN_CD: 'ALL',
     });
-    return (j.output1 || []).map(r => ({
-      odno: String(r.odno || ''), orgnOdno: String(r.orgn_odno || ''), code: String(r.pdno || ''), name: r.prdt_name || null,
+    return rows1.out1.map(r => ({
+      odno: String(r.odno || ''), orgnOdno: String(r.orgn_odno || ''), orgno: String(r.ord_gno_brno || ''), code: String(r.pdno || ''), name: r.prdt_name || null,
       side: r.sll_buy_dvsn_cd === '01' ? 'sell' : 'buy', qty: n(r.ord_qty), price: n(r.ord_unpr), filled: n(r.tot_ccld_qty), amt: n(r.tot_ccld_amt), avg: n(r.avg_prvs),
       rmn: n(r.rmn_qty), rejected: n(r.rjct_qty), cancelled: r.cncl_yn === 'Y', tmd: String(r.ord_tmd || ''), excg: String(r.excg_id_dvsn_cd || r.excg_id_dvsn_Cd || r.excg_dvsn_cd || ''), _keys: Object.keys(r),
     })).filter(r => r.odno);
   }
   /* 잔고: 보유 종목 + 예수금 */
   async function balance() {
-    const j = await kisGet('/uapi/domestic-stock/v1/trading/inquire-balance', 'TTTC8434R', {
+    const pg = await pages('/uapi/domestic-stock/v1/trading/inquire-balance', 'TTTC8434R', {
       ...acct(), AFHR_FLPR_YN: 'N', OFL_YN: '', INQR_DVSN: '02', UNPR_DVSN: '01', FUND_STTL_ICLD_YN: 'N', FNCG_AMT_AUTO_RDPT_YN: 'N', PRCS_DVSN: '00', CTX_AREA_FK100: '', CTX_AREA_NK100: '',
     });
-    const rows = (j.output1 || []).map(r => ({ code: String(r.pdno || ''), name: r.prdt_name || null, qty: n(r.hldg_qty), sellable: n(r.ord_psbl_qty), avg: n(r.pchs_avg_pric), price: n(r.prpr),
+    const j = pg.first;
+    const rows = pg.out1.map(r => ({ code: String(r.pdno || ''), name: r.prdt_name || null, qty: n(r.hldg_qty), sellable: n(r.ord_psbl_qty), avg: n(r.pchs_avg_pric), price: n(r.prpr),
       evalAmt: n(r.evlu_amt), pnl: n(r.evlu_pfls_amt), pnlRt: n(r.evlu_pfls_rt), _keys: Object.keys(r) }))
       .filter(r => r.code && r.qty > 0);
     const s = (j.output2 || [])[0] || {};

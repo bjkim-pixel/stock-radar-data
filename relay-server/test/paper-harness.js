@@ -18,7 +18,7 @@ function fakeDb() {
     sbGet: async path => {
       if (fail && fail.get) throw new Error(fail.get);
       const [tbl, qs = ''] = path.split('?'); const p = new URLSearchParams(qs);
-      if (tbl === 'trade_audit') return [];
+      if (tbl === 'trade_audit') return /event=in\.\(kill,resume\)/.test(path) ? t.trade_audit.filter(r => r.event === 'kill' || r.event === 'resume').sort((a, b) => String(b.ts).localeCompare(String(a.ts))).slice(0, 1) : [];
       if (tbl === 'stocks') { const c = (p.get('code') || '').replace('eq.', ''); return t.stocks.has(c) ? [{ ...t.stocks.get(c) }] : []; }
       let rows = tbl === 'paper_book_snaps' ? t.paper_book_snaps : tbl === 'live_events' ? t.live_events : [...t[tbl].values()];
       const st = p.get('status'); if (st) { const set = st.replace(/^in\.\(|\)$/g, '').split(','); rows = rows.filter(r => set.includes(r.status)); }
@@ -147,7 +147,7 @@ function fakeKis() {
       const px = +(params && params.ORD_UNPR) || 10000;
       return { rt_cd: '0', output: { ord_psbl_cash: String(cash), nrcvb_buy_amt: String(cash), nrcvb_buy_qty: String(Math.floor(cash / px)), max_buy_amt: String(cash) } };
     }
-    if (tr === 'TTTC0081R') return { rt_cd: '0', output1: [...kx.orders.values()].map(o => ({ odno: o.odno, orgn_odno: '', pdno: o.code, prdt_name: '삼성전자', sll_buy_dvsn_cd: o.side === 'sell' ? '01' : '02',
+    if (tr === 'TTTC0081R') return { rt_cd: '0', output1: [...kx.orders.values()].map(o => ({ odno: o.odno, orgn_odno: '', ord_gno_brno: o.orgno || '91252', pdno: o.code, prdt_name: '삼성전자', sll_buy_dvsn_cd: o.side === 'sell' ? '01' : '02',
       ord_qty: String(o.qty), ord_unpr: String(o.price), tot_ccld_qty: String(o.filled), tot_ccld_amt: String(o.amt), avg_prvs: String(o.filled ? o.amt / o.filled : 0), rmn_qty: String(o.cancelled ? 0 : o.qty - o.filled),
       rjct_qty: '0', cncl_yn: o.cancelled ? 'Y' : 'N', ord_tmd: o.tmd })) };
     const reserved = c => [...kx.orders.values()].filter(o => o.code === c && o.side === 'sell' && !o.cancelled).reduce((a, o) => a + o.qty - o.filled, 0);

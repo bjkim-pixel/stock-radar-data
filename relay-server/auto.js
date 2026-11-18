@@ -226,7 +226,9 @@ function createAuto(deps) {
     const I = { id: DEF_SID, name: '기본', version: 1, enabled: true, params: DEFP, letter: 'A', T: ST.timesOf(DEFP, CDEF) };
     return { Is: [I], C: { id: 'closing-default', version: 1, enabled: true, params: CDEF } };
   };
-  if (store.list) store.list().then(L => (L || []).forEach(noteMode)).catch(() => {});   // 시작 직후 모드 캐시
+  let modesAll = !store.list;   // 검토 #15: 전략 전체(꺼진·보관 포함)의 실행 모드를 한 번은 읽어야 이월·정리를 맞는 엔진으로 처리
+  const loadModes = () => store.list().then(L => { (L || []).forEach(noteMode); modesAll = true; });
+  if (store.list) loadModes().catch(() => {});   // 시작 직후 모드 캐시
   const actives = async () => {
     if (store.actives) { const A = await store.actives().catch(fallback); (A.Is || []).forEach(noteMode); return A; }
     const P = await store.pair().catch(() => null);   // 테스트용 단순 저장소(pair 만 있음)
@@ -785,6 +787,7 @@ function createAuto(deps) {
      시간 창(전략 설정): 08:00~09:00 전날 전환 보완 · 09:00~15:20 아침 분할 매도 · 09:00~15:30 매수 주문 관리 · 전략별 선정~마감+30분
               판정~답 마감 · 답 마감~15:30 무응답 처리 · 전환 시각~ */
   async function tick() {
+    if (!modesAll) { try { await loadModes(); } catch (e) { state.lastErr = '전략 목록(실행 모드)을 읽지 못함: ' + e.message; return { ok: false, err: state.lastErr }; } }
     const { date, min } = kstParts();
     const W = (a, b) => min >= a && min < b;
     const A = await actives();
@@ -1392,6 +1395,11 @@ function createAuto(deps) {
   async function saveStrategy(id, patch, who, opts = {}) {
     id = String(id || '');
     const nm = patch && patch.params && patch.params.execMode;
+    /* 검토 #14: "실전 자동 승인 허용"을 켜는 것도 실전 주문을 사람 확인 없이 내게 하므로 PIN 필요(실전이거나 실전으로 바꾸는 중일 때) */
+    if (patch && patch.params && patch.params.liveAutoOk === true && !opts.pinOk) {
+      const cur0 = store.byId ? await store.byId(id).catch(() => null) : null, p0 = (cur0 && cur0.params) || {};
+      if (!p0.liveAutoOk && (nm || p0.execMode) === 'live') return { ok: false, status: 403, needPin: true, error: '실전 자동 승인을 켜려면 거래 PIN을 다시 입력하세요' };
+    }
     if (nm !== undefined) {
       const cur = store.byId ? await store.byId(id).catch(() => null) : null;
       const from = (cur && cur.params && cur.params.execMode) || 'paper';
@@ -1429,6 +1437,10 @@ function createAuto(deps) {
     if (want !== srcMode || asLive) {
       const s2 = await store.save(r.strategy.id, { params: { execMode: want, liveAutoOk: false } }, who);
       if (s2 && s2.ok) { noteMode(s2.strategy); return { ...r, strategy: s2.strategy, mode: want }; }
+      if (srcMode === 'live') {   // 검토 #14: 실전 원본의 복제를 드라이런으로 못 바꿨으면 복제본을 보관 처리(PIN 없이 실전 전략이 생기지 않게)
+        if (store.archive) await store.archive(r.strategy.id, who).catch(() => {});
+        return { ok: false, status: 503, error: '복제본을 드라이런으로 바꾸지 못해 복제를 취소했습니다. 잠시 뒤 다시 시도하세요' };
+      }
     }
     noteMode(r.strategy);
     return r;

@@ -385,6 +385,7 @@ function createExec(deps) {
     if (!(price > 0)) return { ok: false, status: 400, error: '가격을 입력하세요' };
     if (!Number.isInteger(qty) || qty < 1 || qty > 1e7) return { ok: false, status: 400, error: '수량이 올바르지 않습니다' };
     if (price === o.price && qty === o.qty) return { ok: false, status: 400, error: '바뀐 내용이 없습니다' };
+    if (B.real && qty < left) return { ok: false, status: 400, error: '실전 자동 주문은 수량을 줄여 정정할 수 없습니다(남은 수량이 옛 가격으로 따로 남음) — 가격만 바꾸거나 취소 후 다시 내세요' };   // 검토 #13
     let plan, ord = null;
     if (o.filled === 0) {
       const [q, rows] = await Promise.all([D.getQuote(code).catch(() => null), D.loadChart(code).catch(() => [])]);

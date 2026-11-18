@@ -628,8 +628,9 @@ async function getKisRestToken() {
   }
 }
 
-function kisRestHeaders(token, trId) {
+function kisRestHeaders(token, trId, trCont) {
   return {
+    ...(trCont ? { tr_cont: trCont } : {}),   // 연속 조회(다음 페이지)
     'content-type': 'application/json; charset=utf-8',
     authorization: `Bearer ${token}`,
     appkey: KIS_APP_KEY,
@@ -2843,6 +2844,9 @@ async function handleTelegramCommand(chatId, text) {
 let tgUpdateOffset = 0;
 async function pollTelegramCommands() {
   if (!TELEGRAM_BOT_TOKEN) return;
+  /* 검토 #8: 배포 겹침 중 다른 인스턴스가 주문 권한을 확실히 쥐고 있으면 이 인스턴스는 텔레그램을 읽지 않음(명령은 권한 쥔 쪽만 처리).
+     권한 상태를 모를 때(잠금 오류 등)는 계속 읽는다 — /정지 같은 명령이 묻히지 않게 */
+  try { const a = orderLock.status(); if (!a.held && a.holder && a.holder !== a.me && !a.lastErr) return; } catch (_) {}
   try {
     const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${tgUpdateOffset}&timeout=0`);
     const json = await res.json();
@@ -3769,6 +3773,7 @@ const orderLock = require('./engine-guard').createOrderLock({
   instanceId: ENGINE_INSTANCE,
   log: m => console.log(m),
   notify: t => { notifyAll(t, { tag: 'engine-lock' }).catch(() => {}); },
+  strict: () => process.env.REAL_TRADING_ENABLED === '1',   // 실전 스위치가 켜져 있으면 잠금 테이블이 없을 때 주문 권한 없음
   onAcquire: () => { try { trade.reloadEngines(); } catch (_) {} },   // 권한을 새로 얻으면 그 사이 다른 인스턴스가 바꾼 주문·보유 기록을 다시 읽는다
 });
 
@@ -3779,7 +3784,7 @@ const trade = require('./trade').createTrade({
   notify: (text, opts) => notifyAll(text, opts),
   // KIS 시세 조회(읽기 전용): 기존 REST 토큰·호출 간격 제한을 그대로 사용
   /* 2026-11-16: 읽기 전용이라 일시 오류(한도 초과·타임아웃·네트워크)는 짧게 한 번 더 시도하고, 실패하면 원인을 로그에 남긴다 */
-  kisGet: async (path, trId, params) => {
+  kisGet: async (path, trId, params, opts) => {   // opts.trCont: 연속 조회 'N' — 응답의 tr_cont 머리말은 j.__trCont 로 돌려줌
     const who = (params && (params.FID_INPUT_ISCD || params.PDNO)) || '';
     let retried = false;
     for (let attempt = 0; ; attempt++) {
@@ -3787,9 +3792,10 @@ const trade = require('./trade').createTrade({
       try {
         waitMs = await kisRestThrottle(0);
         const token = await getKisRestToken();
-        const res = await fetch(`${KIS_REST_BASE}${path}?${new URLSearchParams(params)}`, { headers: kisRestHeaders(token, trId), signal: AbortSignal.timeout(8000) });
+        const res = await fetch(`${KIS_REST_BASE}${path}?${new URLSearchParams(params)}`, { headers: kisRestHeaders(token, trId, opts && opts.trCont), signal: AbortSignal.timeout(8000) });
         if (!res.ok) throw new Error(`KIS ${trId} ${res.status}`);
         const j = await res.json();
+        try { const tc = res.headers.get('tr_cont'); if (tc) Object.defineProperty(j, '__trCont', { value: tc, enumerable: false }); } catch (_) {}
         if (j.rt_cd !== '0') throw new Error(`KIS ${trId} ${j.msg_cd || ''} ${j.msg1 || ''}`.trim());
         kisStats.record({ trId, ok: true, waitMs, ms: Date.now() - t0, retried });
         return j;
@@ -4207,12 +4213,17 @@ function gracefulShutdown(signal) {
   } catch (err) {
     console.error('[server] 종료 중 구독 해제 실패(무시하고 계속):', err.message);
   }
-  // 해제 프레임이 KIS로 실제 전송될 시간을 조금 준 뒤 소켓을 닫는다. 주문 권한 잠금은 바로 반납(새 인스턴스가 만료를 기다리지 않고 이어받음).
-  orderLock.release().catch(() => {});
-  setTimeout(() => {
-    try { kisWs && kisWs.close(); } catch (_) {}
-    process.exit(0);
-  }, 1200);
+  // 검토 #3: 보내는 중인 실전 주문이 응답을 받아 기록될 때까지(최대 12초) 기다린 뒤 주문 권한을 반납 → 새 인스턴스가 바로 이어받음.
+  // (Render 는 SIGTERM 뒤 30초를 준다.) 해제 프레임이 KIS로 전송될 시간도 이 사이에 확보된다.
+  (async () => {
+    const t0 = Date.now();
+    try { const d = trade.live && trade.live.drain ? await trade.live.drain(12000) : null; if (d) console.log(`[server] 실전 엔진 정리 ${d.ms}ms (보내는 중 주문 ${d.idle ? '없음' : '남음'})`); } catch (e) { console.error('[server] 실전 엔진 정리 실패:', e.message); }
+    try { await orderLock.release(); } catch (_) {}
+    setTimeout(() => {
+      try { kisWs && kisWs.close(); } catch (_) {}
+      process.exit(0);
+    }, Math.max(200, 1200 - (Date.now() - t0)));
+  })();
 }
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));

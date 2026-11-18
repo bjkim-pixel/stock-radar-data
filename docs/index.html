@@ -11735,9 +11735,10 @@ async function auSave(id,confirm,pin){
   if(r){TRD.auEdit=null;TRD.auOpen[id]=true;delete TRD.auVer[id];await trdLoadAuto();return;}
   if(TRD.auMsg&&TRD.auMsg.needConfirm){E.warn=TRD.auMsg.warnings||[];TRD.auMsg=null;trdAutoRender();return;}
   if(TRD.auMsg&&TRD.auMsg.needPin){   // 실거래 전환 2단계: 실행 모드를 "실전"으로 바꿀 때 거래 PIN 재확인
-    const p=await trdPinPad("🔴 실행 모드를 '실전'으로 바꿉니다.\n실제 계좌로 주문이 나갑니다.\n확인하려면 거래 PIN을 입력하세요.");
+    const why=String(TRD.auMsg.t||"").replace(/^실패:\s*/,"");   // 실전 전환 · 실전 자동 승인 켜기(검토 #14)
+    const p=await trdPinPad("🔴 "+(why||"실행 모드를 '실전'으로 바꿉니다.")+"\n실제 계좌로 주문이 나갑니다.");
     if(p){await auSave(id,confirm,p);return;}
-    TRD.auMsg={t:"실전 전환을 취소했습니다(PIN 미입력)."};
+    TRD.auMsg={t:"취소했습니다(PIN 미입력)."};
   }
   if(TRD.auMsg&&TRD.auMsg.errs){E.errs=Object.fromEntries(TRD.auMsg.errs.map(e=>[e.key,e.msg]));}
   trdAutoRender();

@@ -69,6 +69,7 @@ function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null, 
   const deps = {
     sbGet: async path => {
       if (path.startsWith('auto_config')) return [{ key: 'main', value: db.auto_config.main }];
+      if (path.startsWith('auto_strategies')) return [];   // 전략 테이블 비어 있음 = 기본 전략
       if (path.startsWith('auto_runs')) { const d = (path.match(/trade_date=eq\.([\d-]+)/) || [])[1]; return db.auto_runs[d] ? [db.auto_runs[d]] : []; }
       if (path.startsWith('v_screener?select=trade_date')) return [{ trade_date: '2026-11-13' }];
       if (path.startsWith('v_screener')) return path.includes('offset=0') ? Object.entries(scr).map(([code, v]) => ({ code, ...v })) : [];
