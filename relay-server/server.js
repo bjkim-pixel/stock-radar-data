@@ -3435,7 +3435,10 @@ function parseFlowEst(j) {
   const lastF = {}, lastO = {};
   rows.forEach(r => { const gb = Number(r.bsop_hour_gb) || 0, f = pick(r, /frgn.*ntby_qty|frgn.*qty/i), o = pick(r, /orgn.*ntby_qty|orgn.*qty/i);
     if (f) { if (!(lastF.gb >= gb)) { lastF.gb = gb; lastF.v = f; } } if (o) { if (!(lastO.gb >= gb)) { lastO.gb = gb; lastO.v = o; } } });
-  return { fq: lastF.v == null ? null : lastF.v, ft: lastF.gb ? BSOP_HOUR[lastF.gb] || null : null, oq: lastO.v == null ? null : lastO.v, ot: lastO.gb ? BSOP_HOUR[lastO.gb] || null : null };
+  /* KIS 가 슬롯 시각(예 10:00) 전에 그 슬롯 행에 값을 미리 채워 보내는 경우가 있어, 아직 오지 않은 시각은 표시하지 않고 지금 시각(현재 집계 기준)으로 표기 */
+  const nm = kstMinutesNow(), nowHM = `${String(Math.floor(nm / 60)).padStart(2, '0')}:${String(nm % 60).padStart(2, '0')}`;
+  const cap = t => t && t > nowHM ? nowHM : t;
+  return { fq: lastF.v == null ? null : lastF.v, ft: lastF.gb ? cap(BSOP_HOUR[lastF.gb] || null) : null, oq: lastO.v == null ? null : lastO.v, ot: lastO.gb ? cap(BSOP_HOUR[lastO.gb] || null) : null };
 }
 /* ── 마감 뒤(NXT 시간 ~20시)에도 외국인·기관 수급을 채우는 보완 (2026-11-16) ──
    KIS 잠정 집계(HHPTJ04160200)는 장중 슬롯(14:30까지)만 값이 있고 마감 뒤엔 비어요. 그래서 비면 차례로:
