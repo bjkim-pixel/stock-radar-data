@@ -3,17 +3,18 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const ST = require('../auto-strategy');
 const { createAuto } = require('../auto');
-const { fakeDb, boot } = require('./paper-harness');
+const { fakeDb, boot, fakeKis } = require('./paper-harness');
 
 /* 종가베팅 저녁 매수(18:00 관찰 → 19:30 최종 선정): NXT 종목만 · 종가가 고가 5% 이내(2% 넘게 내리면 감점) · 손절 −5%만 걸고 익절 없음 · 20:00 이월 */
 const MIN = 60e3;
-async function rig({ approval = 'auto', cbMax = 3, cbOn = true, watchMin } = {}) {
-  const db = fakeDb(), c = await boot(db);
+async function rig({ approval = 'auto', cbMax = 3, cbOn = true, watchMin, live = false, perStock = 1000000 } = {}) {
+  const kx = live ? fakeKis() : null;
+  const db = fakeDb(), c = await boot(db, live ? { envExtra: { REAL_TRADING_ENABLED: '1', KIS_ACCOUNT_NO: '12345678-01' }, kx } : {});
   for (const k of ['035420', '051910']) db.t.stocks.set(k, { code: k, nxt_ok: true, security_type: 'STOCK' });
   db.t.stocks.set('999999', { code: '999999', nxt_ok: false, security_type: 'STOCK' });
-  const runs = {}, cfg = { main: { on: true, perStockKrw: 1000000 } }, sent = [];
+  const runs = {}, cfg = { main: { on: true, perStockKrw: perStock } }, sent = [];
   const kst = () => { const d = new Date(c.st.clock + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes() }; };
-  const I = { ...ST.defaults('intraday') }, C = { ...ST.defaults('closing'), closeBuyApproval: approval, closeBuyMax: cbMax, closeBuyOn: cbOn, ...(watchMin != null ? { closeBuyWatchMin: watchMin } : {}) };
+  const I = { ...ST.defaults('intraday'), ...(perStock !== 1000000 ? { perStockKrw: perStock } : {}) }, C = { ...ST.defaults('closing'), closeBuyApproval: approval, closeBuyMax: cbMax, closeBuyOn: cbOn, ...(watchMin != null ? { closeBuyWatchMin: watchMin } : {}) };
   const strategies = { pair: async () => ({ I: { id: 'intraday-default', name: '기본', version: 1, enabled: true, params: I }, C: { id: 'closing-default', version: 1, enabled: true, params: C }, T: ST.timesOf(I, C) }), isMissing: () => false, list: async () => [] };
   const rows = Array.from({ length: 30 }, (_, i) => ({ close: 9000 + i * 30, high: 9100 + i * 30, low: 8900 + i * 30, trade_amount: 5e10, individual_net: 1e9 }));
   const mk = (code, name, high, extra = {}) => ({ code, name, price: 10000, open: 9800, high, changePct: 2, vol: 1e6, amt: 5e10, ...extra });
@@ -33,13 +34,13 @@ async function rig({ approval = 'auto', cbMax = 3, cbOn = true, watchMin } = {})
     sbWrite: async (p, m, b) => { b.forEach(x => { if (p.startsWith('auto_runs')) runs[x.trade_date] = JSON.parse(JSON.stringify(x)); else cfg[x.key] = JSON.parse(JSON.stringify(x.value)); }); },
     sendTelegram: async t => sent.push(t), kstNow: kst, isTradingDay: () => true, now: () => c.st.clock,
     prevTradingDay: d => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() - 1); return x.toISOString().slice(0, 10); },
-    paper: c.t.paper, getQuote: code => c.t.getQuote(code, true), loadChart: async () => rows,
+    paper: c.t.paper, ...(live ? { live: c.t.live, modeOf: () => 'live', kindsInUse: () => ['live'] } : {}), getQuote: code => c.t.getQuote(code, true), loadChart: async () => rows,
     livePool: async () => pool, fetchFlow: async () => ({ fq: 1000, oq: 800 }), fetchPower: async () => ({ pgQty: 200, w52: 11000 }), fetchCttr: async () => ({ err: 'after hours' }), marketState: async () => null, marketIdx: async () => ({ 코스피: 0.2, 코스닥: 0.1 }),
   });
   const date = kst().date;
   const at = (hh, mm, dayOff = 0) => { c.st.clock = Date.parse(`${date}T00:00:00+09:00`) + dayOff * 864e5 + (hh * 60 + mm) * MIN; };
   const px = p => { c.st.price = p; c.st.high = Math.max(c.st.high, p); c.st.low = Math.min(c.st.low, p); c.st.bids = Array.from({ length: 10 }, (_, i) => [p - (i + 1) * 10, 1000]); c.st.asks = Array.from({ length: 10 }, (_, i) => [p + i * 10, 1000]); };
-  return { db, c, A, runs, cfg, sent, date, at, px };
+  return { db, c, A, runs, cfg, sent, date, at, px, kx };
 }
 
 test('19:30 종가베팅(관찰 없이 바로 최종 선정): NXT 종목만 · 고가 5% 초과 낙폭 제외 · 2% 넘게 내린 종목은 감점 · 오전 기록이 없어도 진행', async () => {
@@ -149,5 +150,30 @@ test('관찰 간격 0이면 관찰 없이 19:30에 바로 선정', async () => {
   assert.equal(runs[date], undefined);
   at(19, 31); await A.tick();
   assert.equal(runs[date].payload.cbw, undefined); assert.equal(runs[date].payload.cb.done, true);
+  await c.close();
+});
+
+/* 실거래 전환 1단계: 전략의 실행 모드가 실전이면 같은 자동매매 흐름이 실전 엔진(가짜 KIS)으로 주문한다. 실행 모드 설정은 2단계 — 여기선 modeOf 를 직접 줌 */
+test('[실전 연결] 자동 승인 종가베팅 매수가 실전 엔진으로 — KIS 주문·출처 기록·가상 주문 없음·알림에 실전 표시', async () => {
+  const { db, c, A, runs, sent, date, at, px, kx } = await rig({ live: true, perStock: 400000 });
+  at(19, 31); px(10000); await A.tick();
+  const ords = runs[date].payload.orders;
+  assert.equal(Object.keys(ords).length, 2, JSON.stringify(ords));
+  for (const o of Object.values(ords)) assert.ok(['open', 'filled'].includes(o.st), JSON.stringify(o));
+  const buys = kx.posts.filter(p => p.tr === 'TTTC0012U');
+  assert.equal(buys.length, 2, '실전 매수 2건이 KIS 로');
+  assert.ok(buys.every(b => b.body.ORD_DVSN === '00'), 'NXT 저녁은 지정가');
+  assert.equal(db.t.paper_orders.size, 0, '가상 주문은 없음');
+  const lo = [...db.t.live_orders.values()];
+  assert.ok(lo.length === 2 && lo.every(o => o.origin === 'auto:intraday-default'), JSON.stringify(lo.map(o => o.origin)));
+  assert.ok(sent.some(t => /실전 매수/.test(t)), sent.join('|'));
+  await c.close();
+});
+test('[실전 연결] 실전 1회 한도(50만 원)를 넘는 금액이면 실전 엔진이 거부 — 자동매매는 실패로 기록하고 KIS 를 부르지 않음', async () => {
+  const { c, A, runs, date, at, px, kx } = await rig({ live: true, perStock: 1000000 });
+  at(19, 31); px(10000); await A.tick();
+  const ords = Object.values(runs[date].payload.orders);
+  assert.ok(ords.length && ords.every(o => o.st === 'failed'), JSON.stringify(ords));
+  assert.equal(kx.posts.filter(p => p.tr === 'TTTC0012U').length, 0);
   await c.close();
 });

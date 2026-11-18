@@ -16,6 +16,7 @@
      프리·애프터마켓 손절은 시장가 대신 매수 1호가 n호가 아래 지정가 — 정해진 시간 안에 다 안 팔리면 취소 확인 후 다시 냄.
      19:58 에 남은 미체결을 모두 취소 요청, 20:05 까지 체결조회로 정리한 뒤 남은 주문은 소멸 처리
    ════════════════════════════════════════════════════════════════════════ */
+const { createOptCol, cleanOrigin } = require('./opt-col');
 const E = require('./paper-engine');
 const SES = require('./session');
 const { allocSteps } = require('./paper');
@@ -44,6 +45,7 @@ function createLive(deps) {
   const dirty = { orders: new Map(), fills: new Map(), plans: new Map() };
   const hb = { day: '', open: false, close: false, lastTick: 0, lastSync: 0, dayCancel: false, sweptAt: 0, closedDay: '', restartPending: false };   // sweptAt: 이 프로세스가 감시를 한 바퀴 마친 시각(재시작 복구용)
   let loaded = false, missing = false, ticking = false, needBal = true;
+  let preHold = null;   // (code, min)=>boolean|Promise — 자동매매가 이월 종목인지 알려 줌(가상 엔진과 같은 규칙)
 
   /* ── 시간 ── */
   const kstOf = ms => { const d = new Date(ms + 9 * 3600e3); return { day: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes(), sec: d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds(), dow: d.getUTCDay() }; };
@@ -66,7 +68,8 @@ function createLive(deps) {
     try { deps.alert && deps.alert(text, '실전매매'); } catch (_) {}
   }
   const QW = require('./quote-watch').createQuoteWatch({ tag: 'live', notify: (t, k) => notify(t.replace(/^/, '[실전] '), k), now: () => now() });
-  const W = (path, method, body) => deps.sbWrite(path, method, body);
+  const OC = createOptCol('origin', { onMissing: () => console.warn('[live] live_orders.origin 컬럼 없음 — 주문 출처 없이 기록([수시] DB 테이블·뷰 생성 → order_origin)') });
+  const W = (path, method, body) => (path === 'live_orders' ? OC.write(deps.sbWrite, path, method, body) : deps.sbWrite(path, method, body));
   function event(kind, code, detail) { W('live_events', 'POST', [{ ts: new Date(now()).toISOString(), kind, code: code || null, detail: detail || null }]).catch(() => {}); }
 
   /* ── 행 변환 ── */
@@ -75,12 +78,13 @@ function createLive(deps) {
     price: o.price == null ? null : o.price, qty: o.qty, filled_qty: o.filled, filled_amt: o.amt || 0, avg_price: o.filled ? o.avg : null, status: o.status,
     reason: o.reason || 'manual', plan: o.plan || null, note: o.note || null, odno: o.odno || null, orgno: o.orgno || null, ref_price: o.refPrice || null,
     sim_avg: o.simAvg || null, sim_qty: o.simQty == null ? null : o.simQty, sent_at: o.sentAt ? new Date(o.sentAt).toISOString() : null, msg: o.msg || null, cancel_req: !!o.cancelReq, excg: o.excg || null,
+    ...(o.origin ? { origin: o.origin } : {}),
   });
   const fromOrder = r => ({
     id: r.id, createdAt: Date.parse(r.created_at), updatedAt: Date.parse(r.updated_at), code: r.code, name: r.name, side: r.side, type: r.type, price: r.price == null ? null : +r.price,
     qty: +r.qty, filled: +r.filled_qty || 0, amt: +r.filled_amt || 0, avg: r.avg_price == null ? 0 : +r.avg_price, status: r.status, reason: r.reason, plan: r.plan, note: r.note,
     odno: r.odno, orgno: r.orgno, refPrice: r.ref_price == null ? null : +r.ref_price, simAvg: r.sim_avg == null ? null : +r.sim_avg, simQty: r.sim_qty == null ? null : +r.sim_qty,
-    sentAt: r.sent_at ? Date.parse(r.sent_at) : null, msg: r.msg, cancelReq: !!r.cancel_req, excg: r.excg || null,
+    sentAt: r.sent_at ? Date.parse(r.sent_at) : null, msg: r.msg, cancelReq: !!r.cancel_req, excg: r.excg || null, origin: r.origin || null,
   });
   const fillRow = f => ({ id: f.id, ts: new Date(f.ts).toISOString(), order_id: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: 0, realized: f.realized, reason: f.reason });
   const fromFill = r => ({ id: r.id, ts: Date.parse(r.ts), orderId: r.order_id, code: r.code, side: r.side, price: +r.price, qty: +r.qty, amount: +r.amount, fee: +r.fee || 0, realized: r.realized == null ? null : +r.realized, reason: r.reason });
@@ -142,13 +146,13 @@ function createLive(deps) {
   }
 
   /* ── 주문 내기(잠금 안). DB 먼저 → KIS → 결과 기록 ── */
-  async function send({ code, name, side, type, price, qty, reason, plan, q, ref, note, venue }) {
+  async function send({ code, name, side, type, price, qty, reason, plan, q, ref, note, venue, origin }) {
     const sim = E.submit({ side, type, price, qty }, q), s = E.summarize(sim.fills || []);
     const t = now();
     const o = { id: `L${t.toString(36)}${rnd()}`, createdAt: t, updatedAt: t, code, name: name || null, side, type, price: type === 'limit' ? price : null, qty, filled: 0, amt: 0, avg: 0, status: 'pending',
       reason: reason || 'manual', plan: plan || null, note: note || null, odno: null, orgno: null,
       refPrice: ref || (type === 'limit' ? price : ((side === 'buy' ? q.asks : q.bids).find(l => l.p > 0) || {}).p || q.price),
-      simAvg: s.qty ? s.avg : null, simQty: s.qty, sentAt: null, msg: null, cancelReq: false, excg: venue || 'KRX' };
+      simAvg: s.qty ? s.avg : null, simQty: s.qty, sentAt: null, msg: null, cancelReq: false, excg: venue || 'KRX', origin: origin || null };   // origin: 자동매매 주문이면 'auto:<전략ID>'
     try { await W('live_orders', 'POST', [orderRow(o)]); } catch (e) { console.warn('[live] 주문 기록 실패 — 주문 안 냄:', e.message); return bad(503, '주문 기록을 저장하지 못해 주문을 내지 않았습니다'); }
     orders.set(o.id, o);
     o.sentAt = now();
@@ -232,6 +236,7 @@ function createLive(deps) {
   async function stopCheck(code, q) {
     const p = posOf(code), pl = plans.get(code);
     if (!p || !pl || !pl.plan) return false;
+    { const m0 = kst().min; if (preHold && m0 < 12 * 60 && await preHold(code, m0)) return false; }   // 가상과 같음: 이월 종목은 NXT 프리마켓(08:00~09:00)에 손절·매도하지 않음(아침 보류 유예 포함)
     if (pl.plan.ratchet) {   // 보유 후 본 최고가(손절선을 올리는 기준) — 시세 사이에 찍은 새 고가도 반영
       const prevHi = highSeen.get(code), nh = q.high > 0 && prevHi != null && q.high > prevHi ? q.high : 0, pk = Math.max(pl.plan.peak || 0, q.price || 0, nh);
       if (pk > (pl.plan.peak || 0)) { pl.plan.peak = pk; dirty.plans.set(code, pl); }
@@ -353,7 +358,7 @@ function createLive(deps) {
           const lim = deps.checkLimits({ mode: 'REAL', orderKrw: ref * qty, dayKrw: dayBuyKrw(), positions: heldCodes().size, isNewPosition: !heldCodes().has(code) });
           if (!lim.ok) return bad(403, lim.error);
         }
-        const r = await send({ code, name, side, type, price, qty, reason: 'manual', plan: side === 'buy' ? cleanPlan(body.plan) : null, q, venue: route(ses) });
+        const r = await send({ code, name, side, type, price, qty, reason: 'manual', plan: side === 'buy' ? cleanPlan(body.plan) : null, q, venue: route(ses), origin: cleanOrigin(body.origin) });
         if (!r.ok) return r;
         return { ok: true, order: pubOrder(r.order), pending: r.order.status !== 'open' };
       });
@@ -397,7 +402,7 @@ function createLive(deps) {
       else { o.note = 'modified_part'; o.qty -= qty; }                                     // 일부 정정: 원주문엔 나머지 잔량만 남음
       o.updatedAt = t; dirty.orders.set(o.id, o);
       const n = { id: `L${t.toString(36)}${rnd()}`, createdAt: t, updatedAt: t, code: o.code, name: o.name, side: o.side, type: 'limit', price, qty, filled: 0, amt: 0, avg: 0, status: 'open',
-        reason: o.reason || 'manual', plan: o.plan || null, note: 'modify:' + o.id, odno: r.odno, orgno: r.orgno, refPrice: price, simAvg: null, simQty: null, sentAt: t, msg: null, cancelReq: false, excg: o.excg || 'KRX' };
+        reason: o.reason || 'manual', plan: o.side === 'buy' && body.plan !== undefined ? cleanPlan(body.plan) : (o.plan || null), note: 'modify:' + o.id, odno: r.odno, orgno: r.orgno, refPrice: price, simAvg: null, simQty: null, sentAt: t, msg: null, cancelReq: false, excg: o.excg || 'KRX', origin: o.origin || null };   // 매수 정정은 매도 계획도 함께 바꿀 수 있음(자동매매가 새 매수가 기준으로 다시 계산)
       orders.set(n.id, n); dirty.orders.set(n.id, n); needBal = true;
       await flush();
       event('modify', o.code, { from: o.id, id: n.id, price, qty });
@@ -431,7 +436,7 @@ function createLive(deps) {
 
   /* ── 조회 ── */
   const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null,
-    status: o.status, queueAhead: null, reason: o.reason, note: o.note, msg: o.msg, cancelReq: o.cancelReq, simAvg: o.simAvg, venue: o.excg || null });
+    status: o.status, queueAhead: null, reason: o.reason, note: o.note, msg: o.msg, cancelReq: o.cancelReq, simAvg: o.simAvg, venue: o.excg || null, origin: o.origin || null });
   const pubFill = f => ({ id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: 0, realized: f.realized, reason: f.reason });
   const pubPos = p => { const pl = plans.get(p.code); return { code: p.code, name: p.name, qty: p.qty, avg: p.avg, plan: pl ? pl.plan : null, stop: stopOf(p, pl && pl.plan),
     last: (lastPx.get(p.code) || {}).price || p.price || null, avail: p.qty - remain(mine(p.code, o => o.side === 'sell' && !isTp(o))), sellable: p.sellable }; };
@@ -552,7 +557,7 @@ function createLive(deps) {
   }
   /* 주문 권한을 새로 얻었을 때(배포로 인스턴스가 바뀜): 그 사이 다른 인스턴스가 바꾼 주문·체결을 다시 읽고 대조하도록 */
   function reload() { loaded = false; hb.sweptAt = 0; }
-  return { health, reload, place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, watchLines, kick, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
+  return { health, reload, setPreHold: fn => { preHold = typeof fn === 'function' ? fn : null; }, place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, watchLines, kick, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
 }
 
 module.exports = { createLive };

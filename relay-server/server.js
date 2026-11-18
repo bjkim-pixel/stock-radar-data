@@ -3807,6 +3807,7 @@ const trade = require('./trade').createTrade({
 const autoTrade = require('./auto').createAuto({
   sbGet, sbWrite, sendTelegram,
   paper: trade.paper,                                     // 가상매매 엔진(없으면 승인은 기록만)
+  live: trade.live,                                       // 실전매매 엔진(1단계: 연결만 — 실행 모드 설정 전까지 모든 전략은 가상으로 동작)
   getQuote: code => _kisPrio.run(1, () => trade.getQuote(code, true)),
   getQuoteUi: code => _kisPrio.run(2, () => trade.getQuote(code)),   // 사이트 자동매매 화면용(우선순위 최하, 1.5초 캐시)
   loadChart: async code => (await sbGet(`v_stock_chart?select=trade_date,close,high,low,trade_amount,individual_net&code=eq.${code}&order=trade_date.desc&limit=1000`)).reverse(),   // 최근 1000일(매매 화면과 같은 이력)

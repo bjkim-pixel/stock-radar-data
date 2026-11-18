@@ -70,12 +70,17 @@ function limitSellPrice(q, qty) {
 function createEod(deps) {
   const D = deps, now = D.now || Date.now;
   const rule = async () => ({ ...RULE, ...(D.rule ? await D.rule().catch(() => ({})) : {}) });
+  /* 매매 엔진(실거래 전환 1단계): 이 전략의 broker. 이월 종목은 넘겨준 전략(it.sid)의 엔진으로(brokerFor) — 가상·실전이 섞여도 각자 엔진에서 판다 */
+  const B = D.broker || D.paper;
+  const Bof = it => (D.brokerFor ? (D.brokerFor(it && it.sid) || B) : B);
 
-  async function heldMap() {
-    const S = await D.paper.state();
-    if (!S || !S.ok) throw new Error('가상매매 상태를 읽지 못했습니다');
+  async function heldMap(b = B) {
+    const S = await b.state();
+    if (!S || !S.ok) throw new Error(`${(b && b.label) || '가상'}매매 상태를 읽지 못했습니다`);
     return new Map((S.positions || []).map(p => [p.code, p]));
   }
+  /* 여러 종목을 돌 때 엔진별로 한 번만 읽음 */
+  const heldCache = () => { const m = new Map(); return async b => { const k = (b && b.kind) || 'paper'; if (!m.has(k)) m.set(k, await heldMap(b)); return m.get(k); }; };
   const boughtCodes = run => Object.entries((run && run.payload && run.payload.orders) || {}).filter(([, v]) => (v.filled || 0) > 0 || v.st === 'filled').map(([k]) => k);
   const nameOf = (run, code) => (((run && run.payload && run.payload.picks) || []).find(p => p.code === code) || {}).name || code;
 
@@ -89,7 +94,7 @@ function createEod(deps) {
       if (!px) return { ok: false, error: 'NXT 매수 호가를 읽지 못했어요' };
       o.type = 'limit'; o.price = px;
     }
-    const r = await D.paper.place(o);
+    const r = await B.place(o);
     if (!r || !r.ok) return { ok: false, error: (r && r.error) || '매도 거부' };
     const f = r.fills || [], q = f.reduce((a, x) => a + x.qty, 0), amt = f.reduce((a, x) => a + x.amount, 0);
     return { ok: true, qty: q, avg: q ? amt / q : null, left: Math.max(0, p.avail - q), why };
@@ -204,7 +209,7 @@ function createEod(deps) {
       const p = H.get(code);
       if (!p || !(p.qty > 0)) continue;
       const pl = p.plan || null, plan0 = pl ? { stopPct: pl.stopPct || null, steps: (pl.steps || []).map(x => ({ n: x.n, p: x.p, q: x.q, ...(x.runner ? { runner: true } : {}) })), ratchet: pl.ratchet || null } : null;   // 아침에 보류·장중 전환할 때 되돌릴 원래 매도 계획
-      const e = await D.paper.editPlan({ code, stopPct: R.overnightStopPct, steps: [], ratchet: null });   // 분할 익절 끄기, 손절은 종가베팅 설정값(기본 −5%)
+      const e = await B.editPlan({ code, stopPct: R.overnightStopPct, steps: [], ratchet: null });   // 분할 익절 끄기, 손절은 종가베팅 설정값(기본 −5%)
       add.push({ code, name: p.name || nameOf(run, code), q0: p.qty, avg: p.avg, from: date, sold: 0, planOk: !!(e && e.ok), sid: D.tag || null, ...(plan0 ? { plan0 } : {}) });   // sid = 넘겨준 장중 전략
     }
     await D.mutateCarry(c => { c.items = c.items || {}; for (const a of add) c.items[a.code] = { ...a, at: now(), state: 'wait' }; });
@@ -224,7 +229,7 @@ function createEod(deps) {
     let plan = null;
     try { plan = D.restorePlan ? await D.restorePlan(it, p) : null; } catch (_) {}
     if (!plan || !(plan.stopPct > 0)) return null;
-    const e = await D.paper.editPlan({ code: it.code, stopPct: plan.stopPct, steps: plan.steps || [], ratchet: plan.ratchet || null });
+    const e = await Bof(it).editPlan({ code: it.code, stopPct: plan.stopPct, steps: plan.steps || [], ratchet: plan.ratchet || null });
     if (!e || !e.ok) return null;
     await D.mutateCarry(c => { const x = c.items[it.code]; x.state = 'intra'; x.holdDate = date; x.holdAt = now(); x.holdOpen = q.open; x.holdPrice = q.price; x.holdQty = p.qty; x.holdSrc = plan.src || null; x.log = [...(x.log || []), { at: now(), hold: true, open: q.open, price: q.price }]; });
     const tp = (plan.steps || []).length ? `익절 ${plan.steps.length}단계` : '익절 없음';
@@ -236,11 +241,11 @@ function createEod(deps) {
     const C = await D.readCarry();
     const items = Object.values((C && C.items) || {}).filter(i => i.state === 'intra' && i.holdDate === date);
     if (!items.length) return { ok: true, n: 0 };
-    const H = await heldMap(), R = await rule(), add = [], gone = [];
+    const hOf = heldCache(), R = await rule(), add = [], gone = [];
     for (const it of items) {
-      const p = H.get(it.code);
+      const b = Bof(it), H = await hOf(b), p = H.get(it.code);
       if (!p || !(p.qty > 0) || !R.closingOn) { gone.push([it.code, !p || !(p.qty > 0) ? 'gone' : 'closing-off']); continue; }
-      const e = await D.paper.editPlan({ code: it.code, stopPct: R.overnightStopPct, steps: [], ratchet: null });
+      const e = await b.editPlan({ code: it.code, stopPct: R.overnightStopPct, steps: [], ratchet: null });
       add.push({ code: it.code, q0: p.qty, avg: p.avg, ok: !!(e && e.ok), name: it.name });
     }
     await D.mutateCarry(c => {
@@ -256,17 +261,19 @@ function createEod(deps) {
     const C = await D.readCarry();
     const items = Object.values((C && C.items) || {}).filter(i => i.from < date && i.state !== 'done' && !(i.state === 'intra' && i.holdDate === date));   // 오늘 장중 전환한 종목은 아침 매도 대상 아님
     if (!items.length) return { ok: true, n: 0 };
-    const H = await heldMap(), R = await rule(), last = R.slices[R.slices.length - 1];
+    const hOf = heldCache(), R = await rule(), last = R.slices[R.slices.length - 1];
     const msgs = [];
     for (const it of items) {
-      const p = H.get(it.code);
+      const b = Bof(it), H = await hOf(b), p = H.get(it.code);
+      /* 실전은 주문 응답에 체결이 오지 않아(체결조회로 나중에 옴) it.sold 가 늘지 않는다 → 처음 수량과 지금 보유의 차이로 판 수량을 본다. 가상은 지금과 같게 */
+      const soldSoFar = b && b.real ? Math.max(it.sold || 0, (it.q0 || 0) - (p ? p.qty : 0)) : (it.sold || 0);
       if (!p || !(p.qty > 0)) {   // 손절 등으로 이미 다 팔림
         await D.mutateCarry(c => { c.items[it.code].state = 'done'; c.items[it.code].doneAt = now(); c.items[it.code].why = 'gone'; });
         continue;
       }
       let q = null; try { q = await D.getQuote(it.code); } catch (_) { continue; }
       if (!(q && q.price > 0)) continue;
-      if (R.holdOn !== false && it.state !== 'intra' && !(it.sold > 0) && q.open > 0 && p.avg > 0) {   // 매수가보다 낮게 시작 → 급히 팔지 않고 장중 전략 계획으로 전환
+      if (R.holdOn !== false && it.state !== 'intra' && !(soldSoFar > 0) && q.open > 0 && p.avg > 0) {   // 매수가보다 낮게 시작 → 급히 팔지 않고 장중 전략 계획으로 전환
         const below = R.holdMode === 'price' ? q.price < p.avg : (q.open < p.avg && q.price < p.avg);
         if (below) { const h = await hold(it, p, q, date); if (h) { msgs.push(h); continue; } }
       }
@@ -277,7 +284,7 @@ function createEod(deps) {
       else { const tgt = sliceTarget(it.q0, min, R.slices); want = Math.min(p.avail, Math.max(0, tgt - (it.q0 - p.qty))); }   // 판 수량 = 처음 수량 − 지금 보유(손절 등 포함)
       if (min >= last) want = p.avail;
       if (!(want > 0)) continue;
-      const r = await D.paper.place({ code: it.code, name: it.name, side: 'sell', type: 'market', qty: Math.min(want, p.avail) });
+      const r = await b.place({ code: it.code, name: it.name, side: 'sell', type: 'market', qty: Math.min(want, p.avail) });
       if (!r || !r.ok) { msgs.push(`⚠ ${it.name}: 종가 베팅 매도 실패 — ${(r && r.error) || '거부'} (다음 주기에 다시 시도)`); continue; }
       const f = r.fills || [], sq = f.reduce((a, x) => a + x.qty, 0), amt = f.reduce((a, x) => a + x.amount, 0);
       const left = p.qty - sq;

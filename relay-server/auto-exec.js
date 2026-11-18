@@ -192,9 +192,16 @@ function foldTry(o, nowMs) {
 function createExec(deps) {
   const D = deps, now = D.now || Date.now;
   const stateOf = o => (o && o.status) || null;
+  /* 매매 엔진: broker.of(전략)(실거래 전환 1단계). 예전 방식(paper 직접)도 받는다(시험용 가짜 엔진) */
+  const B = D.broker || D.paper;
+  const label = () => (B && B.label) || '가상';
+  /* 이미 보유·주문 중인 종목. 실전은 잔고를 새로 읽은 값이고, 확인하지 못하면 예외(= 사지 않음) */
+  const heldNow = async () => (B.held ? B.held() : new Set((B.heldCodes && B.heldCodes()) || []));
 
   async function placeOne(date, code, notice, perStock, opt) {
-    try { if (D.paper.heldCodes && D.paper.heldCodes().includes(code)) return { st: 'skipped', why: '이미 보유·주문 중(다른 전략 또는 직접 매매)' }; } catch (_) {}   // 같은 종목은 한 포지션으로 합쳐지므로 겹쳐 사지 않음
+    // 같은 종목은 한 포지션으로 합쳐지므로 겹쳐 사지 않음. 2026-11-18: 예전 코드는 Set 에 .includes 를 불러 늘 예외 → 무시되어 이 검사가 실제로는 돌지 않았음(수정)
+    let held; try { held = await heldNow(); } catch (e) { return { st: 'skipped', why: '보유 종목 확인 실패 — ' + ((e && e.message) || '알 수 없음') }; }
+    if (held && held.has(code)) return { st: 'skipped', why: '이미 보유·주문 중(다른 전략 또는 직접 매매)' };
     let q; try { q = await D.getQuote(code); } catch (e) { return { st: 'skipped', why: '시세 조회 실패: ' + e.message }; }
     const why = recheck(q, notice, opt), snap = snapOf(q, notice, opt);
     if (snap) snap.at = now();
@@ -211,7 +218,7 @@ function createExec(deps) {
     let tn = 1;
     await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; const prev = run.payload.orders[code]; tn = tryNo(prev); run.payload.orders[code] = keepTries(prev, { st: 'intent', at, buy: ord.buy, qty: ord.qty, plan: ord.plan, mode: ord.mode, pick: ord.pick, target: ord.target, tinfo: ord.tinfo || null, snap }); });
     // 2) 주문
-    const r = await D.paper.place({ code, name: notice.name, side: 'buy', type: 'limit', price: ord.buy, qty: ord.qty, plan: ord.plan, cid: `auto${date.replace(/-/g, '')}${code}${tn > 1 ? 't' + tn : ''}` });
+    const r = await B.place({ code, name: notice.name, side: 'buy', type: 'limit', price: ord.buy, qty: ord.qty, plan: ord.plan, cid: `auto${date.replace(/-/g, '')}${code}${tn > 1 ? 't' + tn : ''}` });
     if (!r || !r.ok) {
       await D.mutateRun(date, run => { run.payload.orders[code] = { ...run.payload.orders[code], st: 'failed', why: (r && r.error) || '주문 거부' }; LOG.push(run.payload, 'order_fail', `${notice.name}: 주문 실패 — ${(r && r.error) || '주문 거부'}`, { code }, now()); });
       return { st: 'failed', why: (r && r.error) || '주문 거부', ord };
@@ -230,7 +237,7 @@ function createExec(deps) {
   async function approve(date, payload) {
     const ps0 = D.perStock ? await D.perStock() : null, perStock = ps0 > 0 ? ps0 : 1000000;
     const opt0 = D.opt ? await D.opt() : {};
-    const lines = [`🛒 가상 매수 · 종목당 ${fmt(perStock)}원`];
+    const lines = [`🛒 ${label()} 매수 · 종목당 ${fmt(perStock)}원`];
     for (const code of payload.approved || []) {
       const notice = (payload.picks || []).find(p => p.code === code) || { code, name: code };
       const cur = payload.orders && payload.orders[code];
@@ -264,7 +271,7 @@ function createExec(deps) {
     const o2 = { ...DEF, ...(D.opt ? await D.opt().catch(() => ({})) : {}) }, wm = Math.round(o2.fillWaitMs / 60e3), cm = Math.round(o2.cancelWaitMs / 60e3);
     const active = Object.entries(ords).filter(([, v]) => v.st === 'intent' || v.st === 'open' || v.st === 'modified');
     if (!active.length) return { ok: true, n: 0 };
-    const S = await D.paper.state();
+    const S = await B.state();
     if (!S || !S.ok) return { ok: false, why: 'paper state' };
     const byId = new Map((S.orders || []).map(o => [o.id, o]));
     const msgs = [];
@@ -283,9 +290,10 @@ function createExec(deps) {
       if (!o) continue;
       if (o.status === 'filled') {
         await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'filled', filled: o.filled, avg: o.avg, filledAt: now() }; LOG.push(r.payload, 'filled', `${name}: 체결 ${fmt(o.filled)}주 평균 ${fmt(o.avg)}원 — 손절·익절 자동 관리 시작`, { code }, now()); });
-        msgs.push(`✅ ${name}: 가상 매수 체결 ${fmt(o.filled)}주 평균 ${fmt(o.avg)}원 — 손절·익절 자동 관리 시작`);
+        msgs.push(`✅ ${name}: ${label()} 매수 체결 ${fmt(o.filled)}주 평균 ${fmt(o.avg)}원 — 손절·익절 자동 관리 시작`);
         continue;
       }
+      if (o.status === 'unsure') continue;   // 실전 "접수 확인 중"(KIS 응답 없음): 체결조회로 확인될 때까지 정정·취소·종료 판단을 하지 않음
       if (o.status !== 'open' && o.status !== 'partial') {   // 엔진이 취소·소멸시킨 경우
         await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg }; LOG.push(r.payload, 'cancel', `${name}: 엔진에서 주문 종료(${o.status})${o.filled ? ` · 일부 ${fmt(o.filled)}주 체결` : ''}`, { code }, now()); });
         continue;
@@ -303,7 +311,7 @@ function createExec(deps) {
           await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'modified', modifiedAt: now() }; LOG.push(r.payload, 'wait', `${name}: ${wm}분 미체결 — 이미 ${REPRICE_KO[o2.repriceTo]}(${fmt(o.price)}원)라 정정 없이 ${cm}분 더 기다림 · 현재가 ${q.price ? fmt(q.price) : '–'}원`, { code }, now()); });
           continue;
         }
-        const m = await D.paper.modify({ id: o.id, price: px });
+        const m = await B.modify({ id: o.id, price: px });
         if (m && m.ok) {
           await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: m.order.status === 'filled' ? 'filled' : 'modified', orderId: m.order.id, modifiedAt: now(), from: o.id, buy2: px, ...(m.order.status === 'filled' ? { filledAt: now(), filled: m.order.filled, avg: m.order.avg } : {}) };
             LOG.push(r.payload, 'reprice', `${name}: ${wm}분 미체결 → ${fmt(o.price)}원에서 ${fmt(px)}원(${REPRICE_KO[o2.repriceTo]})으로 정정 · 현재가 ${q.price ? fmt(q.price) : '–'}원${m.order.status === 'filled' ? ' · 바로 체결' : ''}`, { code }, now()); });
@@ -315,7 +323,7 @@ function createExec(deps) {
       } else {                 // 정정 후에도 미체결
         if (o2.unfilledEnd === 'keep' || v.userEdit) continue;   // 설정: 장 마감까지 유지 · 사용자가 주문 화면에서 직접 정정한 주문은 자동으로 취소하지 않음(직접 취소 전까지)
         let lo = null; try { const q = await D.getQuote(code); lo = q && q.low > 0 ? q.low : null; } catch (_) {}
-        const c = await D.paper.cancel(o.id);
+        const c = await B.cancel(o.id);
         const missTx = lo != null ? ` · 주문가 ${fmt(o.price)}원, 그동안 최저가 ${fmt(lo)}원${lo > o.price ? '(주문가까지 내려오지 않음)' : ''}` : '';
         await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg, why: c && c.ok ? '미체결 취소' : '취소 실패', cancelledAt: now(), lowSeen: lo };
           LOG.push(r.payload, 'cancel', `${name}: 정정 후 ${cm}분 미체결 → 취소${o.filled ? ` (일부 ${fmt(o.filled)}주 보유)` : ''}${missTx}`, { code }, now()); });
@@ -331,12 +339,13 @@ function createExec(deps) {
   async function userEdit(date, code, body) {
     const run = await D.readRun(date), v = run && run.payload && run.payload.orders && run.payload.orders[code];
     if (!v || !['open', 'modified'].includes(v.st) || !v.orderId) return { ok: false, status: 409, error: '체결 대기 중인 자동 매수 주문이 아닙니다' };
-    const S = await D.paper.state();
+    const S = await B.state();
     const o = S && S.ok ? (S.orders || []).find(x => x.id === v.orderId) : null;
+    if (o && o.status === 'unsure') return { ok: false, status: 409, error: '접수 확인 중인 주문입니다. 잠시 뒤 다시 시도하세요' };
     if (!o || (o.status !== 'open' && o.status !== 'partial')) return { ok: false, status: 409, error: '이미 체결되었거나 끝난 주문입니다' };
     const name = o.name || code;
     if (body.action === 'cancel') {
-      const c = await D.paper.cancel(o.id);
+      const c = await B.cancel(o.id);
       if (!c || !c.ok) return { ok: false, status: (c && c.status) || 400, error: (c && c.error) || '취소 실패' };
       await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg, why: '직접 취소', cancelledAt: now() };
         LOG.push(r.payload, 'cancel', `${name}: 사용자가 주문 화면에서 직접 취소${o.filled ? ` (일부 ${fmt(o.filled)}주는 보유·계획대로 관리)` : ''}`, { code }, now()); });
@@ -357,7 +366,7 @@ function createExec(deps) {
         if (!ord.skip) plan = ord.plan;
       }
     }
-    const m = await D.paper.modify({ id: o.id, price, qty, resize: true, ...(plan ? { plan } : {}) });
+    const m = await B.modify({ id: o.id, price, qty, resize: true, ...(plan ? { plan } : {}) });
     if (!m || !m.ok) return { ok: false, status: (m && m.status) || 400, error: (m && m.error) || '정정 실패' };
     const no = m.order, filledNow = no.status === 'filled';
     await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: filledNow ? 'filled' : 'modified', orderId: no.id, modifiedAt: now(), from: o.id, userEdit: true, buy: price, qty: o.filled > 0 ? r.payload.orders[code].qty : qty,

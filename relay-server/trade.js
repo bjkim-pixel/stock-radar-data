@@ -634,6 +634,7 @@ function createTrade(deps = {}) {
 
     let body;
     try { body = await readJson(req); } catch (e) { return json(res, 400, { ok: false, error: 'bad request' }); }
+    if (body && typeof body === 'object') delete body.origin;   // 주문 출처(auto:<전략>)는 서버 안의 자동매매만 붙인다 — 화면에서 온 주문은 항상 직접 주문
     const bad = checkReplay(body);
     if (bad) { auditOnce('replay_reject', { path, reason: bad }, req); return json(res, 400, { ok: false, error: bad }); }
 

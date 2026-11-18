@@ -12,6 +12,7 @@
      손절은 시장가 대신 매수 1호가 n호가 아래 지정가로 내고, 일정 시간 안에 다 안 팔리면 취소 후 다시 냄.
      주문마다 거래소(venue)를 기록: KRX 정규장 주문은 15:30 소멸(애프터마켓 16:00 에 익절 재접수), NXT·SOR 는 20:00 소멸
    ════════════════════════════════════════════════════════════════════════ */
+const { createOptCol, cleanOrigin } = require('./opt-col');
 const E = require('./paper-engine');
 const SES = require('./session');
 const { computeReport } = require('./paper-report');
@@ -104,12 +105,13 @@ function createPaper(deps) {
     side: o.side, type: o.type, price: o.price == null ? null : o.price, qty: o.qty, filled_qty: o.filled, avg_price: o.filled ? o.avg : null, status: o.status,
     queue_ahead: Math.round(o.queueAhead || 0), last_vol: o.lastVol == null ? null : Math.round(o.lastVol), low_seen: o.lowSeen, high_seen: o.highSeen,
     reason: o.reason || 'manual', plan: o.plan || null, note: o.note || null, ref_price: o.refPrice || null, venue: o.venue || null,
+    ...(o.origin ? { origin: o.origin } : {}),
   });
   const fromOrder = r => ({
     id: r.id, createdAt: Date.parse(r.created_at), updatedAt: Date.parse(r.updated_at), code: r.code, name: r.name, side: r.side, type: r.type,
     price: r.price == null ? null : +r.price, qty: +r.qty, filled: +r.filled_qty || 0, avg: r.avg_price == null ? 0 : +r.avg_price, status: r.status,
     queueAhead: +r.queue_ahead || 0, lastVol: r.last_vol == null ? null : +r.last_vol, lowSeen: r.low_seen == null ? null : +r.low_seen, highSeen: r.high_seen == null ? null : +r.high_seen,
-    reason: r.reason, plan: r.plan, note: r.note, refPrice: r.ref_price == null ? null : +r.ref_price, venue: r.venue || null,
+    reason: r.reason, plan: r.plan, note: r.note, refPrice: r.ref_price == null ? null : +r.ref_price, venue: r.venue || null, origin: r.origin || null,
   });
   const posRow = p => ({ code: p.code, name: p.name || null, qty: p.qty, avg_price: p.avg, opened_at: new Date(p.openedAt).toISOString(), updated_at: new Date(p.updatedAt).toISOString(), plan: p.plan || null });
   const fromPos = r => ({ code: r.code, name: r.name, qty: +r.qty, avg: +r.avg_price, openedAt: Date.parse(r.opened_at), updatedAt: Date.parse(r.updated_at), plan: r.plan, lowSeen: null });
@@ -117,7 +119,9 @@ function createPaper(deps) {
   const fromFill = r => ({ id: r.id, ts: Date.parse(r.ts), orderId: r.order_id, code: r.code, side: r.side, price: +r.price, qty: +r.qty, amount: +r.amount, fee: +r.fee || 0, realized: r.realized == null ? null : +r.realized, reason: r.reason });
 
   /* ── 저장 ── */
-  const W = (path, method, body) => deps.sbWrite(path, method, body);
+  /* 주문 출처(origin) 컬럼은 선택 — DB 에 아직 없으면 빼고 기록(opt-col.js) */
+  const OC = createOptCol('origin', { onMissing: () => console.warn('[paper] paper_orders.origin 컬럼 없음 — 주문 출처 없이 기록([수시] DB 테이블·뷰 생성 → order_origin)') });
+  const W = (path, method, body) => (path === 'paper_orders' ? OC.write(deps.sbWrite, path, method, body) : deps.sbWrite(path, method, body));
   async function flush() {
     let err = null;
     for (const [id, o] of [...dirty.orders]) { try { await W('paper_orders', 'POST', [orderRow(o)]); dirty.orders.delete(id); } catch (e) { err = e; } }
@@ -226,13 +230,13 @@ function createPaper(deps) {
 
   const bad = (status, error) => ({ ok: false, status, error });
   /* 주문 1건 생성(잠금 안에서만 호출). 즉시 체결분까지 반영 */
-  async function createOrder({ code, name, side, type, price, qty, reason, plan, q, ref, note, venue }) {
+  async function createOrder({ code, name, side, type, price, qty, reason, plan, q, ref, note, venue, origin }) {
     const sub = E.submit({ side, type, price, qty }, q);
     if (sub.reject) return bad(409, sub.reject);
     const t = now();
     const o = { id: `o${t.toString(36)}${rnd()}`, createdAt: t, updatedAt: t, code, name: name || null, side, type, price: type === 'limit' ? price : null, qty, filled: 0, avg: 0, status: 'open',
       queueAhead: sub.state.queueAhead, lastVol: sub.state.lastVol, lowSeen: sub.state.lowSeen, highSeen: sub.state.highSeen, reason: reason || 'manual', plan: plan || null, note: note || null,
-      venue: venue || 'KRX', src: q.mkt || null,
+      venue: venue || 'KRX', src: q.mkt || null, origin: origin || null,   // origin: 자동매매가 낸 주문이면 'auto:<전략ID>'
       // 슬리피지 기준가: 손절은 손절가, 시장가는 주문 순간 상대 1호가, 지정가는 지정가
       refPrice: ref || (type === 'limit' ? price : ((side === 'buy' ? q.asks : q.bids).find(l => l.p > 0) || {}).p || q.price) };
     try { await W('paper_orders', 'POST', [orderRow(o)]); } catch (e) { console.warn('[paper] 주문 저장 실패:', e.message); return bad(503, '주문을 저장하지 못했습니다'); }
@@ -291,7 +295,7 @@ function createPaper(deps) {
           const lim = deps.checkLimits({ mode: 'VIRTUAL', orderKrw: ref * qty, dayKrw: dayBuyKrw(), positions: heldCodes().size, isNewPosition: !heldCodes().has(code) });
           if (!lim.ok) return bad(403, lim.error);
         }
-        const r = await createOrder({ code, name, side, type, price, qty, reason: 'manual', plan: side === 'buy' ? cleanPlan(body.plan) : null, q, venue: route(ses) });
+        const r = await createOrder({ code, name, side, type, price, qty, reason: 'manual', plan: side === 'buy' ? cleanPlan(body.plan) : null, q, venue: route(ses), origin: cleanOrigin(body.origin) });
         await flush();
         if (!r.ok) return r;
         if (side === 'sell' && !positions.has(code)) event('plan_end', code, { why: 'manual_sell' });
@@ -328,7 +332,7 @@ function createPaper(deps) {
     if (!Number.isInteger(qty) || qty < 1 || (qty > left && !(body.resize && o.filled === 0))) return bad(400, `정정 수량은 1~${left}주입니다`);
     const c = await cancel(o.id); if (!c.ok) return c;
     o.note = 'modified'; dirty.orders.set(o.id, o); await flush();
-    const r = await place({ code: o.code, name: o.name, side: o.side, type: 'limit', price, qty, plan: o.side === 'buy' ? (body.plan !== undefined ? body.plan : o.plan) : null });
+    const r = await place({ code: o.code, name: o.name, side: o.side, type: 'limit', price, qty, plan: o.side === 'buy' ? (body.plan !== undefined ? body.plan : o.plan) : null, origin: o.origin || null });
     if (!r.ok) return { ...r, error: '원주문은 취소됐고 새 주문은 거부됐습니다: ' + r.error };
     return { ok: true, order: r.order, fills: r.fills, from: o.id };
   }
@@ -444,7 +448,7 @@ function createPaper(deps) {
   }
 
   /* ── 조회 ── */
-  const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, queueAhead: o.queueAhead, reason: o.reason, note: o.note, venue: o.venue || null });
+  const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, queueAhead: o.queueAhead, reason: o.reason, note: o.note, venue: o.venue || null, origin: o.origin || null });
   const pubFill = f => ({ id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee, realized: f.realized, reason: f.reason });
   const pubPos = p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, plan: p.plan, stop: stopOf(p), last: (lastPx.get(p.code) || {}).price || null, dayHigh: p.highSeen || null, dayLow: p.lowSeen || null,
     avail: p.qty - remainOf(openFor(p.code, o => o.side === 'sell' && !isTp(o))) });
