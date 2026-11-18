@@ -37,6 +37,8 @@ function createLive(deps) {
   const now = deps.now || Date.now;
   const kis = deps.kis;
   const STOP_TICKS = deps.stopTicks || 5, STOP_RETRY_MS = (deps.stopRetrySec || 20) * 1000;
+  const STOP_ALARM_MS = (deps.stopAlarmSec || 20) * 1000;   // 손절 집행 감시(2단계): 손절 조건이 된 뒤 이 시간 안에 손절 매도가 거래소에 접수되지 않으면 긴급 알림
+  const stopHit = new Map();                                 // code -> 손절 조건이 처음 성립한 시각
   const TRAIL_PCT = deps.tpTrail || 2;
   const route = (ses) => (ses.venue === 'SOR' && deps.noSor) ? (ses.name === 'regular' ? 'KRX' : 'NXT') : ses.venue;
   const orders = new Map(), plans = new Map(), lastPx = new Map(), cids = new Map(), warned = new Map(), lowSeen = new Map(), highSeen = new Map(), reopen = new Set();
@@ -45,7 +47,7 @@ function createLive(deps) {
   const dirty = { orders: new Map(), fills: new Map(), plans: new Map() };
   const hb = { day: '', open: false, close: false, lastTick: 0, lastSync: 0, dayCancel: false, sweptAt: 0, closedDay: '', restartPending: false };   // sweptAt: 이 프로세스가 감시를 한 바퀴 마친 시각(재시작 복구용)
   let loaded = false, missing = false, ticking = false, needBal = true;
-  let preHold = null;   // (code, min)=>boolean|Promise — 자동매매가 이월 종목인지 알려 줌(가상 엔진과 같은 규칙)
+  let preHold = null, lastSendAt = 0;   // (code, min)=>boolean|Promise — 자동매매가 이월 종목인지 알려 줌(가상 엔진과 같은 규칙)
 
   /* ── 시간 ── */
   const kstOf = ms => { const d = new Date(ms + 9 * 3600e3); return { day: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes(), sec: d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds(), dow: d.getUTCDay() }; };
@@ -155,7 +157,7 @@ function createLive(deps) {
       simAvg: s.qty ? s.avg : null, simQty: s.qty, sentAt: null, msg: null, cancelReq: false, excg: venue || 'KRX', origin: origin || null };   // origin: 자동매매 주문이면 'auto:<전략ID>'
     try { await W('live_orders', 'POST', [orderRow(o)]); } catch (e) { console.warn('[live] 주문 기록 실패 — 주문 안 냄:', e.message); return bad(503, '주문 기록을 저장하지 못해 주문을 내지 않았습니다'); }
     orders.set(o.id, o);
-    o.sentAt = now();
+    o.sentAt = now(); lastSendAt = o.sentAt;
     try {
       const r = await kis.order({ side, code, type, price, qty, venue: o.excg });
       o.odno = r.odno; o.orgno = r.orgno; o.status = 'open';
@@ -189,7 +191,15 @@ function createLive(deps) {
       const pl = plans.get(o.code);
       if (o.side === 'buy' && o.plan && !(pl && pl.plan && pl.plan.orderId === o.id)) {
         const np = { name: o.name, plan: { ...JSON.parse(JSON.stringify(o.plan)), orderId: o.id, stopped: false, steps: (o.plan.steps || []).map(s => ({ ...s, sold: 0 })) } };
+        if (o.origin) np.plan.ownBase = pl && pl.plan && pl.plan.own > 0 ? pl.plan.own : 0;   // 자동매매 매수(2단계): 같은 종목 앞선 자동매매 몫에 이어서 셈
         plans.set(o.code, np); dirty.plans.set(o.code, np);
+      }
+      /* 자동매매 몫(own): 자동매매가 산 수량만 자동매매가 판다 — 같은 종목을 실제 계좌에서 직접 더 사도 손절·익절·정리는 이 수량 안에서만 */
+      const plo = plans.get(o.code);
+      if (o.side === 'buy' && o.origin && plo && plo.plan && plo.plan.orderId === o.id) { plo.plan.own = (plo.plan.ownBase || 0) + o.filled; dirty.plans.set(o.code, plo); }
+      if (o.side === 'sell' && plo && plo.plan && plo.plan.own != null && (o.reason === 'stop' || isTp(o) || o.origin)) {
+        plo.plan.own = Math.max(0, plo.plan.own - dq); plo.plan.ownBase = (plo.plan.ownBase || 0) - dq; dirty.plans.set(o.code, plo);
+        if (plo.plan.own <= 0 && !mine(o.code, x => x.side === 'buy').length) { plans.delete(o.code); dirty.plans.set(o.code, null); event('plan_end', o.code, { why: 'auto_qty_sold' }); }   // 자동매매 몫을 다 팔면 계획 끝(남은 수량은 직접 보유)
       }
       if (o.side === 'sell' && isTp(o) && pl && pl.plan) { const st = (pl.plan.steps || []).find(s => 'tp' + s.n === o.reason); if (st) { st.sold = (st.sold || 0) + dq; dirty.plans.set(o.code, pl); } }
       if (isTp(o)) { notify(`[실전] 익절 ${o.reason.slice(2)}단계: ${o.name || o.code} ${dq}주 ${Math.round(px).toLocaleString('ko-KR')}원`); event('tp', o.code, { step: +o.reason.slice(2), qty: dq, price: px }); }
@@ -232,8 +242,25 @@ function createLive(deps) {
     }
   }
 
-  /* ── 자동 매도(잠금 안, 종목별) ── */
+  /* ── 자동 매도(잠금 안, 종목별) ──
+     손절 집행 감시(2단계): 손절 조건이 된 뒤 STOP_ALARM_MS(20초) 안에 손절 매도가 거래소에 접수(open·partial·filled)되지 않으면 긴급 알림
+     — VI 대기, 접수 확인 중, 매도 실패, 남은 매도 주문 취소 실패 등 어떤 이유든. 같은 종목은 10분에 한 번 */
   async function stopCheck(code, q) {
+    const r = await stopCheck0(code, q);
+    const t0 = stopHit.get(code);
+    if (r && t0 != null) {
+      const accepted = [...orders.values()].some(o => o.code === code && o.reason === 'stop' && o.createdAt >= t0 - 1000 && (o.status === 'open' || o.status === 'partial' || o.status === 'filled'));
+      if (accepted) stopHit.set(code, -1);                                                   // 접수됨 — 이 손절은 더 감시하지 않음(-1)
+      else if (t0 > 0 && now() - t0 >= STOP_ALARM_MS) {
+        const p = posOf(code), pl = plans.get(code), own = pl && pl.plan && pl.plan.own != null ? pl.plan.own : null;
+        notify(`🚨 [실전] 손절 조건 ${Math.round((now() - t0) / 1000)}초째 — 손절 매도가 거래소에 접수되지 않았습니다: ${(p && p.name) || code}${p ? ` ${own != null ? Math.min(own, p.qty) : p.qty}주` : ''}. 한국투자증권 앱에서 직접 확인·매도하세요.`, 'stopalarm|' + code);
+        event('stop_alarm', code, { sec: Math.round((now() - t0) / 1000) });
+      }
+    }
+    if (!r && !posOf(code)) stopHit.delete(code);
+    return r;
+  }
+  async function stopCheck0(code, q) {
     const p = posOf(code), pl = plans.get(code);
     if (!p || !pl || !pl.plan) return false;
     { const m0 = kst().min; if (preHold && m0 < 12 * 60 && await preHold(code, m0)) return false; }   // 가상과 같음: 이월 종목은 NXT 프리마켓(08:00~09:00)에 손절·매도하지 않음(아침 보류 유예 포함)
@@ -245,7 +272,8 @@ function createLive(deps) {
     const newLow = q.low > 0 && prevLow != null && q.low < prevLow;
     if (q.low > 0) lowSeen.set(code, prevLow == null ? q.low : Math.min(prevLow, q.low));
     const hit = !!sp && (q.price <= sp || (newLow && q.low <= sp));
-    if (!hit && !pl.plan.stopped) return false;                                             // 손절이 시작되면 가격이 돌아와도 남은 수량을 끝까지 팜
+    if (!hit && !pl.plan.stopped) { stopHit.delete(code); return false; }                  // 손절이 시작되면 가격이 돌아와도 남은 수량을 끝까지 팜
+    if (!stopHit.has(code)) stopHit.set(code, now());
     if (q.vi) { notify(`[실전] 손절 조건이지만 VI 발동 중이라 대기: ${p.name || code}`, 'vi|' + code); return true; }
     const ses = SES.sessionOf(kst().min, q.info);
     const stops = mine(code, o => o.reason === 'stop');
@@ -260,6 +288,7 @@ function createLive(deps) {
     for (const o of sells) if (!(await cancelKis(o, 'stop'))) failed += o.qty - o.filled;
     let sellable = p.qty - failed;
     try { await refreshBalance(); const fp = posOf(code); sellable = fp ? Math.min(fp.sellable, fp.qty - failed) : 0; } catch (_) { /* 잔고를 못 읽으면 보수적으로 앞의 값 */ }
+    if (pl.plan.own != null) sellable = Math.min(sellable, pl.plan.own);                    // 자동매매 몫만(직접 산 수량은 손절하지 않음)
     if (sellable <= 0) { if (failed) notify(`[실전] 손절: 취소 실패한 매도 주문이 남아 추가 매도하지 않았습니다: ${p.name || code}`, 'stopblocked|' + code); return true; }
     const type = ses.market ? 'market' : 'limit', price = ses.market ? null : SES.stopLimitPrice(q, STOP_TICKS, E.tickOf, E.floorTick);
     const first = !pl.plan.stopped;
@@ -285,7 +314,8 @@ function createLive(deps) {
     const ses = SES.sessionOf(kst().min, q.info);
     if (!ses.open) return;
     const trail0 = pl.plan.trail > 0 ? pl.plan.trail : TRAIL_PCT;
-    const avail = Math.min(p.qty - remain(mine(code, o => o.side === 'sell' && !isTp(o))), p.sellable + remain(tps));
+    let avail = Math.min(p.qty - remain(mine(code, o => o.side === 'sell' && !isTp(o))), p.sellable + remain(tps));
+    if (pl.plan.own != null) avail = Math.min(avail, pl.plan.own - remain(mine(code, o => o.side === 'sell' && !isTp(o) && (o.reason === 'stop' || o.origin))));   // 자동매매 몫만
     const want = allocSteps(pl.plan.steps, Math.max(0, avail));
     let changed = false;
     for (const st of pl.plan.steps.slice().sort((a, b) => a.n - b.n)) {
@@ -426,7 +456,7 @@ function createLive(deps) {
       const prev = plans.get(code);
       const old = (prev && prev.plan) || {}, oldRun = new Set((old.steps || []).filter(s => s.runner).map(s => s.n));
       const rt = 'ratchet' in body ? pl.ratchet : (old.ratchet || null);   // 화면에서 계획을 고쳐도 손절 올리기·러너 표시는 이어받음(body.ratchet:null 이면 해제)
-      const np = { name: p.name, plan: { ...pl, ratchet: rt, ...(rt ? { peak: old.peak || 0 } : {}), steps: TR.keepTrail(old.steps, pl.steps.map(s => ({ ...s, sold: 0, ...(s.runner || oldRun.has(s.n) ? { runner: true } : {}) }))), orderId: old.orderId || null, stopped: false } };
+      const np = { name: p.name, plan: { ...pl, ratchet: rt, ...(rt ? { peak: old.peak || 0 } : {}), steps: TR.keepTrail(old.steps, pl.steps.map(s => ({ ...s, sold: 0, ...(s.runner || oldRun.has(s.n) ? { runner: true } : {}) }))), orderId: old.orderId || null, stopped: false, ...(old.own != null ? { own: old.own, ownBase: old.ownBase || 0 } : {}) } };   // 자동매매 몫(own)은 계획을 고쳐도 유지
       if (noStop && !pl.steps.length) { plans.delete(code); dirty.plans.set(code, null); } else { plans.set(code, np); dirty.plans.set(code, np); }
       await flush();
       event('plan_edit', code, { stop: stopOf(p, np.plan), steps: pl.steps.length });
@@ -557,7 +587,16 @@ function createLive(deps) {
   }
   /* 주문 권한을 새로 얻었을 때(배포로 인스턴스가 바뀜): 그 사이 다른 인스턴스가 바꾼 주문·체결을 다시 읽고 대조하도록 */
   function reload() { loaded = false; hb.sweptAt = 0; }
-  return { health, reload, setPreHold: fn => { preHold = typeof fn === 'function' ? fn : null; }, place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, watchLines, kick, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
+  /* 매수가능조회(2단계 금액 자동 조정·예수금 점검): 미수 없이 살 수 있는 금액. 10초 캐시(같은 승인 묶음 안에서 여러 번 부르지 않게) — 주문을 낸 뒤엔 캐시를 버림 */
+  let buyCache = { at: 0, v: null };
+  async function buyable(code, price) {
+    if (!kis.configured() || !kis.buyable) throw new Error('실전 계좌가 설정되지 않았습니다');
+    if (buyCache.v && now() - buyCache.at < 10000 && buyCache.at > lastSendAt) return buyCache.v;
+    const v = await kis.buyable({ code, price });
+    buyCache = { at: now(), v };
+    return v;
+  }
+  return { health, reload, buyable, setPreHold: fn => { preHold = typeof fn === 'function' ? fn : null; }, place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, watchLines, kick, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
 }
 
 module.exports = { createLive };

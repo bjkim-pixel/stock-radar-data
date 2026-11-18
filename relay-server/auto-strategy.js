@@ -21,6 +21,8 @@ const ENUM = {
   repriceTo: { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' },
   tpStyle: { r: '새 방식(+1R·중간·목표 25/25/50 + 러너)', even: '예전 방식(목표까지 균등 분할)' },
   unfilledEnd: { cancel: '취소', keep: '장 마감까지 유지' },
+  execMode: { paper: '가상(가상 엔진으로 주문)', dryrun: '드라이런(실제 계좌로 금액·점검만, 주문은 가상)', live: '실전(실제 계좌로 주문)' },
+  sizeMode: { fixed: '고정(종목당 금액)', balance: '계좌 잔고 기준 자동' },
 };
 
 /* type: num | time | times | bool | enum | weights. group 순서 = 화면 순서 */
@@ -74,6 +76,16 @@ const SCHEMA = {
     F('minPct', '매도', '1단계 익절 최소', 'num', 3, { min: 1, max: 10, step: 0.5, unit: '%' }),
     F('trail', '매도', '트레일링', 'num', 2, { min: 0.5, max: 5, step: 0.1, unit: '%' }),
     F('eodWeak', '매도', '약한 종목 처리(정리는 승인 후에만, 무응답이면 유지)', 'enum', 'ask', { opts: ENUM.eodWeak }),
+    /* 실거래 전환 2단계(2026-11-18): 실행 모드·금액 자동 조정·이상 동작 차단. 기본값 = 가상·고정 금액 → 지금과 같은 동작 */
+    F('execMode', '실행 모드', '실행 모드(실전으로 바꿀 때 PIN 다시 확인 · 진행 중 주문·보유·이월이 없을 때만)', 'enum', 'paper', { opts: ENUM.execMode }),
+    F('liveAutoOk', '실행 모드', '실전 자동 승인 허용(끄면 실전은 직접 승인해야 매수 — 첫 5거래일은 끔)', 'bool', false),
+    F('sizeMode', '매수 금액', '종목당 금액 정하는 방식', 'enum', 'fixed', { opts: ENUM.sizeMode }),
+    F('sizePct', '매수 금액', '잔고 기준 비중(0=1÷하루 최대 매수 종목 수)', 'num', 0, { min: 0, max: 100, step: 1, unit: '%' }),
+    F('paperCapitalKrw', '매수 금액', '가상 운용 자금(가상 전략이 잔고 기준일 때)', 'num', 10000000, { min: 1000000, max: 1000000000, step: 1000000, unit: '원' }),
+    F('minOrderKrw', '매수 금액', '최소 주문 금액(이보다 작으면 사지 않음)', 'num', 100000, { min: 10000, max: 5000000, step: 10000, unit: '원' }),
+    F('maxOrdersDay', '실전 안전장치', '하루 주문 횟수 상한(정정 포함)', 'num', 20, { min: 1, max: 100, step: 1, unit: '번' }),
+    F('rejectStop', '실전 안전장치', '주문 거부가 이만큼이면 그날 전략 정지', 'num', 3, { min: 1, max: 10, step: 1, unit: '번' }),
+    F('unsureStop', '실전 안전장치', '접수 확인 실패(KIS 응답 없음)가 이만큼이면 그날 전략 정지', 'num', 2, { min: 1, max: 10, step: 1, unit: '번' }),
   ],
   closing: [
     F('judgeAt', '적용 시간', '종가 판정·알림 시각(정규장 종목)', 'time', '14:45', { min: '14:30', max: '15:10' }),

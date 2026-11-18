@@ -63,7 +63,7 @@ async function boot(db, { envExtra = {}, clock: c0 = T0, kx = null, extraDeps = 
       return { output1: o1, output2: {} };
     }
     if (trId === 'FHKST01010300') return { output: [{ tday_rltv: '100' }] };
-    if (kx && (trId === 'TTTC0081R' || trId === 'TTTC8434R')) return kx.get(trId);
+    if (kx && (trId === 'TTTC0081R' || trId === 'TTTC8434R' || trId === 'TTTC8908R')) return kx.get(trId, params);
     if (trId === 'CTCA0903R') return { output: [{ bass_dt: '20270113', opnd_yn: st.closedDay ? 'N' : 'Y' }] };
     throw new Error('unexpected ' + trId);
   };
@@ -137,7 +137,16 @@ function fakeKis() {
     }
     throw new Error('unexpected post ' + path);
   };
-  kx.get = async tr => {
+  kx.cash = 10000000;   // 매수가능조회(TTTC8908R)용 현금 — 체결된 매수·진행 중 매수만큼 줄어듦(미수 없음 가정)
+  kx.get = async (tr, params) => {
+    if (tr === 'TTTC8908R') {
+      if (kx.buyableFail) throw new Error('KIS TTTC8908R 500');
+      const used = [...kx.orders.values()].filter(o => o.side === 'buy').reduce((a, o) => a + o.amt + (o.cancelled ? 0 : (o.qty - o.filled) * (o.price || 0)), 0);
+      const sold = [...kx.orders.values()].filter(o => o.side === 'sell').reduce((a, o) => a + o.amt, 0);
+      const cash = Math.max(0, kx.cash - used + sold);
+      const px = +(params && params.ORD_UNPR) || 10000;
+      return { rt_cd: '0', output: { ord_psbl_cash: String(cash), nrcvb_buy_amt: String(cash), nrcvb_buy_qty: String(Math.floor(cash / px)), max_buy_amt: String(cash) } };
+    }
     if (tr === 'TTTC0081R') return { rt_cd: '0', output1: [...kx.orders.values()].map(o => ({ odno: o.odno, orgn_odno: '', pdno: o.code, prdt_name: '삼성전자', sll_buy_dvsn_cd: o.side === 'sell' ? '01' : '02',
       ord_qty: String(o.qty), ord_unpr: String(o.price), tot_ccld_qty: String(o.filled), tot_ccld_amt: String(o.amt), avg_prvs: String(o.filled ? o.amt / o.filled : 0), rmn_qty: String(o.cancelled ? 0 : o.qty - o.filled),
       rjct_qty: '0', cncl_yn: o.cancelled ? 'Y' : 'N', ord_tmd: o.tmd })) };

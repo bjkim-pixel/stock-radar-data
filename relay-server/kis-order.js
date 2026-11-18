@@ -6,6 +6,7 @@
      · 정정·취소   POST /uapi/domestic-stock/v1/trading/order-rvsecncl    TTTC0013U (RVSE_CNCL_DVSN_CD 01=정정 02=취소, QTY_ALL_ORD_YN Y=잔량 전부)
      · 일별 주문체결 GET /uapi/domestic-stock/v1/trading/inquire-daily-ccld TTTC0081R (3개월 이내)
      · 잔고        GET /uapi/domestic-stock/v1/trading/inquire-balance     TTTC8434R
+     · 매수가능조회 GET /uapi/domestic-stock/v1/trading/inquire-psbl-order  TTTC8908R (2026-11-18 추가 — 공식 예제 inquire_psbl_order 규격, 실제 응답은 4단계 수동 점검에서 확인)
      · 주문구분 ORD_DVSN 00=지정가 01=시장가 · 거래소 EXCG_ID_DVSN_CD=KRX · 값은 모두 문자열 · hashkey 는 선택(공식 예제도 생략)
    · 8단계(2026-11-13): 거래소 구분 EXCG_ID_DVSN_CD = KRX · NXT · SOR (공식 예제 order_rvsecncl 설명 'KRX: 한국거래소, NXT:대체거래소, SOR:SOR').
      주문마다 보낸 거래소를 live.js 가 저장하고 취소할 때 같은 값을 씀
@@ -73,7 +74,16 @@ function createKisOrder({ kisGet, kisPost, account }) {
     const s = (j.output2 || [])[0] || {};
     return { positions: rows, cash: n(s.dnca_tot_amt), total: n(s.tot_evlu_amt), _keys2: Object.keys(s) };
   }
-  return { order, cancel, modify, dailyOrders, balance, configured };
+  /* 매수가능조회(실거래 전환 2단계): 미수 없이 살 수 있는 금액(nrcvb_buy_amt)·수량. 금액 자동 조정과 주문 직전 예수금 점검에 씀.
+     가격을 주면 그 가격 기준, 없으면(0) 시장가 기준. 조회 전용 — 돈을 옮기는 API 가 아님 */
+  async function buyable({ code, price } = {}) {
+    const j = await kisGet('/uapi/domestic-stock/v1/trading/inquire-psbl-order', 'TTTC8908R', {
+      ...acct(), PDNO: String(code || ''), ORD_UNPR: price > 0 ? String(Math.round(price)) : '0', ORD_DVSN: price > 0 ? '00' : '01', CMA_EVLU_AMT_ICLD_YN: 'N', OVRS_ICLD_YN: 'N',
+    });
+    const o = j.output || {};
+    return { cash: n(o.nrcvb_buy_amt), qty: n(o.nrcvb_buy_qty), ordCash: n(o.ord_psbl_cash), maxAmt: n(o.max_buy_amt), _keys: Object.keys(o) };
+  }
+  return { order, cancel, modify, dailyOrders, balance, buyable, configured };
 }
 
 module.exports = { createKisOrder };

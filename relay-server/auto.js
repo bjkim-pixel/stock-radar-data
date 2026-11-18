@@ -208,7 +208,14 @@ function createAuto(deps) {
   const RISK = require('./auto-risk'), EV = require('./auto-events'), EXC = require('./auto-excursion'), PERF = require('./auto-perf'), LOG = require('./auto-log');
   const JR_AT = require('./auto-journal').JOURNAL_AT, JR_FIN = require('./auto-journal').FINISH_AT;
   /* 매매 엔진 연결부(실거래 전환 1단계, broker.js): 전략마다 가상/실전 엔진을 고른다. 실행 모드 설정(D.modeOf)은 2단계 — 없으면 전부 가상(지금과 같음) */
-  const BR = require('./broker').createBroker({ paper: D.paper || null, live: D.live || null, modeOf: D.modeOf, kinds: D.kindsInUse });
+  /* 2단계: 전략별 실행 모드(paper·dryrun·live) 캐시 — 엔진이 손절 직전(아침 보류) 같은 순간에도 바로 물어볼 수 있게 동기로 둔다.
+     전략 목록을 읽을 때마다 갱신(시작 직후 한 번, actives·intraOf·저장 때). 모르는 전략은 가상 */
+  const MODES = {};
+  const noteMode = r => { if (r && r.id && r.kind !== 'closing' && r.params) MODES[r.id] = r.params.execMode || 'paper'; };
+  const modeOfSid = sid => (D.modeOf ? D.modeOf(sid) : (MODES[sid] || 'paper'));
+  const BR = require('./broker').createBroker({ paper: D.paper || null, live: D.live || null, modeOf: modeOfSid,
+    kinds: () => (D.kindsInUse ? D.kindsInUse() : (Object.values(MODES).includes('live') ? ['live'] : [])) });
+  const SZ = require('./auto-size');
   const HAS = BR.has;   // 예전 "D.paper 가 있으면" 검사 자리(엔진이 하나라도 있으면)
   const ALL = { state: () => BR.stateAll() };   // 전략을 가리지 않는 조회(화면·일지·노출액): 쓰이는 엔진 전부를 합친 보기
 
@@ -219,8 +226,9 @@ function createAuto(deps) {
     const I = { id: DEF_SID, name: '기본', version: 1, enabled: true, params: DEFP, letter: 'A', T: ST.timesOf(DEFP, CDEF) };
     return { Is: [I], C: { id: 'closing-default', version: 1, enabled: true, params: CDEF } };
   };
+  if (store.list) store.list().then(L => (L || []).forEach(noteMode)).catch(() => {});   // 시작 직후 모드 캐시
   const actives = async () => {
-    if (store.actives) return store.actives().catch(fallback);
+    if (store.actives) { const A = await store.actives().catch(fallback); (A.Is || []).forEach(noteMode); return A; }
     const P = await store.pair().catch(() => null);   // 테스트용 단순 저장소(pair 만 있음)
     if (!P) return fallback();
     return { Is: P.I.enabled ? [{ ...P.I, letter: 'A', T: P.T }] : [], C: P.C };
@@ -231,6 +239,7 @@ function createAuto(deps) {
     const a = A.Is.find(i => i.id === sid);
     if (a) return { I: a, C: A.C };
     const r = store.byId ? await store.byId(sid).catch(() => null) : null;
+    noteMode(r);
     const I = r && r.kind === 'intraday' ? r : { id: sid, name: sid, version: 1, enabled: false, params: DEFP };
     return { I: { ...I, T: ST.timesOf(I.params, A.C.params) }, C: A.C };
   }
@@ -282,7 +291,11 @@ function createAuto(deps) {
     kwCache = { at: Date.now(), map };
     return map;
   }
-  async function loadHeld() {   // 매매 엔진(가상·실전)에서 이미 보유·주문 중인 종목은 후보에서 제외. 실전 계좌는 직접 산 종목도 여기에 들어가 자동으로 빠진다
+  async function loadHeld(sid) {   // 매매 엔진(가상·실전)에서 이미 보유·주문 중인 종목은 후보에서 제외. 실전 계좌는 직접 산 종목도 여기에 들어가 자동으로 빠진다
+    if (sid) {   // 2단계: 전략마다 자기 엔진 기준(가상 전략과 그 실전 복제가 같은 종목을 각자 살 수 있게). 실전·드라이런은 실제 계좌 보유도 포함, 확인 못 하면 선정 중단
+      const b = BR.of(sid);
+      try { return await b.held(); } catch (e) { if (b.mode !== 'paper') throw e; return new Set(); }
+    }
     try { return await BR.heldAll(); }
     catch (e) { if (BR.kindsInUse().includes('live')) throw e; return new Set(); }   // 실전 보유를 확인하지 못하면 선정을 멈춤(빈 목록으로 보고 사는 일이 없게)
   }
@@ -301,9 +314,9 @@ function createAuto(deps) {
     return list.filter(c => ok.has(c.code));
   }
   /* X(종가베팅 저녁 선정 전용): { nxtOnly, skip:Set(이미 후보·주문한 종목), closeHigh:{maxPct, from, max} } — 종가가 당일 고가에서 maxPct 이내만, from% 넘게 내렸으면 점수 감점 */
-  async function select(P = DEFP, X = null) {
+  async function select(P = DEFP, X = null, sid = null) {
     const useKw = !X && P.kwOn !== false && P.weights !== undefined;   // 장중 전략만(종가베팅 저녁 선정은 해당 없음)
-    const [scr, smx, held, pool, kwMap] = await Promise.all([loadScreener(P), loadSmx(), loadHeld(), D.livePool(P.capMinEok), useKw ? loadKw().catch(() => ({})) : {}]);
+    const [scr, smx, held, pool, kwMap] = await Promise.all([loadScreener(P), loadSmx(), loadHeld(sid || (X && X.sid) || null), D.livePool(P.capMinEok), useKw ? loadKw().catch(() => ({})) : {}]);
     let base = baseFilter(pool, scr.map, smx, held, P).sort((a, b) => b.changePct - a.changePct);
     if (X && X.skip) base = base.filter(c => !X.skip.has(c.code));
     if (useKw) { const lim = (+P.kwMax || 100) / 100; base.forEach(c => { const r = kwMap[c.code]; if (r != null) { c.kw8 = r; c.kwHigh = r >= lim; } }); }   // 8월 대비 개인 계좌수 — 상한 이상이면 탈락이 아니라 '승인 필요' 후보
@@ -411,7 +424,51 @@ function createAuto(deps) {
   /* 엔진별로 쓰는 형태 */
   async function execOpt(sid) {
     const p = (await intraOf(sid)).I.params;
-    return { stopPct: p.stopPct, rr: p.rr, minRr: +p.minRr || 0, tpStyle: p.tpStyle || 'even', runnerPct: p.runnerPct == null ? 20 : +p.runnerPct, ratchet: !!p.ratchet, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3, cancelWaitMs: (p.cancelWaitMin || p.fillWaitMin) * 60e3, repriceTo: p.repriceTo || 'bid1', unfilledEnd: p.unfilledEnd || 'cancel', totalCapKrw: +p.totalCapKrw || 0 };
+    return { stopPct: p.stopPct, rr: p.rr, minRr: +p.minRr || 0, tpStyle: p.tpStyle || 'even', runnerPct: p.runnerPct == null ? 20 : +p.runnerPct, ratchet: !!p.ratchet, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, fillWaitMs: p.fillWaitMin * 60e3, cancelWaitMs: (p.cancelWaitMin || p.fillWaitMin) * 60e3, repriceTo: p.repriceTo || 'bid1', unfilledEnd: p.unfilledEnd || 'cancel', totalCapKrw: +p.totalCapKrw || 0,
+      sizeMode: p.sizeMode || 'fixed', maxOrdersDay: +p.maxOrdersDay || 20, rejectStop: +p.rejectStop || 3, unsureStop: +p.unsureStop || 2 };
+  }
+  /* 종목당 금액(2단계 C-2): 가상·고정이면 null(지금처럼 perStock). 실전·드라이런은 고정이어도 실제 계좌의 미수 없는 매수 가능 금액·1회 상한 안에서만 */
+  async function sizeOne(sid, code, q, opt, cb) {
+    const b = BR.of(sid), { I, C } = await intraOf(sid), p = I.params, mode = p.sizeMode || 'fixed';
+    if (b.mode === 'paper' && mode === 'fixed') return null;
+    const px = (q && q.price) || 0;
+    const cash = await b.cash(code, px);                      // 실전: 못 읽으면 예외 → 사지 않음 · 드라이런: 계좌가 없으면 null(가상 기준)
+    const fixedKrw = await perStockOf(sid);                   // 시장 상태 조절이 반영된 고정 금액
+    const mult = mode === 'balance' ? regimeMult(p, await regimeOf(kstParts().date)) : 1;
+    let autoValue = 0, paperUsed = 0;
+    if (mode === 'balance') {
+      const real = b.mode !== 'paper' && cash != null;
+      const S = real && D.live ? await BR.stateAll().catch(() => null) : await b.state().catch(() => null);
+      const pos = ((S && S.positions) || []).filter(x => (real ? x.kind === 'live' && x.plan && x.plan.own != null : x.kind !== 'live'));
+      const codes = real ? null : await autoCodes(kstParts().date);
+      for (const x of pos) { if (codes && !codes.has(x.code)) continue; autoValue += x.qty * (x.last > 0 ? x.last : x.avg); paperUsed += x.qty * x.avg; }
+    }
+    const lim = D.liveLimits ? D.liveLimits() : null;
+    const z = SZ.sizeOf({ mode, fixedKrw, cash, autoValue, paperCapital: +p.paperCapitalKrw || 0, paperUsed, pct: +p.sizePct || 0,
+      maxBuys: cb ? (+C.params.closeBuyMax || 3) : (+p.maxBuys || 5), mult, capKrw: b.mode !== 'paper' && lim ? +lim.order || 0 : 0, minKrw: +p.minOrderKrw || 100000 });
+    return { ...z, mode };
+  }
+  /* 드라이런: "실전이었다면 냈을 주문"을 실전 기록표(live_events)에 남김(3단계 비교 리포트용) */
+  async function dryLog(sid, e) {
+    await D.sbWrite('live_events', 'POST', [{ ts: new Date().toISOString(), kind: 'dryrun_order', code: e.code || null, detail: { sid, ...e } }]);
+  }
+  /* 정지 3단계(C3): ① 'buy' 자동매매 신규 매수만 정지 ② 'all' 자동매매 전체 정지(손절·익절 감시는 엔진이 계속) ③ 긴급 정지(/정지 · trade.js) */
+  let haltCache = { at: 0, v: null };
+  async function haltLevel() {
+    if (Date.now() - haltCache.at < 10000) return haltCache.v;
+    try { const r = await D.sbGet('auto_config?select=value&key=eq.halt&limit=1'); haltCache = { at: Date.now(), v: (r[0] && r[0].value && r[0].value.level) || null }; }
+    catch (_) { haltCache.at = Date.now(); }
+    return haltCache.v;
+  }
+  async function haltReason() {
+    const l = await haltLevel();
+    return l === 'buy' ? '자동매매 신규 매수 정지 중(/자동재개 로 풀기)' : l === 'all' ? '자동매매 전체 정지 중(/자동재개 로 풀기)' : null;
+  }
+  async function setHalt(level, via) {
+    const v = level === 'buy' || level === 'all' ? level : null;
+    await D.sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'halt', value: { level: v, at: new Date().toISOString(), via: via || null }, updated_at: new Date().toISOString() }]);
+    haltCache = { at: Date.now(), v };
+    return { ok: true, level: v };
   }
   /* 종가베팅 저녁 매수 주문 조건: 손절은 밤새 유지할 값, 익절 없음, 체결강도·시가 대비는 안 봄, 알림가와의 차이는 3%까지 */
   async function cbOpt(sid) { const { C } = await intraOf(sid); return { closing: true, noTp: true, minRr: 0, ratchet: false, stopPct: C.params.overnightStopPct, recheckPct: 3 }; }
@@ -437,7 +494,8 @@ function createAuto(deps) {
   }
   /* 전략이 여럿이면 텔레그램 메시지 앞에 [A · 이름]을 붙인다(답할 때 번호 앞에 그 글자) */
   const labelOf = sid => { const r = state.runs[sid]; const p = r && r.payload; return p && p.letter ? `${p.letter} · ${(p.strategy && p.strategy.name) || sid}` : sid; };
-  const tgFor = sid => t => D.sendTelegram(state.multi ? `[${labelOf(sid)}] ${(state.runs[sid] && state.runs[sid].payload.letter) ? `— 답할 때 번호 앞에 ${state.runs[sid].payload.letter} (예: ${state.runs[sid].payload.letter}1)` : ''}\n${t}` : t);
+  const modeTag = sid => ({ live: '🔴실전 ', dryrun: '🧪드라이런 ' }[BR.execOf(sid)] || '');
+  const tgFor = sid => t0 => { const t = modeTag(sid) + t0; return D.sendTelegram(state.multi ? `[${labelOf(sid)}] ${(state.runs[sid] && state.runs[sid].payload.letter) ? `— 답할 때 번호 앞에 ${state.runs[sid].payload.letter} (예: ${state.runs[sid].payload.letter}1)` : ''}\n${t}` : t); };
   /* E2-1: 자동매매가 들고 있는(또는 주문 중인) 종목의 총 노출·손절 시 손실. 자동매매 종목 = 오늘 모든 전략의 주문 + 아직 안 판 이월 종목 */
   async function autoCodes(date) {
     const set = new Set();
@@ -492,6 +550,11 @@ function createAuto(deps) {
     }
     return { n: Object.keys(st.pos).length };
   }
+  async function exposureFor(sid) {   // 이 전략이 쓰는 엔진 기준(가상 전략과 실전 전략의 총액 상한을 따로)
+    const ps = await BR.of(sid).state().catch(() => null);
+    if (!ps || !ps.ok) return null;
+    return RISK.exposureOf(ps, await autoCodes(kstParts().date));
+  }
   async function exposureNow() {
     if (!HAS) return null;
     const ps = await BR.stateAll();
@@ -501,7 +564,8 @@ function createAuto(deps) {
   const execs = {}, eods = {};
   const execFor = sid => HAS ? (execs[sid] = execs[sid] || require('./auto-exec').createExec({
     broker: BR.of(sid), getQuote: D.getQuote, loadChart: D.loadChart, sendTelegram: tgFor(sid), now: D.now,
-    mutateRun: (d, fn) => mutateRun(d, sid, fn), readRun: d => readRun(d, sid), perStock: () => perStockOf(sid), opt: () => execOpt(sid), optCb: () => cbOpt(sid), exposure: exposureNow,
+    mutateRun: (d, fn) => mutateRun(d, sid, fn), readRun: d => readRun(d, sid), perStock: () => perStockOf(sid), opt: () => execOpt(sid), optCb: () => cbOpt(sid), exposure: () => exposureFor(sid),
+    sizeOne: (code, q, opt, cb) => sizeOne(sid, code, q, opt, cb), halt: haltReason, dryLog: e => dryLog(sid, e),
   })) : null;
   /* 아침 보류 때 다시 걸 매도 계획: ① 넘기기 전에 저장해 둔 원래 계획 ② 산 날 주문의 계획 ③ 평균 매수가 기준으로 새로 계산(종가베팅 저녁 매수 종목) */
   async function restorePlan(it, p) {
@@ -556,7 +620,7 @@ function createAuto(deps) {
     if (ex && force && ((ex.payload && ex.payload.decision) || (ex.payload && ex.payload.orders))) return { ok: false, why: '오늘은 이미 승인·주문을 처리해서 다시 고를 수 없어요' };
     const warn = await marketWarn();
     const regime = await regimeOf(date);
-    const sel = await select(I.params);
+    const sel = await select(I.params, null, I.id);
     const useAlt = !sel.picks.length && I.params.altFlowOn !== false && (sel.alt || []).length > 0;   // 원래 조건 통과 종목이 없으면 외국인+기관 합계로 보충(승인 필요)
     const listP = useAlt ? sel.alt : sel.picks;
     const evs = await EV.loadEvents(D.sbGet, date);
@@ -625,6 +689,11 @@ function createAuto(deps) {
   /* 승인 처리(한 전략): a = { kind: 'pass' } | { kind: 'buy', nums } | { kind: 'all' } */
   async function approveRun(date, sid, a, min, opts = {}) {
     const { I } = await intraOf(sid);
+    if (opts.via === 'auto' && a.kind !== 'pass' && BR.execOf(sid) === 'live' && !I.params.liveAutoOk) {   // 2단계: 실전은 "실전 자동 승인 허용"을 켜기 전까지 직접 승인만(첫 5거래일)
+      let first = false;
+      await mutateRun(date, sid, run => { if (!run.payload.liveAutoBlocked) { run.payload.liveAutoBlocked = true; first = true; LOG.push(run.payload, 'approve', '실전 전략 — 자동 승인하지 않음(직접 승인 필요)'); } });
+      return first ? '실전 전략은 직접 승인해야 매수해요. 알림의 번호로 /매수 하거나 사이트에서 승인하세요. (설정 "실전 자동 승인 허용"을 켜면 자동)' : '';
+    }
     const late = !!opts.late;   // 사이트에서 직접 누른 승인: 승인 마감이 지났어도(장 마감 15:20 전까지) 진행 — 만료된 기록도 되살림
     const cur0 = await readRun(date, sid).catch(() => null), dl = Math.max(I.T.deadline, (cur0 && cur0.payload && cur0.payload.roundDeadline) || 0);
     const cbOpen = !!(cur0 && cur0.payload && cur0.payload.cb && (cur0.payload.picks || []).some(p => p.cb && !p.closed));   // 종가베팅 저녁 후보 승인 중이면 19:55 까지
@@ -731,6 +800,12 @@ function createAuto(deps) {
     }
     state.multi = A.Is.length > 1 || Object.keys(state.runs).length > 1;
     const runs = () => Object.values(state.runs);
+    if ((await haltLevel()) === 'all') {   // 자동매매 전체 정지: 기록 정리만(손절·익절은 엔진이 계속 감시)
+      out.exc = await excTick(date, min).catch(err);
+      if (min >= require('./auto-daylog').SAVE_AT) out.daylog = await DL.tick(date, min).catch(err);
+      if (inJr) out.journal = await JR.tick(date, min, T0.convert).catch(err);
+      return { ok: true, date, min, idle: 'halted', ...out };
+    }
     // 전날 전환을 못 했으면(서버가 전환 시각에 잠들어 있었음) 아침에 보완 — 아침 매도보다 먼저
     if (state.prevConvChecked && state.prevConvChecked !== date) state.prevConvChecked = null;
     if ((inPre || inMorn) && D.prevTradingDay && !state.prevConvChecked) {
@@ -841,7 +916,7 @@ function createAuto(deps) {
       await dropStaleRetry(date, I.id, new Set(), `하루 최대 ${cap}종목을 채워 더 사지 않아`, hh);
       return { ok: true, capped: true };
     }
-    const sel = await select(I.params);
+    const sel = await select(I.params, null, I.id);
     // 이미 알린·주문한 종목은 뺀다. 단, 한 주도 못 산 종목(미체결 취소·재확인 탈락·주문 거부)은 시도 횟수가 남았으면 다시 후보가 된다
     const ords0 = P0.orders || {}, canRetry = code => retryOn && XE.retryable(ords0[code], tries);
     const known = new Set([...(P0.picks || []).map(p => p.code), ...Object.keys(ords0)].filter(c => !canRetry(c)));
@@ -930,7 +1005,7 @@ function createAuto(deps) {
       await lock(() => writeRun({ trade_date: date, strategy_id: I.id, status: 'noticed', payload }));
     }
   }
-  const cbSelect = (I, cp, known, hist) => select({ ...I.params, cttrMin: 0, openRiseMax: 99, noCttr: true }, { nxtOnly: true, skip: known, closeHigh: { maxPct: cp.closeBuyHighPct, from: cp.closeBuyPenaltyFrom, max: cp.closeBuyPenaltyMax }, ...(hist ? { hist } : {}) });
+  const cbSelect = (I, cp, known, hist) => select({ ...I.params, cttrMin: 0, openRiseMax: 99, noCttr: true }, { sid: I.id, nxtOnly: true, skip: known, closeHigh: { maxPct: cp.closeBuyHighPct, from: cp.closeBuyPenaltyFrom, max: cp.closeBuyPenaltyMax }, ...(hist ? { hist } : {}) });
   /* 종가베팅 관찰 회차(18:00~, 30분 간격): 최종 선정과 같은 조건으로 후보만 구해 기록. 알림·매수 없음. 통과 이력은 19:30 최종 점수의 가점이 됨 */
   async function runCbWatchFor(I, C, min, k) {
     const { date } = kstParts(), cp = C.params, hh = ST.hhmm(min);
@@ -1188,7 +1263,7 @@ function createAuto(deps) {
     return {
       ok: true, now: Date.now(), date, tradingDay: isTradingDay(date),
       cfg: { on: !!cv.on, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
-      today: todays[0] || null, todays, quotes, active: A.Is.map(i => i.id), regime, exposure, events, positions, trades, dayTot, carry: ci, carryDone: cd, history: hist.rows, totals: hist.totals, holdCmp, lastErr: state.lastErr || null,
+      today: todays[0] || null, todays, quotes, active: A.Is.map(i => i.id), modes: Object.fromEntries(A.Is.map(i => [i.id, BR.execOf(i.id)])), halt: await haltLevel().catch(() => null), regime, exposure, events, positions, trades, dayTot, carry: ci, carryDone: cd, history: hist.rows, totals: hist.totals, holdCmp, lastErr: state.lastErr || null,
     };
   }
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */
@@ -1291,8 +1366,44 @@ function createAuto(deps) {
     const [rows, versions] = await Promise.all([JR.raw(id), store.versions(id).catch(() => [])]);
     return PERF.guards({ rows, versions, cur: cur.version, today: kstParts().date });
   }
+  /* 실행 모드 전환 규칙(2단계): 진행 중 주문·오늘 산 종목 보유·안 판 이월이 있으면 못 바꿈(주문이 엔진 사이에서 고아가 되지 않게).
+     실전으로 바꿀 때는 거래 PIN 재확인(trade.js 가 확인해 opts.pinOk)과 실전 엔진 준비(계좌·실전 스위치)가 필요 */
+  async function modeBusy(id) {
+    const { date } = kstParts();
+    const r = await readRun(date, id).catch(() => null);
+    if (r && activeOrders(r)) return '오늘 체결 대기 중인 주문이 있어요';
+    const bought = Object.entries((r && r.payload && r.payload.orders) || {}).filter(([, o]) => (o.filled || 0) > 0).map(([c]) => c);
+    if (bought.length) {
+      const S = await BR.of(id).state().catch(() => null);
+      if (!S || !S.ok) return '보유 상태를 확인하지 못했어요';
+      if ((S.positions || []).some(x => bought.includes(x.code) && x.qty > 0)) return '오늘 산 종목을 아직 보유 중이에요';
+    }
+    const c = await readCarry().catch(() => null);
+    if (!c) return '이월 상태를 확인하지 못했어요';
+    if (Object.values(c.items || {}).some(i => (i.sid || DEF_SID) === id && i.state !== 'done')) return '아직 팔지 않은 이월 종목이 있어요';
+    return null;
+  }
   async function saveStrategy(id, patch, who, opts = {}) {
     id = String(id || '');
+    const nm = patch && patch.params && patch.params.execMode;
+    if (nm !== undefined) {
+      const cur = store.byId ? await store.byId(id).catch(() => null) : null;
+      const from = (cur && cur.params && cur.params.execMode) || 'paper';
+      if (cur && nm !== from) {
+        if (nm === 'live') {
+          if (!opts.pinOk) return { ok: false, status: 403, needPin: true, error: '실전 모드로 바꾸려면 거래 PIN을 다시 입력하세요' };
+          const lr = D.liveReady ? D.liveReady() : { ok: false, why: '실전 엔진이 연결되지 않았습니다' };
+          if (!lr.ok) return { ok: false, status: 409, error: '실전 모드로 바꿀 수 없어요 — ' + lr.why };
+        }
+        const busy = await modeBusy(id);
+        if (busy) return { ok: false, status: 409, error: `실행 모드를 바꿀 수 없어요 — ${busy}. 정리된 뒤(장 마감 후 등) 바꾸세요` };
+      }
+    }
+    const res = await saveStrategy0(id, patch, who, opts);
+    if (res && res.ok && res.strategy) noteMode(res.strategy);
+    return res;
+  }
+  async function saveStrategy0(id, patch, who, opts = {}) {
     if (!opts.confirm) {
       const warnings = await guardWarnings(id, patch).catch(() => []);
       if (warnings.length) return { ok: false, status: 409, needConfirm: true, error: '조건을 바꾸기 전에 확인이 필요합니다', warnings };
@@ -1300,7 +1411,22 @@ function createAuto(deps) {
     return store.save(id, patch, who);
   }
   const strategyVersions = async id => ({ ok: true, versions: await store.versions(String(id || '')) });
-  const createStrategy = (body, who) => (store.create ? store.create(body || {}, who) : { ok: false, status: 503, error: '지원하지 않음' });
+  /* 새 전략·복제. 복제본은 절대 실전으로 시작하지 않음(실전 원본이면 드라이런). asLive = "실전용 복제": 드라이런·직접 승인으로 만들어 5거래일 점검 후 PIN 으로 실전 전환 */
+  async function createStrategy(body, who) {
+    if (!store.create) return { ok: false, status: 503, error: '지원하지 않음' };
+    const b = body || {}, src = b.from && store.byId ? await store.byId(String(b.from)).catch(() => null) : null;
+    const asLive = b.asLive === true && (!src || src.kind === 'intraday');
+    const r = await store.create({ ...b, ...(asLive && src && !b.name ? { name: `${src.name} (실전)`.slice(0, 30) } : {}) }, who);
+    if (!r || !r.ok || !r.strategy || r.strategy.kind !== 'intraday') return r;
+    const srcMode = (r.strategy.params && r.strategy.params.execMode) || 'paper';
+    const want = asLive ? 'dryrun' : (srcMode === 'live' ? 'dryrun' : srcMode);
+    if (want !== srcMode || asLive) {
+      const s2 = await store.save(r.strategy.id, { params: { execMode: want, liveAutoOk: false } }, who);
+      if (s2 && s2.ok) { noteMode(s2.strategy); return { ...r, strategy: s2.strategy, mode: want }; }
+    }
+    noteMode(r.strategy);
+    return r;
+  }
   /* 삭제(보관): 오늘 미체결 주문이 있거나 아직 팔지 않은 이월 종목이 있으면 막음 */
   async function deleteStrategy(id, who) {
     const { date } = kstParts();
@@ -1310,7 +1436,7 @@ function createAuto(deps) {
     if (Object.values(c.items || {}).some(i => i.sid === id && i.state !== 'done')) return { ok: false, status: 400, error: '아직 팔지 않은 이월 종목이 있어 삭제할 수 없습니다' };
     return store.archive ? store.archive(id, who) : { ok: false, status: 503, error: '지원하지 않음' };
   }
-  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode,
+  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, setHalt, haltLevel, modeOf: sid => BR.execOf(sid), siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode,
     daylogList: n => DL.list(n), daylogGet: d => DL.get(d), daylogMemo: (d, t) => DL.memo(d, t), daylogSave: d => DL.save(/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : kstParts().date, { force: true }), siteStage, journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
     _select: select, _mutateRun: mutateRun, _readRun: readRun, _readRuns: readRuns, _readCarry: readCarry, _exec: exec };
 }

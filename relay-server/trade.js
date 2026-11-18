@@ -730,7 +730,7 @@ function createTrade(deps = {}) {
     if (path === '/trade/auto/strategy-new' || path === '/trade/auto/strategy-delete') {   // 전략 추가(기본값/복제) · 삭제(보관)
       const isNew = path === '/trade/auto/strategy-new', fn = isNew ? 'createStrategy' : 'deleteStrategy';
       if (!autoRef || !autoRef[fn]) return json(res, 503, { ok: false, error: 'auto unavailable' });
-      const arg = isNew ? { kind: body.kind, name: body.name, desc: body.desc, from: body.from } : String(body.id || '');
+      const arg = isNew ? { kind: body.kind, name: body.name, desc: body.desc, from: body.from, asLive: body.asLive === true } : String(body.id || '');
       const r = await autoRef[fn](arg, 'site').catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
       audit(isNew ? 'auto_strategy_new' : 'auto_strategy_delete', !!r.ok, isNew ? { kind: body.kind, from: body.from, id: r.strategy && r.strategy.id, error: r.error } : { id: arg, error: r.error }, req, 'VIRTUAL');
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
@@ -738,9 +738,26 @@ function createTrade(deps = {}) {
     if (path === '/trade/auto/strategy') {   // 전략 조건값·켜기/끄기·이름 저장(버전 +1, 바뀐 항목 기록). 가상매매 전용
       if (!autoRef || !autoRef.saveStrategy) return json(res, 503, { ok: false, error: 'auto unavailable' });
       const patch = {}; for (const k of ['params', 'enabled', 'name', 'desc']) if (body[k] !== undefined) patch[k] = body[k];
-      const r = await autoRef.saveStrategy(body.id, patch, 'site', { confirm: body.confirm === true }).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
+      /* 2단계: 실행 모드를 실전으로 바꿀 때는 거래 PIN 을 한 번 더(틀리면 PIN 실패 횟수에 들어감·잠금 규칙 그대로). 확인은 여기서, 바꿀 수 있는지는 auto 가 판단 */
+      let pinOk = false;
+      if (body.params && body.params.execMode === 'live' && body.pin != null) {
+        const pr = await checkPin(String(body.pin));
+        if (!pr.ok) { audit('auto_exec_mode_pin_fail', false, { id: body.id }, req, 'REAL'); return json(res, pr.status === 423 ? 423 : 403, { ok: false, needPin: true, error: pr.status === 423 ? `PIN 이 잠겼습니다(${pr.retrySec || ''}초 뒤 다시)` : 'PIN 이 맞지 않습니다' }); }
+        pinOk = true;
+      }
+      const r = await autoRef.saveStrategy(body.id, patch, 'site', { confirm: body.confirm === true, pinOk }).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
+      const modeCh = (r.changed || []).find(c => c.key === 'execMode');
+      if (modeCh) audit('auto_exec_mode', true, { id: body.id, from: modeCh.from, to: modeCh.to }, req, modeCh.to === '실전(실제 계좌로 주문)' ? 'REAL' : 'VIRTUAL');
       audit(r.ok ? 'auto_strategy' : 'auto_strategy_reject', !!r.ok, { id: body.id, version: r.strategy && r.strategy.version, changed: (r.changed || []).map(c => `${c.key}:${c.from}→${c.to}`).slice(0, 20), error: r.error }, req, 'VIRTUAL');
-      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, errs: r.errs, needConfirm: r.needConfirm || undefined, warnings: r.warnings || undefined });
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, errs: r.errs, needConfirm: r.needConfirm || undefined, warnings: r.warnings || undefined, needPin: r.needPin || undefined });
+    }
+    if (path === '/trade/auto/halt') {   // 2단계 정지 단계: buy(자동매매 신규 매수만 정지) · all(자동매매 전체 정지, 손절·익절 감시는 계속) · none(해제). 긴급 정지는 /trade/kill
+      if (!autoRef || !autoRef.setHalt) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      const level = String(body.level || '');
+      if (!['buy', 'all', 'none'].includes(level)) return json(res, 400, { ok: false, error: 'bad level' });
+      const r = await autoRef.setHalt(level === 'none' ? null : level, 'site').catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
+      audit('auto_halt', !!r.ok, { level }, req, 'VIRTUAL');
+      return json(res, r.ok ? 200 : (r.status || 400), r);
     }
     if (path === '/trade/auto/config') {   // 자동매매 켜기/끄기·종목당 금액(auto_config 'main'). 실전 주문과 무관 — 가상매매 설정
       if (!autoRef) return json(res, 503, { ok: false, error: 'auto unavailable' });

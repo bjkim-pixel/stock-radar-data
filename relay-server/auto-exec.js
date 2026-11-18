@@ -13,6 +13,7 @@
 
 const { capCheck } = require('./auto-risk');
 const LOG = require('./auto-log');
+const SZ = require('./auto-size');
 const TICKS = [[2000, 1], [5000, 5], [20000, 10], [50000, 50], [200000, 100], [500000, 500]];
 const EOK = 1e8;
 const tickOf = p => { for (const [lim, t] of TICKS) if (p < lim) return t; return 1000; };
@@ -197,8 +198,21 @@ function createExec(deps) {
   const label = () => (B && B.label) || '가상';
   /* 이미 보유·주문 중인 종목. 실전은 잔고를 새로 읽은 값이고, 확인하지 못하면 예외(= 사지 않음) */
   const heldNow = async () => (B.held ? B.held() : new Set((B.heldCodes && B.heldCodes()) || []));
+  /* 이상 동작 차단(2단계): 실전·드라이런 전략만. 기록은 그날 실행 기록(run.payload.gate)에 — 재시작해도 이어짐 */
+  const gated = () => !!(B && (B.real || B.dry));
+  const LIM = o => ({ maxOrdersDay: +o.maxOrdersDay || 20, rejectStop: +o.rejectStop || 3, unsureStop: +o.unsureStop || 2 });
+  function gateRec(run, ev, code, opt) {   // mutateRun 안에서 부름. 이번에 정지됐으면 사유
+    if (!gated()) return null;
+    const g = run.payload.gate = run.payload.gate || SZ.gate0();
+    const why = SZ.gateAfter(g, ev, code, LIM(opt || {}), now());
+    if (why) LOG.push(run.payload, 'halt', `⛔ 이상 동작 차단: ${why} — 오늘 이 전략의 신규 매수를 멈춤(손절·익절은 계속)`, { code }, now());
+    return why;
+  }
+  const haltMsg = why => `⛔ [${label()}] 이상 동작 차단: ${why} — 오늘 이 전략의 신규 매수를 멈췄어요. 손절·익절 감시는 계속됩니다. 원인을 확인한 뒤 내일 다시 시작해요.`;
 
   async function placeOne(date, code, notice, perStock, opt) {
+    if (D.halt) { const h = await D.halt().catch(() => null); if (h) return { st: 'skipped', why: h }; }   // 정지 단계(신규 매수 정지·자동매매 전체 정지)
+    if (gated()) { const r0 = await D.readRun(date).catch(() => null), w = SZ.gateCheck(r0 && r0.payload && r0.payload.gate, code, LIM(opt || {})); if (w) return { st: 'skipped', why: w }; }
     // 같은 종목은 한 포지션으로 합쳐지므로 겹쳐 사지 않음. 2026-11-18: 예전 코드는 Set 에 .includes 를 불러 늘 예외 → 무시되어 이 검사가 실제로는 돌지 않았음(수정)
     let held; try { held = await heldNow(); } catch (e) { return { st: 'skipped', why: '보유 종목 확인 실패 — ' + ((e && e.message) || '알 수 없음') }; }
     if (held && held.has(code)) return { st: 'skipped', why: '이미 보유·주문 중(다른 전략 또는 직접 매매)' };
@@ -206,6 +220,12 @@ function createExec(deps) {
     const why = recheck(q, notice, opt), snap = snapOf(q, notice, opt);
     if (snap) snap.at = now();
     if (why.length) return { st: 'skipped', why: why.join(', '), snap };
+    let size = null;   // 금액 자동 조정·주문 가능 금액 점검(2단계): 실전·드라이런은 실제 계좌의 미수 없는 매수 가능 금액 안에서만
+    if (D.sizeOne) {
+      try { size = await D.sizeOne(code, q, opt || {}, !!notice.cb); } catch (e) { return { st: 'skipped', why: '주문 가능 금액 확인 실패 — ' + ((e && e.message) || '알 수 없음'), snap }; }
+      if (size && size.skip) return { st: 'skipped', why: size.skip, snap };
+      if (size && size.krw > 0) perStock = size.krw;
+    }
     let rows; try { rows = await D.loadChart(code); } catch (e) { rows = []; }
     if (!rows || !rows.length) return { st: 'skipped', why: '일봉 자료 없음', snap };
     const ord = makeOrder({ q, rows, perStockKrw: perStock, opt });
@@ -220,16 +240,25 @@ function createExec(deps) {
     // 2) 주문
     const r = await B.place({ code, name: notice.name, side: 'buy', type: 'limit', price: ord.buy, qty: ord.qty, plan: ord.plan, cid: `auto${date.replace(/-/g, '')}${code}${tn > 1 ? 't' + tn : ''}` });
     if (!r || !r.ok) {
-      await D.mutateRun(date, run => { run.payload.orders[code] = { ...run.payload.orders[code], st: 'failed', why: (r && r.error) || '주문 거부' }; LOG.push(run.payload, 'order_fail', `${notice.name}: 주문 실패 — ${(r && r.error) || '주문 거부'}`, { code }, now()); });
+      let hw = null;
+      await D.mutateRun(date, run => { hw = r && r.status === 503 ? null : gateRec(run, 'reject', code, opt); run.payload.orders[code] = { ...run.payload.orders[code], st: 'failed', why: (r && r.error) || '주문 거부' }; LOG.push(run.payload, 'order_fail', `${notice.name}: 주문 실패 — ${(r && r.error) || '주문 거부'}`, { code }, now()); });
+      if (hw) await D.sendTelegram(haltMsg(hw)).catch(() => {});
       return { st: 'failed', why: (r && r.error) || '주문 거부', ord };
     }
     const o = r.order, filled = o.filled || 0;
     const st = stateOf(o) === 'filled' ? 'filled' : 'open';
+    let hw2 = null;
     await D.mutateRun(date, run => {
-      run.payload.orders[code] = { ...run.payload.orders[code], st, orderId: o.id, placedAt: at, filled, avg: o.avg || null };
+      hw2 = gateRec(run, o.status === 'unsure' ? 'unsure' : 'order', code, opt);
+      if (filled > 0) gateRec(run, 'filled', code, opt);
+      if (size && (B.dry || size.mode === 'balance' || size.capBy)) LOG.push(run.payload, 'size', `${notice.name}: 종목당 금액 ${SZ.sizeText(size, size.mode)}`, { code }, now());
+      if (B.dry) LOG.push(run.payload, 'dryrun', `🧪 드라이런 — 실전이었다면: ${notice.name} ${fmt(ord.buy)}원 ${fmt(ord.qty)}주 지정가 매수(주문 가능 금액 ${size && size.cash != null ? fmt(size.cash) + '원' : '확인 안 됨'}) · 실제 주문은 가상 엔진으로`, { code }, now());
+      run.payload.orders[code] = { ...run.payload.orders[code], st, orderId: o.id, placedAt: at, filled, avg: o.avg || null, ...(B.real || B.dry ? { mode: B.mode } : {}), ...(size ? { krw: size.krw } : {}) };
       LOG.push(run.payload, 'order', `${notice.name}${tn > 1 ? ` (${tn}번째 시도)` : ''}: ${fmt(ord.buy)}원 ${fmt(ord.qty)}주 지정가 매수 주문(${LOG.PICK_KO[ord.pick] || ord.pick}) · 현재가 ${snap && snap.price ? fmt(snap.price) : '–'}원 · 손절 ${fmt(ord.plan.stop)} · 목표 ${ord.target ? fmt(ord.target) : '없음'}`, { code }, at);
       if (st === 'filled') LOG.push(run.payload, 'filled', `${notice.name}: 바로 체결 ${fmt(filled)}주 평균 ${fmt(o.avg)}원`, { code }, now());
     });
+    if (B.dry && D.dryLog) await D.dryLog({ code, name: notice.name, side: 'buy', price: ord.buy, qty: ord.qty, krw: size ? size.krw : null, cash: size ? size.cash : null, capital: size ? size.capital : null, paperOrderId: o.id }).catch(() => {});
+    if (hw2) await D.sendTelegram(haltMsg(hw2)).catch(() => {});
     return { st, ord, order: o };
   }
 
@@ -237,7 +266,7 @@ function createExec(deps) {
   async function approve(date, payload) {
     const ps0 = D.perStock ? await D.perStock() : null, perStock = ps0 > 0 ? ps0 : 1000000;
     const opt0 = D.opt ? await D.opt() : {};
-    const lines = [`🛒 ${label()} 매수 · 종목당 ${fmt(perStock)}원`];
+    const lines = [`🛒 ${label()} 매수 · 종목당 ${opt0 && opt0.sizeMode === 'balance' ? '계좌 잔고 기준 자동' : fmt(perStock) + '원'}`];
     for (const code of payload.approved || []) {
       const notice = (payload.picks || []).find(p => p.code === code) || { code, name: code };
       const cur = payload.orders && payload.orders[code];
@@ -289,13 +318,13 @@ function createExec(deps) {
       const o = byId.get(v.orderId);
       if (!o) continue;
       if (o.status === 'filled') {
-        await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'filled', filled: o.filled, avg: o.avg, filledAt: now() }; LOG.push(r.payload, 'filled', `${name}: 체결 ${fmt(o.filled)}주 평균 ${fmt(o.avg)}원 — 손절·익절 자동 관리 시작`, { code }, now()); });
+        await D.mutateRun(date, r => { gateRec(r, 'filled', code, o2); r.payload.orders[code] = { ...r.payload.orders[code], st: 'filled', filled: o.filled, avg: o.avg, filledAt: now() }; LOG.push(r.payload, 'filled', `${name}: 체결 ${fmt(o.filled)}주 평균 ${fmt(o.avg)}원 — 손절·익절 자동 관리 시작`, { code }, now()); });
         msgs.push(`✅ ${name}: ${label()} 매수 체결 ${fmt(o.filled)}주 평균 ${fmt(o.avg)}원 — 손절·익절 자동 관리 시작`);
         continue;
       }
       if (o.status === 'unsure') continue;   // 실전 "접수 확인 중"(KIS 응답 없음): 체결조회로 확인될 때까지 정정·취소·종료 판단을 하지 않음
       if (o.status !== 'open' && o.status !== 'partial') {   // 엔진이 취소·소멸시킨 경우
-        await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg }; LOG.push(r.payload, 'cancel', `${name}: 엔진에서 주문 종료(${o.status})${o.filled ? ` · 일부 ${fmt(o.filled)}주 체결` : ''}`, { code }, now()); });
+        await D.mutateRun(date, r => { if (o.filled > 0) gateRec(r, 'filled', code, o2); r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg }; LOG.push(r.payload, 'cancel', `${name}: 엔진에서 주문 종료(${o.status})${o.filled ? ` · 일부 ${fmt(o.filled)}주 체결` : ''}`, { code }, now()); });
         continue;
       }
       const since = v.st === 'modified' ? v.modifiedAt : v.placedAt;
@@ -313,7 +342,7 @@ function createExec(deps) {
         }
         const m = await B.modify({ id: o.id, price: px });
         if (m && m.ok) {
-          await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: m.order.status === 'filled' ? 'filled' : 'modified', orderId: m.order.id, modifiedAt: now(), from: o.id, buy2: px, ...(m.order.status === 'filled' ? { filledAt: now(), filled: m.order.filled, avg: m.order.avg } : {}) };
+          await D.mutateRun(date, r => { gateRec(r, 'modify', code, o2); if (m.order.status === 'filled') gateRec(r, 'filled', code, o2); r.payload.orders[code] = { ...r.payload.orders[code], st: m.order.status === 'filled' ? 'filled' : 'modified', orderId: m.order.id, modifiedAt: now(), from: o.id, buy2: px, ...(m.order.status === 'filled' ? { filledAt: now(), filled: m.order.filled, avg: m.order.avg } : {}) };
             LOG.push(r.payload, 'reprice', `${name}: ${wm}분 미체결 → ${fmt(o.price)}원에서 ${fmt(px)}원(${REPRICE_KO[o2.repriceTo]})으로 정정 · 현재가 ${q.price ? fmt(q.price) : '–'}원${m.order.status === 'filled' ? ' · 바로 체결' : ''}`, { code }, now()); });
           msgs.push(`↪ ${name}: ${wm}분 미체결 → ${fmt(px)}원으로 정정${m.order.status === 'filled' ? ' · 체결' : ''}`);
         } else {
@@ -325,7 +354,7 @@ function createExec(deps) {
         let lo = null; try { const q = await D.getQuote(code); lo = q && q.low > 0 ? q.low : null; } catch (_) {}
         const c = await B.cancel(o.id);
         const missTx = lo != null ? ` · 주문가 ${fmt(o.price)}원, 그동안 최저가 ${fmt(lo)}원${lo > o.price ? '(주문가까지 내려오지 않음)' : ''}` : '';
-        await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg, why: c && c.ok ? '미체결 취소' : '취소 실패', cancelledAt: now(), lowSeen: lo };
+        await D.mutateRun(date, r => { if (o.filled > 0) gateRec(r, 'filled', code, o2); r.payload.orders[code] = { ...r.payload.orders[code], st: o.filled ? 'partial_done' : 'cancelled', filled: o.filled, avg: o.avg, why: c && c.ok ? '미체결 취소' : '취소 실패', cancelledAt: now(), lowSeen: lo };
           LOG.push(r.payload, 'cancel', `${name}: 정정 후 ${cm}분 미체결 → 취소${o.filled ? ` (일부 ${fmt(o.filled)}주 보유)` : ''}${missTx}`, { code }, now()); });
         msgs.push(`✖ ${name}: 정정 후에도 미체결 → 취소${o.filled ? ` (일부 ${fmt(o.filled)}주는 보유·계획대로 관리)` : ''}`);
       }
