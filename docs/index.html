@@ -1047,7 +1047,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-bkr{display:grid;grid-template-columns:52px 1fr 52px;align-items:center;gap:4px;position:relative;line-height:1.5}.au-bkr .p{font-variant-numeric:tabular-nums}.au-bkr .q{text-align:right;color:var(--ink-3);font-variant-numeric:tabular-nums}
 .au-bkr .bar{display:block;height:8px;background:var(--surface-2);border-radius:2px;overflow:hidden}.au-bkr .bar i{display:block;height:100%}
 .au-bkr.ask .bar i{background:var(--down);opacity:.55}.au-bkr.bid .bar i{background:var(--up);opacity:.55}
-.au-sup{font-size:11.5px;min-width:0}.au-sp2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:10px 14px;align-items:start}@media (max-width:560px){.au-sp2{grid-template-columns:1fr}}.au-sh{font-size:11px;font-weight:650;color:var(--ink-2);margin-bottom:3px;padding-bottom:2px;border-bottom:1px solid var(--line,#e5e7eb)}.au-sh .faint{font-weight:400}.au-kr{display:grid;grid-template-columns:46px 56px minmax(0,1fr);align-items:center;gap:4px;line-height:1.7;border-bottom:1px dashed var(--line,#eceef0)}.au-kr b{font-variant-numeric:tabular-nums;text-align:right;font-weight:650}.au-kr .rm{font-size:11px;color:var(--ink-2);white-space:normal}.au-kr .au-pm{text-align:center}.au-sr .mk i{font-style:normal;font-size:10px;font-weight:700;border-radius:3px;padding:0 3px;background:var(--surface-2)}.au-sr .mk i.up{color:#c0262d}.au-sr .mk i.down{color:#1d4fb8}.au-sr .mk i.cur{color:#c25400}.au-sr{display:grid;grid-template-columns:108px minmax(20px,1fr) 38px minmax(26px,auto);align-items:center;gap:4px;line-height:1.7}.au-sr .p{font-variant-numeric:tabular-nums;color:var(--ink-2)}.au-sr .q{text-align:right;color:var(--ink-2)}.au-sr .bar{display:block;height:8px;background:var(--surface-2);border-radius:2px;overflow:hidden}.au-sr .bar i{display:block;height:100%;background:#9aa0a6}
+.au-sup{font-size:11.5px;min-width:0}.au-sr{display:grid;grid-template-columns:60px 24px 36px minmax(0,1fr);align-items:start;gap:3px;line-height:1.7;border-bottom:1px solid var(--line,#eef0f2);padding:1px 0}.au-sr.au-sth{font-size:11px;font-weight:650;color:var(--ink-2);border-bottom:1px solid var(--line,#e5e7eb);align-items:end}.au-sth .faint{font-weight:400}.au-sr .p{font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap}.au-sr .q{text-align:right;color:var(--ink-2);white-space:nowrap}.au-sr .bar{display:block;height:8px;margin-top:6px;background:var(--surface-2);border-radius:2px;overflow:hidden}.au-sr .bar i{display:block;height:100%;background:#9aa0a6}.nts{min-width:0}.au-nt{display:flex;flex-wrap:wrap;align-items:center;gap:0 5px}.au-nt b{font-variant-numeric:tabular-nums;font-weight:650}.au-nt .rm{font-size:10.5px;color:var(--ink-2);white-space:nowrap}.au-nt .au-pm{padding:0 5px}.au-nt{gap:0 4px}.au-rk{font-size:10.5px;font-weight:700;border-radius:3px;padding:0 5px;background:#efe7fb;color:#6a3fb5}.au-rk.r1{background:#6a3fb5;color:#fff}
 .au-sr.ok .bar i{background:#2e9e5b}.au-sr.blk .bar i{background:#f26a00}.au-sr.far .bar i{background:#b8bcc2}.au-sr.under .bar i{background:#6b8fd6;opacity:.6}
 .au-sr .mk{display:flex;gap:3px;flex-wrap:wrap}.au-pm{font-size:10.5px;font-weight:650;border-radius:999px;padding:0 6px;white-space:nowrap;background:var(--surface-2)}.au-pm.up{background:#fde8e8;color:#c0262d}.au-pm.down{background:#e5edfb;color:#1d4fb8}.au-pm.cur{background:#fff3e6;color:#c25400}
 .au-lg{display:inline-block;width:9px;height:9px;border-radius:2px;margin:0 3px 0 6px;vertical-align:-1px}.au-lg.ok{background:#2e9e5b}.au-lg.blk{background:#f26a00}.au-lg.far{background:#b8bcc2}
@@ -11365,24 +11365,30 @@ function auSupply(o){
   const topP=Math.max(tg||0,(t.topLo||0)+0),loP=pl.stop||base*0.93;
   let shown=bins.filter(b=>b.hi>=loP*0.995&&b.lo<=Math.max(topP,base)*1.06);
   if(!shown.length)shown=bins;
+  /* 개인 매물대 1·2위: 매수가 이상(차익 매물이 될 자리)에서 순매수가 가장 큰 두 가격대 — 표시 범위 밖이어도 칸을 만들어 보여줌 */
+  const rank=new Map();above.filter(b=>b.v>0).sort((x,y)=>y.v-x.v).slice(0,2).forEach((b,i)=>rank.set(b.lo,i+1));
+  bins.forEach(b=>{if(rank.has(b.lo)&&!shown.includes(b))shown.push(b);});
+  shown.sort((x,y)=>y.lo-x.lo);
   const mx=Math.max(1,...shown.map(b=>Math.max(0,b.v)));
-  /* 주요 가격(손절·매수가·익절 단계·현재): 매물대와 따로, 높은 가격부터 한 줄씩 — 구분 · 가격 · 비고(의미와 수익률) */
-  const pc=p=>base&&p?auPct((p/base-1)*100):"",stp=pl.steps||[],sumQ=stp.reduce((a,x)=>a+(+x.q||0),0);
+  /* 한 표로 합침: 왼쪽 매물대(만원 단위·좁은 막대·억원), 오른쪽 그 가격대에 있는 주요 가격 + 비고(수익률은 매수가 기준) */
+  const pc=p=>base&&p?auPct(Math.round((p/base-1)*1000)/10):"",stp=pl.steps||[],sumQ=stp.reduce((a,x)=>a+(+x.q||0),0);
   const marks=[];
-  if(pl.stop)marks.push({p:pl.stop,t:"손절",s:"손",c:"down",r:`${pc(pl.stop)} 손실 한도`});
-  if(base)marks.push({p:base,t:"매수가",s:"매",c:"cur",r:"내 매수 기준"});
-  stp.forEach(x=>marks.push({p:x.p,t:x.runner?"러너":`익절${x.n}`,s:x.runner?"러":`익${x.n}`,c:"up",r:`${pc(x.p)}${sumQ&&x.q?` · ${Math.round(x.q/sumQ*100)}% 매도`:""}${x.runner?" · 남은 물량":""}`}));
-  if(tg&&!stp.some(x=>x.p===tg))marks.push({p:tg,t:"목표",s:"목",c:"up",r:`${pc(tg)} 목표`});
-  const live=o.livePx;if(live)marks.push({p:live,t:"현재",s:"현",c:"cur",r:`${pc(live)} 평가`});
+  if(pl.stop)marks.push({p:pl.stop,t:"손절",c:"down",r:`${pc(pl.stop)} 손절폭`});
+  if(base)marks.push({p:base,t:"매수가",c:"cur",r:"기준"});
+  stp.forEach(x=>marks.push({p:x.p,t:x.runner?"러너":`익절${x.n}`,c:"up",r:`${pc(x.p)}${sumQ&&x.q?` · ${Math.round(x.q/sumQ*100)}% 매도`:""}${x.runner?" · 남은 물량":""}`}));
+  if(tg&&!stp.some(x=>x.p===tg))marks.push({p:tg,t:"목표",c:"up",r:`${pc(tg)} 목표`});
+  const live=o.livePx;if(live)marks.push({p:live,t:"현재",c:"cur",r:`${pc(live)} 평가`});
   const inBin=(m,b)=>m.p>=b.lo&&m.p<b.hi||(b===shown[0]&&m.p>=b.hi)||(b===shown[shown.length-1]&&m.p<b.lo);   // 표시 범위 밖 가격은 맨 위(위쪽)·맨 아래(아래쪽) 칸에 붙임
+  const man=v=>(Math.round(v/1000)/10).toFixed(1);   // 원 → 만원(소수 1자리)
   const rows=shown.map(b=>{
-    const hit=marks.filter(m=>inBin(m,b)).map(m=>`<i class="${m.c}">${trdEsc(m.s)}</i>`).join("");
-    const st=b.lo>=base-1e-9?state.get(b.lo)||"far":"under",w=Math.max(b.v>0?2:0,Math.max(0,b.v)/mx*100);
-    return `<div class="au-sr ${st}"><span class="p">${N(b.lo)}~${N(b.hi)}</span><span class="bar"><i style="width:${w}%"></i></span><span class="q">${b.v>0?(b.v>=100?N(Math.round(b.v)):b.v.toFixed(1))+"억":"–"}</span><span class="mk">${hit}</span></div>`;}).join("");
-  const keyRows=marks.slice().sort((x,y)=>y.p-x.p||(x.t==="현재"?-1:1)).map(m=>`<div class="au-kr"><span class="au-pm ${m.c}">${trdEsc(m.t)}</span><b>${N(m.p)}</b><span class="rm">${trdEsc(m.r)}</span></div>`).join("");
+    const nt=[];
+    if(rank.has(b.lo))nt.push(`<div class="au-nt"><span class="au-rk r${rank.get(b.lo)}">개인 매물 ${rank.get(b.lo)}위</span></div>`);
+    marks.filter(m=>inBin(m,b)).sort((x,y)=>y.p-x.p||(x.t==="현재"?-1:1)).forEach(m=>nt.push(`<div class="au-nt"><span class="au-pm ${m.c}">${trdEsc(m.t)}</span><b>${N(m.p)}</b><span class="rm">${trdEsc(m.r)}</span></div>`));
+    const st=b.lo>=base-1e-9?state.get(b.lo)||"far":"under",w=Math.max(b.v>0?3:0,Math.max(0,b.v)/mx*100);
+    return `<div class="au-sr ${st}"><span class="p">${man(b.lo)}~${man(b.hi)}</span><span class="bar"><i style="width:${w}%"></i></span><span class="q">${b.v>0?(b.v>=100?N(Math.round(b.v)):b.v.toFixed(1))+"억":"–"}</span><span class="nts">${nt.join("")}</span></div>`;}).join("");
   const eok=v=>v==null?"–":(Math.abs(v)>=100?N(Math.round(v)):(Math.round(v*10)/10))+"억";
   const why=t.topLo&&o.mode==="blocked"?`바로 위 ${N(t.topLo)}원대 매물(${eok(t.topV)})이 하루 소화량(${eok(cap)})보다 커서 그 바로 아래까지만 목표`:t.topLo?`소화량(${eok(cap)}) 안에서 ${eok(cum)}까지 쌓고, 가장 큰 ${N(t.topLo)}원대(${eok(t.topV)}) 매물대 바로 아래를 목표로`:`위쪽 매물대가 없어 전고점·손익비로 목표를 잡음`;
-  return `<div class="au-sub" style="margin-top:8px">매도 목표 매물대 <span class="faint" style="font-weight:400">개인 순매수 가격대별 합 · 막대가 길수록 차익 매물이 많음</span></div><div class="au-sp2"><div class="au-sup"><div class="au-sh">매물대 (가격 · 개인 순매수)</div>${rows}</div><div class="au-sup au-key"><div class="au-sh">주요 가격 · 비고 <span class="faint">(수익률은 매수가 기준)</span></div>${keyRows}</div></div><div class="faint" style="font-size:11.5px;margin-top:4px"><span class="au-lg ok"></span>소화 가능 <span class="au-lg blk"></span>목표를 막는 매물대 <span class="au-lg far"></span>그 위 매물 · 매물대 오른쪽 글자(손·매·현·익n)는 그 가격대에 있는 주요 가격 · ${trdEsc(why)}</div>`;
+  return `<div class="au-sub" style="margin-top:8px">매도 목표 매물대 <span class="faint" style="font-weight:400">개인 순매수 가격대별 합 · 막대가 길수록 차익 매물이 많음 · 수익률은 매수가 대비</span></div><div class="au-sup"><div class="au-sr au-sth"><span style="grid-column:1/3;white-space:nowrap">매물대(만원)</span><span class="q">순매수</span><span>주요 가격 · 비고</span></div>${rows}</div><div class="faint" style="font-size:11.5px;margin-top:4px"><span class="au-lg ok"></span>소화 가능 <span class="au-lg blk"></span>목표를 막는 매물대 <span class="au-lg far"></span>그 위 매물 · ${trdEsc(why)}</div>`;
 }
 /* 대기 이유 문장 */
 /* 목표가·익절 단계 근거 설명(주문에 저장된 계산 내역 tinfo 기반; 예전 주문은 mode 문구만) */
