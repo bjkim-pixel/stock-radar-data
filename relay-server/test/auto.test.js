@@ -31,7 +31,7 @@ test('수급 판정: 외·기·프 모두 순매수 + 체결강도 100%↑', () 
 });
 test('점수: 0~100, 수급·체결강도가 클수록 높고 상승률 구간 반영', () => {
   const c = { ...row('A'), rs20: 100 };
-  const big = A.scoreOne(c, { fAmt: 4e9, oAmt: 4e9, pAmt: 4e9, cttr: 150, w52: 10500 }, 1);
+  const big = A.scoreOne({ ...c, kw8: 0.6 }, { fAmt: 4e9, oAmt: 4e9, pAmt: 4e9, cttr: 150, w52: 10500 }, 1);
   assert.ok(big.total > 95 && big.total <= 100, big.total);
   const small = A.scoreOne({ ...c, changePct: 9 }, { fAmt: 1e8, oAmt: 1e8, pAmt: 1e8, cttr: 100, w52: 20000 }, 0);
   assert.ok(small.total < 40, small.total);
@@ -60,7 +60,7 @@ test('메시지: 후보 없음·쉬는 날·후보 목록', () => {
 });
 
 /* ── 흐름 테스트(가짜 DB·시세·텔레그램) ── */
-function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null } = {}) {
+function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null, kw = {} } = {}) {
   const db = { auto_runs: {}, auto_config: { main: { on, perStockKrw: 1000000 } } };
   const sent = [];
   let pool = ['A', 'B', 'C', 'D'];
@@ -74,6 +74,7 @@ function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null }
       if (path.startsWith('v_screener')) return path.includes('offset=0') ? Object.entries(scr).map(([code, v]) => ({ code, ...v })) : [];
       if (path.startsWith('smx_state')) return path.includes('offset=0') ? Object.entries(smx).filter(([, v]) => v === 'CONT' || v === 'STALL').map(([code, st]) => ({ code, st })) : [];
       if (path.startsWith('positions')) return [];
+      if (path.startsWith('v_kiwoom_accounts')) return path.includes('offset=0') ? Object.entries(kw).map(([code, snaps]) => ({ code, snaps })) : [];
       throw new Error('unexpected ' + path);
     },
     sbWrite: async (path, method, body) => { if (path.startsWith('auto_runs')) body.forEach(b => { db.auto_runs[b.trade_date] = b; }); },
@@ -348,4 +349,56 @@ test('대체 후보: 승인이 없어도 다음 검토에도 후보면 자동 �
   await g.A.handleApproval('/패스');                              // 사용자가 패스
   g.setMin(10 * 60 + 35); await g.A.tick();
   assert.ok(!(g.db.auto_runs['2026-11-16'].payload.approved || []).length);
+});
+
+
+/* ── 개인 계좌수(8월 기준): 100% 미만은 정상 후보, 이상이면 승인해야 매수하는 후보 + 배점 ── */
+test('점수: 개인 물량 배점 — 70% 이하 만점, 100% 이상 0점, 자료 없으면 절반', () => {
+  const c = { ...row('A'), rs20: 100 }, m = { fAmt: 0, oAmt: 0, pAmt: 0, cttr: 100 };
+  const kwOf = k8 => A.scoreOne(k8 === undefined ? c : { ...c, kw8: k8 }, m, 0).parts.kw;
+  assert.equal(kwOf(0.6), 10); assert.equal(kwOf(0.7), 10); assert.equal(kwOf(1), 0); assert.equal(kwOf(2.5), 0);
+  assert.equal(kwOf(0.85), 5); assert.equal(kwOf(undefined), 5);
+  assert.equal(A.scoreOne(c, m, 0, { ...require('../auto-strategy').defaults('intraday'), weights: { flow: 40, cttr: 15, rise: 15, amt: 15, trend: 15 } }).parts.kw, 0);   // 예전 배점은 영향 없음
+});
+const SN = (a8, now) => ({ '2025-08-01': a8, '2025-09-01': a8 * 0.9, '2025-11-14': now });
+test('개인 계좌수: 8월 대비 100% 미만은 정상 후보, 이상은 ⚠ 승인 필요 후보(탈락 아님)', async () => {
+  const h = harness({ kw: { A: SN(1000, 700), D: SN(1000, 2500) } });
+  await h.A.tick();
+  const P = h.db.auto_runs['2026-11-16'].payload, a = P.picks.find(p => p.code === 'A'), d = P.picks.find(p => p.code === 'D');
+  assert.equal(P.picks.length, 2);
+  assert.equal(a.kw8, 0.7); assert.ok(!a.kwHigh); assert.equal(d.kw8, 2.5); assert.equal(d.kwHigh, true);
+  assert.match(d.reasons.join(' '), /개인 계좌 250% \(8월 대비\) — 승인해야 매수/);
+  assert.equal(a.parts.kw, 10); assert.equal(d.parts.kw, 0);
+});
+test('개인 계좌수: 켜기를 끄면 조건·배점 모두 무시, 8월 자료가 없으면 정상 후보', async () => {
+  const h = harness({ params: { kwOn: false }, kw: { D: SN(1000, 2500) } });
+  await h.A.tick();
+  assert.ok(h.db.auto_runs['2026-11-16'].payload.picks.every(p => !p.kwHigh && p.kw8 === undefined));
+  const h2 = harness({ kw: { A: { '2025-09-01': 1000, '2025-11-14': 3000 } } });   // 8월 기록 없음
+  await h2.A.tick();
+  assert.ok(h2.db.auto_runs['2026-11-16'].payload.picks.every(p => !p.kwHigh));
+});
+test('개인 계좌수: 상한을 150%로 올리면 250%만 승인 필요', async () => {
+  const h = harness({ params: { kwMax: 150 }, kw: { A: SN(1000, 1200), D: SN(1000, 2500) } });
+  await h.A.tick();
+  const P = h.db.auto_runs['2026-11-16'].payload;
+  assert.ok(!P.picks.find(p => p.code === 'A').kwHigh); assert.equal(P.picks.find(p => p.code === 'D').kwHigh, true);
+});
+test('개인 계좌수: 자동 승인 설정이어도 상한 이상 후보는 자동 승인 제외, 알림에 안내, 직접 승인하면 매수', async () => {
+  const h = harness({ params: { approval: 'auto' }, kw: { A: SN(1000, 700), D: SN(1000, 2500) } });
+  await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick();
+  assert.match(h.sent[0], /개인 계좌수가 8월 기준 100% 이상인 종목\(종목D 250%\)/);
+  await h.A.tick(); await h.A.tick();
+  let P = h.db.auto_runs['2026-11-16'].payload;
+  assert.deepEqual((P.approved || []).slice().sort(), ['A']);        // D 는 제외
+  const msg = JSON.stringify(await h.A.siteApprove('buy', [P.picks.findIndex(p => p.code === 'D') + 1], null));
+  P = h.db.auto_runs['2026-11-16'].payload;
+  assert.deepEqual((P.approved || []).slice().sort(), ['A', 'D'], String(msg));   // 자동 승인 뒤에도 직접 승인은 통과
+  assert.deepEqual(P.decision.nums.slice().sort(), [1, 2]);
+});
+test('개인 계좌수: 후보가 전부 상한 이상이면 자동 승인 없음', async () => {
+  const h = harness({ params: { approval: 'auto' }, kw: { A: SN(1000, 1500), D: SN(1000, 2500) } });
+  await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick(); await h.A.tick();
+  assert.ok(!(h.db.auto_runs['2026-11-16'].payload.approved || []).length);
+  assert.equal(h.db.auto_runs['2026-11-16'].status, 'noticed');
 });

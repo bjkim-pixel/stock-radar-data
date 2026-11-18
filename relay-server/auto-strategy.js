@@ -41,12 +41,14 @@ const SCHEMA = {
     F('altFlowOn', '대체 후보(수급 보충)', '통과 종목이 없을 때 외국인+기관 합계로 보충', 'bool', true),
     F('altFlowMinEok', '대체 후보(수급 보충)', '외국인+기관 순매수 합계 하한', 'num', 1, { min: 0.1, max: 50, step: 0.1, unit: '억원' }),
     F('altAutoBuy', '대체 후보(수급 보충)', '승인이 없어도 다음 검토에도 후보면 자동 매수', 'bool', true),
+    F('kwOn', '매수 조건', '개인 계좌수(8월 기준) 확인', 'bool', true),
+    F('kwMax', '매수 조건', '개인 계좌수 비율 상한(8월=100%, 넘으면 승인 후에만 매수)', 'num', 100, { min: 50, max: 300, step: 5, unit: '%' }),
     F('cttrMin', '매수 조건', '체결강도 하한', 'num', 100, { min: 80, max: 200, step: 1, unit: '%' }),
     F('openRiseMax', '매수 조건', '시가 대비 상승률 상한', 'num', 8, { min: 2, max: 15, step: 0.5, unit: '%' }),
     F('poolTop', '후보 수', '점수 상위 후보 수', 'num', 10, { min: 1, max: 20, step: 1, unit: '개' }),
     F('notifyTop', '후보 수', '알림에 싣는 수', 'num', 5, { min: 1, max: 10, step: 1, unit: '개' }),
     F('sectorMax', '후보 수', '같은 업종 최대', 'num', 2, { min: 1, max: 5, step: 1, unit: '개' }),
-    F('weights', '점수', '배점(합계 100)', 'weights', { flow: 40, cttr: 15, rise: 15, amt: 15, trend: 15 }, { parts: { flow: '수급', cttr: '체결강도', rise: '상승률', amt: '거래대금', trend: '추세' } }),
+    F('weights', '점수', '배점(합계 100)', 'weights', { flow: 35, cttr: 15, rise: 15, amt: 15, trend: 10, kw: 10 }, { parts: { flow: '수급', cttr: '체결강도', rise: '상승률', amt: '거래대금', trend: '추세', kw: '개인 물량 감소' } }),
     F('maxBuys', '매수 주문', '하루 최대 매수 종목 수', 'num', 5, { min: 1, max: 20, step: 1, unit: '종목' }),
     F('retryUnfilled', '매수 주문', '다음 검토 때 못 산 종목 다시 시도', 'bool', true),
     F('maxTries', '매수 주문', '종목당 하루 최대 주문 시도', 'num', 3, { min: 1, max: 6, step: 1, unit: '번' }),
@@ -102,6 +104,7 @@ const SCHEMA = {
     F('slices', '다음 날 매도', '분할 매도 시각', 'times', ['09:05', '09:10', '09:15'], { min: '09:01', max: '10:00', maxLen: 5 }),
   ],
 };
+const OLD_W = [['flow', 40], ['cttr', 15], ['rise', 15], ['amt', 15], ['trend', 15]];   // 개인 계좌수 항목이 생기기 전 기본 배점
 const KINDS = { intraday: '장중매매', closing: '종가베팅' };
 const MAX_ACTIVE = { intraday: 3, closing: 1 };   // 동시에 켤 수 있는 수(종가베팅은 장중 보유분을 넘겨받는 방식이라 하나만)
 const LETTERS = ['A', 'B', 'C'];
@@ -140,9 +143,12 @@ function validate(kind, input, base) {
       if (!Object.prototype.hasOwnProperty.call(f.opts, v)) { bad(f, '선택지에 없는 값입니다'); continue; }
       val[f.key] = v;
     } else if (f.type === 'weights') {
-      const o = v && typeof v === 'object' ? v : {}, out = {};
+      let o = v && typeof v === 'object' ? v : {};
+      const out = {};
+      if (o.kw === undefined && OLD_W.every(([k, x]) => o[k] === x)) o = f.def;   // 손대지 않은 예전 기본 배점(개인 물량 항목 없음)은 새 기본 배점으로 올림
       let ok = true;
-      for (const p of Object.keys(f.parts)) { const n = +o[p]; if (!Number.isInteger(n) || n < 0 || n > 100) ok = false; out[p] = n; }
+      for (const p of Object.keys(f.parts)) { const n = o[p] === undefined && p === 'kw' ? 0 : +o[p];   // 예전에 저장한 배점에는 개인 물량 항목이 없음 → 0점으로 간주
+         if (!Number.isInteger(n) || n < 0 || n > 100) ok = false; out[p] = n; }
       if (!ok) { bad(f, '각 배점은 0~100 정수'); continue; }
       const sum = Object.values(out).reduce((a, x) => a + x, 0);
       if (sum !== 100) { bad(f, `합계가 ${sum}입니다(100이어야 함)`); continue; }

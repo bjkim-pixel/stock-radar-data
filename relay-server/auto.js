@@ -87,7 +87,8 @@ function scoreOne(c, m, amtRankPct, P = DEFP) {
   const rsPart = c.rs20 != null ? 10 * clamp(c.rs20 / 100, 0, 1) : 5;
   const near = m.w52 > 0 ? clamp((c.price / m.w52 - 0.85) / 0.15, 0, 1) * 5 : 2.5;   // 52주 고가 85%→0점, 100%→5점
   const sTrend = (rsPart + near) * W.trend / 15;
-  const parts = { flow: sFlow, cttr: sCs, rise: sRise, amt: sAmt, trend: sTrend };
+  const sKw = (W.kw || 0) * (c.kw8 == null ? 0.5 : clamp((1 - c.kw8) / 0.3, 0, 1));   // 개인 계좌수가 8월보다 줄수록 높음: 70% 이하 만점, 100% 이상 0점, 자료 없으면 절반
+  const parts = { flow: sFlow, cttr: sCs, rise: sRise, amt: sAmt, trend: sTrend, kw: sKw };
   const total = Object.values(parts).reduce((a, b) => a + b, 0);
   return { total: Math.round(total * 10) / 10, parts: Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, Math.round(v * 10) / 10])), ratio };
 }
@@ -157,6 +158,7 @@ function reasonsFor(c, P = DEFP) {
   const r = [allReq ? `수급 외·기·프 동시` : pos.length ? `순매수 ${pos.join('·')}` : '수급 조건 없음'];
   if (c.smx) r.push(`매집 ${c.smx === 'CONT' ? '지속' : '고점 후 정체'}`);
   if (c.m.cttr >= 120) r.push(`체결강도 강함`);
+  if (c.kw8 != null) r.push(c.kwHigh ? `⚠ 개인 계좌 ${Math.round(c.kw8 * 100)}% (8월 대비) — 승인해야 매수` : `개인 계좌 ${Math.round(c.kw8 * 100)}% (8월 대비)`);
   return r;
 }
 
@@ -256,6 +258,26 @@ function createAuto(deps) {
     }
     return map;
   }
+  /* 키움증권 회원 보유 계좌수(개인 물량): 최근 ÷ 8월 첫 기록. 웹 '매집 8월 %'와 같은 계산 — 30분 캐시, 못 읽으면 빈 값(조건 없이 진행) */
+  let kwCache = { at: 0, map: {} };
+  async function loadKw() {
+    if (Date.now() - kwCache.at < 30 * 60e3) return kwCache.map;
+    const rows = [];
+    try {
+      for (let off = 0; off < 6000; off += 1000) {
+        const part = await D.sbGet(`v_kiwoom_accounts?select=code,snaps&order=code.asc&limit=1000&offset=${off}`);
+        rows.push(...(part || []));
+        if (!part || part.length < 1000) break;
+      }
+    } catch (_) { return kwCache.map; }
+    const ds = new Set(); rows.forEach(r => Object.keys(r.snaps || {}).forEach(d => ds.add(d)));
+    const dates = [...ds].sort(), last = dates[dates.length - 1];
+    const aug = dates.filter(d => +d.slice(5, 7) === 8), yr = aug.length ? aug[aug.length - 1].slice(0, 4) : null;   // 가장 최근 8월의 첫 기록
+    const d8 = yr ? aug.find(d => d.slice(0, 4) === yr) : null, map = {};
+    if (d8) rows.forEach(r => { const sn = r.snaps || {}, cur = sn[last]; if (cur > 0 && sn[d8] > 0) map[r.code] = cur / sn[d8]; });
+    kwCache = { at: Date.now(), map };
+    return map;
+  }
   async function loadHeld() {   // 가상매매에서 이미 보유·주문 중인 종목은 후보에서 제외
     try { return D.paper && D.paper.heldCodes ? new Set(D.paper.heldCodes()) : new Set(); } catch (_) { return new Set(); }
   }
@@ -275,9 +297,11 @@ function createAuto(deps) {
   }
   /* X(종가베팅 저녁 선정 전용): { nxtOnly, skip:Set(이미 후보·주문한 종목), closeHigh:{maxPct, from, max} } — 종가가 당일 고가에서 maxPct 이내만, from% 넘게 내렸으면 점수 감점 */
   async function select(P = DEFP, X = null) {
-    const [scr, smx, held, pool] = await Promise.all([loadScreener(P), loadSmx(), loadHeld(), D.livePool(P.capMinEok)]);
+    const useKw = !X && P.kwOn !== false && P.weights !== undefined;   // 장중 전략만(종가베팅 저녁 선정은 해당 없음)
+    const [scr, smx, held, pool, kwMap] = await Promise.all([loadScreener(P), loadSmx(), loadHeld(), D.livePool(P.capMinEok), useKw ? loadKw().catch(() => ({})) : {}]);
     let base = baseFilter(pool, scr.map, smx, held, P).sort((a, b) => b.changePct - a.changePct);
     if (X && X.skip) base = base.filter(c => !X.skip.has(c.code));
+    if (useKw) { const lim = (+P.kwMax || 100) / 100; base.forEach(c => { const r = kwMap[c.code]; if (r != null) { c.kw8 = r; c.kwHigh = r >= lim; } }); }   // 8월 대비 개인 계좌수 — 상한 이상이면 탈락이 아니라 '승인 필요' 후보
     const nBase0 = base.length;
     if (X && X.nxtOnly) base = await nxtOnly(base);
     const stat = { pool: (pool || []).length, base: base.length, flowPass: 0, errs: 0, ...(X && X.nxtOnly ? { nxtOut: nBase0 - base.length } : {}) };
@@ -538,7 +562,7 @@ function createAuto(deps) {
       regime: regime ? { date: regime.date, score: regime.score, stage: regime.stage, mult: regimeMult(I.params, regime), mode: I.params.regimeMode || 'info' } : null,
       strategy: { id: I.id, version: I.version, name: I.name }, params: I.params, letter: I.letter || 'A',
       events: EV.marketNotes(evs, date, 1),
-      picks: listP.slice(0, I.params.notifyTop).map(c => ({ ...(useAlt ? { alt: true, altSum: Math.round(c.altSum || 0) } : {}), code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date) })),
+      picks: listP.slice(0, I.params.notifyTop).map(c => ({ ...(useAlt ? { alt: true, altSum: Math.round(c.altSum || 0) } : {}), ...(c.kw8 != null ? { kw8: Math.round(c.kw8 * 1000) / 1000, kwHigh: !!c.kwHigh } : {}), code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date) })),
       shadow, dropped: sel.dropped, rejected: sel.rejected.slice(0, 40), approved: [], decision: null, noticeSent: false,
     };
     const st0 = sel.stat || {};
@@ -572,6 +596,8 @@ function createAuto(deps) {
       const rg = run.payload.regime, ps = rg && rg.mult < 1 ? Math.max(10000, Math.floor(I.params.perStockKrw * rg.mult / 10000) * 10000) : null;
       text = formatMessage(date, picks, { timeText: hhmm, warn: run.payload.warn, regime: regimeLine(rg, I.params, ps), exposure: exLine, events: EV.marketLine(run.payload.events), deadline: ST.hhmm(I.T.deadline), auto: I.params.approval === 'auto' && picks.length > 0 && !picks.every(p => p.alt) });
       if (picks.length && picks.every(p => p.alt)) text = text.replace('\n', `\n⚠️ 대체 조건 후보 — 외국인·기관 모두 순매수인 종목이 없어 "외국인+기관 합계 ${I.params.altFlowMinEok || 1}억 이상"으로 골랐어요. 매수하려면 승인하세요. 승인하지 않아도 다음 검토에도 후보면 자동 매수해요.\n`);
+      const kwHi = picks.filter(p => p.kwHigh);
+      if (kwHi.length) text = text.replace('\n', `\n⚠️ 개인 계좌수가 8월 기준 ${I.params.kwMax || 100}% 이상인 종목(${kwHi.map(p => p.name + ' ' + Math.round(p.kw8 * 100) + '%').join(', ')})은 자동 승인에서 빼요. 사려면 직접 승인하세요.\n`);
       if (state.multi && picks.length) text = text.replace(/\n(\d+)\. /g, `\n${run.payload.letter || 'A'}$1. `).replace('답장: /매수 1 3 5 (번호)', `답장: /매수 ${run.payload.letter || 'A'}1 ${run.payload.letter || 'A'}3 (글자+번호)`);
       run.payload.noticeSent = true; run.payload.noticeAt = new Date().toISOString();
       LOG.push(run.payload, 'notice', `텔레그램 알림 전송 · 후보 ${picks.length}개 · 승인 마감 ${ST.hhmm(I.T.deadline)}${I.params.approval === 'auto' ? ' (자동 승인 설정)' : ''}`);
@@ -599,12 +625,15 @@ function createAuto(deps) {
     if (min > dl && !D.allowLateApproval && !late) return `승인 마감(${ST.hhmm(dl)})이 지났어요. 오늘은 취소 처리돼요.`;
     const res = await mutateRun(date, sid, run => {
       const max = (run.payload.picks || []).length;
-      if (run.payload.decision && run.payload.decision.kind && !(late && run.payload.decision.kind === 'expired')) return { dup: run.payload.decision };
+      const pk0 = n => run.payload.picks[n - 1], dec0 = run.payload.decision;
+      // 자동 승인이 먼저 끝난 뒤, 자동 승인에서 빠진 '개인 계좌수 초과' 후보만 따로 승인하는 경우는 통과
+      const kwLate = !!(dec0 && dec0.kind === 'buy' && a.kind === 'buy' && (a.nums || []).length && a.nums.every(n => pk0(n) && pk0(n).kwHigh && !pk0(n).closed && !(run.payload.approved || []).includes(pk0(n).code)));
+      if (dec0 && dec0.kind && !kwLate && !(late && dec0.kind === 'expired')) return { dup: dec0 };
       const ords = run.payload.orders || {}, isCb = cbOpen, cap = isCb ? (+(run.payload.cb && run.payload.cb.max) || 3) : (+I.params.maxBuys || 5);
       const cbCodes = new Set((run.payload.picks || []).filter(p => p.cb).map(p => p.code));
       const pk = n => run.payload.picks[n - 1];
       if (a.kind === 'buy' && (a.nums || []).some(n => pk(n) && pk(n).closed)) return { closedNum: (a.nums || []).filter(n => pk(n) && pk(n).closed) };
-      let nums = a.kind === 'all' ? Array.from({ length: max }, (_, i) => i + 1).filter(n => !isOrdered(ords[pk(n).code]) && !pk(n).closed) : a.nums || [];   // 전체 = 아직 주문하지 않은 이번 회차 후보 전부
+      let nums = a.kind === 'all' ? Array.from({ length: max }, (_, i) => i + 1).filter(n => !isOrdered(ords[pk(n).code]) && !pk(n).closed && !(opts.via === 'auto' && (pk(n).kwHigh || pk(n).alt))) : a.nums || [];   // 전체 = 아직 주문하지 않은 이번 회차 후보 전부
       if (a.kind === 'all' && !nums.length) return { nothing: true };
       if (a.kind !== 'pass' && (!nums.length || nums.some(n => n < 1 || n > max))) return { bad: max };
       if (a.kind !== 'pass') {   // 하루 최대 매수 종목 수
@@ -613,7 +642,7 @@ function createAuto(deps) {
         if (!room) return { capFull: cap };
         if (fresh.length > room) { LOG.push(run.payload, 'cap', `하루 최대 ${cap}종목 — 이번 승인 ${fresh.length}종목 중 ${room}종목만 매수(점수순)`); nums = nums.filter(n => !fresh.includes(n)).concat(fresh.slice(0, room)).sort((x, y) => x - y); }
       }
-      run.payload.decision = a.kind === 'pass' ? { kind: 'pass', at: new Date().toISOString() } : { kind: 'buy', nums, at: new Date().toISOString() };
+      run.payload.decision = a.kind === 'pass' ? { kind: 'pass', at: new Date().toISOString() } : { kind: 'buy', nums: kwLate ? [...new Set([...(dec0.nums || []), ...nums])] : nums, at: new Date().toISOString() };
       run.payload.approved = a.kind === 'pass' ? (run.payload.approved || []) : [...new Set([...(run.payload.approved || []), ...nums.map(n => run.payload.picks[n - 1].code)])];
       run.status = a.kind === 'pass' ? 'passed' : 'approved';
       const via = { site: '사이트', telegram: '텔레그램', auto: '자동 승인' }[opts.via] || '텔레그램';
@@ -814,7 +843,7 @@ function createAuto(deps) {
     if (I.params.altAutoBuy !== false && room > 0) {
       const still = new Set([...sel.picks, ...(sel.alt || [])].map(c => c.code));
       const P1 = ((await readRun(date, I.id).catch(() => null)) || run).payload, o1 = P1.orders || {}, dk = P1.decision && P1.decision.kind;
-      const cand = (P1.picks || []).map((p, i) => ({ p, n: i + 1 })).filter(({ p }) => p.alt && !p.altAuto && still.has(p.code) && !isOrdered(o1[p.code]) && !(P1.approved || []).includes(p.code));
+      const cand = (P1.picks || []).map((p, i) => ({ p, n: i + 1 })).filter(({ p }) => p.alt && !p.kwHigh && !p.altAuto && still.has(p.code) && !isOrdered(o1[p.code]) && !(P1.approved || []).includes(p.code));
       if (cand.length && dk !== 'pass' && dk !== 'buy') {
         const nums = cand.slice(0, room).map(x => x.n);
         await mutateRun(date, I.id, r => {
@@ -838,8 +867,8 @@ function createAuto(deps) {
       await mutateRun(date, I.id, r => { LOG.push(r.payload, 'round', `${n}회차 ${hh} 검토: 새 후보 없음 (풀 ${sel.stat.pool} → 기본조건 ${sel.stat.base} → 수급 통과 ${sel.stat.flowPass})`); state.runs[I.id] = r; });
       return { ok: true, fresh: 0, dropped: dropped.length };
     }
-    const mk = c => ({ code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date), round: n });
-    let startNum = 0, text = null, nums = [], nRetry = 0;
+    const mk = c => ({ ...(c.kw8 != null ? { kw8: Math.round(c.kw8 * 1000) / 1000, kwHigh: !!c.kwHigh } : {}), code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date), round: n });
+    let startNum = 0, text = null, nums = [], nRetry = 0, holdNums = [];
     await mutateRun(date, I.id, r => {
       const P = r.payload; startNum = (P.picks || []).length; P.orders = P.orders || {};
       if (P.decision) { P.decisions = (P.decisions || []).concat([P.decision]); P.decision = null; (P.picks || []).forEach(p => { p.closed = true; }); }   // 이미 결정(승인·패스·만료)된 회차의 후보는 닫음
@@ -865,15 +894,20 @@ function createAuto(deps) {
       text = formatMessage(date, ps, { timeText: hh, round: n, nums, warn: P.warn, deadline: ST.hhmm(P.roundDeadline), auto: I.params.approval === 'auto' && !useAlt });
       if (state.multi) text = text.replace(/\n(\d+)\. /g, `\n${letter}$1. `).replace(/답장: \/매수 (\d+) (\d+)(?: \d+)? \(번호\)/, `답장: /매수 ${letter}$1 ${letter}$2 (글자+번호)`);
       if (useAlt) fresh.forEach(c => { const pk = P.picks.find(p => p.code === c.code); if (pk) { pk.alt = true; pk.altSum = Math.round(c.altSum || 0); } });
+      holdNums = shown.filter(c => c.kwHigh).map(c => c.num);
+      if (holdNums.length && text) text = text.replace('\n', `\n⚠️ 개인 계좌수가 8월 기준 ${I.params.kwMax || 100}% 이상인 종목(${shown.filter(c => c.kwHigh).map(c => c.name + ' ' + Math.round(c.kw8 * 100) + '%').join(', ')})은 자동 승인에서 빼요. 사려면 직접 승인하세요.\n`);
       state.runs[I.id] = r;
     });
     if (text && useAlt) text = text.replace('\n', `\n⚠️ 대체 조건 후보 — 외국인·기관 모두 순매수인 종목이 없어 "외국인+기관 합계 ${I.params.altFlowMinEok || 1}억 이상"으로 골랐어요. 매수하려면 승인하세요. 승인하지 않아도 다음 검토에도 후보면 자동 매수해요.\n`);
     if (text) await tgFor(I.id)(text);
     let auto = null;
     if (I.params.approval === 'auto' && !useAlt) {
-      const msg = await approveRun(date, I.id, { kind: 'buy', nums }, min, { via: 'auto' });
-      if (msg) await tgFor(I.id)('🤖 자동 승인\n' + msg);
-      auto = { ok: true };
+      const autoNums = nums.filter(k => !holdNums.includes(k));   // 개인 계좌수 상한 이상인 후보는 자동 승인하지 않음
+      if (autoNums.length) {
+        const msg = await approveRun(date, I.id, { kind: 'buy', nums: autoNums }, min, { via: 'auto' });
+        if (msg) await tgFor(I.id)('🤖 자동 승인\n' + msg);
+      }
+      auto = { ok: true, held: holdNums.length };
     }
     state.runs[I.id] = await readRun(date, I.id).catch(() => null) || state.runs[I.id];
     return { ok: true, fresh: fresh.length, retry: nRetry, auto };
@@ -970,7 +1004,7 @@ function createAuto(deps) {
   async function autoApprove(sid) {
     const { date, min } = kstParts();
     const cur = await readRun(date, sid).catch(() => null), open = ((cur && cur.payload && cur.payload.picks) || []).filter(p => !p.closed);
-    if (open.length && open.every(p => p.alt)) return { ok: true, skipped: '대체 후보는 승인 필요' };   // 대체 조건 후보는 자동 승인하지 않음
+    if (open.length && open.every(p => p.alt || p.kwHigh)) return { ok: true, skipped: '대체 후보·개인 계좌수 초과 후보는 승인 필요' };   // 대체 조건·개인 계좌수 상한 이상 후보는 자동 승인하지 않음
     const msg = await approveRun(date, sid, { kind: 'all' }, min, { via: 'auto' });
     if (msg) await tgFor(sid)('🤖 자동 승인\n' + msg);
     return { ok: true };
