@@ -489,6 +489,7 @@ function createAuto(deps) {
   const intraCodesFor = sid => date => Object.values((state.carry && state.carry.items) || {}).filter(i => i.state === 'intra' && i.holdDate === date && (!i.sid || i.sid === sid)).map(i => i.code);
   /* 이월 종목(어제 종가베팅으로 넘긴 종목)은 09:00 전(NXT 프리마켓)에는 손절·매도하지 않는다 → paper 엔진이 물어봄 */
   let preHoldCache = { at: 0, items: {} };
+  const profMemo = new Map();   // code -> {at, prof}
   if (D.paper && D.paper.setPreHold) D.paper.setPreHold(async (code, min) => {
     const t = Date.now();
     if (t - preHoldCache.at > 20000) { try { preHoldCache = { at: t, items: (await readCarry()).items || {} }; } catch (_) { preHoldCache.at = t; } }
@@ -1077,6 +1078,15 @@ function createAuto(deps) {
     }
     const hist = UI.buildHistory(runs, realized, closes, date);
     const todays = todayRows.map(r => UI.summarizeRun(r, true));
+    /* 매도 목표 매물대 그림용: 이 기능 전에 낸 오늘 주문은 저장된 매물대가 없어 일봉으로 다시 계산해 붙임(저장은 안 함, 코드별 10분 캐시) */
+    try {
+      for (const t of todays) for (const o of t.orders || []) {
+        if (!o.tinfo || o.tinfo.prof || !/^\d{6}$/.test(o.code)) continue;
+        let m = profMemo.get(o.code);
+        if (!m || Date.now() - m.at > 600e3) { const rows = await D.loadChart(o.code).catch(() => []); m = { at: Date.now(), prof: (rows && rows.length ? XE.buildProfile(rows) : []).map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) }; profMemo.set(o.code, m); }
+        if (m.prof.length) o.tinfo = { ...o.tinfo, prof: m.prof };
+      }
+    } catch (_) {}
     // 오늘 자동매매 종목·종가 베팅으로 넘긴 종목의 현재 보유 상태(어느 전략 종목인지 함께)
     const owner = {};
     todays.forEach(t => t.orders.filter(o => o.filled > 0).forEach(o => { owner[o.code] = t.strategy ? t.strategy.name : t.sid; }));

@@ -1047,6 +1047,10 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-bkr{display:grid;grid-template-columns:52px 1fr 52px;align-items:center;gap:4px;position:relative;line-height:1.5}.au-bkr .p{font-variant-numeric:tabular-nums}.au-bkr .q{text-align:right;color:var(--ink-3);font-variant-numeric:tabular-nums}
 .au-bkr .bar{display:block;height:8px;background:var(--surface-2);border-radius:2px;overflow:hidden}.au-bkr .bar i{display:block;height:100%}
 .au-bkr.ask .bar i{background:var(--down);opacity:.55}.au-bkr.bid .bar i{background:var(--up);opacity:.55}
+.au-sup{font-size:11.5px}.au-sr{display:grid;grid-template-columns:96px minmax(40px,1fr) 46px auto;align-items:center;gap:4px;line-height:1.6}.au-sr .p{font-variant-numeric:tabular-nums;color:var(--ink-2)}.au-sr .q{text-align:right;color:var(--ink-2)}.au-sr .bar{display:block;height:8px;background:var(--surface-2);border-radius:2px;overflow:hidden}.au-sr .bar i{display:block;height:100%;background:#9aa0a6}
+.au-sr.ok .bar i{background:#2e9e5b}.au-sr.blk .bar i{background:#f26a00}.au-sr.far .bar i{background:#b8bcc2}.au-sr.under .bar i{background:#6b8fd6;opacity:.6}
+.au-sr .mk{display:flex;gap:3px;flex-wrap:wrap}.au-pm{font-size:10.5px;font-weight:650;border-radius:999px;padding:0 6px;white-space:nowrap;background:var(--surface-2)}.au-pm.up{background:#fde8e8;color:#c0262d}.au-pm.down{background:#e5edfb;color:#1d4fb8}.au-pm.cur{background:#fff3e6;color:#c25400}
+.au-lg{display:inline-block;width:9px;height:9px;border-radius:2px;margin:0 3px 0 6px;vertical-align:-1px}.au-lg.ok{background:#2e9e5b}.au-lg.blk{background:#f26a00}.au-lg.far{background:#b8bcc2}
 .au-bkr.me{outline:1.5px solid var(--warn);border-radius:3px;background:var(--surface-2)}.au-bkr.cur .p{font-weight:800}
 .au-bksp{height:4px}
 .au-ladder{padding:0 30px;position:relative}.au-lax{position:relative}.au-ladtx{font-size:11.5px;line-height:1.5;margin-top:6px;border-top:1px dashed var(--line,#8884);padding-top:6px}.au-ld{position:absolute;left:-.5px;width:1px;background:var(--ink-3);opacity:.45}.au-ld.hi{bottom:14px}.au-ld.lo{top:14px}.au-bkr.blank{visibility:hidden}.au-bkp{font-size:10.5px;margin-bottom:2px}.au-bkn{font-size:10.5px;margin-top:2px;min-height:15px}.au-axis{position:relative;height:8px;background:var(--surface-2);border-radius:4px}
@@ -11347,6 +11351,35 @@ function auLadder(o,last){
   const txt=[pl.stop?`손절 ${N(pl.stop)}원(${pct(pl.stop)})`:"",(pl.steps||[]).length?`익절 ${(pl.steps||[]).map(s=>`${s.n}단계 ${N(s.p)}(${pct(s.p)})`).join(" · ")}`:"익절 단계 없음",last?`현재 ${N(last)}원(${pct(last)})`:""].filter(Boolean).join(" · ");
   return `<div class="au-ladder"><div class="au-lax" style="padding:${(nHi?nHi*LH+10:8)}px 0 ${(nLo?nLo*LH+12:6)}px"><div class="au-axis">${seg}${seg2}${ticks}</div></div><div class="faint au-ladtx">${trdEsc(txt)}</div></div>`;
 }
+/* ── 매도 목표 매물대 그림: 목표가를 정할 때 쓴 '개인 순매수 매물대'(차익 매물)를 가격대별 막대로, 익절·목표·손절·매수가 위치를 표시 ──
+   초록 = 하루 소화 가능량 안에서 쌓은 매물(목표 가는 그 위 바로 아래), 주황 = 소화량을 넘겨 목표를 막는 매물대, 회색 = 그 위 매물 */
+function auSupply(o){
+  const t=o.tinfo,pl=o.plan||{};
+  if(!t||!Array.isArray(t.prof)||!t.prof.length)return "";
+  const base=t.ref||o.buy2||o.buy||0,tg=o.target||pl.target||0,cap=t.cap||0;
+  const bins=t.prof.map(([lo,hi,v])=>({lo,hi,v})).sort((a,b)=>b.lo-a.lo);   // 위 → 아래
+  const above=bins.filter(b=>b.lo>=base-1e-9).sort((a,b)=>a.lo-b.lo);
+  let cum=0,ri=-1;for(let i=0;i<above.length;i++){const v=Math.max(0,above[i].v);if(cum+v<=cap){cum+=v;ri=i;}else break;}
+  const state=new Map();above.forEach((b,i)=>state.set(b.lo,i<=ri?"ok":(i===ri+1||(t.topLo&&Math.abs(b.lo-t.topLo)<1))?"blk":"far"));
+  /* 표시 범위: 손절 바로 아래 ~ 목표(또는 막는 매물대) 바로 위 2칸 */
+  const topP=Math.max(tg||0,(t.topLo||0)+0),loP=pl.stop||base*0.93;
+  let shown=bins.filter(b=>b.hi>=loP*0.995&&b.lo<=Math.max(topP,base)*1.06);
+  if(!shown.length)shown=bins;
+  const mx=Math.max(1,...shown.map(b=>Math.max(0,b.v)));
+  const marks=[];
+  if(pl.stop)marks.push({p:pl.stop,t:"손절",c:"down"});
+  if(base)marks.push({p:base,t:"매수가",c:"cur"});
+  (pl.steps||[]).forEach(s=>marks.push({p:s.p,t:s.runner?"러너":`익절${s.n}`,c:"up"}));
+  if(tg&&!(pl.steps||[]).some(s=>s.p===tg))marks.push({p:tg,t:"목표",c:"up"});
+  const live=o.livePx;if(live)marks.push({p:live,t:"현재",c:"cur"});
+  const rows=shown.map(b=>{
+    const hit=marks.filter(m=>m.p>=b.lo&&m.p<b.hi||(b===shown[0]&&m.p<b.lo)||(b===shown[shown.length-1]&&m.p>=b.hi)).map(m=>`<span class="au-pm ${m.c}">${trdEsc(m.t)} ${N(m.p)}</span>`).join("");
+    const st=b.lo>=base-1e-9?state.get(b.lo)||"far":"under",w=Math.max(b.v>0?2:0,Math.max(0,b.v)/mx*100);
+    return `<div class="au-sr ${st}"><span class="p">${N(b.lo)}~${N(b.hi)}</span><span class="bar"><i style="width:${w}%"></i></span><span class="q">${b.v>0?(b.v>=100?N(Math.round(b.v)):b.v.toFixed(1))+"억":"–"}</span><span class="mk">${hit}</span></div>`;}).join("");
+  const eok=v=>v==null?"–":(Math.abs(v)>=100?N(Math.round(v)):(Math.round(v*10)/10))+"억";
+  const why=t.topLo&&o.mode==="blocked"?`바로 위 ${N(t.topLo)}원대 매물(${eok(t.topV)})이 하루 소화량(${eok(cap)})보다 커서 그 바로 아래까지만 목표`:t.topLo?`소화량(${eok(cap)}) 안에서 ${eok(cum)}까지 쌓고, 가장 큰 ${N(t.topLo)}원대(${eok(t.topV)}) 매물대 바로 아래를 목표로`:`위쪽 매물대가 없어 전고점·손익비로 목표를 잡음`;
+  return `<div class="au-sub" style="margin-top:8px">매도 목표 매물대 <span class="faint" style="font-weight:400">개인 순매수 가격대별 합(억원) · 막대가 길수록 차익 매물이 많음</span></div><div class="au-sup">${rows}</div><div class="faint" style="font-size:11.5px;margin-top:4px"><span class="au-lg ok"></span>소화 가능 <span class="au-lg blk"></span>목표를 막는 매물대 <span class="au-lg far"></span>그 위 매물 · ${trdEsc(why)}</div>`;
+}
 /* 대기 이유 문장 */
 /* 목표가·익절 단계 근거 설명(주문에 저장된 계산 내역 tinfo 기반; 예전 주문은 mode 문구만) */
 function auTgtWhy(o,pl){
@@ -11410,7 +11443,7 @@ function auOrderCard(sid,o,RP){   // RP = 일지 복기용({P,log}): 지난 기�
       </div>
       <div class="au-bks">${off?"":auBook(sn.bids&&{bids:sn.bids,asks:sn.asks,price:sn.price},o.buy,"주문 시점 호가")}${q&&!off?auBook(q,px,"지금 호가"):""}</div>
     </div>
-    ${off||(RP&&!o.plan)?"":`<div class="au-sub" style="margin-top:8px">손절·익절 계획</div>${auLadder(o,live)}`}
+    ${off||(RP&&!o.plan)?"":`<div class="au-sub" style="margin-top:8px">손절·익절 계획</div>${auLadder(o,live)}${auSupply({...o,livePx:live})}`}
     ${o.cb?`<div class="faint" style="font-size:11.5px;margin-top:4px">종가베팅 저녁 매수 — 익절 없이 손절 −${pl.stopPct!=null?pl.stopPct:"–"}%만 걸고, 20:00에 이월 등록되어 다음 날 아침 나눠 팝니다.</div>`:o.mode?`${auTgtWhy(o,pl)}<div class="faint" style="font-size:11.5px;margin-top:4px">손절 −${pl.stopPct!=null?pl.stopPct:"–"}%${pl.trail?` · 추적 ${pl.trail}%`:""}</div>`:""}
     ${sells.length?`<div class="au-sub" style="margin-top:8px">매도 기록</div>${sells.map(x=>`<div style="font-size:12.5px"><span class="faint">${trdEsc(new Date(Date.parse(x.t)+9*3600e3).toISOString().slice(11,19))}</span> ${trdEsc(x.text)}</div>`).join("")}`:""}</div>`;
 }

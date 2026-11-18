@@ -132,10 +132,11 @@ function makeOrder({ q, rows, perStockKrw, opt = {}, force = null }) {   // forc
   const last5 = rows.slice(-5), avg5 = last5.length ? last5.reduce((a, r) => a + (+r.trade_amount || 0), 0) / last5.length : 0;
   const capEok = Math.max(avg5, q.amt || 0) / EOK;
   const prevHigh = rows.length ? Math.max(...rows.map(r => (+r.high > 0 ? +r.high : +r.close))) : 0;
-  const tgt = calcTarget({ cur, prof: buildProfile(rows), capEok, coef: o.coef, prevHigh, upper: q.upper, stopPct: o.stopPct, rr: o.rr });
+  const prof = buildProfile(rows);
+  const tgt = calcTarget({ cur, prof, capEok, coef: o.coef, prevHigh, upper: q.upper, stopPct: o.stopPct, rr: o.rr });
   const steps = tgt.target && !o.noTp ? (o.tpStyle === 'r' ? splitPlanR(buy, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(buy, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];   // noTp(종가베팅 저녁 매수): 익절 없이 손절만 걸고 다음 날 아침 분할 매도
   const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ...(o.ratchet && !o.noTp ? { ratchet: { floorPct: 0.35 } } : {}) };
-  const tinfo = { cap: tgt.cap, cum: tgt.cum, topLo: tgt.topLo, topV: tgt.topV, rrT: tgt.rrT, clipped: tgt.clipped, prevHigh: tgt.prevHigh, upper: q.upper || null, capEok, coef: o.coef, stopPct: o.stopPct, rr: o.rr, minRr: o.minRr, tpStyle: o.tpStyle, split: o.split, minPct: o.minPct, runnerPct: o.runnerPct, ratchet: !!(o.ratchet && !o.noTp), ref: cur };
+  const tinfo = { cap: tgt.cap, cum: tgt.cum, topLo: tgt.topLo, topV: tgt.topV, rrT: tgt.rrT, clipped: tgt.clipped, prevHigh: tgt.prevHigh, upper: q.upper || null, capEok, coef: o.coef, stopPct: o.stopPct, rr: o.rr, minRr: o.minRr, tpStyle: o.tpStyle, split: o.split, minPct: o.minPct, runnerPct: o.runnerPct, ratchet: !!(o.ratchet && !o.noTp), ref: cur, prof: prof.map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) };   // prof = 개인 순매수 매물대 [하한, 상한, 억원] — 목표가 그림용
   return { buy, qty, plan, target: tgt.target, mode: tgt.mode, pick: pick ? pick.k : 'cur', tinfo };
 }
 
