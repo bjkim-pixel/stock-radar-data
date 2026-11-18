@@ -69,10 +69,13 @@ function createKisOrder({ kisGet, kisPost, account }) {
     const j = await kisGet('/uapi/domestic-stock/v1/trading/inquire-balance', 'TTTC8434R', {
       ...acct(), AFHR_FLPR_YN: 'N', OFL_YN: '', INQR_DVSN: '02', UNPR_DVSN: '01', FUND_STTL_ICLD_YN: 'N', FNCG_AMT_AUTO_RDPT_YN: 'N', PRCS_DVSN: '00', CTX_AREA_FK100: '', CTX_AREA_NK100: '',
     });
-    const rows = (j.output1 || []).map(r => ({ code: String(r.pdno || ''), name: r.prdt_name || null, qty: n(r.hldg_qty), sellable: n(r.ord_psbl_qty), avg: n(r.pchs_avg_pric), price: n(r.prpr), _keys: Object.keys(r) }))
+    const rows = (j.output1 || []).map(r => ({ code: String(r.pdno || ''), name: r.prdt_name || null, qty: n(r.hldg_qty), sellable: n(r.ord_psbl_qty), avg: n(r.pchs_avg_pric), price: n(r.prpr),
+      evalAmt: n(r.evlu_amt), pnl: n(r.evlu_pfls_amt), pnlRt: n(r.evlu_pfls_rt), _keys: Object.keys(r) }))
       .filter(r => r.code && r.qty > 0);
     const s = (j.output2 || [])[0] || {};
-    return { positions: rows, cash: n(s.dnca_tot_amt), total: n(s.tot_evlu_amt), _keys2: Object.keys(s) };
+    /* 요약(3단계 계좌 현황): 예수금(D+0 dnca_tot_amt)·D+1(nxdy_excc_amt)·D+2(prvs_rcdl_excc_amt)·매입 합계·평가 합계·평가손익 합계·총평가 — 필드 이름은 KIS 공식 예제 기준, 4단계 점검에서 앱과 대조 */
+    const sum = { cash: n(s.dnca_tot_amt), d1: n(s.nxdy_excc_amt), d2: n(s.prvs_rcdl_excc_amt), purchase: n(s.pchs_amt_smtl_amt), evalAmt: n(s.evlu_amt_smtl_amt), pnl: n(s.evlu_pfls_smtl_amt), total: n(s.tot_evlu_amt) };
+    return { positions: rows, cash: n(s.dnca_tot_amt), total: n(s.tot_evlu_amt), sum, _keys2: Object.keys(s) };
   }
   /* 매수가능조회(실거래 전환 2단계): 미수 없이 살 수 있는 금액(nrcvb_buy_amt)·수량. 금액 자동 조정과 주문 직전 예수금 점검에 씀.
      가격을 주면 그 가격 기준, 없으면(0) 시장가 기준. 조회 전용 — 돈을 옮기는 API 가 아님 */

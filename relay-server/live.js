@@ -43,7 +43,10 @@ function createLive(deps) {
   const route = (ses) => (ses.venue === 'SOR' && deps.noSor) ? (ses.name === 'regular' ? 'KRX' : 'NXT') : ses.venue;
   const orders = new Map(), plans = new Map(), lastPx = new Map(), cids = new Map(), warned = new Map(), lowSeen = new Map(), highSeen = new Map(), reopen = new Set();
   let fills = [];
-  const bal = { positions: new Map(), cash: null, at: 0, keys: null };
+  const bal = { positions: new Map(), cash: null, sum: null, at: 0, keys: null };
+  /* 수수료·세금 추정(%): 체결조회에는 비용이 없어 비율로 계산해 체결 행에 저장한다(성과 화면 "비용 반영"). 실제 청구액과 다를 수 있어 4단계에서 앱과 대조 */
+  const FEES = deps.fees || { buy: 0, sell: 0 };
+  const feeOf = (side, amount) => Math.round(amount * (side === 'buy' ? FEES.buy : FEES.sell) / 100);
   const dirty = { orders: new Map(), fills: new Map(), plans: new Map() };
   const hb = { day: '', open: false, close: false, lastTick: 0, lastSync: 0, dayCancel: false, sweptAt: 0, closedDay: '', restartPending: false };   // sweptAt: 이 프로세스가 감시를 한 바퀴 마친 시각(재시작 복구용)
   let loaded = false, missing = false, ticking = false, needBal = true;
@@ -88,7 +91,7 @@ function createLive(deps) {
     odno: r.odno, orgno: r.orgno, refPrice: r.ref_price == null ? null : +r.ref_price, simAvg: r.sim_avg == null ? null : +r.sim_avg, simQty: r.sim_qty == null ? null : +r.sim_qty,
     sentAt: r.sent_at ? Date.parse(r.sent_at) : null, msg: r.msg, cancelReq: !!r.cancel_req, excg: r.excg || null, origin: r.origin || null,
   });
-  const fillRow = f => ({ id: f.id, ts: new Date(f.ts).toISOString(), order_id: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: 0, realized: f.realized, reason: f.reason });
+  const fillRow = f => ({ id: f.id, ts: new Date(f.ts).toISOString(), order_id: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee || 0, realized: f.realized, reason: f.reason });
   const fromFill = r => ({ id: r.id, ts: Date.parse(r.ts), orderId: r.order_id, code: r.code, side: r.side, price: +r.price, qty: +r.qty, amount: +r.amount, fee: +r.fee || 0, realized: r.realized == null ? null : +r.realized, reason: r.reason });
 
   async function flush() {
@@ -142,7 +145,7 @@ function createLive(deps) {
 
   async function refreshBalance() {
     const b = await kis.balance();
-    bal.positions = new Map(b.positions.map(p => [p.code, p])); bal.cash = b.cash; bal.at = now(); bal.keys = { row: (b.positions[0] || {})._keys || null, sum: b._keys2 };
+    bal.positions = new Map(b.positions.map(p => [p.code, p])); bal.cash = b.cash; bal.sum = b.sum || null; bal.at = now(); bal.keys = { row: (b.positions[0] || {})._keys || null, sum: b._keys2 };
     needBal = false;
     for (const [code, p] of plans) if (!bal.positions.has(code) && !mine(code, o => o.side === 'buy').length) { plans.delete(code); dirty.plans.set(code, null); event('plan_end', code, { why: 'no_position' }); }
   }
@@ -186,6 +189,7 @@ function createLive(deps) {
       const dq = r.filled - o.filled, amt = r.amt > 0 ? r.amt : r.avg * r.filled, da = amt - (o.amt || 0), px = da > 0 ? da / dq : (r.avg || o.price || 0);
       const p = posOf(o.code), realized = o.side === 'sell' && p ? (px - p.avg) * dq : null;
       const f = { id: `lf${now().toString(36)}${rnd()}`, ts: now(), orderId: o.id, code: o.code, side: o.side, price: Math.round(px * 100) / 100, qty: dq, amount: da > 0 ? da : px * dq, realized, reason: o.reason || 'manual' };
+      f.fee = feeOf(o.side, f.amount);
       fills.unshift(f); dirty.fills.set(f.id, f);
       o.filled = r.filled; o.amt = amt; o.avg = amt / r.filled;
       const pl = plans.get(o.code);
@@ -467,7 +471,7 @@ function createLive(deps) {
   /* ── 조회 ── */
   const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null,
     status: o.status, queueAhead: null, reason: o.reason, note: o.note, msg: o.msg, cancelReq: o.cancelReq, simAvg: o.simAvg, venue: o.excg || null, origin: o.origin || null });
-  const pubFill = f => ({ id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: 0, realized: f.realized, reason: f.reason });
+  const pubFill = f => ({ id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee || 0, realized: f.realized, reason: f.reason });
   const pubPos = p => { const pl = plans.get(p.code); return { code: p.code, name: p.name, qty: p.qty, avg: p.avg, plan: pl ? pl.plan : null, stop: stopOf(p, pl && pl.plan),
     last: (lastPx.get(p.code) || {}).price || p.price || null, avail: p.qty - remain(mine(p.code, o => o.side === 'sell' && !isTp(o))), sellable: p.sellable }; };
   async function state() {
@@ -482,6 +486,36 @@ function createLive(deps) {
       engine: { lastTick: hb.lastTick || null, lastSync: hb.lastSync || null, enabled: !!deps.enabled(), running: !!timer },
       positions: [...bal.positions.values()].map(pubPos), orders: list.map(pubOrder), fills: tf.slice(0, 80).map(pubFill),
       dayBuyKrw: Math.round(dayBuyKrw()), realizedToday: Math.round(tf.reduce((a, f) => a + (f.realized || 0), 0)), limits: deps.limits };
+  }
+  /* 계좌 현황(3단계): 조회 전용. 예수금·D+2·주문 가능·총평가·손익과 보유 종목(직접 몫 / 자동매매 몫 구분).
+     값은 모두 KIS 잔고조회 그대로 — 우리가 계산한 값은 own(자동매매 몫)·direct(그 외)뿐 */
+  async function account() {
+    const nr = await ready();
+    if (nr && nr.error !== 'account not configured') return nr;
+    if (nr) return { ok: true, account: false };
+    try { await lock(refreshBalance); } catch (e) { return bad(502, '잔고를 조회하지 못했습니다: ' + e.message); }
+    let buy = { ok: false };
+    try { const b = await buyable('005930', 0); buy = { ok: true, cash: b.cash, ordCash: b.ordCash }; } catch (e) { buy = { ok: false, error: String(e.message).slice(0, 120) }; }
+    const sum = bal.sum || { cash: bal.cash };
+    const positions = [...bal.positions.values()].map(p => {
+      const pl = plans.get(p.code), own = pl && pl.plan && pl.plan.own != null ? Math.min(p.qty, pl.plan.own) : 0;
+      return { code: p.code, name: p.name, qty: p.qty, sellable: p.sellable, avg: p.avg, price: p.price || (lastPx.get(p.code) || {}).price || null, evalAmt: p.evalAmt, pnl: p.pnl, pnlRt: p.pnlRt, own, direct: p.qty - own, auto: !!(pl && pl.plan && pl.plan.own != null) };
+    });
+    const open = [...orders.values()].filter(o => LIVE.has(o.status)).length;
+    return { ok: true, account: true, at: bal.at, now: now(), summary: sum, buyable: buy, positions, openOrders: open, dayBuyKrw: Math.round(dayBuyKrw()), limits: deps.limits,
+      engine: { enabled: !!deps.enabled(), lastTick: hb.lastTick || null, lastSync: hb.lastSync || null }, fees: FEES };
+  }
+  /* 대사용 스냅샷(3단계): 같은 잠금 안에서 체결조회·잔고를 새로 읽고, KIS 가 보는 오늘 주문 목록과 우리 기록·자동매매 몫을 한꺼번에 돌려준다 */
+  async function reconSnapshot() {
+    const nr = await ready(); if (nr) return nr;
+    return lock(async () => {
+      try { await syncOrders(); await refreshBalance(); await flush(); }
+      catch (e) { return bad(502, '대사용 조회 실패: ' + e.message); }
+      const t = kst(), since = dayStart();
+      const kisRows = await kis.dailyOrders(t.day.replace(/-/g, ''));
+      return { ok: true, day: t.day, kisRows, orders: [...orders.values()].filter(o => o.createdAt >= since || LIVE.has(o.status)).map(o => ({ id: o.id, code: o.code, name: o.name, side: o.side, qty: o.qty, filled: o.filled, status: o.status, odno: o.odno, origin: o.origin || null, createdAt: o.createdAt })),
+        positions: [...bal.positions.values()].map(p => ({ code: p.code, name: p.name, qty: p.qty })), plans: [...plans.entries()].map(([code, p]) => ({ code, own: p.plan && p.plan.own != null ? p.plan.own : null })), cash: bal.cash };
+    });
   }
   /* 계좌 연결 점검: 잔고·체결조회 응답의 필드 이름과 건수만(값은 보내지 않음) */
   async function probe() {
@@ -504,6 +538,7 @@ function createLive(deps) {
       const inR = ms => { const d = new Date(ms + 9 * 3600e3).toISOString().slice(0, 10); return (!from || d >= from) && (!to || d <= to); };
       const cmp = all.filter(o => inR(o.createdAt) && o.filled > 0 && o.simAvg > 0 && (o.type === 'market' || o.reason === 'stop'))
         .map(o => ({ id: o.id, code: o.code, side: o.side, real: o.avg, sim: o.simAvg, diffPct: Math.round((o.side === 'buy' ? (o.avg - o.simAvg) : (o.simAvg - o.avg)) / o.simAvg * 10000) / 100 }));
+      if (r.summary) r.summary.net = r.summary.realized - (r.summary.fee || 0);   // 수수료·세금(추정) 뺀 실현손익
       r.shadow = { orders: cmp.length, avgDiffPct: cmp.length ? Math.round(cmp.reduce((a, x) => a + x.diffPct, 0) / cmp.length * 100) / 100 : null, rows: cmp.slice(0, 50) };
       return r;
     } catch (e) { return bad(502, '리포트를 만들지 못했습니다'); }
@@ -596,7 +631,7 @@ function createLive(deps) {
     buyCache = { at: now(), v };
     return v;
   }
-  return { health, reload, buyable, setPreHold: fn => { preHold = typeof fn === 'function' ? fn : null; }, place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, watchLines, kick, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
+  return { health, reload, buyable, account, reconSnapshot, setPreHold: fn => { preHold = typeof fn === 'function' ? fn : null; }, place, cancel, modify, editPlan, state, report, probe, tick, start, stop, init, watchLines, kick, heldCodes: () => heldCodes(), _orders: orders, _plans: plans, _bal: bal };
 }
 
 module.exports = { createLive };

@@ -151,8 +151,8 @@ function fakeKis() {
       ord_qty: String(o.qty), ord_unpr: String(o.price), tot_ccld_qty: String(o.filled), tot_ccld_amt: String(o.amt), avg_prvs: String(o.filled ? o.amt / o.filled : 0), rmn_qty: String(o.cancelled ? 0 : o.qty - o.filled),
       rjct_qty: '0', cncl_yn: o.cancelled ? 'Y' : 'N', ord_tmd: o.tmd })) };
     const reserved = c => [...kx.orders.values()].filter(o => o.code === c && o.side === 'sell' && !o.cancelled).reduce((a, o) => a + o.qty - o.filled, 0);
-    return { rt_cd: '0', output1: [...kx.hold.entries()].filter(([, h]) => h.qty > 0).map(([c, h]) => ({ pdno: c, prdt_name: c === '005930' ? '삼성전자' : 'SK하이닉스', hldg_qty: String(h.qty), ord_psbl_qty: String(h.qty - reserved(c)), pchs_avg_pric: String(h.avg), prpr: String(kx.st.price) })),
-      output2: [{ dnca_tot_amt: '1000000', tot_evlu_amt: '2000000' }] };
+    return { rt_cd: '0', output1: [...kx.hold.entries()].filter(([, h]) => h.qty > 0).map(([c, h]) => ({ pdno: c, prdt_name: c === '005930' ? '삼성전자' : 'SK하이닉스', hldg_qty: String(h.qty), ord_psbl_qty: String(h.qty - reserved(c)), pchs_avg_pric: String(h.avg), prpr: String(kx.st.price), evlu_amt: String(h.qty * kx.st.price), evlu_pfls_amt: String(Math.round(h.qty * (kx.st.price - h.avg))), evlu_pfls_rt: String(h.avg ? Math.round((kx.st.price / h.avg - 1) * 10000) / 100 : 0) })),
+      output2: [{ dnca_tot_amt: '1000000', nxdy_excc_amt: '900000', prvs_rcdl_excc_amt: '800000', pchs_amt_smtl_amt: '500000', evlu_amt_smtl_amt: '520000', evlu_pfls_smtl_amt: '20000', tot_evlu_amt: '2000000' }] };
   };
   return kx;
 }

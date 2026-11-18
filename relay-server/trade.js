@@ -16,6 +16,7 @@ const { createPaper } = require('./paper');
 const { createLive } = require('./live');
 const SES = require('./session');
 const { createKisOrder } = require('./kis-order');
+const { guardKis } = require('./kis-allow');
 const { promisify } = require('util');
 const pbkdf2 = promisify(crypto.pbkdf2);
 
@@ -485,10 +486,11 @@ function createTrade(deps = {}) {
   /* ── 실전매매(6단계) — REAL_TRADING_ENABLED=1 과 계좌 환경변수가 있어야 동작. 주문 코드는 kis-order.js 에만 있음 ── */
   const acctRaw = String(env.KIS_ACCOUNT_NO || '').replace(/\s/g, '');
   const account = { cano: acctRaw.split('-')[0], prdt: String(env.KIS_ACCOUNT_PRDT || acctRaw.split('-')[1] || '').trim() };
-  const kisOrder = (deps.kisGet && deps.kisPost) ? createKisOrder({ kisGet: deps.kisGet, kisPost: deps.kisPost, account }) : null;
+  const kisOrder = (deps.kisGet && deps.kisPost) ? createKisOrder({ ...guardKis({ kisGet: deps.kisGet, kisPost: deps.kisPost }), account }) : null;
   const live = (paper && kisOrder)
     ? createLive({ now, sbGet: deps.sbGet, sbWrite: deps.sbWrite, getQuote, guard, alert, isOpenDay, kis: kisOrder,
-      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.REAL, enabled: () => cfg.enabled && cfg.realEnabled, authority: hasAuthority, ...extOpts })
+      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.REAL, enabled: () => cfg.enabled && cfg.realEnabled, authority: hasAuthority, ...extOpts,
+      fees: { buy: numEnv(env.LIVE_FEE_BUY_PCT, 0.015), sell: numEnv(env.LIVE_FEE_SELL_PCT, 0.215) } })   // 실전 수수료·세금 추정 %(매도 = 수수료 + 거래세·농특세, 환경변수로 조정)
     : null;
   if (live && !deps.skipLoop) live.start();
 
@@ -624,7 +626,7 @@ function createTrade(deps = {}) {
     if (path.startsWith('/trade/live/') && req.method === 'GET') {
       if (!live) return json(res, 503, { ok: false, error: 'live unavailable' });
       const sp = new URL(req.url, 'http://x').searchParams;
-      const r = path === '/trade/live/state' ? await live.state() : path === '/trade/live/report' ? await live.report(sp.get('from') || null, sp.get('to') || null) : path === '/trade/live/probe' ? await live.probe() : { ok: false, status: 404, error: 'not found' };
+      const r = path === '/trade/live/state' ? await live.state() : path === '/trade/live/report' ? await live.report(sp.get('from') || null, sp.get('to') || null) : path === '/trade/live/probe' ? await live.probe() : path === '/trade/live/account' ? await (async () => { const a = await live.account(); if (a && a.ok && reconRef) a.recon = await reconRef.state().catch(() => null); return a; })() : { ok: false, status: 404, error: 'not found' };
       return json(res, r.ok ? 200 : (r.status || 500), r);
     }
     if (path === '/trade/ping' && req.method === 'GET') {
@@ -678,6 +680,19 @@ function createTrade(deps = {}) {
     if (path === '/trade/live/order' || path === '/trade/live/cancel' || path === '/trade/live/plan' || path === '/trade/live/modify') {
       if (!live) return json(res, 503, { ok: false, error: 'live unavailable' });
       const kind = path.slice('/trade/live/'.length);
+      /* 3단계: 자동매매가 낸 실전 매수 주문도 가상과 똑같이 — 별도 매수는 막고, 정정·취소는 자동매매 기록과 함께 처리 */
+      if (kind === 'order' && body.side === 'buy' && autoRef && autoRef.pendingAutoBuy) {
+        const pid = await autoRef.pendingAutoBuy(String(body.code || '')).catch(() => null);
+        if (pid) return json(res, 409, { ok: false, error: '이 종목은 자동매매 매수 주문이 체결 대기 중입니다. 별도 주문 대신 "자동 주문 수정"으로 가격·수량을 바꾸거나 취소하세요.' });
+      }
+      if ((kind === 'modify' || kind === 'cancel') && autoRef && autoRef.autoOrderCode) {
+        const ac = await autoRef.autoOrderCode(String(body.id || '')).catch(() => null);
+        if (ac) {
+          const r2 = await autoRef.siteOrderEdit(kind === 'cancel' ? { code: ac, action: 'cancel' } : { code: ac, action: 'modify', price: body.price, qty: body.qty });
+          audit('auto_order_edit', !!r2.ok, { code: ac, action: kind, price: body.price, qty: body.qty, error: r2.error }, req, 'REAL');
+          return json(res, r2.ok ? 200 : (r2.status || 400), r2.ok ? (kind === 'cancel' ? { ok: true, order: { id: body.id } } : r2) : { ok: false, error: r2.error });
+        }
+      }
       const r = kind === 'order' ? await live.place(body) : kind === 'cancel' ? await live.cancel(body.id) : kind === 'modify' ? await live.modify(body) : await live.editPlan(body);
       const detail = kind === 'order' ? { code: body.code, side: body.side, type: body.type, price: body.price, qty: body.qty, status: r.order && r.order.status, error: r.error }
         : kind === 'cancel' ? { id: body.id, error: r.error } : kind === 'modify' ? { id: body.id, price: body.price, qty: body.qty, error: r.error } : { code: body.code, stop: body.stop, error: r.error };
@@ -701,7 +716,7 @@ function createTrade(deps = {}) {
     if (path === '/trade/auto/order-edit') {   // 체결 대기 중인 자동 매수 주문 정정·취소 (주문 화면) — 가상매매 전용
       if (!autoRef || !autoRef.siteOrderEdit) return json(res, 503, { ok: false, error: 'auto unavailable' });
       const r = await autoRef.siteOrderEdit(body).catch(e => ({ ok: false, status: 500, error: String((e && e.message) || e).slice(0, 200) }));
-      audit('auto_order_edit', !!r.ok, { code: body.code, action: body.action, price: body.price, qty: body.qty, error: r.error }, req, 'VIRTUAL');
+      audit('auto_order_edit', !!r.ok, { code: body.code, action: body.action, price: body.price, qty: body.qty, error: r.error }, req, r.real ? 'REAL' : 'VIRTUAL');
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
     }
     if (path === '/trade/auto/stage') {   // 단계 버튼: 예정 시각과 무관하게 지금 실행(후보 선정→알림 · 알림 · 종가 판정 · 이월 전환)
@@ -875,7 +890,9 @@ function createTrade(deps = {}) {
   }
   let autoRef = null;   // 자동매매는 trade 보다 나중에 만들어지므로 server.js 가 만든 뒤 붙임
   const attachAuto = a => { autoRef = a; };
-  return { handle, attachAuto, paper, live, getQuote, adminStatus, adminLock, adminDecide, adminKill, securitySummary,
+  let reconRef = null;   // 일일 대사(recon.js) — 계좌 현황 화면에 마지막 결과를 붙임
+  const attachRecon = r => { reconRef = r; };
+  return { handle, attachAuto, attachRecon, paper, live, getQuote, adminStatus, adminLock, adminDecide, adminKill, securitySummary,
     // 체결 틱 깨우기(2026-11-13): 엔진별 감시선 · 깨우기(판정은 엔진이 REST 시세로)
     watchLines: code => [['paper', paper], ['live', live]].filter(([, e]) => e && e.watchLines).map(([k, e]) => { try { return [k, e.watchLines(code)]; } catch (_) { return [k, null]; } }).filter(([, L]) => L),
     kick: (eng, code) => { const e = eng === 'live' ? live : paper; return e && e.kick ? e.kick(code) : Promise.resolve(false); },

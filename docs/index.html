@@ -1080,6 +1080,13 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-rej{margin-top:10px;font-size:12.5px}.au-rej summary{cursor:pointer;color:var(--ink-2)}
 .au-sc.off{opacity:.75}.au-sch{display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap}.au-sn1{font-weight:700;font-size:14.5px}.au-scb{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start}
 .au-scb .chip.on{border-color:var(--good);color:var(--good)}
+.trd-acct-st{font-size:12.5px;line-height:1.6;margin:0 0 8px}.trd-acct-st .bad{color:#d93b3b;font-weight:700}.trd-acct-st .ok{color:#1b7f3b}:root[data-theme="dark"] .trd-acct-st .ok{color:#5fd07f}
+.trd-acct-tb th,.trd-acct-tb td{white-space:nowrap}.au-live-bar{border:1px solid #d93b3b;border-left-width:4px;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12.5px;line-height:1.65;background:var(--surface-2)}.au-live-bar b.r{color:#d93b3b}
+#pinPadBg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
+#pinPad{background:var(--surface,#fff);color:var(--ink,#111);border:1px solid var(--border);border-radius:14px;padding:18px 16px 14px;width:min(320px,100%);box-shadow:0 12px 40px rgba(0,0,0,.4)}
+#pinPad .pm{font-size:13px;line-height:1.55;margin:0 0 12px;white-space:pre-line}#pinPad .pd{display:flex;justify-content:center;gap:10px;min-height:22px;margin:0 0 14px}#pinPad .pd i{width:13px;height:13px;border-radius:50%;border:2px solid var(--ink-3,#888)}#pinPad .pd i.on{background:var(--ink,#111);border-color:var(--ink,#111)}
+#pinPad .pk{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}#pinPad .pk button{font-size:20px;font-weight:600;padding:13px 0;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:inherit;cursor:pointer;font-variant-numeric:tabular-nums}#pinPad .pk button:active{filter:brightness(.9)}
+#pinPad .pb{display:flex;gap:8px;margin-top:10px}#pinPad .pb button{flex:1;padding:10px 0;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:inherit;font-size:14px;cursor:pointer}#pinPad .pb button.go{background:#d93b3b;color:#fff;border-color:#d93b3b;font-weight:700}
 .au-mode{font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;vertical-align:1px}.au-mode.live{background:#d93b3b;color:#fff}.au-mode.dryrun{background:#f2a33a;color:#1b1b1b}
 .au-kind{font-size:11px;font-weight:600;border-radius:6px;padding:1px 6px;background:var(--surface-2);color:var(--ink-2)}
 .au-g{margin-top:12px}.au-g h4{margin:0 0 6px;font-size:12px;color:var(--ink-3);font-weight:700}
@@ -2339,6 +2346,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     </div>
     <div id="trdPanePlan" class="hide"><div class="card"><h3>종목별 매도 계획 <span class="r faint" style="font-size:11px">보유 종목의 손절·트레일링 익절 · 4초마다 갱신</span></h3><div id="trdPlanAll"></div></div></div>
     <div id="trdPaneHold" class="hide">
+    <div class="card hide" id="trdAcctCard"><h3>계좌 현황 <span class="r faint" id="trdAcctAt" style="font-size:11px"></span></h3><div id="trdAcct"></div></div>
     <div class="card"><h3>보유 <span class="r faint" id="trdPl" style="font-size:11px"></span></h3><div id="trdHold"></div></div>
     </div>
     <div id="trdPaneMod" class="hide"><div class="card"><h3>정정 / 취소 <span class="r faint" style="font-size:11px">미체결 주문의 가격·수량을 바꾸거나 취소</span></h3><div id="trdMod"></div></div></div>
@@ -11045,7 +11053,59 @@ async function trdSubmitBuy(cid){
 async function trdLoadState(){
   try{TRD.ps=await trdApi(trdBase()+"/state");TRD.psErr=null;}
   catch(e){TRD.ps=null;TRD.psErr=e;if(e.status===401||e.status===403){trdStop();trdEnter();return;}}
-  trdRenderHold();trdRenderAuNote();if(TRD.pane==="plan")trdRenderPlanAll();if(TRD.pane==="mod")trdRenderMod();if(TRD.pane==="sell")trdRenderSellPick();if(TRD.quote&&TRD.data)trdRenderPlan();else if(TRD.quote)trdRenderOrder();
+  trdRenderHold();trdLoadAcct();trdRenderAuNote();if(TRD.pane==="plan")trdRenderPlanAll();if(TRD.pane==="mod")trdRenderMod();if(TRD.pane==="sell")trdRenderSellPick();if(TRD.quote&&TRD.data)trdRenderPlan();else if(TRD.quote)trdRenderOrder();
+}
+/* ── 거래 PIN 패드(3단계): 브라우저 기본 입력창(글자가 그대로 보임) 대신 점으로만 표시하는 숫자 패드. 확인하면 PIN 문자열, 취소하면 null ── */
+function trdPinPad(msg){
+  return new Promise(res=>{
+    if(document.getElementById("pinPadBg")){res(null);return;}
+    let v="";const bg=document.createElement("div");bg.id="pinPadBg";
+    const keys=[1,2,3,4,5,6,7,8,9,"←",0,"C"];
+    bg.innerHTML=`<div id="pinPad" role="dialog" aria-modal="true" aria-label="거래 PIN 입력"><div class="pm">${trdEsc(msg||"거래 PIN을 입력하세요.")}</div><div class="pd" id="pinDots"></div><div class="pk">${keys.map(k=>`<button type="button" data-pk="${k}">${k}</button>`).join("")}</div><div class="pb"><button type="button" data-pk="x">취소</button><button type="button" class="go" data-pk="ok">확인</button></div></div>`;
+    document.body.appendChild(bg);
+    const dots=()=>{bg.querySelector("#pinDots").innerHTML=Array.from({length:Math.max(6,v.length)},(_,i)=>`<i class="${i<v.length?"on":""}"></i>`).join("");};
+    const done=r=>{document.removeEventListener("keydown",kd,true);bg.remove();res(r);};
+    const press=k=>{if(k==="x")return done(null);if(k==="ok")return v.length?done(v):undefined;if(k==="←")v=v.slice(0,-1);else if(k==="C")v="";else if(v.length<12)v+=k;dots();};
+    const kd=e=>{if(/^\d$/.test(e.key))press(e.key);else if(e.key==="Backspace")press("←");else if(e.key==="Enter")press("ok");else if(e.key==="Escape")press("x");else return;e.preventDefault();e.stopPropagation();};
+    bg.addEventListener("click",e=>{const b=e.target.closest("[data-pk]");if(b)press(b.dataset.pk);else if(e.target===bg)done(null);});
+    document.addEventListener("keydown",kd,true);dots();
+  });
+}
+/* ── 계좌 현황(3단계, 실전 모드): 한국투자증권 잔고조회 값 그대로 · 조회 전용(주문·이체 없음) ── */
+async function trdLoadAcct(){
+  const card=$("#trdAcctCard");if(!card)return;
+  if(TRD.mode!=="REAL"){card.classList.add("hide");return;}
+  card.classList.remove("hide");
+  if(TRD.acctBusy||Date.now()-(TRD.acctAt||0)<15000){trdRenderAcct();return;}
+  TRD.acctBusy=true;
+  try{TRD.acct=await trdApi("/trade/live/account");TRD.acctErr=null;TRD.acctAt=Date.now();}catch(e){TRD.acctErr=e;}
+  TRD.acctBusy=false;trdRenderAcct();
+}
+function trdReconTx(R){
+  if(!R||!R.last)return '<span class="faint">대사 기록 없음(15:45·20:10에 자동 실행)</span>';
+  const L=R.last,bl=Object.keys(R.blocks||{}),t=`${trdEsc(String(L.day).slice(5))} ${L.slot==="a"?"15:45":L.slot==="b"?"20:10":"수동"}`;
+  return (L.ok?`<span class="ok">✔ ${t} 이상 없음</span>`:`<span class="bad">✖ ${t} 불일치 ${N(L.issues.length)}건</span> <span class="faint">${trdEsc((L.issues[0]||{}).text||"")}</span>`)
+    +(bl.length?`<div class="bad">신규 매수 정지 중: ${bl.map(k=>k==="*"?"실전 전략 전부":trdEsc(typeof auName==="function"?auName(k):k)).join(", ")} <span class="faint">(앱에서 확인 후 텔레그램 /대사해제)</span></div>`:"");
+}
+function trdRenderAcct(){
+  const box=$("#trdAcct");if(!box||TRD.mode!=="REAL")return;
+  const A=TRD.acct;
+  if(!A){box.innerHTML='<div class="load">'+(TRD.acctErr?trdEsc(trdErrTx(TRD.acctErr)):"불러오는 중…")+"</div>";return;}
+  if(A.account===false){box.innerHTML='<div class="faint">실전 계좌가 연결되지 않았습니다.</div>';return;}
+  const S=A.summary||{},uc=v=>v>0?"up":v<0?"down":"",w=v=>v==null?"–":N(Math.round(v)),sg=v=>v==null?"–":(v>0?"+":v<0?"-":"")+N(Math.abs(Math.round(v)));
+  const pr=S.purchase>0?S.pnl/S.purchase*100:null;
+  $("#trdAcctAt").textContent=A.at?`${new Date(A.at).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",second:"2-digit"})} 기준 · 한국투자증권 조회값`:"";
+  const eng=A.engine||{},age=eng.lastTick?Math.round((A.now-eng.lastTick)/1000):null;
+  const st=`<div class="trd-acct-st">오늘 매수 ${trdFmtAmt(A.dayBuyKrw||0)}원${A.limits?` / 하루 한도 ${trdFmtAmt(A.limits.day)}원 · 1회 ${trdFmtAmt(A.limits.order)}원`:""} · 미체결 ${N(A.openOrders||0)}건<br>`
+    +`감시 엔진 ${!eng.enabled?'<span class="bad">꺼짐</span>':age==null?"장 시작 전":age<=30?`<span class="ok">정상</span> (${age}초 전)`:`<span class="bad">${age}초째 멈춤</span>`} · 일일 대사 ${trdReconTx(A.recon)}</div>`;
+  const sum=`<div class="trd-hs"><span>예수금(D+0)</span><b>${w(S.cash)}</b><span>D+2 예수금</span><b>${w(S.d2)}</b>
+    <span>D+1 예수금</span><b>${w(S.d1)}</b><span>주문 가능(미수 없음)</span><b>${A.buyable&&A.buyable.ok?w(A.buyable.cash):'<span class="faint">조회 실패</span>'}</b>
+    <span>매입금액</span><b>${w(S.purchase)}</b><span>평가금액</span><b>${w(S.evalAmt)}</b>
+    <span>평가손익</span><b class="${uc(S.pnl)}">${sg(S.pnl)}</b><span>수익률(%)</span><b class="${uc(S.pnl)}">${pr==null?"–":(pr>0?"+":"")+N(pr,2)}</b>
+    <span>총평가금액</span><b>${w(S.total)}</b><span></span><b></b></div>`;
+  const P=A.positions||[];
+  const rows=P.length?`<div class="trd-scroll"><table class="trd-tb trd-acct-tb"><thead><tr><th>종목</th><th>전체</th><th>자동매매</th><th>직접</th><th>평가손익</th><th>수익률</th></tr></thead><tbody>${P.map(p=>`<tr><td>${trdEsc(p.name||trdNm(p.code))}</td><td class="n">${N(p.qty)}</td><td class="n">${p.auto?N(p.own):"–"}</td><td class="n">${N(p.direct)}</td><td class="n ${uc(p.pnl)}">${sg(p.pnl)}</td><td class="n ${uc(p.pnlRt)}">${p.pnlRt==null?"–":(p.pnlRt>0?"+":"")+N(p.pnlRt,2)}</td></tr>`).join("")}</tbody></table></div><div class="faint" style="font-size:11px;margin-top:4px">자동매매 = 전략이 산 수량(손절·익절은 이만큼만) · 직접 = 그 밖의 수량(앱·HTS 포함). 수수료·세금은 체결 때 추정해 성과에 반영하며 실제 청구액과 다를 수 있습니다.</div>`:'<div class="faint" style="font-size:12.5px">보유 종목이 없습니다.</div>';
+  box.innerHTML=st+sum+rows;
 }
 /* 손익비 한 줄: 손절 시 손실(전량) vs 남은 익절 단계대로 팔았을 때 예상 수익 — 표의 손익 칸과 같은 계산 */
 function trdRrLine(h){
@@ -11175,6 +11235,9 @@ async function trdLoadAuto(silent){
   try{
     const [st,sg]=await Promise.all([trdApi("/trade/auto/state"),(!silent||!TRD.aus)?trdApi("/trade/auto/strategies"):Promise.resolve(TRD.aus)]);
     TRD.au=st;TRD.aus=sg;
+    if(Object.values(st.modes||{}).some(m=>m==="live"||m==="dryrun")&&Date.now()-(TRD.auAcctAt||0)>15000){   // 실전·드라이런 전략이 있으면 계좌 상태 줄에 쓸 값을 따로 읽음(실패해도 화면은 그대로)
+      TRD.auAcctAt=Date.now();trdApi("/trade/live/account").then(r=>{TRD.auAcct=r;if(!TRD.auEdit&&TRD.pane==="auto"&&!TRD.auBusy)trdAutoRender();}).catch(()=>{TRD.auAcct=null;});
+    }
   }catch(e){TRD.auBusy=false;if(auErr(e))return;
     if(!silent||!TRD.au)box.innerHTML=`<div class="card"><div class="load">${trdEsc(e.status===503?"자동매매 기능이 서버에 연결되지 않았습니다":"불러오지 못했습니다: "+trdErrTx(e))}</div><button type="button" class="btn ghost" data-aur="1" style="margin-top:8px">다시 시도</button></div>`;return;}
   TRD.auBusy=false;TRD.auRunK=null;trdRenderQ();
@@ -11577,7 +11640,7 @@ function auStatusHtml(){
   const tot=T||{realized:0,evalPl:0,total:0,buyKrw:0,sellKrw:0,holds:P.length,fee:0};
   const cl=v=>trdCls(v),w=v=>(v>0?"+":v<0?"-":"")+N(Math.abs(v),0)+"원";
   const tiles=`<div class="trd-sum" style="margin-bottom:10px"><div><div class="k">오늘 실현손익</div><div class="v ${cl(tot.realized)}">${w(tot.realized)}</div></div><div><div class="k">평가손익(보유)</div><div class="v ${cl(tot.evalPl)}">${w(tot.evalPl)}</div></div><div><div class="k">오늘 합계</div><div class="v ${cl(tot.total)}">${w(tot.total)}</div></div><div><div class="k">매수 / 매도 금액</div><div class="v" style="font-size:14px">${trdFmtAmt(tot.buyKrw)} / ${trdFmtAmt(tot.sellKrw)}</div></div><div><div class="k">보유</div><div class="v">${N(P.length)}종목</div></div></div>`;
-  const hold=P.length?`<div class="au-h4">보유 종목</div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>전략</th><th>수량</th><th>평균가</th><th>현재가</th><th>수익률</th><th>평가손익</th><th>손절가</th><th>익절</th></tr></thead><tbody>${P.map(p=>{const pc=p.avg>0&&p.last>0?(p.last/p.avg-1)*100:null,pl=p.last>0?(p.last-p.avg)*p.qty:null,cy=C.find(c=>c.code===p.code),stp=((p.plan||{}).steps)||[],done=stp.filter(x=>x.sold>0).length;return `<tr><td>${auNm(p.name||p.code,p.code)}${auVn(p.nxt)}</td><td>${cy&&cy.state==="intra"?`장중 전환 <span class="faint">(${trdEsc(cy.from.slice(5))} 이월분 · 시가가 매수가보다 낮아 보류)</span>`:cy?`종가베팅 <span class="faint">(${trdEsc(cy.from.slice(5))} ${trdEsc(cy.sid?auName(cy.sid):"")} 이월${cy.state==="selling"?" · 매도 중":""})</span>`:`장중 ${trdEsc(p.strategy||"")}`}</td><td>${N(p.qty)}</td><td>${N(p.avg)}</td><td>${p.last?N(p.last):"–"}</td><td class="${trdCls(pc)}">${auPct(pc)}</td><td class="n ${trdCls(pl)}">${pl==null?"–":w(Math.round(pl))}</td><td>${p.stop?N(p.stop):"–"}</td><td>${stp.length?`${done}/${stp.length}단계`:"–"}</td></tr>`;}).join("")}</tbody></table></div>`:"";
+  const hold=P.length?`<div class="au-h4">보유 종목</div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>전략</th><th>수량</th><th>평균가</th><th>현재가</th><th>수익률</th><th>평가손익</th><th>손절가</th><th>익절</th></tr></thead><tbody>${P.map(p=>{const pc=p.avg>0&&p.last>0?(p.last/p.avg-1)*100:null,pl=p.last>0?(p.last-p.avg)*p.qty:null,cy=C.find(c=>c.code===p.code),stp=((p.plan||{}).steps)||[],done=stp.filter(x=>x.sold>0).length;return `<tr><td>${auNm(p.name||p.code,p.code)}${auVn(p.nxt)}${auKd(p)}</td><td>${cy&&cy.state==="intra"?`장중 전환 <span class="faint">(${trdEsc(cy.from.slice(5))} 이월분 · 시가가 매수가보다 낮아 보류)</span>`:cy?`종가베팅 <span class="faint">(${trdEsc(cy.from.slice(5))} ${trdEsc(cy.sid?auName(cy.sid):"")} 이월${cy.state==="selling"?" · 매도 중":""})</span>`:`장중 ${trdEsc(p.strategy||"")}`}</td><td>${N(p.qty)}</td><td>${N(p.avg)}</td><td>${p.last?N(p.last):"–"}</td><td class="${trdCls(pc)}">${auPct(pc)}</td><td class="n ${trdCls(pl)}">${pl==null?"–":w(Math.round(pl))}</td><td>${p.stop?N(p.stop):"–"}</td><td>${stp.length?`${done}/${stp.length}단계`:"–"}</td></tr>`;}).join("")}</tbody></table></div>`:"";
   const B=F.filter(f=>f.side==="buy"),Sl=F.filter(f=>f.side==="sell"),pctOf=f=>f.realized!=null&&f.amount-f.realized>0?f.realized/(f.amount-f.realized)*100:null;
   const buyT=`<div class="au-h4">오늘 매수 현황 <span class="faint" style="font-weight:400">${B.length?`${N(B.length)}건 · ${trdFmtAmt(tot.buyKrw)}원`:""}</span></div>${B.length?`<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>시각</th><th>종목</th><th>수량·가격</th><th>금액</th></tr></thead><tbody>${B.map(f=>`<tr><td>${auHMs(f.ts)}</td><td>${auNm(f.name,f.code)}</td><td class="n">${N(f.qty)}주 @${N(f.price)}</td><td class="n">${trdFmtAmt(f.amount)}</td></tr>`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">오늘 매수 체결이 아직 없어요.</div>'}`;
   const sellT=`<div class="au-h4">오늘 매도 현황 <span class="faint" style="font-weight:400">${Sl.length?`${N(Sl.length)}건 · ${trdFmtAmt(tot.sellKrw)}원 · 실현 `:""}</span>${Sl.length?`<b class="${cl(tot.realized)}" style="font-weight:700">${w(tot.realized)}</b>`:""}</div>${Sl.length?`<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>시각</th><th>종목</th><th>구분</th><th>수량·가격</th><th>금액</th><th>실현손익</th><th>수익률</th></tr></thead><tbody>${Sl.map(f=>`<tr><td>${auHMs(f.ts)}</td><td>${auNm(f.name,f.code)}</td><td><span class="au-sd sdsell">${trdEsc(auFillTx(f))}</span></td><td class="n">${N(f.qty)}주 @${N(f.price)}</td><td class="n">${trdFmtAmt(f.amount)}</td><td class="n ${cl(f.realized)}">${f.realized!=null?w(Math.round(f.realized)):"–"}</td><td class="n ${cl(pctOf(f))}">${auPct(pctOf(f))}</td></tr>`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">오늘 매도 체결(익절·손절·정리)이 아직 없어요.</div>'}`;
@@ -11585,7 +11648,18 @@ function auStatusHtml(){
   const HC=A.holdCmp||[];
   const holdCmpT=HC.length?(()=>{const sS=HC.reduce((a,x)=>a+x.straight,0),sA=HC.reduce((a,x)=>a+x.actual,0);
     return `<div class="au-h4">아침 보류 효과 <span class="faint" style="font-weight:400">09:00에 그냥 팔았다면 vs 장중 전환 후 · 수수료 제외</span></div><div class="trd-scroll"><table class="trd-tb"><thead><tr><th>종목</th><th>보류 시점가</th><th>그냥 팔았다면</th><th>전환 후 실제</th><th>차이</th></tr></thead><tbody>${HC.map(x=>`<tr><td>${auNm(x.name,x.code)}<div class="faint" style="font-size:11px">매수가 ${N(x.avg)}원 · ${N(x.qty)}주${x.soldQty?` · 매도 ${N(x.soldQty)}주`:""}${x.restQty?` · 보유 ${N(x.restQty)}주(현재 ${N(x.last)}원)`:""}</div></td><td>${N(x.holdPrice)}원</td><td class="${cl(x.straight)}">${w(x.straight)}</td><td class="${cl(x.actual)}">${w(x.actual)}</td><td class="${cl(x.diff)}"><b>${w(x.diff)}</b></td></tr>`).join("")}</tbody><tfoot><tr><td colspan="2"><b>합계</b></td><td class="${cl(sS)}">${w(sS)}</td><td class="${cl(sA)}">${w(sA)}</td><td class="${cl(sA-sS)}"><b>${w(sA-sS)}</b></td></tr></tfoot></table></div><div class="faint" style="font-size:11.5px;margin:4px 0 8px">차이가 +이면 보류가 이득, −이면 그냥 파는 게 나았다는 뜻입니다. 남은 수량은 현재가(마감 후엔 종가)로 평가한 값입니다.</div>`;})():"";
-  return `<div class="card au-sec" id="au-sec-hold"><h3>자동매매 현황 <span class="r faint" style="font-size:11px">손절·익절은 가상매매 엔진이 감시 · 실현손익은 수수료 반영</span></h3>${tiles}${hold}${holdCmpT}${trd}</div>`;
+  return `<div class="card au-sec" id="au-sec-hold"><h3>자동매매 현황 <span class="r faint" style="font-size:11px">손절·익절은 매매 엔진이 감시 · 가상 실현손익은 수수료 반영</span></h3>${tiles}${hold}${holdCmpT}${trd}</div>`;
+}
+const auHasLive=()=>Object.values((TRD.au||{}).modes||{}).some(m=>m==="live"||m==="dryrun");
+const auKd=p=>{const live=Object.values((TRD.au||{}).modes||{}).includes("live");return p.kind==="live"?' <span class="au-mode live">실전</span>':live?' <span class="au-mode dryrun" style="background:var(--surface-2);color:var(--ink-3)">가상</span>':"";};
+/* 실전 상태 줄(3단계): 실전·드라이런 전략이 있을 때만 — 오늘 매수액·주문 가능 금액·엔진·마지막 대사 */
+function auLiveBar(){
+  const A=TRD.au,md=A.modes||{},nm=m=>Object.keys(md).filter(k=>md[k]===m).map(k=>trdEsc(auName(k)));
+  const L=nm("live"),D=nm("dryrun");if(!L.length&&!D.length)return "";
+  const X=TRD.auAcct,eng=X&&X.engine||{},age=eng.lastTick?Math.round((X.now-eng.lastTick)/1000):null;
+  const halt=A.halt==="buy"?'<b class="r">신규 매수 정지 중</b> · ':A.halt==="all"?'<b class="r">자동매매 전체 정지 중</b> · ':"";
+  const money=X&&X.account?`오늘 실전 매수 ${trdFmtAmt(X.dayBuyKrw||0)}원${X.limits?` / 한도 ${trdFmtAmt(X.limits.day)}원`:""} · 주문 가능 ${X.buyable&&X.buyable.ok?trdFmtAmt(X.buyable.cash)+"원":"확인 못 함"} · 예수금 ${trdFmtAmt((X.summary||{}).cash||0)}원<br>엔진 ${!eng.enabled?'<b class="r">꺼짐</b>':age==null?"장 시작 전":age<=30?`정상(${age}초 전)`:`<b class="r">${age}초째 멈춤</b>`} · 일일 대사 ${trdReconTx(X.recon)}`:'<span class="faint">계좌 상태를 불러오는 중…</span>';
+  return `<div class="au-live-bar">${halt}${L.length?`<b class="r">실전</b> ${L.join(", ")}`:""}${L.length&&D.length?" · ":""}${D.length?`<span class="au-mode dryrun">드라이런</span> ${D.join(", ")} <span class="faint">(주문은 가상으로만)</span>`:""}<br>${money}</div>`;
 }
 function auTodayHtml(){
   const A=TRD.au,G=TRD.aus,ids=auIds();
@@ -11661,7 +11735,7 @@ async function auSave(id,confirm,pin){
   if(r){TRD.auEdit=null;TRD.auOpen[id]=true;delete TRD.auVer[id];await trdLoadAuto();return;}
   if(TRD.auMsg&&TRD.auMsg.needConfirm){E.warn=TRD.auMsg.warnings||[];TRD.auMsg=null;trdAutoRender();return;}
   if(TRD.auMsg&&TRD.auMsg.needPin){   // 실거래 전환 2단계: 실행 모드를 "실전"으로 바꿀 때 거래 PIN 재확인
-    const p=window.prompt("🔴 실행 모드를 '실전'으로 바꿉니다 — 실제 계좌로 주문이 나갑니다.\n확인하려면 거래 PIN을 입력하세요.");
+    const p=await trdPinPad("🔴 실행 모드를 '실전'으로 바꿉니다.\n실제 계좌로 주문이 나갑니다.\n확인하려면 거래 PIN을 입력하세요.");
     if(p){await auSave(id,confirm,p);return;}
     TRD.auMsg={t:"실전 전환을 취소했습니다(PIN 미입력)."};
   }
@@ -11889,7 +11963,7 @@ function trdAutoHtml(){
       <div class="faint">${A.tradingDay?trdEsc(auNext()):"휴장일"}${sum?" · "+trdEsc(sum):""}</div>${A.regime?`<div><button type="button" class="au-mr ${(MR_ST[A.regime.stage]||[])[1]||""}" data-aumkt="1" title="시황 › 시장에서 자세히">시장 ${trdEsc((MR_ST[A.regime.stage]||[A.regime.stage])[0])} ${N(A.regime.score,0)}점</button> <span class="faint" style="font-size:11.5px">${trdEsc(String(A.regime.date).slice(5))} 종가 기준 · ${Is.some(I=>I.params.regimeMode==="scale")?`금액 조절 중(${Is.filter(I=>I.params.regimeMode==="scale").map(I=>auLetter(I.id)).join("·")})`:"표시만"}</span></div>`:""}${auExposureHtml(A)}</div>
       <button type="button" class="chip" data-aur="1">새로고침</button></div>
     ${msg?`<div class="${msg.ok||msg.t==="처리 중…"?"au-msg":"trd-halt"}" style="margin-top:8px">${trdEsc(msg.t)}</div>`:""}${A.lastErr?`<div class="trd-halt" style="margin-top:8px">최근 서버 오류: ${trdEsc(A.lastErr)}</div>`:""}
-    <div class="faint" style="font-size:11px;margin-top:6px">가상매매 전용 · 실제 주문 없음. 전체 스위치를 끄면 새 매수만 멈추고 이미 산 종목의 손절·익절·아침 매도는 계속됩니다.</div></div>`;
+    ${auLiveBar()}<div class="faint" style="font-size:11px;margin-top:6px">${auHasLive()?"실전 표시 전략은 실제 계좌로 주문합니다. ":"가상매매 전용 · 실제 주문 없음. "}전체 스위치를 끄면 새 매수만 멈추고 이미 산 종목의 손절·익절·아침 매도는 계속됩니다.</div></div>`;
   const tab=(k,t)=>`<button type="button" data-aut="${k}"${TRD.auTab===k?' class="on"':""}>${t}</button>`;
   return band+`<div class="trd-tabs" role="tablist">${tab("today","오늘")}${tab("strat","전략")}${tab("journal","일지")}${tab("perf","성과")}</div>`+(TRD.auTab==="strat"?auStratHtml():TRD.auTab==="journal"?auDayLogHtml():TRD.auTab==="perf"?auPerfHtml():auTodayHtml());
 }

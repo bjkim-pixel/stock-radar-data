@@ -7,7 +7,7 @@ const { fakeDb, boot, fakeKis } = require('./paper-harness');
 
 /* 종가베팅 저녁 매수(18:00 관찰 → 19:30 최종 선정): NXT 종목만 · 종가가 고가 5% 이내(2% 넘게 내리면 감점) · 손절 −5%만 걸고 익절 없음 · 20:00 이월 */
 const MIN = 60e3;
-async function rig({ approval = 'auto', cbMax = 3, cbOn = true, watchMin, live = false, perStock = 1000000, iExtra = {} } = {}) {
+async function rig({ approval = 'auto', cbMax = 3, cbOn = true, watchMin, live = false, perStock = 1000000, iExtra = {}, dExtra = {} } = {}) {
   const kx = live ? fakeKis() : null;
   const db = fakeDb(), c = await boot(db, live ? { envExtra: { REAL_TRADING_ENABLED: '1', KIS_ACCOUNT_NO: '12345678-01' }, kx } : {});
   for (const k of ['035420', '051910']) db.t.stocks.set(k, { code: k, nxt_ok: true, security_type: 'STOCK' });
@@ -34,7 +34,7 @@ async function rig({ approval = 'auto', cbMax = 3, cbOn = true, watchMin, live =
     sbWrite: async (p, m, b) => { b.forEach(x => { if (p.startsWith('auto_runs')) runs[x.trade_date] = JSON.parse(JSON.stringify(x)); else cfg[x.key] = JSON.parse(JSON.stringify(x.value)); }); },
     sendTelegram: async t => sent.push(t), kstNow: kst, isTradingDay: () => true, now: () => c.st.clock,
     prevTradingDay: d => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() - 1); return x.toISOString().slice(0, 10); },
-    paper: c.t.paper, ...(live ? { live: c.t.live, modeOf: () => 'live', kindsInUse: () => ['live'], liveLimits: () => c.t.cfg.limits.REAL } : {}), getQuote: code => c.t.getQuote(code, true), loadChart: async () => rows,
+    paper: c.t.paper, ...dExtra, ...(live ? { live: c.t.live, modeOf: () => 'live', kindsInUse: () => ['live'], liveLimits: () => c.t.cfg.limits.REAL } : {}), getQuote: code => c.t.getQuote(code, true), loadChart: async () => rows,
     livePool: async () => pool, fetchFlow: async () => ({ fq: 1000, oq: 800 }), fetchPower: async () => ({ pgQty: 200, w52: 11000 }), fetchCttr: async () => ({ err: 'after hours' }), marketState: async () => null, marketIdx: async () => ({ 코스피: 0.2, 코스닥: 0.1 }),
   });
   const date = kst().date;
@@ -169,6 +169,18 @@ test('[실전 연결] "실전 자동 승인 허용"을 켠 실전 전략: 자동
   assert.ok(sent.some(t => /실전 매수/.test(t)), sent.join('|'));
   assert.ok(sent.some(t => /^🔴실전/.test(t)), '실전 전략 알림 앞에 실전 표시');
   await c.close();
+});
+test('[대사 정지] 일일 대사 불일치로 막힌 실전 전략은 자동 승인 매수도 안 나감(사유를 남김) · 막지 않은 가상 전략은 그대로', async () => {
+  const { c, runs, sent, date, at, px, kx, A } = await rig({ live: true, perStock: 400000, iExtra: { liveAutoOk: true }, dExtra: { reconBlock: async sid => `일일 대사 불일치로 신규 매수 정지 — 테스트(${sid})` } });
+  at(19, 31); px(10000); await A.tick(); at(19, 32); await A.tick();
+  assert.equal(kx.posts.filter(p => p.tr === 'TTTC0012U').length, 0, '대사 정지 중에는 KIS 매수 없음');
+  const why = JSON.stringify(runs[date].payload);
+  assert.match(why, /일일 대사 불일치/, '사유가 기록에 남음');
+  await c.close();
+  const p = await rig({ perStock: 400000, dExtra: { reconBlock: async () => '가상에는 적용 안 됨' } });
+  p.at(19, 31); p.px(10000); await p.A.tick();
+  assert.equal(Object.keys(p.runs[p.date].payload.orders || {}).length > 0, true, '가상 전략은 대사 정지의 영향을 받지 않음');
+  await p.c.close();
 });
 test('[실전 연결] 실전 전략은 기본이 직접 승인 — 자동 승인 안 함(안내는 한 번) → 사이트에서 승인하면 1회 상한(50만 원)에 맞춰 금액을 줄여 KIS 주문', async () => {
   const { c, A, runs, sent, date, at, px, kx } = await rig({ live: true, perStock: 1000000 });

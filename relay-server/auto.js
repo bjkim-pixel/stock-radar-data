@@ -464,6 +464,12 @@ function createAuto(deps) {
     const l = await haltLevel();
     return l === 'buy' ? '자동매매 신규 매수 정지 중(/자동재개 로 풀기)' : l === 'all' ? '자동매매 전체 정지 중(/자동재개 로 풀기)' : null;
   }
+  /* 3단계: 일일 대사 불일치로 막힌 실전 전략은 신규 매수만 멈춤(손절·익절·정리는 계속) */
+  async function haltReasonFor(sid) {
+    const h = await haltReason(); if (h) return h;
+    if (D.reconBlock && BR.execOf(sid) === 'live') return (await D.reconBlock(sid).catch(() => null)) || null;
+    return null;
+  }
   async function setHalt(level, via) {
     const v = level === 'buy' || level === 'all' ? level : null;
     await D.sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'halt', value: { level: v, at: new Date().toISOString(), via: via || null }, updated_at: new Date().toISOString() }]);
@@ -565,7 +571,7 @@ function createAuto(deps) {
   const execFor = sid => HAS ? (execs[sid] = execs[sid] || require('./auto-exec').createExec({
     broker: BR.of(sid), getQuote: D.getQuote, loadChart: D.loadChart, sendTelegram: tgFor(sid), now: D.now,
     mutateRun: (d, fn) => mutateRun(d, sid, fn), readRun: d => readRun(d, sid), perStock: () => perStockOf(sid), opt: () => execOpt(sid), optCb: () => cbOpt(sid), exposure: () => exposureFor(sid),
-    sizeOne: (code, q, opt, cb) => sizeOne(sid, code, q, opt, cb), halt: haltReason, dryLog: e => dryLog(sid, e),
+    sizeOne: (code, q, opt, cb) => sizeOne(sid, code, q, opt, cb), halt: () => haltReasonFor(sid), dryLog: e => dryLog(sid, e),
   })) : null;
   /* 아침 보류 때 다시 걸 매도 계획: ① 넘기기 전에 저장해 둔 원래 계획 ② 산 날 주문의 계획 ③ 평균 매수가 기준으로 새로 계산(종가베팅 저녁 매수 종목) */
   async function restorePlan(it, p) {
@@ -1220,7 +1226,7 @@ function createAuto(deps) {
           const cs = [...watch];
           if (cs.length) (await D.sbGet(`stocks?select=code,nxt_ok&code=in.(${cs.join(',')})&limit=200`).catch(() => [])).forEach(r => { nx[r.code] = !!r.nxt_ok; });
         } catch (_) {}
-        positions = ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop, plan: p.plan || null, dayHigh: p.dayHigh || null, dayLow: p.dayLow || null, avail: p.avail, strategy: owner[p.code] || null, nxt: nx[p.code] == null ? null : nx[p.code] }));
+        positions = ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop, plan: p.plan || null, dayHigh: p.dayHigh || null, dayLow: p.dayLow || null, avail: p.avail, strategy: owner[p.code] || null, kind: p.kind || 'paper', nxt: nx[p.code] == null ? null : nx[p.code] }));
         // 오늘 체결(자동매매 종목만): 시각순, 종목명은 포지션·주문에서 찾음
         const nm = {};
         ps.positions.forEach(p => { nm[p.code] = p.name; });
@@ -1289,7 +1295,7 @@ function createAuto(deps) {
     const ex = execFor(a.sid); if (!ex) return { ok: false, status: 503, error: 'auto unavailable' };
     const r = await ex.userEdit(a.date, code, { action: body.action === 'cancel' ? 'cancel' : 'modify', price: body.price, qty: body.qty });
     if (r && r.ok) { const nm = (r.order && r.order.name) || code; await D.sendTelegram(`🖥 사이트에서 [${labelOf(a.sid)}] ${nm} 자동 매수 주문을 ${r.action === 'cancel' ? '취소' : `정정(${Number(body.price).toLocaleString('ko-KR')}원${body.qty ? ' ' + body.qty + '주' : ''})`}했어요.`).catch(() => {}); }
-    return r;
+    return r && typeof r === 'object' ? { ...r, real: BR.of(a.sid).real } : r;
   }
   /* 사이트 주문 화면: 같은 종목에 자동 매수 주문이 걸려 있는지(직접 별도 매수 막기용) */
   async function pendingAutoBuy(code) { const a = await activeBuy(code).catch(() => null); return a ? a.orderId : null; }
