@@ -1067,6 +1067,9 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-st.done .au-b{color:var(--good)}.au-st.now .au-b{color:var(--warn);font-weight:700}.au-sl{margin-top:2px;font-weight:600}.au-sn{color:var(--ink-3);font-size:11px;margin-top:1px}
 .au-act{border-color:var(--warn)}.au-chks{display:flex;flex-direction:column;gap:6px;font-size:13px;margin:4px 0 10px}.au-chks label{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .au-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.au-spin{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:auspin .8s linear infinite}
+@keyframes auspin{to{transform:rotate(360deg)}}
+.btn.au-run{opacity:.85;cursor:progress}
 .au-row{cursor:pointer}.au-row:hover td{background:var(--surface-2)}.au-det{background:var(--surface-2);white-space:normal;text-align:left!important}
 .au-parts{display:grid;gap:4px;max-width:420px}.au-parts>div{display:grid;grid-template-columns:64px 1fr 56px;align-items:center;gap:8px;font-size:12px}.au-parts b{text-align:right;font-variant-numeric:tabular-nums}
 .au-bar{height:8px;background:var(--surface-3);border-radius:4px;overflow:hidden}.au-bar i{display:block;height:100%;background:var(--ink-2)}
@@ -11169,23 +11172,24 @@ async function trdLoadAuto(silent){
     TRD.au=st;TRD.aus=sg;
   }catch(e){TRD.auBusy=false;if(auErr(e))return;
     if(!silent||!TRD.au)box.innerHTML=`<div class="card"><div class="load">${trdEsc(e.status===503?"자동매매 기능이 서버에 연결되지 않았습니다":"불러오지 못했습니다: "+trdErrTx(e))}</div><button type="button" class="btn ghost" data-aur="1" style="margin-top:8px">다시 시도</button></div>`;return;}
-  TRD.auBusy=false;trdRenderQ();
+  TRD.auBusy=false;TRD.auRunK=null;trdRenderQ();
   if(silent){const f=document.activeElement;if(TRD.auEdit||(f&&box.contains(f)&&/INPUT|SELECT|TEXTAREA/.test(f.tagName)))return;}   // 편집·입력 중에는 화면을 바꾸지 않음
   trdAutoRender();
 }
-function trdAutoRender(){const b=$("#trdPaneAuto");if(b&&TRD.au&&TRD.aus)b.innerHTML=trdAutoHtml();}
+function trdAutoRender(){const b=$("#trdPaneAuto");if(b&&TRD.au&&TRD.aus){b.innerHTML=trdAutoHtml();if(TRD.auRunK)b.querySelectorAll(".au-spin").forEach(x=>{const bt=x.closest("button");if(bt){bt.disabled=true;bt.classList.add("au-run");}});}}
 const auStrat=id=>((TRD.aus&&TRD.aus.strategies)||[]).find(s=>s.id===id);
 const auFields=kind=>((TRD.aus&&TRD.aus.schema&&TRD.aus.schema.fields)||{})[kind]||[];
 async function auPost(path,body,okText){
   if(TRD.auBusy)return null;TRD.auBusy=true;TRD.auMsg={t:"처리 중…"};trdAutoRender();
   let r=null;
   try{r=await trdApi(path,{method:"POST",body});TRD.auMsg={ok:true,t:okText?okText(r):(r.reply||"저장했습니다.")};}
-  catch(e){TRD.auBusy=false;if(auErr(e))return null;TRD.auMsg={t:"실패: "+trdErrTx(e)+(e.body&&e.body.errs?"":""),errs:e.body&&e.body.errs,needConfirm:e.body&&e.body.needConfirm,warnings:e.body&&e.body.warnings};r=null;}
+  catch(e){TRD.auBusy=false;TRD.auRunK=null;if(auErr(e))return null;TRD.auMsg={t:"실패: "+trdErrTx(e)+(e.body&&e.body.errs?"":""),errs:e.body&&e.body.errs,needConfirm:e.body&&e.body.needConfirm,warnings:e.body&&e.body.warnings};r=null;}
   TRD.auBusy=false;return r;
 }
 /* 두 번 눌러야 실행되는 버튼(4초) */
-function auArmed(key){if(TRD.auArm&&TRD.auArm.k===key&&Date.now()-TRD.auArm.t<4000){TRD.auArm=null;return true;}TRD.auArm={k:key,t:Date.now()};trdAutoRender();clearTimeout(TRD.auArmT);TRD.auArmT=setTimeout(()=>{TRD.auArm=null;trdAutoRender();},4100);return false;}
-const auArmTx=(key,a,b)=>TRD.auArm&&TRD.auArm.k===key?b:a;
+function auArmed(key){if(TRD.auArm&&TRD.auArm.k===key&&Date.now()-TRD.auArm.t<4000){TRD.auArm=null;TRD.auRunK=key;clearTimeout(TRD.auRunT);TRD.auRunT=setTimeout(()=>{if(TRD.auRunK===key){TRD.auRunK=null;trdAutoRender();}},30000);return true;}TRD.auArm={k:key,t:Date.now()};trdAutoRender();clearTimeout(TRD.auArmT);TRD.auArmT=setTimeout(()=>{TRD.auArm=null;trdAutoRender();},4100);return false;}
+/* 두 번째 클릭 뒤엔 문구를 되돌리지 않고 '○○ 중…' + 회전 표시로 바꿔 진행 중임을 보여줌(서버 처리·화면 갱신이 끝나면 원래 문구로) */
+const auArmTx=(key,a,b)=>TRD.auRunK===key?`<span class="au-spin" aria-hidden="true"></span>${trdEsc(/^다시 만듭니다/.test(String(b).replace(/^한 번 더 누르면 /,""))?"다시 만드는 중…":String(b).replace(/^한 번 더 누르면 /,"").split(" · ")[0]+" 중…")}`:TRD.auArm&&TRD.auArm.k===key?b:a;
 
 /* ── 오늘: 단계 계산(서버 기록 + 전략 시각). 장중 전략마다 한 줄, 종가베팅 한 줄 ── */
 const auIds=()=>{const G=TRD.aus,A=TRD.au;return [...new Set([...(G.active.intraday||[]),...((A.todays||[]).map(t=>t.sid))])];};
