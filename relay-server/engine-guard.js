@@ -96,11 +96,11 @@ function evalHealth(i) {
   const auth = i.authority || { mode: 'disabled', held: true };
   const out = { phase, reasons, uptimeSec: Math.round((i.now - i.bootAt) / 1000) };
   const eng = {};
-  for (const [k, label] of [['paper', '가상매매'], ['live', '실전매매']]) {
+  for (const [k, label] of [['paper', '가상매매'], ['dry', '드라이런'], ['live', '실전매매']]) {
     const e = i.engines && i.engines[k]; if (!e) continue;
     const age = e.lastTick ? i.now - e.lastTick : null;
-    eng[k] = { enabled: !!e.enabled, lastTickAgeSec: age == null ? null : Math.round(age / 1000), closedToday: !!e.closedToday };
-    if (!act || !e.enabled || e.closedToday || !auth.held) continue;
+    eng[k] = { enabled: !!e.enabled, lastTickAgeSec: age == null ? null : Math.round(age / 1000), closedToday: !!e.closedToday, ...(e.missing ? { missing: true } : {}) };
+    if (!act || !e.enabled || e.closedToday || !auth.held || e.missing) continue;   // 테이블이 아직 없는 장부(드라이런 DB 설정 전)는 감시 대상이 아님 — 주문도 받지 않음
     if (age == null) reasons.push(`${label} 감시 루프가 시작 후 아직 한 번도 돌지 않았습니다`);
     else if (age > staleMs) reasons.push(`${label} 감시 루프가 ${Math.round(age / 1000)}초째 멈춰 있습니다`);
   }

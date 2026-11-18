@@ -3,12 +3,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createDayLog, slim, summary, SAVE_AT, MEMO_MAX } = require('../auto-daylog');
 
-function rig({ rows = {}, state, strategies, trading = true } = {}) {
+function rig({ rows = {}, state, stateReal, strategies, trading = true } = {}) {
   const db = { auto_daylog: { ...rows } }, writes = [];
   let t = 1e12;
   const D = {
     now: () => t, isTradingDay: () => trading,
-    uiState: async () => state || { date: '2026-11-16', todays: [{ sid: 'intraday-a', picks: [{ code: 'A' }], log: Array.from({ length: 300 }, (_, i) => ({ text: 'x'.repeat(500) + i })) }], trades: [{ side: 'buy' }, { side: 'sell' }, { side: 'buy' }], positions: [{ code: 'A' }], carry: [], dayTot: { net: 1234 }, history: [1, 2, 3], totals: { a: 1 }, quotes: { A: {} } },
+    uiState: async (d, side) => side === 'real' ? (stateReal || { date: '2026-11-16', todays: [] }) : state || { date: '2026-11-16', todays: [{ sid: 'intraday-a', picks: [{ code: 'A' }], log: Array.from({ length: 300 }, (_, i) => ({ text: 'x'.repeat(500) + i })) }], trades: [{ side: 'buy' }, { side: 'sell' }, { side: 'buy' }], positions: [{ code: 'A' }], carry: [], dayTot: { net: 1234 }, history: [1, 2, 3], totals: { a: 1 }, quotes: { A: {} } },
     strategies: async () => strategies || { active: { intraday: ['intraday-a'], closing: 'closing-b' }, strategies: [{ id: 'intraday-a', name: 'A', kind: 'intraday', version: 1, params: { perStockKrw: 1 } }, { id: 'old', name: 'x', kind: 'intraday', params: {} }], times: { a: 1 }, timesBy: {} },
     sbGet: async q => {
       const m = q.match(/trade_date=eq\.(\d{4}-\d{2}-\d{2})/);
@@ -67,4 +67,38 @@ test('지난 날짜 재구성(rebuilt) 저장: 실행 기록이 있으면 저장
   const e = rig({ state: { date: '2026-11-16', rebuilt: true, todays: [] } });
   const no = await e.dl.save('2026-11-16', { force: true });
   assert.equal(no.ok, false); assert.equal(no.status, 404);
+});
+
+/* 실전 탭(2026-11-19): 같은 행에 실전 탭(real)도 저장하고, 목록·상세를 쪽별로 */
+test('실전 탭: 실전 탭 기록이 있으면 snap.real·sum.real 로 함께 저장하고 쪽별로 꺼내 준다', async () => {
+  const real = { date: '2026-11-16', todays: [{ sid: 'intraday-r', picks: [{ code: 'B' }, { code: 'C' }], log: [] }], trades: [{ side: 'buy' }], positions: [], carry: [], dayTot: { net: -50 } };
+  const k = rig({ stateReal: real });
+  assert.equal((await k.dl.save('2026-11-16')).ok, true);
+  const row = k.db.auto_daylog['2026-11-16'];
+  assert.equal(row.snap.v, 2);
+  assert.equal(row.snap.real.state.todays[0].sid, 'intraday-r');
+  assert.deepEqual(row.sum.real, { picks: 2, buys: 1, sells: 0, holds: 0, carry: 0, net: -50, strategies: 1 });
+  const lp = await k.dl.list(10, 'paper'), lr = await k.dl.list(10, 'real');
+  assert.equal(lp.rows[0].sum.real, undefined, '가상 목록에는 실전 요약이 섞이지 않음'); assert.equal(lp.rows[0].sum.picks, 1);
+  assert.equal(lr.rows[0].sum.picks, 2);
+  const gp = await k.dl.get('2026-11-16'), gr = await k.dl.get('2026-11-16', 'real');
+  assert.equal(gp.snap.state.todays[0].sid, 'intraday-a'); assert.equal(gp.snap.real, undefined);
+  assert.equal(gr.snap.state.todays[0].sid, 'intraday-r'); assert.equal(gr.side, 'real');
+});
+test('실전 탭: 실전 기록이 없는 날은 실전 목록에서 빠지고 상세는 404 · 가상만 있는 예전 행도 그대로 읽힘', async () => {
+  const k = rig();
+  await k.dl.save('2026-11-16');
+  assert.equal(k.db.auto_daylog['2026-11-16'].snap.real, undefined);
+  assert.equal((await k.dl.list(10, 'real')).rows.length, 0);
+  assert.equal((await k.dl.get('2026-11-16', 'real')).status, 404);
+  const old = rig({ rows: { '2026-11-10': { trade_date: '2026-11-10', sum: { picks: 3, strategies: 1 }, snap: { v: 1, state: { todays: [] } }, memo: '' } } });
+  assert.equal((await old.dl.list(10)).rows.length, 1);
+  assert.equal((await old.dl.list(10, 'real')).rows.length, 0);
+});
+test('실전 탭: 실전 탭에만 기록이 있는 날도 저장(가상 탭 목록에는 안 보임)', async () => {
+  const real = { date: '2026-11-16', todays: [{ sid: 'intraday-r', picks: [], log: [] }], trades: [], positions: [], carry: [], dayTot: {} };
+  const k = rig({ state: { date: '2026-11-16', todays: [], trades: [], positions: [], carry: [], dayTot: {} }, stateReal: real });
+  assert.equal((await k.dl.save('2026-11-16')).ok, true);
+  assert.equal((await k.dl.list(10, 'paper')).rows.length, 0);
+  assert.equal((await k.dl.list(10, 'real')).rows.length, 1);
 });

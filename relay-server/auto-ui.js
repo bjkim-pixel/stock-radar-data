@@ -13,8 +13,9 @@ function summarizeRun(r, full) {
   const names = {}; (p.picks || []).forEach(x => { names[x.code] = x.name; }); (p.shadow || []).forEach(x => { if (!names[x.code]) names[x.code] = x.name; });
   const cbCodes = new Set((p.picks || []).filter(x => x.cb).map(x => x.code));
   const sid = r.strategy_id || (p.strategy && p.strategy.id) || 'intraday-default';
+  const engine = p.engine || (Object.values(ords).some(v => v && v.mode === 'live') ? 'live' : 'paper');   // 이 기록이 주문한 장부(paper·dry·live)
   const out = {
-    date: r.trade_date, status: r.status, sid, key: `${r.trade_date}|${sid}`, letter: p.letter || null,
+    date: r.trade_date, status: r.status, sid, key: `${r.trade_date}|${sid}`, letter: p.letter || null, engine,
     decision: p.decision ? { kind: p.decision.kind, nums: p.decision.nums || null } : null,
     warn: p.warn || null, noticeSent: !!p.noticeSent, roundN: p.roundN || 1, roundDeadline: p.roundDeadline || null,
     cb: p.cb ? { at: p.cb.at || null, done: !!p.cb.done, tries: p.cb.tries || 0, max: p.cb.max || null, deadline: p.cb.deadline || null, approval: p.cb.approval || null, picks: p.cb.picks == null ? null : p.cb.picks, err: p.cb.err || null, watch: (p.cbw || []).map(e => ({ k: e.k, hh: e.hh || null, busy: !!e.busy, err: e.err || null, n: e.n == null ? null : e.n, top: (e.passed || []).slice(0, 8).map(x => ({ code: x.code, name: x.name, score: x.score, dd: x.dd == null ? null : x.dd })), stat: e.stat || null })) } : (p.cbw && p.cbw.length ? { at: null, done: false, tries: 0, max: null, deadline: null, approval: null, picks: null, err: null, watch: p.cbw.map(e => ({ k: e.k, hh: e.hh || null, busy: !!e.busy, err: e.err || null, n: e.n == null ? null : e.n, top: (e.passed || []).slice(0, 8).map(x => ({ code: x.code, name: x.name, score: x.score, dd: x.dd == null ? null : x.dd })), stat: e.stat || null })) } : null),
@@ -41,7 +42,8 @@ function summarizeRun(r, full) {
   return out;
 }
 
-/* 매도 체결 → 가장 가까운 지난 실행(그 종목을 실제로 산 날)에 실현손익을 붙임. sells: [{code, ts, realized}] */
+/* 매도 체결 → 가장 가까운 지난 실행(그 종목을 실제로 산 날)에 실현손익을 붙임. sells: [{code, ts, realized, kind?}]
+   kind 가 있으면 같은 장부(paper·dry·live)로 산 실행에만 붙임 — 가상·실전이 같은 종목을 각자 사도 섞이지 않게 */
 function attributeRealized(runs, sells) {
   const byDate = runs.slice().sort((a, b) => a.date < b.date ? -1 : 1);
   const res = {};
@@ -50,7 +52,7 @@ function attributeRealized(runs, sells) {
   for (const s of sells) {
     const d = kstDate(s.ts);
     let hit = null;
-    for (const r of byDate) { if (r.date <= d && r.orders.some(o => o.code === s.code && o.filled > 0)) hit = r; }   // 날짜 오름차순이라 마지막 일치 = 가장 최근
+    for (const r of byDate) { if (r.date <= d && (!s.kind || (r.engine || 'paper') === s.kind) && r.orders.some(o => o.code === s.code && o.filled > 0)) hit = r; }   // 날짜 오름차순이라 마지막 일치 = 가장 최근
     if (hit) { res[K(hit)].realized += +s.realized || 0; res[K(hit)].n++; }
   }
   return res;
@@ -73,7 +75,7 @@ function buildHistory(runs, realized, closes, today) {
     const re = realized[r.key || r.date] || { realized: 0, n: 0 };
     const sh = r.date < today ? shadowReturns(r, closes) : null;
     return {
-      date: r.date, status: r.status, decision: r.decision, sid: r.sid || null, strategy: r.strategy ? r.strategy.name : null,
+      date: r.date, status: r.status, decision: r.decision, sid: r.sid || null, strategy: r.strategy ? r.strategy.name : null, engine: r.engine || 'paper',
       picks: r.picks.length, shadowN: r.shadow.length,
       bought: r.orders.filter(o => o.filled > 0).map(o => ({ code: o.code, name: o.name, qty: o.filled, avg: o.avg })),
       cost: Math.round(cost), realized: Math.round(re.realized), sells: re.n,
@@ -97,6 +99,7 @@ const PER_MIN = 100000, PER_MAX = 50000000, PER_STEP = 10000;
 function checkConfig(b) {
   const out = {};
   if (b && b.on !== undefined) { if (typeof b.on !== 'boolean') return { err: 'on 값이 올바르지 않습니다' }; out.on = b.on; }
+  if (b && b.liveOn !== undefined) { if (typeof b.liveOn !== 'boolean') return { err: 'liveOn 값이 올바르지 않습니다' }; out.liveOn = b.liveOn; }   // 실전 탭(드라이런·실전) 켜기/끄기
   if (b && b.perStockKrw !== undefined) {
     const v = +b.perStockKrw;
     if (!Number.isInteger(v) || v < PER_MIN || v > PER_MAX || v % PER_STEP) return { err: `종목당 금액은 ${PER_MIN.toLocaleString('ko-KR')}~${PER_MAX.toLocaleString('ko-KR')}원, ${PER_STEP.toLocaleString('ko-KR')}원 단위여야 합니다` };

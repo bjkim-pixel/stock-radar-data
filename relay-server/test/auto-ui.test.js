@@ -87,7 +87,7 @@ test('uiState: 설정·오늘 후보·보유·일별 성과를 한 번에 돌려
   });
   const s = await A.uiState();
   assert.equal(s.ok, true); assert.equal(s.date, '2026-11-16');
-  assert.deepEqual(s.cfg, { on: true, perStockKrw: 2000000 });
+  assert.deepEqual(s.cfg, { on: true, liveOn: false, perStockKrw: 2000000 });
   assert.equal(s.today.picks[0].reasons[0], '외국인'); assert.equal(s.today.status, 'noticed');
   assert.deepEqual(s.positions.map(p => p.code), ['A']);        // 자동매매 종목만
   assert.equal(s.carry.length, 1);
@@ -115,7 +115,7 @@ test('uiState: 오늘 매매 내역·손익 합계·정규장/NXT 구분', async
 test('uiState: 기록이 하나도 없어도 오류 없이 빈 상태', async () => {
   const { A } = fakeAuto({});
   const s = await A.uiState();
-  assert.equal(s.today, null); assert.deepEqual(s.history, []); assert.deepEqual(s.cfg, { on: false, perStockKrw: 1000000 });
+  assert.equal(s.today, null); assert.deepEqual(s.history, []); assert.deepEqual(s.cfg, { on: false, liveOn: false, perStockKrw: 1000000 });
 });
 test('setConfig: 기존 값은 유지하고 바꾼 값만 저장 · 잘못된 값은 저장 안 함', async () => {
   const { A, store } = fakeAuto({ cfg: { main: { on: true, perStockKrw: 1000000, extra: 1 } } });
@@ -124,7 +124,7 @@ test('setConfig: 기존 값은 유지하고 바꾼 값만 저장 · 잘못된 �
   const r = await A.setConfig({ perStockKrw: 3000000 });
   assert.equal(r.ok, true); assert.deepEqual(store.cfg.main, { on: true, perStockKrw: 3000000, extra: 1 });
   const r2 = await A.setConfig({ on: false });
-  assert.deepEqual(r2.cfg, { on: false, perStockKrw: 3000000 });
+  assert.deepEqual(r2.cfg, { on: false, liveOn: false, perStockKrw: 3000000 });
 });
 
 /* ── HTTP 라우트: 로그인 + PIN 세션 필요 ── */

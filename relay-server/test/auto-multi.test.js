@@ -9,7 +9,8 @@ test('명령 파싱: 글자+번호 · 글자 없음 · 전체 · 패스/유지 �
   assert.deepEqual(A.parseCmdMulti('/매수 A1 b2,3', 'buy'), { kind: 'pick', items: [{ letter: 'A', n: 1 }, { letter: 'B', n: 2 }, { letter: null, n: 3 }] });
   assert.deepEqual(A.parseCmdMulti('/매수 전체', 'buy'), { kind: 'all' });
   assert.deepEqual(A.parseCmdMulti('/패스', 'buy'), { kind: 'pass' });
-  assert.deepEqual(A.parseCmdMulti('/매수 D1', 'buy'), { kind: 'bad' });
+  assert.deepEqual(A.parseCmdMulti('/매수 G1', 'buy'), { kind: 'bad' });
+  assert.deepEqual(A.parseCmdMulti('/매수 D1 f2', 'buy'), { kind: 'pick', items: [{ letter: 'D', n: 1 }, { letter: 'F', n: 2 }] });   // 실전 탭 전략까지 글자 A~F
   assert.deepEqual(A.parseCmdMulti('/매수', 'buy'), { kind: 'bad' });
   assert.equal(A.parseCmdMulti('/정리 1', 'buy'), null);
   assert.deepEqual(A.parseCmdMulti('/정리 A1 2', 'eod'), { kind: 'pick', items: [{ letter: 'A', n: 1 }, { letter: null, n: 2 }] });

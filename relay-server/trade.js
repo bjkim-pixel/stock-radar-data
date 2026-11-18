@@ -491,6 +491,17 @@ function createTrade(deps = {}) {
     })
     : null;
   if (paper && !deps.skipLoop) paper.start();
+  /* ── 드라이런 장부(2026-11-19, 실전 탭 자동매매): 가상과 같은 체결 시뮬레이터를 별도 테이블(dry_*)로 하나 더 띄움.
+     드라이런 전략의 주문만 여기로 온다 — 가상 전략과 같은 종목을 각자 보유할 수 있게(가상 엔진은 종목당 보유 1개).
+     한도는 실전 기준(1회·1일·종목 수)으로 점검하고 수수료·세금도 실전 추정치로 계산해 "실전이었다면"을 가깝게 재현. 사람이 직접 주문하는 화면은 없음 */
+  const dry = paper && env.DRYRUN_ENGINE !== '0'
+    ? createPaper({
+      now, sbGet: deps.sbGet, sbWrite: deps.sbWrite, getQuote, guard, alert, isOpenDay, table: 'dry', label: '드라이런', snaps: false, limitMode: 'REAL',
+      checkLimits: x => checkLimits(cfg.limits, x), limits: cfg.limits.REAL, enabled: () => cfg.enabled, authority: hasAuthority,
+      fees: { buy: numEnv(env.LIVE_FEE_BUY_PCT, 0.015), sell: numEnv(env.LIVE_FEE_SELL_PCT, 0.215) }, ...extOpts,
+    })
+    : null;
+  if (dry && !deps.skipLoop) dry.start();
 
   /* ── 실전매매(6단계) — REAL_TRADING_ENABLED=1 과 계좌 환경변수가 있어야 동작. 주문 코드는 kis-order.js 에만 있음 ── */
   const acctRaw = String(env.KIS_ACCOUNT_NO || '').replace(/\s/g, '');
@@ -604,16 +615,17 @@ function createTrade(deps = {}) {
       const r = await paper.report(sp.get('from') || null, sp.get('to') || null);
       return json(res, r.ok ? 200 : (r.status || 500), r);
     }
-    if (path === '/trade/auto/state' && req.method === 'GET') {   // 자동매매 카드(4단계): 설정·오늘 후보·보유·일별 성과 — 세션 필요, 가상매매 전용
+    if (path === '/trade/auto/state' && req.method === 'GET') {   // 자동매매 카드: 설정·오늘 후보·보유·일별 성과 — 세션 필요. ?side=real 이면 실전 탭(드라이런·실전 전략)
       if (!autoRef) return json(res, 503, { ok: false, error: 'auto unavailable' });
-      try { return json(res, 200, await autoRef.uiState()); }
+      try { const sp = new URL(req.url, 'http://x').searchParams; return json(res, 200, await autoRef.uiState(null, sp.get('side') === 'real' ? 'real' : 'paper')); }
       catch (e) { console.warn('[trade] 자동매매 상태 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'auto state failed' }); }
     }
     if (path === '/trade/auto/daylog' && req.method === 'GET') {   // 오늘 탭 일지: 목록(가벼운 요약) 또는 하루 상세(?date)
       if (!autoRef || !autoRef.daylogList) return json(res, 503, { ok: false, error: 'auto unavailable' });
       try {
         const sp = new URL(req.url, 'http://x').searchParams;
-        const r = sp.get('date') ? await autoRef.daylogGet(sp.get('date')) : await autoRef.daylogList(sp.get('limit'));
+        const side = sp.get('side') === 'real' ? 'real' : 'paper';
+        const r = sp.get('date') ? await autoRef.daylogGet(sp.get('date'), side) : await autoRef.daylogList(sp.get('limit'), side);
         return json(res, r.ok ? 200 : (r.status || 400), r);
       } catch (e) { console.warn('[trade] 일지 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'daylog read failed' }); }
     }
@@ -621,14 +633,18 @@ function createTrade(deps = {}) {
       if (!autoRef || !autoRef.journalList) return json(res, 503, { ok: false, error: 'auto unavailable' });
       try {
         const sp = new URL(req.url, 'http://x').searchParams;
-        const r = sp.get('date') ? await autoRef.journalGet(sp.get('date'), sp.get('sid') || null) : await autoRef.journalList({ sid: sp.get('sid'), from: sp.get('from'), to: sp.get('to'), limit: sp.get('limit') });
+        const eng = ['paper', 'dry', 'live'].includes(sp.get('engine')) ? sp.get('engine') : null, side = ['paper', 'real'].includes(sp.get('side')) ? sp.get('side') : null;
+        const r = sp.get('date') ? await autoRef.journalGet(sp.get('date'), sp.get('sid') || null)
+          : sp.get('compare') && autoRef.journalCompare ? await autoRef.journalCompare({ sid: sp.get('sid'), src: sp.get('compare'), from: sp.get('from'), to: sp.get('to'), engine: eng })   // 실전 탭 전략 ↔ 가상 원본 비교
+            : await autoRef.journalList({ sid: sp.get('sid'), from: sp.get('from'), to: sp.get('to'), limit: sp.get('limit'), side, engine: eng });
         return json(res, r.ok ? 200 : (r.status || 400), r);
       } catch (e) { console.warn('[trade] 일지 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'journal read failed' }); }
     }
-    if ((path === '/trade/auto/strategies' || path === '/trade/auto/strategy-versions') && req.method === 'GET') {   // 컨트롤 타워: 전략 목록·스키마 / 버전 이력
+    if ((path === '/trade/auto/strategies' || path === '/trade/auto/strategy-versions' || path === '/trade/auto/strategy-source') && req.method === 'GET') {   // 컨트롤 타워: 전략 목록·스키마 / 버전 이력 / 원본 변경 미리 보기
       if (!autoRef || !autoRef.strategies) return json(res, 503, { ok: false, error: 'auto unavailable' });
       try {
         if (path === '/trade/auto/strategies') return json(res, 200, await autoRef.strategies());
+        if (path === '/trade/auto/strategy-source') { const r = await autoRef.sourceDiff(new URL(req.url, 'http://x').searchParams.get('id')); return json(res, r.ok ? 200 : (r.status || 400), r); }
         return json(res, 200, await autoRef.strategyVersions(new URL(req.url, 'http://x').searchParams.get('id')));
       } catch (e) { console.warn('[trade] 전략 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'strategy read failed' }); }
     }
@@ -783,11 +799,30 @@ function createTrade(deps = {}) {
       audit('auto_halt', !!r.ok, { level }, req, 'VIRTUAL');
       return json(res, r.ok ? 200 : (r.status || 400), r);
     }
-    if (path === '/trade/auto/config') {   // 자동매매 켜기/끄기·종목당 금액(auto_config 'main'). 실전 주문과 무관 — 가상매매 설정
+    if (path === '/trade/auto/config') {   // 자동매매 켜기/끄기(가상 탭 on · 실전 탭 liveOn)·종목당 금액(auto_config 'main'). 실전 탭을 켤 때는 거래 PIN 한 번 더
       if (!autoRef) return json(res, 503, { ok: false, error: 'auto unavailable' });
-      const r = await autoRef.setConfig(body).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
-      audit(r.ok ? 'auto_config' : 'auto_config_reject', !!r.ok, { on: body.on, perStockKrw: body.perStockKrw, error: r.error }, req, 'VIRTUAL');
-      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
+      let pinOk = false;
+      if (body.liveOn === true && body.pin != null) {
+        const pr = await checkPin(String(body.pin));
+        if (!pr.ok) { audit('auto_live_on_pin_fail', false, {}, req, 'REAL'); return json(res, pr.status === 423 ? 423 : 403, { ok: false, needPin: true, error: pr.status === 423 ? `PIN 이 잠겼습니다(${pr.retrySec || ''}초 뒤 다시)` : 'PIN 이 맞지 않습니다' }); }
+        pinOk = true;
+      }
+      const cfgBody = {}; for (const k of ['on', 'liveOn', 'perStockKrw']) if (body[k] !== undefined) cfgBody[k] = body[k];
+      const r = await autoRef.setConfig(cfgBody, { pinOk }).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
+      audit(r.ok ? 'auto_config' : 'auto_config_reject', !!r.ok, { on: body.on, liveOn: body.liveOn, perStockKrw: body.perStockKrw, error: r.error }, req, body.liveOn !== undefined ? 'REAL' : 'VIRTUAL');
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, needPin: r.needPin || undefined });
+    }
+    if (path === '/trade/auto/strategy-source') {   // 원본 변경 반영(POST): 가상 원본의 매수·매도·선정 조건을 실전 탭 전략으로 가져옴. 실전 모드 전략이면 PIN
+      if (!autoRef || !autoRef.applySource) return json(res, 503, { ok: false, error: 'auto unavailable' });
+      let pinOk = false;
+      if (body.pin != null) {
+        const pr = await checkPin(String(body.pin));
+        if (!pr.ok) { audit('auto_source_pin_fail', false, { id: body.id }, req, 'REAL'); return json(res, pr.status === 423 ? 423 : 403, { ok: false, needPin: true, error: pr.status === 423 ? `PIN 이 잠겼습니다(${pr.retrySec || ''}초 뒤 다시)` : 'PIN 이 맞지 않습니다' }); }
+        pinOk = true;
+      }
+      const r = await autoRef.applySource(String(body.id || ''), 'site', { pinOk, confirm: body.confirm === true }).catch(e => ({ ok: false, status: 502, error: String((e && e.message) || e).slice(0, 200) }));
+      audit(r.ok ? 'auto_source_apply' : 'auto_source_reject', !!r.ok, { id: body.id, from: r.from, changed: (r.applied || []).map(c => c.key).slice(0, 30), error: r.error }, req, 'VIRTUAL');
+      return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, errs: r.errs, needPin: r.needPin || undefined, needConfirm: r.needConfirm || undefined, warnings: r.warnings || undefined });
     }
     if (path === '/trade/paper/plan') {
       if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
@@ -901,15 +936,18 @@ function createTrade(deps = {}) {
   const attachAuto = a => { autoRef = a; };
   let reconRef = null;   // 일일 대사(recon.js) — 계좌 현황 화면에 마지막 결과를 붙임
   const attachRecon = r => { reconRef = r; };
-  return { handle, attachAuto, attachRecon, paper, live, getQuote, adminStatus, adminLock, adminDecide, adminKill, securitySummary,
+  const ENG = () => [['paper', paper], ['dry', dry], ['live', live]].filter(([, e]) => e);
+  const dryInUse = () => { try { return !!(dry && autoRef && autoRef.kindsInUse && autoRef.kindsInUse().includes('dry')); } catch (_) { return !!dry; } };
+  return { handle, attachAuto, attachRecon, paper, dry, live, getQuote, adminStatus, adminLock, adminDecide, adminKill, securitySummary,
     // 체결 틱 깨우기(2026-11-13): 엔진별 감시선 · 깨우기(판정은 엔진이 REST 시세로)
-    watchLines: code => [['paper', paper], ['live', live]].filter(([, e]) => e && e.watchLines).map(([k, e]) => { try { return [k, e.watchLines(code)]; } catch (_) { return [k, null]; } }).filter(([, L]) => L),
-    kick: (eng, code) => { const e = eng === 'live' ? live : paper; return e && e.kick ? e.kick(code) : Promise.resolve(false); },
+    watchLines: code => ENG().filter(([, e]) => e.watchLines).map(([k, e]) => { try { return [k, e.watchLines(code)]; } catch (_) { return [k, null]; } }).filter(([, L]) => L),
+    kick: (eng, code) => { const e = eng === 'live' ? live : eng === 'dry' ? dry : paper; return e && e.kick ? e.kick(code) : Promise.resolve(false); },
     /* 외부 감시·재시작 복구용(0단계): 엔진별 마지막 점검 시각 / 재시작 뒤 손절 점검을 한 바퀴 마쳤는지 / 권한을 새로 얻었을 때 기록 다시 읽기 */
-    engineHealth: () => ({ paper: paper && paper.health ? paper.health() : null, live: live && live.health ? live.health() : null }),
-    sweepReady: () => hasAuthority() && [paper, live].every(e => !e || !e.health || e.health().swept),
-    hasAuthority, reloadEngines: () => { for (const e of [paper, live]) { try { e && e.reload && e.reload(); } catch (_) {} } reloadKill().catch(() => {}); }, reloadKill,
-    heldCodes: () => { const s = new Set(); for (const e of [paper, live]) { if (e && e.heldCodes) { try { for (const c of e.heldCodes()) s.add(c); } catch (_) {} } } return s; }, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
+    engineHealth: () => ({ paper: paper && paper.health ? paper.health() : null, live: live && live.health ? live.health() : null, ...(dry && dry.health ? { dry: dry.health() } : {}) }),
+    /* 드라이런 장부는 드라이런 전략이 있을 때만(자동매매가 알려 줌) 재시작 손절 점검 완료를 기다림 */
+    sweepReady: () => hasAuthority() && [paper, dryInUse() ? dry : null, live].every(e => !e || !e.health || e.health().swept),
+    hasAuthority, reloadEngines: () => { for (const e of [paper, dry, live]) { try { e && e.reload && e.reload(); } catch (_) {} } reloadKill().catch(() => {}); }, reloadKill,
+    heldCodes: () => { const s = new Set(); for (const e of [paper, dry, live]) { if (e && e.heldCodes) { try { for (const c of e.heldCodes()) s.add(c); } catch (_) {} } } return s; }, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
 }
 
 module.exports = { createTrade, hashPin, verifyHash, checkLimits, loadConfig, scrub };

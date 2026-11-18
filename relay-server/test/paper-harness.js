@@ -8,19 +8,20 @@ const T0 = Date.parse('2027-01-13T10:00:00+09:00');     // 수요일 10:00 KST
 
 /* 메모리 DB: relay 가 쓰는 PostgREST 호출(sbGet/sbWrite) 흉내 */
 function fakeDb() {
-  const t = { paper_orders: new Map(), paper_fills: new Map(), paper_positions: new Map(), paper_book_snaps: [], paper_events: [], trade_audit: [], deleted: [], live_orders: new Map(), live_fills: new Map(), live_plans: new Map(), live_events: [],
+  const t = { paper_orders: new Map(), paper_fills: new Map(), paper_positions: new Map(), paper_book_snaps: [], paper_events: [], trade_audit: [], deleted: [], live_orders: new Map(), live_fills: new Map(), live_plans: new Map(), live_events: [], dry_orders: new Map(), dry_fills: new Map(), dry_positions: new Map(), dry_events: [],
     // 종목 구분(8단계): 005930 은 KRX 전용(기존 시나리오 = 정규장 기준), 000660 은 NXT 가능
     stocks: new Map([['005930', { code: '005930', nxt_ok: false, security_type: 'STOCK' }], ['000660', { code: '000660', nxt_ok: true, security_type: 'STOCK' }]]) };
-  const pk = { paper_orders: 'id', paper_fills: 'id', paper_positions: 'code', live_orders: 'id', live_fills: 'id', live_plans: 'code' };
+  const pk = { paper_orders: 'id', paper_fills: 'id', paper_positions: 'code', live_orders: 'id', live_fills: 'id', live_plans: 'code', dry_orders: 'id', dry_fills: 'id', dry_positions: 'code' };
   let snapId = 0, fail = null;
   return {
     t, setFail: f => { fail = f; },
     sbGet: async path => {
       if (fail && fail.get) throw new Error(fail.get);
       const [tbl, qs = ''] = path.split('?'); const p = new URLSearchParams(qs);
+      if (fail && fail.missing && tbl.startsWith(fail.missing)) throw new Error(`PGRST205 relation "${tbl}" does not exist`);   // 테이블이 아직 없는 상황(DB 설정 전)
       if (tbl === 'trade_audit') return /event=in\.\(kill,resume\)/.test(path) ? t.trade_audit.filter(r => r.event === 'kill' || r.event === 'resume').sort((a, b) => String(b.ts).localeCompare(String(a.ts))).slice(0, 1) : [];
       if (tbl === 'stocks') { const c = (p.get('code') || '').replace('eq.', ''); return t.stocks.has(c) ? [{ ...t.stocks.get(c) }] : []; }
-      let rows = tbl === 'paper_book_snaps' ? t.paper_book_snaps : tbl === 'live_events' ? t.live_events : [...t[tbl].values()];
+      let rows = tbl === 'paper_book_snaps' ? t.paper_book_snaps : tbl === 'live_events' ? t.live_events : tbl === 'dry_events' ? t.dry_events : [...t[tbl].values()];
       const st = p.get('status'); if (st) { const set = st.replace(/^in\.\(|\)$/g, '').split(','); rows = rows.filter(r => set.includes(r.status)); }
       const ca = p.get('created_at'); if (ca) rows = rows.filter(r => Date.parse(r.created_at) >= Date.parse(ca.replace('gte.', '')));
       const ts = p.get('ts'); if (ts && ts.startsWith('gte.')) rows = rows.filter(r => Date.parse(r.ts) >= Date.parse(ts.slice(4)));
@@ -29,11 +30,13 @@ function fakeDb() {
     },
     sbWrite: async (path, method, rows) => {
       if (fail && fail.write && path.startsWith(fail.write)) throw new Error('write fail');
+      if (fail && fail.missing && path.startsWith(fail.missing)) throw new Error('PGRST205 missing table');
       const [tbl, qs = ''] = path.split('?');
       if (method === 'DELETE') {
         t.deleted.push(path);
         if (tbl === 'paper_positions') t.paper_positions.delete(qs.replace('code=eq.', ''));
         if (tbl === 'live_plans') t.live_plans.delete(qs.replace('code=eq.', ''));
+        if (tbl === 'dry_positions') t.dry_positions.delete(qs.replace('code=eq.', ''));
         return;
       }
       for (const r of rows) {
@@ -41,6 +44,7 @@ function fakeDb() {
         else if (tbl === 'paper_book_snaps') t.paper_book_snaps.push({ id: ++snapId, ...r });
         else if (tbl === 'paper_events') t.paper_events.push(r);
         else if (tbl === 'live_events') t.live_events.push(r);
+        else if (tbl === 'dry_events') t.dry_events.push(r);
         else t[tbl].set(r[pk[tbl]], JSON.parse(JSON.stringify(r)));
       }
     },

@@ -17,28 +17,36 @@
    2단계(2026-11-18) — 실행 모드 3가지(modeOf(sid) = 전략의 execMode):
    · paper(가상): 가상 엔진. 지금과 같음.
    · dryrun(드라이런): 주문은 가상 엔진으로 내되, 보유 확인·주문 가능 금액은 실제 계좌(실전 엔진)로 본다 — "실전이었다면"을 점검만.
-   · live(실전): 실전 엔진. 실제 계좌의 보유는 자동매매 몫(plan.own)만큼만 보여 준다(같은 종목을 직접 더 사도 자동매매는 자기 수량만 판다). */
+   · live(실전): 실전 엔진. 실제 계좌의 보유는 자동매매 몫(plan.own)만큼만 보여 준다(같은 종목을 직접 더 사도 자동매매는 자기 수량만 판다).
+
+   실전 탭 자동매매(2026-11-19) — 엔진 종류(kind)가 셋:
+   · paper(가상 장부) · dry(드라이런 장부, paper.js 를 dry_* 테이블로 하나 더 띄운 것) · live(실제 계좌)
+   · 드라이런 주문은 dry 장부로 간다. 가상 전략과 그 드라이런 복제가 같은 종목을 각자 보유할 수 있게(장부는 종목당 보유 1개라 같은 장부를 쓰면 겹침).
+     dry 장부가 없으면(DRYRUN_ENGINE=0) 예전처럼 가상 장부를 쓴다. 장부는 있는데 테이블이 없으면 주문이 503 으로 거부된다(가상 장부로 돌리지 않음). */
 
 const UNSURE = new Set(['pending', 'unknown']);
 const ACTIVE = new Set(['open', 'partial', 'unsure']);
 const normOrder = o => (o && UNSURE.has(o.status) ? { ...o, status: 'unsure', rawStatus: o.status } : o);
 const isActive = o => !!o && ACTIVE.has(o.status);
-const KINDS = ['paper', 'live'];
-const LABEL = { paper: '가상', live: '실전', dryrun: '드라이런' };
+const KINDS = ['paper', 'dry', 'live'];
+const LABEL = { paper: '가상', live: '실전', dryrun: '드라이런', dry: '드라이런' };
+/* 쪽(화면 탭): 가상 탭 = paper 장부 · 실전 탭 = dry·live */
+const sideOfKind = k => (k === 'live' || k === 'dry' ? 'real' : 'paper');
 const MODES = new Set(['paper', 'dryrun', 'live']);
 /* 실전 계좌 보기: 자동매매 계획에 자동매매 몫(own)이 있으면 그 수량만 자동매매 보유로 보여 줌(qtyAll = 계좌 전체 수량) */
 const ownView = p => (p && p.plan && p.plan.own != null ? { ...p, qtyAll: p.qty, qty: Math.min(p.qty, p.plan.own), avail: Math.min(p.avail == null ? p.qty : p.avail, p.ownFree != null ? p.ownFree : p.plan.own) } : p);   // 진행 중 자동매매 매도를 뺀 남은 몫(검토 #2)
-const noEngine = kind => ({ ok: false, status: 503, error: `${LABEL[kind] || kind}매매 엔진을 쓸 수 없습니다` });
+const noEngine = kind => ({ ok: false, status: 503, error: kind === 'dry' ? '드라이런 장부를 쓸 수 없습니다' : `${LABEL[kind] || kind}매매 엔진을 쓸 수 없습니다` });
 
 function createBroker(deps = {}) {
-  const engines = { paper: deps.paper || null, live: deps.live || null };
+  const engines = { paper: deps.paper || null, dry: deps.dry || null, live: deps.live || null };
   /* 실행 모드(paper·dryrun·live)와 주문이 실제로 가는 엔진 종류(paper·live) */
   const execOf = sid => { try { const m = deps.modeOf ? deps.modeOf(sid) : 'paper'; return MODES.has(m) ? m : 'paper'; } catch (_) { return 'paper'; } };
-  const modeOf = sid => (execOf(sid) === 'live' ? 'live' : 'paper');
+  const kindOfMode = m => (m === 'live' ? 'live' : m === 'dryrun' && engines.dry ? 'dry' : 'paper');
+  const modeOf = sid => kindOfMode(execOf(sid));   // 이 전략의 주문이 가는 장부(paper·dry·live)
   /* 지금 쓰이는 엔진 종류(활성 전략들의 모드). 가상은 항상 포함(이월·직접 주문 화면이 가상 기준으로 돌기 때문) */
   const kindsInUse = () => {
     const s = new Set(['paper']);
-    try { for (const k of (deps.kinds ? deps.kinds() : [])) if (k === 'live') s.add('live'); } catch (_) {}
+    try { for (const k of (deps.kinds ? deps.kinds() : [])) if (k === 'live' || k === 'dry') s.add(k); } catch (_) {}
     return KINDS.filter(k => s.has(k) && engines[k]);
   };
 
@@ -78,10 +86,10 @@ function createBroker(deps = {}) {
       async cancel(id) { const e = E(); if (!e) return noEngine(K()); return res(await e.cancel(id)); },
       async editPlan(body) { const e = E(); if (!e) return noEngine(K()); return e.editPlan(body); },
       async state() { const e = E(); if (!e) return noEngine(K()); const S = await e.state(); return S && S.ok ? tagged(S, K()) : S; },
-      /* 보유·주문 중 종목. 드라이런은 가상 보유 + 실제 계좌 보유(직접 산 종목을 피하는지까지 점검) */
+      /* 보유·주문 중 종목. 드라이런은 자기 장부 보유 + 실제 계좌 보유(실전처럼 직접 산 종목을 피하는지까지 점검) */
       async held() {
         if (M() !== 'dryrun') return heldOf(K());
-        const s = await heldOf('paper');
+        const s = await heldOf(K());
         if (engines.live) for (const c of await heldOf('live')) s.add(c);
         return s;
       },
@@ -112,7 +120,7 @@ function createBroker(deps = {}) {
     const parts = [];
     for (const k of kindsInUse()) {
       const S = await engines[k].state();
-      if (!S || !S.ok) { if (k === 'paper') return S; continue; }   // 가상 상태를 못 읽으면 지금처럼 실패로, 실전만 못 읽으면 가상만으로
+      if (!S || !S.ok) { if (k === 'paper') return S; continue; }   // 가상 상태를 못 읽으면 지금처럼 실패로, 드라이런·실전만 못 읽으면 나머지로
       parts.push(tagged(S, k));
     }
     if (parts.length === 1) return parts[0];
@@ -124,7 +132,13 @@ function createBroker(deps = {}) {
      (가상 전략이 넘긴 종목과 같은 종목을 실제 계좌에 직접 갖고 있어도 실전 손절이 멈추지 않게) */
   function setPreHold(fn) { for (const k of KINDS) { const e = engines[k]; if (e && e.setPreHold) e.setPreHold((code, min) => fn(code, min, k)); } }
 
-  return { of, heldAll, stateAll, setPreHold, kindsInUse, modeOf, execOf, has: !!(engines.paper || engines.live), engines };
+  /* 한 엔진 종류만의 상태(실전 탭·가상 탭 화면을 나눠 그릴 때) */
+  async function stateOf(kind) {
+    const e = engines[kind]; if (!e) return null;
+    const S = await e.state();
+    return S && S.ok ? tagged(S, kind) : S;
+  }
+  return { of, heldAll, stateAll, stateOf, setPreHold, kindsInUse, modeOf, execOf, kindOfMode, sideOf: sid => (execOf(sid) === 'paper' ? 'paper' : 'real'),   /* 쪽은 실행 모드로(드라이런 장부를 끈 설정에서도 드라이런 전략은 실전 탭) */ has: !!(engines.paper || engines.live), engines };
 }
 
-module.exports = { createBroker, normOrder, isActive, ownView, UNSURE, ACTIVE, LABEL };
+module.exports = { createBroker, normOrder, isActive, ownView, sideOfKind, UNSURE, ACTIVE, LABEL, KINDS };

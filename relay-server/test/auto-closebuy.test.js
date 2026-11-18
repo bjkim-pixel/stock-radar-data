@@ -12,7 +12,7 @@ async function rig({ approval = 'auto', cbMax = 3, cbOn = true, watchMin, live =
   const db = fakeDb(), c = await boot(db, live ? { envExtra: { REAL_TRADING_ENABLED: '1', KIS_ACCOUNT_NO: '12345678-01' }, kx } : {});
   for (const k of ['035420', '051910']) db.t.stocks.set(k, { code: k, nxt_ok: true, security_type: 'STOCK' });
   db.t.stocks.set('999999', { code: '999999', nxt_ok: false, security_type: 'STOCK' });
-  const runs = {}, cfg = { main: { on: true, perStockKrw: perStock } }, sent = [];
+  const runs = {}, cfg = { main: { on: true, liveOn: true, perStockKrw: perStock } }, sent = [];
   const kst = () => { const d = new Date(c.st.clock + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes() }; };
   const I = { ...ST.defaults('intraday'), ...(perStock !== 1000000 ? { perStockKrw: perStock } : {}), ...iExtra }, C = { ...ST.defaults('closing'), closeBuyApproval: approval, closeBuyMax: cbMax, closeBuyOn: cbOn, ...(watchMin != null ? { closeBuyWatchMin: watchMin } : {}) };
   const strategies = { pair: async () => ({ I: { id: 'intraday-default', name: '기본', version: 1, enabled: true, params: I }, C: { id: 'closing-default', version: 1, enabled: true, params: C }, T: ST.timesOf(I, C) }), isMissing: () => false, list: async () => [] };

@@ -118,8 +118,10 @@ const SCHEMA = {
 };
 const OLD_W = [['flow', 40], ['cttr', 15], ['rise', 15], ['amt', 15], ['trend', 15]];   // 개인 계좌수 항목이 생기기 전 기본 배점
 const KINDS = { intraday: '장중매매', closing: '종가베팅' };
-const MAX_ACTIVE = { intraday: 3, closing: 1 };   // 동시에 켤 수 있는 수(종가베팅은 장중 보유분을 넘겨받는 방식이라 하나만)
-const LETTERS = ['A', 'B', 'C'];
+const MAX_ACTIVE = { intraday: 3, closing: 1 };   // 동시에 켤 수 있는 수(종가베팅은 장중 보유분을 넘겨받는 방식이라 하나만). 장중은 쪽(가상 탭·실전 탭)마다 3개
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];   // 켜진 장중 전략 글자(텔레그램 답장 A1·D2). 가상·실전 합쳐 최대 6
+/* 쪽: 가상 탭(실행 모드 가상) · 실전 탭(드라이런·실전) — 2026-11-19 */
+const sideOfParams = p => (p && p.execMode && p.execMode !== 'paper' ? 'real' : 'paper');
 
 const defaults = kind => Object.fromEntries((SCHEMA[kind] || []).map(f => [f.key, JSON.parse(JSON.stringify(f.def))]));
 
@@ -230,6 +232,8 @@ const builtinRow = b => ({ ...b, enabled: true, archived: false, version: 1, par
 /* 저장소: auto_strategies · auto_strategy_versions. 30초 캐시, 테이블이 없으면 기본 전략으로 동작 */
 function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
   let cache = null, at = 0, missing = false;
+  /* 원본 연결 컬럼(source)은 DB 설정(dryrun_ledger) 전에는 없을 수 있음 → 빼고 저장(원본 연결만 기록되지 않음) */
+  const SRC = require('./opt-col').createOptCol('source', { onMissing: () => console.warn('[전략] auto_strategies.source 컬럼 없음 — 원본 연결 없이 저장([수시] DB 테이블·뷰 생성 → dryrun_ledger)') });
   let chain = Promise.resolve();
   const lock = fn => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
   const norm = r => {
@@ -243,7 +247,7 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     }
     const v = validate(r.kind, pr);
     return { id: r.id, name: r.name, kind: r.kind, desc: r.desc || '', enabled: !!r.enabled, archived: !!r.archived, builtin: !!r.builtin, version: +r.version || 1,
-      params: v.val || defaults(r.kind), invalid: v.errs ? v.errs.map(e => e.msg) : null, updatedAt: r.updated_at || null };
+      params: v.val || defaults(r.kind), invalid: v.errs ? v.errs.map(e => e.msg) : null, updatedAt: r.updated_at || null, source: r.source || null };
   };
   async function list(fresh) {
     if (!fresh && cache && now() - at < cacheMs) return cache;
@@ -264,10 +268,10 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     return L.find(r => r.enabled) || { ...(L.find(r => r.builtin) || norm(builtinRow(BUILTIN.find(b => b.kind === kind)))), enabled: false };
   }
   async function pair() { const [I, C] = await Promise.all([active('intraday'), active('closing')]); return { I, C, T: timesOf(I.params, C.params) }; }
-  /* 켜진 장중 전략 전부(최대 3, 만든 순서) + 종가 전략 하나. 각 장중 전략의 시각 T 와 글자(A·B·C) */
+  /* 켜진 장중 전략 전부(쪽마다 최대 3, 만든 순서) + 종가 전략 하나. 각 장중 전략의 시각 T 와 글자(A~F, 만든 순서) */
   async function actives() {
-    const L = await list(), C = await active('closing');
-    const Is = L.filter(r => r.kind === 'intraday' && r.enabled && !r.archived).slice(0, MAX_ACTIVE.intraday)
+    const L = await list(), C = await active('closing'), n = { paper: 0, real: 0 };
+    const Is = L.filter(r => r.kind === 'intraday' && r.enabled && !r.archived).filter(r => ++n[sideOfParams(r.params)] <= MAX_ACTIVE.intraday)
       .map((I, i) => ({ ...I, letter: LETTERS[i], T: timesOf(I.params, C.params) }));
     return { Is, C };
   }
@@ -291,9 +295,10 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       if (p.enabled !== undefined) { if (typeof p.enabled !== 'boolean') return { ok: false, status: 400, error: 'enabled 값이 올바르지 않습니다' }; next.enabled = p.enabled; }
       if (next.archived) return { ok: false, status: 400, error: '보관된 전략은 고칠 수 없습니다' };
       let others = [];
-      if (next.enabled && !cur.enabled) {
-        const on = (await list()).filter(r => r.kind === cur.kind && r.enabled && !r.archived && r.id !== cur.id);
-        if (cur.kind === 'intraday' && on.length >= MAX_ACTIVE.intraday) return { ok: false, status: 400, error: `장중 전략은 최대 ${MAX_ACTIVE.intraday}개까지 켤 수 있습니다. 다른 전략을 먼저 끄세요` };
+      const sideChange = cur.kind === 'intraday' && next.enabled && cur.enabled && sideOfParams(next.params) !== sideOfParams(cur.params);   // 켜진 채 쪽을 옮김(가상 → 드라이런 등)
+      if ((next.enabled && !cur.enabled) || sideChange) {
+        const on = (await list()).filter(r => r.kind === cur.kind && r.enabled && !r.archived && r.id !== cur.id && (cur.kind !== 'intraday' || sideOfParams(r.params) === sideOfParams(next.params)));
+        if (cur.kind === 'intraday' && on.length >= MAX_ACTIVE.intraday) return { ok: false, status: 400, error: `${sideOfParams(next.params) === 'real' ? '실전 탭' : '가상 탭'} 장중 전략은 최대 ${MAX_ACTIVE.intraday}개까지 켤 수 있습니다. 다른 전략을 먼저 끄세요` };
         if (cur.kind === 'closing') others = on;   // 종가베팅은 하나만: 다른 종가 전략은 끔
       }
       if (p.name !== undefined) { const n = String(p.name).trim(); if (!n || n.length > 30) return { ok: false, status: 400, error: '이름은 1~30자' }; next.name = n; }
@@ -303,7 +308,7 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       if (!changed.length && !meta.length) return { ok: true, strategy: cur, changed: [], unchanged: true };
       next.version = cur.version + 1;
       const ts = new Date(now()).toISOString();
-      await sbWrite('auto_strategies?on_conflict=id', 'POST', [{ id: next.id, name: next.name, kind: next.kind, desc: next.desc, enabled: next.enabled, archived: next.archived, builtin: next.builtin, version: next.version, params: next.params, updated_at: ts }]);
+      await SRC.write(sbWrite, 'auto_strategies?on_conflict=id', 'POST', [{ id: next.id, name: next.name, kind: next.kind, desc: next.desc, enabled: next.enabled, archived: next.archived, builtin: next.builtin, version: next.version, params: next.params, updated_at: ts, ...(next.source ? { source: next.source } : {}) }]);
       await sbWrite('auto_strategy_versions', 'POST', [{ strategy_id: next.id, version: next.version, params: next.params, changed: [...changed, ...meta], who: who || null, at: ts }]);
       for (const o of others) await writeRow({ ...o, enabled: false, version: o.version + 1 }, [{ key: 'enabled', label: '켜기/끄기', from: 'true', to: 'false' }, { key: 'auto', label: '사유', from: '', to: `${next.name} 켜짐(종가베팅은 하나만)` }], who, ts);
       cache = null;
@@ -311,11 +316,11 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     });
   }
   async function writeRow(r, changed, who, ts) {
-    await sbWrite('auto_strategies?on_conflict=id', 'POST', [{ id: r.id, name: r.name, kind: r.kind, desc: r.desc || '', enabled: !!r.enabled, archived: !!r.archived, builtin: !!r.builtin, version: r.version, params: r.params, updated_at: ts }]);
+    await SRC.write(sbWrite, 'auto_strategies?on_conflict=id', 'POST', [{ id: r.id, name: r.name, kind: r.kind, desc: r.desc || '', enabled: !!r.enabled, archived: !!r.archived, builtin: !!r.builtin, version: r.version, params: r.params, updated_at: ts, ...(r.source ? { source: r.source } : {}) }]);
     await sbWrite('auto_strategy_versions', 'POST', [{ strategy_id: r.id, version: r.version, params: r.params, changed, who: who || null, at: ts }]);
   }
-  /* 새 전략: 기본값 또는 기존 전략 복제. 꺼진 상태로 만든다 */
-  function create({ kind, name, desc, from } = {}, who) {
+  /* 새 전략: 기본값 또는 기존 전략 복제. 꺼진 상태로 만든다. linkSource = 복제 원본을 source 로 기억("실전에 적용") */
+  function create({ kind, name, desc, from, linkSource } = {}, who) {
     return lock(async () => {
       await list(true);
       if (missing) return { ok: false, status: 503, error: '전략 테이블이 아직 없습니다' };
@@ -327,8 +332,8 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       if (!n) return { ok: false, status: 400, error: '이름을 입력하세요' };
       if (L.filter(r => !r.archived).length >= 12) return { ok: false, status: 400, error: '전략은 최대 12개까지 만들 수 있습니다(보관 제외)' };
       const id = `${k}-${now().toString(36)}`, ts = new Date(now()).toISOString();
-      const row = { id, name: n, kind: k, desc: String(desc != null ? desc : (src ? src.desc : '')).slice(0, 200), enabled: false, archived: false, builtin: false, version: 1, params: src ? JSON.parse(JSON.stringify(src.params)) : defaults(k) };
-      await writeRow(row, [{ key: 'init', label: '처음 만듦', from: '', to: src ? `복제: ${src.name} v${src.version}` : '기본값' }], who, ts);
+      const row = { id, name: n, kind: k, desc: String(desc != null ? desc : (src ? src.desc : '')).slice(0, 200), enabled: false, archived: false, builtin: false, version: 1, params: src ? JSON.parse(JSON.stringify(src.params)) : defaults(k), ...(src && linkSource ? { source: src.id } : {}) };
+      await writeRow(row, [{ key: 'init', label: '처음 만듦', from: '', to: src ? `${linkSource ? '실전에 적용' : '복제'}: ${src.name} v${src.version}` : '기본값' }], who, ts);
       cache = null;
       return { ok: true, strategy: { ...row, updatedAt: ts } };
     });
@@ -351,10 +356,10 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     if (missing) return [];
     return sbGet(`auto_strategy_versions?select=version,changed,who,at&strategy_id=eq.${encodeURIComponent(id)}&order=version.desc&limit=50`).catch(() => []);
   }
-  return { list, active, pair, actives, byId, save, create, archive, versions, isMissing: () => missing, invalidate: () => { cache = null; } };
+  return { list, active, pair, actives, byId, save, create, archive, versions, isMissing: () => missing, invalidate: () => { cache = null; }, sourceOk: () => SRC.has };
 }
 
 /* 화면용 스키마(JSON 그대로 보냄) */
 const publicSchema = () => ({ kinds: KINDS, fields: SCHEMA, maxActive: MAX_ACTIVE });
 
-module.exports = { SCHEMA, KINDS, ENUM, BUILTIN, MAX_ACTIVE, LETTERS, defaults, validate, diff, timesOf, tmin, hhmm, createStore, publicSchema };
+module.exports = { SCHEMA, KINDS, ENUM, BUILTIN, MAX_ACTIVE, LETTERS, sideOfParams, defaults, validate, diff, timesOf, tmin, hhmm, createStore, publicSchema };

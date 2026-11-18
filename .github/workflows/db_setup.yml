@@ -19,6 +19,7 @@ name: "[수시] DB 테이블·뷰 생성 | 수동 | 스키마 설정"
 #   auto_daylog   — 자동매매 오늘 탭 일지(20:30 저장, 172)
 #   engine_lock   — 주문 권한 잠금: 배포 중 두 인스턴스가 동시에 주문하지 않게(173, relay 전용 · 실거래 전환 0단계)
 #   order_origin  — 주문 출처 컬럼: 자동매매 주문에 전략 ID 기록(174, paper_orders·live_orders · 실거래 전환 1단계)
+#   dryrun_ledger — 드라이런 장부 테이블 4개 + 전략 원본 연결 컬럼(175, relay 전용 · 실전 탭 자동매매)
 #   auto_eod_split — 종가 정리 개편: 15:00 정규장·19:00 NXT 판정, 정리는 승인 후에만(171)
 #   auto_multi    — 자동매매 여러 전략 동시 실행: auto_runs 키를 (날짜, 전략)으로(166)
 #   auto_journal  — 자동매매 자동 일지 테이블(167, relay 전용 · auto_multi 다음에 실행)
@@ -59,6 +60,7 @@ on:
           - auto_daylog
           - engine_lock
           - order_origin
+          - dryrun_ledger
 
 permissions:
   contents: write
@@ -119,5 +121,5 @@ jobs:
           branch: db-setup-report
           file: ${{ inputs.target == 'data_version' && 'data_version_report.md' || 'flow_periods_fast_report.md' }}
       - name: 매매 보안 (감사 테이블·소유자 함수 / 데이터 잠금 / 잠금 해제)
-        if: inputs.target == 'trade_security' || inputs.target == 'lock_data' || inputs.target == 'unlock_data' || inputs.target == 'paper_trading' || inputs.target == 'live_trading' || inputs.target == 'auto_trade' || inputs.target == 'auto_strategy' || inputs.target == 'auto_multi' || inputs.target == 'auto_journal' || inputs.target == 'market_regime' || inputs.target == 'market_events' || inputs.target == 'auto_rounds' || inputs.target == 'auto_eod_split' || inputs.target == 'auto_daylog' || inputs.target == 'engine_lock' || inputs.target == 'order_origin'
+        if: inputs.target == 'trade_security' || inputs.target == 'lock_data' || inputs.target == 'unlock_data' || inputs.target == 'paper_trading' || inputs.target == 'live_trading' || inputs.target == 'auto_trade' || inputs.target == 'auto_strategy' || inputs.target == 'auto_multi' || inputs.target == 'auto_journal' || inputs.target == 'market_regime' || inputs.target == 'market_events' || inputs.target == 'auto_rounds' || inputs.target == 'auto_eod_split' || inputs.target == 'auto_daylog' || inputs.target == 'engine_lock' || inputs.target == 'order_origin' || inputs.target == 'dryrun_ledger'
         run: python 160_trade_setup.py ${{ inputs.target }}

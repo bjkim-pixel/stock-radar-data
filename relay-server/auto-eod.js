@@ -73,6 +73,9 @@ function createEod(deps) {
   /* 매매 엔진(실거래 전환 1단계): 이 전략의 broker. 이월 종목은 넘겨준 전략(it.sid)의 엔진으로(brokerFor) — 가상·실전이 섞여도 각자 엔진에서 판다 */
   const B = D.broker || D.paper;
   const Bof = it => (D.brokerFor ? (D.brokerFor(it && it.sid) || B) : B);
+  /* 실전 탭 자동매매(2026-11-19): 가상·드라이런·실전 장부가 같은 종목을 각자 넘길 수 있어 이월 키에 장부를 붙임(가상은 예전처럼 종목코드) */
+  const ckey = (code, kind) => (!kind || kind === 'paper' ? code : `${code}@${kind}`);
+  const keyOfItem = it => it.key || ckey(it.code, it.kind);
 
   async function heldMap(b = B) {
     const S = await b.state();
@@ -210,9 +213,10 @@ function createEod(deps) {
       if (!p || !(p.qty > 0)) continue;
       const pl = p.plan || null, plan0 = pl ? { stopPct: pl.stopPct || null, steps: (pl.steps || []).map(x => ({ n: x.n, p: x.p, q: x.q, ...(x.runner ? { runner: true } : {}) })), ratchet: pl.ratchet || null } : null;   // 아침에 보류·장중 전환할 때 되돌릴 원래 매도 계획
       const e = await B.editPlan({ code, stopPct: R.overnightStopPct, steps: [], ratchet: null });   // 분할 익절 끄기, 손절은 종가베팅 설정값(기본 −5%)
-      add.push({ code, name: p.name || nameOf(run, code), q0: p.qty, avg: p.avg, from: date, sold: 0, planOk: !!(e && e.ok), sid: D.tag || null, ...(plan0 ? { plan0 } : {}) });   // sid = 넘겨준 장중 전략
+      const kind = (B && B.kind) || 'paper';
+      add.push({ code, name: p.name || nameOf(run, code), q0: p.qty, avg: p.avg, from: date, sold: 0, planOk: !!(e && e.ok), sid: D.tag || null, kind, key: ckey(code, kind), ...(plan0 ? { plan0 } : {}) });   // sid = 넘겨준 장중 전략 · kind = 그 전략의 장부
     }
-    await D.mutateCarry(c => { c.items = c.items || {}; for (const a of add) c.items[a.code] = { ...a, at: now(), state: 'wait' }; });
+    await D.mutateCarry(c => { c.items = c.items || {}; for (const a of add) c.items[a.key] = { ...a, at: now(), state: 'wait' }; });
     await D.mutateRun(date, r => { r.payload.carryDone = { at: now(), codes: add.map(a => a.code) }; LOG.push(r.payload, 'convert', add.length ? `이월 전환: ${add.map(a => `${a.name} ${a.q0}주`).join(', ')} — 분할 익절 끄고 손절 −${R.overnightStopPct}% 유지, 다음 날 ${R.slices.map(hhmm).join('·')} 분할 매도` : '이월 전환: 넘길 종목 없음(모두 정리됨)', null, now()); });
     const L = [`🌙 ${date} 종가 베팅 전환`];
     if (!add.length) L.push('넘길 종목이 없어요(모두 정리됨).');
@@ -231,7 +235,7 @@ function createEod(deps) {
     if (!plan || !(plan.stopPct > 0)) return null;
     const e = await Bof(it).editPlan({ code: it.code, stopPct: plan.stopPct, steps: plan.steps || [], ratchet: plan.ratchet || null });
     if (!e || !e.ok) return null;
-    await D.mutateCarry(c => { const x = c.items[it.code]; x.state = 'intra'; x.holdDate = date; x.holdAt = now(); x.holdOpen = q.open; x.holdPrice = q.price; x.holdQty = p.qty; x.holdSrc = plan.src || null; x.log = [...(x.log || []), { at: now(), hold: true, open: q.open, price: q.price }]; });
+    await D.mutateCarry(c => { const x = c.items[keyOfItem(it)]; x.state = 'intra'; x.holdDate = date; x.holdAt = now(); x.holdOpen = q.open; x.holdPrice = q.price; x.holdQty = p.qty; x.holdSrc = plan.src || null; x.log = [...(x.log || []), { at: now(), hold: true, open: q.open, price: q.price }]; });
     const tp = (plan.steps || []).length ? `익절 ${plan.steps.length}단계` : '익절 없음';
     return `⏸ ${it.name}: 시가 ${fmt(q.open)}원 · 현재 ${fmt(q.price)}원 — 매수 평균 ${fmt(p.avg)}원보다 낮아 아침 매도를 보류하고 장중 전략으로 전환 (손절 −${plan.stopPct}% · ${tp}${plan.src ? ' · ' + plan.src : ''})`;
   }
@@ -244,13 +248,13 @@ function createEod(deps) {
     const hOf = heldCache(), R = await rule(), add = [], gone = [];
     for (const it of items) {
       const b = Bof(it), H = await hOf(b), p = H.get(it.code);
-      if (!p || !(p.qty > 0) || !R.closingOn) { gone.push([it.code, !p || !(p.qty > 0) ? 'gone' : 'closing-off']); continue; }
+      if (!p || !(p.qty > 0) || !R.closingOn) { gone.push([keyOfItem(it), !p || !(p.qty > 0) ? 'gone' : 'closing-off']); continue; }
       const e = await b.editPlan({ code: it.code, stopPct: R.overnightStopPct, steps: [], ratchet: null });
-      add.push({ code: it.code, q0: p.qty, avg: p.avg, ok: !!(e && e.ok), name: it.name });
+      add.push({ key: keyOfItem(it), code: it.code, q0: p.qty, avg: p.avg, ok: !!(e && e.ok), name: it.name });
     }
     await D.mutateCarry(c => {
-      for (const [code, why] of gone) { const x = c.items[code]; if (x) { x.state = 'done'; x.doneAt = now(); x.why = why; } }
-      for (const a of add) { const x = c.items[a.code]; if (x) { x.state = 'wait'; x.from = date; x.q0 = a.q0; x.avg = a.avg; x.sold = 0; x.reconv = (x.reconv || 0) + 1; x.at = now(); } }
+      for (const [k, why] of gone) { const x = c.items[k]; if (x) { x.state = 'done'; x.doneAt = now(); x.why = why; } }
+      for (const a of add) { const x = c.items[a.key]; if (x) { x.state = 'wait'; x.from = date; x.q0 = a.q0; x.avg = a.avg; x.sold = 0; x.reconv = (x.reconv || 0) + 1; x.at = now(); } }
     });
     if (add.length) await D.sendTelegram(`🌙 ${date} 장중 전환 종목 재이월: ${add.map(a => `${a.name} ${fmt(a.q0)}주`).join(', ')} — 다시 종가베팅 매도 계획(손절 −${R.overnightStopPct}% 유지)으로 넘겼어요.`);
     return { ok: true, n: add.length };
@@ -268,7 +272,7 @@ function createEod(deps) {
       /* 실전은 주문 응답에 체결이 오지 않아(체결조회로 나중에 옴) it.sold 가 늘지 않는다 → 처음 수량과 지금 보유의 차이로 판 수량을 본다. 가상은 지금과 같게 */
       const soldSoFar = b && b.real ? Math.max(it.sold || 0, (it.q0 || 0) - (p ? p.qty : 0)) : (it.sold || 0);
       if (!p || !(p.qty > 0)) {   // 손절 등으로 이미 다 팔림
-        await D.mutateCarry(c => { c.items[it.code].state = 'done'; c.items[it.code].doneAt = now(); c.items[it.code].why = 'gone'; });
+        await D.mutateCarry(c => { const x = c.items[keyOfItem(it)]; if (x) { x.state = 'done'; x.doneAt = now(); x.why = 'gone'; } });
         continue;
       }
       let q = null; try { q = await D.getQuote(it.code); } catch (_) { continue; }
@@ -288,14 +292,14 @@ function createEod(deps) {
       if (!r || !r.ok) { msgs.push(`⚠ ${it.name}: 종가 베팅 매도 실패 — ${(r && r.error) || '거부'} (다음 주기에 다시 시도)`); continue; }
       const f = r.fills || [], sq = f.reduce((a, x) => a + x.qty, 0), amt = f.reduce((a, x) => a + x.amount, 0);
       const left = p.qty - sq;
-      await D.mutateCarry(c => { const x = c.items[it.code]; x.sold = (x.sold || 0) + sq; x.log = [...(x.log || []), { at: now(), qty: sq, avg: sq ? amt / sq : null, cut: !!cut }]; if (left <= 0) { x.state = 'done'; x.doneAt = now(); } else x.state = 'selling'; });
+      await D.mutateCarry(c => { const x = c.items[keyOfItem(it)]; x.sold = (x.sold || 0) + sq; x.log = [...(x.log || []), { at: now(), qty: sq, avg: sq ? amt / sq : null, cut: !!cut }]; if (left <= 0) { x.state = 'done'; x.doneAt = now(); } else x.state = 'selling'; });
       if (sq) msgs.push(`${cut ? '⚡' : '🔔'} ${it.name}: ${fmt(sq)}주 평균 ${fmt(amt / sq)}원 매도${cut ? ` (전일 종가 대비 ${chg.toFixed(1)}% — 전량)` : ''} · 남은 ${fmt(Math.max(0, left))}주 · 매수 평균 대비 ${(((amt / sq) / it.avg - 1) * 100).toFixed(1)}%`);
     }
     if (msgs.length) await D.sendTelegram(msgs.join('\n'));
     return { ok: true, n: items.length, msgs };
   }
 
-  return { judge, handleCmd, timeout, convert, morning, reconvert, pendingPhase };
+  return { judge, handleCmd, timeout, convert, morning, reconvert, pendingPhase, ckey, keyOfItem };
 }
 
 module.exports = { carryParts, RULE, carryCheck, sliceTarget, parseEodCmd, createEod, limitSellPrice };
