@@ -340,9 +340,21 @@ function createExec(deps) {
           await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'modified', modifiedAt: now() }; LOG.push(r.payload, 'wait', `${name}: ${wm}분 미체결 — 이미 ${REPRICE_KO[o2.repriceTo]}(${fmt(o.price)}원)라 정정 없이 ${cm}분 더 기다림 · 현재가 ${q.price ? fmt(q.price) : '–'}원`, { code }, now()); });
           continue;
         }
-        const m = await B.modify({ id: o.id, price: px });
+        // 정정 가격이 바뀌면 손절·익절 계획도 새 매수가 기준으로 다시 계산(전엔 주문가 기준 계획이 그대로 남아 보유 뒤 손절·익절 금액이 평균가와 어긋났음). 일부 체결된 주문은 건드리지 않음
+        let plan = null, ord2 = null;
+        if (!o.filled) {
+          try {
+            const rows = await D.loadChart(code).catch(() => []);
+            if (rows && rows.length && q) {
+              const optC = v.cb ? { ...o2, ...(D.optCb ? await D.optCb() : { closing: true, noTp: true, minRr: 0 }) } : o2;
+              ord2 = makeOrder({ q, rows, perStockKrw: px * o.qty, opt: optC, force: { buy: px, qty: o.qty } });
+              if (!ord2.skip) plan = ord2.plan;
+            }
+          } catch (_) { plan = null; }
+        }
+        const m = await B.modify({ id: o.id, price: px, ...(plan ? { plan } : {}) });
         if (m && m.ok) {
-          await D.mutateRun(date, r => { gateRec(r, 'modify', code, o2); if (m.order.status === 'filled') gateRec(r, 'filled', code, o2); r.payload.orders[code] = { ...r.payload.orders[code], st: m.order.status === 'filled' ? 'filled' : 'modified', orderId: m.order.id, modifiedAt: now(), from: o.id, buy2: px, ...(m.order.status === 'filled' ? { filledAt: now(), filled: m.order.filled, avg: m.order.avg } : {}) };
+          await D.mutateRun(date, r => { gateRec(r, 'modify', code, o2); if (m.order.status === 'filled') gateRec(r, 'filled', code, o2); r.payload.orders[code] = { ...r.payload.orders[code], st: m.order.status === 'filled' ? 'filled' : 'modified', orderId: m.order.id, modifiedAt: now(), from: o.id, buy2: px, ...(plan ? { plan, target: ord2.target, tinfo: ord2.tinfo || null } : {}), ...(m.order.status === 'filled' ? { filledAt: now(), filled: m.order.filled, avg: m.order.avg } : {}) };
             LOG.push(r.payload, 'reprice', `${name}: ${wm}분 미체결 → ${fmt(o.price)}원에서 ${fmt(px)}원(${REPRICE_KO[o2.repriceTo]})으로 정정 · 현재가 ${q.price ? fmt(q.price) : '–'}원${m.order.status === 'filled' ? ' · 바로 체결' : ''}`, { code }, now()); });
           msgs.push(`↪ ${name}: ${wm}분 미체결 → ${fmt(px)}원으로 정정${m.order.status === 'filled' ? ' · 체결' : ''}`);
         } else {

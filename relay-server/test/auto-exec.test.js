@@ -123,7 +123,13 @@ test('3분 미체결 → 매수 1호가로 정정, 다시 3분 미체결 → 취
   const o1 = runs[date].payload.orders['005930'];
   assert.equal(o1.st, 'modified'); assert.equal(o1.buy2, 10020);
   assert.ok(sent.some(t => /10,020원으로 정정/.test(t)));
-  const nw = db.t.paper_orders.get(o1.orderId); assert.equal(+nw.price, 10020); assert.equal(nw.plan.stopPct, 5);   // 계획 유지
+  const nw = db.t.paper_orders.get(o1.orderId); assert.equal(+nw.price, 10020); assert.equal(nw.plan.stopPct, 5);
+  // 자동 정정도 손절·익절 계획을 새 매수가(10,020) 기준으로 다시 계산 — 옛 주문가(10,000) 기준이 남으면 보유 뒤 금액이 어긋남
+  const st0 = Math.floor(10000 * 0.95 / 10) * 10, st1 = Math.floor(10020 * 0.95 / 10) * 10;
+  assert.notEqual(st0, st1, '테스트 전제: 두 가격의 손절가가 달라야 함');
+  assert.equal(nw.plan.stop, st1, '손절가가 새 매수가 기준');
+  assert.equal(o1.plan.stop, st1, '자동매매 기록의 계획도 같이 갱신'); assert.ok(o1.tinfo, '목표가 근거도 갱신');
+  assert.ok(nw.plan.steps[0].p > 10020, '익절 1단계가 새 매수가 위');
   c.st.clock += 181e3; await A.tick();
   assert.equal(runs[date].payload.orders['005930'].st, 'cancelled');
   assert.equal(db.t.paper_orders.get(o1.orderId).status, 'cancelled');
