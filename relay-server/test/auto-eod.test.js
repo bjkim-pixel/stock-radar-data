@@ -51,7 +51,7 @@ async function setup({ flow = { fq: 10, oq: 0 }, idx = { 코스피: 0.3, 코스�
     livePool: async () => [], fetchFlow: async () => flow, fetchPower: async () => ({}), fetchCttr: async () => ({}), marketState: async () => null, marketIdx: async () => idx,
   });
   const { date } = kst();
-  runs[date] = { trade_date: date, status: 'noticed', payload: { picks: [{ code, name: code === '005930' ? '삼성전자' : 'SK하이닉스', price: 10000, score: 80 }], noticeSent: true, approved: [], decision: null } };
+  runs[date] = { trade_date: date, status: 'noticed', payload: { picks: [{ code, name: code === '005930' ? '삼성전자' : 'SK하이닉스', price: 10000, score: 80, cb: true }], noticeSent: true, approved: [], decision: null } };
   c.st.clock += 16 * MIN;
   await A.handleApproval('/매수 1');
   c.st.clock += 5000; c.st.vol += 700; await c.t.paper.tick();   // 100주 @10,000 체결

@@ -84,7 +84,8 @@ function createEod(deps) {
   }
   /* 여러 종목을 돌 때 엔진별로 한 번만 읽음 */
   const heldCache = () => { const m = new Map(); return async b => { const k = (b && b.kind) || 'paper'; if (!m.has(k)) m.set(k, await heldMap(b)); return m.get(k); }; };
-  const boughtCodes = run => Object.entries((run && run.payload && run.payload.orders) || {}).filter(([, v]) => (v.filled || 0) > 0 || v.st === 'filled').map(([k]) => k);
+  /* 종가베팅 전략이 직접 산 종목(저녁 NXT 매수 후보 = picks 의 cb 표시)만 — 장중 전략이 산 종목은 종가 판정·이월·정리 대상이 아니다(2026-11-19: 장중은 매도 계획·직접 매도로만, 종가베팅과 완전 분리) */
+  const boughtCodes = run => { const P = (run && run.payload) || {}, cb = new Set((P.picks || []).filter(x => x && x.cb).map(x => x.code)); return Object.entries(P.orders || {}).filter(([k, v]) => cb.has(k) && ((v.filled || 0) > 0 || v.st === 'filled')).map(([k]) => k); };
   const nameOf = (run, code) => (((run && run.payload && run.payload.picks) || []).find(p => p.code === code) || {}).name || code;
 
   async function sellAll(code, name, why, phase, date) {
@@ -226,7 +227,7 @@ function createEod(deps) {
       add.forEach(a => L.push(`· ${a.name} ${fmt(a.q0)}주 (평균 ${fmt(a.avg)}원)${a.planOk ? '' : ' ⚠ 익절 해제 실패 — 매매 화면에서 확인'}`));
       L.push('', `다음 거래일 ${R.slices.map(hhmm).join('·')} 에 ${R.slices.length}분할 시장가 매도. 시가가 전일 종가 대비 ${R.gapCut}% 이하이면 즉시 전량. 손절(−${R.overnightStopPct}%)은 밤새 유지.`);
     }
-    await D.sendTelegram(L.join('\n'));
+    if (codes.length) await D.sendTelegram(L.join('\n'));   // 종가베팅이 산 종목이 없으면(장중 종목은 대상 아님) 매일 밤 빈 알림을 보내지 않음
     return { ok: true, n: add.length };
   }
 

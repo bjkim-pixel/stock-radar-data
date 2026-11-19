@@ -67,7 +67,7 @@ async function rig({ realOn = true, pParams = {}, rParams = {}, missingDry = fal
     livePool: async () => [], fetchFlow: async () => ({}), fetchPower: async () => ({}), fetchCttr: async () => ({}), marketState: async () => null, marketIdx: async () => ({ 코스피: 0.2, 코스닥: 0.1 }),
   });
   const { date } = kst();
-  const seed = (sid, letter, engine) => { runs[`${date}|${sid}`] = { trade_date: date, strategy_id: sid, status: 'noticed', payload: { ...(withRunEngine ? { engine } : {}), strategy: { id: sid, version: 1, name: sid }, letter, picks: [{ code: '005930', name: '삼성전자', price: 10000, score: 80 }], noticeSent: true, approved: [], decision: null } }; };
+  const seed = (sid, letter, engine) => { runs[`${date}|${sid}`] = { trade_date: date, strategy_id: sid, status: 'noticed', payload: { ...(withRunEngine ? { engine } : {}), strategy: { id: sid, version: 1, name: sid }, letter, picks: [{ code: '005930', name: '삼성전자', price: 10000, score: 80, cb: true }], noticeSent: true, approved: [], decision: null } }; };
   const at = (hh, mm, dayOff = 0) => { c.st.clock = Date.parse(`${date}T00:00:00+09:00`) + dayOff * 864e5 + (hh * 60 + mm) * MIN; };
   const run = sid => runs[`${date}|${sid}`];
   const fillAll = async () => { c.st.clock += 5000; c.st.vol += 5000; await c.t.paper.tick(); await c.t.dry.tick(); };

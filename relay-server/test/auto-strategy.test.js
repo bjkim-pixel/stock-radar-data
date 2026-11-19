@@ -170,7 +170,7 @@ test('아침 분할: 시각 2개면 절반씩', () => {
 
 /* ── 15:10 판정의 약한 종목 처리 방식 · 종가베팅 꺼짐 ── */
 function eodRig(rule) {
-  const run = { trade_date: 'D', payload: { picks: [{ code: 'A', name: '가' }], orders: { A: { st: 'filled', filled: 10 } } } };
+  const run = { trade_date: 'D', payload: { picks: [{ code: 'A', name: '가', cb: true }], orders: { A: { st: 'filled', filled: 10 } } } };
   const sold = [], sent = [];
   const eod = E.createEod({
     paper: { state: async () => ({ ok: true, positions: [{ code: 'A', name: '가', qty: 10, avg: 10000, avail: 10 }] }),
@@ -207,6 +207,16 @@ test('종가베팅 꺼짐: 이월·정리 판단 없이(묻지도 팔지도 않�
   assert.equal(g.run.payload.eod.none, true); assert.deepEqual(g.run.payload.eod.weak || [], []);
   const r = await g.eod.convert('D');
   assert.equal(r.off, true); assert.equal(g.run.payload.carryDone.off, true);
+});
+
+test('장중 전략이 산 종목은 종가베팅 켜져 있어도 판정·정리·이월 대상이 아님(완전 분리) — 매도 계획·직접 매도로만', async () => {
+  const g = eodRig({ closingOn: true });
+  g.run.payload.picks[0].cb = false;                                   // 장중 전략 매수(종가베팅 후보 아님)
+  let edits = 0; g.eod.paper = null;
+  const r0 = await g.eod.judge('D'), r1 = await g.eod.judge('D', 'nxt'), c = await g.eod.convert('D');
+  assert.equal(r0.n, 0); assert.equal(r1.n, 0); assert.equal(c.n, 0);
+  assert.equal(g.sold.length, 0); assert.equal(g.sent.length, 0, '알림 없음(정리 질문·빈 전환 알림 모두)');
+  assert.deepEqual(g.run.payload.carryDone.codes, [], '이월 없음');
 });
 
 /* ── 시각 설정이 tick 에 반영 ── */
