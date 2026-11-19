@@ -12,6 +12,7 @@ const DEFP = Object.freeze(ST.defaults('intraday'));   // 기본 장중 전략 �
 const EXCL_NAME = /스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/;
 const RULES = Object.freeze({
   capMinEok: 10000,          // 시총 1조(억원)
+  amtMinEok: 100,            // 거래대금 하한 100억원(실시간 종목 조건)
   cttrMin: 100,              // 체결강도 하한(%)
   openRiseMax: 8,            // 시가 대비 상승률 상한(%)
   sectorMax: 2,              // 업종당 최대 종목 수
@@ -38,6 +39,7 @@ function baseFilter(pool, scr, smx, held, P = DEFP) {
     const st = (smx && smx[r.code]) || null;
     if (P.smx !== 'off' && !(st === 'CONT' || (P.smx === 'cont_stall' && st === 'STALL'))) continue;
     if (!(r.price > 0) || !(r.changePct > 0)) continue;
+    if ((+P.amtMinEok || 0) > 0 && !(r.amt >= P.amtMinEok * 1e8)) continue;   // 거래대금 하한(억원) — 사이트 실시간 종목의 거래대금 조건과 같은 기준
     if (r.open > 0 && Math.round((r.price / r.open - 1) * 1e4) / 100 > P.openRiseMax) continue;   // 소수 둘째 자리로 맞춰 경계(+8.00%) 부동소수점 오차 방지
     out.push({ ...r, sector: s.sector || '미분류', rs20: num(s.rs20_pctl), smx: st });
   }

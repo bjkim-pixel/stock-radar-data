@@ -36,6 +36,7 @@ const SCHEMA = {
     F('roundMin', '적용 시간', '장중 반복 검토 간격(0=반복 안 함)', 'num', 30, { min: 0, max: 120, step: 5, unit: '분' }),
     F('roundEnd', '적용 시간', '마지막 검토 시각', 'time', '14:30', { min: '10:30', max: '15:00' }),
     F('capMinEok', '대상', '시가총액 하한', 'num', 10000, { min: 1000, max: 100000, step: 1000, unit: '억원' }),
+    F('amtMinEok', '대상', '거래대금 하한(실시간 종목의 거래대금 조건 · 0=끔)', 'num', 100, { min: 0, max: 5000, step: 10, unit: '억원' }),
     F('maTrend', '대상', '종가 > 60일선 > 120일선', 'bool', true),
     F('smx', '대상', '스마트머니 상태', 'enum', 'cont_stall', { opts: ENUM.smx }),
     F('smxWin', '대상', '스마트머니 진단 기간(위 상태를 볼 기간)', 'enum', '126', { opts: ENUM.smxWin }),
@@ -124,7 +125,7 @@ const SCHEMA = {
 const CLOSE_COPY = ['capMinEok', 'maTrend', 'smx', 'smxWin', 'flowForeign', 'flowInst', 'flowProgram', 'poolTop', 'sectorMax', 'weights',
   'perStockKrw', 'totalCapKrw', 'buyPick', 'fillWaitMin', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'regimeMode', 'regimeCaution', 'regimeDefense',
   'stopPct', 'rr', 'tpStyle', 'runnerPct', 'ratchet', 'trail', 'split', 'minPct', 'eodWeak',
-  'execMode', 'liveAutoOk', 'dryDays', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop'];
+  'execMode', 'liveAutoOk', 'dryDays', 'amtMinEok', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop'];
 const CLOSE_NOCOPY = new Set(['execMode', 'liveAutoOk', 'dryDays', 'maxOrdersDay', 'rejectStop', 'unsureStop']);   // 처음 복사할 때도 장중 값을 가져오지 않음(가상·끔·기본 안전장치에서 시작)
 const CLOSE_GROUP = { '대상': '후보 조건(장중 전략과 따로)', '매수 조건': '후보 조건(장중 전략과 따로)', '후보 수': '후보 조건(장중 전략과 따로)', '점수': '후보 조건(장중 전략과 따로)',
   '매수 주문': '매수 주문', '시장 상태': '시장 상태', '매도': '아침 보류(장중 전환) 뒤 매도 계획', '실행 모드': '실행 모드', '매수 금액': '매수 금액', '실전 안전장치': '실전 안전장치' };

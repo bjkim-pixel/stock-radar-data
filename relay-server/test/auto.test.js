@@ -428,3 +428,13 @@ test('스마트머니 진단 기간 설정: 저장 전략에 없으면 6개월�
   assert.equal(ST.validate('intraday', { execMode: 'live', smxWin: '63' }).val.smxWin, '63');   // 실전 전략도 같은 설정
   assert.ok(ST.publicSchema().fields.intraday.some(f => f.key === 'smxWin'));
 });
+
+test('거래대금 하한: 실시간 종목 후보 중 하한 미만(100억 기본)은 후보에서 빠지고, 값을 낮추거나 0이면 통과', () => {
+  const A = require('../auto');
+  const pool = [{ code: 'A', name: '가', price: 10000, open: 9900, changePct: 2, amt: 99e8 }, { code: 'B', name: '나', price: 10000, open: 9900, changePct: 2, amt: 100e8 }];
+  const scr = { A: { close: 10000, ma60: 9000, ma120: 8000, sector: 'x' }, B: { close: 10000, ma60: 9000, ma120: 8000, sector: 'x' } };
+  const P = { ...require('../auto-strategy').defaults('intraday'), smx: 'off' };
+  assert.deepEqual(A.baseFilter(pool, scr, {}, new Set(), P).map(c => c.code), ['B']);
+  assert.deepEqual(A.baseFilter(pool, scr, {}, new Set(), { ...P, amtMinEok: 50 }).map(c => c.code), ['A', 'B']);
+  assert.deepEqual(A.baseFilter(pool, scr, {}, new Set(), { ...P, amtMinEok: 0 }).map(c => c.code), ['A', 'B']);
+});

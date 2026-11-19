@@ -12,7 +12,7 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   for (const k of ['intraday', 'closing']) assert.deepEqual(S.validate(k, S.defaults(k)).val, S.defaults(k));
   const sql = fs.readFileSync(path.join(__dirname, '..', '..', '165_auto_strategy.sql'), 'utf8');
   const js = [...sql.matchAll(/'(\{"[^']+\})'::jsonb/g)].map(m => JSON.parse(m[1]));
-  const LATER = ['regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries', 'minRr', 'tpStyle', 'runnerPct', 'ratchet', 'kwOn', 'kwMax', 'execMode', 'liveAutoOk', 'dryDays', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'smxWin'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
+  const LATER = ['regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries', 'minRr', 'tpStyle', 'runnerPct', 'ratchet', 'kwOn', 'kwMax', 'execMode', 'liveAutoOk', 'dryDays', 'amtMinEok', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'smxWin'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
   const I0 = Object.fromEntries(Object.entries(S.defaults('intraday')).filter(([k]) => !LATER.includes(k)));
   I0.weights = { flow: 40, cttr: 15, rise: 15, amt: 15, trend: 15 };               // 165 의 예전 기본 배점 → 검증에서 새 기본 배점(개인 물량 항목 포함)으로 올라감
   I0.eodTimeout = 'keep';                                                           // 165 에는 있었지만 지금은 없는 설정(무응답이면 항상 유지) — 저장돼 있어도 검증이 버림
@@ -134,7 +134,7 @@ test('배점을 바꾸면 해당 항목 비중이 바뀐다', () => {
   assert.equal(s.parts.cttr, 100); assert.equal(s.parts.flow, 0); assert.equal(s.total, 100);
 });
 test('대상 조건: 이평선 끄기 · 매집 지속만 · 시가 대비 상한 · 업종당 수', () => {
-  const pool = [{ code: 'A', name: '가', price: 10500, open: 10000, changePct: 2 }, { code: 'B', name: '나', price: 10500, open: 10000, changePct: 2 }];
+  const pool = [{ code: 'A', name: '가', price: 10500, open: 10000, changePct: 2, amt: 2e10 }, { code: 'B', name: '나', price: 10500, open: 10000, changePct: 2, amt: 2e10 }];
   const scr = { A: { close: 10000, ma60: 11000, ma120: 9000, sector: 'x' }, B: { close: 12000, ma60: 11000, ma120: 9000, sector: 'x' } };
   const smx = { A: 'CONT', B: 'STALL' };
   assert.deepEqual(A.baseFilter(pool, scr, smx, null).map(r => r.code), ['B']);
@@ -295,4 +295,12 @@ test('드라이런 점검 기간: 기본 3거래일(1~10), 끝난 날 수·진�
   assert.equal(P(d3, '2026-11-25', 540, 3).done, true);
   assert.equal(P(d3, '2026-11-25', 540, 3).day, 3);
   assert.equal(P(['2026-11-20'], '2026-11-24', 540, 1).done, true);   // 기간 1일
+});
+
+test('거래대금 하한(amtMinEok): 기본 100억원, 0=끔, 장중·종가베팅 둘 다 가짐', () => {
+  assert.equal(S.defaults('intraday').amtMinEok, 100);
+  assert.equal(S.defaults('closing').amtMinEok, 100);
+  assert.equal(S.validate('intraday', { amtMinEok: 300 }).val.amtMinEok, 300);
+  assert.equal(S.validate('intraday', { amtMinEok: 0 }).val.amtMinEok, 0);
+  assert.equal(S.validate('intraday', { amtMinEok: 9999 }).errs.length > 0, true);
 });
