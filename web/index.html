@@ -1095,7 +1095,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 #pinPad .pm{font-size:13px;line-height:1.55;margin:0 0 12px;white-space:pre-line}#pinPad .pd{display:flex;justify-content:center;gap:10px;min-height:22px;margin:0 0 14px}#pinPad .pd i{width:13px;height:13px;border-radius:50%;border:2px solid var(--ink-3,#888)}#pinPad .pd i.on{background:var(--ink,#111);border-color:var(--ink,#111)}
 #pinPad .pk{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}#pinPad .pk button{font-size:20px;font-weight:600;padding:13px 0;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:inherit;cursor:pointer;font-variant-numeric:tabular-nums}#pinPad .pk button:active{filter:brightness(.9)}
 #pinPad .pb{display:flex;gap:8px;margin-top:10px}#pinPad .pb button{flex:1;padding:10px 0;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:inherit;font-size:14px;cursor:pointer}#pinPad .pb button.go{background:#d93b3b;color:#fff;border-color:#d93b3b;font-weight:700}
-.au-dry{font-size:10.5px;font-weight:650;margin-left:3px;padding:1px 6px;border-radius:999px;background:#fff3e6;color:#c25400;vertical-align:1px;white-space:nowrap}.au-dry.done{background:#e3f4ea;color:#1f7a45}.au-mode{font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;vertical-align:1px}.au-mode.live{background:#d93b3b;color:#fff}.au-mode.dryrun{background:#f2a33a;color:#1b1b1b}.au-mode.paper{background:var(--surface-3);color:var(--ink-2)}
+.td-top3-t{font-size:12px;font-weight:700;margin:10px 0 4px;color:var(--ink-2)}.au-dry{font-size:10.5px;font-weight:650;margin-left:3px;padding:1px 6px;border-radius:999px;background:#fff3e6;color:#c25400;vertical-align:1px;white-space:nowrap}.au-dry.done{background:#e3f4ea;color:#1f7a45}.au-mode{font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;vertical-align:1px}.au-mode.live{background:#d93b3b;color:#fff}.au-mode.dryrun{background:#f2a33a;color:#1b1b1b}.au-mode.paper{background:var(--surface-3);color:var(--ink-2)}
 .au-stt{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;vertical-align:1px;border:1px solid var(--border);color:var(--ink-3)}.au-stt.on{border-color:var(--good);color:var(--good)}.au-stt.hold{border-color:var(--warn);color:#a76b00}
 :root[data-theme="dark"] .au-stt.hold{color:var(--warn)}
 .au-ov{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin:0 0 12px}.au-ovc{border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;background:var(--surface)}.au-ovc.here{border-color:var(--ink-3)}
@@ -1360,6 +1360,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button class="fchip" data-v="7" aria-pressed="true">1주</button>
       <button class="fchip" data-v="3" aria-pressed="false">3일</button>
     </div></div>
+    <div class="qf-group"><div class="qf-lb">업종</div><div class="qf seg" id="tdDartSecSel"><button class="fchip" id="tdDartSecBtn" type="button" aria-pressed="false" title="체크하면 공시 내용을 업종별로 묶어, 업종은 시가총액 합이 큰 순 · 업종 안은 시가총액 큰 순으로 보여줍니다">업종별 보기</button></div></div>
     <div class="qf-group" id="tdDartSortWrap" style="display:none"><div class="qf-lb">정렬</div><div class="qf seg" id="tdDartSortSel">
       <button class="fchip" data-v="date" aria-pressed="true">최신순</button>
       <button class="fchip" data-v="amt" aria-pressed="false">금액순</button>
@@ -1396,7 +1397,12 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button class="fchip" data-crit="cluster">클러스터 업종</button>
     </div>
     <div id="tdTopCritNote" style="font-size:11px;color:var(--ink-3);margin-bottom:6px"></div>
+    <div class="td-top3-t">시가총액 큰 순</div>
     <div class="tw scrlike" id="tdTopWrap"><table><thead></thead><tbody id="tdTopBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="td-top3-t">거래대금 큰 순</div>
+    <div class="tw scrlike" id="tdTopWrap2"><table><thead></thead><tbody id="tdTopBody2"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="td-top3-t">상승률 큰 순</div>
+    <div class="tw scrlike" id="tdTopWrap3"><table><thead></thead><tbody id="tdTopBody3"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
     <div id="tdTopDupNote" class="note" style="margin-top:6px;display:none"></div>
     <div class="note" style="margin-top:6px">동일 유동성 필터(시총·거래대금 하한) 적용 · 종목명 터치 = 종목상세 · 표 형식은 종목후보와 동일(좌우로 밀어서 보기, #·종목명 고정) · "중복 많은 순" = 위 기준 여러 개에서 동시에 Top 10에 든 횟수 순</div>
   </div>
@@ -6879,7 +6885,7 @@ function renderTodayTop(universe){
   const multi=crits.length>1;
   const crit=crits[0]||"weight", def=TD_TOP_CRITERIA[crit];
   if(!def)return;
-  $("#tdTopKeyHd").textContent=multi?"기준별 순위":def.lbl;
+  $$(".tdTopKeyHd").forEach(h=>{h.textContent=multi?"기준별 순위":def.lbl;});
   $("#tdTopCritNote").textContent=multi
     ?`선택한 ${crits.length}개 기준(${crits.map(c=>TD_TOP_CRITERIA[c].lbl).join(" + ")})을 모두 만족하는 종목 — 각 기준 상위 ${TD_MULTI_K}위 이내 교집합, 기준별 순위 합이 작은 순`
     :def.note;
@@ -6906,13 +6912,18 @@ function renderTodayTop(universe){
     dn.style.display="";
     dn.innerHTML=sorted.length?sorted.map((r,i)=>`${i+1}. <b>${r.name}</b> — ${[...(topMap[r.code]||[])].join(", ")}`).join("<br>"):"";
   }else{dn.style.display="none";dn.innerHTML="";}
-  const rowsHtml=sorted.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
+  /* 2026-11-19: 같은 Top 10 종목을 표 3개로 나눠 보여줌 — 시가총액 · 거래대금 · 상승률 큰 순(각 표의 # 는 그 표 안의 순서) */
+  const rowsOf=list=>list.map((r,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(r)}
       <td>${multi
         ?`<span style="font-size:10.5px;line-height:1.5;display:block">${crits.map((c,k)=>`${TD_TOP_CRITERIA[c].lbl} <b>${rankInfo.get(r.code)[k]}위</b>`).join("<br>")}</span>`
         :`<b>${def.keyFmt(def.keyFn(r),r)}</b>`}</td>${scrCells(r)}</tr>`).join("");
-  $("#tdTopBody").innerHTML=sorted.length?rowsHtml:`<tr><td colspan="30" class="load">${multi?"선택한 기준을 모두 만족하는 종목이 없습니다 — 기준을 줄여 보세요":"해당 종목 없음"}</td></tr>`;
-  $$("#tdTopBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
-  makeSortable("tdTopBody");
+  const emptyTx=`<tr><td colspan="30" class="load">${multi?"선택한 기준을 모두 만족하는 종목이 없습니다 — 기준을 줄여 보세요":"해당 종목 없음"}</td></tr>`;
+  const by=fn=>[...sorted].sort((a,b)=>fn(b)-fn(a));
+  [["#tdTopBody",by(r=>+r.market_cap||0)],["#tdTopBody2",by(r=>+r.trade_amount||0)],["#tdTopBody3",by(r=>(r.change_pct==null?-1e9:+r.change_pct))]].forEach(([id,list])=>{
+    $(id).innerHTML=list.length?rowsOf(list):emptyTx;
+    $$(id+" a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+    makeSortable(id.slice(1));
+  });
 }
 async function loadTodayClusterSectors(){
   try{
@@ -7119,35 +7130,55 @@ function dartRender(){
   const since=dartDay(+K.period-1),rows=K.rows.filter(r=>r.rcept_dt>=since);
   $("#tdDartSubWrap").style.display=K.kind==="HOLD5"?"":"none";
   $("#tdDartSortWrap").style.display=(K.kind==="ORDER"||K.kind==="INV")?"":"none";
-  let html="",n=0;
+  let html="",n=0,secList=null,secFn=null;
   if(K.kind==="HOLD5"){
     let a=rows.filter(r=>r.kind==="HOLD5");
     if(K.sub!=="all")a=a.filter(r=>K.sub==="기타"?!["운용사","연기금"].includes(r.filer_type):r.filer_type===K.sub);
-    n=a.length;
+    n=a.length;secList=a;secFn=r=>dartHoldLine(r,true);
     html=dartHoldGroups(a).map(([f,L],gi)=>{
       const up=L.filter(r=>dartHoldInfo(r).dir>0).length,dn=L.filter(r=>dartHoldInfo(r).dir<0).length,ex=L.filter(r=>{const i=dartHoldInfo(r);return i.txt.includes("이탈")||i.txt.includes("전량");}).length;
       return `<details${gi<6||L.length>=3?" open":""} style="margin:6px 0"><summary style="cursor:pointer"><b>${f}</b> <span class="faint">${L.length}건</span> <span class="up">${up?"증가·신규 "+up:""}</span> <span class="down">${dn?"감소 "+dn:""}${ex?" · 이탈 "+ex:""}</span></summary><div style="padding-left:12px">${L.map(r=>dartHoldLine(r,false)).join("")}</div></details>`;
     }).join("");
   }else if(K.kind==="INSIDER"){
     const a=rows.filter(r=>r.kind==="INSIDER"&&+r.shares_delta!==0).sort((x,y)=>y.rcept_dt<x.rcept_dt?-1:y.rcept_dt>x.rcept_dt?1:0);
-    n=a.length;
+    n=a.length;secList=a;secFn=dartInsiderLine;
     const buys=a.filter(r=>+r.shares_delta>0),sells=a.filter(r=>+r.shares_delta<0);
     html=`<div class="faint" style="margin-bottom:4px">매수 ${buys.length}건 · 매도 ${sells.length}건 (증감 주식수가 있는 보고만)</div>`+
       (buys.length?`<div style="margin:6px 0 2px"><b class="up">매수</b></div>`+buys.map(dartInsiderLine).join(""):"")+
       (sells.length?`<div style="margin:8px 0 2px"><b class="down">매도</b></div>`+sells.map(dartInsiderLine).join(""):"");
   }else if(K.kind==="BUYBACK"){
-    const a=rows.filter(r=>r.kind==="BUYBACK");n=a.length;html=a.map(dartEtcLine).join("");
+    const a=rows.filter(r=>r.kind==="BUYBACK");n=a.length;secList=a;secFn=dartEtcLine;html=a.map(dartEtcLine).join("");
   }else if(DART_GRP[K.kind]){
     let a=rows.filter(r=>DART_GRP[K.kind].includes(r.kind));
     if(K.sort==="amt")a=[...a].sort((x,y)=>(+y.amount||0)-(+x.amount||0));
     else if(K.sort==="ratio")a=[...a].sort((x,y)=>dartRatio(y)-dartRatio(x));
-    n=a.length;html=a.map(dartEtcLine).join("");
+    n=a.length;secList=a;secFn=dartEtcLine;html=a.map(dartEtcLine).join("");
   }else{
-    const a=rows.filter(r=>!["HOLD5","INSIDER","BUYBACK","RISK",...DART_POS].includes(r.kind));n=a.length;html=a.map(dartEtcLine).join("");
+    const a=rows.filter(r=>!["HOLD5","INSIDER","BUYBACK","RISK",...DART_POS].includes(r.kind));n=a.length;secList=a;secFn=dartEtcLine;html=a.map(dartEtcLine).join("");
+  }
+  if(K.bySector&&secList){
+    if(!S.flowRaw){loadFlowRawData().then(()=>dartRender()).catch(()=>{});}
+    html=dartSecHtml(secList,secFn,K.sort);
   }
   body.innerHTML=html||'<div class="load">해당 기간 공시가 없습니다</div>';
   body.querySelectorAll("a.lk[data-code]").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
   $("#tdDartSub").textContent=`DART 전자공시 · ${DART_KIND_LB[K.kind]||({INV:"증설·지분 투자"})[K.kind]||"공급 부담·합병·기타"} ${n}건 · 최근 ${K.period}일(접수일 기준)`;
+}
+/* 공시 내용을 업종별로 묶기(2026-11-19): 업종 순서 = 그 업종 공시 종목들의 시가총액 합이 큰 순, 업종 안 = 시가총액 큰 순(금액순·매출대비순을 직접 고르면 그 순서) */
+function dartSecHtml(list,lineFn,sort){
+  const info={};(S.flowRaw||[]).forEach(r=>{info[r.code]={sec:r.sector||"",cap:+r.market_cap||0};});
+  const cap=r=>(info[r.code]||{}).cap||0,G={};
+  list.forEach(r=>{const k=(info[r.code]||{}).sec||"업종 미분류";(G[k]=G[k]||[]).push(r);});
+  const arr=Object.entries(G).map(([k,L])=>{const cs={};L.forEach(r=>{cs[r.code]=cap(r);});return {k,L,sum:Object.values(cs).reduce((a,b)=>a+b,0),stocks:Object.keys(cs).length};})
+    .sort((x,y)=>(x.k==="업종 미분류")-(y.k==="업종 미분류")||y.sum-x.sum||x.k.localeCompare(y.k,"ko"));
+  const inner=L=>{
+    let o=[...L];
+    if(sort==="amt")o.sort((x,y)=>(+y.amount||0)-(+x.amount||0));
+    else if(sort==="ratio")o.sort((x,y)=>dartRatio(y)-dartRatio(x));
+    else o.sort((x,y)=>cap(y)-cap(x)||(y.rcept_dt<x.rcept_dt?-1:y.rcept_dt>x.rcept_dt?1:0));
+    return o.map(lineFn).join("");
+  };
+  return arr.map((g,i)=>`<details${i<8?" open":""} style="margin:6px 0"><summary style="cursor:pointer"><b>${g.k}</b> <span class="faint">${g.L.length}건 · ${g.stocks}종목${g.sum>0?" · 시총 합 "+fmtEokJo(g.sum/EOK):""}</span></summary><div style="padding-left:12px">${inner(g.L)}</div></details>`).join("");
 }
 /* 공시 조건 필터(종목후보·종목상세 상단): 최근 N일 DART 공시를 종목별로 집계 */
 const DART_COND={hold_up_am:f=>f.hu>0,hold_down_am:f=>f.hd>0,ins_buy:f=>f.ins>0,ins_sell:f=>f.ins<0,buyback:f=>f.bb>0,supply:f=>f.sp>0,order:f=>f.or>0,capex:f=>f.cx>0,bonus:f=>f.bn>0,risk:f=>f.rk>0};
@@ -7181,6 +7212,7 @@ async function dartInit(){
     $("#tdDartPeriodSel").addEventListener("seg-change",e=>{K.period=e.detail;dartRender();});
     $("#tdDartSortSel").addEventListener("seg-change",e=>{K.sort=e.detail;dartRender();});
     $("#tdDartSubSel").addEventListener("seg-change",e=>{K.sub=e.detail;dartRender();});
+    $("#tdDartSecBtn").addEventListener("click",e=>{K.bySector=!K.bySector;e.currentTarget.setAttribute("aria-pressed",K.bySector?"true":"false");dartRender();});
   }
   try{K.rows=await dartLoad30();dartRender();}
   catch(e){console.error("공시 동향",e);$("#tdDartBody").innerHTML='<div class="load">공시 데이터를 불러오지 못했습니다 (수집 전일 수 있음)</div>';}
@@ -7279,7 +7311,7 @@ function scrThead(extra,ord){
 }
 
 $("#tdFlowBody").closest("table").querySelector("thead").innerHTML=scrThead('<th>순매수(억)</th><th>시총대비</th>');
-$("#tdTopBody").closest("table").querySelector("thead").innerHTML=scrThead('<th id="tdTopKeyHd">기준값</th>');
+["#tdTopBody","#tdTopBody2","#tdTopBody3"].forEach(id=>{$(id).closest("table").querySelector("thead").innerHTML=scrThead('<th class="tdTopKeyHd">기준값</th>');});
 $("#favBody").closest("table").querySelector("thead").innerHTML=scrThead("",SCR_ORD_FAV);
 $("#scrBody").closest("table").querySelector("thead").innerHTML=scrThead();
 async function runScreener(){
