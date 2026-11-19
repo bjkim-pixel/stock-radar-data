@@ -1,7 +1,7 @@
 const fs=require('fs'),assert=require('assert');
 const html=fs.readFileSync(require('path').join(__dirname,'../../web/index.html'),'utf8');
 const src=html.slice(html.indexOf('/*DET-CALC-START*/'),html.indexOf('/*DET-CALC-END*/'));assert.ok(src.length>400,'calc block');
-const m=new Function(src+';return {DET_PER,DET_PER_DEF,detPeriodStart,detDayNet,detWtTop,detPerf};')();
+const m=new Function(src+';return {DET_PER,DET_PER_DEF,detPeriodStart,detDayNet,detWtTop};')();
 const t=(n,f)=>{try{f();console.log('PASS',n);}catch(e){console.log('FAIL',n,e.message);process.exitCode=1;}};
 // 거래일 N개짜리 가짜 이력: 날짜는 2026-01-01부터 1일씩(주말 무관), 종가 100씩 증가
 const mk=(n,fn)=>Array.from({length:n},(_,i)=>{const d=new Date(Date.UTC(2026,0,1+i)).toISOString().slice(0,10);
@@ -58,15 +58,4 @@ t('첫 행이 1위여도(전일 없음) 죽지 않는다',()=>{
   const r=mk(3,i=>({weight_per_share:i===0?0.09:0}));
   const x=m.detWtTop(r,r[0].trade_date,r[2].trade_date,1)[0];
   assert.equal(x.i,0);assert.deepEqual(x.subj,[]);
-});
-t('소개부 1·3·6개월 현황',()=>{
-  const r=mk(200,i=>({foreign_cum:i*1e9,inst_cum:i*5e8,individual_cum:-i*2e9}));
-  const p=m.detPerf(r);assert.deepEqual(p.map(x=>x.v),['21','63','126']);
-  const a=p[0];assert.ok(a.ok);
-  assert.ok(Math.abs(a.chg-((1000+199*10)/(1000+178*10)-1)*100)<1e-9);   // 21거래일 전 종가 대비
-  assert.equal(a.fi,21*1.5e9);assert.equal(a.ind,-21*2e9);
-  assert.ok(Math.abs(a.fiPct-21*1.5e9/1e12*100)<1e-9);
-  assert.ok(a.avgAmt>0);
-  const s=m.detPerf(mk(50));assert.equal(s[0].ok,true);assert.equal(s[1].ok,false);assert.equal(s[2].ok,false);   // 50일 이력이면 1개월만
-  const e=m.detPerf(mk(100,()=>({foreign_cum:null,inst_cum:null,individual_cum:null})));assert.equal(e[0].fi,null);assert.equal(e[0].ind,null);
 });

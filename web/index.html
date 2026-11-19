@@ -4584,6 +4584,13 @@ function volumeBars(host,vals,labels,opt={}){
           t2.textContent=`${lb==="오늘"?"오늘":lb} 종가 ${N(opt.sub[i],0)}`;svg.appendChild(t2);}});
     }
   }
+  // opt.flags=[{i,t,c}]: 특정 막대 표시(예: 무게 1·2위일) — 막대 윗부분 옆에 동그라미와 글씨
+  if(opt.flags)opt.flags.forEach(f=>{
+    const v=vals[f.i];if(v==null||isNaN(v))return;
+    const cx=X(f.i),cy=Y(v),c=css(f.c||"--ink"),ta=f.i>labels.length*0.8?"end":"start";
+    svg.appendChild(el("circle",{cx,cy,r:5,fill:"none",stroke:c,"stroke-width":2.2}));
+    const t=el("text",{x:cx+(ta==="end"?-9:9),y:cy+14,"text-anchor":ta,"font-size":10.5,"font-weight":700,fill:c,stroke:css("--surface"),"stroke-width":3.5,"paint-order":"stroke"});
+    t.textContent=f.t;svg.appendChild(t);});
   // opt.refLine: 기준선 (MA20 등) — 점선으로 표시
   if(opt.refLine!=null){const ry=Y(opt.refLine);
     svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:ry,y2:ry,
@@ -7397,19 +7404,6 @@ function detWtTop(rows,start,end,n=2){
     return {rank:k+1,i,d:r.trade_date,w:w*100,close:+r.close,amt:ta>0?ta:null,vol:vol>0?vol:null,vwap:ok?ta/vol:null,subj};
   });
 }
-/* 소개부 1·3·6개월 현황: 최근 N거래일 기준 등락률·외+기/개인 순매수·평균 거래대금 */
-function detPerf(rows){
-  const L=rows.length-1;
-  return [["21","1개월"],["63","3개월"],["126","6개월"]].map(([v,t])=>{
-    const n=+v;
-    if(L<n)return {v,t,ok:false};
-    const a=rows[L],b=rows[L-n],cu=k=>(a[k]==null||b[k]==null)?null:(+a[k])-(+b[k]);
-    const fg=cu("foreign_cum"),ins=cu("inst_cum"),ind=cu("individual_cum"),mc=+a.market_cap;
-    const fi=(fg==null||ins==null)?null:fg+ins;
-    let s=0,k=0;for(let i=L-n+1;i<=L;i++){const x=+rows[i].trade_amount;if(x>0){s+=x;k++;}}
-    return {v,t,ok:true,from:b.trade_date,chg:+b.close>0?(+a.close/+b.close-1)*100:null,fi,fiPct:(fi!=null&&mc>0)?fi/mc*100:null,ind,avgAmt:k?s/k:null};
-  });
-}
 /*DET-CALC-END*/
 /* 종목상세 헤더의 최고·최저(이력 전체)와 무게/주식수 최대일 — 매매 화면 헤더도 같은 계산을 씀 */
 function detailHL(rows){let H=null,Lw=null;rows.forEach(r=>{const h=+r.high>0?+r.high:+r.close,l=+r.low>0?+r.low:+r.close;if(!(h>0)||!(l>0))return;
@@ -7463,7 +7457,6 @@ async function loadDetail(code){
       <div class="num down" style="font-size:12px">최저 <b>${N(hl.L.v,0)}</b> <span style="font-size:11px">${shortDate(hl.L.d)}</span></div>
       ${wt?`<div class="num" style="font-size:12px;color:#f26a00" title="무게/주식수(등락률×거래량÷상장주식수)가 가장 컸던 날 — 종가, 그날 순매수가 가장 컸던 거래주체">무게 <b>${pm(wt.w,1)}%</b> <span style="font-size:11px">${shortDate(wt.d)} · 종가 ${N(wt.close,0)} · ${wt.who} ${pm(wt.amt/EOK,0)}억</span></div>`:""}
     </div>`:""}
-    ${detPerfHtml(rows)}
     <div style="display:flex;flex-direction:column;gap:2px">
       <div class="faint" style="font-size:12px">${sum.sector||"–"}</div>
       <div class="faint" style="font-size:12px">${isEtf?(sum.etf_field||"ETF"):"업종RS "+(sum.sector_rs_rank?sum.sector_rs_rank+"위":"–")}</div>
@@ -7525,7 +7518,7 @@ function renderMinis(rp){
     if(myReqId!==S_detailReqId)return;
     const closes=rp.map(r=>+r.close);   // 2026-10-27: 각 차트 뒤에 종가(회색)를 함께 표시
     minis.forEach(([n,arr],i)=>{const h=$("#mini_"+i);if(!h)return;lineChart(h,
-      [{n,v:arr,c:"--s1",w:1}],lb,{h:130,w:300,pr:8,pl:38,zero:true,labelEnds:false,ext:{close:closes},extSz:10,fm:v=>pm(v,0)+"억",
+      [{n,v:arr,c:"--s1",w:1}],lb,{h:130,w:300,pr:8,pl:38,zero:true,labelEnds:false,monthTicks:true,tickGap:20,ext:{close:closes},extSz:10,fm:v=>pm(v,0)+"억",
         fy:v=>N(v,0),ft:v=>pm(v,0)+"억",bg:{v:closes,n:"종가",ft:v=>N(v)+"원"}});});
   });
 }
@@ -7599,8 +7592,9 @@ function renderRangeCharts(){
     }else{$("#dVolProf").innerHTML='<div class="load">데이터 없음</div>';$("#dVolProfSum").textContent="";}
   }catch(e){console.error("volprof",e);}
   const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
+  const wOff=rows.indexOf(rp[0]),wFlags=detWtTop(rows,rp[0].trade_date,rp.at(-1).trade_date,2).map(x=>({i:x.i-wOff,t:`${x.rank===1?"①":"②"} ${x.rank}위 ${x.d.slice(5).replace("-","/")}`,c:x.rank===1?"--up":"--warn"}));
   volumeBars($("#dWeight"),wps,rlb,
-    {h:450,w:1180,pr:66,monthTicks:true,marks:true,sub:rp.map(r=>+r.close),bg:rp.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+    {h:450,w:1180,pr:66,monthTicks:true,marks:true,flags:wFlags,sub:rp.map(r=>+r.close),bg:rp.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
     {bg:rp.map(r=>+r.close),bgPanel:true,h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rp[0];
@@ -7656,18 +7650,6 @@ function renderWtTop(rows,start,end){
   };
   host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>무게/주식수 1·2위일 분석</b> — 선택 기간(${start}~${end}) 안에서 무게/주식수가 가장 큰 날과 두 번째로 큰 날</div>`+top.map(blk).join("")
     +`<div class="note">순매수 주식수는 일봉으로만 추정합니다(순매수대금 × 거래량 ÷ 거래대금). 투자자별 실제 체결 수량은 수집하지 않아 <b>평균 매수단가(= 순매수대금 ÷ 순매수 주식수)가 그날의 거래대금 ÷ 거래량(일 평균가)으로 모든 주체에서 같게</b> 나옵니다. 주체마다 다른 진짜 평단이 아니라 "그 큰 순매수가 들어온 날의 평균 가격대"로 보세요. 순매도 주체는 평균단가를 표시하지 않습니다.</div>`;
-}
-/* 소개부: 최근 1·3·6개월 현황(기간 버튼과 상관없이 항상 3개) */
-function detPerfHtml(rows){
-  const P=detPerf(rows);
-  const c=(f)=>P.map(x=>`<td class="num">${x.ok?f(x):'<span class="faint">–</span>'}</td>`).join("");
-  const eok=v=>v==null?"–":`<span class="${sgn(v)}">${pm(v/EOK,0)}억</span>`;
-  return `<div style="min-width:250px" title="최근 N거래일 기준 (1개월 21 · 3개월 63 · 6개월 126거래일)"><table class="earn-t" style="font-size:11.5px"><thead><tr><th class="l">현황</th>${P.map(x=>`<th>${x.t}</th>`).join("")}</tr></thead><tbody>
-    <tr><td class="l">등락률</td>${c(x=>x.chg==null?"–":`<span class="${sgn(x.chg)}">${pm(x.chg,1)}%</span>`)}</tr>
-    <tr><td class="l">외+기 순매수</td>${c(x=>eok(x.fi))}</tr>
-    <tr><td class="l">└ 시총 대비</td>${c(x=>x.fiPct==null?"–":`<span class="${sgn(x.fiPct)}">${pm(x.fiPct,2)}%</span>`)}</tr>
-    <tr><td class="l">개인 순매수</td>${c(x=>eok(x.ind))}</tr>
-    <tr><td class="l">평균 거래대금</td>${c(x=>x.avgAmt==null?"–":N(x.avgAmt/EOK,0)+"억")}</tr></tbody></table></div>`;
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 // 2026-10-29: 종목상세 업종 필터 — 기본 "업종 전체". 업종을 고르면 종목 선택 목록과 "다음 종목"이 그 업종 안에서만 움직임.
@@ -8700,18 +8682,15 @@ async function smxLoadMap(){
   }
   S.smxMap=m;return m;
 }
-/* 주도 세력: 선택 기간(1M·3M·6M·전체, 기본 6M) 외+기 매집 구간(저점→고점)에서 순매수가 가장 큰 주체(없으면 기간 전체 순매수). 추세 = 그 주체의 최근 5일·20일 순매수 방향 */
-S.leadWin=S.leadWin||DET_PER_DEF;
-function renderLead(full,el){
-  el=el||$("#dLead");if(!el)return;el.style.display="none";
-  if(!full||full.length<10||full[0].foreign_cum==null)return;
-  S._leadRows=full;
-  const all=S.leadWin==="all"?full:full.slice(-Math.min(full.length,+S.leadWin));
-  if(all.length<10)return;
-  const m=smxModel(all),L=m.L;
+/* 주도 세력(소개부): 6개월·3개월·1개월 전 시점부터 오늘까지 각각 — 그 구간 외+기 매집(저점→고점)에서 순매수가 가장 큰 주체(없으면 구간 전체 순매수)와,
+   그 주체의 최근 5일·20일 순매수 방향(수급 추세). 외+기 어느 주체도 순매수 우위가 없으면 "순매수 우위 없음" */
+const LEAD_WINS=[["126","6개월"],["63","3개월"],["21","1개월"]];
+function leadAt(full,n){
+  const all=full.slice(-Math.min(full.length,n));
+  if(all.length<10)return null;
+  const m=smxModel(all),L=m.L,T=0.5;                      // 억원 미만은 변동 없음
   const cand=m.subj.filter(x=>!x.flat).map(x=>({...x,score:m.build>0?x.acc:x.v[L]})).sort((a,b)=>b.score-a.score);
-  const top=cand[0];if(!top||top.score<=0)return;      // 외+기 어느 주체도 순매수 우위가 없으면 표시하지 않음
-  const T=0.5;                                          // 억원 미만은 변동 없음으로 본다
+  const top=cand[0];
   const trd=x=>{
     if(x.r20>T&&x.r5>T)return["매수 추세","up"];
     if(x.r20>T)return["매수 둔화","warn"];
@@ -8720,24 +8699,26 @@ function renderLead(full,el){
     if(x.r5>T)return["매수 재개","up"];
     if(x.r5<-T)return["매도 전환","down"];
     return["변동 없음","dim"];};
-  const [lab,cls]=trd(top);
-  /* 최근 주도(60거래일): 전체 매집액 1위가 1년 전 고점 때 주체일 수 있어, 최근 60거래일 순매수가 가장 큰 주체를 따로 본다 */
-  const RW=60,rcand=m.subj.filter(x=>!x.flat).map(x=>({...x,rc:x.v[L]-x.v[Math.max(0,L-RW)]})).sort((a,b)=>b.rc-a.rc);
-  const rtop=rcand[0]&&rcand[0].rc>T?rcand[0]:null;
-  const swap=rtop&&rtop.nm!==top.nm;
-  const pkAgo=m.build>0?Math.round((new Date(all[L].trade_date)-new Date(all[m.pk].trade_date))/2629800000):0;   // 고점 후 경과 개월
-  const oldChip=pkAgo>=6?` <span class="tag-d" style="font-size:10.5px;padding:1px 6px" title="외+기 누적 고점이 ${pkAgo}개월 전입니다 — 지금 주도와 다를 수 있어요">고점 ${pkAgo}개월 전</span>`:"";
-  let rline="";
-  if(swap){const [rl,rcl]=trd(rtop);rline=`<div title="최근 ${RW}거래일 순매수가 가장 큰 주체 (${rtop.nm} ${pm(rtop.rc,0)}억 · 5일 ${pm(rtop.r5,0)} / 20일 ${pm(rtop.r20,0)})"><span class="faint">최근 주도(${RW}일)</span> <b>${rtop.nm}</b> <b class="${rcl}">${rl}</b> <span class="tag-d up" style="font-size:10.5px;padding:1px 6px">주도 교체</span></div><div class="faint num" style="font-size:11px">${pm(rtop.rc,0)}억 · 5일 ${pm(rtop.r5,0)} · 20일 ${pm(rtop.r20,0)}</div>`;}
-  else if(rtop&&pkAgo>=6)rline=`<div class="faint" style="font-size:11px">최근 ${RW}일도 ${rtop.nm}이 주도 (${pm(rtop.rc,0)}억)</div>`;
-  const rec=top.acc>0&&top.after<0?` · 매집분 ${N(-top.after/top.acc*100,0)}% 회수`:"";
-  const sec=cand[1]&&cand[1].score>0?cand[1]:null;
-  const tip=`${top.nm} 매집 구간 ${pm(top.score,0)}억 · 최근 5일 ${pm(top.r5,0)}억 / 20일 ${pm(top.r20,0)}억${rec}`;
-  const wb=[["21","1M"],["63","3M"],["126","6M"],["all","전체"]].map(([k,t])=>`<a class="lk" data-lw="${k}" style="margin-right:6px;${S.leadWin===k?"font-weight:700;text-decoration:underline":"opacity:.6"}">${t}</a>`).join("");
-  el.innerHTML=`<div title="${tip}"><span class="faint">${swap||pkAgo>=6?"주도(누적)":"주도"}</span> <b>${top.nm}</b> <b class="${cls}">${lab}</b>${oldChip}</div>
-    <div class="faint num" style="font-size:11px" title="${tip}">${pm(top.score,0)}억 · 5일 ${pm(top.r5,0)} · 20일 ${pm(top.r20,0)}${sec?` · 2위 ${sec.nm}`:""}</div><div class="faint" style="font-size:11px" title="외국인+기관합계 누적 기준(아래 매집·이탈 진단 카드와 동일). 주도 세력 한 주체의 추세와 다를 수 있습니다">외+기 합계 <b class="${m.cls}">${m.st}</b></div>${rline}<div style="font-size:11px">${wb}</div>`;
+  const o={from:all[0].trade_date,m};
+  if(!top||top.score<=0)return o;
+  const [lab,cls]=trd(top),sec=cand[1]&&cand[1].score>0?cand[1]:null;
+  return {...o,top,lab,cls,sec};
+}
+function renderLead(full,el){
+  el=el||$("#dLead");if(!el)return;el.style.display="none";
+  if(!full||full.length<10||full[0].foreign_cum==null)return;
+  const rows=LEAD_WINS.map(([n,t])=>({t,r:leadAt(full,+n)})).filter(x=>x.r);
+  if(!rows.length)return;
+  const ln=({t,r})=>{
+    const sd=shortDate(r.from);
+    if(!r.top)return `<div title="${t} 전(${r.from})부터 오늘까지 외+기 순매수 우위 없음"><span class="faint">${t} 전</span> <span class="faint">순매수 우위 없음</span></div>`;
+    const x=r.top,tip=`${t} 전(${r.from})부터 · ${x.nm} ${pm(x.score,0)}억 · 최근 5일 ${pm(x.r5,0)}억 / 20일 ${pm(x.r20,0)}억`;
+    return `<div title="${tip}"><span class="faint">${t} 전</span> <b>${x.nm}</b> <b class="${r.cls}">${r.lab}</b></div>
+      <div class="faint num" style="font-size:11px" title="${tip}">${sd}~ ${pm(x.score,0)}억 · 5일 ${pm(x.r5,0)} · 20일 ${pm(x.r20,0)}${r.sec?` · 2위 ${r.sec.nm}`:""}</div>`;};
+  const m6=rows[0].r.m;   // 외+기 합계 진단은 가장 긴(6개월) 구간 기준 — 아래 매집·이탈 진단 카드와 같은 판정
+  el.innerHTML=rows.map(ln).join("")
+    +`<div class="faint" style="font-size:11px" title="외국인+기관합계 누적 기준(아래 매집·이탈 진단 카드와 동일). 주도 세력 한 주체의 추세와 다를 수 있습니다">외+기 합계(6개월) <b class="${m6.cls}">${m6.st}</b></div>`;
   el.style.display="flex";
-  el.querySelectorAll("a[data-lw]").forEach(a=>a.onclick=()=>{S.leadWin=a.dataset.lw;renderLead(full,el);});
 }
 function renderSmx(){
   const all=S.chart&&S.chart.rows,card=$("#dSmxCard");
