@@ -1360,7 +1360,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button class="fchip" data-v="7" aria-pressed="true">1주</button>
       <button class="fchip" data-v="3" aria-pressed="false">3일</button>
     </div></div>
-    <div class="qf-group"><div class="qf-lb">업종</div><div class="qf seg" id="tdDartSecSel"><button class="fchip" id="tdDartSecBtn" type="button" aria-pressed="false" title="체크하면 공시 내용을 업종별로 묶어, 업종은 시가총액 합이 큰 순 · 업종 안은 시가총액 큰 순으로 보여줍니다">업종별 보기</button></div></div>
+    <div class="qf-group"><div class="qf-lb">업종</div><div class="qf seg" id="tdDartSecSel"><button class="fchip" id="tdDartSecBtn" type="button" aria-pressed="true" title="체크하면 공시 내용을 업종별로 묶어, 업종은 시가총액 합이 큰 순 · 업종 안은 시가총액 큰 순으로 보여줍니다">업종별 보기</button></div></div>
     <div class="qf-group" id="tdDartSortWrap" style="display:none"><div class="qf-lb">정렬</div><div class="qf seg" id="tdDartSortSel">
       <button class="fchip" data-v="date" aria-pressed="true">최신순</button>
       <button class="fchip" data-v="amt" aria-pressed="false">금액순</button>
@@ -7204,7 +7204,7 @@ function dartCodeSet(cond,days){
   return S._dSet;
 }
 async function dartInit(){
-  if(!S.dart)S.dart={rows:null,kind:"HOLD5",period:"7",sub:"운용사",sort:"date"};
+  if(!S.dart)S.dart={rows:null,kind:"HOLD5",period:"7",sub:"운용사",sort:"date",bySector:true};
   const K=S.dart;
   if(!S._dartWired){
     S._dartWired=true;
