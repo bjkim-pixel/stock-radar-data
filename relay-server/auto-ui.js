@@ -15,7 +15,7 @@ function summarizeRun(r, full) {
   const sid = r.strategy_id || (p.strategy && p.strategy.id) || 'intraday-default';
   const engine = p.engine || (Object.values(ords).some(v => v && v.mode === 'live') ? 'live' : 'paper');   // 이 기록이 주문한 장부(paper·dry·live)
   const out = {
-    date: r.trade_date, status: r.status, sid, key: `${r.trade_date}|${sid}`, letter: p.letter || null, engine,
+    date: r.trade_date, status: r.status, sid, key: `${r.trade_date}|${sid}`, letter: p.letter || null, engine, kind: p.kind === 'closing' || /^closing/.test(sid) ? 'closing' : 'intraday',
     decision: p.decision ? { kind: p.decision.kind, nums: p.decision.nums || null } : null,
     warn: p.warn || null, noticeSent: !!p.noticeSent, roundN: p.roundN || 1, roundDeadline: p.roundDeadline || null,
     cb: p.cb ? { at: p.cb.at || null, done: !!p.cb.done, tries: p.cb.tries || 0, max: p.cb.max || null, deadline: p.cb.deadline || null, approval: p.cb.approval || null, picks: p.cb.picks == null ? null : p.cb.picks, err: p.cb.err || null, watch: (p.cbw || []).map(e => ({ k: e.k, hh: e.hh || null, busy: !!e.busy, err: e.err || null, n: e.n == null ? null : e.n, top: (e.passed || []).slice(0, 8).map(x => ({ code: x.code, name: x.name, score: x.score, dd: x.dd == null ? null : x.dd })), stat: e.stat || null })) } : (p.cbw && p.cbw.length ? { at: null, done: false, tries: 0, max: null, deadline: null, approval: null, picks: null, err: null, watch: p.cbw.map(e => ({ k: e.k, hh: e.hh || null, busy: !!e.busy, err: e.err || null, n: e.n == null ? null : e.n, top: (e.passed || []).slice(0, 8).map(x => ({ code: x.code, name: x.name, score: x.score, dd: x.dd == null ? null : x.dd })), stat: e.stat || null })) } : null),

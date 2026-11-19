@@ -18,7 +18,7 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   I0.eodTimeout = 'keep';                                                           // 165 에는 있었지만 지금은 없는 설정(무응답이면 항상 유지) — 저장돼 있어도 검증이 버림
   assert.deepEqual(js[0], I0);
   assert.deepEqual(S.validate('intraday', js[0]).val, S.defaults('intraday'));
-  const LATER_C = ['nxtJudgeAt', 'nxtReplyMin', 'closeBuyOn', 'closeBuyAt', 'closeBuyEnd', 'closeBuyMax', 'closeBuyHighPct', 'closeBuyPenaltyFrom', 'closeBuyPenaltyMax', 'closeBuyApproval', 'closeBuyWatchFrom', 'closeBuyWatchMin', 'closeBuyBonus'], C0 = Object.fromEntries(Object.entries(S.defaults('closing')).filter(([k]) => !LATER_C.includes(k)));
+  const LATER_C = ['nxtJudgeAt', 'nxtReplyMin', 'closeBuyOn', 'closeBuyAt', 'closeBuyEnd', 'closeBuyMax', 'closeBuyHighPct', 'closeBuyPenaltyFrom', 'closeBuyPenaltyMax', 'closeBuyApproval', 'closeBuyWatchFrom', 'closeBuyWatchMin', 'closeBuyBonus', ...S.CLOSE_COPY], C0 = Object.fromEntries(Object.entries(S.defaults('closing')).filter(([k]) => !LATER_C.includes(k)));
   assert.deepEqual({ ...js[1], judgeAt: '14:45', replyMin: 15 }, C0);                 // 165 의 15:10 판정은 171 에서 15:00 으로, 2026-11-16 에 다시 14:45·답 15분(기본값)으로 바뀜
   assert.deepEqual(S.validate('closing', js[1]).val.nxtJudgeAt, '18:30');
 });

@@ -325,6 +325,7 @@ function createJournal(deps) {
     const px0All = {};
     for (const run of runs) {
       const sid = run.strategy_id || (run.payload.strategy && run.payload.strategy.id), k = engOf(run);
+      if ((run.payload && run.payload.kind === 'closing') || /^closing/.test(String(sid || ''))) continue;   // 2026-11-19: 종가 전략의 저녁 매수는 아래 "이월분" 행(매수가 기준)에서 함께 계산
       const prev = ex[sid] && ex[sid].payload ? ex[sid].payload : {};
       const j = buildIntraday({ date, run, fills: att.filter(f => f.sid === sid && f.leg === 'intraday' && f.kind === k), marks: marks[k] || {}, closes, prev: { px0: prev.px0, src: prev.px0src }, today, exc, daily, kind: k });
       // 공식 종가가 아직 없어도 4일이 지나면 확정(더 기다려도 오지 않음)

@@ -118,6 +118,18 @@ const SCHEMA = {
     F('slices', '다음 날 매도', '분할 매도 시각', 'times', ['09:05', '09:10', '09:15'], { min: '09:01', max: '10:00', maxLen: 5 }),
   ],
 };
+/* 2026-11-19 종가베팅 독립: 종가베팅 전략이 장중 전략에 기대지 않고 스스로 고르고·사고·파는 데 쓰는 조건을 자기 값으로 가진다.
+   처음엔 장중 기본 전략(intraday-default)의 값을 복사해 시작(실행 모드·실전 자동 승인·안전장치는 복사하지 않고 가상·끔에서 시작) */
+const CLOSE_COPY = ['capMinEok', 'maTrend', 'smx', 'smxWin', 'flowForeign', 'flowInst', 'flowProgram', 'poolTop', 'sectorMax', 'weights',
+  'perStockKrw', 'totalCapKrw', 'buyPick', 'fillWaitMin', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'regimeMode', 'regimeCaution', 'regimeDefense',
+  'stopPct', 'rr', 'tpStyle', 'runnerPct', 'ratchet', 'trail', 'split', 'minPct', 'eodWeak',
+  'execMode', 'liveAutoOk', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop'];
+const CLOSE_NOCOPY = new Set(['execMode', 'liveAutoOk', 'maxOrdersDay', 'rejectStop', 'unsureStop']);   // 처음 복사할 때도 장중 값을 가져오지 않음(가상·끔·기본 안전장치에서 시작)
+const CLOSE_GROUP = { '대상': '후보 조건(장중 전략과 따로)', '매수 조건': '후보 조건(장중 전략과 따로)', '후보 수': '후보 조건(장중 전략과 따로)', '점수': '후보 조건(장중 전략과 따로)',
+  '매수 주문': '매수 주문', '시장 상태': '시장 상태', '매도': '아침 보류(장중 전환) 뒤 매도 계획', '실행 모드': '실행 모드', '매수 금액': '매수 금액', '실전 안전장치': '실전 안전장치' };
+const CLOSE_LABEL = { eodWeak: '약한 종목 처리(아침 보류로 장중 전환된 종목의 14:45·18:30 판정)', perStockKrw: '종목당 금액', totalCapKrw: '총액 상한(0=없음)' };
+SCHEMA.closing = SCHEMA.closing.concat(SCHEMA.intraday.filter(f => CLOSE_COPY.includes(f.key)).map(f => ({ ...f, group: CLOSE_GROUP[f.group] || f.group, label: CLOSE_LABEL[f.key] || f.label,
+  ...(f.key === 'execMode' ? { label: '실행 모드(어느 장부로 살지 · 실전으로 바꿀 때 PIN · 진행 중 주문·보유·이월이 없을 때만)' } : {}) })));
 const OLD_W = [['flow', 40], ['cttr', 15], ['rise', 15], ['amt', 15], ['trend', 15]];   // 개인 계좌수 항목이 생기기 전 기본 배점
 const KINDS = { intraday: '장중매매', closing: '종가베팅' };
 const MAX_ACTIVE = { intraday: 3, closing: 1 };   // 동시에 켤 수 있는 수(종가베팅은 장중 보유분을 넘겨받는 방식이라 하나만). 장중은 쪽(가상매매·실전매매)마다 3개
@@ -126,6 +138,12 @@ const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];   // 켜진 장중 전략 글자
 const sideOfParams = p => (p && p.execMode && p.execMode !== 'paper' ? 'real' : 'paper');
 
 const defaults = kind => Object.fromEntries((SCHEMA[kind] || []).map(f => [f.key, JSON.parse(JSON.stringify(f.def))]));
+/* 장중 조건 → 종가 전략 조건(복사 대상만, 실행 모드·안전장치 제외). 결과는 검증을 거친 값 */
+function closingFromIntraday(cp, ip) {
+  const pick = {}; for (const k of CLOSE_COPY) if (!CLOSE_NOCOPY.has(k) && ip && ip[k] !== undefined) pick[k] = JSON.parse(JSON.stringify(ip[k]));
+  const v = validate('closing', { ...(cp || {}), ...pick, execMode: 'paper', liveAutoOk: false });
+  return v.val || { ...(cp || {}) };
+}
 
 /* 검증: 모르는 키는 버리고, 빠진 키는 base(없으면 기본값)로 채움 → { val } | { errs:[{key,msg}] } */
 function validate(kind, input, base) {
@@ -171,6 +189,7 @@ function validate(kind, input, base) {
       val[f.key] = out;
     }
   }
+  if (!errs.length && kind === 'closing' && val.regimeDefense > val.regimeCaution) errs.push({ key: 'regimeDefense', msg: '방어 단계 금액은 보수 단계 금액보다 클 수 없습니다' });
   if (!errs.length && kind === 'intraday') {
     if (val.regimeDefense > val.regimeCaution) errs.push({ key: 'regimeDefense', msg: '방어 단계 금액은 보수 단계 금액보다 클 수 없습니다' });
     if (val.notifyTop > val.poolTop) errs.push({ key: 'notifyTop', msg: '알림에 싣는 수는 점수 상위 후보 수보다 클 수 없습니다' });
@@ -225,9 +244,11 @@ function timesOf(I, C) {
   return { sel, notice, deadline, selEnd: deadline + 30, judge, reply, njudge, nreply, cbWatch: cbWatchTimes(C), cbAt: tmin(C.closeBuyAt), cbEnd: tmin(C.closeBuyEnd), convert: tmin(C.convertAt), slices: C.slices.map(tmin) };
 }
 
+const CLOSE_DESC_OLD = /약한 종목을 (알려 )?승인 후 정리/;   // 장중 보유분을 넘겨받던 때의 설명(독립 전환 때 새 설명으로 바꿈)
+const CLOSE_DESC = '장중 전략과 따로 움직임 — 18:00부터 30분마다 종가 강한 NXT 종목을 관찰해 19:30에 골라 NXT 지정가로 사서, 20:00에 이월해 다음 날 아침 분할 매도(매수가보다 낮으면 보류하고 장중 계획으로 전환)';
 const BUILTIN = [
   { id: 'intraday-default', name: '수급 돌파 장중', kind: 'intraday', builtin: true, desc: '오전 외국인·기관·프로그램 동시 순매수 + 체결강도 강세 종목을 사서 당일 손절·5분할 익절' },
-  { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: '14:45(정규장 종목)·18:30(NXT 종목)에 약한 종목을 알려 승인 후 정리하고(15:00·19:00까지 답 없으면 유지), 18:00부터 30분마다 종가 강한 NXT 종목을 관찰해 19:30에 최종 선정해 사서, 강한 종목은 들고 가 다음 날 아침 3분할 매도' },
+  { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: CLOSE_DESC },
 ];
 const builtinRow = b => ({ ...b, enabled: true, archived: false, version: 1, params: defaults(b.kind), updated_at: null });
 
@@ -248,8 +269,9 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       if (pr.nxtJudgeAt === '19:00' && +pr.nxtReplyMin === 40) pr = { ...pr, nxtJudgeAt: '18:30', nxtReplyMin: 30 };
     }
     const v = validate(r.kind, pr);
+    const needCopy = r.kind === 'closing' && (r.params || {}).capMinEok === undefined;   // 독립 전 종가 전략(장중 조건을 아직 복사하지 않음)
     return { id: r.id, name: r.name, kind: r.kind, desc: r.desc || '', enabled: !!r.enabled, archived: !!r.archived, builtin: !!r.builtin, version: +r.version || 1,
-      params: v.val || defaults(r.kind), invalid: v.errs ? v.errs.map(e => e.msg) : null, updatedAt: r.updated_at || null, source: r.source || null };
+      params: v.val || defaults(r.kind), invalid: v.errs ? v.errs.map(e => e.msg) : null, updatedAt: r.updated_at || null, source: r.source || null, ...(needCopy ? { needCopy: true } : {}) };
   };
   async function list(fresh) {
     if (!fresh && cache && now() - at < cacheMs) return cache;
@@ -261,6 +283,8 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     }
     const out = rows.map(norm);
     for (const b of BUILTIN) if (!out.some(r => r.id === b.id)) out.push(norm(builtinRow(b)));   // 기본 전략은 항상 있음
+    const src = out.find(r => r.id === 'intraday-default');
+    for (const r of out) if (r.needCopy) r.params = closingFromIntraday(r.params, src && src.params);   // 저장 전에도 독립 조건으로 동작(저장은 migrate 가 한 번)
     cache = out; at = now();
     return out;
   }
@@ -288,7 +312,9 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       if (missing) return { ok: false, status: 503, error: '전략 테이블이 아직 없습니다. DB 설정에서 auto_strategy 를 실행하세요' };
       const cur = (await list(true)).find(r => r.id === id);
       if (!cur) return { ok: false, status: 404, error: '전략을 찾을 수 없습니다' };
+      if (opts.onlyIfNeedCopy && !cur.needCopy) return { ok: true, strategy: cur, changed: [], unchanged: true };   // 다른 쪽에서 이미 독립 저장함
       const p = patch || {}, next = { ...cur };
+      delete next.needCopy;
       if (p.params !== undefined) {
         const v = validate(cur.kind, p.params, cur.params);
         if (v.errs) return { ok: false, status: 400, error: v.errs.map(e => e.msg).join(' / '), errs: v.errs };
@@ -312,11 +338,11 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       if (p.desc !== undefined) next.desc = String(p.desc).slice(0, 200);
       const changed = diff(cur.kind, cur.params, next.params);
       const meta = ['enabled', 'name', 'desc'].filter(k => next[k] !== cur[k]).map(k => ({ key: k, label: { enabled: '켜기/끄기', name: '이름', desc: '설명' }[k], from: String(cur[k]), to: String(next[k]) }));
-      if (!changed.length && !meta.length) return { ok: true, strategy: cur, changed: [], unchanged: true };
+      if (!changed.length && !meta.length && !opts.force) return { ok: true, strategy: cur, changed: [], unchanged: true };
       next.version = cur.version + 1;
       const ts = new Date(now()).toISOString();
       await SRC.write(sbWrite, 'auto_strategies?on_conflict=id', 'POST', [{ id: next.id, name: next.name, kind: next.kind, desc: next.desc, enabled: next.enabled, archived: next.archived, builtin: next.builtin, version: next.version, params: next.params, updated_at: ts, ...(next.source ? { source: next.source } : {}) }]);
-      await sbWrite('auto_strategy_versions', 'POST', [{ strategy_id: next.id, version: next.version, params: next.params, changed: [...changed, ...meta], who: who || null, at: ts }]);
+      await sbWrite('auto_strategy_versions', 'POST', [{ strategy_id: next.id, version: next.version, params: next.params, changed: [...changed, ...meta, ...(opts.note ? [opts.note] : [])], who: who || null, at: ts }]);
       for (const o of others) await writeRow({ ...o, enabled: false, version: o.version + 1 }, [{ key: 'enabled', label: '켜기/끄기', from: 'true', to: 'false' }, { key: 'auto', label: '사유', from: '', to: `${next.name} 켜짐(종가베팅은 하나만)` }], who, ts);
       cache = null;
       return { ok: true, strategy: { ...next, updatedAt: ts }, changed: [...changed, ...meta], turnedOff: others.map(o => o.name) };
@@ -359,14 +385,26 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       return { ok: true };
     });
   }
+  /* 종가 전략 독립(2026-11-19): 장중 조건을 아직 복사하지 않은 종가 전략을 한 번 저장(복사한 값·새 설명). 같은 입력이면 두 번 쓰지 않음 */
+  async function migrateClosing(who = 'system') {
+    if (missing) return { ok: true, n: 0 };
+    const L = await list(true), out = [];
+    for (const r of L.filter(x => x.kind === 'closing' && x.needCopy && !x.archived)) {
+      const patch = { params: r.params, ...(CLOSE_DESC_OLD.test(r.desc || '') ? { desc: CLOSE_DESC } : {}) };
+      const s = await save(r.id, patch, who, { force: true, onlyIfNeedCopy: true, note: { key: 'split', label: '종가베팅 독립', from: '장중 전략 조건을 함께 씀', to: '장중 기본 전략 조건을 복사해 따로 가짐(실행 모드 가상)' } });
+      out.push({ id: r.id, ok: !!(s && s.ok), error: s && s.error });
+    }
+    return { ok: out.every(x => x.ok), n: out.length, out };
+  }
   async function versions(id) {
     if (missing) return [];
     return sbGet(`auto_strategy_versions?select=version,changed,who,at&strategy_id=eq.${encodeURIComponent(id)}&order=version.desc&limit=50`).catch(() => []);
   }
-  return { list, active, pair, actives, byId, save, create, archive, versions, isMissing: () => missing, invalidate: () => { cache = null; }, sourceOk: () => SRC.has };
+  return { list, active, pair, actives, byId, save, create, archive, versions, migrateClosing, isMissing: () => missing, invalidate: () => { cache = null; }, sourceOk: () => SRC.has };
 }
 
 /* 화면용 스키마(JSON 그대로 보냄) */
 const publicSchema = () => ({ kinds: KINDS, fields: SCHEMA, maxActive: MAX_ACTIVE });
 
-module.exports = { SCHEMA, KINDS, ENUM, BUILTIN, MAX_ACTIVE, LETTERS, sideOfParams, defaults, validate, diff, timesOf, tmin, hhmm, createStore, publicSchema };
+const CLOSE_LETTER = 'N';   // 종가베팅 전략 글자(텔레그램 /매수 N1 · /정리 N1) — 장중 A~F 와 겹치지 않게
+module.exports = { SCHEMA, KINDS, ENUM, BUILTIN, MAX_ACTIVE, LETTERS, CLOSE_LETTER, CLOSE_COPY, closingFromIntraday, sideOfParams, defaults, validate, diff, timesOf, tmin, hhmm, createStore, publicSchema };

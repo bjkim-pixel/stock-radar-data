@@ -51,7 +51,7 @@ async function setup({ flow = { fq: 10, oq: 0 }, idx = { 코스피: 0.3, 코스�
     livePool: async () => [], fetchFlow: async () => flow, fetchPower: async () => ({}), fetchCttr: async () => ({}), marketState: async () => null, marketIdx: async () => idx,
   });
   const { date } = kst();
-  runs[date] = { trade_date: date, status: 'noticed', payload: { picks: [{ code, name: code === '005930' ? '삼성전자' : 'SK하이닉스', price: 10000, score: 80, cb: true }], noticeSent: true, approved: [], decision: null } };
+  runs[date] = { trade_date: date, strategy_id: 'closing-default', status: 'noticed', payload: { kind: 'closing', letter: 'N', picks: [{ code, name: code === '005930' ? '삼성전자' : 'SK하이닉스', price: 10000, score: 80, cb: true }], noticeSent: true, approved: [], decision: null } };
   c.st.clock += 16 * MIN;
   await A.handleApproval('/매수 1');
   c.st.clock += 5000; c.st.vol += 700; await c.t.paper.tick();   // 100주 @10,000 체결
@@ -86,12 +86,18 @@ test('자격 있는 종목: 14:45 판정만 알림 → 20:00 익절 끄고(손�
   await c.close();
 });
 test('다음 날 갭 하락(−3%)이어도 현재가가 매수가보다 낮으면 즉시 팔지 않고 장중 전환(아침 보류)', async () => {
-  const { db, c, A, cfg, sent, at, px } = await setup();
+  const { db, c, A, cfg, sent, at, px, runs, date } = await setup();
   at(14, 46); px(10100); c.st.high = 10150; await A.tick();
   at(20, 1); await A.tick();
   at(9, 1, 1); px(9700); await A.tick();                                             // 전일 종가(10,000) 대비 −3%
   assert.equal(db.t.paper_positions.has('005930'), true);
   assert.equal(cfg.carry.items['005930'].state, 'intra');
+  /* 장중 전환한 종가베팅 종목은 그날 14:45 판정 대상 — 종가 전략의 오늘 기록이 없으면 만들어 판정 */
+  const d1 = new Date(Date.parse(`${date}T00:00:00Z`) + 864e5).toISOString().slice(0, 10);
+  at(14, 46, 1); px(9800); await A.tick();
+  assert.ok(runs[d1], '종가 전략 오늘 기록');
+  assert.equal(runs[d1].strategy_id, 'closing-default'); assert.equal(runs[d1].payload.kind, 'closing');
+  assert.deepEqual(runs[d1].payload.eod.items.map(i => i.code), ['005930']);
   await c.close();
 });
 test('자격 없는 종목: 14:45 알림 → /정리 1 → 시장가 전량 매도, 20시 넘길 게 없음', async () => {

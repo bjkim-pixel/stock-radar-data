@@ -14,17 +14,18 @@ const { fakeDb, boot, fakeKis } = require('./paper-harness');
 const MIN = 60e3;
 const D0 = ST.defaults('intraday');
 
-async function rig({ realOn = true, pParams = {}, rParams = {}, missingDry = false, withRunEngine = true, live = false, siteSwitch = true } = {}) {
+async function rig({ realOn = true, pParams = {}, rParams = {}, cParams = {}, cRaw = null, cDesc = '', dParams = {}, missingDry = false, withRunEngine = true, live = false, siteSwitch = true } = {}) {
   const db = fakeDb();
   if (missingDry) db.setFail({ missing: 'dry_' });
   const kx = live ? fakeKis() : null;
   const c = await boot(db, live ? { envExtra: { REAL_TRADING_ENABLED: '1', KIS_ACCOUNT_NO: '12345678-01' }, kx, realOn: siteSwitch } : {});
   const runs = {}, cfg = { main: { on: true, liveOn: realOn, perStockKrw: 1000000 } }, sent = [], journal = {}, versions = [];
   const strat = [
-    { id: 'intraday-default', name: '기본', kind: 'intraday', builtin: true, enabled: false, archived: false, version: 1, params: D0 },
+    { id: 'intraday-default', name: '기본', kind: 'intraday', builtin: true, enabled: false, archived: false, version: 1, params: { ...D0, ...dParams } },
     { id: 'intraday-p', name: '가상 원본', kind: 'intraday', builtin: false, enabled: true, archived: false, version: 1, params: { ...D0, approval: 'auto', ...pParams } },
     { id: 'intraday-r', name: '가상 원본 (실전)', kind: 'intraday', builtin: false, enabled: true, archived: false, version: 1, params: { ...D0, approval: 'auto', execMode: 'dryrun', ...rParams }, source: 'intraday-p' },
-    { id: 'closing-default', name: '종가', kind: 'closing', builtin: true, enabled: true, archived: false, version: 1, params: ST.defaults('closing') },
+    { id: 'closing-default', name: '종가', desc: cDesc, kind: 'closing', builtin: true, enabled: true, archived: false, version: 1, params: cRaw || { ...ST.defaults('closing'), ...cParams } },
+    { id: 'closing-dry', name: '종가 드라이런', kind: 'closing', builtin: false, enabled: false, archived: false, version: 1, params: { ...ST.defaults('closing'), execMode: 'dryrun' } },
   ];
   const kst = () => { const d = new Date(c.st.clock + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes() }; };
   const rows = Array.from({ length: 30 }, (_, i) => ({ close: 9000 + i * 30, high: 9100 + i * 30, low: 8900 + i * 30, trade_amount: 5e10, individual_net: (i % 3 - 1) * 1e9 }));
@@ -67,11 +68,11 @@ async function rig({ realOn = true, pParams = {}, rParams = {}, missingDry = fal
     livePool: async () => [], fetchFlow: async () => ({}), fetchPower: async () => ({}), fetchCttr: async () => ({}), marketState: async () => null, marketIdx: async () => ({ 코스피: 0.2, 코스닥: 0.1 }),
   });
   const { date } = kst();
-  const seed = (sid, letter, engine) => { runs[`${date}|${sid}`] = { trade_date: date, strategy_id: sid, status: 'noticed', payload: { ...(withRunEngine ? { engine } : {}), strategy: { id: sid, version: 1, name: sid }, letter, picks: [{ code: '005930', name: '삼성전자', price: 10000, score: 80, cb: true }], noticeSent: true, approved: [], decision: null } }; };
+  const seed = (sid, letter, engine) => { runs[`${date}|${sid}`] = { trade_date: date, strategy_id: sid, status: 'noticed', payload: { ...(withRunEngine ? { engine } : {}), ...(/^closing/.test(sid) ? { kind: 'closing' } : {}), strategy: { id: sid, version: 1, name: sid }, letter, picks: [{ code: '005930', name: '삼성전자', price: 10000, score: 80, cb: true }], noticeSent: true, approved: [], decision: null } }; };
   const at = (hh, mm, dayOff = 0) => { c.st.clock = Date.parse(`${date}T00:00:00+09:00`) + dayOff * 864e5 + (hh * 60 + mm) * MIN; };
   const run = sid => runs[`${date}|${sid}`];
   const fillAll = async () => { c.st.clock += 5000; c.st.vol += 5000; await c.t.paper.tick(); await c.t.dry.tick(); };
-  return { db, c, A, runs, run, cfg, sent, journal, strat, date, seed, at, fillAll, kx };
+  return { db, c, A, runs, run, cfg, sent, journal, strat, versions, date, seed, at, fillAll, kx };
 }
 /* 가상 원본(A)·드라이런 복제(B)가 같은 후보를 승인받아 각자 산 상태 */
 async function bothBought(k) {
@@ -127,15 +128,25 @@ test('실전매매 켜기는 PIN 필요(setConfig) · 끄기는 PIN 없이', asy
   await k.c.close();
 });
 
-test('이월: 같은 종목을 가상·드라이런이 각자 넘기면 이월 기록이 둘(종목 · 종목@dry) — 다음 날 아침 각자 장부에서 판다', async () => {
+/* 2026-11-19 종가베팅 독립: 이월은 종가 전략이 산 종목만. 종가 전략이 장부별로(가상 closing-default · 드라이런 closing-dry) 같은 종목을 각자 넘기면 이월 기록이 둘 */
+async function closingBothBought(k, withIntra) {
+  if (withIntra) { k.seed('intraday-p', 'A', 'paper'); k.seed('intraday-r', 'B', 'dry'); }   // 장중 전략(가상·드라이런)도 같은 종목을 삼 — 이월 대상 아님
+  k.seed('closing-default', 'N', 'paper'); k.seed('closing-dry', 'N', 'dry');
+  k.at(10, 16);
+  if (withIntra) { await k.A.handleApproval('/매수 A1'); await k.A.handleApproval('/매수 B1'); }
+  await k.A.handleApproval('/매수 1', 'closing-default'); await k.A.handleApproval('/매수 1', 'closing-dry');
+  await k.fillAll(); await k.A.tick();
+}
+test('이월: 종가 전략이 장부별로 같은 종목을 각자 넘기면 이월 기록이 둘(종목 · 종목@dry) — 다음 날 아침 각자 장부에서 판다 · 장중 전략 보유는 넘기지 않음', async () => {
   const k = await rig();
-  await bothBought(k);
+  await closingBothBought(k);
   k.at(20, 1); await k.A.tick();
   const items = k.cfg.carry && k.cfg.carry.items;
   assert.ok(items, '이월 기록');
   assert.deepEqual(Object.keys(items).sort(), ['005930', '005930@dry']);
   assert.equal(items['005930'].kind, 'paper'); assert.equal(items['005930@dry'].kind, 'dry');
-  assert.equal(items['005930'].q0, 100); assert.equal(items['005930@dry'].q0, k.db.t.dry_positions.get('005930').qty);
+  assert.equal(items['005930'].sid, 'closing-default'); assert.equal(items['005930@dry'].sid, 'closing-dry');
+  assert.equal(items['005930'].q0, 100);
   /* 다음 날 09:05 첫 분할 매도: 각자 장부에서 */
   k.at(9, 5, 1); k.c.st.price = 10100; k.c.st.bids = Array.from({ length: 10 }, (_, i) => [10100 - i * 10, 100000]); k.c.st.asks = Array.from({ length: 10 }, (_, i) => [10110 + i * 10, 100000]);
   await k.A.tick();
@@ -143,7 +154,18 @@ test('이월: 같은 종목을 가상·드라이런이 각자 넘기면 이월 �
   assert.ok(ps.length >= 1, '가상 장부 아침 매도'); assert.ok(ds.length >= 1, '드라이런 장부 아침 매도');
   const it2 = k.cfg.carry.items;
   assert.ok(it2['005930'].sold > 0 && it2['005930@dry'].sold > 0, JSON.stringify(it2));
-  assert.ok(k.db.t.paper_positions.get('005930').qty < 100, '가상은 가상 수량에서만 줄어듦');
+  await k.c.close();
+});
+
+test('장중 전략이 산 종목은 종가 판정·이월이 없음(종가 전략이 켜져 있어도) — 매도 계획대로만', async () => {
+  const k = await rig();
+  await bothBought(k);
+  k.at(14, 46); await k.A.tick(); k.at(18, 31); await k.A.tick(); k.at(20, 1); await k.A.tick();
+  assert.equal(k.run('intraday-p').payload.eod, undefined, '종가 판정 없음');
+  assert.equal(k.run('intraday-p').payload.carryDone, undefined, '이월 전환 없음');
+  assert.deepEqual(Object.keys((k.cfg.carry && k.cfg.carry.items) || {}), []);
+  assert.equal(k.db.t.paper_positions.get('005930').qty, 100, '팔지 않음');
+  assert.ok(!k.sent.some(t => /종가 판정|종가 베팅 전환|넘길 자격/.test(t)), k.sent.join('|'));
   await k.c.close();
 });
 
@@ -183,15 +205,18 @@ test('일지: 같은 종목이라도 각자 장부 체결로만 계산(가상 10
   await k.c.close();
 });
 
-test('이월 종가베팅 일지도 장부별 행(closing-default · closingdry-default)', async () => {
+test('이월 종가베팅 일지도 장부별 행(closing-default · closingdry-default) · 종가 전략 기록은 장중 일지 행을 따로 만들지 않음', async () => {
   const k = await rig();
-  await bothBought(k);
+  await closingBothBought(k);
   k.at(20, 1); await k.A.tick();
   await k.A.journal.generateDay(k.date, { today: k.date, min: 1205, phase: 2, announce: false });
   assert.ok(k.journal[`${k.date}|closing-default`], '가상 종가베팅 행');
   assert.ok(k.journal[`${k.date}|closingdry-default`], '드라이런 종가베팅 행');
+  assert.equal(k.journal[`${k.date}|closing-default`].kind, 'closing', '같은 ID 의 장중 일지 행이 덮어쓰지 않음');
+  assert.equal(k.journal[`${k.date}|closing-dry`], undefined);
   assert.equal(k.journal[`${k.date}|closingdry-default`].payload.engine, 'dry');
   assert.equal(k.journal[`${k.date}|closing-default`].payload.positions[0].qty, 100);
+  assert.equal(k.journal[`${k.date}|closing-default`].payload.positions[0].px0, k.journal[`${k.date}|closing-default`].payload.positions[0].buyAvg, '넘긴 가격 = 매수가(종가 전략이 직접 산 종목)');
   await k.c.close();
 });
 
@@ -508,5 +533,51 @@ test('섞임 방지 #5: 장중 전략은 쪽을 옮기지 않음 — 가상→�
   assert.equal(b.ok, false); assert.equal(b.status, 409);
   const c = await k.A.createStrategy({ kind: 'intraday', from: 'intraday-p', asLive: true }, 'test');
   assert.equal(c.ok, true, JSON.stringify(c)); assert.equal(c.strategy.params.execMode, 'dryrun');
+  await k.c.close();
+});
+
+/* ── 2026-11-19 종가베팅 독립 ── */
+test('종가 전략 독립 저장(한 번): 장중 조건이 없던 예전 종가 전략은 장중 기본 전략 조건을 복사해 저장 — 실행 모드는 가상, 설명도 새로', async () => {
+  const old = Object.fromEntries(Object.entries(ST.defaults('closing')).filter(([k]) => !ST.CLOSE_COPY.includes(k)));
+  const k = await rig({ cRaw: old, cDesc: '14:45(정규장 종목)·18:30(NXT 종목)에 약한 종목을 알려 승인 후 정리하고 …', dParams: { capMinEok: 5000, perStockKrw: 700000, stopPct: 4, execMode: 'live' } });
+  k.at(10, 6); await k.A.tick();
+  const row = k.strat.find(r => r.id === 'closing-default');
+  assert.equal(row.version, 2, '한 번 저장');
+  assert.equal(row.params.capMinEok, 5000); assert.equal(row.params.perStockKrw, 700000); assert.equal(row.params.stopPct, 4);
+  assert.equal(row.params.execMode, 'paper', '실행 모드는 복사하지 않음(가상에서 시작)');
+  assert.match(row.desc, /장중 전략과 따로/);
+  assert.ok(k.versions.some(v => v.strategy_id === 'closing-default' && (v.changed || []).some(c => c.key === 'split')), '변경 이력에 독립 표시');
+  /* 다음에 장중 기본 전략을 바꿔도 종가 전략은 따라가지 않음 */
+  k.strat.find(r => r.id === 'intraday-default').params.capMinEok = 20000;
+  const S2 = await k.A.strategies();
+  assert.equal(S2.strategies.find(r => r.id === 'closing-default').params.capMinEok, 5000);
+  await k.c.close();
+});
+test('종가 전략 실행 모드: 드라이런이면 실전매매 쪽 — 화면·장부·desk 가 그 쪽, 가상매매에서는 다루지 않음', async () => {
+  const k = await rig({ cParams: { execMode: 'dryrun' } });
+  const S = await k.A.strategies();
+  const c0 = S.strategies.find(r => r.id === 'closing-default');
+  assert.equal(c0.side, 'real'); assert.equal(S.active.closingSide, 'real'); assert.equal(S.active.letters['closing-default'], 'N');
+  assert.equal(await k.A.deskOk('closing-default', 'real'), true); assert.equal(await k.A.deskOk('closing-default', 'paper'), false);
+  assert.equal(k.A.modeOf('closing-default'), 'dryrun');
+  const R = await k.A.uiState(null, 'real'), P = await k.A.uiState(null, 'paper');
+  assert.equal(R.closing.here, true); assert.equal(P.closing.here, false); assert.equal(R.modes['closing-default'], 'dryrun');
+  /* 드라이런 종가 전략이 산 종목은 드라이런 장부에 */
+  k.seed('closing-default', 'N', 'dry'); k.at(10, 16);
+  await k.A.handleApproval('/매수 N1', null, { side: 'real' });
+  assert.equal([...k.db.t.dry_orders.values()].filter(o => o.side === 'buy').length, 1, '드라이런 장부로 주문');
+  assert.equal([...k.db.t.paper_orders.values()].length, 0, '가상 장부 주문 없음');
+  await k.c.close();
+});
+test('종가 전략을 실전으로 바꾸려면 PIN · 실전 복제본은 드라이런으로 시작 · 장중 전략과 달리 가상 ↔ 실전매매 사이 모드 변경 허용', async () => {
+  const k = await rig({ live: true });
+  const a = await k.A.saveStrategy('closing-default', { params: { execMode: 'live' } }, 'site', { confirm: true });
+  assert.equal(a.ok, false); assert.equal(a.needPin, true);
+  const b = await k.A.saveStrategy('closing-default', { params: { execMode: 'dryrun' } }, 'site', { confirm: true });
+  assert.equal(b.ok, true, b.error); assert.equal(k.A.modeOf('closing-default'), 'dryrun');
+  const c2 = await k.A.saveStrategy('closing-default', { params: { execMode: 'live' } }, 'site', { confirm: true, pinOk: true });
+  assert.equal(c2.ok, true, c2.error); assert.equal(k.A.modeOf('closing-default'), 'live');
+  const cp = await k.A.createStrategy({ from: 'closing-default' }, 'site');
+  assert.equal(cp.ok, true, cp.error); assert.equal(cp.strategy.params.execMode, 'dryrun', '실전 종가 전략의 복제는 드라이런으로');
   await k.c.close();
 });
