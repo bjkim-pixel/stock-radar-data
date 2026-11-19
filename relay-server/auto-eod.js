@@ -111,6 +111,8 @@ function createEod(deps) {
     const run = await D.readRun(date);
     if (!run || (run.payload[key] && run.payload[key].at)) return { ok: true, skipped: true };
     const codes = [...new Set([...boughtCodes(run), ...(D.intraCodes ? D.intraCodes(date) : [])])], tag = nx ? 'NXT 종가 판정' : '종가 판정';
+    /* 종가베팅 전략이 꺼져 있으면 장중 종목은 이월·종가 전 정리 판단 없이 매도 계획(손절·익절)만으로 거래 — 묻지도 팔지도 않음 */
+    if ((await rule()).closingOn === false) { await D.mutateRun(date, r => { r.payload[key] = { at: now(), items: [], none: true, off: true }; LOG.push(r.payload, 'judge', `${tag}: 종가베팅 전략이 꺼져 있어 이월·정리 판단 없이 매도 계획대로 거래(건너뜀)`, null, now()); }); return { ok: true, n: 0, off: true }; }
     if (!codes.length) { await D.mutateRun(date, r => { r.payload[key] = { at: now(), items: [], none: true }; LOG.push(r.payload, 'judge', `${tag}: 오늘 산 종목이 없어 건너뜀`, null, now()); }); return { ok: true, n: 0 }; }
     const H = await heldMap();
     let idx = {}; try { idx = (await D.marketIdx()) || {}; } catch (_) {}

@@ -199,11 +199,12 @@ test('약한 종목: 유지 설정이면 묻지 않고 유지, 무응답이면 �
   assert.equal(await t.eod.timeout('D'), true);
   assert.equal(t.sold.length, 0); assert.equal(t.run.payload.eod.decision.kind, 'keep'); assert.equal(t.run.payload.eod.decision.timeout, true);
 });
-test('종가베팅 꺼짐: 모든 보유를 약한 종목으로 보고, 20시에 이월하지 않음', async () => {
+test('종가베팅 꺼짐: 이월·정리 판단 없이(묻지도 팔지도 않음) 매도 계획대로만, 20시에도 이월하지 않음', async () => {
   const g = eodRig({ closingOn: false });
-  g.eod.getQuote = null;
-  await g.eod.judge('D');
-  assert.deepEqual(g.run.payload.eod.items[0].why, ['종가베팅 전략 꺼짐']);
+  const r0 = await g.eod.judge('D'), r1 = await g.eod.judge('D', 'nxt');
+  assert.equal(r0.off, true); assert.equal(r1.off, true);
+  assert.equal(g.sold.length, 0); assert.equal(g.sent.length, 0, '정리 질문 알림 없음');
+  assert.equal(g.run.payload.eod.none, true); assert.deepEqual(g.run.payload.eod.weak || [], []);
   const r = await g.eod.convert('D');
   assert.equal(r.off, true); assert.equal(g.run.payload.carryDone.off, true);
 });
