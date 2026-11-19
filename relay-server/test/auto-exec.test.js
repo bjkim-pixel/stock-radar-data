@@ -212,6 +212,17 @@ test('미체결 설정: 최우선 매도 호가로 정정', async () => {
   assert.equal(o.buy2, ask1);
   await c.close();
 });
+test('makeOrder: 정정가(force)가 현재가보다 높으면 목표도 그 가격 기준 — 손절은 새 매수가, 목표는 옛 현재가라 손익비가 어긋나던 문제', () => {
+  const X = require('../auto-exec');
+  const rows = Array.from({ length: 30 }, (_, i) => ({ trade_date: '2026-10-' + String(i + 1).padStart(2, '0'), close: 100000, high: 101000, low: 99000, trade_amount: 50e9, volume: 500000 }));
+  const q = { price: 100000, upper: 130000, amt: 20e9, bids: [{ p: 99900, q: 10 }], asks: [{ p: 100100, q: 10 }] };
+  const base = X.makeOrder({ q, rows, perStockKrw: 1e7, opt: { stopPct: 5, rr: 3 } });
+  const up = X.makeOrder({ q, rows, perStockKrw: 1e7, opt: { stopPct: 5, rr: 3 }, force: { buy: 103000, qty: 10 } });
+  assert.ok(up.target > base.target, '정정가가 높으면 목표도 같이 올라감');
+  const rr = o => (o.target - o.buy) / (o.buy - o.plan.stop);
+  assert.ok(Math.abs(rr(up) - 3) < 0.35, `정정 뒤 손익비가 3 부근(${rr(up).toFixed(2)})`);
+  assert.ok(up.tinfo.avg5Eok > 0 && up.tinfo.ydEok > 0, '소화 일수 근거(어제·5일 평균 거래대금)가 tinfo 에 저장');
+});
 test('다시 시도: 이력(tries)을 접어 둔 기록에 승인하면 새 주문(번호 구분 cid)을 내고 이력을 보존한다', async () => {
   const X = require('../auto-exec');
   const { db, c, A, runs, date } = await setup();

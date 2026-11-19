@@ -134,10 +134,16 @@ function makeOrder({ q, rows, perStockKrw, opt = {}, force = null }) {   // forc
   const capEok = Math.max(avg5, q.amt || 0) / EOK;
   const prevHigh = rows.length ? Math.max(...rows.map(r => (+r.high > 0 ? +r.high : +r.close))) : 0;
   const prof = buildProfile(rows);
-  const tgt = calcTarget({ cur, prof, capEok, coef: o.coef, prevHigh, upper: q.upper, stopPct: o.stopPct, rr: o.rr });
+  /* 정정·직접 수정으로 매수가가 현재가보다 높아지면 목표(손익비 기준 목표 포함)도 그 매수가 기준으로 잡음 — 현재가 기준으로 두면 손절은 새 매수가, 목표는 옛 현재가라 손익비가 1:3 아래로 어긋남 */
+  const base = force && force.buy > cur ? force.buy : cur;
+  const tgt = calcTarget({ cur: base, prof, capEok, coef: o.coef, prevHigh, upper: q.upper, stopPct: o.stopPct, rr: o.rr });
+  /* 하루 소화 근거(억원): 어제 거래대금 · 최근 5거래일 평균 · 오늘 지금까지 — 화면에서 매물대 소화 일수 계산에 씀 */
+  const todayKst = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const prevRow = [...rows].reverse().find(r => String(r.trade_date) < todayKst && +r.trade_amount > 0);
+  const ydEok = prevRow ? Math.round(+prevRow.trade_amount / EOK * 10) / 10 : null, avg5Eok = Math.round(avg5 / EOK * 10) / 10, todEok = q.amt > 0 ? Math.round(q.amt / EOK * 10) / 10 : null;
   const steps = tgt.target && !o.noTp ? (o.tpStyle === 'r' ? splitPlanR(buy, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(buy, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];   // noTp(종가베팅 저녁 매수): 익절 없이 손절만 걸고 다음 날 아침 분할 매도
   const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ...(o.ratchet && !o.noTp ? { ratchet: { floorPct: 0.35 } } : {}) };
-  const tinfo = { cap: tgt.cap, cum: tgt.cum, topLo: tgt.topLo, topV: tgt.topV, rrT: tgt.rrT, clipped: tgt.clipped, prevHigh: tgt.prevHigh, upper: q.upper || null, capEok, coef: o.coef, stopPct: o.stopPct, rr: o.rr, minRr: o.minRr, tpStyle: o.tpStyle, split: o.split, minPct: o.minPct, runnerPct: o.runnerPct, ratchet: !!(o.ratchet && !o.noTp), ref: cur, prof: prof.map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) };   // prof = 개인 순매수 매물대 [하한, 상한, 억원] — 목표가 그림용
+  const tinfo = { cap: tgt.cap, cum: tgt.cum, topLo: tgt.topLo, topV: tgt.topV, rrT: tgt.rrT, clipped: tgt.clipped, prevHigh: tgt.prevHigh, upper: q.upper || null, capEok, ydEok, avg5Eok, todEok, coef: o.coef, stopPct: o.stopPct, rr: o.rr, minRr: o.minRr, tpStyle: o.tpStyle, split: o.split, minPct: o.minPct, runnerPct: o.runnerPct, ratchet: !!(o.ratchet && !o.noTp), ref: cur, prof: prof.map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) };   // prof = 개인 순매수 매물대 [하한, 상한, 억원] — 목표가 그림용
   return { buy, qty, plan, target: tgt.target, mode: tgt.mode, pick: pick ? pick.k : 'cur', tinfo };
 }
 
@@ -352,9 +358,21 @@ function createExec(deps) {
             }
           } catch (_) { plan = null; }
         }
+        /* 정정가로 사면 손익비가 기준(minRr) 아래로 떨어지는 경우: 올려 사지 않고 취소 — 처음 주문 때만 손익비를 봐서 정정 뒤 1:2.x 로 체결되던 문제 */
+        const minRrC = ord2 && !ord2.skip ? (+((v.cb ? { ...o2, ...(D.optCb ? await D.optCb() : {}) } : o2).minRr) || 0) : 0;
+        if (minRrC > 0) {
+          const rr2 = rrOf(ord2);
+          if (rr2 == null || rr2 < minRrC * 0.9) {   // 호가 단위 내림으로 1:3 이 1:2.9 쯤 나오는 것까지는 통과(처음 주문 가격은 기준을 그대로 적용)
+            const c = await B.cancel(o.id);
+            const why = `정정가 ${fmt(px)}원 기준 손익비 ${rr2 == null ? '계산 불가' : '1:' + (Math.floor(rr2 * 10) / 10).toFixed(1)} — 기준(1:${minRrC}) 미달이라 올려 사지 않고 취소`;
+            await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'cancelled', why, cancelledAt: now(), lowSeen: null }; LOG.push(r.payload, 'cancel', `${name}: ${why}${c && c.ok ? '' : ' (취소 실패)'}`, { code }, now()); });
+            msgs.push(`✖ ${name}: ${why}`);
+            continue;
+          }
+        }
         const m = await B.modify({ id: o.id, price: px, ...(plan ? { plan } : {}) });
         if (m && m.ok) {
-          await D.mutateRun(date, r => { gateRec(r, 'modify', code, o2); if (m.order.status === 'filled') gateRec(r, 'filled', code, o2); r.payload.orders[code] = { ...r.payload.orders[code], st: m.order.status === 'filled' ? 'filled' : 'modified', orderId: m.order.id, modifiedAt: now(), from: o.id, buy2: px, ...(plan ? { plan, target: ord2.target, tinfo: ord2.tinfo || null } : {}), ...(m.order.status === 'filled' ? { filledAt: now(), filled: m.order.filled, avg: m.order.avg } : {}) };
+          await D.mutateRun(date, r => { gateRec(r, 'modify', code, o2); if (m.order.status === 'filled') gateRec(r, 'filled', code, o2); r.payload.orders[code] = { ...r.payload.orders[code], st: m.order.status === 'filled' ? 'filled' : 'modified', orderId: m.order.id, modifiedAt: now(), from: o.id, buy2: px, ...(plan ? { plan, target: ord2.target, tinfo: ord2.tinfo || null, ...(r.payload.orders[code] && r.payload.orders[code].snap ? { snap: { ...r.payload.orders[code].snap, checks: { ...(r.payload.orders[code].snap.checks || {}), rr: { v: rrOf(ord2) == null ? null : Math.round(rrOf(ord2) * 100) / 100, min: (+o2.minRr || null), target: ord2.target || null, at: 'reprice' } } } } : {}) } : {}), ...(m.order.status === 'filled' ? { filledAt: now(), filled: m.order.filled, avg: m.order.avg } : {}) };
             LOG.push(r.payload, 'reprice', `${name}: ${wm}분 미체결 → ${fmt(o.price)}원에서 ${fmt(px)}원(${REPRICE_KO[o2.repriceTo]})으로 정정 · 현재가 ${q.price ? fmt(q.price) : '–'}원${m.order.status === 'filled' ? ' · 바로 체결' : ''}`, { code }, now()); });
           msgs.push(`↪ ${name}: ${wm}분 미체결 → ${fmt(px)}원으로 정정${m.order.status === 'filled' ? ' · 체결' : ''}`);
         } else {
