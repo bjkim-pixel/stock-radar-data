@@ -19,7 +19,7 @@
    · dryrun(드라이런): 주문은 가상 엔진으로 내되, 보유 확인·주문 가능 금액은 실제 계좌(실전 엔진)로 본다 — "실전이었다면"을 점검만.
    · live(실전): 실전 엔진. 실제 계좌의 보유는 자동매매 몫(plan.own)만큼만 보여 준다(같은 종목을 직접 더 사도 자동매매는 자기 수량만 판다).
 
-   실전 탭 자동매매(2026-11-19) — 엔진 종류(kind)가 셋:
+   실전매매 자동매매(2026-11-19) — 엔진 종류(kind)가 셋:
    · paper(가상 장부) · dry(드라이런 장부, paper.js 를 dry_* 테이블로 하나 더 띄운 것) · live(실제 계좌)
    · 드라이런 주문은 dry 장부로 간다. 가상 전략과 그 드라이런 복제가 같은 종목을 각자 보유할 수 있게(장부는 종목당 보유 1개라 같은 장부를 쓰면 겹침).
      dry 장부가 없으면(DRYRUN_ENGINE=0) 예전처럼 가상 장부를 쓴다. 장부는 있는데 테이블이 없으면 주문이 503 으로 거부된다(가상 장부로 돌리지 않음). */
@@ -30,7 +30,7 @@ const normOrder = o => (o && UNSURE.has(o.status) ? { ...o, status: 'unsure', ra
 const isActive = o => !!o && ACTIVE.has(o.status);
 const KINDS = ['paper', 'dry', 'live'];
 const LABEL = { paper: '가상', live: '실전', dryrun: '드라이런', dry: '드라이런' };
-/* 쪽(화면 탭): 가상 탭 = paper 장부 · 실전 탭 = dry·live */
+/* 쪽(화면 탭): 가상매매 = paper 장부 · 실전매매 = dry·live */
 const sideOfKind = k => (k === 'live' || k === 'dry' ? 'real' : 'paper');
 const MODES = new Set(['paper', 'dryrun', 'live']);
 /* 실전 계좌 보기: 자동매매 계획에 자동매매 몫(own)이 있으면 그 수량만 자동매매 보유로 보여 줌(qtyAll = 계좌 전체 수량) */
@@ -132,13 +132,13 @@ function createBroker(deps = {}) {
      (가상 전략이 넘긴 종목과 같은 종목을 실제 계좌에 직접 갖고 있어도 실전 손절이 멈추지 않게) */
   function setPreHold(fn) { for (const k of KINDS) { const e = engines[k]; if (e && e.setPreHold) e.setPreHold((code, min) => fn(code, min, k)); } }
 
-  /* 한 엔진 종류만의 상태(실전 탭·가상 탭 화면을 나눠 그릴 때) */
+  /* 한 엔진 종류만의 상태(실전매매·가상매매 화면을 나눠 그릴 때) */
   async function stateOf(kind) {
     const e = engines[kind]; if (!e) return null;
     const S = await e.state();
     return S && S.ok ? tagged(S, kind) : S;
   }
-  return { of, heldAll, stateAll, stateOf, setPreHold, kindsInUse, modeOf, execOf, kindOfMode, sideOf: sid => (execOf(sid) === 'paper' ? 'paper' : 'real'),   /* 쪽은 실행 모드로(드라이런 장부를 끈 설정에서도 드라이런 전략은 실전 탭) */ has: !!(engines.paper || engines.live), engines };
+  return { of, heldAll, stateAll, stateOf, setPreHold, kindsInUse, modeOf, execOf, kindOfMode, sideOf: sid => (execOf(sid) === 'paper' ? 'paper' : 'real'),   /* 쪽은 실행 모드로(드라이런 장부를 끈 설정에서도 드라이런 전략은 실전매매) */ has: !!(engines.paper || engines.live), engines };
 }
 
 module.exports = { createBroker, normOrder, isActive, ownView, sideOfKind, UNSURE, ACTIVE, LABEL, KINDS };

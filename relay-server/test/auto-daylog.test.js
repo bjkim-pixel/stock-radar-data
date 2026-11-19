@@ -69,8 +69,8 @@ test('지난 날짜 재구성(rebuilt) 저장: 실행 기록이 있으면 저장
   assert.equal(no.ok, false); assert.equal(no.status, 404);
 });
 
-/* 실전 탭(2026-11-19): 같은 행에 실전 탭(real)도 저장하고, 목록·상세를 쪽별로 */
-test('실전 탭: 실전 탭 기록이 있으면 snap.real·sum.real 로 함께 저장하고 쪽별로 꺼내 준다', async () => {
+/* 실전매매(2026-11-19): 같은 행에 실전매매(real)도 저장하고, 목록·상세를 쪽별로 */
+test('실전매매: 실전매매 기록이 있으면 snap.real·sum.real 로 함께 저장하고 쪽별로 꺼내 준다', async () => {
   const real = { date: '2026-11-16', todays: [{ sid: 'intraday-r', picks: [{ code: 'B' }, { code: 'C' }], log: [] }], trades: [{ side: 'buy' }], positions: [], carry: [], dayTot: { net: -50 } };
   const k = rig({ stateReal: real });
   assert.equal((await k.dl.save('2026-11-16')).ok, true);
@@ -85,7 +85,7 @@ test('실전 탭: 실전 탭 기록이 있으면 snap.real·sum.real 로 함께 
   assert.equal(gp.snap.state.todays[0].sid, 'intraday-a'); assert.equal(gp.snap.real, undefined);
   assert.equal(gr.snap.state.todays[0].sid, 'intraday-r'); assert.equal(gr.side, 'real');
 });
-test('실전 탭: 실전 기록이 없는 날은 실전 목록에서 빠지고 상세는 404 · 가상만 있는 예전 행도 그대로 읽힘', async () => {
+test('실전매매: 실전 기록이 없는 날은 실전 목록에서 빠지고 상세는 404 · 가상만 있는 예전 행도 그대로 읽힘', async () => {
   const k = rig();
   await k.dl.save('2026-11-16');
   assert.equal(k.db.auto_daylog['2026-11-16'].snap.real, undefined);
@@ -95,7 +95,7 @@ test('실전 탭: 실전 기록이 없는 날은 실전 목록에서 빠지고 �
   assert.equal((await old.dl.list(10)).rows.length, 1);
   assert.equal((await old.dl.list(10, 'real')).rows.length, 0);
 });
-test('실전 탭: 실전 탭에만 기록이 있는 날도 저장(가상 탭 목록에는 안 보임)', async () => {
+test('실전매매: 실전매매에만 기록이 있는 날도 저장(가상매매 목록에는 안 보임)', async () => {
   const real = { date: '2026-11-16', todays: [{ sid: 'intraday-r', picks: [], log: [] }], trades: [], positions: [], carry: [], dayTot: {} };
   const k = rig({ state: { date: '2026-11-16', todays: [], trades: [], positions: [], carry: [], dayTot: {} }, stateReal: real });
   assert.equal((await k.dl.save('2026-11-16')).ok, true);

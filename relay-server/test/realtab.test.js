@@ -1,5 +1,5 @@
 'use strict';
-/* 실전 탭 자동매매(2026-11-19): 가상 탭 전략과 그 "실전에 적용" 복제(드라이런·실전)가 같은 종목을 각자 사고,
+/* 실전매매 자동매매(2026-11-19): 가상매매 전략과 그 "실전에 적용" 복제(드라이런·실전)가 같은 종목을 각자 사고,
    켜기/끄기·이월·일지·화면·원본 연결이 쪽(가상/실전)별로 나뉘는지 — 실제 엔진(paper.js 두 장부·live.js)과 붙여서 확인 */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -97,11 +97,11 @@ test('같은 전략의 가상 원본과 드라이런 복제가 같은 종목을 
   await k.c.close();
 });
 
-test('실전 탭 스위치가 꺼져 있으면: 실전 탭 전략은 승인돼도 사지 않고 선정도 건너뜀 · 가상 탭은 그대로', async () => {
+test('실전매매 스위치가 꺼져 있으면: 실전매매 전략은 승인돼도 사지 않고 선정도 건너뜀 · 가상매매는 그대로', async () => {
   const k = await rig({ realOn: false });
   k.seed('intraday-p', 'A', 'paper'); k.seed('intraday-r', 'B', 'dry');
   k.at(10, 16);
-  assert.match(await k.A.handleApproval('/매수 B1'), /실전 탭 자동매매가 꺼져/);
+  assert.match(await k.A.handleApproval('/매수 B1'), /실전매매 자동매매가 꺼져/);
   assert.equal(k.db.t.dry_orders.size, 0);
   await k.A.handleApproval('/매수 A1');
   assert.equal(k.db.t.paper_orders.size, 1);
@@ -109,14 +109,14 @@ test('실전 탭 스위치가 꺼져 있으면: 실전 탭 전략은 승인돼�
   const k2 = await rig({ realOn: false });
   k2.at(10, 6); await k2.A.tick();
   assert.ok(k2.run('intraday-p'), '가상 전략은 선정');
-  assert.equal(k2.run('intraday-r'), undefined, '실전 탭 전략은 스위치가 꺼져 선정하지 않음');
+  assert.equal(k2.run('intraday-r'), undefined, '실전매매 전략은 스위치가 꺼져 선정하지 않음');
   k2.cfg.main.liveOn = true; k2.at(10, 7); await k2.A.tick();
   assert.ok(k2.run('intraday-r'), '켜면 다음 주기에 선정');
   assert.equal(k2.run('intraday-r').payload.engine, 'dry'); assert.equal(k2.run('intraday-p').payload.engine, 'paper');
   await k.c.close(); await k2.c.close();
 });
 
-test('실전 탭 켜기는 PIN 필요(setConfig) · 끄기는 PIN 없이', async () => {
+test('실전매매 켜기는 PIN 필요(setConfig) · 끄기는 PIN 없이', async () => {
   const k = await rig({ realOn: false });
   const r = await k.A.setConfig({ liveOn: true });
   assert.equal(r.ok, false); assert.equal(r.needPin, true); assert.equal(k.cfg.main.liveOn, false);
@@ -147,7 +147,7 @@ test('이월: 같은 종목을 가상·드라이런이 각자 넘기면 이월 �
   await k.c.close();
 });
 
-test('화면(uiState): 가상 탭은 가상 장부·가상 전략만, 실전 탭은 드라이런·실전만', async () => {
+test('화면(uiState): 가상매매는 가상 장부·가상 전략만, 실전매매는 드라이런·실전만', async () => {
   const k = await rig();
   await bothBought(k);
   const P = await k.A.uiState(null, 'paper'), R = await k.A.uiState(null, 'real');
@@ -273,7 +273,7 @@ test('broker: 드라이런 = dry 장부(주문) + 실제 계좌(보유 확인) �
   assert.equal(B2.of('x').kind, 'paper');
 });
 
-test('전략 켜기 상한은 쪽마다 3개(가상 탭 3 + 실전 탭 3) · 글자 A~F', async () => {
+test('전략 켜기 상한은 쪽마다 3개(가상매매 3 + 실전매매 3) · 글자 A~F', async () => {
   const db = { auto_strategies: [], versions: [] };
   let t = 1_800_000_000_000;
   const io = {
@@ -286,11 +286,11 @@ test('전략 켜기 상한은 쪽마다 3개(가상 탭 3 + 실전 탭 3) · 글
   for (let i = 0; i < 4; i++) P.push((await st.create({ kind: 'intraday', name: `가상${i}` })).strategy.id);
   for (let i = 0; i < 4; i++) { const id = (await st.create({ kind: 'intraday', name: `실전${i}` })).strategy.id; await st.save(id, { params: { execMode: 'dryrun' } }, 'test', { allowSide: true }); R.push(id); }   // 새 복제본만 쪽을 정할 수 있음(「실전에 적용」과 같은 경로)
   for (let i = 0; i < 3; i++) { assert.equal((await st.save(P[i], { enabled: true })).ok, true); assert.equal((await st.save(R[i], { enabled: true })).ok, true); }
-  assert.match((await st.save(P[3], { enabled: true })).error, /가상 탭 장중 전략은 최대 3개/);
-  assert.match((await st.save(R[3], { enabled: true })).error, /실전 탭 장중 전략은 최대 3개/);
+  assert.match((await st.save(P[3], { enabled: true })).error, /가상매매 장중 전략은 최대 3개/);
+  assert.match((await st.save(R[3], { enabled: true })).error, /실전매매 장중 전략은 최대 3개/);
   const A2 = await st.actives();
   assert.equal(A2.Is.length, 6); assert.deepEqual(A2.Is.map(i => i.letter), ['A', 'B', 'C', 'D', 'E', 'F']);
-  /* 쪽 이동 자체가 금지(2026-11-19 섞임 방지): 실전 탭 전략을 가상으로 바꾸면 거부 */
+  /* 쪽 이동 자체가 금지(2026-11-19 섞임 방지): 실전매매 전략을 가상으로 바꾸면 거부 */
   assert.match((await st.save(R[0], { params: { execMode: 'paper' } })).error, /가상으로 바꿀 수 없어요/);
 });
 
@@ -320,7 +320,7 @@ test('비교(순수): 겹치는 날만 · 같은 종목 매수가 차이(슬리�
   assert.ok(/^[a-z]+-[a-z0-9]{1,20}$/.test(JRN.closingIdFor('closing-mabc123', 'dry')), '일지 ID 규칙에 맞음');
 });
 
-test('실전 모드: 가상 원본과 실전 복제가 같은 종목을 각자 — 실제 계좌 주문(출처 기록) · 실전 탭 화면은 자동매매 몫만 · 일지는 직접 매매 체결을 뺌', async () => {
+test('실전 모드: 가상 원본과 실전 복제가 같은 종목을 각자 — 실제 계좌 주문(출처 기록) · 실전매매 화면은 자동매매 몫만 · 일지는 직접 매매 체결을 뺌', async () => {
   const k = await rig({ live: true, rParams: { execMode: 'live' } });
   k.seed('intraday-p', 'A', 'paper'); k.seed('intraday-r', 'B', 'live');
   k.at(10, 16);
@@ -343,7 +343,7 @@ test('실전 모드: 가상 원본과 실전 복제가 같은 종목을 각자 �
   assert.equal(k.db.t.paper_positions.get('005930').qty, 100, '가상은 가상대로');
   const R = await k.A.uiState(null, 'real');
   const lp = R.positions.find(p => p.kind === 'live');
-  assert.ok(lp, JSON.stringify(R.positions)); assert.equal(lp.qty, autoQty, '실전 탭 화면은 자동매매 몫만(직접 산 3주 제외)');
+  assert.ok(lp, JSON.stringify(R.positions)); assert.equal(lp.qty, autoQty, '실전매매 화면은 자동매매 몫만(직접 산 3주 제외)');
   assert.ok(R.trades.every(f => f.kind === 'live'));
   await k.A.journal.generateDay(k.date, { today: k.date, min: 1000, phase: 1, announce: false });
   const jr = k.journal[`${k.date}|intraday-r`];
@@ -431,28 +431,28 @@ test('섞임 방지 #1(실전): 같은 종목 가상·실전 자동 매수 — �
   await k.c.close();
 });
 
-test('섞임 방지 #2: 글자 없는 텔레그램 명령은 가상 탭만 — /매수 1·/매수 전체·/패스 가 실전 탭 후보를 건드리지 않음 · 글자를 붙이면 실전 탭', async () => {
+test('섞임 방지 #2: 글자 없는 텔레그램 명령은 가상매매만 — /매수 1·/매수 전체·/패스 가 실전매매 후보를 건드리지 않음 · 글자를 붙이면 실전매매', async () => {
   const k = await rig();
   k.seed('intraday-p', 'A', 'paper'); k.seed('intraday-r', 'B', 'dry');
   k.at(10, 16);
   await k.A.handleApproval('/매수 전체');
   assert.equal([...k.db.t.paper_orders.values()].filter(o => o.side === 'buy').length, 1, '가상은 매수');
-  assert.equal(k.db.t.dry_orders.size, 0, '드라이런(실전 탭)은 그대로');
-  assert.ok(!k.run('intraday-r').payload.decision, '실전 탭 후보는 미결정');
+  assert.equal(k.db.t.dry_orders.size, 0, '드라이런(실전매매)은 그대로');
+  assert.ok(!k.run('intraday-r').payload.decision, '실전매매 후보는 미결정');
   const again = await k.A.handleApproval('/매수 1');
   assert.equal(k.db.t.dry_orders.size, 0, again);
   assert.match(await k.A.handleApproval('/패스'), /이미 처리|가상/);
-  assert.ok(!k.run('intraday-r').payload.decision, '/패스 도 실전 탭은 건드리지 않음');
+  assert.ok(!k.run('intraday-r').payload.decision, '/패스 도 실전매매는 건드리지 않음');
   await k.A.handleApproval('/매수 B1');
-  assert.equal([...k.db.t.dry_orders.values()].filter(o => o.side === 'buy').length, 1, '글자를 붙이면 실전 탭 매수');
+  assert.equal([...k.db.t.dry_orders.values()].filter(o => o.side === 'buy').length, 1, '글자를 붙이면 실전매매 매수');
   await k.c.close();
 
   const k2 = await rig();
-  k2.seed('intraday-r', 'B', 'dry');   // 실전 탭 후보만 남은 날
+  k2.seed('intraday-r', 'B', 'dry');   // 실전매매 후보만 남은 날
   k2.at(10, 16);
   const m = await k2.A.handleApproval('/매수 1');
-  assert.match(m, /가상 탭에는 오늘 승인할 후보가 없어요/); assert.match(m, /\/매수 B1/);
-  assert.equal(k2.db.t.dry_orders.size, 0, '글자 없는 /매수 1 로는 실전 탭 후보를 사지 않음');
+  assert.match(m, /가상매매에는 오늘 승인할 후보가 없어요/); assert.match(m, /\/매수 B1/);
+  assert.equal(k2.db.t.dry_orders.size, 0, '글자 없는 /매수 1 로는 실전매매 후보를 사지 않음');
   assert.match(await k2.A.handleApproval('/매수 전체'), /글자를 붙여/);
   assert.equal(k2.db.t.dry_orders.size, 0);
   await k2.A.handleApproval('/패스 B');
@@ -500,7 +500,7 @@ test('섞임 방지 #3: 화면이 보낸 쪽(desk)과 주소·전략의 쪽이 �
   await k.c.close();
 });
 
-test('섞임 방지 #5: 장중 전략은 쪽을 옮기지 않음 — 가상→드라이런·실전, 실전 탭→가상 저장 거부 · 「실전에 적용」 복제는 허용', async () => {
+test('섞임 방지 #5: 장중 전략은 쪽을 옮기지 않음 — 가상→드라이런·실전, 실전매매→가상 저장 거부 · 「실전에 적용」 복제는 허용', async () => {
   const k = await rig();
   const a = await k.A.saveStrategy('intraday-p', { params: { ...k.strat.find(s => s.id === 'intraday-p').params, execMode: 'dryrun' } }, 'test', { confirm: true });
   assert.equal(a.ok, false); assert.equal(a.status, 409); assert.match(a.error, /실전에 적용/);

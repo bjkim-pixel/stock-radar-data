@@ -118,9 +118,9 @@ const SCHEMA = {
 };
 const OLD_W = [['flow', 40], ['cttr', 15], ['rise', 15], ['amt', 15], ['trend', 15]];   // 개인 계좌수 항목이 생기기 전 기본 배점
 const KINDS = { intraday: '장중매매', closing: '종가베팅' };
-const MAX_ACTIVE = { intraday: 3, closing: 1 };   // 동시에 켤 수 있는 수(종가베팅은 장중 보유분을 넘겨받는 방식이라 하나만). 장중은 쪽(가상 탭·실전 탭)마다 3개
+const MAX_ACTIVE = { intraday: 3, closing: 1 };   // 동시에 켤 수 있는 수(종가베팅은 장중 보유분을 넘겨받는 방식이라 하나만). 장중은 쪽(가상매매·실전매매)마다 3개
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];   // 켜진 장중 전략 글자(텔레그램 답장 A1·D2). 가상·실전 합쳐 최대 6
-/* 쪽: 가상 탭(실행 모드 가상) · 실전 탭(드라이런·실전) — 2026-11-19 */
+/* 쪽: 가상매매(실행 모드 가상) · 실전매매(드라이런·실전) — 2026-11-19 */
 const sideOfParams = p => (p && p.execMode && p.execMode !== 'paper' ? 'real' : 'paper');
 
 const defaults = kind => Object.fromEntries((SCHEMA[kind] || []).map(f => [f.key, JSON.parse(JSON.stringify(f.def))]));
@@ -292,10 +292,10 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
         if (v.errs) return { ok: false, status: 400, error: v.errs.map(e => e.msg).join(' / '), errs: v.errs };
         next.params = v.val;
       }
-      /* 섞임 방지(2026-11-19): 장중 전략은 쪽(가상 ↔ 실전 탭)을 옮기지 않음. 가상 → 실전은 「실전에 적용」(새 복제본, allowSide)으로만,
-         실전 탭 안에서는 드라이런 ↔ 실전만. 보유·이월·일지가 장부별이라 쪽을 옮기면 기록이 다른 장부와 섞임 */
+      /* 섞임 방지(2026-11-19): 장중 전략은 쪽(가상 ↔ 실전매매)을 옮기지 않음. 가상 → 실전은 「실전에 적용」(새 복제본, allowSide)으로만,
+         실전매매 안에서는 드라이런 ↔ 실전만. 보유·이월·일지가 장부별이라 쪽을 옮기면 기록이 다른 장부와 섞임 */
       if (cur.kind === 'intraday' && !opts.allowSide && sideOfParams(next.params) !== sideOfParams(cur.params)) {
-        return { ok: false, status: 409, error: sideOfParams(cur.params) === 'paper' ? '가상 탭 전략은 드라이런·실전으로 바꿀 수 없어요. 「실전에 적용」으로 실전 탭에 복제하세요' : '실전 탭 전략은 가상으로 바꿀 수 없어요(드라이런 ↔ 실전만). 가상으로 시험하려면 가상 탭의 원본을 쓰세요' };
+        return { ok: false, status: 409, error: sideOfParams(cur.params) === 'paper' ? '가상매매 전략은 드라이런·실전으로 바꿀 수 없어요. 「실전에 적용」으로 실전매매에 복제하세요' : '실전매매 전략은 가상으로 바꿀 수 없어요(드라이런 ↔ 실전만). 가상으로 시험하려면 가상매매의 원본을 쓰세요' };
       }
       if (p.enabled !== undefined) { if (typeof p.enabled !== 'boolean') return { ok: false, status: 400, error: 'enabled 값이 올바르지 않습니다' }; next.enabled = p.enabled; }
       if (next.archived) return { ok: false, status: 400, error: '보관된 전략은 고칠 수 없습니다' };
@@ -303,7 +303,7 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       const sideChange = cur.kind === 'intraday' && next.enabled && cur.enabled && sideOfParams(next.params) !== sideOfParams(cur.params);   // 켜진 채 쪽을 옮김(가상 → 드라이런 등)
       if ((next.enabled && !cur.enabled) || sideChange) {
         const on = (await list()).filter(r => r.kind === cur.kind && r.enabled && !r.archived && r.id !== cur.id && (cur.kind !== 'intraday' || sideOfParams(r.params) === sideOfParams(next.params)));
-        if (cur.kind === 'intraday' && on.length >= MAX_ACTIVE.intraday) return { ok: false, status: 400, error: `${sideOfParams(next.params) === 'real' ? '실전 탭' : '가상 탭'} 장중 전략은 최대 ${MAX_ACTIVE.intraday}개까지 켤 수 있습니다. 다른 전략을 먼저 끄세요` };
+        if (cur.kind === 'intraday' && on.length >= MAX_ACTIVE.intraday) return { ok: false, status: 400, error: `${sideOfParams(next.params) === 'real' ? '실전매매' : '가상매매'} 장중 전략은 최대 ${MAX_ACTIVE.intraday}개까지 켤 수 있습니다. 다른 전략을 먼저 끄세요` };
         if (cur.kind === 'closing') others = on;   // 종가베팅은 하나만: 다른 종가 전략은 끔
       }
       if (p.name !== undefined) { const n = String(p.name).trim(); if (!n || n.length > 30) return { ok: false, status: 400, error: '이름은 1~30자' }; next.name = n; }

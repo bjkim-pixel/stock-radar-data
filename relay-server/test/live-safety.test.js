@@ -262,7 +262,7 @@ function autoRig({ liveReady = { ok: true }, paperState } = {}) {
     liveReady: () => liveReady });
   return { f, store, auto, sent };
 }
-test('[모드 전환] 실전으로 바꾸려면 PIN 재확인 필요 · 실전 엔진이 준비 안 됐으면 거부 · 가상 탭 전략은 쪽 이동 불가 · 드라이런→실전은 PIN', async () => {
+test('[모드 전환] 실전으로 바꾸려면 PIN 재확인 필요 · 실전 엔진이 준비 안 됐으면 거부 · 가상매매 전략은 쪽 이동 불가 · 드라이런→실전은 PIN', async () => {
   const x = autoRig();
   const r1 = await x.auto.saveStrategy('intraday-default', { params: { execMode: 'live' } }, 'site', { confirm: true });
   assert.equal(r1.ok, false); assert.equal(r1.needPin, true);
@@ -270,7 +270,7 @@ test('[모드 전환] 실전으로 바꾸려면 PIN 재확인 필요 · 실전 �
   const r2 = await y.auto.saveStrategy('intraday-default', { params: { execMode: 'live' } }, 'site', { confirm: true, pinOk: true });
   assert.equal(r2.ok, false); assert.match(r2.error, /실전 스위치/);
   const r3 = await x.auto.saveStrategy('intraday-default', { params: { execMode: 'dryrun' } }, 'site', { confirm: true });
-  assert.equal(r3.ok, false, '가상 탭 전략은 쪽을 옮기지 않음(2026-11-19) — 「실전에 적용」으로 복제'); assert.equal(r3.status, 409);
+  assert.equal(r3.ok, false, '가상매매 전략은 쪽을 옮기지 않음(2026-11-19) — 「실전에 적용」으로 복제'); assert.equal(r3.status, 409);
   const c = await x.auto.createStrategy({ from: 'intraday-default', asLive: true }, 'site');
   assert.equal(c.ok, true); assert.equal(x.auto.modeOf(c.strategy.id), 'dryrun');
   const r4 = await x.auto.saveStrategy(c.strategy.id, { params: { execMode: 'live' } }, 'site', { confirm: true, pinOk: true });

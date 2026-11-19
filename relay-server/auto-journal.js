@@ -25,7 +25,7 @@ const sp = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.ab
 const md = d => d.slice(5).replace('-', '/');
 const isMissing = e => /PGRST205|42P01|404/.test(String((e && e.message) || e));
 const MEMO_MAX = 2000;
-/* 실전 탭(2026-11-19): 장부(paper·dry·live)별로 체결을 나눠 일지를 만든다. 텔레그램·이름 앞 표시 */
+/* 실전매매(2026-11-19): 장부(paper·dry·live)별로 체결을 나눠 일지를 만든다. 텔레그램·이름 앞 표시 */
 const ENG_TAG = { live: '🔴실전 ', dry: '🧪드라이런 ' };
 const ENG_NAME = { paper: '', dry: ' (드라이런)', live: ' (실전)' };
 /* 종가베팅 일지 행의 전략 ID: 가상은 종가 전략 ID 그대로, 드라이런·실전은 접두사를 바꿔 따로(예: closing-default → closinglive-default) */
@@ -223,7 +223,7 @@ function closingText(date, j) {
   return L.join('\n');
 }
 
-/* 비교(순수): a = 실전 탭 전략 일지 행들, b = 가상 원본 일지 행들(같은 전략 조건). 겹치는 날만 */
+/* 비교(순수): a = 실전매매 전략 일지 행들, b = 가상 원본 일지 행들(같은 전략 조건). 겹치는 날만 */
 function compareRows(a, b) {
   const posOf = r => (r.pos || (r.payload && r.payload.positions) || []).filter(p => p && p.qty > 0);
   const byB = Object.fromEntries((b || []).map(r => [r.trade_date, r]));
@@ -413,7 +413,7 @@ function createJournal(deps) {
   }
 
   const LIGHT = 'trade_date,strategy_id,kind,strategy_version,strategy_name,status,net,cost,pct,n_pos,wins,losses,memo,updated_at,pos:payload->positions,shadow:payload->shadow,regime:payload->regime,engine:payload->>engine';
-  /* side = 'paper'(가상 탭) | 'real'(실전 탭: 드라이런·실전), engine = 'paper'|'dry'|'live'(그 장부만). 예전 행(장부 표시 없음)은 가상 */
+  /* side = 'paper'(가상매매) | 'real'(실전매매: 드라이런·실전), engine = 'paper'|'dry'|'live'(그 장부만). 예전 행(장부 표시 없음)은 가상 */
   async function list({ sid, from, to, limit, side, engine } = {}) {
     const n = Math.min(Math.max(+limit || 400, 1), 1500);
     const q = [`select=${LIGHT}`, 'order=trade_date.desc,strategy_id.asc', `limit=${side || engine ? Math.min(n * 2, 3000) : n}`];
@@ -460,7 +460,7 @@ function createJournal(deps) {
     if (r.ok && r.none) return { ok: false, status: 404, error: '그 날짜의 자동매매 기록이 없습니다' };
     return r;
   }
-  /* 실전 탭 전략 ↔ 가상 원본 비교(같은 날·같은 종목): 실전(또는 드라이런) 일지와 원본(가상) 일지를 날짜별로 맞춰
+  /* 실전매매 전략 ↔ 가상 원본 비교(같은 날·같은 종목): 실전(또는 드라이런) 일지와 원본(가상) 일지를 날짜별로 맞춰
      매수가 차이(슬리피지)·수익률 차이·한쪽만 산 종목을 보여 준다. engine 을 주면 그 장부 행만(실전/드라이런 따로 비교) */
   async function compare({ sid, src, from, to, engine } = {}) {
     const ok = x => /^[a-z]+-[a-z0-9]{1,20}$/.test(String(x || ''));

@@ -43,7 +43,7 @@ function createDayLog(D) {
   const S = { done: {}, last: null, missing: 0, at: {} };
   const due = (k, ms) => { const t = now(); if (S.at[k] && t - S.at[k] < ms) return false; S.at[k] = t; return true; };
 
-  /* 실전 탭(2026-11-19): 하루 한 행에 가상 탭(state)과 실전 탭(real.state)을 함께 저장. 예전 행은 가상만 있음 */
+  /* 실전매매(2026-11-19): 하루 한 행에 가상매매(state)과 실전매매(real.state)을 함께 저장. 예전 행은 가상만 있음 */
   async function save(date, { force = false } = {}) {
     if (!isDate(date)) return { ok: false, status: 400, error: '날짜가 올바르지 않습니다' };
     const [state, stateR, strategies] = await Promise.all([D.uiState(date, 'paper'), D.uiState(date, 'real').catch(() => null), D.strategies()]);
@@ -82,13 +82,13 @@ function createDayLog(D) {
     }
   }
 
-  /* side = 'real' 이면 실전 탭 기록이 있는 날만, 요약도 실전 탭 것 */
+  /* side = 'real' 이면 실전매매 기록이 있는 날만, 요약도 실전매매 것 */
   async function list(limit, side) {
     const n = Math.min(Math.max(+limit || 400, 1), 1000), real = side === 'real';
     try {
       const r = await D.sbGet(`auto_daylog?select=trade_date,sum,size,memo&order=trade_date.desc&limit=${n}`);
       const rows = (r || []).map(x => { const sm = x.sum || {}; return { date: x.trade_date, sum: real ? sm.real || null : (({ real: _r, ...rest }) => rest)(sm), size: x.size || 0, memo: !!x.memo, _hasReal: !!sm.real }; });
-      /* 가상 목록: 가상 탭 기록이 있는 날(예전 행 포함). 실전 탭에만 기록이 있던 날은 뺌 */
+      /* 가상 목록: 가상매매 기록이 있는 날(예전 행 포함). 실전매매에만 기록이 있던 날은 뺌 */
       const out = real ? rows.filter(x => x.sum) : rows.filter(x => x.sum && (x.sum.strategies > 0 || !x._hasReal));
       return { ok: true, rows: out.map(({ _hasReal, ...x }) => x) };
     } catch (e) { if (isMissing(e)) return { ok: true, missing: true, rows: [] }; throw e; }
@@ -99,7 +99,7 @@ function createDayLog(D) {
       const r = await D.sbGet(`auto_daylog?select=trade_date,snap,memo,size&trade_date=eq.${date}&limit=1`);
       if (!r || !r.length) return { ok: false, status: 404, error: '그 날짜의 일지가 없습니다' };
       let snap = r[0].snap || {};
-      if (side === 'real') { if (!snap.real) return { ok: false, status: 404, error: '그 날짜의 실전 탭 일지가 없습니다' }; snap = { ...snap, state: snap.real.state, strat: snap.real.strat, real: undefined }; }
+      if (side === 'real') { if (!snap.real) return { ok: false, status: 404, error: '그 날짜의 실전매매 일지가 없습니다' }; snap = { ...snap, state: snap.real.state, strat: snap.real.strat, real: undefined }; }
       else if (snap.real) snap = { ...snap, real: undefined };
       return { ok: true, date, side: side === 'real' ? 'real' : 'paper', snap, memo: r[0].memo || '', size: r[0].size || 0 };
     } catch (e) { if (isMissing(e)) return { ok: true, missing: true }; throw e; }

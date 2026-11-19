@@ -508,7 +508,7 @@ function createTrade(deps = {}) {
     })
     : null;
   if (paper && !deps.skipLoop) paper.start();
-  /* ── 드라이런 장부(2026-11-19, 실전 탭 자동매매): 가상과 같은 체결 시뮬레이터를 별도 테이블(dry_*)로 하나 더 띄움.
+  /* ── 드라이런 장부(2026-11-19, 실전매매 자동매매): 가상과 같은 체결 시뮬레이터를 별도 테이블(dry_*)로 하나 더 띄움.
      드라이런 전략의 주문만 여기로 온다 — 가상 전략과 같은 종목을 각자 보유할 수 있게(가상 엔진은 종목당 보유 1개).
      한도는 실전 기준(1회·1일·종목 수)으로 점검하고 수수료·세금도 실전 추정치로 계산해 "실전이었다면"을 가깝게 재현. 사람이 직접 주문하는 화면은 없음 */
   const dry = paper && env.DRYRUN_ENGINE !== '0'
@@ -632,7 +632,7 @@ function createTrade(deps = {}) {
       const r = await paper.report(sp.get('from') || null, sp.get('to') || null);
       return json(res, r.ok ? 200 : (r.status || 500), r);
     }
-    if (path === '/trade/auto/state' && req.method === 'GET') {   // 자동매매 카드: 설정·오늘 후보·보유·일별 성과 — 세션 필요. ?side=real 이면 실전 탭(드라이런·실전 전략)
+    if (path === '/trade/auto/state' && req.method === 'GET') {   // 자동매매 카드: 설정·오늘 후보·보유·일별 성과 — 세션 필요. ?side=real 이면 실전매매(드라이런·실전 전략)
       if (!autoRef) return json(res, 503, { ok: false, error: 'auto unavailable' });
       try { const sp = new URL(req.url, 'http://x').searchParams; return json(res, 200, await autoRef.uiState(null, sp.get('side') === 'real' ? 'real' : 'paper')); }
       catch (e) { console.warn('[trade] 자동매매 상태 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'auto state failed' }); }
@@ -652,7 +652,7 @@ function createTrade(deps = {}) {
         const sp = new URL(req.url, 'http://x').searchParams;
         const eng = ['paper', 'dry', 'live'].includes(sp.get('engine')) ? sp.get('engine') : null, side = ['paper', 'real'].includes(sp.get('side')) ? sp.get('side') : null;
         const r = sp.get('date') ? await autoRef.journalGet(sp.get('date'), sp.get('sid') || null)
-          : sp.get('compare') && autoRef.journalCompare ? await autoRef.journalCompare({ sid: sp.get('sid'), src: sp.get('compare'), from: sp.get('from'), to: sp.get('to'), engine: eng })   // 실전 탭 전략 ↔ 가상 원본 비교
+          : sp.get('compare') && autoRef.journalCompare ? await autoRef.journalCompare({ sid: sp.get('sid'), src: sp.get('compare'), from: sp.get('from'), to: sp.get('to'), engine: eng })   // 실전매매 전략 ↔ 가상 원본 비교
             : await autoRef.journalList({ sid: sp.get('sid'), from: sp.get('from'), to: sp.get('to'), limit: sp.get('limit'), side, engine: eng });
         return json(res, r.ok ? 200 : (r.status || 400), r);
       } catch (e) { console.warn('[trade] 일지 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'journal read failed' }); }
@@ -691,7 +691,7 @@ function createTrade(deps = {}) {
       if (path.startsWith('/trade/paper/') && desk !== 'paper') return deskErr('실전매매 화면에서 가상 주문을 보낼 수 없습니다');
       if (path === '/trade/auto/config' && ((desk === 'paper' && body.liveOn !== undefined) || (desk === 'real' && body.on !== undefined))) return deskErr('다른 쪽 자동매매 스위치입니다');
       const sidOfReq = { '/trade/auto/approve': body.strategy, '/trade/auto/eod': body.strategy, '/trade/auto/stage': body.strategy, '/trade/auto/strategy': body.id, '/trade/auto/strategy-source': body.id, '/trade/auto/strategy-delete': body.id, '/trade/auto/journal-memo': body.sid }[path];
-      if (sidOfReq != null && autoRef && autoRef.deskOk && !(await autoRef.deskOk(String(sidOfReq), desk).catch(() => false))) return deskErr(desk === 'real' ? '가상 탭 전략은 실전매매 화면에서 다룰 수 없습니다' : '실전 탭 전략은 가상매매 화면에서 다룰 수 없습니다');
+      if (sidOfReq != null && autoRef && autoRef.deskOk && !(await autoRef.deskOk(String(sidOfReq), desk).catch(() => false))) return deskErr(desk === 'real' ? '가상매매 전략은 실전매매 화면에서 다룰 수 없습니다' : '실전매매 전략은 가상매매 화면에서 다룰 수 없습니다');
       if (path === '/trade/auto/order-edit' && body.engine && ((desk === 'paper') !== (body.engine === 'paper'))) return deskErr('다른 쪽 장부의 자동 주문입니다');
     }
 
@@ -843,7 +843,7 @@ function createTrade(deps = {}) {
       audit('auto_halt', !!r.ok, { level }, req, 'VIRTUAL');
       return json(res, r.ok ? 200 : (r.status || 400), r);
     }
-    if (path === '/trade/auto/config') {   // 자동매매 켜기/끄기(가상 탭 on · 실전 탭 liveOn)·종목당 금액(auto_config 'main'). 실전 탭을 켤 때는 거래 PIN 한 번 더
+    if (path === '/trade/auto/config') {   // 자동매매 켜기/끄기(가상매매 on · 실전매매 liveOn)·종목당 금액(auto_config 'main'). 실전매매를 켤 때는 거래 PIN 한 번 더
       if (!autoRef) return json(res, 503, { ok: false, error: 'auto unavailable' });
       let pinOk = false;
       if (body.liveOn === true && body.pin != null) {
@@ -856,7 +856,7 @@ function createTrade(deps = {}) {
       audit(r.ok ? 'auto_config' : 'auto_config_reject', !!r.ok, { on: body.on, liveOn: body.liveOn, perStockKrw: body.perStockKrw, error: r.error }, req, body.liveOn !== undefined ? 'REAL' : 'VIRTUAL');
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error, needPin: r.needPin || undefined });
     }
-    if (path === '/trade/auto/strategy-source') {   // 원본 변경 반영(POST): 가상 원본의 매수·매도·선정 조건을 실전 탭 전략으로 가져옴. 실전 모드 전략이면 PIN
+    if (path === '/trade/auto/strategy-source') {   // 원본 변경 반영(POST): 가상 원본의 매수·매도·선정 조건을 실전매매 전략으로 가져옴. 실전 모드 전략이면 PIN
       if (!autoRef || !autoRef.applySource) return json(res, 503, { ok: false, error: 'auto unavailable' });
       let pinOk = false;
       if (body.pin != null) {

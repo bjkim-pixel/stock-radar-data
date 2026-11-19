@@ -99,7 +99,7 @@ const PER_MIN = 100000, PER_MAX = 50000000, PER_STEP = 10000;
 function checkConfig(b) {
   const out = {};
   if (b && b.on !== undefined) { if (typeof b.on !== 'boolean') return { err: 'on 값이 올바르지 않습니다' }; out.on = b.on; }
-  if (b && b.liveOn !== undefined) { if (typeof b.liveOn !== 'boolean') return { err: 'liveOn 값이 올바르지 않습니다' }; out.liveOn = b.liveOn; }   // 실전 탭(드라이런·실전) 켜기/끄기
+  if (b && b.liveOn !== undefined) { if (typeof b.liveOn !== 'boolean') return { err: 'liveOn 값이 올바르지 않습니다' }; out.liveOn = b.liveOn; }   // 실전매매(드라이런·실전) 켜기/끄기
   if (b && b.perStockKrw !== undefined) {
     const v = +b.perStockKrw;
     if (!Number.isInteger(v) || v < PER_MIN || v > PER_MAX || v % PER_STEP) return { err: `종목당 금액은 ${PER_MIN.toLocaleString('ko-KR')}~${PER_MAX.toLocaleString('ko-KR')}원, ${PER_STEP.toLocaleString('ko-KR')}원 단위여야 합니다` };

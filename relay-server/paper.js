@@ -53,7 +53,7 @@ function allocSteps(steps, avail) {
 
 function createPaper(deps) {
   const now = deps.now || Date.now;
-  /* 같은 엔진을 드라이런 전용 장부로도 띄운다(실전 탭 자동매매, 2026-11-19): 테이블 접두사·알림 이름·한도 기준만 다르고 체결 규칙은 같음 */
+  /* 같은 엔진을 드라이런 전용 장부로도 띄운다(실전매매 자동매매, 2026-11-19): 테이블 접두사·알림 이름·한도 기준만 다르고 체결 규칙은 같음 */
   const PFX = /^[a-z]+$/.test(String(deps.table || '')) ? deps.table : 'paper';
   const TB = { orders: `${PFX}_orders`, fills: `${PFX}_fills`, positions: `${PFX}_positions`, events: `${PFX}_events`, snaps: `${PFX}_book_snaps` };
   const IDP = PFX === 'paper' ? '' : PFX.slice(0, 2);   // 드라이런 주문·체결 번호는 'dr' 로 시작(가상 번호와 겹치지 않게)

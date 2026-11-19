@@ -181,7 +181,7 @@ function parseApproval(text, max) {
 function parseCmdMulti(text, verb) {
   const t = String(text || '').trim();
   const V = verb === 'buy' ? '(?:매수|buy)' : '정리';
-  /* 글자를 붙이면 그 전략만: "/패스 B" · "/유지 B" · "/매수 B 전체" (실전 탭 전략은 글자가 있어야 처리 — 2026-11-19 섞임 방지) */
+  /* 글자를 붙이면 그 전략만: "/패스 B" · "/유지 B" · "/매수 B 전체" (실전매매 전략은 글자가 있어야 처리 — 2026-11-19 섞임 방지) */
   const L = x => (x ? { letter: x.toUpperCase() } : {});
   let k;
   if (verb === 'buy' && (k = /^\/?(?:패스|pass|skip)(?:\s+([A-Fa-f]))?\s*$/i.exec(t))) return { kind: 'pass', ...L(k[1]) };
@@ -218,7 +218,7 @@ function createAuto(deps) {
   const modeOfSid = sid => (D.modeOf ? D.modeOf(sid) : (MODES[sid] || 'paper'));
   const BR = require('./broker').createBroker({ paper: D.paper || null, dry: D.dry || null, live: D.live || null, modeOf: modeOfSid,
     kinds: () => (D.kindsInUse ? D.kindsInUse() : [...new Set(Object.values(MODES).map(m => (m === 'live' ? 'live' : m === 'dryrun' ? 'dry' : null)).filter(Boolean))]) });
-  /* 실전 탭 자동매매(2026-11-19): 쪽 = 가상 탭(paper 장부) · 실전 탭(dry·live). 켜기/끄기 스위치·화면·일지가 쪽별 */
+  /* 실전매매 자동매매(2026-11-19): 쪽 = 가상매매(paper 장부) · 실전매매(dry·live). 켜기/끄기 스위치·화면·일지가 쪽별 */
   const sideOfSid = sid => BR.sideOf(sid);
   const kindsOfSide = side => (side === 'real' ? ['dry', 'live'] : ['paper']);
   /* 그날 기록(auto_runs)이 어느 장부로 주문했는지: 선정 때 남긴 engine. 예전 기록은 주문의 mode(live)로 추정, 없으면 가상 */
@@ -258,7 +258,7 @@ function createAuto(deps) {
   const pair = async () => { const A = await actives(); const I = A.Is[0] || (await intraOf(DEF_SID)).I; return { I, C: A.C, T: I.T }; };
   const isTradingDay = date => D.isTradingDay(date);
 
-  /* 켜기/끄기: 가상 탭 = main.on · 실전 탭(드라이런·실전) = main.liveOn(켤 때 PIN). 못 읽으면 꺼짐으로 */
+  /* 켜기/끄기: 가상매매 = main.on · 실전매매(드라이런·실전) = main.liveOn(켤 때 PIN). 못 읽으면 꺼짐으로 */
   async function masterOn(side = 'paper') {
     if (D.forceEnabled != null) return !!D.forceEnabled;
     try { const r = await D.sbGet('auto_config?select=key,value&key=eq.main&limit=1'); const v = (r[0] && r[0].value) || {}; return side === 'real' ? !!v.liveOn : !!v.on; } catch (_) { return false; }
@@ -482,7 +482,7 @@ function createAuto(deps) {
     const h = await haltReason(); if (h) return h;
     if (BR.execOf(sid) === 'live') {
       /* 사이트 "실전 주문" 스위치가 꺼져 있으면 실전 전략은 신규 매수를 건너뜀(손절·익절·정리는 계속). 드라이런은 가상 장부라 영향 없음 */
-      if (D.realOrdersOn && !D.realOrdersOn()) return '사이트 "실전 주문" 스위치가 꺼져 있어 실전 신규 매수를 건너뛰어요(실전 탭에서 켜기)';
+      if (D.realOrdersOn && !D.realOrdersOn()) return '사이트 "실전 주문" 스위치가 꺼져 있어 실전 신규 매수를 건너뛰어요(실전매매에서 켜기)';
       if (D.reconBlock) return (await D.reconBlock(sid).catch(() => null)) || null;
     }
     return null;
@@ -518,7 +518,7 @@ function createAuto(deps) {
   /* 전략이 여럿이면 텔레그램 메시지 앞에 [A · 이름]을 붙인다(답할 때 번호 앞에 그 글자) */
   const labelOf = sid => { const r = state.runs[sid]; const p = r && r.payload; return p && p.letter ? `${p.letter} · ${(p.strategy && p.strategy.name) || sid}` : sid; };
   const modeTag = sid => ({ live: '🔴실전 ', dryrun: '🧪드라이런 ' }[BR.execOf(sid)] || '');
-  /* 실전 탭(드라이런·실전) 전략 알림은 전략이 하나여도 늘 글자를 붙임 — 글자 없는 명령(/매수 1·/매수 전체·/패스·/유지)은 가상 탭만 처리하므로 */
+  /* 실전매매(드라이런·실전) 전략 알림은 전략이 하나여도 늘 글자를 붙임 — 글자 없는 명령(/매수 1·/매수 전체·/패스·/유지)은 가상매매만 처리하므로 */
   const lettered = sid => state.multi || sideOfSid(sid) === 'real';
   const realCmds = (sid, t) => { if (sideOfSid(sid) !== 'real') return t; const L = (state.runs[sid] && state.runs[sid].payload.letter) || 'A'; return t.replace('/매수 전체 · /패스', `/매수 ${L} 전체 · /패스 ${L}`).replace('/정리 전체 · /유지', `/정리 ${L} 전체 · /유지 ${L}`); };
   const tgFor = sid => t0 => { const L = state.runs[sid] && state.runs[sid].payload.letter, t = realCmds(sid, t0); return D.sendTelegram(lettered(sid) ? `${modeTag(sid)}[${labelOf(sid)}] ${L ? `— 답할 때 번호 앞에 ${L} (예: ${L}1)` : ''}\n${t}` : modeTag(sid) + t); };   // 실전·드라이런 표시는 늘 맨 앞
@@ -582,7 +582,7 @@ function createAuto(deps) {
     if (!ps || !ps.ok) return null;
     return RISK.exposureOf(ps, await autoCodes(kstParts().date, [b.kind]));
   }
-  /* 쪽 하나(가상 탭·실전 탭)의 노출. 실전 탭은 드라이런·실전 장부를 합친 값(텔레그램 알림·화면) */
+  /* 쪽 하나(가상매매·실전매매)의 노출. 실전매매는 드라이런·실전 장부를 합친 값(텔레그램 알림·화면) */
   async function exposureNow(side) {
     if (!HAS) return null;
     const ks = side ? kindsOfSide(side).filter(k => BR.engines[k]) : null;
@@ -726,8 +726,8 @@ function createAuto(deps) {
   /* 승인 처리(한 전략): a = { kind: 'pass' } | { kind: 'buy', nums } | { kind: 'all' } */
   async function approveRun(date, sid, a, min, opts = {}) {
     const { I } = await intraOf(sid);
-    /* 실전 탭(드라이런·실전) 스위치를 끈 뒤에는 이미 알림이 간 후보도 사지 않음(끄면 신규 매수가 바로 멈추게) */
-    if (a.kind !== 'pass' && sideOfSid(sid) === 'real' && !(await masterOn('real'))) return '실전 탭 자동매매가 꺼져 있어 매수하지 않아요. (사이트 실전 탭 › 자동매매에서 켜기)';
+    /* 실전매매(드라이런·실전) 스위치를 끈 뒤에는 이미 알림이 간 후보도 사지 않음(끄면 신규 매수가 바로 멈추게) */
+    if (a.kind !== 'pass' && sideOfSid(sid) === 'real' && !(await masterOn('real'))) return '실전매매 자동매매가 꺼져 있어 매수하지 않아요. (사이트 실전매매 › 자동매매에서 켜기)';
     if (opts.via === 'auto' && a.kind !== 'pass' && BR.execOf(sid) === 'live' && !I.params.liveAutoOk) {   // 2단계: 실전은 "실전 자동 승인 허용"을 켜기 전까지 직접 승인만(첫 5거래일)
       let first = false;
       await mutateRun(date, sid, run => { if (!run.payload.liveAutoBlocked) { run.payload.liveAutoBlocked = true; first = true; LOG.push(run.payload, 'approve', '실전 전략 — 자동 승인하지 않음(직접 승인 필요)'); } });
@@ -785,23 +785,23 @@ function createAuto(deps) {
     if (a.kind === 'bad') return `번호를 확인해 주세요. 예) /매수 1 3${runs.length > 1 ? ' · 전략이 여럿이면 /매수 A1 B2' : ''}`;
     const pend = runs.filter(r => !(r.payload.decision && r.payload.decision.kind) || (opts.late && r.payload.decision.kind === 'expired'));
     const byLetter = l => runs.find(r => (r.payload.letter || 'A') === l);
-    /* 섞임 방지(2026-11-19): 전략을 정하지 않은 명령(텔레그램 "/매수 1"·"/매수 전체"·"/패스")은 한쪽만 — 기본 가상 탭.
-       실전 탭(드라이런·실전) 후보는 글자를 붙여야 처리("/매수 B1"·"/매수 B 전체"·"/패스 B"). 사이트는 전략을 정해 부르거나 side 를 줌 */
+    /* 섞임 방지(2026-11-19): 전략을 정하지 않은 명령(텔레그램 "/매수 1"·"/매수 전체"·"/패스")은 한쪽만 — 기본 가상매매.
+       실전매매(드라이런·실전) 후보는 글자를 붙여야 처리("/매수 B1"·"/매수 B 전체"·"/패스 B"). 사이트는 전략을 정해 부르거나 side 를 줌 */
     const scope = onlySid ? null : (opts.side === 'real' ? 'real' : 'paper'), inScope = r => !scope || sideOfRun(r) === scope;
-    const otherHint = () => { const o = runs.find(r => !inScope(r)); return o ? ` ${scope === 'paper' ? '실전 탭(🔴) 후보는' : '가상 탭 후보는'} 전략 글자를 붙여 주세요. 예) /매수 ${o.payload.letter || 'A'}1` : ''; };
+    const otherHint = () => { const o = runs.find(r => !inScope(r)); return o ? ` ${scope === 'paper' ? '실전매매(🔴) 후보는' : '가상매매 후보는'} 전략 글자를 붙여 주세요. 예) /매수 ${o.payload.letter || 'A'}1` : ''; };
     const jobs = [];
     if (a.kind === 'pass' || a.kind === 'all') {
       let L;
       if (a.letter) { const r = byLetter(a.letter); if (!r) return `${a.letter} 전략의 오늘 후보가 없어요.`; L = [r]; }
       else { const ps = pend.filter(inScope); L = ps.length ? ps : runs.filter(inScope); }
-      if (!L.length) return `${scope === 'real' ? '실전 탭' : '가상 탭'}에는 오늘 승인할 후보가 없어요.${otherHint()}`;
+      if (!L.length) return `${scope === 'real' ? '실전매매' : '가상매매'}에는 오늘 승인할 후보가 없어요.${otherHint()}`;
       L.forEach(r => jobs.push([sidOf(r), { kind: a.kind }]));
     } else {
       const g = {};
       for (const it of a.items) {
         const ps = pend.filter(inScope), rs = runs.filter(inScope);
         let r = it.letter ? byLetter(it.letter) : (ps.length === 1 ? ps[0] : rs.length === 1 ? rs[0] : null);
-        if (!r && !it.letter && !rs.length) return `${scope === 'real' ? '실전 탭' : '가상 탭'}에는 오늘 승인할 후보가 없어요.${otherHint()}`;
+        if (!r && !it.letter && !rs.length) return `${scope === 'real' ? '실전매매' : '가상매매'}에는 오늘 승인할 후보가 없어요.${otherHint()}`;
         if (!r) return it.letter ? `${it.letter} 전략의 오늘 후보가 없어요.` : '전략이 여럿이에요. 번호 앞에 글자를 붙여 주세요. 예) /매수 A1 B2';
         (g[sidOf(r)] = g[sidOf(r)] || []).push(it.n);
       }
@@ -882,7 +882,7 @@ function createAuto(deps) {
     const onMemo = {}, onFor = async side => (onMemo[side] === undefined ? (onMemo[side] = await masterOn(side)) : onMemo[side]);   // 쪽별 켜기/끄기(이번 주기에 한 번만 읽음)
     if (inCb && ((await onFor('paper')) || (await onFor('real')))) {   // 종가베팅 저녁 매수: 18:00부터 관찰 회차, 19:30 이후 최종 선정(전략마다 한 번(실패하면 최대 3번까지 1분 간격으로 다시)
       for (const I of A.Is) {
-        if (!(await onFor(sideOfSid(I.id)))) continue;   // 그 전략의 쪽(가상 탭·실전 탭) 스위치가 꺼져 있으면 건너뜀
+        if (!(await onFor(sideOfSid(I.id)))) continue;   // 그 전략의 쪽(가상매매·실전매매) 스위치가 꺼져 있으면 건너뜀
         const r = state.runs[I.id], cbx = r && r.payload && r.payload.cb;
         if (cbx && cbx.done) {
           const dl = cbx.deadline || T0.cbEnd;
@@ -1158,23 +1158,23 @@ function createAuto(deps) {
     if (a.kind === 'bad') return `번호를 확인해 주세요. 예) /정리 1${runs.length > 1 ? ' · 전략이 여럿이면 /정리 A1 B2' : ''}`;
     const AC = await actives(), nxtFrom = ((AC.Is[0] && AC.Is[0].T) || ST.timesOf(DEFP, AC.C.params)).njudge;
     const pend = runs.filter(r => (opts.phase ? !wk(r, opts.phase).decision : !!eodFor(sidOf(r)).pendingPhase(r.payload, min, nxtFrom)));
-    /* 섞임 방지: 글자 없는 /정리·/유지 는 한쪽(기본 가상 탭)만. 실전 탭은 "/정리 B1"·"/정리 B 전체"·"/유지 B" */
+    /* 섞임 방지: 글자 없는 /정리·/유지 는 한쪽(기본 가상매매)만. 실전매매는 "/정리 B1"·"/정리 B 전체"·"/유지 B" */
     const scope = onlySid ? null : (opts.side === 'real' ? 'real' : 'paper'), inScope = r => !scope || sideOfRun(r) === scope;
     const byL = l => runs.find(x => (x.payload.letter || 'A') === l);
-    const otherHint = () => { const o = runs.find(r => !inScope(r)); return o ? ` ${scope === 'paper' ? '실전 탭(🔴) 종목은' : '가상 탭 종목은'} 전략 글자를 붙여 주세요. 예) /정리 ${o.payload.letter || 'A'}1 · /유지 ${o.payload.letter || 'A'}` : ''; };
+    const otherHint = () => { const o = runs.find(r => !inScope(r)); return o ? ` ${scope === 'paper' ? '실전매매(🔴) 종목은' : '가상매매 종목은'} 전략 글자를 붙여 주세요. 예) /정리 ${o.payload.letter || 'A'}1 · /유지 ${o.payload.letter || 'A'}` : ''; };
     const jobs = [];
     if (a.kind === 'keep' || a.kind === 'all') {
       let L;
       if (a.letter) { const r = byL(a.letter); if (!r) return `${a.letter} 전략은 정리할 종목이 없어요.`; L = [r]; }
       else { const ps = pend.filter(inScope); L = ps.length ? ps : runs.filter(inScope); }
-      if (!L.length) return `${scope === 'real' ? '실전 탭' : '가상 탭'}에는 지금 정리할지 물어본 종목이 없어요.${otherHint()}`;
+      if (!L.length) return `${scope === 'real' ? '실전매매' : '가상매매'}에는 지금 정리할지 물어본 종목이 없어요.${otherHint()}`;
       L.forEach(r => jobs.push([sidOf(r), a.kind === 'keep' ? '/유지' : '/정리 전체']));
     } else {
       const g = {};
       for (const it of a.items) {
         const ps = pend.filter(inScope), rs = runs.filter(inScope);
         const r = it.letter ? byL(it.letter) : (ps.length === 1 ? ps[0] : rs.length === 1 ? rs[0] : null);
-        if (!r && !it.letter && !rs.length) return `${scope === 'real' ? '실전 탭' : '가상 탭'}에는 지금 정리할지 물어본 종목이 없어요.${otherHint()}`;
+        if (!r && !it.letter && !rs.length) return `${scope === 'real' ? '실전매매' : '가상매매'}에는 지금 정리할지 물어본 종목이 없어요.${otherHint()}`;
         if (!r) return it.letter ? `${it.letter} 전략은 정리할 종목이 없어요.` : '전략이 여럿이에요. 번호 앞에 글자를 붙여 주세요. 예) /정리 A1';
         (g[sidOf(r)] = g[sidOf(r)] || []).push(it.n);
       }
@@ -1196,7 +1196,7 @@ function createAuto(deps) {
   async function setConfig(body, opts = {}) {
     const c = UI.checkConfig(body);
     if (c.err) return { ok: false, status: 400, error: c.err };
-    if (c.val.liveOn === true && !opts.pinOk) return { ok: false, status: 403, needPin: true, error: '실전 탭 자동매매를 켜려면 거래 PIN을 다시 입력하세요' };   // 드라이런·실전 전략이 돌기 시작함
+    if (c.val.liveOn === true && !opts.pinOk) return { ok: false, status: 403, needPin: true, error: '실전매매 자동매매를 켜려면 거래 PIN을 다시 입력하세요' };   // 드라이런·실전 전략이 돌기 시작함
     const { I } = await pair();
     if (c.val.perStockKrw !== undefined && !store.isMissing()) {   // 종목당 금액은 장중 전략 조건값(버전 기록)
       const r = await store.save(I.id, { params: { perStockKrw: c.val.perStockKrw } }, 'site');
@@ -1211,7 +1211,7 @@ function createAuto(deps) {
     });
   }
 
-  /* ── 쪽(가상 탭·실전 탭)별 체결 읽기 ── */
+  /* ── 쪽(가상매매·실전매매)별 체결 읽기 ── */
   const FILLS = { paper: 'paper_fills', dry: 'dry_fills', live: 'live_fills' };
   /* 실제 계좌 체결 중 자동매매 것만: 자동매매 주문(origin auto:…) 또는 엔진이 낸 손절·익절·정리(reason ≠ manual). 사람이 직접 낸 주문의 체결은 뺌.
      주문을 못 읽으면 그대로 둠(일지에 직접 매매가 섞일 수 있음 — 종목·날짜로 한 번 더 걸러짐) */
@@ -1241,7 +1241,7 @@ function createAuto(deps) {
   const sideArg = v => (v === 'real' ? 'real' : 'paper');
 
   /* 지난 날짜의 오늘 탭 재구성(자정이 지나 그날 일지를 못 만들었을 때) — 그날 실행 기록(auto_runs)과 체결로 만든다.
-     실시간 값(보유·이월·호가)은 지난 날짜엔 없으므로 비운다. side = 'paper'(가상 탭) | 'real'(실전 탭) */
+     실시간 값(보유·이월·호가)은 지난 날짜엔 없으므로 비운다. side = 'paper'(가상매매) | 'real'(실전매매) */
   async function uiStatePast(date, side) {
     side = sideArg(side);
     const [cfgRows, allRows, A] = await Promise.all([D.sbGet('auto_config?select=value&key=eq.main&limit=1').catch(() => []), readRuns(date), actives()]);
@@ -1481,7 +1481,7 @@ function createAuto(deps) {
   }
 
   /* 전략 조회·저장·추가·삭제(컨트롤 타워) */
-  /* 실전 탭 전략 ↔ 가상 원본: 원본에서 가져오는 조건(매수·매도·선정 규칙)과 가져오지 않는 값(실행 모드·금액·실전 안전장치 — 쪽마다 따로 정함) */
+  /* 실전매매 전략 ↔ 가상 원본: 원본에서 가져오는 조건(매수·매도·선정 규칙)과 가져오지 않는 값(실행 모드·금액·실전 안전장치 — 쪽마다 따로 정함) */
   const OWN_KEYS = new Set(['execMode', 'liveAutoOk', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'perStockKrw', 'totalCapKrw']);
   const ruleParams = p => Object.fromEntries(Object.entries(p || {}).filter(([k]) => !OWN_KEYS.has(k)));
   function sourceDiffOf(cur, src) {
@@ -1586,7 +1586,7 @@ function createAuto(deps) {
     if (!store.create) return { ok: false, status: 503, error: '지원하지 않음' };
     const b = body || {}, src = b.from && store.byId ? await store.byId(String(b.from)).catch(() => null) : null;
     const asLive = b.asLive === true && (!src || src.kind === 'intraday');
-    /* "실전에 적용": 가상 원본을 복제해 실전 탭(드라이런·꺼짐·직접 승인)으로 만들고 원본을 기억(원본 변경 반영·성과 비교) */
+    /* "실전에 적용": 가상 원본을 복제해 실전매매(드라이런·꺼짐·직접 승인)으로 만들고 원본을 기억(원본 변경 반영·성과 비교) */
     const link = asLive && !!src && (src.params.execMode || 'paper') === 'paper';
     const r = await store.create({ ...b, linkSource: link, ...(asLive && src && !b.name ? { name: `${src.name} (실전)`.slice(0, 30) } : {}) }, who);
     if (!r || !r.ok || !r.strategy || r.strategy.kind !== 'intraday') return r;

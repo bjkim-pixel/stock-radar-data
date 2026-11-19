@@ -3848,7 +3848,7 @@ setInterval(() => { recon.tick().catch(e => console.error('[대사] tick 실패:
 const autoTrade = require('./auto').createAuto({
   sbGet, sbWrite, sendTelegram,
   paper: trade.paper,                                     // 가상매매 엔진(없으면 승인은 기록만)
-  dry: trade.dry || null,                                 // 드라이런 장부(실전 탭 드라이런 전략의 주문 — 가상과 따로, 2026-11-19)
+  dry: trade.dry || null,                                 // 드라이런 장부(실전매매 드라이런 전략의 주문 — 가상과 따로, 2026-11-19)
   live: trade.live,                                       // 실전매매 엔진(전략의 실행 모드가 실전·드라이런일 때 씀 — 2단계)
   liveReady: () => (!trade.live ? { ok: false, why: '실전 계좌(KIS_ACCOUNT_NO)가 설정되지 않았습니다' } : !trade.cfg.enabled ? { ok: false, why: '매매 스위치(TRADING_ENABLED)가 꺼져 있습니다' }
     : !trade.cfg.realEnabled ? { ok: false, why: '실전 스위치(REAL_TRADING_ENABLED)가 꺼져 있습니다' } : { ok: true }),

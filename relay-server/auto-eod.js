@@ -73,7 +73,7 @@ function createEod(deps) {
   /* 매매 엔진(실거래 전환 1단계): 이 전략의 broker. 이월 종목은 넘겨준 전략(it.sid)의 엔진으로(brokerFor) — 가상·실전이 섞여도 각자 엔진에서 판다 */
   const B = D.broker || D.paper;
   const Bof = it => (D.brokerFor ? (D.brokerFor(it && it.sid) || B) : B);
-  /* 실전 탭 자동매매(2026-11-19): 가상·드라이런·실전 장부가 같은 종목을 각자 넘길 수 있어 이월 키에 장부를 붙임(가상은 예전처럼 종목코드) */
+  /* 실전매매 자동매매(2026-11-19): 가상·드라이런·실전 장부가 같은 종목을 각자 넘길 수 있어 이월 키에 장부를 붙임(가상은 예전처럼 종목코드) */
   const ckey = (code, kind) => (!kind || kind === 'paper' ? code : `${code}@${kind}`);
   const keyOfItem = it => it.key || ckey(it.code, it.kind);
 

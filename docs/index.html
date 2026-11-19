@@ -878,6 +878,10 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .trd-band.virt{background:var(--surface-2);color:var(--ink-2)}
 .trd-band.real{background:#b71c1c;color:#fff;border-color:#b71c1c}
 .trd-band.real .faint{color:#ffd7d7}
+#v-trade.desk-real{box-shadow:0 0 0 3px #b71c1c;border-radius:12px;padding:0 10px 10px}
+#v-trade.desk-real>.pg-title{color:#b71c1c}
+#tabs .ng-real>.ngh{color:#b71c1c}
+:root[data-theme="dark"] #tabs .ng-real>.ngh,:root[data-theme="dark"] #v-trade.desk-real>.pg-title{color:#ff8a80}
 #trdRealSw.on{background:#fff;color:#b71c1c;border-color:#fff;font-weight:700}
 #trdRealSw:disabled{opacity:.6}
 .trd-kill{border:0;border-radius:8px;padding:7px 14px;font-weight:700;background:#c62828;color:#fff;cursor:pointer;min-height:36px}
@@ -1195,13 +1199,20 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 <aside id="sideNav" aria-label="메뉴">
   <button id="navToggle" type="button" aria-expanded="true" title="메뉴 접기"><span class="ni">☰</span><span class="nt">메뉴</span><span class="nc">접기 ◀</span></button>
   <nav id="tabs">
-    <div class="ng" data-g="trade"><div class="ngh" role="button" tabindex="0" aria-expanded="true">매매</div><div class="ngi">
-      <button data-v="live">실시간 종목</button>
-      <button data-v="trade">주식주문</button>
-      <button data-v="trplan">매도 계획</button>
-      <button data-v="trhold">보유현황</button>
-      <button data-v="trhist">거래내역</button>
-      <button data-v="trauto">자동매매</button></div></div>
+    <div class="ng ng-paper" data-g="paper"><div class="ngh" role="button" tabindex="0" aria-expanded="true">가상매매</div><div class="ngi">
+      <button data-v="paper-order">주식주문</button>
+      <button data-v="paper-plan">매도 계획</button>
+      <button data-v="paper-hold">보유현황</button>
+      <button data-v="paper-hist">거래내역</button>
+      <button data-v="paper-auto">자동매매</button></div></div>
+    <div class="ng ng-real" data-g="real"><div class="ngh" role="button" tabindex="0" aria-expanded="true">실전매매</div><div class="ngi">
+      <button data-v="real-order">주식주문</button>
+      <button data-v="real-plan">매도 계획</button>
+      <button data-v="real-hold">보유현황 · 계좌</button>
+      <button data-v="real-hist">거래내역</button>
+      <button data-v="real-auto">자동매매</button></div></div>
+    <div class="ng" data-g="trade"><div class="ngh" role="button" tabindex="0" aria-expanded="true">실시간</div><div class="ngi">
+      <button data-v="live">실시간 종목</button></div></div>
     <div class="ng" data-g="sum"><div class="ngh" role="button" tabindex="0" aria-expanded="true">요약</div><div class="ngi">
       <button data-v="ai">AI 브리핑</button>
       <button data-v="fav">★ 내 종목</button>
@@ -2269,7 +2280,6 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 
 <!-- ═══════════ 투자일지 ═══════════ -->
 <section id="v-trade" class="hide">
-  <div class="trd-tabs trd-pmode" id="trdMode" role="tablist" style="margin-bottom:8px"><button type="button" data-pmode="VIRTUAL">가상</button><button type="button" data-pmode="REAL">실전</button></div>
   <div id="trdBand" class="trd-band virt"><span id="trdBandTx"></span><span class="sp"></span><span id="trdSessTx" class="faint"></span><button type="button" id="trdRealSw" class="chip hide" title="실전 신규 매수 허용 스위치(켤 때 거래 PIN · 끄면 신규 매수만 멈추고 손절·익절 매도는 계속)"></button><button type="button" id="trdLockBtn" class="chip">잠그기</button><button type="button" id="trdKill" class="trd-kill">긴급 정지</button></div>
   <div id="trdHalt" class="trd-halt hide" role="alert"></div>
   <div id="trdGate" class="card trd-gate">
@@ -4775,6 +4785,7 @@ function navSync(){
 /* 각 페이지 맨 위에 페이지 이름 표시(좌측 내비 라벨과 동일) */
 $$("#tabs button[data-v]").forEach(b=>{const sec=document.getElementById("v-"+b.dataset.v);
   if(sec&&!sec.querySelector(":scope>.pg-title")){const h=document.createElement("h1");h.className="pg-title";h.textContent=b.textContent.trim();sec.prepend(h);}});
+{const sec=document.getElementById("v-trade");if(sec&&!sec.querySelector(":scope>.pg-title")){const h=document.createElement("h1");h.className="pg-title";h.textContent="매매";sec.prepend(h);}}   // 매매 화면 제목은 쪽·화면에 따라 trdTab 이 채움(가상매매 · 주식주문 …)
 (function navInit(){
   let shut={};try{shut=JSON.parse(localStorage.getItem("sr_ng")||"{}");}catch(e){}
   $$("#tabs .ng").forEach(g=>{
@@ -4810,10 +4821,15 @@ function procEnter(){
 }
 function go(v,detailCode){
   if(v==="detail"&&detailCode&&S.etfMap&&S.etfMap[detailCode])v="etf";   // 2026-11-14: ETF는 ETF 상세 페이지로
-  if(v==="traderl"){v="trade";S.tradeMode="REAL";}
-  const vOrig=v;   // 2026-11-19: 자동매매도 가상/실전 탭(마지막으로 고른 쪽)으로 연다
-  if(v==="trade"||v==="trplan"||v==="trhold"||v==="trhist"||v==="trauto"){if(!S.tradeMode){let m=null;try{m=localStorage.getItem("trdMode");}catch(_){}S.tradeMode=m==="REAL"?"REAL":"VIRTUAL";}
-    TRD.pane=v==="trplan"?"plan":v==="trhold"?"hold":v==="trauto"?"auto":v==="trhist"?(TRD.pane==="hist"?"hist":"rep"):(TRD_ORDER_P.includes(TRD.pane)&&TRD.keepPane?TRD.pane:"order");TRD.keepPane=false;v="trade";}
+  /* 2026-11-19 화면 분리: 매매는 메뉴에서 「가상매매」·「실전매매」로 들어가고(주소 #paper/… · #real/…), 들어간 쪽은 화면 안에서 바꿀 수 없음.
+     예전 주소(#trade·#trauto 등)는 실수로 실전에 들어가지 않게 항상 가상매매로. 쪽이 바뀌면 입력 중이던 값을 모두 비움 */
+  if(v==="traderl")v="real-order";
+  if(DESK_LEGACY[v])v=DESK_LEGACY[v];
+  const vOrig=v;
+  {const dm=DESK_V.exec(v);if(dm){const mode=DESKS[dm[1]].mode;
+    if(S.tradeMode!==mode){if(S.curTab==="trade")trdStop();TRD.ps=null;trdDeskReset();}
+    S.tradeMode=mode;const pn=dm[2];
+    TRD.pane=pn==="plan"?"plan":pn==="hold"?"hold":pn==="auto"?"auto":pn==="hist"?(TRD.pane==="hist"?"hist":"rep"):(TRD_ORDER_P.includes(TRD.pane)&&TRD.keepPane?TRD.pane:"order");TRD.keepPane=false;v="trade";}}
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
   let cur2=cur;if(!cur2&&!$("#v-etf").classList.contains("hide"))cur2="etf";
   if(cur2&&cur2!==v)S.prevView=cur2;
@@ -10357,7 +10373,16 @@ async function loadTdKospi(){
 const TRD={trail:2,pane:"order",q:[],cur:null,mode:"VIRTUAL",sess:null,off:0,st:null,quote:null,data:null,poll:null,stPoll:null,busy:false,buy:0,qty:0,amt:0,stopPct:5,target:0,coef:1,plan:null,planDirty:false,auto:{stop:null,tp:null},split:5,sell:{code:null,type:"limit",price:0,qty:0,pct:0,arm:0},mod:{}};
 const trdEsc=v=>String(v==null?"":v).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const trdNm=c=>((S.codes||[]).find(x=>x.code===c)||{}).name||c;
-const trdBase=()=>TRD.mode==="REAL"?"/trade/live":"/trade/paper";
+/* ── 쪽 설정표(2026-11-19 화면 분리): 가상매매·실전매매의 차이는 여기에만 둔다. 화면 코드는 하나이고 이 표로 두 쪽을 띄움 ──
+   새 기능을 넣을 때: 두 쪽 모두 동작하게 만들고, 한쪽에만 있어야 하는 것은 이 표에 항목을 추가(시험 test/desk-parity 가 표 밖 분기를 셈) */
+const DESKS={
+  paper:{key:"paper",mode:"VIRTUAL",label:"가상매매",short:"가상",base:"/trade/paper",ledger:"paper",side:"paper",band:"virt",limitsKey:"VIRTUAL",realOnly:false},
+  real:{key:"real",mode:"REAL",label:"실전매매",short:"실전",base:"/trade/live",ledger:"live",side:"real",band:"real",limitsKey:"REAL",realOnly:true},
+};
+const DESK_V=/^(paper|real)-(order|plan|hold|hist|auto)$/;
+const DESK_LEGACY={trade:"paper-order",trplan:"paper-plan",trhold:"paper-hold",trhist:"paper-hist",trauto:"paper-auto"};
+const trdDeskCfg=()=>TRD.mode==="REAL"?DESKS.real:DESKS.paper;
+const trdBase=()=>trdDeskCfg().base;
 TRD.type="limit";TRD.ps=null;TRD.hq={};TRD.pe={};
 try{TRD.q=(JSON.parse(localStorage.getItem("sr_trade_q")||"[]")||[]).filter(c=>/^\d{6}$/.test(c)).slice(0,10);}catch(_){}
 try{TRD.sess=sessionStorage.getItem("sr_trade_sess");}catch(_){}
@@ -10373,7 +10398,7 @@ function trdDeskReset(){
   TRD.pe={};TRD.mod={};TRD.hq={};TRD.sopen=null;TRD.rep=null;TRD.repP=null;
   clearTimeout(TRD.armT);clearTimeout(TRD.sellT);
 }
-const trdDesk=()=>TRD.mode==="REAL"?"real":"paper";   // 서버가 주소·전략의 쪽과 대조(다르면 409)
+const trdDesk=()=>trdDeskCfg().key;   // 서버가 주소·전략의 쪽과 대조(다르면 409)
 async function trdApi(path,{method="GET",body,sess,timeout}={}){
   const tok=await authTok();
   if(!tok){const e=new Error("login");e.status=401;e.code="login";throw e;}
@@ -10491,7 +10516,8 @@ function trdBandReal(st){
 async function trdEnter(){
   TRD.mode=S.tradeMode==="REAL"?"REAL":"VIRTUAL";
   setTimeout(()=>trdTab(TRD.pane||"order"),0);
-  $("#trdBand").className="trd-band "+(TRD.mode==="REAL"?"real":"virt");
+  $("#trdBand").className="trd-band "+trdDeskCfg().band;
+  $("#v-trade").classList.toggle("desk-real",trdDeskCfg().realOnly);
   $("#trdBandTx").innerHTML=TRD.mode==="REAL"?trdBandReal(TRD.st):"<b>가상</b> · 자체 체결 시뮬레이터 (실제 주문은 나가지 않음)";
   trdRenderQ();
   if(!AUTH.s){$("#trdPinRow").classList.add("hide");trdGateMsg('로그인이 필요합니다. <button class="btn" id="trdLogin" type="button">로그인</button>');$("#trdLogin").onclick=()=>authShow();return;}
@@ -10686,7 +10712,7 @@ async function trdAuEdit(kind){
     if(trdFloor(price)!==price){TRD.aueMsg={ok:false,t:Date.now(),text:`${N(price)}원은 호가 단위에 맞지 않습니다 (${N(trdFloor(price))}원 등)`};e.dataset.h="";trdRenderAuNote();return;}
   }
   try{
-    const eng=TRD.mode==="REAL"?"live":"paper";   // 이 화면 장부의 주문만(같은 종목 다른 장부 자동 주문은 건드리지 않음)
+    const eng=trdDeskCfg().ledger;   // 이 화면 장부의 주문만(같은 종목 다른 장부 자동 주문은 건드리지 않음)
     const r=await trdApi("/trade/auto/order-edit",{method:"POST",body:kind==="cancel"?{code,engine:eng,orderId:o.id,action:"cancel"}:{code,engine:eng,orderId:o.id,action:"modify",price,...(o.filled>0?{}:{qty})}});
     TRD.aueMsg={ok:true,t:Date.now(),text:r.action==="cancel"?"자동 매수 주문을 취소했습니다.":`자동 매수 주문을 ${N(price)}원으로 정정했습니다${r.planned?" (손절·익절 계획 다시 계산)":""}.`};
   }catch(err){
@@ -11243,8 +11269,8 @@ async function trdPeSave(code){
 /* ── 자동매매 컨트롤 타워 (B단계) — 가상매매 전용. 서버(/trade/auto/*)가 계산·검증하고 화면은 보여 주고 고치게만 함 ──
    탭: 오늘(관제실) · 전략(조건 보기·편집·버전) · 성과. 상단 띠 = 전체 스위치 · 다음 단계 · 오늘 요약 */
 TRD.au=null;TRD.aus=null;TRD.auMsg=null;TRD.auTab="today";TRD.auEdit=null;TRD.auOpen={};TRD.auVer={};TRD.auSel={buy:{},eod:{}};TRD.auNew=null;TRD.auArm=null;TRD.auPick=null;TRD.auSrc={};
-/* 실전 탭 자동매매(2026-11-19): 위쪽 가상/실전 탭이 자동매매의 쪽을 정함 — 가상 탭 = 가상 전략 · 실전 탭 = 드라이런·실전 전략. 화면 구조는 같고 데이터·스위치·일지·성과가 쪽별 */
-const auSide=()=>TRD.mode==="REAL"?"real":"paper";
+/* 실전매매 자동매매(2026-11-19): 위쪽 가상/실전매매가 자동매매의 쪽을 정함 — 가상매매 = 가상 전략 · 실전매매 = 드라이런·실전 전략. 화면 구조는 같고 데이터·스위치·일지·성과가 쪽별 */
+const auSide=()=>trdDeskCfg().side;
 const auReal=()=>auSide()==="real";
 const auSideQ=pre=>auReal()?(pre||"?")+"side=real":"";
 const auSideOfS=s=>!s||s.kind!=="intraday"?"both":(s.side||(s.params&&s.params.execMode&&s.params.execMode!=="paper"?"real":"paper"));
@@ -11279,7 +11305,7 @@ async function trdLoadAuto(silent){
   TRD.auBusy=true;
   try{
     const [st,sg]=await Promise.all([trdApi("/trade/auto/state"+auSideQ()),(!silent||!TRD.aus)?trdApi("/trade/auto/strategies"):Promise.resolve(TRD.aus)]);
-    if(auSide()!==side0){TRD.auBusy=false;return trdLoadAuto(silent);}   // 읽는 사이 가상/실전 탭을 바꿈 → 새 쪽으로 다시
+    if(auSide()!==side0){TRD.auBusy=false;return trdLoadAuto(silent);}   // 읽는 사이 가상/실전매매를 바꿈 → 새 쪽으로 다시
     TRD.au=st;TRD.aus=sg;
     if(Object.values(st.modes||{}).some(m=>m==="live"||m==="dryrun")&&Date.now()-(TRD.auAcctAt||0)>15000){   // 실전·드라이런 전략이 있으면 계좌 상태 줄에 쓸 값을 따로 읽음(실패해도 화면은 그대로)
       TRD.auAcctAt=Date.now();trdApi("/trade/live/account").then(r=>{TRD.auAcct=r;if(!TRD.auEdit&&TRD.pane==="auto"&&!TRD.auBusy)trdAutoRender();}).catch(()=>{TRD.auAcct=null;});
@@ -11710,7 +11736,7 @@ function auLiveBar(){
 }
 function auTodayHtml(){
   const A=TRD.au,G=TRD.aus,ids=auIds();
-  let h=auNowBar()+`<div class="card"><h3>오늘 흐름 <span class="r au-upd"><span class="faint" style="font-size:11px">${trdEsc(A.date)}${A.tradingDay?"":" · 휴장일"} · ${trdEsc(auUpdTx())} 업데이트</span><button type="button" class="au-rf${TRD.auBusy?" spin":""}" data-aur="1" aria-label="새로고침" title="지금 새로고침"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg></button></span></h3>${ids.length?ids.map(sid=>auLane(`장중매매 ${auTag(sid)}`,auStepsI(sid),sid)).join(""):`<div class="faint" style="font-size:12.5px">${auReal()?"실전 탭에 켜진 장중 전략이 없습니다. 가상 탭 › 자동매매 › 전략에서 전략 카드의 <b>실전에 적용</b>을 누르면 이 탭에 드라이런으로 생깁니다(꺼진 상태 · 직접 승인). 전략 탭에서 켜세요.":"켜진 장중 전략이 없습니다. 전략 탭에서 켜세요."}</div>`}${auLane(`종가베팅 · ${trdEsc((auStrat(G.active.closing)||{}).name||"")}`,auStepsC())}</div>`;
+  let h=auNowBar()+`<div class="card"><h3>오늘 흐름 <span class="r au-upd"><span class="faint" style="font-size:11px">${trdEsc(A.date)}${A.tradingDay?"":" · 휴장일"} · ${trdEsc(auUpdTx())} 업데이트</span><button type="button" class="au-rf${TRD.auBusy?" spin":""}" data-aur="1" aria-label="새로고침" title="지금 새로고침"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg></button></span></h3>${ids.length?ids.map(sid=>auLane(`장중매매 ${auTag(sid)}`,auStepsI(sid),sid)).join(""):`<div class="faint" style="font-size:12.5px">${auReal()?"실전매매에 켜진 장중 전략이 없습니다. 가상매매 › 자동매매 › 전략에서 전략 카드의 <b>실전에 적용</b>을 누르면 이 탭에 드라이런으로 생깁니다(꺼진 상태 · 직접 승인). 전략 탭에서 켜세요.":"켜진 장중 전략이 없습니다. 전략 탭에서 켜세요."}</div>`}${auLane(`종가베팅 · ${trdEsc((auStrat(G.active.closing)||{}).name||"")}`,auStepsC())}</div>`;
   for(const sid of ids)h+=auRunHtml(sid);
   h+=auStatusHtml();
   return h;
@@ -11721,8 +11747,8 @@ function auStratHtml(){
   const G=TRD.aus,R=auReal(),mine=s=>{const sd=auSideOfS(s);return sd==="both"||sd===auSide();},L=(G.strategies||[]).filter(s=>!s.archived&&mine(s));
   let h=G.missing?`<div class="trd-halt">전략 테이블이 아직 없습니다. GitHub Actions "DB 테이블·뷰 생성"을 auto_strategy 로 실행해야 저장할 수 있습니다. 지금은 기본값으로 동작합니다.</div>`:"";
   const mx=(G.schema&&G.schema.maxActive)||{intraday:3,closing:1},NW=TRD.auNew;
-  h+=`<div class="faint" style="font-size:12px;margin:0 0 10px;line-height:1.6">${R?`<b>실전 탭 전략</b>은 가상 탭 전략 카드의 <b>실전에 적용</b>으로 만듭니다(같은 조건 · 꺼짐 · 드라이런 · 직접 승인으로 시작). 드라이런으로 점검한 뒤 편집에서 실행 모드를 "실전"으로 바꾸면(PIN) 실제 계좌로 주문합니다. 원본(가상) 조건을 나중에 바꿔도 자동으로 따라가지 않고, 카드의 <b>원본 변경 반영</b>으로 확인한 뒤 가져옵니다. `:""}바꾼 조건은 <b>다음 단계부터</b> 적용됩니다(예: 10:05 전에 바꾸면 오늘 선정부터, 이후면 다음 거래일부터). 이미 산 종목의 손절·익절은 살 때 값을 유지합니다. 장중 전략은 ${R?"실전 탭":"가상 탭"}에서 최대 ${mx.intraday}개까지 함께 켜지고, 가상·실전 합쳐 글자 A~F로 구분합니다(텔레그램 /매수 A1 D2). 종가베팅 전략은 가상·실전 공통이며 하나만 켜집니다.</div>
-    <div class="au-btns" style="margin:0 0 12px">${NW?`<div class="card au-new"><b>새 전략</b><div class="au-kv" style="margin-top:8px"><label class="au-k" for="auNewKind">유형</label><div class="au-v"><select id="auNewKind" data-aunew="kind"><option value="intraday"${NW.kind==="intraday"?" selected":""}>장중매매</option>${R?"":`<option value="closing"${NW.kind==="closing"?" selected":""}>종가베팅</option>`}</select></div><label class="au-k" for="auNewName">이름</label><div class="au-v"><input id="auNewName" data-aunew="name" maxlength="30" value="${trdEsc(NW.name||"")}" placeholder="예: 보수형 장중"></div><label class="au-k" for="auNewDesc">설명</label><div class="au-v"><input id="auNewDesc" data-aunew="desc" maxlength="200" value="${trdEsc(NW.desc||"")}" placeholder="어떤 생각으로 만든 전략인지"></div></div><div class="faint" style="font-size:11.5px;margin-top:6px">기본값으로 만들어지고 꺼진 상태로 시작합니다${R?"(실전 탭: 드라이런 · 직접 승인)":""}. 만든 뒤 편집해서 조건을 바꾸세요.${R?" 가상 탭에서 성과를 본 전략을 옮기려면 가상 탭의 <b>실전에 적용</b>을 쓰세요.":""}</div><div class="au-btns"><button type="button" class="btn" data-aunewgo="1">만들기</button><button type="button" class="btn ghost" data-aunewx="1">취소</button></div></div>`:`<button type="button" class="btn ghost" data-aunewopen="1">+ 새 전략</button>`}</div>`;
+  h+=`<div class="faint" style="font-size:12px;margin:0 0 10px;line-height:1.6">${R?`<b>실전매매 전략</b>은 가상매매 전략 카드의 <b>실전에 적용</b>으로 만듭니다(같은 조건 · 꺼짐 · 드라이런 · 직접 승인으로 시작). 드라이런으로 점검한 뒤 편집에서 실행 모드를 "실전"으로 바꾸면(PIN) 실제 계좌로 주문합니다. 원본(가상) 조건을 나중에 바꿔도 자동으로 따라가지 않고, 카드의 <b>원본 변경 반영</b>으로 확인한 뒤 가져옵니다. `:""}바꾼 조건은 <b>다음 단계부터</b> 적용됩니다(예: 10:05 전에 바꾸면 오늘 선정부터, 이후면 다음 거래일부터). 이미 산 종목의 손절·익절은 살 때 값을 유지합니다. 장중 전략은 ${R?"실전매매":"가상매매"}에서 최대 ${mx.intraday}개까지 함께 켜지고, 가상·실전 합쳐 글자 A~F로 구분합니다(텔레그램 /매수 A1 D2). 종가베팅 전략은 가상·실전 공통이며 하나만 켜집니다.</div>
+    <div class="au-btns" style="margin:0 0 12px">${NW?`<div class="card au-new"><b>새 전략</b><div class="au-kv" style="margin-top:8px"><label class="au-k" for="auNewKind">유형</label><div class="au-v"><select id="auNewKind" data-aunew="kind"><option value="intraday"${NW.kind==="intraday"?" selected":""}>장중매매</option>${R?"":`<option value="closing"${NW.kind==="closing"?" selected":""}>종가베팅</option>`}</select></div><label class="au-k" for="auNewName">이름</label><div class="au-v"><input id="auNewName" data-aunew="name" maxlength="30" value="${trdEsc(NW.name||"")}" placeholder="예: 보수형 장중"></div><label class="au-k" for="auNewDesc">설명</label><div class="au-v"><input id="auNewDesc" data-aunew="desc" maxlength="200" value="${trdEsc(NW.desc||"")}" placeholder="어떤 생각으로 만든 전략인지"></div></div><div class="faint" style="font-size:11.5px;margin-top:6px">기본값으로 만들어지고 꺼진 상태로 시작합니다${R?"(실전매매: 드라이런 · 직접 승인)":""}. 만든 뒤 편집해서 조건을 바꾸세요.${R?" 가상매매에서 성과를 본 전략을 옮기려면 가상매매의 <b>실전에 적용</b>을 쓰세요.":""}</div><div class="au-btns"><button type="button" class="btn" data-aunewgo="1">만들기</button><button type="button" class="btn ghost" data-aunewx="1">취소</button></div></div>`:`<button type="button" class="btn ghost" data-aunewopen="1">+ 새 전략</button>`}</div>`;
   for(const kind of ["intraday","closing"])for(const s of L.filter(x=>x.kind===kind))h+=auStratCard(s);
   const ar=(G.strategies||[]).filter(s=>s.archived&&mine(s));
   if(ar.length)h+=`<details class="au-rej"><summary>삭제(보관)한 전략 ${ar.length}개 — 지난 기록은 성과·일지에 남아 있습니다</summary><div style="font-size:12.5px;margin-top:6px">${ar.map(s=>`${trdEsc(s.name)} <span class="faint">v${s.version}</span>`).join(" · ")}</div></details>`;
@@ -11745,9 +11771,9 @@ function auStratCard(s){
     if(V)body+=`<div class="au-g"><h4>변경 이력</h4>${V.length?`<div class="au-ver">${V.map(v=>`<div><b>v${v.version}</b> <span class="faint">${trdEsc((v.at||"").replace("T"," ").slice(0,16))} · ${trdEsc(v.who||"")}</span><div>${(v.changed||[]).map(c=>`${trdEsc(c.label)}: ${trdEsc(c.from)} → ${trdEsc(c.to)}`).join(" · ")||"–"}</div></div>`).join("")}</div>`:'<div class="faint">이력이 없습니다.</div>'}</div>`;
   }
   return `<div class="card au-sc${s.enabled?"":" off"}"><div class="au-sch"><div><div class="au-sn1">${lt?`<span class="au-letter">${lt}</span>`:""}${trdEsc(s.name)} <span class="au-kind ${s.kind}">${trdEsc(kindTx)}</span>${s.kind==="intraday"&&s.params&&s.params.execMode&&s.params.execMode!=="paper"?` <span class="au-mode ${s.params.execMode}">${s.params.execMode==="live"?"실전":"드라이런"}</span>`:""} <span class="faint" style="font-size:11px">v${s.version}${act&&s.enabled?" · 사용 중":""}</span></div><div class="faint" style="font-size:12px;margin-top:2px">${trdEsc(s.desc||"")}</div>${auSrcLine(s)}${auTimeLine(s)?`<div style="font-size:12px;margin-top:4px">${trdEsc(auTimeLine(s))}</div>`:""}${s.invalid?`<div class="trd-halt" style="margin-top:6px">저장된 조건 일부가 잘못돼 기본값으로 쓰는 중: ${trdEsc(s.invalid.join(", "))}</div>`:""}</div>
-    <div class="au-scb"><button type="button" class="chip${s.enabled?" on":""}" data-auston="${s.id}" aria-pressed="${s.enabled}">${s.enabled?"켜짐":"꺼짐"}</button>${E?"":`<button type="button" class="chip" data-auopen="${s.id}">${open?"접기":"조건 보기"}</button><button type="button" class="chip" data-auedit="${s.id}">편집</button><button type="button" class="chip" data-auver="${s.id}">이력</button><button type="button" class="chip" data-aucopy="${s.id}">복제</button>${s.kind==="intraday"&&auSideOfS(s)==="paper"?`<button type="button" class="chip au-golive" data-aucopylive="${s.id}" title="같은 조건으로 실전 탭에 전략을 만듭니다(꺼짐·드라이런·직접 승인). 드라이런으로 점검한 뒤 PIN 으로 실전 전환">실전에 적용</button>`:""}${s.source?`<button type="button" class="chip${s.sourceDiff?" on":""}" data-ausrc="${s.id}" title="원본(가상) 전략의 매수·매도 조건을 확인하고 가져옵니다">원본 변경 반영${s.sourceDiff?` ${s.sourceDiff}`:""}</button>`:""}${s.builtin?"":`<button type="button" class="chip" data-audel="${s.id}">${auArmTx("del-"+s.id,"삭제","한 번 더 누르면 삭제")}</button>`}`}</div></div>${auSrcPanel(s)}${body}</div>`;
+    <div class="au-scb"><button type="button" class="chip${s.enabled?" on":""}" data-auston="${s.id}" aria-pressed="${s.enabled}">${s.enabled?"켜짐":"꺼짐"}</button>${E?"":`<button type="button" class="chip" data-auopen="${s.id}">${open?"접기":"조건 보기"}</button><button type="button" class="chip" data-auedit="${s.id}">편집</button><button type="button" class="chip" data-auver="${s.id}">이력</button><button type="button" class="chip" data-aucopy="${s.id}">복제</button>${s.kind==="intraday"&&auSideOfS(s)==="paper"?`<button type="button" class="chip au-golive" data-aucopylive="${s.id}" title="같은 조건으로 실전매매에 전략을 만듭니다(꺼짐·드라이런·직접 승인). 드라이런으로 점검한 뒤 PIN 으로 실전 전환">실전에 적용</button>`:""}${s.source?`<button type="button" class="chip${s.sourceDiff?" on":""}" data-ausrc="${s.id}" title="원본(가상) 전략의 매수·매도 조건을 확인하고 가져옵니다">원본 변경 반영${s.sourceDiff?` ${s.sourceDiff}`:""}</button>`:""}${s.builtin?"":`<button type="button" class="chip" data-audel="${s.id}">${auArmTx("del-"+s.id,"삭제","한 번 더 누르면 삭제")}</button>`}`}</div></div>${auSrcPanel(s)}${body}</div>`;
 }
-/* 원본 연결(실전 탭 전략 ↔ 가상 원본) 한 줄 · 가상 전략은 어디에 적용됐는지 */
+/* 원본 연결(실전매매 전략 ↔ 가상 원본) 한 줄 · 가상 전략은 어디에 적용됐는지 */
 function auSrcLine(s){
   if(s.kind==="closing")return auReal()?'<div class="faint" style="font-size:11.5px;margin-top:4px">가상·실전 공통 — 이월 판정·종가베팅 저녁 매수·다음 날 매도 규칙을 양쪽이 같이 씁니다(이월 기록·일지는 쪽별로 따로).</div>':"";
   if(s.source){
@@ -11756,7 +11782,7 @@ function auSrcLine(s){
   }
   if(auSideOfS(s)==="paper"){
     const kids=((TRD.aus&&TRD.aus.strategies)||[]).filter(x=>x.source===s.id&&!x.archived);
-    if(kids.length)return `<div class="faint" style="font-size:12px;margin-top:4px">실전 탭에 적용됨: ${kids.map(k=>`${trdEsc(k.name)} <span class="au-mode ${k.params&&k.params.execMode==="live"?"live":"dryrun"}">${k.params&&k.params.execMode==="live"?"실전":"드라이런"}</span>${k.enabled?"":" <span class=\"faint\">(꺼짐)</span>"}`).join(" · ")}</div>`;
+    if(kids.length)return `<div class="faint" style="font-size:12px;margin-top:4px">실전매매에 적용됨: ${kids.map(k=>`${trdEsc(k.name)} <span class="au-mode ${k.params&&k.params.execMode==="live"?"live":"dryrun"}">${k.params&&k.params.execMode==="live"?"실전":"드라이런"}</span>${k.enabled?"":" <span class=\"faint\">(꺼짐)</span>"}`).join(" · ")}</div>`;
   }
   return "";
 }
@@ -11787,11 +11813,11 @@ async function auSrcApply(id,confirm,pin){
   if(M.needPin){const p=await trdPinPad("🔴 실전 전략의 조건을 원본(가상)에 맞춰 바꿉니다.\n실제 계좌 주문에 다음 단계부터 적용됩니다.");if(p){await auSrcApply(id,confirm,p);return;}TRD.auMsg={t:"취소했습니다(PIN 미입력)."};}
   trdAutoRender();
 }
-/* 쪽 스위치: 가상 탭 = on · 실전 탭 = liveOn(켤 때 거래 PIN) */
+/* 쪽 스위치: 가상매매 = on · 실전매매 = liveOn(켤 때 거래 PIN) */
 async function auSetOn(on,pin){
   const R=auReal(),body=R?{liveOn:on,...(pin?{pin}:{})}:{on};
-  const r=await auPost("/trade/auto/config",body,()=>R?(on?"실전 탭 자동매매를 켰습니다. 켜진 드라이런·실전 전략이 다음 단계부터 돕니다.":"실전 탭 자동매매를 껐습니다. 새 매수(승인 대기 포함)를 멈추고, 이미 산 종목 관리는 계속됩니다."):(on?"가상 탭 자동매매를 켰습니다.":"가상 탭 자동매매를 껐습니다. 이미 산 종목 관리는 계속됩니다."));
-  if(!r&&R&&on&&TRD.auMsg&&TRD.auMsg.needPin){const p=await trdPinPad("🔴 실전 탭 자동매매를 켭니다.\n실전 모드 전략은 실제 계좌로 주문합니다.");if(p)return auSetOn(on,p);TRD.auMsg={t:"취소했습니다(PIN 미입력)."};trdAutoRender();return;}
+  const r=await auPost("/trade/auto/config",body,()=>R?(on?"실전매매 자동매매를 켰습니다. 켜진 드라이런·실전 전략이 다음 단계부터 돕니다.":"실전매매 자동매매를 껐습니다. 새 매수(승인 대기 포함)를 멈추고, 이미 산 종목 관리는 계속됩니다."):(on?"가상매매 자동매매를 켰습니다.":"가상매매 자동매매를 껐습니다. 이미 산 종목 관리는 계속됩니다."));
+  if(!r&&R&&on&&TRD.auMsg&&TRD.auMsg.needPin){const p=await trdPinPad("🔴 실전매매 자동매매를 켭니다.\n실전 모드 전략은 실제 계좌로 주문합니다.");if(p)return auSetOn(on,p);TRD.auMsg={t:"취소했습니다(PIN 미입력)."};trdAutoRender();return;}
   trdLoadAuto();
 }
 function auInput(f,E){
@@ -11845,7 +11871,7 @@ const AUJ_POS={closed:"청산",carried:"이월",pending:"이월 예정",held:"�
 const auJKey=(d,s)=>d+"|"+s;
 const auHMs=ms=>{const d=new Date(ms+9*3600e3);return String(d.getUTCHours()).padStart(2,"0")+":"+String(d.getUTCMinutes()).padStart(2,"0");};
 const auMD=ms=>{const d=new Date(ms+9*3600e3);return String(d.getUTCMonth()+1)+"/"+d.getUTCDate();};
-/* 실전 탭 성과: 실전(실제 계좌)과 드라이런(가상 장부)을 섞지 않고 골라 봄. 기본 = 실전 전략이 있으면 실전, 없으면 드라이런 */
+/* 실전매매 성과: 실전(실제 계좌)과 드라이런(가상 장부)을 섞지 않고 골라 봄. 기본 = 실전 전략이 있으면 실전, 없으면 드라이런 */
 const auJEng=()=>TRD.auJ.eng||(Object.values((TRD.au||{}).modes||{}).includes("live")?"live":"dry");
 async function auJLoad(){
   const J=TRD.auJ;if(J.busy)return;J.busy=true;
@@ -11904,7 +11930,7 @@ function auDayLogHtml(){
   const chips=L.rows.map(r=>{const n=(r.sum||{}).net;return `<button type="button" class="chip${L.sel===r.date?" on":""}" data-aul="${trdEsc(r.date)}">${trdEsc(r.date.slice(5).replace("-","/"))}(${auWk(r.date)})${n!=null?` <span class="${n>0?"up":n<0?"dn":""}">${trdEsc(trdSgn(n))}</span>`:""}</button>`;}).join("");
   const size=L.rows.reduce((a,r)=>a+(r.size||0),0);
   let h=`<div class="card"><h3>일지 <span class="r faint" style="font-size:11px">매 거래일 20:30 저장 · 날짜를 누르면 그날 오늘 탭을 그대로 봅니다</span></h3>
-    ${L.rows.length?`<div class="au-fl au-dl">${chips}</div>`:`<div class="load" style="margin-top:8px">아직 저장된 ${auReal()?"실전 탭 ":""}일지가 없습니다. ${auReal()?"실전 탭 전략이 돈 거래일 ":"오늘 거래일 "}20:30 부터 쌓입니다.</div>`}
+    ${L.rows.length?`<div class="au-fl au-dl">${chips}</div>`:`<div class="load" style="margin-top:8px">아직 저장된 ${auReal()?"실전매매 ":""}일지가 없습니다. ${auReal()?"실전매매 전략이 돈 거래일 ":"오늘 거래일 "}20:30 부터 쌓입니다.</div>`}
     <div class="faint" style="font-size:11px;margin-top:8px">${L.rows.length}일 · 누적 약 ${N(size/1024,0)}KB${A&&A.tradingDay&&!has?` · <button type="button" class="chip" data-aulrun="1" title="오늘 탭을 지금 그대로 저장합니다">오늘 지금 저장</button>`:""}${auMissingDays(L.rows,today).map(d=>` · <button type="button" class="chip" data-aulrun="${d}" title="그날 실행 기록·체결로 오늘 탭을 다시 만들어 저장합니다(보유·호가는 제외)">${d.slice(5).replace("-","/")} 일지 만들기</button>`).join("")}</div></div>`;
   const sel=L.sel,sn=sel?L.snap[sel]:undefined;
   if(sel){
@@ -11913,7 +11939,7 @@ function auDayLogHtml(){
     else{
       const memo=L.memo[sel]||"";
       h+=`<div class="au-replay">${auReplayHtml(sn)}</div>
-        <div class="card"><h3>메모 <span class="r faint" style="font-size:11px">${trdEsc(sel.slice(5))} · 최대 300자 · 가상·실전 탭 공통</span></h3>
+        <div class="card"><h3>메모 <span class="r faint" style="font-size:11px">${trdEsc(sel.slice(5))} · 최대 300자 · 가상·실전매매 공통</span></h3>
           <textarea class="au-memo" data-aulm="${trdEsc(sel)}" maxlength="300" rows="3" placeholder="이 날 짧게 남길 메모">${trdEsc(memo)}</textarea>
           <div style="margin-top:6px"><button type="button" class="chip" data-aulsave="${trdEsc(sel)}">메모 저장</button></div></div>`;
     }
@@ -12008,7 +12034,7 @@ function auWeekHtml(W){
   const cur=W[0]&&W[0].strategies&&W[0].strategies.length?W[0]:null,prev=W[1]&&W[1].strategies&&W[1].strategies.length?W[1]:null;
   return `<div class="card"><h3>주간 요약 <span class="r faint" style="font-size:11px">금요일 16:00 텔레그램으로도 보내요</span></h3><div class="au-wks">${cur?one(cur,cur===W[0]&&prev?"최근 주":"최근 주"):""}${prev?one(prev,"그 전 주"):""}</div></div>`;
 }
-/* 실전 탭 성과: 실전/드라이런 고르기 + 전략마다 가상 원본과 나란히 비교 */
+/* 실전매매 성과: 실전/드라이런 고르기 + 전략마다 가상 원본과 나란히 비교 */
 function auPerfHtml(){
   const chips=auReal()?`<div class="au-fl" style="margin:0 0 10px">${[["live","실전 (실제 계좌)"],["dry","드라이런 (가상 장부)"]].map(([k,t])=>`<button type="button" class="chip${auJEng()===k?" on":""}" data-aujeng="${k}">${t}</button>`).join("")}<span class="faint" style="font-size:11.5px">실전과 드라이런 성과는 섞지 않습니다</span></div>`:"";
   return chips+auPerfHtml0();
@@ -12074,13 +12100,13 @@ function trdAutoHtml(){
   const pos=A.positions||[],pv=pos.reduce((a,p)=>a+(p.last||p.avg)*p.qty,0),pc=pos.reduce((a,p)=>a+p.avg*p.qty,0);
   const nP=runs.reduce((a,r)=>a+r.picks.length,0),nB=runs.reduce((a,r)=>a+r.orders.filter(o=>o.filled>0).length,0);
   const sum=[runs.length?`후보 ${nP}`:"후보 선정 전",nB?`매수 ${nB}종목`:"",pos.length?`보유 ${pos.length}종목 ${auPct(pc?(pv/pc-1)*100:null)}`:"",(A.carry||[]).length?`이월 ${A.carry.length}종목`:""].filter(Boolean).join(" · ");
-  const band=`<div class="card au-band${on?"":" off"}"><div class="au-bt"><button type="button" class="au-sw${on?" on":""}${R?" real":""}" data-auon="${on?0:1}" aria-pressed="${on}"${TRD.auBusy?" disabled":""} title="${R?"실전 탭(드라이런·실전 전략) 켜기/끄기 — 켤 때 거래 PIN":"가상 탭(가상 전략) 켜기/끄기"}"><span></span>${R?"실전":"가상"} ${on?"켜짐":"꺼짐"}</button>
+  const band=`<div class="card au-band${on?"":" off"}"><div class="au-bt"><button type="button" class="au-sw${on?" on":""}${R?" real":""}" data-auon="${on?0:1}" aria-pressed="${on}"${TRD.auBusy?" disabled":""} title="${R?"실전매매(드라이런·실전 전략) 켜기/끄기 — 켤 때 거래 PIN":"가상매매(가상 전략) 켜기/끄기"}"><span></span>${R?"실전":"가상"} ${on?"켜짐":"꺼짐"}</button>
       <div class="au-bi"><div><b>장중</b> ${Is.length?Is.map(I=>`<span class="au-letter">${trdEsc(auLetter(I.id))}</span>${trdEsc(I.name)} <span class="faint">${trdFmtAmt(I.params.perStockKrw)}원</span>`).join(" · "):'<span class="faint">켜진 전략 없음</span>'} · <b>종가</b> ${trdEsc(C.name||"–")} <span class="${C.enabled?"au-on":"faint"}">${C.enabled?"켜짐":"꺼짐"}</span></div>
       <div class="faint">${A.tradingDay?trdEsc(auNext()):"휴장일"}${sum?" · "+trdEsc(sum):""}</div>${A.regime?`<div><button type="button" class="au-mr ${(MR_ST[A.regime.stage]||[])[1]||""}" data-aumkt="1" title="시황 › 시장에서 자세히">시장 ${trdEsc((MR_ST[A.regime.stage]||[A.regime.stage])[0])} ${N(A.regime.score,0)}점</button> <span class="faint" style="font-size:11.5px">${trdEsc(String(A.regime.date).slice(5))} 종가 기준 · ${Is.some(I=>I.params.regimeMode==="scale")?`금액 조절 중(${Is.filter(I=>I.params.regimeMode==="scale").map(I=>auLetter(I.id)).join("·")})`:"표시만"}</span></div>`:""}${auExposureHtml(A)}</div>
       <button type="button" class="chip" data-aur="1">새로고침</button></div>
     ${msg?`<div class="${msg.ok||msg.t==="처리 중…"?"au-msg":"trd-halt"}" style="margin-top:8px">${trdEsc(msg.t)}</div>`:""}${A.lastErr?`<div class="trd-halt" style="margin-top:8px">최근 서버 오류: ${trdEsc(A.lastErr)}</div>`:""}
     ${R&&A.engines&&A.engines.dry&&A.engines.dry.missing?`<div class="trd-halt" style="margin-top:8px">드라이런 장부 테이블이 아직 없습니다. GitHub Actions "[수시] DB 테이블·뷰 생성"에서 대상 <b>dryrun_ledger</b> 를 실행하세요. 그 전에는 드라이런 전략이 주문하지 못합니다(가상 장부로 대신 사지 않음).</div>`:""}
-    ${auLiveBar()}<div class="faint" style="font-size:11px;margin-top:6px">${R?"실전 탭: <b>실전</b> 전략은 실제 계좌로, <b>드라이런</b> 전략은 드라이런 장부(가상)로 주문합니다. 가상 탭 전략과 같은 종목을 각자 삽니다. 스위치를 끄면 새 매수(승인 대기 포함)가 멈추고, 이미 산 종목의 손절·익절·아침 매도는 계속됩니다.":"가상 탭: 가상 장부로만 주문 · 실제 주문 없음. 스위치를 끄면 새 매수만 멈추고 이미 산 종목의 손절·익절·아침 매도는 계속됩니다."}</div></div>`;
+    ${auLiveBar()}<div class="faint" style="font-size:11px;margin-top:6px">${R?"실전매매: <b>실전</b> 전략은 실제 계좌로, <b>드라이런</b> 전략은 드라이런 장부(가상)로 주문합니다. 가상매매 전략과 같은 종목을 각자 삽니다. 스위치를 끄면 새 매수(승인 대기 포함)가 멈추고, 이미 산 종목의 손절·익절·아침 매도는 계속됩니다.":"가상매매: 가상 장부로만 주문 · 실제 주문 없음. 스위치를 끄면 새 매수만 멈추고 이미 산 종목의 손절·익절·아침 매도는 계속됩니다."}</div></div>`;
   const tab=(k,t)=>`<button type="button" data-aut="${k}"${TRD.auTab===k?' class="on"':""}>${t}</button>`;
   return band+`<div class="trd-tabs" role="tablist">${tab("today","오늘")}${tab("strat","전략")}${tab("journal","일지")}${tab("perf","성과")}</div>`+(TRD.auTab==="strat"?auStratHtml():TRD.auTab==="journal"?auDayLogHtml():TRD.auTab==="perf"?auPerfHtml():auTodayHtml());
 }
@@ -12122,7 +12148,10 @@ function auClick(t){
   if(t.closest("[data-aunewgo]")){const n=TRD.auNew;if(!n)return true;
     auPost("/trade/auto/strategy-new",{kind:auReal()?"intraday":n.kind,name:n.name,desc:n.desc,...(auReal()?{asLive:true}:{})},r=>`만들었습니다: ${r.strategy.name}(꺼짐${auReal()?" · 드라이런 · 직접 승인":""}). 편집해서 조건을 바꾸세요.`).then(r=>{if(r){TRD.auNew=null;TRD.auOpen[r.strategy.id]=true;trdLoadAuto();}else trdAutoRender();});return true;}
   if((el=t.closest("[data-aucopylive]"))){const s=auStrat(el.dataset.aucopylive);if(!s)return true;
-    auPost("/trade/auto/strategy-new",{from:s.id,asLive:true},r=>`실전 탭에 만들었습니다: ${r.strategy.name}(꺼짐 · 드라이런 · 직접 승인). 위쪽 "실전" 탭 › 자동매매 › 전략에서 켜고 5거래일 드라이런으로 점검한 뒤, 편집에서 실행 모드를 "실전"으로 바꾸세요(PIN 필요).`).then(r=>{if(r){TRD.auOpen[r.strategy.id]=true;trdLoadAuto();}else trdAutoRender();});return true;}
+    auPost("/trade/auto/strategy-new",{from:s.id,asLive:true},r=>`실전매매에 만들었습니다: ${r.strategy.name}`).then(r=>{if(r){   // 만든 뒤 실전매매 › 자동매매 › 전략으로 옮겨 복제본을 펼쳐 보여 줌(쪽은 메뉴로만 바뀜)
+      const nm=r.strategy.name;TRD.auOpen[r.strategy.id]=true;TRD.auTab="strat";go("real-auto");
+      setTimeout(()=>{TRD.auMsg={ok:true,t:`「${nm}」을 실전매매에 만들었습니다(꺼짐 · 드라이런 · 직접 승인). 여기서 켜고 5거래일 드라이런으로 점검한 뒤, 편집에서 실행 모드를 "실전"으로 바꾸세요(PIN 필요).`};trdAutoRender();},700);
+    }else trdAutoRender();});return true;}
   if((el=t.closest("[data-aucopy]"))){const s=auStrat(el.dataset.aucopy);if(!s)return true;
     auPost("/trade/auto/strategy-new",{from:s.id},r=>`복제했습니다: ${r.strategy.name}(꺼짐)`).then(r=>{if(r){TRD.auOpen[r.strategy.id]=true;trdLoadAuto();}else trdAutoRender();});return true;}
   if((el=t.closest("[data-audel]"))){const id=el.dataset.audel,s=auStrat(id);if(!auArmed("del-"+id))return true;
@@ -12175,10 +12204,8 @@ function trdTab(p){
   $("#trdPanePlan").classList.toggle("hide",p!=="plan");$("#trdPaneAuto").classList.toggle("hide",p!=="auto");$("#trdPaneHold").classList.toggle("hide",p!=="hold");
   $("#trdPaneMod").classList.toggle("hide",p!=="mod");{const b=$("#trdBkHint");if(b)b.textContent=p==="sell"?"호가 클릭 = 매도가 입력":"호가 클릭 = 매수가 입력";}$("#trdPaneFills").classList.toggle("hide",p!=="fills");
   if(S.curTab==="trade"){wideSet(p==="plan"||p==="auto"||TRD_ORDER_P.includes(p));setPageW();setTimeout(setPageW,400);}   // 매도 계획만 넓게(표가 오른쪽으로 펼쳐짐)
-  {const h=$("#v-trade>.pg-title");if(h)h.textContent=TRD_PANE_T[p]+(TRD.mode==="REAL"?" · 실전":" · 가상");}
-  $$(".trd-pmode button").forEach(b=>b.classList.toggle("on",b.dataset.pmode===TRD.mode));
-  $("#trdMode").classList.remove("hide");   // 자동매매도 가상/실전 탭으로 쪽을 고름(2026-11-19)
-  {const mv=op?"trade":p==="plan"?"trplan":p==="hold"?"trhold":p==="auto"?"trauto":"trhist";$$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===mv));}
+  {const h=$("#v-trade>.pg-title");if(h)h.textContent=trdDeskCfg().label+" · "+TRD_PANE_T[p];}
+  {const mv=trdDeskCfg().key+"-"+(op?"order":p==="plan"?"plan":p==="hold"?"hold":p==="auto"?"auto":"hist");$$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===mv));if(typeof navSync==="function")navSync();}
   if(hp)trdLoadReport();else if(p==="auto")trdLoadAuto();else if(p==="plan")trdRenderPlanAll();else if(p==="hold"||p==="fills")trdRenderHold();else if(p==="mod")trdRenderMod();
   else if(p==="sell"){trdRenderSellPick();trdRenderSell();}
 }
@@ -12449,7 +12476,6 @@ document.addEventListener("click",e=>{
   if(t.closest("#trdPaneAuto")&&auClick(t))return;
   if((el=t.closest("a.au-nm"))){return go("detail",el.dataset.code);}   // 거래내역(수익률·주문·체결) 종목명 → 종목상세
   if((el=t.closest("[data-tp]")))return trdTab(el.dataset.tp);
-  if((el=t.closest("[data-pmode]"))){const m=el.dataset.pmode;if(m!==TRD.mode){S.tradeMode=m;try{localStorage.setItem("trdMode",m);}catch(_){}trdStop();TRD.ps=null;trdDeskReset();trdEnter();}return;}
   if((el=t.closest("[data-plgo]"))){const c=el.dataset.plgo;trdQAdd([c]);TRD.cur=c;trdRenderQ();trdTab("order");trdSelect(c);window.scrollTo(0,0);return;}
   if((el=t.closest("[data-rpm]"))){TRD.rp={mode:el.dataset.rpm,off:0};return trdLoadReport();}
   if((el=t.closest("[data-rpo]"))){if(el.disabled)return;TRD.rp.off=Math.min(0,TRD.rp.off+ +el.dataset.rpo);return trdLoadReport();}
@@ -12525,7 +12551,7 @@ function tcSend(codes){
   const r=trdQAdd(codes);TSEL.clear();$$(".tchk").forEach(x=>x.checked=false);tcBar();
   if(r.cut)alert(`대기 목록은 최대 10종목입니다. 앞의 10개만 담았고 ${r.cut}개는 제외했습니다.`);
   TRD.cur=codes.find(c=>TRD.q.includes(c))||TRD.q[0]||null;
-  TRD.pane="order";TRD.keepPane=true;go("trade");
+  TRD.pane="order";TRD.keepPane=true;go((S.curTab==="trade"&&TRD.mode==="REAL"?"real":"paper")+"-order");
 }
 document.addEventListener("change",e=>{const k=e.target;if(!k.classList||!k.classList.contains("tchk"))return;
   const c=k.dataset.tc;if(k.checked)TSEL.add(c);else TSEL.delete(c);
@@ -12547,13 +12573,14 @@ document.addEventListener("input",e=>{const t=e.target;if(t&&t.closest&&t.closes
 document.addEventListener("change",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&(t.type==="checkbox"||t.tagName==="SELECT"))auInputEv(t);});
 const VIEW_IDS=["seclog","etfhub","etf","trend","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
 function setHash(v,code){
-  const h="#"+v+(code?"/"+code:"");
+  const h="#"+(DESK_V.test(v)?v.replace("-","/"):v)+(code?"/"+code:"");   // 매매 화면: #paper/order · #real/auto
   if(location.hash!==h)history.pushState(null,"",h);
 }
 function navFromHash(){
   const m=location.hash.replace(/^#/,"").split("/");
-  const v=m[0]||"proc";
-  if(!VIEW_IDS.includes(v))return;
+  let v=m[0]||"proc";
+  if(DESKS[v])v=v+"-"+(DESK_V.test(v+"-"+m[1])?m[1]:"order");   // #real/auto → real-auto
+  if(!VIEW_IDS.includes(v)&&!DESK_V.test(v))return;
   _hashNav=true;
   try{go(v,(v==="detail"||v==="etf")&&m[1]&&/^\w{6}$/.test(m[1])?m[1]:undefined);}finally{_hashNav=false;}
 }

@@ -6,7 +6,7 @@
    저장: auto_config 'excursion' = { pos: { code: {avg, since, hi, lo, n} }, done: [{code, since, to, avg, hi, lo}] } */
 
 const MAX_DONE = 80;
-/* 실전 탭 자동매매(2026-11-19): 가상·드라이런·실전 장부가 같은 종목을 각자 보유할 수 있어 기록 키에 장부를 붙임(가상은 예전처럼 종목코드만) */
+/* 실전매매 자동매매(2026-11-19): 가상·드라이런·실전 장부가 같은 종목을 각자 보유할 수 있어 기록 키에 장부를 붙임(가상은 예전처럼 종목코드만) */
 const keyOf = (code, kind) => (!kind || kind === 'paper' ? code : `${code}@${kind}`);
 const fresh = () => ({ pos: {}, done: [] });
 const pct = (v, base) => (v > 0 && base > 0 ? +((v / base - 1) * 100).toFixed(2) : null);
