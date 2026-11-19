@@ -3133,7 +3133,7 @@ const LF_KEYS=[["sec","dSec"],["ma","dMaF"],["ph","dPh"],["kw","dKwF"],["div","d
 function lfDesc(fs){const out=[];LF_KEYS.forEach(([k,id])=>{const v=fs[k];if(v===""||v==null)return;const sel=document.getElementById(id);if(!sel)return;
   const op=[...sel.options].find(o=>o.value===String(v)),ph=sel.options[0]?sel.options[0].textContent.trim():"";let t=op?op.textContent.trim():String(v);
   if(k==="dart")t+=` · 최근 ${fs.dartP||"7"}일`;
-  if(k==="smx"&&fs.smxW&&fs.smxW!==DET_PER_DEF){const w=document.getElementById("dSmxW"),wo=w&&[...w.options].find(o=>o.value===fs.smxW);t+=` · ${wo?wo.textContent.trim():fs.smxW}`;}
+  if(k==="smx"){const sw=fs.smxW||DET_PER_DEF,w=document.getElementById("dSmxW"),wo=w&&[...w.options].find(o=>o.value===sw);t+=` · ${wo?wo.textContent.replace(/\s*\(.*\)$/,"").trim():(DET_PER.find(x=>x[0]===sw)||[0,sw])[1]}`;}   // 진단 기간은 기본(6개월)이어도 항상 표시
   out.push(ph&&!t.includes(ph)?`${ph}: ${t}`:t);});return out;}
 const lfSelHtml=(arr,empty)=>`<span class="faint" style="font-size:11.5px;align-self:center">선택된 조건</span>`+(arr.length?arr.map(t=>`<span>${escH(t)}</span>`).join(""):`<span class="dim">${empty||"없음"}</span>`);
 function lfBuild(hostId="lfRows",pref="lf_",key="lf",onChg){
