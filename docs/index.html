@@ -2396,7 +2396,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div class="card" style="margin-top:16px"><h3>투자일지 <span class="r">나만 보는 게시판 · 토큰이 있어야 읽고 쓸 수 있습니다</span></h3>
     <div id="jrAuth" class="hide" style="margin:8px 0">
       <div class="faint" style="font-size:12px;margin-bottom:6px">토큰을 입력하세요 (접속 기록과 같은 토큰: Render 환경변수 <code>ACCESS_LOG_TOKEN</code>). 이 기기 브라우저에만 저장됩니다.</div>
-      <input type="password" id="jrTok" placeholder="토큰" autocomplete="off" style="width:220px"> <button class="btn ghost" id="jrTokGo" style="padding:5px 12px">열기</button>
+      <input type="text" id="jrTok" placeholder="토큰" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore style="width:220px;-webkit-text-security:disc"> <button class="btn ghost" id="jrTokGo" style="padding:5px 12px">열기</button>
       <div id="jrAuthMsg" class="faint" style="font-size:11.5px;margin-top:6px"></div>
     </div>
     <div id="jrMain" class="hide">
@@ -2517,7 +2517,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <h3>접속 기록 <span class="faint" style="font-size:11.5px;font-weight:400" id="accSub"></span><button class="icon-btn x" id="accClose" aria-label="닫기">✕</button></h3>
     <div id="accAuth" class="hide" style="margin:8px 0">
       <div class="faint" style="font-size:12px;margin-bottom:6px">조회 토큰을 입력하세요 (Render 환경변수 <code>ACCESS_LOG_TOKEN</code>, 없으면 <code>DAILY_SUMMARY_TOKEN</code> 값). 이 기기 브라우저에만 저장됩니다.</div>
-      <input type="password" id="accTok" placeholder="토큰" autocomplete="off" style="width:220px"> <button class="btn ghost" id="accTokGo" style="padding:5px 12px">조회</button>
+      <input type="text" id="accTok" placeholder="토큰" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore style="width:220px;-webkit-text-security:disc"> <button class="btn ghost" id="accTokGo" style="padding:5px 12px">조회</button>
       <div id="accAuthMsg" class="faint" style="font-size:11.5px;margin-top:6px"></div>
     </div>
     <div id="accMain" class="hide">
