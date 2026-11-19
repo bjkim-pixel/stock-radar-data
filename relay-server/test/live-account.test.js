@@ -177,16 +177,18 @@ test('대사 스냅샷(실제 엔진): 가짜 KIS 의 체결과 우리 기록이
 test('실전 수동 화면: 자동매매 매수가 걸린 종목은 별도 매수 막기 · 자동 주문의 정정·취소는 자동매매 기록과 같은 경로로(가상과 동일)', async () => {
   const x = await rig(); await x.c.login();
   const calls = [];
-  x.c.t.attachAuto({ pendingAutoBuy: async code => (code === '005930' ? 'L-auto' : null), autoOrderCode: async id => (id === 'L-auto' ? '005930' : null),
+  const kinds = [];
+  x.c.t.attachAuto({ pendingAutoBuy: async (code, k) => { kinds.push(k); return code === '005930' && k === 'live' ? 'L-auto' : null; }, autoOrderCode: async (id, k) => { kinds.push(k); return id === 'L-auto' && k === 'live' ? '005930' : null; },
     siteOrderEdit: async b => { calls.push(b); return { ok: true, action: b.action, real: true }; } });
   const buy = await x.c.call('POST', '/trade/live/order', { body: { code: '005930', side: 'buy', type: 'limit', price: 10000, qty: 1 } });
   assert.equal(buy.status, 409); assert.match(buy.body.error, /자동매매 매수 주문이 체결 대기 중/);
   assert.equal(x.kx.posts.length, 0, 'KIS 로 주문이 나가지 않음');
   const cn = await x.c.call('POST', '/trade/live/cancel', { body: { id: 'L-auto' } });
-  assert.equal(cn.status, 200); assert.deepEqual(calls[0], { code: '005930', action: 'cancel' });
+  assert.equal(cn.status, 200); assert.deepEqual(calls[0], { code: '005930', engine: 'live', orderId: 'L-auto', action: 'cancel' });
   const md = await x.c.call('POST', '/trade/live/modify', { body: { id: 'L-auto', price: 9990, qty: 3 } });
-  assert.equal(md.status, 200); assert.deepEqual(calls[1], { code: '005930', action: 'modify', price: 9990, qty: 3 });
+  assert.equal(md.status, 200); assert.deepEqual(calls[1], { code: '005930', engine: 'live', orderId: 'L-auto', action: 'modify', price: 9990, qty: 3 });
   assert.equal(x.kx.posts.length, 0, '자동 주문 정정·취소는 자동매매 경로가 처리(여기선 가짜)');
   const other = await x.c.call('POST', '/trade/live/order', { body: { code: '000660', side: 'buy', type: 'limit', price: 10000, qty: 1 } });
   assert.notEqual(other.status, 409, '다른 종목 수동 주문은 영향 없음');
+  assert.ok(kinds.length && kinds.every(k => k === 'live'), '실전 화면은 실전 장부만 물어봄');
 });

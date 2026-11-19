@@ -181,9 +181,12 @@ function parseApproval(text, max) {
 function parseCmdMulti(text, verb) {
   const t = String(text || '').trim();
   const V = verb === 'buy' ? '(?:매수|buy)' : '정리';
-  if (verb === 'buy' && /^\/?(?:패스|pass|skip)\s*$/i.test(t)) return { kind: 'pass' };
-  if (verb === 'eod' && /^\/?유지\s*$/.test(t)) return { kind: 'keep' };
-  if (new RegExp(`^\\/?${V}\\s+(?:전체|all)\\s*$`, 'i').test(t)) return { kind: 'all' };
+  /* 글자를 붙이면 그 전략만: "/패스 B" · "/유지 B" · "/매수 B 전체" (실전 탭 전략은 글자가 있어야 처리 — 2026-11-19 섞임 방지) */
+  const L = x => (x ? { letter: x.toUpperCase() } : {});
+  let k;
+  if (verb === 'buy' && (k = /^\/?(?:패스|pass|skip)(?:\s+([A-Fa-f]))?\s*$/i.exec(t))) return { kind: 'pass', ...L(k[1]) };
+  if (verb === 'eod' && (k = /^\/?유지(?:\s+([A-Fa-f]))?\s*$/.exec(t))) return { kind: 'keep', ...L(k[1]) };
+  if ((k = new RegExp(`^\\/?${V}\\s+(?:([A-Fa-f])\\s*)?(?:전체|all)\\s*$`, 'i').exec(t))) return { kind: 'all', ...L(k[1]) };
   const m = t.match(new RegExp(`^\\/?${V}\\s+([A-Za-z\\d\\s,]+)$`, 'i'));
   if (m) {
     const items = [];
@@ -515,7 +518,10 @@ function createAuto(deps) {
   /* 전략이 여럿이면 텔레그램 메시지 앞에 [A · 이름]을 붙인다(답할 때 번호 앞에 그 글자) */
   const labelOf = sid => { const r = state.runs[sid]; const p = r && r.payload; return p && p.letter ? `${p.letter} · ${(p.strategy && p.strategy.name) || sid}` : sid; };
   const modeTag = sid => ({ live: '🔴실전 ', dryrun: '🧪드라이런 ' }[BR.execOf(sid)] || '');
-  const tgFor = sid => t0 => { const t = modeTag(sid) + t0; return D.sendTelegram(state.multi ? `[${labelOf(sid)}] ${(state.runs[sid] && state.runs[sid].payload.letter) ? `— 답할 때 번호 앞에 ${state.runs[sid].payload.letter} (예: ${state.runs[sid].payload.letter}1)` : ''}\n${t}` : t); };
+  /* 실전 탭(드라이런·실전) 전략 알림은 전략이 하나여도 늘 글자를 붙임 — 글자 없는 명령(/매수 1·/매수 전체·/패스·/유지)은 가상 탭만 처리하므로 */
+  const lettered = sid => state.multi || sideOfSid(sid) === 'real';
+  const realCmds = (sid, t) => { if (sideOfSid(sid) !== 'real') return t; const L = (state.runs[sid] && state.runs[sid].payload.letter) || 'A'; return t.replace('/매수 전체 · /패스', `/매수 ${L} 전체 · /패스 ${L}`).replace('/정리 전체 · /유지', `/정리 ${L} 전체 · /유지 ${L}`); };
+  const tgFor = sid => t0 => { const L = state.runs[sid] && state.runs[sid].payload.letter, t = realCmds(sid, t0); return D.sendTelegram(lettered(sid) ? `${modeTag(sid)}[${labelOf(sid)}] ${L ? `— 답할 때 번호 앞에 ${L} (예: ${L}1)` : ''}\n${t}` : modeTag(sid) + t); };   // 실전·드라이런 표시는 늘 맨 앞
   /* E2-1: 자동매매가 들고 있는(또는 주문 중인) 종목의 총 노출·손절 시 손실. 자동매매 종목 = 오늘 모든 전략의 주문 + 아직 안 판 이월 종목 */
   /* kinds: 이 장부들(paper·dry·live)의 자동매매 종목만(없으면 전부) — 같은 종목을 장부마다 따로 보유할 수 있어 노출액을 장부별로 셈 */
   async function autoCodes(date, kinds) {
@@ -700,7 +706,7 @@ function createAuto(deps) {
       if (picks.length && picks.every(p => p.alt)) text = text.replace('\n', `\n⚠️ 대체 조건 후보 — 외국인·기관 모두 순매수인 종목이 없어 "외국인+기관 합계 ${I.params.altFlowMinEok || 1}억 이상"으로 골랐어요. 매수하려면 승인하세요. 승인하지 않아도 다음 검토에도 후보면 자동 매수해요.\n`);
       const kwHi = picks.filter(p => p.kwHigh);
       if (kwHi.length) text = text.replace('\n', `\n⚠️ 개인 계좌수가 8월 기준 ${I.params.kwMax || 100}% 이상인 종목(${kwHi.map(p => p.name + ' ' + Math.round(p.kw8 * 100) + '%').join(', ')})은 자동 승인에서 빼요. 사려면 직접 승인하세요.\n`);
-      if (state.multi && picks.length) text = text.replace(/\n(\d+)\. /g, `\n${run.payload.letter || 'A'}$1. `).replace('답장: /매수 1 3 5 (번호)', `답장: /매수 ${run.payload.letter || 'A'}1 ${run.payload.letter || 'A'}3 (글자+번호)`);
+      if (lettered(sid) && picks.length) text = text.replace(/\n(\d+)\. /g, `\n${run.payload.letter || 'A'}$1. `).replace('답장: /매수 1 3 5 (번호)', `답장: /매수 ${run.payload.letter || 'A'}1 ${run.payload.letter || 'A'}3 (글자+번호)`);
       run.payload.noticeSent = true; run.payload.noticeAt = new Date().toISOString();
       LOG.push(run.payload, 'notice', `텔레그램 알림 전송 · 후보 ${picks.length}개 · 승인 마감 ${ST.hhmm(I.T.deadline)}${I.params.approval === 'auto' ? ' (자동 승인 설정)' : ''}`);
       if (run.status === 'selected') run.status = 'noticed';
@@ -779,14 +785,23 @@ function createAuto(deps) {
     if (a.kind === 'bad') return `번호를 확인해 주세요. 예) /매수 1 3${runs.length > 1 ? ' · 전략이 여럿이면 /매수 A1 B2' : ''}`;
     const pend = runs.filter(r => !(r.payload.decision && r.payload.decision.kind) || (opts.late && r.payload.decision.kind === 'expired'));
     const byLetter = l => runs.find(r => (r.payload.letter || 'A') === l);
+    /* 섞임 방지(2026-11-19): 전략을 정하지 않은 명령(텔레그램 "/매수 1"·"/매수 전체"·"/패스")은 한쪽만 — 기본 가상 탭.
+       실전 탭(드라이런·실전) 후보는 글자를 붙여야 처리("/매수 B1"·"/매수 B 전체"·"/패스 B"). 사이트는 전략을 정해 부르거나 side 를 줌 */
+    const scope = onlySid ? null : (opts.side === 'real' ? 'real' : 'paper'), inScope = r => !scope || sideOfRun(r) === scope;
+    const otherHint = () => { const o = runs.find(r => !inScope(r)); return o ? ` ${scope === 'paper' ? '실전 탭(🔴) 후보는' : '가상 탭 후보는'} 전략 글자를 붙여 주세요. 예) /매수 ${o.payload.letter || 'A'}1` : ''; };
     const jobs = [];
     if (a.kind === 'pass' || a.kind === 'all') {
-      const L = pend.length ? pend : runs;
+      let L;
+      if (a.letter) { const r = byLetter(a.letter); if (!r) return `${a.letter} 전략의 오늘 후보가 없어요.`; L = [r]; }
+      else { const ps = pend.filter(inScope); L = ps.length ? ps : runs.filter(inScope); }
+      if (!L.length) return `${scope === 'real' ? '실전 탭' : '가상 탭'}에는 오늘 승인할 후보가 없어요.${otherHint()}`;
       L.forEach(r => jobs.push([sidOf(r), { kind: a.kind }]));
     } else {
       const g = {};
       for (const it of a.items) {
-        let r = it.letter ? byLetter(it.letter) : (pend.length === 1 ? pend[0] : runs.length === 1 ? runs[0] : null);
+        const ps = pend.filter(inScope), rs = runs.filter(inScope);
+        let r = it.letter ? byLetter(it.letter) : (ps.length === 1 ? ps[0] : rs.length === 1 ? rs[0] : null);
+        if (!r && !it.letter && !rs.length) return `${scope === 'real' ? '실전 탭' : '가상 탭'}에는 오늘 승인할 후보가 없어요.${otherHint()}`;
         if (!r) return it.letter ? `${it.letter} 전략의 오늘 후보가 없어요.` : '전략이 여럿이에요. 번호 앞에 글자를 붙여 주세요. 예) /매수 A1 B2';
         (g[sidOf(r)] = g[sidOf(r)] || []).push(it.n);
       }
@@ -1012,7 +1027,7 @@ function createAuto(deps) {
       LOG.push(P, 'round', `${n}회차 ${hh} 검토: 새 후보 ${fresh.length - nRetry}개${nRetry ? ` · 다시 시도 ${nRetry}개` : ''} (${fresh.map(c => c.name + (shown.find(x => x.code === c.code).retry ? '🔁' : '')).join(', ')}) · 풀 ${sel.stat.pool} → 기본조건 ${sel.stat.base} → 수급 통과 ${sel.stat.flowPass}`);
       const letter = P.letter || 'A', ps = shown.map(c => ({ ...c, score: { total: c.score.total, ratio: c.score.ratio || 0 }, warns: [] }));
       text = formatMessage(date, ps, { timeText: hh, round: n, nums, warn: P.warn, deadline: ST.hhmm(P.roundDeadline), auto: I.params.approval === 'auto' && !useAlt });
-      if (state.multi) text = text.replace(/\n(\d+)\. /g, `\n${letter}$1. `).replace(/답장: \/매수 (\d+) (\d+)(?: \d+)? \(번호\)/, `답장: /매수 ${letter}$1 ${letter}$2 (글자+번호)`);
+      if (lettered(I.id)) text = text.replace(/\n(\d+)\. /g, `\n${letter}$1. `).replace(/답장: \/매수 (\d+) (\d+)(?: \d+)? \(번호\)/, `답장: /매수 ${letter}$1 ${letter}$2 (글자+번호)`);
       if (useAlt) fresh.forEach(c => { const pk = P.picks.find(p => p.code === c.code); if (pk) { pk.alt = true; pk.altSum = Math.round(c.altSum || 0); } });
       holdNums = shown.filter(c => c.kwHigh).map(c => c.num);
       if (holdNums.length && text) text = text.replace('\n', `\n⚠️ 개인 계좌수가 8월 기준 ${I.params.kwMax || 100}% 이상인 종목(${shown.filter(c => c.kwHigh).map(c => c.name + ' ' + Math.round(c.kw8 * 100) + '%').join(', ')})은 자동 승인에서 빼요. 사려면 직접 승인하세요.\n`);
@@ -1106,7 +1121,7 @@ function createAuto(deps) {
       LOG.push(P, 'cb', `${hh} 종가베팅 후보 ${fresh.length}개 (${fresh.map(c => c.name).join(', ')}) · ${funnel} · 승인 마감 ${cp.closeBuyEnd}${cp.closeBuyApproval === 'auto' ? ' (자동 승인 설정)' : ''}`);
       const letter = P.letter || 'A', ps = fresh.map((c, i) => ({ ...c, num: startNum + i + 1, score: { total: c.score.total, ratio: c.score.ratio || 0, penalty: c.score.penalty || 0 }, warns: [] }));
       text = formatMessage(date, ps, { timeText: hh, cb: true, nums, warn: null, deadline: cp.closeBuyEnd, auto: cp.closeBuyApproval === 'auto' });
-      if (state.multi) text = text.replace(/\n(\d+)\. /g, `\n${letter}$1. `).replace(/답장: \/매수 (\d+) (\d+)(?: \d+)? \(번호\)/, `답장: /매수 ${letter}$1 ${letter}$2 (글자+번호)`);
+      if (lettered(I.id)) text = text.replace(/\n(\d+)\. /g, `\n${letter}$1. `).replace(/답장: \/매수 (\d+) (\d+)(?: \d+)? \(번호\)/, `답장: /매수 ${letter}$1 ${letter}$2 (글자+번호)`);
       state.runs[I.id] = r;
     });
     if (text) await tgFor(I.id)(text);
@@ -1143,12 +1158,23 @@ function createAuto(deps) {
     if (a.kind === 'bad') return `번호를 확인해 주세요. 예) /정리 1${runs.length > 1 ? ' · 전략이 여럿이면 /정리 A1 B2' : ''}`;
     const AC = await actives(), nxtFrom = ((AC.Is[0] && AC.Is[0].T) || ST.timesOf(DEFP, AC.C.params)).njudge;
     const pend = runs.filter(r => (opts.phase ? !wk(r, opts.phase).decision : !!eodFor(sidOf(r)).pendingPhase(r.payload, min, nxtFrom)));
+    /* 섞임 방지: 글자 없는 /정리·/유지 는 한쪽(기본 가상 탭)만. 실전 탭은 "/정리 B1"·"/정리 B 전체"·"/유지 B" */
+    const scope = onlySid ? null : (opts.side === 'real' ? 'real' : 'paper'), inScope = r => !scope || sideOfRun(r) === scope;
+    const byL = l => runs.find(x => (x.payload.letter || 'A') === l);
+    const otherHint = () => { const o = runs.find(r => !inScope(r)); return o ? ` ${scope === 'paper' ? '실전 탭(🔴) 종목은' : '가상 탭 종목은'} 전략 글자를 붙여 주세요. 예) /정리 ${o.payload.letter || 'A'}1 · /유지 ${o.payload.letter || 'A'}` : ''; };
     const jobs = [];
-    if (a.kind === 'keep' || a.kind === 'all') (pend.length ? pend : runs).forEach(r => jobs.push([sidOf(r), a.kind === 'keep' ? '/유지' : '/정리 전체']));
-    else {
+    if (a.kind === 'keep' || a.kind === 'all') {
+      let L;
+      if (a.letter) { const r = byL(a.letter); if (!r) return `${a.letter} 전략은 정리할 종목이 없어요.`; L = [r]; }
+      else { const ps = pend.filter(inScope); L = ps.length ? ps : runs.filter(inScope); }
+      if (!L.length) return `${scope === 'real' ? '실전 탭' : '가상 탭'}에는 지금 정리할지 물어본 종목이 없어요.${otherHint()}`;
+      L.forEach(r => jobs.push([sidOf(r), a.kind === 'keep' ? '/유지' : '/정리 전체']));
+    } else {
       const g = {};
       for (const it of a.items) {
-        const r = it.letter ? runs.find(x => (x.payload.letter || 'A') === it.letter) : (pend.length === 1 ? pend[0] : runs.length === 1 ? runs[0] : null);
+        const ps = pend.filter(inScope), rs = runs.filter(inScope);
+        const r = it.letter ? byL(it.letter) : (ps.length === 1 ? ps[0] : rs.length === 1 ? rs[0] : null);
+        if (!r && !it.letter && !rs.length) return `${scope === 'real' ? '실전 탭' : '가상 탭'}에는 지금 정리할지 물어본 종목이 없어요.${otherHint()}`;
         if (!r) return it.letter ? `${it.letter} 전략은 정리할 종목이 없어요.` : '전략이 여럿이에요. 번호 앞에 글자를 붙여 주세요. 예) /정리 A1';
         (g[sidOf(r)] = g[sidOf(r)] || []).push(it.n);
       }
@@ -1351,43 +1377,63 @@ function createAuto(deps) {
     };
   }
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */
-  async function siteApprove(kind, nums, sid) {
+  async function siteApprove(kind, nums, sid, side) {
     const text = kind === 'pass' ? '/패스' : `/매수 ${nums.join(' ')}`;
-    const r = await handleApproval(text, sid || null, { late: true, via: 'site' });
+    const r = await handleApproval(text, sid || null, { late: true, via: 'site', side: side === 'real' ? 'real' : 'paper' });
     if (r) await D.sendTelegram(`🖥 사이트에서 ${sid ? `[${labelOf(sid)}] ` : ''}${kind === 'pass' ? '패스' : '매수 ' + nums.join(',')} 선택\n${r}`).catch(() => {});
     if (r && kind !== 'pass' && sid && HAS) { try { await execFor(sid).follow(kstParts().date); } catch (_) {} }   // 승인 즉시 주문 관리를 한 번 돌려 다음 단계(체결 확인·익절 주문)로 넘김
     return { ok: !!r, reply: r || '처리할 수 없는 요청입니다.' };
   }
-  /* 사이트 주문 화면: 체결 대기 중인 자동 매수 주문을 직접 정정·취소(같은 주문을 고침 — 별도 주문 아님) */
-  async function activeBuy(code) {
+  /* 사이트 주문 화면: 체결 대기 중인 자동 매수 주문을 직접 정정·취소(같은 주문을 고침 — 별도 주문 아님).
+     장부(kind: paper·dry·live)를 꼭 함께 받는다 — 같은 종목을 가상·실전 전략이 각자 살 수 있어(2026-11-19) 종목코드만으로 찾으면
+     가상 화면에서 실전 자동 주문을 고치는 일이 생길 수 있음. 장부가 없거나 모르는 값이면 찾지 않음 */
+  const KINDS = new Set(['paper', 'dry', 'live']);
+  async function activeBuy(code, kind, orderId) {
+    if (!KINDS.has(kind)) return null;
     const date = kstParts().date;
     for (const r of await readRuns(date).catch(() => [])) {
+      if (engineOfRun(r) !== kind) continue;
       const v = r.payload && r.payload.orders && r.payload.orders[code];
-      if (v && ['open', 'modified'].includes(v.st) && v.orderId) return { sid: r.strategy_id, date, orderId: v.orderId };
+      if (v && ['open', 'modified'].includes(v.st) && v.orderId && (!orderId || v.orderId === orderId)) return { sid: sidOf(r), date, orderId: v.orderId, kind };
     }
     return null;
   }
   async function siteOrderEdit(body) {
-    const code = String(body.code || ''), a = /^\d{6}$/.test(code) ? await activeBuy(code) : null;
+    const code = String(body.code || ''), kind = String(body.engine || ''), oid = body.orderId == null ? '' : String(body.orderId);
+    if (!KINDS.has(kind)) return { ok: false, status: 400, error: '어느 장부의 주문인지(engine) 빠졌습니다. 화면을 새로고침하세요' };
+    if (!oid) return { ok: false, status: 400, error: '주문번호(orderId)가 빠졌습니다. 화면을 새로고침하세요' };
+    const a = /^\d{6}$/.test(code) ? await activeBuy(code, kind, oid) : null;
     if (!a) return { ok: false, status: 409, error: '체결 대기 중인 자동 매수 주문이 아닙니다' };
+    if (BR.modeOf(a.sid) !== kind) return { ok: false, status: 409, error: '이 전략은 지금 다른 장부로 주문합니다 — 화면을 새로고침하세요' };   // 기록과 전략의 장부가 어긋나면 고치지 않음
     const ex = execFor(a.sid); if (!ex) return { ok: false, status: 503, error: 'auto unavailable' };
     const r = await ex.userEdit(a.date, code, { action: body.action === 'cancel' ? 'cancel' : 'modify', price: body.price, qty: body.qty });
     if (r && r.ok) { const nm = (r.order && r.order.name) || code; await D.sendTelegram(`🖥 사이트에서 [${labelOf(a.sid)}] ${nm} 자동 매수 주문을 ${r.action === 'cancel' ? '취소' : `정정(${Number(body.price).toLocaleString('ko-KR')}원${body.qty ? ' ' + body.qty + '주' : ''})`}했어요.`).catch(() => {}); }
-    return r && typeof r === 'object' ? { ...r, real: BR.of(a.sid).real } : r;
+    return r && typeof r === 'object' ? { ...r, real: BR.of(a.sid).real, engine: kind } : r;
   }
-  /* 사이트 주문 화면: 같은 종목에 자동 매수 주문이 걸려 있는지(직접 별도 매수 막기용) */
-  async function pendingAutoBuy(code) { const a = await activeBuy(code).catch(() => null); return a ? a.orderId : null; }
-  /* 주문번호로 자동 매수 주문인지(일반 정정·취소 화면에서 눌러도 자동매매 추적이 끊기지 않게 같은 처리로 보냄) */
-  async function autoOrderCode(orderId) {
-    for (const r of await readRuns(kstParts().date).catch(() => [])) for (const [code, v] of Object.entries((r.payload && r.payload.orders) || {})) if (v && v.orderId === orderId && ['open', 'modified'].includes(v.st)) return code;
+  /* 사이트 주문 화면: 같은 장부에 같은 종목 자동 매수 주문이 걸려 있는지(직접 별도 매수 막기용) — 다른 장부 주문은 상관없음 */
+  /* 섞임 방지: 화면(desk: real·paper)이 다루는 쪽과 전략의 쪽이 같은지. 종가베팅 전략은 두 쪽이 함께 써서 통과. desk 가 없으면(예전 화면) 통과 */
+  async function deskOk(sid, desk) {
+    if (!desk) return true;
+    const s0 = store.byId ? await store.byId(String(sid || '')).catch(() => null) : null;
+    if (s0 && s0.kind !== 'intraday') return true;
+    return sideOfSid(String(sid || '')) === desk;
+  }
+  async function pendingAutoBuy(code, kind) { const a = await activeBuy(code, kind).catch(() => null); return a ? a.orderId : null; }
+  /* 주문번호로 자동 매수 주문인지(일반 정정·취소 화면에서 눌러도 자동매매 추적이 끊기지 않게 같은 처리로 보냄) — 그 장부의 기록만 봄 */
+  async function autoOrderCode(orderId, kind) {
+    if (!KINDS.has(kind) || !orderId) return null;
+    for (const r of await readRuns(kstParts().date).catch(() => [])) {
+      if (engineOfRun(r) !== kind) continue;
+      for (const [code, v] of Object.entries((r.payload && r.payload.orders) || {})) if (v && v.orderId === orderId && ['open', 'modified'].includes(v.st)) return code;
+    }
     return null;
   }
   /* 사이트에서 정리/유지(텔레그램 /정리·/유지 와 같은 처리). phase = 'reg'(15시 정규장 종목) | 'nxt'(19시 NXT 종목), 없으면 답을 기다리는 쪽.
      정리는 승인한 종목만 — 이월 전환은 예정 시각(20:00)에 따로 진행 */
-  async function siteEod(kind, nums, sid, phase) {
+  async function siteEod(kind, nums, sid, phase, side) {
     const text = kind === 'keep' ? '/유지' : `/정리 ${nums.join(' ')}`;
     const ph = phase === 'nxt' || phase === 'reg' ? phase : undefined;
-    const r = await handleEod(text, sid || null, { late: true, ...(ph ? { phase: ph } : {}) });
+    const r = await handleEod(text, sid || null, { late: true, side: side === 'real' ? 'real' : 'paper', ...(ph ? { phase: ph } : {}) });
     if (r) await D.sendTelegram(`🖥 사이트에서 ${sid ? `[${labelOf(sid)}] ` : ''}${ph === 'nxt' ? 'NXT ' : ''}${kind === 'keep' ? '유지' : '정리 ' + nums.join(',')} 선택\n${r}`).catch(() => {});
     return { ok: !!r, reply: r || '처리할 수 없는 요청입니다.' };
   }
@@ -1547,7 +1593,7 @@ function createAuto(deps) {
     const srcMode = (r.strategy.params && r.strategy.params.execMode) || 'paper';
     const want = asLive ? 'dryrun' : (srcMode === 'live' ? 'dryrun' : srcMode);
     if (want !== srcMode || asLive) {
-      const s2 = await store.save(r.strategy.id, { params: { execMode: want, liveAutoOk: false } }, who);
+      const s2 = await store.save(r.strategy.id, { params: { execMode: want, liveAutoOk: false } }, who, { allowSide: true });   // 방금 만든 복제본만 쪽을 정함
       if (s2 && s2.ok) { noteMode(s2.strategy); return { ...r, strategy: s2.strategy, mode: want }; }
       if (srcMode === 'live') {   // 검토 #14: 실전 원본의 복제를 드라이런으로 못 바꿨으면 복제본을 보관 처리(PIN 없이 실전 전략이 생기지 않게)
         if (store.archive) await store.archive(r.strategy.id, who).catch(() => {});
@@ -1566,7 +1612,7 @@ function createAuto(deps) {
     if (Object.values(c.items || {}).some(i => i.sid === id && i.state !== 'done')) return { ok: false, status: 400, error: '아직 팔지 않은 이월 종목이 있어 삭제할 수 없습니다' };
     return store.archive ? store.archive(id, who) : { ok: false, status: 503, error: '지원하지 않음' };
   }
-  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, setHalt, haltLevel, modeOf: sid => BR.execOf(sid), siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode,
+  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, setHalt, haltLevel, modeOf: sid => BR.execOf(sid), siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode, deskOk,
     daylogList: (n, side) => DL.list(n, side), daylogGet: (d, side) => DL.get(d, side), daylogMemo: (d, t) => DL.memo(d, t), daylogSave: d => DL.save(/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : kstParts().date, { force: true }), siteStage, journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalCompare: q => JR.compare(q), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
     sourceDiff, applySource, kindsInUse: () => BR.kindsInUse(),
     _select: select, _mutateRun: mutateRun, _readRun: readRun, _readRuns: readRuns, _readCarry: readCarry, _exec: exec };

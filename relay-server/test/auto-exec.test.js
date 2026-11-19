@@ -259,8 +259,14 @@ test('손익비 하한: 목표가가 낮아 이익÷손실이 기준 미만이�
 test('직접 정정: 같은 주문이 새 가격·수량으로 바뀌고 계획이 다시 계산되며 자동 추적이 이어짐', async () => {
   const { db, c, A, runs, date } = await setup();
   await A.handleApproval('/매수 1');
-  assert.equal(await A.pendingAutoBuy('005930') != null, true);
-  const r = await A.siteOrderEdit({ code: '005930', action: 'modify', price: 9900, qty: 120 });
+  const oid = await A.pendingAutoBuy('005930', 'paper');
+  assert.ok(oid);
+  assert.equal(await A.pendingAutoBuy('005930', 'live'), null, '다른 장부에서는 안 보임');
+  assert.equal(await A.pendingAutoBuy('005930'), null, '장부 없이는 찾지 않음');
+  assert.equal((await A.siteOrderEdit({ code: '005930', action: 'modify', price: 9900, qty: 120 })).status, 400, '장부·주문번호 없으면 거부');
+  assert.equal((await A.siteOrderEdit({ code: '005930', engine: 'live', orderId: oid, action: 'modify', price: 9900, qty: 120 })).status, 409, '다른 장부로는 못 고침');
+  assert.equal((await A.siteOrderEdit({ code: '005930', engine: 'paper', orderId: 'other', action: 'modify', price: 9900, qty: 120 })).status, 409, '주문번호가 다르면 못 고침');
+  const r = await A.siteOrderEdit({ code: '005930', engine: 'paper', orderId: oid, action: 'modify', price: 9900, qty: 120 });
   assert.equal(r.ok, true, JSON.stringify(r));
   const open = [...db.t.paper_orders.values()].filter(o => o.status === 'open' && o.side === 'buy');
   assert.equal(open.length, 1);                                   // 별도 주문이 아니라 1건만
@@ -278,14 +284,16 @@ test('직접 정정: 같은 주문이 새 가격·수량으로 바뀌고 계획�
 test('직접 취소: 주문이 취소되고 자동매매 기록에 직접 취소로 남음, 같은 종목 별도 매수 감지', async () => {
   const { db, c, A, runs, date } = await setup();
   await A.handleApproval('/매수 1');
-  const id = await A.autoOrderCode([...db.t.paper_orders.values()][0].id);
-  assert.equal(id, '005930');
-  const r = await A.siteOrderEdit({ code: '005930', action: 'cancel' });
+  const oid = [...db.t.paper_orders.values()][0].id;
+  assert.equal(await A.autoOrderCode(oid, 'paper'), '005930');
+  assert.equal(await A.autoOrderCode(oid, 'live'), null);
+  assert.equal(await A.autoOrderCode(oid), null);
+  const r = await A.siteOrderEdit({ code: '005930', engine: 'paper', orderId: oid, action: 'cancel' });
   assert.equal(r.ok, true);
   assert.equal([...db.t.paper_orders.values()].filter(o => o.status === 'open').length, 0);
   const v = runs[date].payload.orders['005930'];
   assert.equal(v.st, 'cancelled'); assert.equal(v.why, '직접 취소');
-  assert.equal(await A.pendingAutoBuy('005930'), null);
-  assert.equal((await A.siteOrderEdit({ code: '005930', action: 'cancel' })).ok, false);   // 이미 끝난 주문
+  assert.equal(await A.pendingAutoBuy('005930', 'paper'), null);
+  assert.equal((await A.siteOrderEdit({ code: '005930', engine: 'paper', orderId: oid, action: 'cancel' })).ok, false);   // 이미 끝난 주문
   await c.close();
 });

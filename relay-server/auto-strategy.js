@@ -280,7 +280,7 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     return r || null;
   }
   /* 저장: patch = { params?(일부만 와도 됨), enabled?, name?, desc? } → 버전 +1 */
-  function save(id, patch, who) {
+  function save(id, patch, who, opts = {}) {
     return lock(async () => {
       if (missing) await list(true);
       if (missing) return { ok: false, status: 503, error: '전략 테이블이 아직 없습니다. DB 설정에서 auto_strategy 를 실행하세요' };
@@ -291,6 +291,11 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
         const v = validate(cur.kind, p.params, cur.params);
         if (v.errs) return { ok: false, status: 400, error: v.errs.map(e => e.msg).join(' / '), errs: v.errs };
         next.params = v.val;
+      }
+      /* 섞임 방지(2026-11-19): 장중 전략은 쪽(가상 ↔ 실전 탭)을 옮기지 않음. 가상 → 실전은 「실전에 적용」(새 복제본, allowSide)으로만,
+         실전 탭 안에서는 드라이런 ↔ 실전만. 보유·이월·일지가 장부별이라 쪽을 옮기면 기록이 다른 장부와 섞임 */
+      if (cur.kind === 'intraday' && !opts.allowSide && sideOfParams(next.params) !== sideOfParams(cur.params)) {
+        return { ok: false, status: 409, error: sideOfParams(cur.params) === 'paper' ? '가상 탭 전략은 드라이런·실전으로 바꿀 수 없어요. 「실전에 적용」으로 실전 탭에 복제하세요' : '실전 탭 전략은 가상으로 바꿀 수 없어요(드라이런 ↔ 실전만). 가상으로 시험하려면 가상 탭의 원본을 쓰세요' };
       }
       if (p.enabled !== undefined) { if (typeof p.enabled !== 'boolean') return { ok: false, status: 400, error: 'enabled 값이 올바르지 않습니다' }; next.enabled = p.enabled; }
       if (next.archived) return { ok: false, status: 400, error: '보관된 전략은 고칠 수 없습니다' };

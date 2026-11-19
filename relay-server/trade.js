@@ -681,6 +681,19 @@ function createTrade(deps = {}) {
     if (body && typeof body === 'object') delete body.origin;   // 주문 출처(auto:<전략>)는 서버 안의 자동매매만 붙인다 — 화면에서 온 주문은 항상 직접 주문
     const bad = checkReplay(body);
     if (bad) { auditOnce('replay_reject', { path, reason: bad }, req); return json(res, 400, { ok: false, error: bad }); }
+    /* 섞임 방지(2026-11-19): 화면이 보낸 쪽(desk: real·paper)과 주소·전략의 쪽이 다르면 거부. desk 가 없으면(예전 화면) 주소대로 처리 */
+    const desk = body && body.desk != null ? String(body.desk) : null;
+    if (body && typeof body === 'object') delete body.desk;
+    if (desk !== null && desk !== 'real' && desk !== 'paper') return json(res, 400, { ok: false, error: 'bad desk' });
+    if (desk) {
+      const deskErr = msg => { audit('desk_mismatch', false, { path, desk, why: msg }, req, desk === 'real' ? 'REAL' : 'VIRTUAL'); return json(res, 409, { ok: false, error: msg + ' — 화면을 새로고침하세요' }); };
+      if (path.startsWith('/trade/live/') && desk !== 'real') return deskErr('가상매매 화면에서 실전 주문을 보낼 수 없습니다');
+      if (path.startsWith('/trade/paper/') && desk !== 'paper') return deskErr('실전매매 화면에서 가상 주문을 보낼 수 없습니다');
+      if (path === '/trade/auto/config' && ((desk === 'paper' && body.liveOn !== undefined) || (desk === 'real' && body.on !== undefined))) return deskErr('다른 쪽 자동매매 스위치입니다');
+      const sidOfReq = { '/trade/auto/approve': body.strategy, '/trade/auto/eod': body.strategy, '/trade/auto/stage': body.strategy, '/trade/auto/strategy': body.id, '/trade/auto/strategy-source': body.id, '/trade/auto/strategy-delete': body.id, '/trade/auto/journal-memo': body.sid }[path];
+      if (sidOfReq != null && autoRef && autoRef.deskOk && !(await autoRef.deskOk(String(sidOfReq), desk).catch(() => false))) return deskErr(desk === 'real' ? '가상 탭 전략은 실전매매 화면에서 다룰 수 없습니다' : '실전 탭 전략은 가상매매 화면에서 다룰 수 없습니다');
+      if (path === '/trade/auto/order-edit' && body.engine && ((desk === 'paper') !== (body.engine === 'paper'))) return deskErr('다른 쪽 장부의 자동 주문입니다');
+    }
 
     if (path === '/trade/session') {
       const r = await checkPin(body.pin);
@@ -738,13 +751,13 @@ function createTrade(deps = {}) {
       const kind = path.slice('/trade/live/'.length);
       /* 3단계: 자동매매가 낸 실전 매수 주문도 가상과 똑같이 — 별도 매수는 막고, 정정·취소는 자동매매 기록과 함께 처리 */
       if (kind === 'order' && body.side === 'buy' && autoRef && autoRef.pendingAutoBuy) {
-        const pid = await autoRef.pendingAutoBuy(String(body.code || '')).catch(() => null);
+        const pid = await autoRef.pendingAutoBuy(String(body.code || ''), 'live').catch(() => null);
         if (pid) return json(res, 409, { ok: false, error: '이 종목은 자동매매 매수 주문이 체결 대기 중입니다. 별도 주문 대신 "자동 주문 수정"으로 가격·수량을 바꾸거나 취소하세요.' });
       }
       if ((kind === 'modify' || kind === 'cancel') && autoRef && autoRef.autoOrderCode) {
-        const ac = await autoRef.autoOrderCode(String(body.id || '')).catch(() => null);
+        const ac = await autoRef.autoOrderCode(String(body.id || ''), 'live').catch(() => null);
         if (ac) {
-          const r2 = await autoRef.siteOrderEdit(kind === 'cancel' ? { code: ac, action: 'cancel' } : { code: ac, action: 'modify', price: body.price, qty: body.qty });
+          const r2 = await autoRef.siteOrderEdit(kind === 'cancel' ? { code: ac, engine: 'live', orderId: String(body.id), action: 'cancel' } : { code: ac, engine: 'live', orderId: String(body.id), action: 'modify', price: body.price, qty: body.qty });
           audit('auto_order_edit', !!r2.ok, { code: ac, action: kind, price: body.price, qty: body.qty, error: r2.error }, req, 'REAL');
           return json(res, r2.ok ? 200 : (r2.status || 400), r2.ok ? (kind === 'cancel' ? { ok: true, order: { id: body.id } } : r2) : { ok: false, error: r2.error });
         }
@@ -765,14 +778,14 @@ function createTrade(deps = {}) {
       if ((kind === 'buy' || kind === 'sell') && (!nums.length || nums.length > 20 || nums.some(n => !Number.isInteger(n) || n < 1 || n > 20))) return json(res, 400, { ok: false, error: '번호를 골라 주세요' });
       const sid = body.strategy == null ? null : String(body.strategy);
       if (sid && !/^[a-z]+-[a-z0-9]{1,20}$/.test(sid)) return json(res, 400, { ok: false, error: 'bad strategy' });
-      const r = await autoRef[fn](kind, nums, sid, body.phase === 'nxt' || body.phase === 'reg' ? body.phase : undefined).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
+      const r = await (fn === 'siteApprove' ? autoRef.siteApprove(kind, nums, sid, desk || 'paper') : autoRef.siteEod(kind, nums, sid, body.phase === 'nxt' || body.phase === 'reg' ? body.phase : undefined, desk || 'paper')).catch(e => ({ ok: false, reply: String((e && e.message) || e).slice(0, 200) }));
       audit(path === '/trade/auto/approve' ? 'auto_approve' : 'auto_eod', !!r.ok, { kind, nums, strategy: sid }, req, 'VIRTUAL');
       return json(res, 200, r);
     }
-    if (path === '/trade/auto/order-edit') {   // 체결 대기 중인 자동 매수 주문 정정·취소 (주문 화면) — 가상매매 전용
+    if (path === '/trade/auto/order-edit') {   // 체결 대기 중인 자동 매수 주문 정정·취소 (주문 화면). 장부(engine)+주문번호(orderId)로만 찾음
       if (!autoRef || !autoRef.siteOrderEdit) return json(res, 503, { ok: false, error: 'auto unavailable' });
       const r = await autoRef.siteOrderEdit(body).catch(e => ({ ok: false, status: 500, error: String((e && e.message) || e).slice(0, 200) }));
-      audit('auto_order_edit', !!r.ok, { code: body.code, action: body.action, price: body.price, qty: body.qty, error: r.error }, req, r.real ? 'REAL' : 'VIRTUAL');
+      audit('auto_order_edit', !!r.ok, { code: body.code, engine: body.engine, orderId: body.orderId, action: body.action, price: body.price, qty: body.qty, error: r.error }, req, r.real || body.engine === 'live' ? 'REAL' : 'VIRTUAL');
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
     }
     if (path === '/trade/auto/stage') {   // 단계 버튼: 예정 시각과 무관하게 지금 실행(후보 선정→알림 · 알림 · 종가 판정 · 이월 전환)
@@ -863,8 +876,8 @@ function createTrade(deps = {}) {
     }
     if (path === '/trade/paper/modify') {
       if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
-      { const ac = autoRef && autoRef.autoOrderCode ? await autoRef.autoOrderCode(String(body.id || '')).catch(() => null) : null;
-        if (ac) { const r2 = await autoRef.siteOrderEdit({ code: ac, action: 'modify', price: body.price, qty: body.qty }); audit('auto_order_edit', !!r2.ok, { code: ac, action: 'modify', price: body.price, qty: body.qty, error: r2.error }, req, 'VIRTUAL'); return json(res, r2.ok ? 200 : (r2.status || 400), r2.ok ? r2 : { ok: false, error: r2.error }); } }
+      { const ac = autoRef && autoRef.autoOrderCode ? await autoRef.autoOrderCode(String(body.id || ''), 'paper').catch(() => null) : null;
+        if (ac) { const r2 = await autoRef.siteOrderEdit({ code: ac, engine: 'paper', orderId: String(body.id), action: 'modify', price: body.price, qty: body.qty }); audit('auto_order_edit', !!r2.ok, { code: ac, action: 'modify', price: body.price, qty: body.qty, error: r2.error }, req, 'VIRTUAL'); return json(res, r2.ok ? 200 : (r2.status || 400), r2.ok ? r2 : { ok: false, error: r2.error }); } }
       const r = await paper.modify(body);
       audit(r.ok ? 'paper_modify' : 'paper_reject', !!r.ok, { path, id: body.id, price: body.price, qty: body.qty, error: r.error }, req, 'VIRTUAL');
       return json(res, r.ok ? 200 : (r.status || 400), r.ok ? r : { ok: false, error: r.error });
@@ -873,12 +886,12 @@ function createTrade(deps = {}) {
       if (!paper) return json(res, 503, { ok: false, error: 'paper unavailable' });
       const isOrder = path === '/trade/paper/order';
       if (isOrder && body.side === 'buy' && autoRef && autoRef.pendingAutoBuy) {   // 자동 매수가 체결 대기 중인 종목은 별도 매수 대신 그 주문을 정정하게 함
-        const pid = await autoRef.pendingAutoBuy(String(body.code || '')).catch(() => null);
+        const pid = await autoRef.pendingAutoBuy(String(body.code || ''), 'paper').catch(() => null);
         if (pid) return json(res, 409, { ok: false, error: '이 종목은 자동매매 매수 주문이 체결 대기 중입니다. 별도 주문 대신 "자동 주문 수정"으로 가격·수량을 바꾸거나 취소하세요.' });
       }
       if (!isOrder && autoRef && autoRef.autoOrderCode) {   // 자동 매수 주문의 취소는 자동매매 기록에도 '직접 취소'로 남김
-        const ac = await autoRef.autoOrderCode(String(body.id || '')).catch(() => null);
-        if (ac) { const r2 = await autoRef.siteOrderEdit({ code: ac, action: 'cancel' }); audit('auto_order_edit', !!r2.ok, { code: ac, action: 'cancel', error: r2.error }, req, 'VIRTUAL'); return json(res, r2.ok ? 200 : (r2.status || 400), r2.ok ? { ok: true, order: { id: body.id } } : { ok: false, error: r2.error }); }
+        const ac = await autoRef.autoOrderCode(String(body.id || ''), 'paper').catch(() => null);
+        if (ac) { const r2 = await autoRef.siteOrderEdit({ code: ac, engine: 'paper', orderId: String(body.id), action: 'cancel' }); audit('auto_order_edit', !!r2.ok, { code: ac, action: 'cancel', error: r2.error }, req, 'VIRTUAL'); return json(res, r2.ok ? 200 : (r2.status || 400), r2.ok ? { ok: true, order: { id: body.id } } : { ok: false, error: r2.error }); }
       }
       const r = isOrder ? await paper.place(body, req) : await paper.cancel(body.id);
       if (!r.ok) {

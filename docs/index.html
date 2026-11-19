@@ -10367,6 +10367,13 @@ const trdNow=()=>Date.now()+TRD.off;
 function trdNonce(){const a=new Uint8Array(12);crypto.getRandomValues(a);return [...a].map(x=>x.toString(36).padStart(2,"0")).join("").slice(0,20)+"x";}
 
 /* relay 호출: 로그인 토큰 + (있으면) 거래 세션. POST 에는 1회용 nonce·시각을 붙임 */
+/* 섞임 방지(2026-11-19): 쪽을 바꾸면 한쪽에서 입력하던 값·"한 번 더 누르면" 확인·계획/정정 입력을 모두 비움 */
+function trdDeskReset(){
+  TRD.arm=null;TRD.sellArm=null;TRD.auArm=null;TRD.aueArm=null;TRD.aue=null;TRD.aueMsg=null;TRD.msg=null;
+  TRD.pe={};TRD.mod={};TRD.hq={};TRD.sopen=null;TRD.rep=null;TRD.repP=null;
+  clearTimeout(TRD.armT);clearTimeout(TRD.sellT);
+}
+const trdDesk=()=>TRD.mode==="REAL"?"real":"paper";   // 서버가 주소·전략의 쪽과 대조(다르면 409)
 async function trdApi(path,{method="GET",body,sess,timeout}={}){
   const tok=await authTok();
   if(!tok){const e=new Error("login");e.status=401;e.code="login";throw e;}
@@ -10375,7 +10382,7 @@ async function trdApi(path,{method="GET",body,sess,timeout}={}){
   Object.assign(h,devHeaders());
   if(Date.now()-(TRD.act||0)<240000)h["x-active"]="1";   // 사용자가 최근 조작했을 때만 서버 무조작 타이머를 갱신(자동 갱신 조회는 해당 없음)
   let b;
-  if(method==="POST"){h["content-type"]="application/json";b=JSON.stringify({...(body||{}),nonce:trdNonce(),ts:trdNow()});}
+  if(method==="POST"){h["content-type"]="application/json";b=JSON.stringify({desk:trdDesk(),...(body||{}),nonce:trdNonce(),ts:trdNow()});}
   const r=await fetch(RELAY_HTTP_BASE+path,{method,headers:h,body:b,cache:"no-store",...(timeout?{signal:AbortSignal.timeout(timeout)}:{})});
   const j=await r.json().catch(()=>({}));
   if(!r.ok){const e=new Error(j.error||("HTTP "+r.status));e.status=r.status;e.body=j;throw e;}
@@ -10679,7 +10686,8 @@ async function trdAuEdit(kind){
     if(trdFloor(price)!==price){TRD.aueMsg={ok:false,t:Date.now(),text:`${N(price)}원은 호가 단위에 맞지 않습니다 (${N(trdFloor(price))}원 등)`};e.dataset.h="";trdRenderAuNote();return;}
   }
   try{
-    const r=await trdApi("/trade/auto/order-edit",{method:"POST",body:kind==="cancel"?{code,action:"cancel"}:{code,action:"modify",price,...(o.filled>0?{}:{qty})}});
+    const eng=TRD.mode==="REAL"?"live":"paper";   // 이 화면 장부의 주문만(같은 종목 다른 장부 자동 주문은 건드리지 않음)
+    const r=await trdApi("/trade/auto/order-edit",{method:"POST",body:kind==="cancel"?{code,engine:eng,orderId:o.id,action:"cancel"}:{code,engine:eng,orderId:o.id,action:"modify",price,...(o.filled>0?{}:{qty})}});
     TRD.aueMsg={ok:true,t:Date.now(),text:r.action==="cancel"?"자동 매수 주문을 취소했습니다.":`자동 매수 주문을 ${N(price)}원으로 정정했습니다${r.planned?" (손절·익절 계획 다시 계산)":""}.`};
   }catch(err){
     if(err.status===401&&err.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");return;}
@@ -11013,7 +11021,7 @@ function trdAutoPlan(){
   return {stop,steps,target};
 }
 const trdSteps=()=>trdAutoPlan().steps;
-const trdOrderKey=()=>[TRD.cur,TRD.type,TRD.buy,TRD.qty,JSON.stringify(trdAutoPlan())].join("|");
+const trdOrderKey=()=>[TRD.mode,TRD.cur,TRD.type,TRD.buy,TRD.qty,JSON.stringify(trdAutoPlan())].join("|");   // 쪽(가상/실전)도 키에 — 가상에서 한 번 누르고 실전으로 바꾼 뒤 한 번 더 눌러도 주문되지 않게
 function trdRenderOrder(){
   const Q=TRD.quote;if(!Q)return;
   const price=trdBasis(Q),qty=Math.floor(TRD.qty)||0,mkt=TRD.type==="market";
@@ -11790,7 +11798,7 @@ function auInput(f,E){
   const v=E.draft[f.key],err=(E.errs||{})[f.key],id=`auf-${f.key}`;
   let inp;
   if(f.type==="bool")inp=`<label class="au-tg"><input type="checkbox" id="${id}" data-auf="${f.key}"${v?" checked":""}> ${v?"켜기":"끄기"}</label>`;
-  else if(f.type==="enum")inp=`<select id="${id}" data-auf="${f.key}">${Object.entries(f.opts).map(([k,t])=>`<option value="${k}"${k===v?" selected":""}>${trdEsc(t)}</option>`).join("")}</select>`;
+  else if(f.type==="enum")inp=`<select id="${id}" data-auf="${f.key}">${Object.entries(f.key==="execMode"?Object.fromEntries(Object.entries(f.opts).filter(([k])=>auReal()?k!=="paper":k==="paper")):f.opts).map(([k,t])=>`<option value="${k}"${k===v?" selected":""}>${trdEsc(t)}</option>`).join("")}</select>`;
   else if(f.type==="time")inp=`<input id="${id}" type="time" step="60" data-auf="${f.key}" value="${trdEsc(v)}" min="${f.min}" max="${f.max}">`;
   else if(f.type==="times")inp=`<input id="${id}" data-auf="${f.key}" value="${trdEsc((v||[]).join(", "))}" placeholder="09:05, 09:10, 09:15">`;
   else if(f.type==="weights")inp=`<div class="au-w">${Object.keys(f.parts).map(p=>`<label>${trdEsc(f.parts[p])}<input inputmode="numeric" data-auf="weights" data-wp="${p}" value="${v[p]}"></label>`).join("")}<span id="auWsum" class="faint">합계 ${Object.values(v).reduce((a,x)=>a+(+x||0),0)}</span></div>`;
@@ -12441,7 +12449,7 @@ document.addEventListener("click",e=>{
   if(t.closest("#trdPaneAuto")&&auClick(t))return;
   if((el=t.closest("a.au-nm"))){return go("detail",el.dataset.code);}   // 거래내역(수익률·주문·체결) 종목명 → 종목상세
   if((el=t.closest("[data-tp]")))return trdTab(el.dataset.tp);
-  if((el=t.closest("[data-pmode]"))){const m=el.dataset.pmode;if(m!==TRD.mode){S.tradeMode=m;try{localStorage.setItem("trdMode",m);}catch(_){}trdStop();TRD.ps=null;trdEnter();}return;}
+  if((el=t.closest("[data-pmode]"))){const m=el.dataset.pmode;if(m!==TRD.mode){S.tradeMode=m;try{localStorage.setItem("trdMode",m);}catch(_){}trdStop();TRD.ps=null;trdDeskReset();trdEnter();}return;}
   if((el=t.closest("[data-plgo]"))){const c=el.dataset.plgo;trdQAdd([c]);TRD.cur=c;trdRenderQ();trdTab("order");trdSelect(c);window.scrollTo(0,0);return;}
   if((el=t.closest("[data-rpm]"))){TRD.rp={mode:el.dataset.rpm,off:0};return trdLoadReport();}
   if((el=t.closest("[data-rpo]"))){if(el.disabled)return;TRD.rp.off=Math.min(0,TRD.rp.off+ +el.dataset.rpo);return trdLoadReport();}
