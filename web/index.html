@@ -6920,6 +6920,13 @@ function renderTodayTop(universe){
     makeSortable(id.slice(1));
   });
 }
+async function loadTodayClusterSectors(){
+  try{
+    const rows=await q("v_sector_cluster",`select=sector_krx&trade_date=eq.${S.date}`);
+    S.tdClusterSectors=new Set(rows.map(r=>r.sector_krx));
+    S._topCodeMap=null; // 클러스터 업종 갱신 시 캐시 재계산
+  }catch(e){ S.tdClusterSectors=new Set(); }
+}
 $$("#tdTopChips .fchip").forEach(b=>b.onclick=()=>{
   if(!S.tdTopSet)S.tdTopSet=new Set();
   const k=b.dataset.crit;
