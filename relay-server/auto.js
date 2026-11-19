@@ -528,6 +528,52 @@ function createAuto(deps) {
       return ret;
     });
   }
+  /* ── 드라이런 점검 기간(2026-11-19): 실행 모드를 드라이런으로 바꾼 날부터 전략이 돈 거래일을 세어, N일(전략 설정 dryDays)이 끝나면 '실전 전환 가능' 알림만 보냄(모드는 그대로 유지) ── */
+  const addDay = d => new Date(Date.parse(d + 'T00:00:00Z') + 864e5).toISOString().slice(0, 10);
+  async function readDry() { const r = await D.sbGet('auto_config?select=value&key=eq.dryrun&limit=1').catch(() => []); const v = (r && r[0] && r[0].value) || {}; v.items = v.items || {}; return v; }
+  async function writeDry(c) { await D.sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'dryrun', value: c, updated_at: new Date().toISOString() }]); state.dryCache = {}; }
+  function dryStartDate() { const { date, min } = kstParts(); let d = date; for (let i = 0; i < 14 && (min >= 930 || !isTradingDay(d)); i++) { d = addDay(d); min = 0; } return d; }   // 장이 끝났거나 휴장이면 다음 거래일부터 셈
+  async function dryProgressOf(sid, since, date, min, total) {
+    const rows = await D.sbGet(`auto_runs?select=trade_date&strategy_id=eq.${encodeURIComponent(sid)}&trade_date=gte.${since}&limit=60`).catch(() => []);
+    return ST.dryProgress((rows || []).map(r => r.trade_date), date, min, total);
+  }
+  /* 화면용: 이 전략이 드라이런이면 { since, day, total, done, notified } (1분 캐시) */
+  async function dryStatus(sid, params) {
+    if (!params || params.execMode !== 'dryrun') return null;
+    state.dryCache = state.dryCache || {};
+    const c = state.dryCache[sid]; if (c && Date.now() - c.at < 60000) return c.v;
+    const dry = await readDry(), it = dry.items[sid] || null, since = it ? it.since : dryStartDate(), { date, min } = kstParts();
+    const pg = await dryProgressOf(sid, since, date, min, params.dryDays);
+    const v = { since, day: pg.day, total: pg.total, done: pg.done, running: pg.running, notified: !!(it && it.notified) };
+    state.dryCache[sid] = { at: Date.now(), v };
+    return v;
+  }
+  /* 실행 모드가 바뀔 때 호출: 드라이런으로 들어가면 시작일 기록, 드라이런에서 나가면 기록 삭제 */
+  async function noteDry(sid, from, to) {
+    if (from === to) return;
+    return lock(async () => {
+      const dry = await readDry();
+      if (to === 'dryrun') dry.items[sid] = { since: dryStartDate(), at: Date.now() };
+      else if (dry.items[sid]) delete dry.items[sid]; else return;
+      await writeDry(dry);
+    }).catch(e => { state.lastErr = '드라이런 기록 실패: ' + e.message; });
+  }
+  async function dryTick(date, min) {
+    const dry = await readDry(); let ch = false, n = 0;
+    for (const sid of Object.keys(MODES)) {
+      if (MODES[sid] !== 'dryrun') { if (dry.items[sid]) { delete dry.items[sid]; ch = true; } continue; }
+      const st = store.byId ? await store.byId(sid).catch(() => null) : null;
+      if (!st || st.archived) continue;
+      if (!dry.items[sid]) { dry.items[sid] = { since: dryStartDate(), at: Date.now() }; ch = true; }
+      const it = dry.items[sid]; if (it.notified || !st.enabled) continue;
+      const pg = await dryProgressOf(sid, it.since, date, min, (st.params || {}).dryDays);
+      if (!pg.done) continue;
+      it.notified = date; ch = true; n++;
+      await D.sendTelegram(`🧪 [${st.name}] 드라이런 ${pg.total}거래일 점검 기간이 끝났어요.\n문제가 없었다면 사이트 › 자동매매 › 전략에서 실행 모드를 실전으로 바꿀 수 있어요(거래 PIN 필요). 드라이런은 지금처럼 계속 돌고 있어요.`).catch(() => {});
+    }
+    if (ch) await writeDry(dry);
+    return { notified: n };
+  }
   /* 전략이 여럿이면 텔레그램 메시지 앞에 [A · 이름]을 붙인다(답할 때 번호 앞에 그 글자) */
   const labelOf = sid => { const r = state.runs[sid]; const p = r && r.payload; return p && p.letter ? `${p.letter} · ${(p.strategy && p.strategy.name) || sid}` : sid; };
   const modeTag = sid => ({ live: '🔴실전 ', dryrun: '🧪드라이런 ' }[BR.execOf(sid)] || '');
@@ -862,6 +908,7 @@ function createAuto(deps) {
     }
     state.multi = A.Is.length > 1 || Object.keys(state.runs).length > 1;
     const runs = () => Object.values(state.runs);
+    if (inJr && Date.now() - (state.dryAt || 0) > 300000) { state.dryAt = Date.now(); out.dry = await dryTick(date, min).catch(err); }   // 드라이런 점검 기간 종료 알림(장 마감 뒤)
     if ((await haltLevel()) === 'all') {   // 자동매매 전체 정지: 기록 정리만(손절·익절은 엔진이 계속 감시)
       out.exc = await excTick(date, min).catch(err);
       if (min >= require('./auto-daylog').SAVE_AT) out.daylog = await DL.tick(date, min).catch(err);
@@ -1395,7 +1442,7 @@ function createAuto(deps) {
       ok: true, now: Date.now(), date, side, tradingDay: isTradingDay(date),
       cfg: { on: !!cv.on, liveOn: !!cv.liveOn, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
       engines: { dry: BR.engines.dry ? (BR.engines.dry.health ? { missing: !!BR.engines.dry.health().missing } : {}) : null, live: !!BR.engines.live, liveReady: D.liveReady ? D.liveReady() : null, realOrders: D.realOrdersOn ? !!D.realOrdersOn() : null },
-      today: todays[0] || null, todays, quotes, active: Is.map(i => i.id), closing, modes: Object.fromEntries([...Is.map(i => [i.id, BR.execOf(i.id)]), ...(cOn && A.C.enabled ? [[A.C.id, BR.execOf(A.C.id)]] : [])]), halt: await haltLevel().catch(() => null), regime, exposure, events, positions, trades, dayTot, carry: ci, carryDone: cd, history: hist.rows, totals: hist.totals, holdCmp, lastErr: state.lastErr || null,
+      today: todays[0] || null, todays, quotes, active: Is.map(i => i.id), closing, modes: Object.fromEntries([...Is.map(i => [i.id, BR.execOf(i.id)]), ...(cOn && A.C.enabled ? [[A.C.id, BR.execOf(A.C.id)]] : [])]), dry: await (async () => { const o = {}; for (const I of [...A.Is, ...(cOn && A.C.enabled ? [A.C] : [])]) if (BR.execOf(I.id) === 'dryrun') o[I.id] = await dryStatus(I.id, { ...I.params, execMode: 'dryrun' }).catch(() => null); return o; })(), halt: await haltLevel().catch(() => null), regime, exposure, events, positions, trades, dayTot, carry: ci, carryDone: cd, history: hist.rows, totals: hist.totals, holdCmp, lastErr: state.lastErr || null,
     };
   }
   /* 사이트에서 승인·정리(텔레그램 명령과 같은 처리, 전략 지정). 결과는 텔레그램에도 남김 */
@@ -1505,7 +1552,7 @@ function createAuto(deps) {
 
   /* 전략 조회·저장·추가·삭제(컨트롤 타워) */
   /* 실전매매 전략 ↔ 가상 원본: 원본에서 가져오는 조건(매수·매도·선정 규칙)과 가져오지 않는 값(실행 모드·금액·실전 안전장치 — 쪽마다 따로 정함) */
-  const OWN_KEYS = new Set(['execMode', 'liveAutoOk', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'perStockKrw', 'totalCapKrw']);
+  const OWN_KEYS = new Set(['execMode', 'liveAutoOk', 'dryDays', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'perStockKrw', 'totalCapKrw']);
   const ruleParams = p => Object.fromEntries(Object.entries(p || {}).filter(([k]) => !OWN_KEYS.has(k)));
   function sourceDiffOf(cur, src) {
     if (!cur || !src || cur.kind !== src.kind) return null;
@@ -1516,8 +1563,10 @@ function createAuto(deps) {
     const timesBy = Object.fromEntries([...A.Is.map(I => [I.id, I.T]), [A.C.id, A.CI.T]]);
     const T0 = A.CI.T;
     const byId = Object.fromEntries(list.map(r => [r.id, r]));
+    const dryBy = {}; for (const r of list) if (!r.archived && r.params && r.params.execMode === 'dryrun') dryBy[r.id] = await dryStatus(r.id, r.params).catch(() => null);
     const out = list.map(({ needCopy, ...r }) => {
       const side = ST.sideOfParams(r.params);   // 2026-11-19: 종가베팅도 자기 실행 모드로 쪽이 정해짐
+      if (dryBy[r.id]) r = { ...r, dry: dryBy[r.id] };
       if (!r.source) return { ...r, side };
       const src = byId[r.source], d = sourceDiffOf(r, src);
       return { ...r, side, sourceName: src ? src.name : null, sourceGone: !src || !!src.archived, sourceDiff: d ? d.length : null, sourceVersion: src ? src.version : null };
@@ -1579,9 +1628,11 @@ function createAuto(deps) {
       const cur0 = store.byId ? await store.byId(id).catch(() => null) : null, p0 = (cur0 && cur0.params) || {};
       if (!p0.liveAutoOk && (nm || p0.execMode) === 'live') return { ok: false, status: 403, needPin: true, error: '실전 자동 승인을 켜려면 거래 PIN을 다시 입력하세요' };
     }
+    let fromMode = null;
     if (nm !== undefined) {
       const cur = store.byId ? await store.byId(id).catch(() => null) : null;
       const from = (cur && cur.params && cur.params.execMode) || 'paper';
+      if (cur) fromMode = from;
       if (cur && nm !== from) {
         if (nm === 'live') {
           if (!opts.pinOk) return { ok: false, status: 403, needPin: true, error: '실전 모드로 바꾸려면 거래 PIN을 다시 입력하세요' };
@@ -1593,7 +1644,7 @@ function createAuto(deps) {
       }
     }
     const res = await saveStrategy0(id, patch, who, opts);
-    if (res && res.ok && res.strategy) noteMode(res.strategy);
+    if (res && res.ok && res.strategy) { noteMode(res.strategy); if (fromMode !== null && nm !== undefined) await noteDry(id, fromMode, nm); }
     return res;
   }
   async function saveStrategy0(id, patch, who, opts = {}) {
@@ -1617,7 +1668,7 @@ function createAuto(deps) {
     const want = asLive ? 'dryrun' : (srcMode === 'live' ? 'dryrun' : srcMode);
     if (want !== srcMode || asLive) {
       const s2 = await store.save(r.strategy.id, { params: { execMode: want, liveAutoOk: false } }, who, { allowSide: true });   // 방금 만든 복제본만 쪽을 정함
-      if (s2 && s2.ok) { noteMode(s2.strategy); return { ...r, strategy: s2.strategy, mode: want }; }
+      if (s2 && s2.ok) { noteMode(s2.strategy); await noteDry(r.strategy.id, srcMode, want); return { ...r, strategy: s2.strategy, mode: want }; }
       if (srcMode === 'live') {   // 검토 #14: 실전 원본의 복제를 드라이런으로 못 바꿨으면 복제본을 보관 처리(PIN 없이 실전 전략이 생기지 않게)
         if (store.archive) await store.archive(r.strategy.id, who).catch(() => {});
         return { ok: false, status: 503, error: '복제본을 드라이런으로 바꾸지 못해 복제를 취소했습니다. 잠시 뒤 다시 시도하세요' };

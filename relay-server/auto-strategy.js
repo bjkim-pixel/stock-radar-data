@@ -80,7 +80,8 @@ const SCHEMA = {
     F('eodWeak', '매도', '약한 종목 처리(정리는 승인 후에만, 무응답이면 유지)', 'enum', 'ask', { opts: ENUM.eodWeak }),
     /* 실거래 전환 2단계(2026-11-18): 실행 모드·금액 자동 조정·이상 동작 차단. 기본값 = 가상·고정 금액 → 지금과 같은 동작 */
     F('execMode', '실행 모드', '실행 모드(실전으로 바꿀 때 PIN 다시 확인 · 진행 중 주문·보유·이월이 없을 때만)', 'enum', 'paper', { opts: ENUM.execMode }),
-    F('liveAutoOk', '실행 모드', '실전 자동 승인 허용(끄면 실전은 직접 승인해야 매수 — 첫 5거래일은 끔)', 'bool', false),
+    F('liveAutoOk', '실행 모드', '실전 자동 승인 허용(끄면 실전은 직접 승인해야 매수 — 드라이런 점검 기간은 끔)', 'bool', false),
+    F('dryDays', '실행 모드', '드라이런 점검 기간(지나면 "실전 전환 가능" 알림만 — 드라이런은 그대로 계속)', 'num', 3, { min: 1, max: 10, step: 1, unit: '거래일' }),
     F('sizeMode', '매수 금액', '종목당 금액 정하는 방식', 'enum', 'fixed', { opts: ENUM.sizeMode }),
     F('sizePct', '매수 금액', '잔고 기준 비중(0=1÷하루 최대 매수 종목 수)', 'num', 0, { min: 0, max: 100, step: 1, unit: '%' }),
     F('paperCapitalKrw', '매수 금액', '가상 운용 자금(가상 전략이 잔고 기준일 때)', 'num', 10000000, { min: 1000000, max: 1000000000, step: 1000000, unit: '원' }),
@@ -123,8 +124,8 @@ const SCHEMA = {
 const CLOSE_COPY = ['capMinEok', 'maTrend', 'smx', 'smxWin', 'flowForeign', 'flowInst', 'flowProgram', 'poolTop', 'sectorMax', 'weights',
   'perStockKrw', 'totalCapKrw', 'buyPick', 'fillWaitMin', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'regimeMode', 'regimeCaution', 'regimeDefense',
   'stopPct', 'rr', 'tpStyle', 'runnerPct', 'ratchet', 'trail', 'split', 'minPct', 'eodWeak',
-  'execMode', 'liveAutoOk', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop'];
-const CLOSE_NOCOPY = new Set(['execMode', 'liveAutoOk', 'maxOrdersDay', 'rejectStop', 'unsureStop']);   // 처음 복사할 때도 장중 값을 가져오지 않음(가상·끔·기본 안전장치에서 시작)
+  'execMode', 'liveAutoOk', 'dryDays', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop'];
+const CLOSE_NOCOPY = new Set(['execMode', 'liveAutoOk', 'dryDays', 'maxOrdersDay', 'rejectStop', 'unsureStop']);   // 처음 복사할 때도 장중 값을 가져오지 않음(가상·끔·기본 안전장치에서 시작)
 const CLOSE_GROUP = { '대상': '후보 조건(장중 전략과 따로)', '매수 조건': '후보 조건(장중 전략과 따로)', '후보 수': '후보 조건(장중 전략과 따로)', '점수': '후보 조건(장중 전략과 따로)',
   '매수 주문': '매수 주문', '시장 상태': '시장 상태', '매도': '아침 보류(장중 전환) 뒤 매도 계획', '실행 모드': '실행 모드', '매수 금액': '매수 금액', '실전 안전장치': '실전 안전장치' };
 const CLOSE_LABEL = { eodWeak: '약한 종목 처리(아침 보류로 장중 전환된 종목의 14:45·18:30 판정)', perStockKrw: '종목당 금액', totalCapKrw: '총액 상한(0=없음)' };
@@ -135,6 +136,13 @@ const KINDS = { intraday: '장중매매', closing: '종가베팅' };
 const MAX_ACTIVE = { intraday: 3, closing: 1 };   // 동시에 켤 수 있는 수(종가베팅은 장중 보유분을 넘겨받는 방식이라 하나만). 장중은 쪽(가상매매·실전매매)마다 3개
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];   // 켜진 장중 전략 글자(텔레그램 답장 A1·D2). 가상·실전 합쳐 최대 6
 /* 쪽: 가상매매(실행 모드 가상) · 실전매매(드라이런·실전) — 2026-11-19 */
+/* 드라이런 점검 진행(2026-11-19): 드라이런으로 돈 거래일 수. dates = 시작일 이후 이 전략의 기록이 있는 거래일들.
+   끝난 날 수(n) = 오늘 이전 기록일 + (오늘 기록이 있고 15:30 이후면 1). 진행 중인 오늘은 day 에 +1 로 보여줌 */
+function dryProgress(dates, today, min, total) {
+  const set = new Set((dates || []).map(String)), past = [...set].filter(d => d < today).length, hasToday = set.has(today), closed = hasToday && min >= 15 * 60 + 30;
+  const n = past + (closed ? 1 : 0), t = Math.max(1, +total || 3);
+  return { n, day: Math.min(t, n + (hasToday && !closed ? 1 : 0)), total: t, done: n >= t, running: hasToday && !closed };
+}
 const sideOfParams = p => (p && p.execMode && p.execMode !== 'paper' ? 'real' : 'paper');
 
 const defaults = kind => Object.fromEntries((SCHEMA[kind] || []).map(f => [f.key, JSON.parse(JSON.stringify(f.def))]));
@@ -407,4 +415,4 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
 const publicSchema = () => ({ kinds: KINDS, fields: SCHEMA, maxActive: MAX_ACTIVE });
 
 const CLOSE_LETTER = 'N';   // 종가베팅 전략 글자(텔레그램 /매수 N1 · /정리 N1) — 장중 A~F 와 겹치지 않게
-module.exports = { SCHEMA, KINDS, ENUM, BUILTIN, MAX_ACTIVE, LETTERS, CLOSE_LETTER, CLOSE_COPY, closingFromIntraday, sideOfParams, defaults, validate, diff, timesOf, tmin, hhmm, createStore, publicSchema };
+module.exports = { dryProgress, SCHEMA, KINDS, ENUM, BUILTIN, MAX_ACTIVE, LETTERS, CLOSE_LETTER, CLOSE_COPY, closingFromIntraday, sideOfParams, defaults, validate, diff, timesOf, tmin, hhmm, createStore, publicSchema };

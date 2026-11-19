@@ -12,7 +12,7 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   for (const k of ['intraday', 'closing']) assert.deepEqual(S.validate(k, S.defaults(k)).val, S.defaults(k));
   const sql = fs.readFileSync(path.join(__dirname, '..', '..', '165_auto_strategy.sql'), 'utf8');
   const js = [...sql.matchAll(/'(\{"[^']+\})'::jsonb/g)].map(m => JSON.parse(m[1]));
-  const LATER = ['regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries', 'minRr', 'tpStyle', 'runnerPct', 'ratchet', 'kwOn', 'kwMax', 'execMode', 'liveAutoOk', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'smxWin'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
+  const LATER = ['regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries', 'minRr', 'tpStyle', 'runnerPct', 'ratchet', 'kwOn', 'kwMax', 'execMode', 'liveAutoOk', 'dryDays', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'smxWin'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
   const I0 = Object.fromEntries(Object.entries(S.defaults('intraday')).filter(([k]) => !LATER.includes(k)));
   I0.weights = { flow: 40, cttr: 15, rise: 15, amt: 15, trend: 15 };               // 165 의 예전 기본 배점 → 검증에서 새 기본 배점(개인 물량 항목 포함)으로 올라감
   I0.eodTimeout = 'keep';                                                           // 165 에는 있었지만 지금은 없는 설정(무응답이면 항상 유지) — 저장돼 있어도 검증이 버림
@@ -276,4 +276,23 @@ test('예전 기본 판정 시각(15:00/20분 · 19:00/40분)을 저장해 둔 �
   const st = S.createStore({ now: () => 0, sbGet: async () => [{ id: 'closing-default', name: 'x', kind: 'closing', builtin: true, enabled: true, version: 1, params: old }], sbPost: async () => [], sbPatch: async () => [] });
   const r = (await st.list(true)).find(x => x.id === 'closing-default');
   assert.deepEqual([r.params.judgeAt, r.params.replyMin, r.params.nxtJudgeAt, r.params.nxtReplyMin], ['14:45', 15, '18:30', 30]);
+});
+
+test('드라이런 점검 기간: 기본 3거래일(1~10), 끝난 날 수·진행일 계산', () => {
+  assert.equal(S.defaults('intraday').dryDays, 3);
+  assert.equal(S.validate('intraday', { dryDays: 11 }).errs.length > 0, true);
+  assert.equal(S.validate('intraday', { dryDays: 0 }).errs.length > 0, true);
+  assert.equal(S.validate('intraday', { dryDays: 5 }).val.dryDays, 5);
+  const P = S.dryProgress;
+  // 시작 전(기록 없음)
+  assert.deepEqual(P([], '2026-11-20', 600, 3), { n: 0, day: 0, total: 3, done: false, running: false });
+  // 오늘(장중)이 첫날 → 1/3일째, 아직 끝난 날 0
+  assert.deepEqual(P(['2026-11-20'], '2026-11-20', 600, 3), { n: 0, day: 1, total: 3, done: false, running: true });
+  // 3일 모두 기록 + 3일째 장 마감 전 → 아직 끝나지 않음, 마감 후 끝
+  const d3 = ['2026-11-20', '2026-11-23', '2026-11-24'];
+  assert.equal(P(d3, '2026-11-24', 14 * 60, 3).done, false);
+  assert.equal(P(d3, '2026-11-24', 15 * 60 + 30, 3).done, true);
+  assert.equal(P(d3, '2026-11-25', 540, 3).done, true);
+  assert.equal(P(d3, '2026-11-25', 540, 3).day, 3);
+  assert.equal(P(['2026-11-20'], '2026-11-24', 540, 1).done, true);   // 기간 1일
 });
