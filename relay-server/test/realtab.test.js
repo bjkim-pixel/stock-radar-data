@@ -581,3 +581,16 @@ test('종가 전략을 실전으로 바꾸려면 PIN · 실전 복제본은 드�
   assert.equal(cp.ok, true, cp.error); assert.equal(cp.strategy.params.execMode, 'dryrun', '실전 종가 전략의 복제는 드라이런으로');
   await k.c.close();
 });
+
+test('드라이런 점검 기간: 장 마감(16:30) 뒤 드라이런으로 바꿔도 오류 없이 저장되고, 다음 거래일부터 센다(회귀: 상수 재할당 오류)', async () => {
+  const k = await rig();
+  k.at(16, 30);
+  const r = await k.A.saveStrategy('closing-default', { params: { execMode: 'dryrun' } }, 'site', { confirm: true });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const L = await k.A.strategies();
+  const c = L.strategies.find(s => s.id === 'closing-default');
+  assert.ok(c.dry && c.dry.total === 3, '드라이런 진행 정보가 전략에 실림');
+  assert.equal(c.dry.day, 0, '장 마감 뒤라 오늘은 세지 않음');
+  assert.ok(c.dry.since > k.date, '시작일 = 다음 거래일');
+  await k.c.close();
+});

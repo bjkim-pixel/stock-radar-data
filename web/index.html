@@ -11694,7 +11694,7 @@ function auSupply(o){
   const man=v=>(Math.round(v/1000)/10).toFixed(1);   // 원 → 만원(소수 1자리)
   const rows=shown.map(b=>{
     const nt=[];
-    const dyB=b.lo>=base-1e-9&&b.v>0&&dyBase>0?b.v/dyBase:null,dyTx=dyB==null?"":`<span class="au-dy">소화 <b>${dyB<0.1?"0.1일 미만":dyB.toFixed(1)+"일"}</b></span>`;
+    const dyB=b.lo>=base-1e-9&&b.v>0&&dyBase>0?b.v/dyBase:null,dyTx=dyB==null?"":`<span class="au-dy" title="5거래일 평균 거래대금 ${dyBase?Math.round(dyBase*10)/10:0}억 기준">소화 <b>${dyB<0.1?"0.1일 미만":dyB.toFixed(1)+"일"}</b></span>`;
     if(rank.has(b.lo))nt.push(`<div class="au-nt"><span class="au-rk r${rank.get(b.lo)}">개인 매물 ${rank.get(b.lo)}위</span>${dyTx}</div>`);
     else if(dyTx)nt.push(`<div class="au-nt">${dyTx}</div>`);
     marks.filter(m=>inBin(m,b)).sort((x,y)=>y.p-x.p||(x.t==="현재"?-1:1)).forEach(m=>nt.push(`<div class="au-nt"><span class="au-pm ${m.c}">${trdEsc(m.t)}</span><b>${N(m.p)}</b><span class="rm">${trdEsc(m.r)}</span></div>`));
@@ -11702,7 +11702,7 @@ function auSupply(o){
     return `<div class="au-sr ${st}"><span class="p">${man(b.lo)}~${man(b.hi)}</span><span class="bar"><i style="width:${w}%"></i></span><span class="q">${b.v>0?(b.v>=100?N(Math.round(b.v)):b.v.toFixed(1))+"억":"–"}</span><span class="nts">${nt.join("")}</span></div>`;}).join("");
   const eok=v=>v==null?"–":(Math.abs(v)>=100?N(Math.round(v)):(Math.round(v*10)/10))+"억";
   const why=t.topLo&&o.mode==="blocked"?`바로 위 ${N(t.topLo)}원대 매물(${eok(t.topV)})이 하루 소화량(${eok(cap)})보다 커서 그 바로 아래까지만 목표`:t.topLo?`소화량(${eok(cap)}) 안에서 ${eok(cum)}까지 쌓고, 가장 큰 ${N(t.topLo)}원대(${eok(t.topV)}) 매물대 바로 아래를 목표로`:`위쪽 매물대가 없어 전고점·손익비로 목표를 잡음`;
-  const dyLine=(t.avg5Eok>0||t.ydEok>0)?`<div class="au-dyb"><b>하루 거래대금</b> 어제 ${t.ydEok!=null?eok(t.ydEok):"–"} · 최근 5거래일 평균 ${t.avg5Eok!=null?eok(t.avg5Eok):"–"}${t.todEok!=null?` · 오늘 ${eok(t.todEok)}(진행 중)`:""}<br><b>소화 가능 일수</b> = 매물(억) ÷ 하루 거래대금 · 목표까지 쌓인 매물 ${eok(cum)} → 어제 기준 <b>${dyD(cum,t.ydEok)}</b> · 5일 평균 기준 <b>${dyD(cum,t.avg5Eok)}</b>${t.topV?` · 목표를 막는 ${t.topLo?N(t.topLo)+"원대 ":""}${eok(t.topV)} 매물은 5일 평균 기준 <b>${dyD(t.topV,t.avg5Eok||dyBase)}</b>치`:""}</div>`:"";
+  const dyLine=(t.avg5Eok>0||t.ydEok>0)?`<div class="au-dyb"><b>소화 근거 · 하루 거래대금</b><br>오늘 ${t.todEok!=null?`<b>${eok(t.todEok)}</b>(장중 누적)`:"–"}<br>최근 5거래일 ${Array.isArray(t.dayEok)&&t.dayEok.length?t.dayEok.map(([d,v])=>`${d.replace("-","/")} ${eok(v)}`).join(" · ")+` → 평균 <b>${eok(t.avg5Eok)}</b>`:`평균 <b>${t.avg5Eok!=null?eok(t.avg5Eok):"–"}</b>${t.ydEok!=null?` · 어제 ${eok(t.ydEok)}`:""}`}<br><b>소화 예상 일수</b> = 매물(억) ÷ 하루 거래대금 · 목표까지 쌓인 매물 ${eok(cum)} → 5일 평균 기준 <b>${dyD(cum,t.avg5Eok)}</b>${t.ydEok!=null?` · 어제 기준 ${dyD(cum,t.ydEok)}`:""}${t.todEok>0?` · 오늘 기준 ${dyD(cum,t.todEok)}`:""}${t.topV?`<br>목표를 막는 ${t.topLo?N(t.topLo)+"원대 ":""}${eok(t.topV)} 매물 → 5일 평균 기준 <b>${dyD(t.topV,t.avg5Eok||dyBase)}</b>치`:""}</div>`:"";
   return `<div class="au-sub" style="margin-top:8px">매도 목표 매물대 <span class="faint" style="font-weight:400">개인 순매수 가격대별 합 · 막대가 길수록 차익 매물이 많음 · 수익률은 매수가 대비</span></div>${dyLine}<div class="au-sup"><div class="au-sr au-sth"><span style="grid-column:1/3;white-space:nowrap">매물대(만원)</span><span class="q">순매수</span><span>주요 가격 · 비고</span></div>${rows}</div><div class="faint" style="font-size:11.5px;margin-top:4px"><span class="au-lg ok"></span>소화 가능 <span class="au-lg blk"></span>목표를 막는 매물대 <span class="au-lg far"></span>그 위 매물 · ${trdEsc(why)}</div>`;
 }
 /* 대기 이유 문장 */

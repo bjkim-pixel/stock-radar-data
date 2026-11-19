@@ -532,7 +532,7 @@ function createAuto(deps) {
   const addDay = d => new Date(Date.parse(d + 'T00:00:00Z') + 864e5).toISOString().slice(0, 10);
   async function readDry() { const r = await D.sbGet('auto_config?select=value&key=eq.dryrun&limit=1').catch(() => []); const v = (r && r[0] && r[0].value) || {}; v.items = v.items || {}; return v; }
   async function writeDry(c) { await D.sbWrite('auto_config?on_conflict=key', 'POST', [{ key: 'dryrun', value: c, updated_at: new Date().toISOString() }]); state.dryCache = {}; }
-  function dryStartDate() { const { date, min } = kstParts(); let d = date; for (let i = 0; i < 14 && (min >= 930 || !isTradingDay(d)); i++) { d = addDay(d); min = 0; } return d; }   // 장이 끝났거나 휴장이면 다음 거래일부터 셈
+  function dryStartDate() { let { date, min } = kstParts(); let d = date; for (let i = 0; i < 14 && (min >= 930 || !isTradingDay(d)); i++) { d = addDay(d); min = 0; } return d; }   // 장이 끝났거나 휴장이면 다음 거래일부터 셈
   async function dryProgressOf(sid, since, date, min, total) {
     const rows = await D.sbGet(`auto_runs?select=trade_date&strategy_id=eq.${encodeURIComponent(sid)}&trade_date=gte.${since}&limit=60`).catch(() => []);
     return ST.dryProgress((rows || []).map(r => r.trade_date), date, min, total);

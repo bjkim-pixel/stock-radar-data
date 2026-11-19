@@ -140,10 +140,11 @@ function makeOrder({ q, rows, perStockKrw, opt = {}, force = null }) {   // forc
   /* 하루 소화 근거(억원): 어제 거래대금 · 최근 5거래일 평균 · 오늘 지금까지 — 화면에서 매물대 소화 일수 계산에 씀 */
   const todayKst = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
   const prevRow = [...rows].reverse().find(r => String(r.trade_date) < todayKst && +r.trade_amount > 0);
-  const ydEok = prevRow ? Math.round(+prevRow.trade_amount / EOK * 10) / 10 : null, avg5Eok = Math.round(avg5 / EOK * 10) / 10, todEok = q.amt > 0 ? Math.round(q.amt / EOK * 10) / 10 : null;
+  const done5 = rows.filter(r => String(r.trade_date) < todayKst && +r.trade_amount > 0).slice(-5), dayEok = done5.map(r => [String(r.trade_date).slice(5), Math.round(+r.trade_amount / EOK * 10) / 10]);   // 끝난 최근 5거래일(월-일, 억원)
+  const ydEok = prevRow ? Math.round(+prevRow.trade_amount / EOK * 10) / 10 : null, avg5Eok = done5.length ? Math.round(done5.reduce((a, r) => a + +r.trade_amount, 0) / done5.length / EOK * 10) / 10 : Math.round(avg5 / EOK * 10) / 10, todEok = q.amt > 0 ? Math.round(q.amt / EOK * 10) / 10 : null;
   const steps = tgt.target && !o.noTp ? (o.tpStyle === 'r' ? splitPlanR(buy, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(buy, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];   // noTp(종가베팅 저녁 매수): 익절 없이 손절만 걸고 다음 날 아침 분할 매도
   const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ...(o.ratchet && !o.noTp ? { ratchet: { floorPct: 0.35 } } : {}) };
-  const tinfo = { cap: tgt.cap, cum: tgt.cum, topLo: tgt.topLo, topV: tgt.topV, rrT: tgt.rrT, clipped: tgt.clipped, prevHigh: tgt.prevHigh, upper: q.upper || null, capEok, ydEok, avg5Eok, todEok, coef: o.coef, stopPct: o.stopPct, rr: o.rr, minRr: o.minRr, tpStyle: o.tpStyle, split: o.split, minPct: o.minPct, runnerPct: o.runnerPct, ratchet: !!(o.ratchet && !o.noTp), ref: cur, prof: prof.map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) };   // prof = 개인 순매수 매물대 [하한, 상한, 억원] — 목표가 그림용
+  const tinfo = { cap: tgt.cap, cum: tgt.cum, topLo: tgt.topLo, topV: tgt.topV, rrT: tgt.rrT, clipped: tgt.clipped, prevHigh: tgt.prevHigh, upper: q.upper || null, capEok, ydEok, avg5Eok, todEok, dayEok, coef: o.coef, stopPct: o.stopPct, rr: o.rr, minRr: o.minRr, tpStyle: o.tpStyle, split: o.split, minPct: o.minPct, runnerPct: o.runnerPct, ratchet: !!(o.ratchet && !o.noTp), ref: cur, prof: prof.map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) };   // prof = 개인 순매수 매물대 [하한, 상한, 억원] — 목표가 그림용
   return { buy, qty, plan, target: tgt.target, mode: tgt.mode, pick: pick ? pick.k : 'cur', tinfo };
 }
 
