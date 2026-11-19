@@ -113,7 +113,9 @@ function createTrade(deps = {}) {
   const allowedOrigins = deps.allowedOrigins || [];
   const cfg = loadConfig(env);
 
-  const state = { halted: false, pinFails: 0, pinLockUntil: 0 };
+  /* realOn = 사이트 "실전 주문" 스위치(2026-11-19). REAL_TRADING_ENABLED(환경변수)는 "실전 주문을 낼 수 있는 상한"이고,
+     이 스위치가 꺼져 있으면 실전 신규 매수(직접·자동)만 막는다 — 손절·익절·이월 매도와 취소는 계속. 기본 꺼짐, 켜고 끈 기록(real_on/real_off)을 감사 기록에 남겨 재시작 뒤에도 유지 */
+  const state = { halted: false, realOn: false, realSetAt: 0, pinFails: 0, pinLockUntil: 0 };
   const sessions = new Map();     // sid -> { uid, exp, abs, act }
   const pending = new Map();     // reqId -> { uid, code, c, exp, status:'wait'|'ok'|'deny', devId }
   const nonces = new Map();       // nonce -> 만료시각
@@ -217,6 +219,8 @@ function createTrade(deps = {}) {
       try {
         const k = await deps.sbGet('trade_audit?select=event,ts&event=in.(kill,resume)&order=ts.desc&limit=1');
         state.halted = !!(k[0] && k[0].event === 'kill');
+        const rk = await deps.sbGet('trade_audit?select=event,ts&event=in.(real_on,real_off)&order=ts.desc&limit=1');
+        state.realOn = !!(rk[0] && rk[0].event === 'real_on');   // 기록이 없거나 못 읽으면 꺼짐(안전 쪽)
         const since = new Date(now() - cfg.pinLockMs).toISOString();
         const rows = await deps.sbGet(`trade_audit?select=event,ts&event=in.(pin_fail,session_open)&ts=gte.${encodeURIComponent(since)}&order=ts.asc&limit=500`);
         let fails = 0, lockUntil = 0;
@@ -235,7 +239,7 @@ function createTrade(deps = {}) {
         await new Promise(r => setTimeout(r, 2000));
       }
     }
-    state.halted = true;
+    state.halted = true; state.realOn = false;
     console.warn('[trade] 재시작 복구 실패 — 안전을 위해 신규 매수 정지로 시작:', lastErr && lastErr.message);
     alert('서버 재시작 후 매매 상태를 읽지 못해 신규 매수를 정지했습니다. 확인 후 해제하세요.');
   }
@@ -246,13 +250,25 @@ function createTrade(deps = {}) {
     try { const k = await deps.sbGet('trade_audit?select=event,ts&event=in.(kill,resume)&order=ts.desc&limit=1'); const h = !!(k[0] && k[0].event === 'kill'); if (k[0] && Date.parse(k[0].ts) < (state.haltSetAt || 0) - 1000) return; if (!k[0] && state.haltSetAt) return; /* 이 서버에서 방금 바꾼 상태(기록 저장 실패 포함)를 옛 기록으로 되돌리지 않음 */ if (h && !state.halted) console.log('[trade] 권한 획득 — 긴급 정지 상태를 이어받음'); state.halted = h; }
     catch (e) { if (soft || /42P01|PGRST205|does not exist/.test(String(e.message))) return; state.halted = true; alert('주문 권한을 넘겨받았지만 긴급 정지 상태를 읽지 못해 신규 매수를 정지했습니다. 확인 후 해제하세요.'); }
   }
+  /* 사이트 "실전 주문" 스위치도 같은 방식으로 다시 읽음 — 다른 인스턴스(배포 겹침)가 받은 /실전정지·끄기가 따라오게. 못 읽으면 그대로 둠(이미 꺼져 있으면 꺼진 채) */
+  async function reloadReal() {
+    if (!deps.sbGet) return;
+    try {
+      const k = await deps.sbGet('trade_audit?select=event,ts&event=in.(real_on,real_off)&order=ts.desc&limit=1');
+      if (k[0] && Date.parse(k[0].ts) < (state.realSetAt || 0) - 1000) return;   // 이 서버에서 방금 바꾼 상태를 옛 기록으로 되돌리지 않음
+      if (!k[0] && state.realSetAt) return;
+      const on = !!(k[0] && k[0].event === 'real_on');
+      if (on !== state.realOn) console.log(`[trade] 실전 주문 스위치 ${on ? '켜짐' : '꺼짐'}(다른 인스턴스·기록에서 이어받음)`);
+      state.realOn = on;
+    } catch (_) {}
+  }
   async function announce() {
     if (deps.skipLoop || !deps.notify) return;
-    await alert(`🔁 서버 시작${BUILD ? ' (' + BUILD + ')' : ''}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치 ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 긴급정지 ${state.halted ? 'ON(유지)' : '해제'}`, '서버 상태');
+    await alert(`🔁 서버 시작${BUILD ? ' (' + BUILD + ')' : ''}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치(환경변수) ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 사이트 실전 주문 ${cfg.realEnabled ? (state.realOn ? '🚨 ON(유지)' : 'OFF') : '—'} · 긴급정지 ${state.halted ? 'ON(유지)' : '해제'}`, '서버 상태');
   }
   if (deps.sbGet && !deps.skipRestore) ready = restore().then(announce, announce);
   /* 다른 인스턴스(배포 겹침)가 받은 /정지·해제도 15초 안에 따라가도록 주기적으로 다시 읽음(읽기 실패는 그대로 둠) */
-  if (deps.sbGet && !deps.skipRestore && !deps.skipLoop) { const kt = setInterval(() => { ready.then(() => reloadKill(true)).catch(() => {}); }, 15000); if (kt.unref) kt.unref(); }
+  if (deps.sbGet && !deps.skipRestore && !deps.skipLoop) { const kt = setInterval(() => { ready.then(() => Promise.all([reloadKill(true), reloadReal()])).catch(() => {}); }, 15000); if (kt.unref) kt.unref(); }
   /* 인증 실패처럼 반복될 수 있는 기록은 IP·사유별로 분당 1회만 */
   function auditOnce(event, detail, req) {
     const k = event + '|' + (req ? clientIp(req) : '');
@@ -356,6 +372,7 @@ function createTrade(deps = {}) {
     if (!cfg.enabled) return { ok: false, error: 'trading disabled' };
     if (!hasAuthority()) return { ok: false, error: 'not order authority holder' };   // 배포 중 옛·새 인스턴스가 겹치는 동안 한쪽만 주문
     if (mode === 'REAL' && !cfg.realEnabled) return { ok: false, error: 'real trading disabled' };
+    if (mode === 'REAL' && kind === 'buy' && !state.realOn) return { ok: false, error: 'real orders switched off (site switch)' };   // 사이트 "실전 주문" 스위치: 꺼져 있으면 실전 신규 매수만 거부(매도·취소는 계속)
     if (kind === 'buy' && state.halted) return { ok: false, error: 'halted' };
     if (kind === 'buy' && !inHours()) return { ok: false, error: 'outside trading hours' };
     return { ok: true };
@@ -538,7 +555,7 @@ function createTrade(deps = {}) {
   }
   const statusBody = (a) => ({
     ok: true, now: now(),
-    enabled: cfg.enabled, realEnabled: cfg.realEnabled, halted: state.halted,
+    enabled: cfg.enabled, realEnabled: cfg.realEnabled, realOn: cfg.realEnabled && state.realOn, halted: state.halted,
     pinConfigured: !!cfg.pinHash, pinLockedSec: Math.max(0, Math.ceil((state.pinLockUntil - now()) / 1000)),
     session: a.session ? { active: true, ttlSec: sessionTtlSec(a.session) } : { active: false },
     limits: cfg.limits, hours: cfg.hours, accountConfigured: !!(kisOrder && kisOrder.configured()),
@@ -550,7 +567,7 @@ function createTrade(deps = {}) {
     const sid = openSession(uid);
     await audit('session_open', true, { flags: c.flags.length ? c.flags : undefined, kicked: kicked || undefined }, req);
     remember(c);
-    alert(`${warnText(c)}🔓 거래 세션 열림 · ${kst()}\n${whoText(c)}\n실전 스위치 ${cfg.realEnabled ? 'ON 🔴' : 'OFF'} · 긴급정지 ${state.halted ? 'ON' : '해제'}${kicked ? '\n(기존에 열려 있던 세션은 종료됨)' : ''}\n본인이 아니면 /kill`, '매매 세션');
+    alert(`${warnText(c)}🔓 거래 세션 열림 · ${kst()}\n${whoText(c)}\n실전 스위치 ${cfg.realEnabled ? 'ON 🔴' : 'OFF'}${cfg.realEnabled ? ' · 사이트 실전 주문 ' + (state.realOn ? 'ON 🔴' : 'OFF') : ''} · 긴급정지 ${state.halted ? 'ON' : '해제'}${kicked ? '\n(기존에 열려 있던 세션은 종료됨)' : ''}\n본인이 아니면 /kill`, '매매 세션');
     return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000), idleSec: Math.round(cfg.idleMs / 1000) });
   }
 
@@ -701,6 +718,20 @@ function createTrade(deps = {}) {
       pending.delete(String(body.reqId));
       if (p.status === 'deny') return json(res, 403, { ok: false, error: 'denied' });
       return finishOpen(req, res, a.user.id, p.c);
+    }
+    if (path === '/trade/live/switch') {   // 사이트 "실전 주문" 스위치. 켜기 = PIN 필수(+텔레그램 알림·감사 기록), 끄기 = PIN 없이 바로. 환경변수 REAL_TRADING_ENABLED=1 이어야 켤 수 있음
+      if (typeof body.on !== 'boolean') return json(res, 400, { ok: false, error: 'bad request' });
+      if (!body.on) {
+        const r = await setRealOn(false, req, 'site');
+        return json(res, 200, { ok: true, realOn: false, saved: r.saved });
+      }
+      if (!cfg.enabled || !cfg.realEnabled) { audit('real_on_reject', false, { why: 'env' }, req, 'REAL'); return json(res, 409, { ok: false, error: '서버 설정(Render 환경변수 TRADING_ENABLED·REAL_TRADING_ENABLED = 1)이 꺼져 있어 켤 수 없어요' }); }
+      if (state.halted) return json(res, 409, { ok: false, error: '긴급 정지 중이에요. 먼저 긴급 정지를 해제하세요' });
+      const pr = await checkPin(String(body.pin == null ? '' : body.pin));
+      if (!pr.ok) { audit('real_on_pin_fail', false, {}, req, 'REAL'); return json(res, pr.status === 423 ? 423 : 403, { ok: false, needPin: true, error: pr.status === 423 ? `PIN 이 잠겼습니다(${pr.retrySec || ''}초 뒤 다시)` : 'PIN 이 맞지 않습니다' }); }
+      const r = await setRealOn(true, req, 'site');
+      if (!r.saved) return json(res, 503, { ok: false, error: '켠 기록을 저장하지 못해 켜지 않았어요(감사 기록 사용 불가)' });
+      return json(res, 200, { ok: true, realOn: true, saved: true });
     }
     if (path === '/trade/live/order' || path === '/trade/live/cancel' || path === '/trade/live/plan' || path === '/trade/live/modify') {
       if (!live) return json(res, 503, { ok: false, error: 'live unavailable' });
@@ -895,7 +926,7 @@ function createTrade(deps = {}) {
   if (!cfg.pinHash) console.warn('[trade] TRADE_PIN_HASH 미설정 — 거래 세션을 열 수 없습니다.');
 
   /* ── 텔레그램 관리 명령(채팅 ID 확인은 server.js) ── */
-  const adminStatus = () => `📊 매매 상태 · ${kst()}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치 ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 긴급정지 ${state.halted ? 'ON' : '해제'}\n열린 거래 세션 ${[...sessions.values()].filter(x => x.exp > now() && x.abs > now()).length}개 · PIN 잠금 ${state.pinLockUntil > now() ? Math.ceil((state.pinLockUntil - now()) / 60000) + '분 남음' : '없음'}${BUILD ? '\n빌드 ' + BUILD : ''}`;
+  const adminStatus = () => `📊 매매 상태 · ${kst()}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치(환경변수) ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 사이트 실전 주문 ${cfg.realEnabled ? (state.realOn ? '🚨 ON' : 'OFF') : '—'} · 긴급정지 ${state.halted ? 'ON' : '해제'}\n열린 거래 세션 ${[...sessions.values()].filter(x => x.exp > now() && x.abs > now()).length}개 · PIN 잠금 ${state.pinLockUntil > now() ? Math.ceil((state.pinLockUntil - now()) / 60000) + '분 남음' : '없음'}${BUILD ? '\n빌드 ' + BUILD : ''}`;
   async function adminDecide(code, ok) {
     const t = now();
     for (const v of pending.values()) {
@@ -910,6 +941,17 @@ function createTrade(deps = {}) {
   }
   async function adminLock(via) { const n = sessions.size; sessions.clear(); await audit('session_close_all', true, { via, n }, null); return n; }
   async function adminKill(via) { state.halted = true; state.haltSetAt = now(); return audit('kill', true, { via }, null); }
+  /* 사이트 "실전 주문" 스위치 켜기/끄기. 끄기는 먼저 메모리에서 끄고 기록(기록이 실패해도 꺼진 채 — 안전 쪽), 켜기는 기록이 남은 뒤에만 켬 */
+  async function setRealOn(on, req, via) {
+    const was = state.realOn;
+    state.realSetAt = now();
+    if (!on) state.realOn = false;
+    const saved = await audit(on ? 'real_on' : 'real_off', true, { via }, req || null, 'REAL');
+    if (on && saved) state.realOn = true;
+    if (on ? saved : was) alert(on ? `🚨 사이트 "실전 주문" 스위치를 켰습니다 — 실전 신규 매수가 가능해집니다.\n${req ? whoText(classify(req)) : '(' + via + ')'}`
+      : `⏸ 사이트 "실전 주문" 스위치를 껐습니다 — 실전 신규 매수만 멈춥니다(손절·익절·이월 매도·취소는 계속).\n${req ? whoText(classify(req)) : '(' + via + ')'}${saved ? '' : '\n⚠ 기록 저장 실패 — 서버가 재시작되면 다시 켜질 수 있어요. 켜져 있나 확인하세요(Render 환경변수 REAL_TRADING_ENABLED=0 으로도 막을 수 있어요).'}`);
+    return { saved };
+  }
   async function securitySummary(hours = 24) {
     const since = new Date(now() - hours * 3600e3).toISOString(), q = encodeURIComponent(since);
     const rows = await deps.sbGet(`trade_audit?select=ts,event,ok,mode,ip,detail&ts=gte.${q}&order=ts.asc&limit=2000`);
@@ -939,6 +981,7 @@ function createTrade(deps = {}) {
   const ENG = () => [['paper', paper], ['dry', dry], ['live', live]].filter(([, e]) => e);
   const dryInUse = () => { try { return !!(dry && autoRef && autoRef.kindsInUse && autoRef.kindsInUse().includes('dry')); } catch (_) { return !!dry; } };
   return { handle, attachAuto, attachRecon, paper, dry, live, getQuote, adminStatus, adminLock, adminDecide, adminKill, securitySummary,
+    realOrdersOn: () => !!(cfg.enabled && cfg.realEnabled && state.realOn), setRealOn, reloadReal,   // 사이트 "실전 주문" 스위치(자동매매가 실전 전략 매수를 건너뛸 때도 봄)
     // 체결 틱 깨우기(2026-11-13): 엔진별 감시선 · 깨우기(판정은 엔진이 REST 시세로)
     watchLines: code => ENG().filter(([, e]) => e.watchLines).map(([k, e]) => { try { return [k, e.watchLines(code)]; } catch (_) { return [k, null]; } }).filter(([, L]) => L),
     kick: (eng, code) => { const e = eng === 'live' ? live : eng === 'dry' ? dry : paper; return e && e.kick ? e.kick(code) : Promise.resolve(false); },

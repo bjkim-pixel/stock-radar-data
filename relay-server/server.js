@@ -2701,7 +2701,7 @@ function telegramHelpText() {
       '/알림끄기 — 신고가·신저가·손절·목표가 알림 일시정지 (오늘의 종목 요약은 계속 발송)\n' +
       '/알림켜기 — 알림 다시 켜기\n' +
       '/status — 매매 상태(스위치·정지·세션)\n/lock — 열린 거래 세션 모두 종료\n/kill — 긴급 정지(신규 매수 차단)\n/승인 코드 · /거부 코드 — 거래 세션 열기 요청(새 기기·실전) 승인/거부\n' +
-      '/자동켜기 · /자동끄기 · /자동상태 — 자동매매(평일 10:05 선정 · 10:15 후보 알림)\n/매수정지 — 자동매매 신규 매수만 정지 · /자동정지 — 자동매매 전체 정지(손절·익절 감시는 계속) · /자동재개 — 풀기 · /대사 — 일일 대사 지금 실행 · /대사해제 — 대사 불일치로 막힌 전략 풀기 · /정지 — 긴급 정지(직접 매수 포함)\n/매수 1 3 · /매수 전체 · /패스 — 후보 승인(10:30까지, 가상매매로 매수)\n/자동후보 — 후보 다시 고르기(승인 전만)\n/정리 1 · /정리 전체 · /유지 — 15:10 종가 판정 답장(15:18까지)\n' +
+      '/자동켜기 · /자동끄기 · /자동상태 — 자동매매(평일 10:05 선정 · 10:15 후보 알림)\n/매수정지 — 자동매매 신규 매수만 정지 · /자동정지 — 자동매매 전체 정지(손절·익절 감시는 계속) · /자동재개 — 풀기 · /대사 — 일일 대사 지금 실행 · /대사해제 — 대사 불일치로 막힌 전략 풀기 · /정지 — 긴급 정지(직접 매수 포함) · /실전정지 — 사이트 "실전 주문" 스위치 끄기(실전 신규 매수만 멈춤, 손절·익절·이월 매도는 계속)\n/매수 1 3 · /매수 전체 · /패스 — 후보 승인(10:30까지, 가상매매로 매수)\n/자동후보 — 후보 다시 고르기(승인 전만)\n/정리 1 · /정리 전체 · /유지 — 15:10 종가 판정 답장(15:18까지)\n' +
       '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
       `보유 종목의 당일 신고가·신저가 갱신(직전 알림 대비 ${ALERT_MIN_MOVE_PCT}% 이상 갱신 시), 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.`;
 }
@@ -2716,6 +2716,12 @@ async function handleTelegramCommand(chatId, text) {
     if (c === 'lock' || c === '잠금') { const n = await trade.adminLock('telegram'); await sendTelegramTo(chatId, `🔒 열려 있던 거래 세션 ${n}개를 모두 종료했어요. (PIN을 다시 입력해야 해요)`); return; }
     const saved = await trade.adminKill('telegram');
     await sendTelegramTo(chatId, '🛑 긴급 정지: 신규 매수를 막았어요. (보유 종목 매도·취소는 가능)' + (saved ? '' : '\n⚠ 기록 저장 실패 — 서버가 재시작되면 풀릴 수 있어요. Render에서 TRADING_ENABLED=0 으로 막으세요.'));
+    return;
+  }
+  if (/^\/?(?:실전정지|실전끄기)(?:@\w+)?\s*$/.test(text)) {   // 사이트 "실전 주문" 스위치 끄기(실전 신규 매수만 멈춤 — 손절·익절·이월 매도는 계속). 켜기는 사이트에서 PIN 으로만
+    if (!TELEGRAM_CHAT_ID || String(chatId) !== String(TELEGRAM_CHAT_ID)) return;
+    try { const r = await trade.setRealOn(false, null, 'telegram'); if (!r.saved) await sendTelegramTo(chatId, '⚠ 꺼졌지만 기록 저장에 실패했어요. 서버가 재시작되면 다시 켜질 수 있으니 확인하세요.'); }
+    catch (e) { await sendTelegramTo(chatId, '실패: ' + e.message); }
     return;
   }
   if (/^\/?(?:매수|buy|패스|pass|skip)(?:@\w+)?(?:\s|$)/i.test(text)) {   // 자동매매 후보 승인(1단계: 기록만)
@@ -3846,6 +3852,7 @@ const autoTrade = require('./auto').createAuto({
   live: trade.live,                                       // 실전매매 엔진(전략의 실행 모드가 실전·드라이런일 때 씀 — 2단계)
   liveReady: () => (!trade.live ? { ok: false, why: '실전 계좌(KIS_ACCOUNT_NO)가 설정되지 않았습니다' } : !trade.cfg.enabled ? { ok: false, why: '매매 스위치(TRADING_ENABLED)가 꺼져 있습니다' }
     : !trade.cfg.realEnabled ? { ok: false, why: '실전 스위치(REAL_TRADING_ENABLED)가 꺼져 있습니다' } : { ok: true }),
+  realOrdersOn: () => trade.realOrdersOn(),                // 사이트 "실전 주문" 스위치(꺼져 있으면 실전 전략 신규 매수를 건너뜀)
   reconBlock: sid => recon.blockedFor(sid),                // 일일 대사 불일치로 막힌 실전 전략(3단계)
   liveLimits: () => trade.cfg.limits.REAL,                // 실전 오작동 상한(1회·1일·종목 수) — 금액 자동 조정의 상한
   getQuote: code => _kisPrio.run(1, () => trade.getQuote(code, true)),

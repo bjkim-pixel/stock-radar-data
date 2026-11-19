@@ -178,6 +178,9 @@ test('guard: TRADING_ENABLED 꺼짐/실전 스위치/시간대', async () => {
   assert.equal(c.t.guard('buy', 'VIRTUAL').ok, true); await c.close();
   c = await boot({ REAL_TRADING_ENABLED: '1', TRADE_HOURS: '09:00-15:30' });
   clock = Date.UTC(2027, 0, 5, 0, 30);   // KST 09:30
+  assert.equal(c.t.guard('buy', 'REAL').error, 'real orders switched off (site switch)');   // 사이트 "실전 주문" 스위치 기본 꺼짐: 신규 매수만 거부
+  assert.equal(c.t.guard('sell', 'REAL').ok, true); assert.equal(c.t.guard('cancel', 'REAL').ok, true);
+  assert.equal((await c.t.setRealOn(true, null, 'test')).saved, true);
   assert.equal(c.t.guard('buy', 'REAL').ok, true);
   clock = Date.UTC(2027, 0, 5, 12, 0);   // KST 21:00
   assert.equal(c.t.guard('buy', 'REAL').error, 'outside trading hours');

@@ -13,13 +13,14 @@ function fakeDb() {
     stocks: new Map([['005930', { code: '005930', nxt_ok: false, security_type: 'STOCK' }], ['000660', { code: '000660', nxt_ok: true, security_type: 'STOCK' }]]) };
   const pk = { paper_orders: 'id', paper_fills: 'id', paper_positions: 'code', live_orders: 'id', live_fills: 'id', live_plans: 'code', dry_orders: 'id', dry_fills: 'id', dry_positions: 'code' };
   let snapId = 0, fail = null;
-  return {
-    t, setFail: f => { fail = f; },
+  let auditSeq = 0;
+  const self = {
+    t, clockFn: null, setFail: f => { fail = f; },
     sbGet: async path => {
       if (fail && fail.get) throw new Error(fail.get);
       const [tbl, qs = ''] = path.split('?'); const p = new URLSearchParams(qs);
       if (fail && fail.missing && tbl.startsWith(fail.missing)) throw new Error(`PGRST205 relation "${tbl}" does not exist`);   // 테이블이 아직 없는 상황(DB 설정 전)
-      if (tbl === 'trade_audit') return /event=in\.\(kill,resume\)/.test(path) ? t.trade_audit.filter(r => r.event === 'kill' || r.event === 'resume').sort((a, b) => String(b.ts).localeCompare(String(a.ts))).slice(0, 1) : [];
+      if (tbl === 'trade_audit') { const m = /event=in\.\(([a-z_,]+)\)/.exec(path); if (!m) return []; const set = m[1].split(','); if (!set.every(e => ['kill', 'resume', 'real_on', 'real_off'].includes(e))) return []; return t.trade_audit.filter(r => set.includes(r.event)).sort((a, b) => String(b.ts).localeCompare(String(a.ts))).slice(0, 1); }
       if (tbl === 'stocks') { const c = (p.get('code') || '').replace('eq.', ''); return t.stocks.has(c) ? [{ ...t.stocks.get(c) }] : []; }
       let rows = tbl === 'paper_book_snaps' ? t.paper_book_snaps : tbl === 'live_events' ? t.live_events : tbl === 'dry_events' ? t.dry_events : [...t[tbl].values()];
       const st = p.get('status'); if (st) { const set = st.replace(/^in\.\(|\)$/g, '').split(','); rows = rows.filter(r => set.includes(r.status)); }
@@ -40,7 +41,7 @@ function fakeDb() {
         return;
       }
       for (const r of rows) {
-        if (tbl === 'trade_audit') t.trade_audit.push(r);
+        if (tbl === 'trade_audit') t.trade_audit.push({ ...r, ts: r.ts || new Date((self.clockFn ? self.clockFn() : Date.now()) + (++auditSeq)).toISOString() });   // DB 의 now() 기본값 흉내(순서 유지용 +1ms)
         else if (tbl === 'paper_book_snaps') t.paper_book_snaps.push({ id: ++snapId, ...r });
         else if (tbl === 'paper_events') t.paper_events.push(r);
         else if (tbl === 'live_events') t.live_events.push(r);
@@ -49,9 +50,10 @@ function fakeDb() {
       }
     },
   };
+  return self;
 }
 
-async function boot(db, { envExtra = {}, clock: c0 = T0, kx = null, extraDeps = {} } = {}) {
+async function boot(db, { envExtra = {}, clock: c0 = T0, kx = null, extraDeps = {}, realOn } = {}) {
   const st = { clock: c0, price: 10000, vol: 100000, low: 9900, high: 10100, warnings: [], vi: false, hourOverride: null, alerts: [] };
   st.asks = [[10010, 100], [10020, 200], [10030, 300], [10040, 400], [10050, 500], [10060, 100], [10070, 100], [10080, 100], [10090, 100], [10100, 100]];
   st.bids = [[10000, 500], [9990, 400], [9980, 300], [9970, 200], [9960, 100], [9950, 100], [9940, 100], [9930, 100], [9920, 100], [9910, 100]];
@@ -75,6 +77,7 @@ async function boot(db, { envExtra = {}, clock: c0 = T0, kx = null, extraDeps = 
   const env = { ALLOWED_EMAIL: 'owner@example.com', SUPABASE_ANON_KEY: 'anon', TRADE_PIN_HASH: pinHash, TRADING_ENABLED: '1', TRADE_HOURS: '08:00-20:00', TRADE_APPROVAL: '0', TRADE_MAX_SESSIONS: '3', ...envExtra };
   const fakeFetch = async url => String(url).includes('/auth/v1/user')
     ? { ok: true, status: 200, json: async () => ({ id: 'uid-1', email: 'owner@example.com' }) } : { ok: true, status: 200 };
+  if ('clockFn' in db) db.clockFn = () => st.clock;
   const t = createTrade({ env, now: () => st.clock, fetch: fakeFetch, allowedOrigins: [ORIGIN], clientIp: () => '1.1.1.1', sbGet: db.sbGet, sbWrite: db.sbWrite, kisGet, kisPost: kx ? kx.post : undefined, skipLoop: true, notify: async (text) => { st.alerts.push(text); }, ...extraDeps });
   const server = http.createServer((req, res) => { if (!t.handle(req, res)) { res.writeHead(404); res.end(); } });
   await new Promise(r => server.listen(0, r));
@@ -87,6 +90,7 @@ async function boot(db, { envExtra = {}, clock: c0 = T0, kx = null, extraDeps = 
     return { status: r.status, body: await r.json().catch(() => null) };
   };
   await t.ready();
+  if (env.REAL_TRADING_ENABLED === '1' && realOn !== false) await t.setRealOn(true, null, 'test');   // 기존 실전 시나리오는 사이트 "실전 주문" 스위치가 켜진 상태에서 시험(꺼진 상태는 realOn:false)
   const login = async () => { const r = await call('POST', '/trade/session', { body: { pin: '123456' } }); sess = r.body.session; return sess; };
   const order = (b) => call('POST', '/trade/paper/order', { body: b });
   if (kx) kx.st = st;

@@ -14,11 +14,11 @@ const { fakeDb, boot, fakeKis } = require('./paper-harness');
 const MIN = 60e3;
 const D0 = ST.defaults('intraday');
 
-async function rig({ realOn = true, pParams = {}, rParams = {}, missingDry = false, withRunEngine = true, live = false } = {}) {
+async function rig({ realOn = true, pParams = {}, rParams = {}, missingDry = false, withRunEngine = true, live = false, siteSwitch = true } = {}) {
   const db = fakeDb();
   if (missingDry) db.setFail({ missing: 'dry_' });
   const kx = live ? fakeKis() : null;
-  const c = await boot(db, live ? { envExtra: { REAL_TRADING_ENABLED: '1', KIS_ACCOUNT_NO: '12345678-01' }, kx } : {});
+  const c = await boot(db, live ? { envExtra: { REAL_TRADING_ENABLED: '1', KIS_ACCOUNT_NO: '12345678-01' }, kx, realOn: siteSwitch } : {});
   const runs = {}, cfg = { main: { on: true, liveOn: realOn, perStockKrw: 1000000 } }, sent = [], journal = {}, versions = [];
   const strat = [
     { id: 'intraday-default', name: '기본', kind: 'intraday', builtin: true, enabled: false, archived: false, version: 1, params: D0 },
@@ -63,7 +63,7 @@ async function rig({ realOn = true, pParams = {}, rParams = {}, missingDry = fal
   const A = createAuto({
     sbGet, sbWrite, sendTelegram: async t => sent.push(t), kstNow: kst, isTradingDay: () => true, now: () => c.st.clock,
     prevTradingDay: d => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() - 1); return x.toISOString().slice(0, 10); },
-    paper: c.t.paper, dry: c.t.dry, ...(live ? { live: c.t.live, liveReady: () => ({ ok: true }) } : {}), liveLimits: () => c.t.cfg.limits.REAL, getQuote: code => c.t.getQuote(code, true), loadChart: async () => rows,
+    paper: c.t.paper, dry: c.t.dry, ...(live ? { live: c.t.live, liveReady: () => ({ ok: true }), realOrdersOn: () => c.t.realOrdersOn() } : {}), liveLimits: () => c.t.cfg.limits.REAL, getQuote: code => c.t.getQuote(code, true), loadChart: async () => rows,
     livePool: async () => [], fetchFlow: async () => ({}), fetchPower: async () => ({}), fetchCttr: async () => ({}), marketState: async () => null, marketIdx: async () => ({ 코스피: 0.2, 코스닥: 0.1 }),
   });
   const { date } = kst();
@@ -352,5 +352,36 @@ test('실전 모드: 가상 원본과 실전 복제가 같은 종목을 각자 �
   assert.equal(k.journal[`${k.date}|intraday-p`].payload.positions[0].qty, 100);
   const cmp = await k.A.journalCompare({ sid: 'intraday-r', src: 'intraday-p', engine: 'live' });
   assert.equal(cmp.totals.both, 1);
+  await k.c.close();
+});
+
+test('사이트 "실전 주문" 스위치가 꺼져 있으면: 실전 모드 전략은 매수를 건너뜀(KIS 로 안 나감) · 드라이런·가상은 영향 없음 · 켜면 매수', async () => {
+  const k = await rig({ live: true, rParams: { execMode: 'live' }, siteSwitch: false });
+  k.seed('intraday-p', 'A', 'paper'); k.seed('intraday-r', 'B', 'live');
+  k.at(10, 16);
+  await k.A.handleApproval('/매수 A1');
+  assert.equal(k.db.t.paper_orders.size, 1, '가상은 그대로');
+  const msg = await k.A.handleApproval('/매수 B1');
+  assert.equal(k.kx.posts.filter(x => x.tr === 'TTTC0012U').length, 0, msg);
+  assert.equal(k.db.t.live_orders.size, 0);
+  const st = k.run('intraday-r').payload.orders && k.run('intraday-r').payload.orders['005930'];
+  assert.ok(!st || st.st !== 'filled', '실전 주문 기록이 체결로 남지 않음');
+  assert.equal((await k.A.uiState(null, 'real')).engines.realOrders, false);
+  await k.c.t.setRealOn(true, null, 'test');
+  assert.equal((await k.A.uiState(null, 'real')).engines.realOrders, true);
+  await k.c.close();
+});
+
+test('손절·익절 같은 매도는 스위치가 꺼져도 실전에서 계속 나감(guard 가 매수만 막음)', async () => {
+  const k = await rig({ live: true, rParams: { execMode: 'live' } });
+  const buy = await k.c.t.live.place({ code: '005930', name: '삼성전자', side: 'buy', type: 'limit', price: 10000, qty: 2 });
+  assert.equal(buy.ok, true, JSON.stringify(buy));
+  k.kx.fill([...k.kx.orders.values()].slice(-1)[0].odno, 2, 10000);
+  for (let i = 0; i < 3; i++) { k.c.st.clock += 31000; await k.c.t.live.tick(); }
+  await k.c.t.setRealOn(false, null, 'test');
+  const buy2 = await k.c.t.live.place({ code: '000660', name: 'SK하이닉스', side: 'buy', type: 'limit', price: 10000, qty: 1 });
+  assert.equal(buy2.ok, false); assert.match(buy2.error, /switched off/);
+  const sell = await k.c.t.live.place({ code: '005930', name: '삼성전자', side: 'sell', type: 'limit', price: 10000, qty: 2 });
+  assert.equal(sell.ok, true, JSON.stringify(sell));
   await k.c.close();
 });

@@ -477,7 +477,11 @@ function createAuto(deps) {
   /* 3단계: 일일 대사 불일치로 막힌 실전 전략은 신규 매수만 멈춤(손절·익절·정리는 계속) */
   async function haltReasonFor(sid) {
     const h = await haltReason(); if (h) return h;
-    if (D.reconBlock && BR.execOf(sid) === 'live') return (await D.reconBlock(sid).catch(() => null)) || null;
+    if (BR.execOf(sid) === 'live') {
+      /* 사이트 "실전 주문" 스위치가 꺼져 있으면 실전 전략은 신규 매수를 건너뜀(손절·익절·정리는 계속). 드라이런은 가상 장부라 영향 없음 */
+      if (D.realOrdersOn && !D.realOrdersOn()) return '사이트 "실전 주문" 스위치가 꺼져 있어 실전 신규 매수를 건너뛰어요(실전 탭에서 켜기)';
+      if (D.reconBlock) return (await D.reconBlock(sid).catch(() => null)) || null;
+    }
     return null;
   }
   async function setHalt(level, via) {
@@ -1342,7 +1346,7 @@ function createAuto(deps) {
     return {
       ok: true, now: Date.now(), date, side, tradingDay: isTradingDay(date),
       cfg: { on: !!cv.on, liveOn: !!cv.liveOn, perStockKrw: await perStock() }, limits: { min: UI.PER_MIN, max: UI.PER_MAX, step: UI.PER_STEP },
-      engines: { dry: BR.engines.dry ? (BR.engines.dry.health ? { missing: !!BR.engines.dry.health().missing } : {}) : null, live: !!BR.engines.live, liveReady: D.liveReady ? D.liveReady() : null },
+      engines: { dry: BR.engines.dry ? (BR.engines.dry.health ? { missing: !!BR.engines.dry.health().missing } : {}) : null, live: !!BR.engines.live, liveReady: D.liveReady ? D.liveReady() : null, realOrders: D.realOrdersOn ? !!D.realOrdersOn() : null },
       today: todays[0] || null, todays, quotes, active: Is.map(i => i.id), modes: Object.fromEntries(Is.map(i => [i.id, BR.execOf(i.id)])), halt: await haltLevel().catch(() => null), regime, exposure, events, positions, trades, dayTot, carry: ci, carryDone: cd, history: hist.rows, totals: hist.totals, holdCmp, lastErr: state.lastErr || null,
     };
   }
