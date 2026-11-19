@@ -7400,7 +7400,10 @@ function detWtTop(rows,start,end,n=2){
     c.push([w,i]);
   });
   c.sort((a,b)=>b[0]-a[0]);
-  return c.slice(0,n).map(([w,i],k)=>{
+  /* 2026-11-19: 2위는 1위일 '이후' 날짜 중 가장 큰 날(1위일 앞쪽은 제외). 이후 날짜에 양수가 없으면 2위 없음 */
+  const pick=[];
+  if(c.length){pick.push(c[0]);if(n>1){const nx=c.find(x=>x[1]>c[0][1]);if(nx)pick.push(nx);}}
+  return pick.slice(0,n).map(([w,i],k)=>{
     const r=rows[i],ta=+r.trade_amount,vol=+r.volume,ok=ta>0&&vol>0,net=detDayNet(rows,i);
     const subj=net?Object.keys(net).map(nm=>{
       const a=net[nm],sh=ok?a*vol/ta:null;
@@ -7653,7 +7656,7 @@ function renderWtTop(rows,start,end){
     return `<div style="margin-top:12px"><div style="font-size:13px"><b>${x.rank}위 ${x.d}</b> · 무게 <b>${pm(x.w,2)}%</b> · 종가 ${px(x.close)} · 당일 거래대금 <b>${x.amt==null?"–":N(x.amt/EOK,0)+"억"}</b>${fi&&fi.net>0&&x.vwap?` · 세력(외+기) 평단 <b>${px(x.vwap)}</b> ${gap}`:""}</div>
       <div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">주체</th><th>순매수대금</th><th title="순매수대금 ÷ 그날 거래대금">거래대금 비중</th><th title="순매수대금 × 거래량 ÷ 거래대금 (추정)">순매수 주식수(추정)</th><th title="순매수대금 ÷ 순매수 주식수">평균 매수단가</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
   };
-  host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>무게/주식수 1·2위일 분석</b> — 선택 기간(${start}~${end}) 안에서 무게/주식수가 가장 큰 날과 두 번째로 큰 날</div>`+top.map(blk).join("")
+  host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>무게/주식수 1·2위일 분석</b> — 선택 기간(${start}~${end}) 안에서 무게/주식수가 가장 큰 날과, 그 날 이후 가장 큰 날</div>`+top.map(blk).join("")
     +`<div class="note">순매수 주식수는 일봉으로만 추정합니다(순매수대금 × 거래량 ÷ 거래대금). 투자자별 실제 체결 수량은 수집하지 않아 <b>평균 매수단가(= 순매수대금 ÷ 순매수 주식수)가 그날의 거래대금 ÷ 거래량(일 평균가)으로 모든 주체에서 같게</b> 나옵니다. 주체마다 다른 진짜 평단이 아니라 "그 큰 순매수가 들어온 날의 평균 가격대"로 보세요. 순매도 주체는 평균단가를 표시하지 않습니다.</div>`;
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
