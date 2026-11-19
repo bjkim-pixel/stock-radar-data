@@ -1,7 +1,7 @@
 -- 스마트머니 매집·이탈 진단(종목상세 카드와 같은 계산)을 종목·기간별로 저장 — 종목후보/종목상세 필터용
 create table if not exists public.smx_state (
   code       text not null,
-  win        text not null,          -- '63'(3개월) | '126'(6개월) | 'all'(전체)
+  win        text not null,          -- '21'(1개월) | '63'(3개월) | '126'(6개월) | 'all'(전체)
   as_of      date,
   st         text not null,          -- CONT 매집 지속 | STALL 고점 후 정체 | LEAVE 이탈 진행 | HEAVY 이탈 심화 | OUT 기간 내 순유출 | NONE 매집 이력 없음
   build_eok  numeric,                -- 매집 구간 외+기 순매수(억)

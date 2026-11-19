@@ -62,7 +62,7 @@ test('메시지: 후보 없음·쉬는 날·후보 목록', () => {
 /* ── 흐름 테스트(가짜 DB·시세·텔레그램) ── */
 function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null, kw = {} } = {}) {
   const db = { auto_runs: {}, auto_config: { main: { on, perStockKrw: 1000000 } } };
-  const sent = [];
+  const sent = [], smxQ = [];
   let pool = ['A', 'B', 'C', 'D'];
   let flowFn = () => ({ fq: 1000, oq: 800 });
   let clock = { date: '2026-11-16', min };
@@ -73,6 +73,7 @@ function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null, 
       if (path.startsWith('auto_runs')) { const d = (path.match(/trade_date=eq\.([\d-]+)/) || [])[1]; return db.auto_runs[d] ? [db.auto_runs[d]] : []; }
       if (path.startsWith('v_screener?select=trade_date')) return [{ trade_date: '2026-11-13' }];
       if (path.startsWith('v_screener')) return path.includes('offset=0') ? Object.entries(scr).map(([code, v]) => ({ code, ...v })) : [];
+      if (path.startsWith('smx_state')) smxQ.push(path);
       if (path.startsWith('smx_state')) return path.includes('offset=0') ? Object.entries(smx).filter(([, v]) => v === 'CONT' || v === 'STALL').map(([code, st]) => ({ code, st })) : [];
       if (path.startsWith('positions')) return [];
       if (path.startsWith('v_kiwoom_accounts')) return path.includes('offset=0') ? Object.entries(kw).map(([code, snaps]) => ({ code, snaps })) : [];
@@ -86,7 +87,7 @@ function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null, 
     marketState: async () => null,
   };
   if (params) { const ST = require('../auto-strategy'), P = { ...ST.defaults('intraday'), ...params }, C = ST.defaults('closing'); deps.strategies = { pair: async () => ({ I: { id: 'intraday-default', name: '기본', version: 1, enabled: true, params: P }, C: { id: 'closing-default', version: 1, enabled: true, params: C }, T: ST.timesOf(P, C) }) }; }
-  return { A: A.createAuto(deps), db, sent, setFlow: f => { flowFn = f; }, setPool: p => { pool = p; }, setMin: m => { clock = { date: clock.date, min: m }; } };
+  return { A: A.createAuto(deps), db, sent, smxQ, setFlow: f => { flowFn = f; }, setPool: p => { pool = p; }, setMin: m => { clock = { date: clock.date, min: m }; } };
 }
 
 test('10:05 선정 → 기록, 10:15 알림 1회, 재호출은 중복 발송 없음', async () => {
@@ -402,4 +403,28 @@ test('개인 계좌수: 후보가 전부 상한 이상이면 자동 승인 없�
   await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick(); await h.A.tick();
   assert.ok(!(h.db.auto_runs['2026-11-16'].payload.approved || []).length);
   assert.equal(h.db.auto_runs['2026-11-16'].status, 'noticed');
+});
+
+test('전략의 스마트머니 진단 기간: 기본 6개월(126), 1개월·3개월·전체 선택, 후보 사유에 기간 표시', async () => {
+  const win = q => (q[0].match(/win=eq\.(\w+)/) || [])[1];
+  const h = harness(); await h.A.tick();
+  assert.equal(win(h.smxQ), '126');                                                    // 기본 전략 = 6개월 (예전 '전체'에서 변경)
+  const h2 = harness({ params: { smxWin: '21' } }); await h2.A.tick();
+  assert.equal(win(h2.smxQ), '21');
+  const h3 = harness({ params: { smxWin: 'all' } }); await h3.A.tick();
+  assert.equal(win(h3.smxQ), 'all');
+  const h4 = harness({ params: { smxWin: 'zzz' } }); await h4.A.tick();                 // 이상한 값 → 6개월
+  assert.equal(win(h4.smxQ), '126');
+  const p = h.db.auto_runs['2026-11-16'].payload.picks[0];
+  assert.ok(p.reasons.some(r => /매집 (지속|고점 후 정체)\(6개월\)/.test(r)), p.reasons.join('|'));
+  assert.ok(h2.db.auto_runs['2026-11-16'].payload.picks[0].reasons.some(r => /\(1개월\)/.test(r)));
+});
+test('스마트머니 진단 기간 설정: 저장 전략에 없으면 6개월로 채움, 선택지 밖은 거부, 가상·실전 같은 스키마', () => {
+  const ST = require('../auto-strategy');
+  assert.equal(ST.defaults('intraday').smxWin, '126');
+  assert.equal(ST.validate('intraday', { smx: 'cont' }).val.smxWin, '126');             // 예전에 저장된 전략(항목 없음) → 6개월
+  for (const w of ['21', '63', '126', 'all']) assert.equal(ST.validate('intraday', { smxWin: w }).val.smxWin, w);
+  assert.ok(ST.validate('intraday', { smxWin: '30' }).errs);
+  assert.equal(ST.validate('intraday', { execMode: 'live', smxWin: '63' }).val.smxWin, '63');   // 실전 전략도 같은 설정
+  assert.ok(ST.publicSchema().fields.intraday.some(f => f.key === 'smxWin'));
 });

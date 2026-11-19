@@ -3,7 +3,7 @@
 계산은 web/index.html smxModel()과 동일: 외국인+기관합계 일별 순매수 누적(기간 첫날=0)의 고점·직전 저점으로 매집분/회수율/상태 판정."""
 import os,datetime as dt,collections,psycopg2
 from psycopg2.extras import execute_values
-EOK=1e8; WINS=[("63",63),("126",126),("all",None)]
+EOK=1e8; WINS=[("21",21),("63",63),("126",126),("all",None)]   # 1개월·3개월·6개월·전체 (2026-11-19: 1개월 추가)
 conn=psycopg2.connect(os.environ["SUPABASE_DB_URL"]); conn.autocommit=True; cur=conn.cursor()
 cur.execute(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),"135_smx_state.sql"),encoding="utf-8").read())
 cur.execute("""select p.code,p.trade_date,coalesce(f.foreign_net,0)+coalesce(f.inst_net,0),

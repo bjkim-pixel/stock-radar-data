@@ -11,6 +11,7 @@ const hhmm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
 const ENUM = {
   flow: { req: '필수', bonus: '가점만', ignore: '무시' },
   smx: { cont_stall: '매집 지속·정체', cont: '매집 지속만', off: '보지 않음' },
+  smxWin: { '21': '1개월', '63': '3개월', '126': '6개월', all: '전체' },   // 2026-11-19: 매집 진단을 보는 기간(smx_state.win) — 기본 6개월
   buyPick: { q1: '잔량 최다 매수 호가', bid1: '최우선 매수 호가', low: '가장 낮은 매수 호가' },
   eodWeak: { ask: '알림 후 승인 시에만 정리', keep: '묻지 않고 유지' },
   approval: { manual: '텔레그램 승인 필수', auto: '알림 후 자동 매수' },
@@ -37,6 +38,7 @@ const SCHEMA = {
     F('capMinEok', '대상', '시가총액 하한', 'num', 10000, { min: 1000, max: 100000, step: 1000, unit: '억원' }),
     F('maTrend', '대상', '종가 > 60일선 > 120일선', 'bool', true),
     F('smx', '대상', '스마트머니 상태', 'enum', 'cont_stall', { opts: ENUM.smx }),
+    F('smxWin', '대상', '스마트머니 진단 기간(위 상태를 볼 기간)', 'enum', '126', { opts: ENUM.smxWin }),
     F('flowForeign', '매수 조건', '외국인 순매수', 'enum', 'req', { opts: ENUM.flow }),
     F('flowInst', '매수 조건', '기관 순매수', 'enum', 'req', { opts: ENUM.flow }),
     F('flowProgram', '매수 조건', '프로그램 순매수', 'enum', 'req', { opts: ENUM.flow }),

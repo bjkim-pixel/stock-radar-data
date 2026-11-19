@@ -156,7 +156,7 @@ function reasonsFor(c, P = DEFP) {
   const allReq = P.flowForeign === 'req' && P.flowInst === 'req' && P.flowProgram === 'req';
   const pos = [['외', c.m.fAmt], ['기', c.m.oAmt], ['프', c.m.pAmt]].filter(([, v]) => v > 0).map(([k]) => k);
   const r = [allReq ? `수급 외·기·프 동시` : pos.length ? `순매수 ${pos.join('·')}` : '수급 조건 없음'];
-  if (c.smx) r.push(`매집 ${c.smx === 'CONT' ? '지속' : '고점 후 정체'}`);
+  if (c.smx) r.push(`매집 ${c.smx === 'CONT' ? '지속' : '고점 후 정체'}(${(ST.ENUM.smxWin[P.smxWin] || ST.ENUM.smxWin['126'])})`);
   if (c.m.cttr >= 120) r.push(`체결강도 강함`);
   if (c.kw8 != null) r.push(c.kwHigh ? `⚠ 개인 계좌 ${Math.round(c.kw8 * 100)}% (8월 대비) — 승인해야 매수` : `개인 계좌 ${Math.round(c.kw8 * 100)}% (8월 대비)`);
   return r;
@@ -275,10 +275,12 @@ function createAuto(deps) {
     }
     return { date, map };
   }
-  async function loadSmx() {
+  /* 매집·이탈 진단(smx_state)을 전략이 고른 기간(1개월 '21' · 3개월 '63' · 6개월 '126' · 전체 'all')으로 읽는다. 값이 없거나 이상하면 6개월 */
+  const smxWinOf = P => (P && ST.ENUM && ST.ENUM.smxWin && ST.ENUM.smxWin[P.smxWin] ? String(P.smxWin) : '126');
+  async function loadSmx(win = '126') {
     const map = {};
     for (let off = 0; off < 20000; off += 1000) {
-      const part = await D.sbGet(`smx_state?select=code,st&win=eq.all&st=in.(CONT,STALL)&order=code.asc&limit=1000&offset=${off}`);
+      const part = await D.sbGet(`smx_state?select=code,st&win=eq.${win}&st=in.(CONT,STALL)&order=code.asc&limit=1000&offset=${off}`);
       part.forEach(r => { map[r.code] = r.st; });
       if (part.length < 1000) break;
     }
@@ -329,7 +331,7 @@ function createAuto(deps) {
   /* X(종가베팅 저녁 선정 전용): { nxtOnly, skip:Set(이미 후보·주문한 종목), closeHigh:{maxPct, from, max} } — 종가가 당일 고가에서 maxPct 이내만, from% 넘게 내렸으면 점수 감점 */
   async function select(P = DEFP, X = null, sid = null) {
     const useKw = !X && P.kwOn !== false && P.weights !== undefined;   // 장중 전략만(종가베팅 저녁 선정은 해당 없음)
-    const [scr, smx, held, pool, kwMap] = await Promise.all([loadScreener(P), loadSmx(), loadHeld(sid || (X && X.sid) || null), D.livePool(P.capMinEok), useKw ? loadKw().catch(() => ({})) : {}]);
+    const [scr, smx, held, pool, kwMap] = await Promise.all([loadScreener(P), loadSmx(smxWinOf(P)), loadHeld(sid || (X && X.sid) || null), D.livePool(P.capMinEok), useKw ? loadKw().catch(() => ({})) : {}]);
     let base = baseFilter(pool, scr.map, smx, held, P).sort((a, b) => b.changePct - a.changePct);
     if (X && X.skip) base = base.filter(c => !X.skip.has(c.code));
     if (useKw) { const lim = (+P.kwMax || 100) / 100; base.forEach(c => { const r = kwMap[c.code]; if (r != null) { c.kw8 = r; c.kwHigh = r >= lim; } }); }   // 8월 대비 개인 계좌수 — 상한 이상이면 탈락이 아니라 '승인 필요' 후보

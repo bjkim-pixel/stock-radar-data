@@ -1658,7 +1658,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <div class="field"><label>스마트머니 진단 (외+기)</label>
         <select id="fSmx" title="종목상세 '스마트머니 매집·이탈 진단' 카드와 같은 판정 — 매 평일 20:50 갱신"><option value="">사용 안 함</option><option value="CONT,STALL">매집 전체 (지속+고점 후 정체)</option><option value="CONT">└ 매집 지속 (고점이 최근 5일 이내)</option><option value="STALL">└ 고점 후 정체</option><option value="LEAVE,HEAVY,OUT">이탈 전체 (진행+심화+순유출)</option><option value="LEAVE">└ 이탈 진행</option><option value="HEAVY">└ 이탈 심화 (매집분 50%↑ 회수)</option><option value="OUT">└ 기간 내 순유출</option></select></div>
       <div class="field"><label>진단 기간</label>
-        <select id="fSmxW"><option value="63">3개월</option><option value="126">6개월</option><option value="all" selected>전체</option></select></div>
+        <select id="fSmxW"><option value="21">1개월</option><option value="63">3개월</option><option value="126" selected>6개월</option><option value="all">전체</option></select></div>
       <div class="field"><label>배당 기준</label>
         <select id="fDivBasis" title="최근 12개월 = 최근 1년 안에 기준일이 지난 확정 배당 합계 ÷ 현재가 · 올해 예상 = 확정 + 네이버 예상 잔여 ÷ 현재가"><option value="ttm">최근 12개월 (확정)</option><option value="exp">올해 예상</option></select></div>
     </div>
@@ -2006,7 +2006,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
           <option value="order">수주 공시(단일판매·공급계약)</option><option value="capex">증설·시설투자·지분 투자</option><option value="bonus">무상증자·주식분할</option><option value="risk">악재 경고(횡령·거래정지 등)</option></select>
       <select id="dDartP" class="df" style="flex:.6 1 0" title="공시 조회 기간"><option value="3">3일</option><option value="7" selected>7일</option><option value="14">14일</option><option value="30">30일</option></select>
       <select id="dSmxF" class="df" style="flex:1.5 1 0" title="스마트머니 매집·이탈 진단(외국인+기관합계 누적) 상태로 종목 목록 좁히기"><option value="">매집·이탈 진단</option><option value="CONT,STALL">매집 전체 (지속+고점 후 정체)</option><option value="CONT">└ 매집 지속 (고점이 최근 5일 이내)</option><option value="STALL">└ 고점 후 정체</option><option value="LEAVE,HEAVY,OUT">이탈 전체 (진행+심화+순유출)</option><option value="LEAVE">└ 이탈 진행</option><option value="HEAVY">└ 이탈 심화 (매집분 50%↑ 회수)</option><option value="OUT">└ 기간 내 순유출</option></select>
-      <select id="dSmxW" class="df" style="flex:.7 1 0" title="진단 기간"><option value="63">3개월</option><option value="126">6개월</option><option value="all" selected>전체</option></select>
+      <select id="dSmxW" class="df" style="flex:.7 1 0" title="진단 기간"><option value="21">1개월</option><option value="63">3개월</option><option value="126" selected>6개월</option><option value="all">전체</option></select>
     </div>
     <div class="dfrow" style="margin-top:5px">
       <input type="date" id="dStart" class="df dd" title="차트 시작일"><span class="faint dtl">~</span>
@@ -2316,7 +2316,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
                 <p style="color:var(--ink-2,var(--ink))">주의 — 하루 누적이라 장 초반엔 값이 크게 흔들리고, 오후로 갈수록 변화가 느려집니다. 가격 방향을 알려주는 신호가 아니라 체결 흐름의 참고 지표이며, 거래량이 적은 종목은 신뢰도가 낮습니다. 실시간 체결 목록의 빨강 = 매수 체결, 파랑 = 매도 체결입니다.</p>
               </div></details></div>
             <div data-bp="chart" class="hide"><h3 style="margin:0 0 6px">스마트머니 매집·이탈 진단 <span class="r" id="trdSmxSub" style="font-size:11px"></span></h3>
-              <div class="qf seg" id="trdSmxWin" style="margin-bottom:8px"><button class="fchip" data-v="63" aria-pressed="false">3개월</button><button class="fchip" data-v="126" aria-pressed="false">6개월</button><button class="fchip" data-v="all" aria-pressed="true">전체</button></div>
+              <div class="qf seg" id="trdSmxWin" style="margin-bottom:8px"><button class="fchip" data-v="21" aria-pressed="false">1개월</button><button class="fchip" data-v="63" aria-pressed="false">3개월</button><button class="fchip" data-v="126" aria-pressed="true">6개월</button><button class="fchip" data-v="all" aria-pressed="false">전체</button></div>
               <div id="trdSmxStatus" style="margin-bottom:8px"></div>
               <div class="tw tw-scroll" style="margin-bottom:10px"><table class="earn-t" id="trdSmxTable"></table></div>
               <div class="faint" style="font-size:11.5px;margin:4px 0 2px"><b>가격 · 이동평균</b> <span id="trdPriceRange"></span></div>
@@ -3094,7 +3094,7 @@ function lfPass(code,fs){
   if(f.kw){const [k,t]=f.kw.split(":"),v=((S.kwMap||{})[code]||{})[k];if(v==null||v*100>+t)return false;}
   if(f.div){const [k,t]=f.div.split(":"),v=((S.dDivMap||{})[code]||{})[k];if(v==null||v<+t)return false;}
   for(const [k,key] of [["sales","grS"],["op_profit","grO"],["eps","grE"]]){if(f[key]!==""&&f[key]!=null){const v=((S.grMap||{})[code]||{})[k];if(v==null||v<+f[key])return false;}}
-  if(f.smx){const set=new Set(f.smx.split(",")),x=((S.smxMap||{})[code]||{})[f.smxW||"all"];if(!(x&&set.has(x.st)))return false;}
+  if(f.smx){const set=new Set(f.smx.split(",")),x=((S.smxMap||{})[code]||{})[f.smxW||DET_PER_DEF];if(!(x&&set.has(x.st)))return false;}
   if(f.dart){if(!dartCodeSet(f.dart,f.dartP||"7").has(code))return false;}
   return true;
 }
@@ -3133,7 +3133,7 @@ const LF_KEYS=[["sec","dSec"],["ma","dMaF"],["ph","dPh"],["kw","dKwF"],["div","d
 function lfDesc(fs){const out=[];LF_KEYS.forEach(([k,id])=>{const v=fs[k];if(v===""||v==null)return;const sel=document.getElementById(id);if(!sel)return;
   const op=[...sel.options].find(o=>o.value===String(v)),ph=sel.options[0]?sel.options[0].textContent.trim():"";let t=op?op.textContent.trim():String(v);
   if(k==="dart")t+=` · 최근 ${fs.dartP||"7"}일`;
-  if(k==="smx"&&fs.smxW&&fs.smxW!=="all"){const w=document.getElementById("dSmxW"),wo=w&&[...w.options].find(o=>o.value===fs.smxW);t+=` · ${wo?wo.textContent.trim():fs.smxW}`;}
+  if(k==="smx"&&fs.smxW&&fs.smxW!==DET_PER_DEF){const w=document.getElementById("dSmxW"),wo=w&&[...w.options].find(o=>o.value===fs.smxW);t+=` · ${wo?wo.textContent.trim():fs.smxW}`;}
   out.push(ph&&!t.includes(ph)?`${ph}: ${t}`:t);});return out;}
 const lfSelHtml=(arr,empty)=>`<span class="faint" style="font-size:11.5px;align-self:center">선택된 조건</span>`+(arr.length?arr.map(t=>`<span>${escH(t)}</span>`).join(""):`<span class="dim">${empty||"없음"}</span>`);
 function lfBuild(hostId="lfRows",pref="lf_",key="lf",onChg){
@@ -3144,7 +3144,7 @@ function lfBuild(hostId="lfRows",pref="lf_",key="lf",onChg){
     const row=document.createElement("div");row.className="dfrow";if(ri)row.style.marginTop="5px";
     ids.forEach(id=>{
       const src=$("#"+id);if(!src)return;
-      const n=src.cloneNode(true);n.id=pref+id;n.value=(id==="dSmxW")?"all":(id==="dDartP"?"7":"");
+      const n=src.cloneNode(true);n.id=pref+id;n.value=(id==="dSmxW")?DET_PER_DEF:(id==="dDartP"?"7":"");
       const def=LF_DEF.find(x=>x[0]===id);
       n.onchange=async e=>{
         const v=e.target.value;
@@ -3156,7 +3156,7 @@ function lfBuild(hostId="lfRows",pref="lf_",key="lf",onChg){
     host.appendChild(row);
   });
   const b=document.createElement("button");b.className="btn ghost";b.textContent="조건 해제";b.style.cssText="margin-top:6px;min-height:30px;height:30px;font-size:11.5px";
-  b.onclick=()=>{S[key]={smxW:"all",dartP:"7"};host.querySelectorAll("select").forEach(x=>{x.value=x.id===pref+"dSmxW"?"all":x.id===pref+"dDartP"?"7":"";});onChg();};
+  b.onclick=()=>{S[key]={smxW:DET_PER_DEF,dartP:"7"};host.querySelectorAll("select").forEach(x=>{x.value=x.id===pref+"dSmxW"?DET_PER_DEF:x.id===pref+"dDartP"?"7":"";});onChg();};
   host.appendChild(b);
 }
 function lfSyncSectors(bid="lf_dSec"){const a=$("#dSec"),b=$("#"+bid);if(a&&b&&a.options.length>1&&b.options.length<=1){const v=b.value;b.innerHTML=a.innerHTML;b.value=v;}}
@@ -3281,7 +3281,7 @@ function setSangttaLiveCodes(codes){ S.sangttaWanted=new Set(SANGTTA_LIVE_PAUSED
 /* ══ 종목 추세 (2026-11-14): 실시간 종목과 같은 상단 조건을 종가(또는 장중 업데이트 잠정) 일봉에 적용해 추세 좋은 종목을 본다 ══
    데이터는 v_screener(기준일 전 종목) 한 번 조회 — 릴레이·웹소켓 사용 없음. 행을 누르면 종목상세와 같은 가격·이평선 차트가 펼쳐진다. */
 const TR_N=50;
-S.tf=S.tf||{smxW:"all",dartP:"7"};
+S.tf=S.tf||{smxW:"126",dartP:"7"};   // 기본 6개월(DET_PER_DEF 와 같은 값 — 상수는 아래에서 정의돼 여기서는 직접 씀)
 S.tr={min:10000,amt:0,fg:"",ob:"",pg:"",sort:"rs20",view:"table",raw:null,rawDate:null,open:null,defaulted:false,loading:false};
 const TR_PREF=/우[BC]?$/;
 async function trendStart(){
@@ -3529,7 +3529,7 @@ $("#etfTab").addEventListener("seg-change",e=>{S.etf.tab=e.detail;$("#etfOv").cl
 /* ══ ETF 허브 (액티브/패시브) — 2026-11-15 ═══════════════════════════════════════
    목적: ① 액티브 ETF 운용역들이 공통으로 담은 종목 발굴 ② 수익률·RS 높은 ETF 찾기.
    데이터: etf_holdings_daily(액티브 일별 구성 30) · etf_flow_daily(상장좌수) · etf_daily(수익률) · etf_info(괴리율·순자산) · v_screener(시총·RS) */
-S.ef=S.ef||{smxW:"all",dartP:"7"};
+S.ef=S.ef||{smxW:"126",dartP:"7"};
 S.eh={tab:"port",grp:"all",sort:"cnt",pick:"all",per:"d",thr:5,cmore:false,lb:"r1m",pg:"all",ps:"r1m",loaded:false};
 const EH_SEC={"시장대표":["시장"],"코스닥":["시장"],"반도체":["반도체"],"AI·테크":["로봇·AI·소프트웨어"],"로봇":["로봇·AI·소프트웨어"],"바이오":["바이오·헬스케어"],"전력·신재생":["원자력·전력·에너지"],"2차전지":["2차전지·배터리"]};
 const ehE=c=>`<a class="lk nm" data-etf="${c}">${escH(((S.etfMap||{})[c]||{}).name||c)}</a>`;
@@ -7347,7 +7347,7 @@ $("#runScr").onclick=()=>runScreener().catch(e=>status("err","조회 실패: "+e
 const SCR_DEFAULTS={"#fChgMin":"1","#fChgMax":"","#fCapMin":"","#fCapMax":"","#fAmtMin":"","#fVolMin":""};
 $("#resetScr").onclick=()=>{
   Object.entries(SCR_DEFAULTS).forEach(([i,v])=>$(i).value=v);
-  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";$("#fKw").value="";$("#fDivMin").value="";$("#fDivBasis").value="ttm";$("#fDart").value="";$("#fDartP").value="7";$("#fSmx").value="";$("#fSmxW").value="all";
+  $("#fLimit").value="50";$("#fSort").value="weight_per_share";$("#fDir").value="desc";$("#fKw").value="";$("#fDivMin").value="";$("#fDivBasis").value="ttm";$("#fDart").value="";$("#fDartP").value="7";$("#fSmx").value="";$("#fSmxW").value=DET_PER_DEF;
   $("#fSector").value="";$("#fMa").value="";$("#fPh").value="";$("#fKind").value="all";$("#fInv").value="in";
   $$(".fchip",$("#v-scr")).forEach(b=>b.setAttribute("aria-pressed","false"));};
 $("#runFlowFilter").onclick=()=>loadFlowLists().catch(e=>status("err","조회 실패: "+e.message));
@@ -7805,7 +7805,7 @@ S.dGrS=S.dGrO=S.dGrE="";
 dFilterHandler("#dGrS","dGrS",loadDetailGr,"매출액 증감률");
 dFilterHandler("#dGrO","dGrO",loadDetailGr,"영업이익 증감률");
 dFilterHandler("#dGrE","dGrE",loadDetailGr,"EPS 증감률");
-S.dSmxF="";S.dSmxW="all";
+S.dSmxF="";S.dSmxW=DET_PER_DEF;
 dFilterHandler("#dSmxF","dSmxF",smxLoadMap,"매집·이탈 진단 필터");
 $("#dSmxW").onchange=e=>{
   S.dSmxW=e.target.value;if(!S.dSmxF)return;
@@ -8629,13 +8629,13 @@ const LEAD_TR={UP:["매수 추세","up",6],RESUME:["매수 재개","up",5],SLOW:
 function smxFill(){
   const cells=[...document.querySelectorAll("td[data-smx],span[data-smx]")];if(!cells.length)return;
   if(!S.smxMap){if(!S._smxLoading){S._smxLoading=true;smxLoadMap().then(()=>{S._smxLoading=false;smxFill();}).catch(()=>{S._smxLoading=false;});}return;}
-  const w0=($("#fSmxW")||{}).value||"all";
+  const w0=($("#fSmxW")||{}).value||DET_PER_DEF;
   cells.forEach(td=>{
-    const w=td.closest("#v-live")?((S.lf&&S.lf.smxW)||"all"):td.closest("#v-trend")?((S.tf&&S.tf.smxW)||"all"):w0;   // 실시간 종목은 조회 조건의 진단 기간을 따른다
+    const w=td.closest("#v-live")?((S.lf&&S.lf.smxW)||DET_PER_DEF):td.closest("#v-trend")?((S.tf&&S.tf.smxW)||DET_PER_DEF):w0;   // 실시간 종목은 조회 조건의 진단 기간을 따른다
     if(td.dataset.sw===w)return;td.dataset.sw=w;
     const x=(S.smxMap[td.dataset.code]||{})[w],ok=x&&x.peak_eok!=null&&x.st!=="NONE"&&x.st!=="OUT";
     let t="–",v="",c="";
-    if(td.dataset.smx==="st"){const T=SMX_ST[x&&x.st];if(T){t=T[0];c=T[1];}td.textContent=t;td.title="외국인+기관합계 누적 기준 진단("+({"63":"3개월","126":"6개월","all":"전체"}[w])+") — 주도 세력 한 주체의 추세와 다를 수 있음";td.classList.remove("up","down","dim","warn");if(c)td.classList.add(c);return;}
+    if(td.dataset.smx==="st"){const T=SMX_ST[x&&x.st];if(T){t=T[0];c=T[1];}td.textContent=t;td.title="외국인+기관합계 누적 기준 진단("+({"21":"1개월","63":"3개월","126":"6개월","all":"전체"}[w])+") — 주도 세력 한 주체의 추세와 다를 수 있음";td.classList.remove("up","down","dim","warn");if(c)td.classList.add(c);return;}
     if(ok){const k=td.dataset.smx,dd=(+x.now_eok)-(+x.peak_eok);
       if(k==="peak"){t=pm(+x.peak_eok,0);v=x.peak_eok;c=sgn(+x.peak_eok);}
       else if(k==="date"){t=shortDate(x.peak_date);v=+String(x.peak_date).replace(/-/g,"");}
@@ -8680,6 +8680,9 @@ async function smxLoadMap(){
     part.forEach(r=>{(m[r.code]=m[r.code]||{})[r.win]=r;});
     if(part.length<1000)break;
   }
+  /* 1개월(21) 진단은 서버 갱신(smx_state 워크플로) 후에 채워진다 — 아직 없으면 선택지에 "준비 중" 표시 */
+  S.smxHas21=Object.values(m).some(o=>o&&o["21"]);
+  if(!S.smxHas21)document.querySelectorAll('select[id$="dSmxW"] option[value="21"],#fSmxW option[value="21"]').forEach(o=>{o.textContent="1개월 (준비 중)";});
   S.smxMap=m;return m;
 }
 /* 주도 세력(소개부): 6개월·3개월·1개월 전 시점부터 오늘까지 각각 — 그 구간 외+기 매집(저점→고점)에서 순매수가 가장 큰 주체(없으면 구간 전체 순매수)와,
@@ -8803,8 +8806,8 @@ S.pcSmx=S.pcSmx||{};
 function pcSmxInit(code,rows){
   const host=$("#pcSmx_"+code);if(!host)return;
   if(!rows||rows.length<10||rows[0].foreign_cum==null){host.innerHTML='<div class="load">데이터 없음</div>';return;}
-  S.pcSmx[code]={rows,win:S.pcSmx[code]?S.pcSmx[code].win:"all"};
-  host.innerHTML=`<div class="qf seg pcsw" style="margin-bottom:6px">${[["63","3개월"],["126","6개월"],["all","전체"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${S.pcSmx[code].win===v}">${l}</button>`).join("")}</div>
+  S.pcSmx[code]={rows,win:S.pcSmx[code]?S.pcSmx[code].win:DET_PER_DEF};
+  host.innerHTML=`<div class="qf seg pcsw" style="margin-bottom:6px">${[["21","1개월"],["63","3개월"],["126","6개월"],["all","전체"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${S.pcSmx[code].win===v}">${l}</button>`).join("")}</div>
     <div class="pcs-st" style="margin-bottom:6px"></div>
     <div class="tw tw-scroll pc-tw pcs-tb-w" style="margin-bottom:8px"><table class="earn-t pcs-tb"></table></div>
     <div class="chart pcs-a"></div>
@@ -10976,7 +10979,7 @@ function trdOnTick(m){
   TRD.tkPaint=setTimeout(()=>{TRD.tkPaint=0;const e=$("#trdTk");if(e)e.innerHTML=trdTicksHtml();trdCnNow();trdRenderHead();},300);
 }
 /* 호가창 탭: 호가 · 차트(매집·이탈 진단) · 거래원 · 투자자 */
-TRD.bk=TRD.bk||"book";TRD.smxWin=TRD.smxWin||"all";
+TRD.bk=TRD.bk||"book";TRD.smxWin=TRD.smxWin||DET_PER_DEF;
 function trdBkShow(t){
   TRD.bk=t;$$("#trdBkTabs button").forEach(b=>b.classList.toggle("on",b.dataset.bt===t));
   $$(".trd-bk [data-bp]").forEach(p=>p.classList.toggle("hide",p.dataset.bp!==t));
