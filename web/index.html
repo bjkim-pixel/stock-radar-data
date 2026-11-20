@@ -11250,11 +11250,12 @@ function trdRenderOrder(){
   else if(!mkt&&!(TRD.buy>0&&trdFloor(TRD.buy)===TRD.buy))why="호가 단위에 맞는 매수가를 입력하세요";
   else if(steps.length&&sumQ>qty)why=`익절 단계 수량 합계(${sumQ})가 주문 수량(${qty})보다 많습니다 — 익절 설정을 다시 눌러 주세요`;
   else if(TRD.ordering)why="주문 처리 중…";
+  const pl=trdPlacedNow();
   const armed=TRD.arm&&TRD.arm.key===trdOrderKey()&&Date.now()-TRD.arm.t<4000;
-  const b=$("#trdBtn");b.disabled=!!why;b.style.opacity=why?".5":"";b.style.cursor=why?"not-allowed":"";
-  b.textContent=armed?(trdDeskCfg().realOnly?"실전 — 한 번 더 누르면 실제 계좌로 주문됩니다 · ":"한 번 더 누르면 주문됩니다 · ")+`${mkt?"시장가":N(price)+"원"} × ${N(qty)}주`:(trdDeskCfg().realOnly?"실전":"가상")+` ${mkt?"시장가 ":""}매수 주문`+(price>0&&qty>0?` · ${mkt?"":N(price)+"원 × "}${N(qty)}주`:"");
+  const b=$("#trdBtn");b.disabled=!!why||!!pl;b.style.opacity=why||pl?".5":"";b.style.cursor=why||pl?"not-allowed":"";
+  b.textContent=pl?`✔ 접수 완료 · 체결 대기 중 (${N(pl.o?pl.o.filled:0)}/${N(pl.qty)}주)`:armed?(trdDeskCfg().realOnly?"실전 — 한 번 더 누르면 실제 계좌로 주문됩니다 · ":"한 번 더 누르면 주문됩니다 · ")+`${mkt?"시장가":N(price)+"원"} × ${N(qty)}주`:(trdDeskCfg().realOnly?"실전":"가상")+` ${mkt?"시장가 ":""}매수 주문`+(price>0&&qty>0?` · ${mkt?"":N(price)+"원 × "}${N(qty)}주`:"");
   const ap0=trdAutoPlan(),noAuto=!ap0.stop&&!ap0.steps.length,partial=steps.length&&sumQ<qty,hd=trdHeld();
-  $("#trdMkt").innerHTML=(why?`<div class="trd-wn" style="margin:0 0 8px">${trdEsc(why)}</div>`:"")+
+  $("#trdMkt").innerHTML=(pl?`<div class="trd-ok" style="margin:0 0 8px"><b>✔ 주문이 접수되었습니다</b> — 매수 ${pl.type==="market"?"시장가":N(pl.price)+"원"} × ${N(pl.qty)}주 · 체결 대기 중 ${N(pl.o?pl.o.filled:0)}/${N(pl.qty)}주 · 접수 ${trdTm(pl.t)}<div class="sub" style="margin-top:4px">주문이 안 된 것이 아니니 다시 누르지 마세요. 가격·수량을 바꾸면 새 주문을 낼 수 있고, 이 주문은 <button type="button" class="chip" data-gomod="1">정정/취소</button> 에서 바꾸거나 취소합니다.</div></div>`:"")+(TRD.dup&&Date.now()-TRD.dup.t<30000?`<div class="trd-wn" style="margin:0 0 8px">${trdEsc(TRD.dup.text)}<div style="margin-top:6px"><button type="button" class="btn" data-dupgo="1">그래도 한 번 더 주문</button> <button type="button" class="chip" data-dupno="1">닫기</button></div></div>`:"")+(why?`<div class="trd-wn" style="margin:0 0 8px">${trdEsc(why)}</div>`:"")+
     (hd?`<div class="sub" style="margin:0 0 8px">보유 중인 종목입니다 — 추가 매수분은 자동 매도 목록(보유분 계획)의 익절 단계에 비중대로 함께 걸리고, 손절도 같이 적용됩니다.${hd.plan?"":" 지금은 보유분 자동 매도가 설정되지 않았습니다."}</div>`:noAuto?`<div class="trd-wn" style="margin:0 0 8px">자동 매도가 설정되지 않았습니다 — 손절·익절을 설정하지 않으면 서버가 자동으로 팔지 않습니다</div>`:
      (!ap0.stop?`<div class="trd-wn" style="margin:0 0 8px">손절이 설정되지 않았습니다</div>`:"")+(partial?`<div class="trd-wn" style="margin:0 0 8px">익절 목록 수량 합계(${sumQ}주)가 주문 수량(${qty}주)보다 적어 나머지 ${qty-sumQ}주는 자동 익절되지 않습니다</div>`:""));
   $("#trdBtnNote").textContent=!trdDeskCfg().realOnly?"가상 주문은 실제 호가로 체결을 계산해 우리 DB에만 기록합니다. 체결되면 손절·트레일링 익절 감시가 시작됩니다(익절 주문은 미리 걸지 않음).":`실전 주문은 KIS 실제 계좌로 나갑니다. 체결은 5초마다 체결조회로 확인하고, 익절·손절 주문은 서버가 자동으로 냅니다.${st.limits&&st.limits.REAL?` 한도: 1회 ${trdFmtAmt(st.limits.REAL.order)} · 1일 ${trdFmtAmt(st.limits.REAL.day)} · ${st.limits.REAL.positions}종목`:""}`;
@@ -11267,25 +11268,40 @@ function trdBtnClick(){
   }
   const cid=TRD.arm.cid;TRD.arm=null;trdSubmitBuy(cid);
 }
-async function trdSubmitBuy(cid){
+async function trdSubmitBuy(cid,confirmDup){
   const Q=TRD.quote;if(!Q)return;
   const basis=trdBasis(Q),qty=Math.floor(TRD.qty);
   const body={code:TRD.cur,name:trdNm(TRD.cur),side:"buy",type:TRD.type,qty,
     plan:(()=>{const ap=trdAutoPlan();return {stopPct:ap.stop?ap.stop.pct:null,stop:ap.stop?trdStopPrice(basis,ap.stop.pct):null,target:ap.target,trail:TRD.trail,steps:ap.steps.map(s=>({n:s.n,p:s.p,q:s.q}))};})()};
   if(TRD.type==="limit")body.price=trdFloor(TRD.buy);
   if(cid)body.cid=cid;
-  TRD.ordering=true;trdRenderOrder();
+  if(confirmDup)body.confirmDup=true;
+  TRD.ordering=true;TRD.dup=null;trdRenderOrder();
   try{
     const r=await trdApi(trdBase()+"/order",{method:"POST",body});
     const o=r.order,f=r.fills||[],avg=f.length?f.reduce((a,x)=>a+x.amount,0)/f.reduce((a,x)=>a+x.qty,0):null;
     const R=trdDeskCfg().short;
+    if(["open","partial","pending","unknown"].includes(o.status))TRD.placed={id:o.id,code:TRD.cur,mode:TRD.mode,key:trdOrderKey(),t:Date.now(),price:o.price,qty:o.qty,type:o.type,status:o.status};   // 접수된 주문은 체결·취소 전까지 주문 버튼을 되살리지 않는다(중복 주문 방지)
     TRD.msg={ok:true,t:Date.now(),text:o.status==="unknown"?"실전 주문 응답을 받지 못해 체결조회로 확인 중입니다. 같은 주문을 다시 내지 마세요.":trdDeskCfg().realOnly&&o.status==="open"?`실전 주문 접수(주문번호 확인됨): ${N(o.qty)}주 — 체결은 5초 안에 반영됩니다`:o.status==="filled"?`${R} 매수 체결: ${N(o.filled)}주 평균 ${N(avg,0)}원`:o.filled>0?`일부 체결 ${N(o.filled)}/${N(o.qty)}주 (평균 ${N(avg,0)}원), 나머지는 대기`:`주문 접수: ${N(o.qty)}주 지정가 대기 중 (내 앞 대기 ${N(o.queueAhead)}주)`};
   }catch(e){
     if(e.status===401&&e.message==="pin required"){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");TRD.ordering=false;return;}
-    TRD.msg={ok:false,t:Date.now(),text:"주문 실패: "+trdErrTx(e)};
+    if(e.body&&e.body.duplicate)TRD.dup={text:e.message,t:Date.now()};   // 서버가 같은 주문이 방금 있었다고 알림 → "그래도 한 번 더 주문" 확인
+    else TRD.msg={ok:false,t:Date.now(),text:"주문 실패: "+trdErrTx(e)};
   }
   TRD.ordering=false;await trdLoadState();trdRenderOrder();
 }
+/* 방금 접수한 주문이 아직 체결 대기 중이고 입력값이 그대로면 그 주문 정보를 돌려준다(주문 버튼을 잠그는 근거) */
+function trdPlacedNow(){
+  const p=TRD.placed;if(!p)return null;
+  if(p.code!==TRD.cur||p.mode!==TRD.mode||p.key!==trdOrderKey())return null;   // 가격·수량·계획을 바꾸면 새 주문을 낼 수 있음
+  const P=TRD.ps,o=P&&P.orders?P.orders.find(x=>x.id===p.id):null;
+  if(P&&P.orders&&Date.now()-p.t>8000&&!(o&&["open","partial","pending","unknown"].includes(o.status))){TRD.placed=null;return null;}   // 체결·취소로 끝남
+  return {...p,o};
+}
+const trdCclBtn=id=>TRD.cArm&&TRD.cArm.id===id&&Date.now()-TRD.cArm.t<4000
+  ?`<button type="button" class="chip" style="background:var(--up);color:#fff;border-color:var(--up)" data-ccl="${id}">정말 취소 — 한 번 더</button>`
+  :`<button type="button" class="chip" data-ccl="${id}" title="이 주문을 거래소에서 취소합니다(체결되지 않고 사라짐)">주문 취소</button>`;
+function trdCclRender(){trdRenderHold();trdRenderMod();if(TRD.quote)trdRenderOrder();}
 
 /* ── 보유·미체결·체결 (가상) ── */
 async function trdLoadState(){
@@ -11430,7 +11446,7 @@ function trdRenderHold(){
   box.innerHTML=probe+sum+eng+(P.positions.length?`<div class="trd-ht"><div class="trd-hh"><div class="c0"><span>종목명</span><div class="q"><span>주문가능</span><span>보유수량</span></div></div><div class="c"><span>평가손익</span><span>수익률(%)</span></div><div class="c"><span>평가금액</span><span>매입금액</span></div><div class="c"><span>현재가</span><span>평균단가</span></div></div>${rows}</div><div class="faint" style="font-size:11px;margin-top:6px">종목을 누르면 매수·매도·계획 수정이 펼쳐집니다</div>`
     :'<div class="faint" style="font-size:12.5px">보유 종목이 없습니다.</div>');
   const open=P.orders.filter(o=>o.status==="open"||o.status==="partial");
-  $("#trdOpen").innerHTML=open.length?open.map(o=>{const auto=TRD_RSN(o.reason);return `<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${auNm(o.name||trdNm(o.code),o.code)} ${o.type==="market"?"시장가":N(o.price)+"원"}${o.venue?` <span class="faint" style="font-size:11px">${trdEsc(o.venue)}</span>`:""}${auto?` <span class="trd-w" style="background:var(--surface-2);color:var(--ink-2)">${auto} · 자동</span>`:""}</span>${auto||o.status==="unknown"||o.status==="pending"||o.cancelReq?"":`<button type="button" class="chip" data-ccl="${o.id}">취소</button>`}</div><div class="sub num">${N(o.filled)}/${N(o.qty)}주 체결${o.queueAhead!=null?` · 내 앞 대기 약 ${N(o.queueAhead)}주`:""}${o.status==="unknown"?' · <b class="down">접수 확인 중</b>':o.status==="pending"?" · 전송 중":""}${o.cancelReq?" · 취소 요청됨":""} · ${trdTm(o.ts)}</div></div>`;}).join(""):'<div class="faint" style="font-size:12.5px">미체결 주문이 없습니다.</div>';
+  $("#trdOpen").innerHTML=open.length?open.map(o=>{const auto=TRD_RSN(o.reason);return `<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${auNm(o.name||trdNm(o.code),o.code)} ${o.type==="market"?"시장가":N(o.price)+"원"}${o.venue?` <span class="faint" style="font-size:11px">${trdEsc(o.venue)}</span>`:""}${auto?` <span class="trd-w" style="background:var(--surface-2);color:var(--ink-2)">${auto} · 자동</span>`:""}</span>${auto||o.status==="unknown"||o.status==="pending"||o.cancelReq?"":`${trdCclBtn(o.id)}`}</div><div class="sub num">${N(o.filled)}/${N(o.qty)}주 체결${o.queueAhead!=null?` · 내 앞 대기 약 ${N(o.queueAhead)}주`:""}${o.status==="unknown"?' · <b class="down">접수 확인 중</b>':o.status==="pending"?" · 전송 중":""}${o.cancelReq?" · 취소 요청됨":""} · ${trdTm(o.ts)}</div></div>`;}).join(""):'<div class="faint" style="font-size:12.5px">미체결 주문이 없습니다.</div>';
   $("#trdFills").innerHTML=P.fills.length?P.fills.map(f=>`<div class="trd-hr"><div class="top"><span><b class="${f.side==="buy"?"up":"down"}">${f.side==="buy"?"매수":"매도"}</b> ${trdEsc(trdNm(f.code))} ${N(f.price)}원 × ${N(f.qty)}주</span><span class="num ${f.realized>0?"up":f.realized<0?"down":"dim"}">${f.realized==null?"":trdSgn(f.realized)+"원"}</span></div><div class="sub">${trdTm(f.ts)}${TRD_RSN(f.reason)?" · "+TRD_RSN(f.reason)+" (자동)":""}</div></div>`).join(""):'<div class="faint" style="font-size:12.5px">오늘 체결이 없습니다.</div>';
 }
 async function trdPeSave(code){
@@ -12639,9 +12655,9 @@ function trdRenderMod(){
     const auto=TRD_RSN(o.reason),left=o.qty-o.filled,e=TRD.mod[o.id]||{};
     return `<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${trdEsc(o.name||trdNm(o.code))} ${o.type==="market"?"시장가":N(o.price)+"원"}${auto?` <span class="trd-w" style="background:var(--surface-2);color:var(--ink-2)">${auto} · 자동</span>`:""}</span><span class="faint num" style="font-size:12px">${N(o.filled)}/${N(o.qty)}주 체결</span></div>
       ${auto?'<div class="sub">자동 매도 주문은 매도 계획 메뉴에서 바꿉니다</div>':o.status==="unknown"||o.status==="pending"||o.cancelReq?'<div class="sub">접수 확인·취소 처리 중</div>':
-      `<div class="trd-sell"><input data-mp="${o.id}" inputmode="numeric" placeholder="정정 가격" value="${e.price??(o.price||"")}"><input data-mq="${o.id}" inputmode="numeric" placeholder="수량 ${left}" value="${e.qty??left}"><button type="button" class="btn ghost" data-mod="${o.id}">정정</button><button type="button" class="chip" data-ccl="${o.id}">취소</button></div>`}</div>`;
+      `<div class="trd-sell"><input data-mp="${o.id}" inputmode="numeric" placeholder="정정 가격" value="${e.price??(o.price||"")}"><input data-mq="${o.id}" inputmode="numeric" placeholder="수량 ${left}" value="${e.qty??left}"><button type="button" class="btn ghost" data-mod="${o.id}">정정</button>${trdCclBtn(o.id)}</div>`}</div>`;
   }).join(""):'<div class="faint" style="font-size:12.5px">미체결 주문이 없습니다.</div>')+
-  '<div class="faint" style="font-size:11px;margin-top:8px">정정하면 거래소 대기 순서가 새로 잡힙니다. 수량을 줄이면 나머지는 원래 가격 그대로 남습니다(실전) · 가상은 원주문 취소 후 새 주문.</div>';
+  '<div class="faint" style="font-size:11px;margin-top:8px"><b>정정</b>은 가격·수량만 바꾸고 주문은 유지됩니다. <b>주문 취소</b>는 주문 자체가 거래소에서 사라집니다(한 번 더 눌러야 취소). 정정하지 않고 나가려면 다른 탭으로 이동하세요 — 정정하면 거래소 대기 순서가 새로 잡힙니다. 수량을 줄이면 나머지는 원래 가격 그대로 남습니다(실전) · 가상은 원주문 취소 후 새 주문.</div>';
 }
 async function trdModGo(id){
   const o=TRD.ps&&TRD.ps.orders.find(x=>x.id===id);if(!o)return;
@@ -12702,7 +12718,12 @@ document.addEventListener("click",e=>{
   if(t.closest("#trdPinGo"))return trdSubmitPin();
   if(t.closest("#trdBtn"))return trdBtnClick();
   if((el=t.closest("[data-hpick]"))){const c=el.dataset.hpick;if(!TRD.q.includes(c)){trdQAdd([c]);trdRenderQ();}return trdSelect(c);}
-  if((el=t.closest("[data-ccl]")))return trdCancel(el.dataset.ccl);
+  if((el=t.closest("[data-ccl]"))){const id=el.dataset.ccl;
+    if(!(TRD.cArm&&TRD.cArm.id===id&&Date.now()-TRD.cArm.t<4000)){TRD.cArm={id,t:Date.now()};trdCclRender();clearTimeout(TRD.cArmT);TRD.cArmT=setTimeout(()=>{TRD.cArm=null;trdCclRender();},4100);return;}   // 취소는 한 번 더 눌러야 실행
+    TRD.cArm=null;return trdCancel(id);}
+  if(t.closest("[data-gomod]"))return trdTab("mod");
+  if(t.closest("[data-dupno]")){TRD.dup=null;return trdRenderOrder();}
+  if(t.closest("[data-dupgo]")){if(TRD.ordering)return;TRD.dup=null;return trdSubmitBuy("c"+Date.now().toString(36)+Math.random().toString(36).slice(2,8),true);}
   if(t.closest("#trdPaneAuto")&&auClick(t))return;
   if((el=t.closest("a.au-nm"))){return go("detail",el.dataset.code);}   // 거래내역(수익률·주문·체결) 종목명 → 종목상세
   if((el=t.closest("[data-tp]")))return trdTab(el.dataset.tp);

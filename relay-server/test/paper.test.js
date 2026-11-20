@@ -177,3 +177,20 @@ test('체결 기록 저장이 실패하면 다음 주기에 다시 저장', asyn
   assert.equal(db.t.paper_fills.size, 1);
   await c.close();
 });
+
+test('같은 주문 중복 방지: 60초 안에 같은 종목·가격·수량이 또 오면 409(duplicate), confirmDup 로 확인하면 허용, 같은 cid 재전송은 첫 결과 그대로', async () => {
+  const db = fakeDb(), c = await boot(db); await c.login();
+  const o = { code: '005930', name: '삼성전자', side: 'buy', type: 'limit', price: 9990, qty: 1 };
+  const a = await c.order({ ...o, cid: 'cid-aaaaaaaa' });
+  assert.equal(a.status, 200);
+  const re = await c.order({ ...o, cid: 'cid-aaaaaaaa' });                      // 연타·재전송: 막지 않고 첫 결과를 돌려줌
+  assert.equal(re.status, 200); assert.equal(re.body.duplicate, true);
+  const b = await c.order({ ...o, cid: 'cid-bbbbbbbb' });                       // 새 주문 번호로 같은 내용 → 확인 요구
+  assert.equal(b.status, 409); assert.equal(b.body.duplicate, true); assert.match(b.body.error, /같은 주문/);
+  assert.equal(db.t.paper_orders.size, 1, '중복으로 막힌 주문은 기록되지 않음');
+  const ok = await c.order({ ...o, cid: 'cid-cccccccc', confirmDup: true });    // 사용자가 "그래도 한 번 더" 확인
+  assert.equal(ok.status, 200); assert.equal(db.t.paper_orders.size, 2);
+  const diff = await c.order({ ...o, price: 9980, cid: 'cid-dddddddd' });       // 가격이 다르면 별개 주문
+  assert.equal(diff.status, 200);
+  await c.close();
+});

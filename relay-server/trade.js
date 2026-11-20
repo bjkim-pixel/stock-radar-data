@@ -302,6 +302,20 @@ function createTrade(deps = {}) {
   }
 
   /* ── 거래 세션 ── */
+  /* 같은 주문 중복 방지(2026-11-20): 화면 주문 버튼으로 같은 종목·구분·유형·가격·수량 주문이 60초 안에 또 들어오면 확인(confirmDup)을 요구한다.
+     자동매매 주문은 이 경로를 거치지 않으므로 영향 없음. 접수 성공한 주문만 기록한다. */
+  const DUP_MS = 60 * 1000, recentOrders = new Map();
+  const dupKey = (desk, b) => [desk, String(b.code || ''), b.side, b.type, b.type === 'market' ? 0 : Number(b.price) || 0, Number(b.qty) || 0].join('|');
+  function dupCheck(desk, b) {
+    const k = dupKey(desk, b), e = recentOrders.get(k), t0 = e && e.t;
+    if (b.confirmDup === true || !e || now() - t0 > DUP_MS) return null;
+    if (b.cid && b.cid === e.cid) return null;   // 같은 주문 번호(cid)의 재전송은 각 장부가 첫 결과를 그대로 돌려주므로(연타 방지) 여기서 막지 않는다
+    return `방금(${Math.max(1, Math.round((now() - t0) / 1000))}초 전) 같은 주문을 냈습니다. 중복 주문이 맞으면 "그래도 한 번 더 주문"을 누르세요.`;
+  }
+  function dupMark(desk, b) {
+    recentOrders.set(dupKey(desk, b), { t: now(), cid: b.cid || null });
+    if (recentOrders.size > 200) for (const [k, e] of recentOrders) if (now() - e.t > DUP_MS) recentOrders.delete(k);
+  }
   function openSession(uid, scope) {
     const t = now(), sid = crypto.randomBytes(32).toString('hex');
     sweep();
@@ -769,7 +783,9 @@ function createTrade(deps = {}) {
           return json(res, r2.ok ? 200 : (r2.status || 400), r2.ok ? (kind === 'cancel' ? { ok: true, order: { id: body.id } } : r2) : { ok: false, error: r2.error });
         }
       }
+      if (kind === 'order') { const dm = dupCheck('live', body); if (dm) return json(res, 409, { ok: false, error: dm, duplicate: true }); }
       const r = kind === 'order' ? await live.place(body) : kind === 'cancel' ? await live.cancel(body.id) : kind === 'modify' ? await live.modify(body) : await live.editPlan(body);
+      if (r.ok && kind === 'order' && !r.duplicate) dupMark('live', body);
       const detail = kind === 'order' ? { code: body.code, side: body.side, type: body.type, price: body.price, qty: body.qty, status: r.order && r.order.status, error: r.error }
         : kind === 'cancel' ? { id: body.id, error: r.error } : kind === 'modify' ? { id: body.id, price: body.price, qty: body.qty, error: r.error } : { code: body.code, stop: body.stop, error: r.error };
       audit(r.ok ? 'live_' + kind : 'live_reject', !!r.ok, detail, req, 'REAL');
@@ -900,7 +916,9 @@ function createTrade(deps = {}) {
         const ac = await autoRef.autoOrderCode(String(body.id || ''), 'paper').catch(() => null);
         if (ac) { const r2 = await autoRef.siteOrderEdit({ code: ac, engine: 'paper', orderId: String(body.id), action: 'cancel' }); audit('auto_order_edit', !!r2.ok, { code: ac, action: 'cancel', error: r2.error }, req, 'VIRTUAL'); return json(res, r2.ok ? 200 : (r2.status || 400), r2.ok ? { ok: true, order: { id: body.id } } : { ok: false, error: r2.error }); }
       }
+      if (isOrder) { const dm = dupCheck('paper', body); if (dm) return json(res, 409, { ok: false, error: dm, duplicate: true }); }
       const r = isOrder ? await paper.place(body, req) : await paper.cancel(body.id);
+      if (r.ok && isOrder && !r.duplicate) dupMark('paper', body);
       if (!r.ok) {
         audit('paper_reject', false, { path, error: r.error, code: body.code, side: body.side, type: body.type, qty: body.qty, price: body.price }, req, 'VIRTUAL');
         return json(res, r.status || 400, { ok: false, error: r.error });
