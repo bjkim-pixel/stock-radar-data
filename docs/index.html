@@ -8421,14 +8421,20 @@ function earnPer(rows,close,period){
   const e=+r.eps;
   return e>0?Math.round(close/e)+"배":"적자";
 }
+/* 종목 소개 줄: 26E/27E PER(종가÷예상 EPS)·PBR(종가÷예상 BPS). 계산할 숫자가 없으면 해당 연도만 "–"로 표시 */
 async function perFill(code,close,el){
   if(!el)return;
-  try{const rows=await earnRows(code),t=earnPer(rows,close),t27=earnPer(rows,close,"202712");
-    const r27=(rows||[]).find(x=>x.freq==="A"&&x.period==="202712");
-    const by=r27&&r27.src==="kis_est"?` (증권사 1곳 추정${r27.est_by?" · "+r27.est_by:""}${r27.est_date?" "+r27.est_date.slice(2).replace(/-/g,"."):""})`:"(예상)";
-    const parts=[];if(t!=null)parts.push(`26E PER ${t}`);if(t27!=null)parts.push(`27E PER ${t27}`);
-    if(parts.length){el.textContent=parts.join(" · ");el.title="현재 종가 ÷ 연간 예상 EPS — 26E: 네이버 컨센서스 / 27E: 한국투자증권 API"+by;el.style.display="";}
-    else el.style.display="none";}catch(e){el.style.display="none";}
+  try{const rows=await earnRows(code)||[];
+    const yr=(per)=>rows.find(x=>x.freq==="A"&&x.period===per);
+    const ratio=(r,k)=>{const d=r&&r[k]!=null?+r[k]:null;return d!=null&&d>0&&close>0?N(close/d,k==="eps"?0:2)+"배":(d!=null&&d<=0&&k==="eps"?"적자":"–");};
+    const r26=yr("202612"),r27=yr("202712");
+    const it=(lb,r,k)=>`${lb} <b>${ratio(r,k)}</b>`;
+    const full=el.id==="dPer";   // 종목 상세 소개 줄만 PBR 포함·항상 표시, 다른 화면은 PER만(값 없으면 숨김)
+    if(!full&&ratio(r26,"eps")==="–"&&ratio(r27,"eps")==="–"){el.style.display="none";return;}
+    el.innerHTML=[it("26E PER",r26,"eps"),it("27E PER",r27,"eps")].join(" · ")+(full?"<br>"+[it("26E PBR",r26,"bps"),it("27E PBR",r27,"bps")].join(" · "):"");
+    const by=r27&&r27.src==="kis_est"?` (27E: 증권사 1곳 추정${r27.est_by?" · "+r27.est_by:""}${r27.est_date?" "+r27.est_date.slice(2).replace(/-/g,"."):""})`:"";
+    el.title="PER = 현재 종가 ÷ 연간 예상 EPS · PBR = 현재 종가 ÷ 연간 예상 BPS (26E: 네이버 컨센서스 / 27E: 한국투자증권 API) · 숫자가 없으면 –"+by;
+    el.style.display="";}catch(e){el.style.display="none";}
 }
 async function earnRows(code){
   let rows=S.earnCache[code];
@@ -8691,9 +8697,9 @@ async function perEpsLoad(){
     S.epsMap=m;return m;})().catch(e=>{S._epsP=null;throw e;});
   return S._epsP;
 }
-function perFill(){
+function perColFill(){
   const cells=[...document.querySelectorAll("td[data-per]:not([data-pd])")];if(!cells.length)return;
-  if(!S.epsMap){if(!S._perLoading){S._perLoading=true;perEpsLoad().then(()=>{S._perLoading=false;perFill();}).catch(()=>{S._perLoading=false;});}return;}
+  if(!S.epsMap){if(!S._perLoading){S._perLoading=true;perEpsLoad().then(()=>{S._perLoading=false;perColFill();}).catch(()=>{S._perLoading=false;});}return;}
   cells.forEach(td=>{td.dataset.pd="1";const e=(S.epsMap[td.dataset.code]||{})[td.dataset.per],px=+td.dataset.px;
     if(e>0&&px>0){const v=px/e;td.textContent=N(v,1)+"배";td.dataset.sortVal=v;}});
 }
@@ -8741,7 +8747,7 @@ function ldInject(){
     const t=[...d.querySelectorAll("[data-smx],.kwc")].map(x=>x.textContent.trim());
     d.style.display=t.every(x=>x==="–"||x==="")?"none":"";});
 }
-{let pend=false;new MutationObserver(()=>{if(!pend){pend=true;requestAnimationFrame(()=>{pend=false;smxFill();perFill();nxFill();ldInject();tcInject();});}}).observe(document.body,{childList:true,subtree:true});
+{let pend=false;new MutationObserver(()=>{if(!pend){pend=true;requestAnimationFrame(()=>{pend=false;smxFill();perColFill();nxFill();ldInject();tcInject();});}}).observe(document.body,{childList:true,subtree:true});
  document.addEventListener("change",e=>{if(e.target.id==="fSmxW")setTimeout(smxFill,0);});}
 async function smxLoadMap(){
   if(S.smxMap)return S.smxMap;
