@@ -114,8 +114,8 @@ test('두 전략이 각자 선정·기록하고, 알림은 전략별로 글자�
   h.setMin(10 * 60 + 15);
   await h.auto.tick(); await h.auto.tick();
   assert.equal(h.sent.length, 2);
-  assert.match(h.sent[0], /^\[A · 기본\]/); assert.match(h.sent[0], /\nA1\. /); assert.match(h.sent[0], /\/매수 A1/);
-  assert.match(h.sent[1], /^\[B · 체결강도형\]/); assert.match(h.sent[1], /\nB1\. /);
+  assert.match(h.sent[0], /^📝가상매매 \[A · 기본\]/); assert.match(h.sent[0], /\nA1\. /); assert.match(h.sent[0], /\/매수 A1/);
+  assert.match(h.sent[1], /^📝가상매매 \[B · 체결강도형\]/); assert.match(h.sent[1], /\nB1\. /);
 });
 test('승인: 글자 없으면 되묻고, A1 B1 은 전략별로 처리, 다시 패스하면 이미 처리됨', async () => {
   const h = multiHarness();

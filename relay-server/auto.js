@@ -578,11 +578,12 @@ function createAuto(deps) {
   }
   /* 전략이 여럿이면 텔레그램 메시지 앞에 [A · 이름]을 붙인다(답할 때 번호 앞에 그 글자) */
   const labelOf = sid => { const r = state.runs[sid]; const p = r && r.payload; return p && p.letter ? `${p.letter} · ${(p.strategy && p.strategy.name) || sid}` : sid; };
-  const modeTag = sid => ({ live: '🔴실전 ', dryrun: '🧪드라이런 ' }[BR.execOf(sid)] || '');
+  const modeTag = sid => ({ live: '🔴실전매매 ', dryrun: '🧪실전 드라이런 ' }[BR.execOf(sid)] || '');
+  const paperTag = '📝가상매매 ';   // 전략이 여럿일 때 글자(A·B)만으로는 어느 쪽인지 몰라서, 가상매매 알림에도 맨 앞에 표시
   /* 실전매매(드라이런·실전) 전략 알림은 전략이 하나여도 늘 글자를 붙임 — 글자 없는 명령(/매수 1·/매수 전체·/패스·/유지)은 가상매매만 처리하므로 */
   const lettered = sid => state.multi || sideOfSid(sid) === 'real';
   const realCmds = (sid, t) => { if (sideOfSid(sid) !== 'real') return t; const L = (state.runs[sid] && state.runs[sid].payload.letter) || 'A'; return t.replace('/매수 전체 · /패스', `/매수 ${L} 전체 · /패스 ${L}`).replace('/정리 전체 · /유지', `/정리 ${L} 전체 · /유지 ${L}`); };
-  const tgFor = sid => t0 => { const L = state.runs[sid] && state.runs[sid].payload.letter, t = realCmds(sid, t0); return D.sendTelegram(lettered(sid) ? `${modeTag(sid)}[${labelOf(sid)}] ${L ? `— 답할 때 번호 앞에 ${L} (예: ${L}1)` : ''}\n${t}` : modeTag(sid) + t); };   // 실전·드라이런 표시는 늘 맨 앞
+  const tgFor = sid => t0 => { const L = state.runs[sid] && state.runs[sid].payload.letter, t = realCmds(sid, t0); return D.sendTelegram(lettered(sid) ? `${modeTag(sid) || (sideOfSid(sid) === 'real' ? '' : paperTag)}[${labelOf(sid)}] ${L ? `— 답할 때 번호 앞에 ${L} (예: ${L}1)` : ''}\n${t}` : modeTag(sid) + t); };   // 실전·드라이런 표시는 늘 맨 앞
   /* E2-1: 자동매매가 들고 있는(또는 주문 중인) 종목의 총 노출·손절 시 손실. 자동매매 종목 = 오늘 모든 전략의 주문 + 아직 안 판 이월 종목 */
   /* kinds: 이 장부들(paper·dry·live)의 자동매매 종목만(없으면 전부) — 같은 종목을 장부마다 따로 보유할 수 있어 노출액을 장부별로 셈 */
   async function autoCodes(date, kinds) {
