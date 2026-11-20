@@ -923,6 +923,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .tb .tk{display:flex;justify-content:space-between;line-height:1.55;font-size:11.5px}.tb .tk .t{color:var(--ink-3);font-size:10px}
 .trd-mem{display:grid;grid-template-columns:1fr 1fr;gap:10px}.trd-mem table{width:100%;font-size:12px;font-variant-numeric:tabular-nums}.trd-mem td{padding:3px 4px;border-bottom:1px solid var(--grid)}.trd-mem td.n{text-align:right}
 .trd-cn{margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.6}.trd-cn summary{cursor:pointer;font-weight:700}.trd-cn p{margin:6px 0}.trd-cnb{margin-top:4px}
+.ali-secs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}.ali-secs label{display:inline-flex;align-items:center;gap:3px;font-size:12px;padding:3px 7px;border:1px solid var(--grid);border-radius:14px;cursor:pointer;user-select:none}.ali-secs label.on{background:var(--accent,#2f6fed);color:#fff;border-color:transparent}.ali-secs input{display:none}
+.ali-wrap{overflow:auto;max-height:78vh}.ali-tbl{border-collapse:separate;border-spacing:0;font-size:12px;white-space:nowrap}.ali-tbl th,.ali-tbl td{padding:4px 7px;border-bottom:1px solid var(--grid);background:var(--surface,#fff)}.ali-tbl thead th{position:sticky;top:0;z-index:3;cursor:pointer;text-align:center;background:var(--surface-2,#f4f4f4)}.ali-tbl thead tr.g2 th{top:26px}.ali-tbl thead th.grp{cursor:default;border-left:1px solid var(--grid)}.ali-tbl td.num{text-align:right}.ali-tbl .c1{position:sticky;left:0;z-index:2;min-width:118px;max-width:150px;overflow:hidden;text-overflow:ellipsis;text-align:left}.ali-tbl thead .c1{z-index:4}.ali-tbl .gs{border-left:1px solid var(--grid)}.ali-tbl th.sorted::after{content:attr(data-ar);margin-left:2px;color:var(--accent,#2f6fed)}
 .trd-book{font-size:12.5px;font-variant-numeric:tabular-nums}
 .tb .mo{font-size:10px;font-weight:700;color:#fff;background:var(--up);border-radius:3px;padding:0 4px;line-height:1.5;text-decoration:none;white-space:nowrap}.tb .mo.s{background:var(--down)}
 .trd-stp{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center}.trd-stp .faint{font-size:11.5px}
@@ -1240,6 +1242,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="today">오늘의 종목</button>
       <button data-v="scr">종목 후보</button>
       <button data-v="trend">종목 추세</button>
+      <button data-v="allinfo">전 종목 정보</button>
       <button data-v="etfhub">ETF</button>
       <button data-v="pair">짝꿍매매</button>
       <button data-v="sw">국면 전략</button></div></div>
@@ -1814,6 +1817,15 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="note" style="margin-bottom:8px">종가(장중 업데이트 후에는 잠정) 기준으로 추세가 강한 종목을 봅니다. 기본 조건은 시총 1조 이상 · 종가 &gt; 60일선 &gt; 120일선 정배열 · 매집 전체(지속+고점 후 정체)이고 RS20(최근 20일 시장 대비 강도) 상위 순입니다. 표의 열은 종목 후보와 같고 오른쪽으로 펼쳐집니다. 표에서는 <b>행을 누르면</b> 아래에 가격·이평선 차트가 펼쳐지고, <b>차트 카드</b> 보기에서는 같은 순서로 종목마다 차트가 이어집니다. 종목명을 누르면 종목상세로 이동합니다.</div>
     <div class="tw scrlike" id="trWrap"><table><thead></thead><tbody id="trBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
     <div id="trCards" class="hide"></div>
+  </div>
+</section>
+<section id="v-allinfo" class="hide">
+  <div class="card" style="margin-top:16px"><h3><span>전 종목 정보</span> <span class="r" id="aliStat">불러오는 중…</span></h3>
+    <div class="note" style="margin-bottom:8px">전체 종목의 종가·시가총액(당일)과 2025 확정·2026E·2027E 실적·ROE·PER·PBR·배당률을 한 표로 봅니다. PER·PBR·배당률은 <b>당일 종가</b> ÷ 해당 연도 EPS·BPS·주당배당금, 26E·27E는 예상치(26E 네이버 컨센서스 · 27E 증권사 1곳 추정)이며 값이 없으면 –. 헤더를 누르면 내림차순 → 오름차순으로 정렬됩니다.</div>
+    <div class="dfrow" style="margin-bottom:6px;gap:6px;flex-wrap:wrap;align-items:center"><input id="aliQ" class="df" placeholder="종목명·코드 검색" style="flex:1 1 140px;min-width:120px">
+      <span class="faint" style="font-size:11.5px">표시 연도</span><span class="qf seg" id="aliYrs"><button class="fchip" data-y="25" aria-pressed="true">2025</button><button class="fchip" data-y="26" aria-pressed="true">2026E</button><button class="fchip" data-y="27" aria-pressed="true">2027E</button></span></div>
+    <details id="aliSecBox" open style="margin-bottom:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:600">업종 <span class="faint" id="aliSecCnt" style="font-weight:400;font-size:11px"></span> <span style="margin-left:6px"><button type="button" class="chip" id="aliSecAll">전체 선택</button> <button type="button" class="chip" id="aliSecNone">전체 해제</button></span></summary><div id="aliSecs" class="ali-secs"></div></details>
+    <div class="tw scrlike ali-wrap" id="aliWrap"><table class="ali-tbl"><thead></thead><tbody id="aliBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
   </div>
 </section>
 <section id="v-sw" class="hide">
@@ -4893,8 +4905,8 @@ function go(v,detailCode){
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===vOrig));
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
-  wideSet(v==="scr"||v==="trend"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
+  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend","allinfo","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  wideSet(v==="scr"||v==="trend"||v==="allinfo"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
   // "아직 종목상세를 한 번도 안 봤으면(S.chart.code 없음) 디폴트 SK하이닉스를
@@ -4948,6 +4960,7 @@ function go(v,detailCode){
   if(v==='today')tdFitSoon();
   if(v==="live")liveStart();
   if(v==="trend")trendStart();
+  if(v==="allinfo")aliStart();
   if(v==="trade")trdEnter();
   if(typeof tcBar==="function")tcBar();
   if(v==="fw")fwOpen();
@@ -8700,6 +8713,79 @@ function nxFill(){
 const SMX_ST={CONT:["매집 지속","up"],STALL:["고점 후 정체","warn"],LEAVE:["이탈 진행","down"],HEAVY:["이탈 심화","down"],OUT:["순유출","down"],NONE:["매집 이력 없음","dim"]};
 const LEAD_TR={UP:["매수 추세","up",6],RESUME:["매수 재개","up",5],SLOW:["매수 둔화","warn",4],REBUY:["매도 후 재매수","warn",3],FLAT:["변동 없음","dim",2],TURN:["매도 전환","down",1],DOWN:["매도 추세","down",0]};
 /* 26E/27E PER 열: 종가 ÷ 연간 예상 EPS(stock_earnings 2026/2027, EPS ≤ 0 은 –). EPS는 한 번만 받아 둔다 */
+
+/* ══ 전 종목 정보 (2026-11-20): 전체 종목 × (종가·시총 + 25/26E/27E 실적·ROE·PER·PBR·배당률) ══ */
+S.ali=S.ali||{raw:null,rows:[],secs:null,sel:new Set(),yrs:{25:true,26:true,27:true},sort:null,q:""};
+const ALI_Y=[["25","202512","2025"],["26","202612","2026E"],["27","202712","2027E"]];
+const ALI_C=[["sales","매출액"],["op","영업이익"],["opm","영업이익률"],["roe","ROE"],["per","PER"],["pbr","PBR"],["div","배당률"]];
+async function aliStart(){
+  const A=S.ali;
+  if(!S.date){setTimeout(()=>{if(S.curTab==="allinfo")aliStart();},800);return;}
+  if(A.raw&&A.date===S.date){aliRender();return;}
+  if(A.loading)return;A.loading=true;
+  try{
+    const earn=[];for(let off=0;off<40000;off+=1000){
+      const part=await q("stock_earnings",`select=code,period,sales,op_profit,eps,bps,roe,dps&freq=eq.A&period=in.(202512,202612,202712)&order=code.asc,period.asc&limit=1000&offset=${off}`);
+      earn.push(...part);if(part.length<1000)break;}
+    const rows=await q("v_screener",`select=code,name,sector,market,close,market_cap&trade_date=eq.${S.date}`);
+    const by={};earn.forEach(r=>{(by[r.code]=by[r.code]||{})[r.period]=r;});
+    const nz=v=>v==null?null:+v;
+    A.rows=rows.filter(r=>/^\d{6}$/.test(r.code)).map(r=>{
+      const o={code:r.code,name:r.name||r.code,sector:r.sector||"미분류",close:nz(r.close),cap:nz(r.market_cap)};
+      ALI_Y.forEach(([y,p])=>{const e=(by[r.code]||{})[p]||{},px=o.close,sales=nz(e.sales),op=nz(e.op_profit),eps=nz(e.eps),bps=nz(e.bps),dps=nz(e.dps);
+        o["sales"+y]=sales;o["op"+y]=op;o["opm"+y]=(sales>0&&op!=null)?op/sales*100:null;o["roe"+y]=nz(e.roe);
+        o["per"+y]=(px>0&&eps>0)?px/eps:null;o["pbr"+y]=(px>0&&bps>0)?px/bps:null;o["div"+y]=(px>0&&dps>0)?dps/px*100:null;});
+      return o;});
+    A.secs=[...new Set(A.rows.map(r=>r.sector))].sort((a,b)=>A.rows.filter(r=>r.sector===b).length-A.rows.filter(r=>r.sector===a).length||a.localeCompare(b,"ko"));
+    if(!A.sel.size)A.secs.forEach(x=>A.sel.add(x));   // 기본: 전 업종 선택
+    A.raw=true;A.date=S.date;
+    if(window.innerWidth<700&&!A.mobInit){A.mobInit=1;A.yrs={25:false,26:true,27:false};}   // 모바일은 2026E만 먼저 펼침
+    aliSecDraw();
+  }catch(e){console.error("전 종목 정보",e);$("#aliBody").innerHTML='<tr><td colspan="30" class="load">불러오지 못했습니다 — 잠시 후 다시 열어 주세요</td></tr>';A.loading=false;return;}
+  A.loading=false;aliRender();
+}
+function aliSecDraw(){
+  const A=S.ali,cnt={};A.rows.forEach(r=>cnt[r.sector]=(cnt[r.sector]||0)+1);
+  $("#aliSecs").innerHTML=A.secs.map(x=>`<label class="${A.sel.has(x)?"on":""}"><input type="checkbox" data-sec="${trdEsc(x)}"${A.sel.has(x)?" checked":""}>${trdEsc(x)} <span style="opacity:.7">${cnt[x]}</span></label>`).join("");
+  $("#aliSecCnt").textContent=`· ${A.sel.size}/${A.secs.length}개 선택`;
+}
+function aliFmt(k,v){
+  if(v==null)return "–";
+  if(k==="sales"||k==="op")return earnEok(v);
+  if(k==="opm"||k==="roe"||k==="div")return N(v,1)+"%";
+  return N(v,1)+"배";
+}
+function aliRender(){
+  const A=S.ali;if(!A.raw)return;
+  const ys=ALI_Y.filter(([y])=>A.yrs[y]);
+  $$("#aliYrs button").forEach(b=>b.setAttribute("aria-pressed",A.yrs[b.dataset.y]?"true":"false"));
+  const keys=[["name","종목"],["sector","업종"],["close","종가"],["cap","시가총액"]];
+  let h1='<tr><th class="c1 grp" rowspan="2" data-k="name">종목</th><th rowspan="2" data-k="sector">업종</th><th rowspan="2" data-k="close">종가</th><th rowspan="2" data-k="cap">시가총액</th>';
+  ys.forEach(([y,,lb])=>{h1+=`<th class="grp" colspan="${ALI_C.length}">${lb}${y==="25"?" (확정)":" (예상)"}</th>`;});
+  h1+="</tr>";let h2='<tr class="g2">';
+  ys.forEach(([y])=>ALI_C.forEach(([c,t],i)=>{h2+=`<th data-k="${c+y}"${i===0?' class="gs"':""}>${t}</th>`;}));h2+="</tr>";
+  $("#aliWrap thead").innerHTML=h1+h2;
+  const sel=A.sel,qs=A.q.trim().toLowerCase();
+  let rows=A.rows.filter(r=>sel.has(r.sector)&&(!qs||r.name.toLowerCase().includes(qs)||r.code.includes(qs)));
+  const so=A.sort;
+  if(so){const d=so.dir==="asc"?1:-1,k=so.k,str=k==="name"||k==="sector";
+    rows=rows.slice().sort((a,b)=>{const x=a[k],y=b[k];if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;   // 값 없는 종목은 항상 아래
+      return (str?String(x).localeCompare(String(y),"ko"):x-y)*d;});}
+  $$("#aliWrap thead th[data-k]").forEach(th=>{const on=so&&so.k===th.dataset.k;th.classList.toggle("sorted",!!on);if(on)th.dataset.ar=so.dir==="asc"?"▲":"▼";});
+  $("#aliStat").textContent=`${N(rows.length)}종목 · 기준일 ${S.date}`;
+  $("#aliBody").innerHTML=rows.length?rows.map(r=>`<tr><td class="c1"><a class="lk nm" data-code="${r.code}">${trdEsc(r.name)}</a> <span class="faint" style="font-size:10.5px">${r.code}</span></td><td>${trdEsc(r.sector)}</td><td class="num">${r.close==null?"–":N(r.close)}</td><td class="num">${r.cap==null?"–":earnEok(r.cap)}</td>${ys.map(([y])=>ALI_C.map(([c],i)=>`<td class="num${i===0?" gs":""}">${aliFmt(c,r[c+y])}</td>`).join("")).join("")}</tr>`).join(""):'<tr><td colspan="30" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+  $$("#aliBody a.lk").forEach(a=>a.onclick=e=>{e.stopPropagation();go("detail",a.dataset.code);});
+}
+document.addEventListener("click",e=>{
+  const t=e.target;if(!t.closest||!t.closest("#v-allinfo"))return;const A=S.ali;
+  let el;
+  if((el=t.closest("#aliWrap thead th[data-k]"))){const k=el.dataset.k;A.sort=A.sort&&A.sort.k===k?{k,dir:A.sort.dir==="desc"?"asc":"desc"}:{k,dir:(k==="name"||k==="sector")?"asc":"desc"};aliRender();return;}
+  if((el=t.closest("#aliYrs button"))){A.yrs[el.dataset.y]=!A.yrs[el.dataset.y];aliRender();return;}
+  if(t.closest("#aliSecAll")){e.preventDefault();A.secs.forEach(x=>A.sel.add(x));aliSecDraw();aliRender();return;}
+  if(t.closest("#aliSecNone")){e.preventDefault();A.sel.clear();aliSecDraw();aliRender();return;}
+});
+document.addEventListener("change",e=>{const el=e.target;if(!el.matches||!el.matches("#aliSecs input[data-sec]"))return;const A=S.ali,v=el.dataset.sec;el.checked?A.sel.add(v):A.sel.delete(v);aliSecDraw();aliRender();});
+document.addEventListener("input",e=>{if(e.target&&e.target.id==="aliQ"){S.ali.q=e.target.value;aliRender();}});
 async function perEpsLoad(){
   if(S.epsMap)return S.epsMap;if(S._epsP)return S._epsP;
   S._epsP=(async()=>{const m={};for(let off=0;off<30000;off+=1000){
@@ -12913,7 +12999,7 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
 /* 자동매매 컨트롤 타워 입력(체크박스·선택은 change, 글자는 input) */
 document.addEventListener("input",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&t.type!=="checkbox"&&t.tagName!=="SELECT")auInputEv(t);});
 document.addEventListener("change",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&(t.type==="checkbox"||t.tagName==="SELECT"))auInputEv(t);});
-const VIEW_IDS=["seclog","etfhub","etf","trend","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
+const VIEW_IDS=["seclog","etfhub","etf","trend","allinfo","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
 function setHash(v,code){
   const h="#"+(DESK_V.test(v)?v.replace("-","/"):v)+(code?"/"+code:"");   // 매매 화면: #paper/order · #real/auto
   if(location.hash!==h)history.pushState(null,"",h);
