@@ -2389,8 +2389,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     </div>
     <div id="trdPaneMod" class="hide"><div class="card"><h3>정정 / 취소 <span class="r faint" style="font-size:11px">미체결 주문의 가격·수량을 바꾸거나 취소</span></h3><div id="trdMod"></div></div></div>
     <div id="trdPaneFills" class="hide">
-    <div class="card"><h3>미체결 주문</h3><div id="trdOpen"></div></div>
-    <div class="card"><h3>오늘 체결</h3><div id="trdFills"></div></div>
+    <div class="card"><h3>체결 / 미체결 <span class="r faint" style="font-size:11px">오늘 주문 · 최근 80건</span></h3><div class="trd-chips" id="trdOfl" style="margin-bottom:8px"></div><div id="trdOpen"></div><div id="trdFills" class="hide"></div></div>
     </div>
     <div id="trdPaneAuto" class="hide"></div>
     <div id="trdPaneRep" class="hide"></div>
@@ -11483,9 +11482,25 @@ function trdRenderHold(){
   }).join("");
   box.innerHTML=probe+sum+eng+(P.positions.length?`<div class="trd-ht"><div class="trd-hh"><div class="c0"><span>종목명</span><div class="q"><span>주문가능</span><span>보유수량</span></div></div><div class="c"><span>평가손익</span><span>수익률(%)</span></div><div class="c"><span>평가금액</span><span>매입금액</span></div><div class="c"><span>현재가</span><span>평균단가</span></div></div>${rows}</div><div class="faint" style="font-size:11px;margin-top:6px">종목을 누르면 매수·매도·계획 수정이 펼쳐집니다</div>`
     :'<div class="faint" style="font-size:12.5px">보유 종목이 없습니다.</div>');
-  const open=P.orders.filter(o=>o.status==="open"||o.status==="partial");
-  $("#trdOpen").innerHTML=open.length?open.map(o=>{const auto=TRD_RSN(o.reason);return `<div class="trd-hr"><div class="top"><span><b class="${o.side==="buy"?"up":"down"}">${o.side==="buy"?"매수":"매도"}</b> ${auNm(o.name||trdNm(o.code),o.code)} ${o.type==="market"?"시장가":N(o.price)+"원"}${o.venue?` <span class="faint" style="font-size:11px">${trdEsc(o.venue)}</span>`:""}${auto?` <span class="trd-w" style="background:var(--surface-2);color:var(--ink-2)">${auto} · 자동</span>`:""}</span>${auto||o.status==="unknown"||o.status==="pending"||o.cancelReq?"":`${trdCclBtn(o.id)}`}</div><div class="sub num">${N(o.filled)}/${N(o.qty)}주 체결${o.queueAhead!=null?` · 내 앞 대기 약 ${N(o.queueAhead)}주`:""}${o.status==="unknown"?' · <b class="down">접수 확인 중</b>':o.status==="pending"?" · 전송 중":""}${o.cancelReq?" · 취소 요청됨":""} · ${trdTm(o.ts)}</div></div>`;}).join(""):'<div class="faint" style="font-size:12.5px">미체결 주문이 없습니다.</div>';
-  $("#trdFills").innerHTML=P.fills.length?P.fills.map(f=>`<div class="trd-hr"><div class="top"><span><b class="${f.side==="buy"?"up":"down"}">${f.side==="buy"?"매수":"매도"}</b> ${trdEsc(trdNm(f.code))} ${N(f.price)}원 × ${N(f.qty)}주</span><span class="num ${f.realized>0?"up":f.realized<0?"down":"dim"}">${f.realized==null?"":trdSgn(f.realized)+"원"}</span></div><div class="sub">${trdTm(f.ts)}${TRD_RSN(f.reason)?" · "+TRD_RSN(f.reason)+" (자동)":""}</div></div>`).join(""):'<div class="faint" style="font-size:12.5px">오늘 체결이 없습니다.</div>';
+  trdRenderOrdList(P);
+}
+/* 체결/미체결 목록: 전체·체결·미체결 보기, 주문마다 매수/매도 표시·체결수량·평균가·상태. 정정·취소는 미체결에만 */
+const TRD_STC={open:"",partial:"",filled:"background:var(--surface-2);color:var(--ink-2)",cancelled:"background:var(--surface-2);color:var(--ink-3)",rejected:"background:var(--down);color:#fff",pending:"",unknown:""};
+function trdRenderOrdList(P){
+  const box=$("#trdOpen"),fb=$("#trdOfl");if(!box)return;
+  const isOpen=o=>["open","partial","pending","unknown"].includes(o.status),mode=TRD.ofl||"all";
+  const all=P.orders.slice().sort((a,b)=>(isOpen(b)-isOpen(a))||(b.ts-a.ts));
+  const nOpen=all.filter(isOpen).length,nDone=all.filter(o=>o.filled>0).length;
+  if(fb)fb.innerHTML=[["all","전체",all.length],["done","체결",nDone],["open","미체결",nOpen]].map(([k,t,c])=>`<button type="button" class="chip${mode===k?" on":""}" data-ofl="${k}">${t} ${c}</button>`).join("");
+  const list=all.filter(o=>mode==="open"?isOpen(o):mode==="done"?o.filled>0:true);
+  const rz={};for(const f of P.fills||[])if(f.realized!=null)rz[f.orderId]=(rz[f.orderId]||0)+f.realized;
+  box.innerHTML=list.length?list.map(o=>{
+    const auto=TRD_RSN(o.reason),buy=o.side==="buy",op=isOpen(o),left=o.qty-o.filled,pct=o.qty?Math.round(o.filled/o.qty*100):0;
+    const st=TRD_ST[o.status]||o.status,badge=`<span class="trd-w" style="${TRD_STC[o.status]||"background:var(--accent,#2f6fed);color:#fff"}">${o.status==="open"&&o.filled>0?"부분체결":st}</span>`;
+    const chip=`<span class="trd-w" style="background:var(--${buy?"up":"down"});color:#fff">${buy?"매수":"매도"}</span>`;
+    return `<div class="trd-hr"><div class="top"><span>${chip} <b>${auNm(o.name||trdNm(o.code),o.code)}</b> ${badge}${auto?` <span class="trd-w" style="background:var(--surface-2);color:var(--ink-2)">${auto} · 자동</span>`:""}${o.venue?` <span class="faint" style="font-size:11px">${trdEsc(o.venue)}</span>`:""}</span><span class="faint num" style="font-size:11.5px">${trdTm(o.ts)}</span></div>
+      <div class="sub num">주문 ${o.type==="market"?"시장가":N(o.price)+"원"} × ${N(o.qty)}주 · 체결 <b>${N(o.filled)}주</b>${o.filled>0&&o.avg?` 평균 ${N(o.avg,0)}원`:""}${op&&o.filled>0?` (${pct}%)`:""}${o.status==="filled"&&rz[o.id]!=null?` · 실현 <b class="${rz[o.id]>0?"up":rz[o.id]<0?"down":""}">${trdSgn(Math.round(rz[o.id]))}원</b>`:""}${op&&left>0&&o.status!=="unknown"&&o.status!=="pending"?` · 미체결 ${N(left)}주`:""}${o.queueAhead!=null&&op?` · 내 앞 대기 약 ${N(o.queueAhead)}주`:""}${o.status==="unknown"?' · <b class="down">접수 확인 중</b>':o.status==="pending"?" · 전송 중":""}${o.cancelReq?" · 취소 요청됨":""}${o.status==="cancelled"&&TRD_NOTE[o.note]?` · ${TRD_NOTE[o.note]}`:""}${o.status==="rejected"&&o.note?` · ${trdEsc(String(o.note))}`:""}</div>
+      ${op&&!auto&&o.status!=="unknown"&&o.status!=="pending"&&!o.cancelReq?`<div class="trd-sell"><button type="button" class="chip" data-gomod="1">정정</button>${trdCclBtn(o.id)}</div>`:""}</div>`;}).join(""):`<div class="faint" style="font-size:12.5px">${mode==="open"?"미체결 주문이 없습니다.":mode==="done"?"오늘 체결이 없습니다.":"오늘 주문이 없습니다."}</div>`;
 }
 async function trdPeSave(code){
   const e=TRD.pe[code];if(!e)return;
@@ -12729,6 +12744,7 @@ document.addEventListener("click",e=>{const t=e.target;if(!t.closest||!t.closest
   if((el=t.closest("[data-spx]"))){TRD.sell.type="limit";TRD.sell.price=+el.dataset.spx;trdRenderSell();return;}
   if(t.closest("#trdSBtn"))return void trdSellGo();
   if((el=t.closest("[data-mod]")))return void trdModGo(el.dataset.mod);
+  if((el=t.closest("[data-ofl]"))){TRD.ofl=el.dataset.ofl;if(TRD.ps)trdRenderOrdList(TRD.ps);return;}
   if((el=t.closest("[data-bstep]"))){const Q=TRD.quote,b0=trdFloor(TRD.buy||0)||(Q?trdBasis(Q):0);if(!(b0>0))return;TRD.type="limit";return void trdSetBuy(el.dataset.bstep==="up"?b0+trdTick(b0):trdBelow(b0));}
   if((el=t.closest("[data-bpx]"))){TRD.type="limit";return void trdSetBuy(+el.dataset.bpx);}
   if((el=t.closest("[data-bqa]"))){const v=+el.dataset.bqa;return void trdSetQty(v?(Math.floor(TRD.qty)||0)+v:0);}
