@@ -8426,14 +8426,26 @@ async function perFill(code,close,el){
   if(!el)return;
   try{const rows=await earnRows(code)||[];
     const yr=(per)=>rows.find(x=>x.freq==="A"&&x.period===per);
-    const ratio=(r,k)=>{const d=r&&r[k]!=null?+r[k]:null;return d!=null&&d>0&&close>0?N(close/d,k==="eps"?0:2)+"배":(d!=null&&d<=0&&k==="eps"?"적자":"–");};
+    /* 26E 값이 없을 때 대체 기준: 확정 분기 실적 중 최근 것(EPS는 최근 4분기 합 TTM, 4개 미만이면 최근 분기×4, BPS는 최근 분기) */
+    const qs=rows.filter(x=>x.freq==="Q"&&!x.is_est).sort((a,b)=>a.period<b.period?1:-1);
+    const qlab=pr=>pr.slice(2,4)+"."+pr.slice(4,6);
+    const fb=(k)=>{
+      const have=qs.filter(x=>x[k]!=null);if(!have.length)return null;
+      if(k==="bps")return {v:+have[0].bps,lab:`${qlab(have[0].period)} 분기 BPS`};
+      const l4=have.slice(0,4),sum=l4.reduce((a,x)=>a+ +x.eps,0);
+      return l4.length===4?{v:sum,lab:`${qlab(l4[0].period)}까지 최근 4분기 합`}:{v:+have[0].eps*4,lab:`${qlab(have[0].period)} 분기×4`};};
+    const calc=(d,k)=>d!=null&&d>0&&close>0?N(close/d,k==="eps"?0:2)+"배":(d!=null&&d<=0&&k==="eps"?"적자":"–");
+    const ratio=(r,k)=>calc(r&&r[k]!=null?+r[k]:null,k);
     const r26=yr("202612"),r27=yr("202712");
-    const it=(lb,r,k)=>`${lb} <b>${ratio(r,k)}</b>`;
+    const it=(lb,r,k,useFb)=>{
+      let v=ratio(r,k);
+      if(useFb&&el.id==="dPer"&&v==="–"){const f=fb(k);if(f){const c=calc(f.v,k);if(c!=="–")return `${lb} <b>${c}</b><span class="faint" style="font-size:10.5px"> (${f.lab} 기준)</span>`;}}
+      return `${lb} <b>${v}</b>`;};
     const full=el.id==="dPer";   // 종목 상세 소개 줄만 PBR 포함·항상 표시, 다른 화면은 PER만(값 없으면 숨김)
     if(!full&&ratio(r26,"eps")==="–"&&ratio(r27,"eps")==="–"){el.style.display="none";return;}
-    el.innerHTML=[it("26E PER",r26,"eps"),it("27E PER",r27,"eps")].join(" · ")+(full?"<br>"+[it("26E PBR",r26,"bps"),it("27E PBR",r27,"bps")].join(" · "):"");
+    el.innerHTML=[it("26E PER",r26,"eps",1),it("27E PER",r27,"eps")].join(" · ")+(full?"<br>"+[it("26E PBR",r26,"bps",1),it("27E PBR",r27,"bps")].join(" · "):"");
     const by=r27&&r27.src==="kis_est"?` (27E: 증권사 1곳 추정${r27.est_by?" · "+r27.est_by:""}${r27.est_date?" "+r27.est_date.slice(2).replace(/-/g,"."):""})`:"";
-    el.title="PER = 현재 종가 ÷ 연간 예상 EPS · PBR = 현재 종가 ÷ 연간 예상 BPS (26E: 네이버 컨센서스 / 27E: 한국투자증권 API) · 숫자가 없으면 –"+by;
+    el.title="PER = 현재 종가 ÷ 연간 예상 EPS · PBR = 현재 종가 ÷ 연간 예상 BPS (26E: 네이버 컨센서스 / 27E: 한국투자증권 API) · 26E 값이 없으면 확정 분기 실적(최근 4분기 합 EPS·최근 분기 BPS) 기준으로 대체하고 기준을 표시 · 그래도 없으면 –"+by;
     el.style.display="";}catch(e){el.style.display="none";}
 }
 async function earnRows(code){
