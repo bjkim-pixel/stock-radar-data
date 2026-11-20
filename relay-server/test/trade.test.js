@@ -480,3 +480,21 @@ test('승인 거부·만료, 실전 스위치 ON 이면 등록 기기도 승인 
   assert.equal((await sess(d, DEV3)).status, 202);   // 이제 등록된 기기지만 실전 ON → 또 승인 필요
   await d.close();
 });
+
+test('가상매매 화면(desk=paper)은 텔레그램 승인 없이 PIN만으로 입장 · 그 세션은 실전·긴급정지 해제를 못 씀 · 기기를 아는 기기로 등록하지 않음', async () => {
+  const c = await boot({ TRADE_APPROVAL: '1', REAL_TRADING_ENABLED: '1' });
+  const p = await c.call('POST', '/trade/session', { body: { pin: '123456', desk: 'paper' } });
+  assert.equal(p.status, 200); assert.equal(p.body.scope, 'paper'); assert.ok(p.body.session);
+  assert.equal(c.alerts.length, 0);                                                    // 텔레그램 알림도 없음
+  const st = await c.call('GET', '/trade/status', { session: p.body.session });
+  assert.equal(st.body.session.scope, 'paper');
+  assert.equal((await c.call('GET', '/trade/live/state', { session: p.body.session })).status, 403);   // 실전 조회 거부
+  assert.equal((await c.call('POST', '/trade/live/order', { session: p.body.session, body: { desk: 'paper', code: '005930', side: 'buy', qty: 1 } })).status, 403);
+  assert.equal((await c.call('POST', '/trade/live/order', { session: p.body.session, body: { code: '005930', side: 'buy', qty: 1 } })).status, 403);
+  assert.equal((await c.call('POST', '/trade/resume', { session: p.body.session, body: { desk: 'paper' } })).status, 403);
+  assert.equal((await c.call('POST', '/trade/auto/config', { session: p.body.session, body: { liveOn: true } })).status, 403);   // desk 없는 자동매매 설정 거부
+  // 실전 화면 입장(desk=real)은 그대로 텔레그램 승인 대기
+  const r = await c.call('POST', '/trade/session', { body: { pin: '123456', desk: 'real' } });
+  assert.equal(r.status, 202); assert.equal(r.body.pending, true);
+  await c.close();
+});

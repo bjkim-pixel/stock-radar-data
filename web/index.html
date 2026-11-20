@@ -10684,7 +10684,8 @@ async function trdEnter(){
   try{
     const st=await trdRefreshStatus();
     if(!st.pinConfigured){$("#trdPinRow").classList.add("hide");trdGateMsg("서버에 거래 PIN이 아직 설정되지 않았습니다. Render 환경변수 <code>TRADE_PIN_HASH</code>를 확인하세요.");return;}
-    if(st.session.active){trdOpenMain();return;}
+    if(st.session.active&&!(trdDeskCfg().realOnly&&st.session.scope==="paper")){trdOpenMain();return;}   // 가상 전용 세션(텔레그램 승인 생략)으로는 실전 화면에 못 들어감 → PIN·승인으로 다시 입장
+    if(st.session.active){trdSetSess(null);}
     trdShowPin(st.pinLockedSec>0?`PIN이 잠겨 있습니다. ${Math.ceil(st.pinLockedSec/60)}분 뒤 다시 시도하세요.`:"");
   }catch(e){
     if(e.status===503)trdGateMsg("매매 서버 설정이 아직 끝나지 않았습니다(ALLOWED_EMAIL·TRADE_PIN_HASH).");

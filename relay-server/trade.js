@@ -302,11 +302,11 @@ function createTrade(deps = {}) {
   }
 
   /* ── 거래 세션 ── */
-  function openSession(uid) {
+  function openSession(uid, scope) {
     const t = now(), sid = crypto.randomBytes(32).toString('hex');
     sweep();
     while (sessions.size >= cfg.maxSessions) sessions.delete(sessions.keys().next().value);
-    sessions.set(sid, { uid, exp: t + cfg.sessionMs, abs: t + cfg.sessionMaxMs, act: t });
+    sessions.set(sid, { uid, exp: t + cfg.sessionMs, abs: t + cfg.sessionMaxMs, act: t, ...(scope ? { scope } : {}) });   // scope 'paper' = 가상매매 전용 세션(실전·실전 자동매매 API 거부)
     return sid;
   }
   function getSession(sid, uid) {
@@ -557,15 +557,16 @@ function createTrade(deps = {}) {
     ok: true, now: now(),
     enabled: cfg.enabled, realEnabled: cfg.realEnabled, realOn: cfg.realEnabled && state.realOn, halted: state.halted,
     pinConfigured: !!cfg.pinHash, pinLockedSec: Math.max(0, Math.ceil((state.pinLockUntil - now()) / 1000)),
-    session: a.session ? { active: true, ttlSec: sessionTtlSec(a.session) } : { active: false },
+    session: a.session ? { active: true, ttlSec: sessionTtlSec(a.session), scope: a.session.scope || 'full' } : { active: false },
     limits: cfg.limits, hours: cfg.hours, accountConfigured: !!(kisOrder && kisOrder.configured()),
   });
 
-  async function finishOpen(req, res, uid, c) {
+  async function finishOpen(req, res, uid, c, scope) {
     sweep();
     const kicked = sessions.size >= cfg.maxSessions;
-    const sid = openSession(uid);
-    await audit('session_open', true, { flags: c.flags.length ? c.flags : undefined, kicked: kicked || undefined }, req);
+    const sid = openSession(uid, scope);
+    await audit('session_open', true, { flags: c.flags.length ? c.flags : undefined, kicked: kicked || undefined, ...(scope ? { scope } : {}) }, req);
+    if (scope === 'paper') return json(res, 200, { ok: true, session: sid, scope, ttlSec: Math.round(cfg.sessionMs / 1000), idleSec: Math.round(cfg.idleMs / 1000) });   // 가상매매 전용: 텔레그램 알림 없음 · 기기를 "아는 기기"로 등록하지 않음(실전 입장 시 승인 유지)
     remember(c);
     alert(`${warnText(c)}🔓 거래 세션 열림 · ${kst()}\n${whoText(c)}\n실전 스위치 ${cfg.realEnabled ? 'ON 🔴' : 'OFF'}${cfg.realEnabled ? ' · 사이트 실전 주문 ' + (state.realOn ? 'ON 🔴' : 'OFF') : ''} · 긴급정지 ${state.halted ? 'ON' : '해제'}${kicked ? '\n(기존에 열려 있던 세션은 종료됨)' : ''}\n본인이 아니면 /kill`, '매매 세션');
     return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000), idleSec: Math.round(cfg.idleMs / 1000) });
@@ -591,6 +592,10 @@ function createTrade(deps = {}) {
     if (path === '/trade/status' && req.method === 'GET') {
       const sess = getSession(req.headers['x-trade-session'], a.user.id);
       return json(res, 200, statusBody({ session: sess }));
+    }
+    /* 가상매매 전용 세션(텔레그램 승인 없이 PIN만으로 연 세션)은 실전·실전 자동매매·긴급정지 해제를 쓸 수 없다 */
+    if (a.session && a.session.scope === 'paper' && needSession) {
+      if (path.startsWith('/trade/live/') || path === '/trade/resume') return json(res, 403, { ok: false, error: '가상매매 전용 세션입니다 — 실전은 PIN·승인으로 다시 입장하세요', paperOnly: true });
     }
     if (path === '/trade/audit' && req.method === 'GET') {   // 보안 로그 화면용(로그인한 주인만)
       if (!deps.sbGet) return json(res, 503, { ok: false, error: 'audit unavailable' });
@@ -685,6 +690,7 @@ function createTrade(deps = {}) {
     const desk = body && body.desk != null ? String(body.desk) : null;
     if (body && typeof body === 'object') delete body.desk;
     if (desk !== null && desk !== 'real' && desk !== 'paper') return json(res, 400, { ok: false, error: 'bad desk' });
+    if (a.session && a.session.scope === 'paper' && path !== '/trade/session' && path !== '/trade/session/poll' && desk !== 'paper') return json(res, 403, { ok: false, error: '가상매매 전용 세션입니다 — 실전은 PIN·승인으로 다시 입장하세요', paperOnly: true });
     if (desk) {
       const deskErr = msg => { audit('desk_mismatch', false, { path, desk, why: msg }, req, desk === 'real' ? 'REAL' : 'VIRTUAL'); return json(res, 409, { ok: false, error: msg + ' — 화면을 새로고침하세요' }); };
       if (path.startsWith('/trade/live/') && desk !== 'real') return deskErr('가상매매 화면에서 실전 주문을 보낼 수 없습니다');
@@ -710,6 +716,7 @@ function createTrade(deps = {}) {
       if (cfg.realEnabled) reasons.push('실전 스위치 ON');
       if (!c.d.id) reasons.push('기기 정보 없음'); else if (!kd) reasons.push('등록되지 않은 새 기기');
       if (c.flags.some(f => /집 밖/.test(f))) reasons.push('집 밖 접속');
+      if (desk === 'paper') return finishOpen(req, res, a.user.id, c, 'paper');   // 가상매매 화면: PIN만 확인하고 텔레그램 승인은 생략(가상 전용 세션)
       if (cfg.approval && deps.notify && reasons.length) {   // 텔레그램 승인 대기
         sweep();
         for (const [k, v] of pending) if (v.uid === a.user.id && v.status === 'wait') pending.delete(k);
