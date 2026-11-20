@@ -7688,7 +7688,7 @@ function renderWtTop(rows,start,end){
     return `<div style="margin-top:12px"><div style="font-size:13px"><b>${x.rank}위 ${x.d}</b> · 무게 <b>${pm(x.w,2)}%</b> · 종가 ${px(x.close)} · 당일 거래대금 <b>${x.amt==null?"–":N(x.amt/EOK,0)+"억"}</b>${fi&&fi.net>0&&x.vwap?` · 세력(외+기) 평단 <b>${px(x.vwap)}</b> ${gap}`:""}</div>${leadTx}
       <div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">주체</th><th>순매수대금</th><th title="순매수대금 ÷ 그날 거래대금">거래대금 비중</th><th title="순매수대금 × 거래량 ÷ 거래대금 (추정)">순매수 주식수(추정)</th><th title="순매수대금 ÷ 순매수 주식수">평균 매수단가</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
   };
-  host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>무게/주식수 1·2위일 분석</b> — 선택 기간(${start}~${end}) 안에서 무게/주식수가 가장 큰 날과, 그 날 이후 가장 큰 날. 각 날짜마다 <b>그날 가장 많이 사들인 주도 세력</b>을 함께 보여줍니다(외국인·금융투자·투신·연기금·사모·기타기관 중에서 고르며, <b>기관합계는 기관 수급의 합계이지 세력이 아니므로 제외</b>)</div>`+top.map(blk).join("")
+  host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>무게/주식수 1·2위일 분석</b> — 선택 기간(${start}~${end}) 안에서 무게/주식수가 가장 큰 날과, 그 날 이후 가장 큰 날. 각 날짜마다 <b>그날 가장 많이 사들인 주도 세력</b>을 함께 보여줍니다</div>`+top.map(blk).join("")
     +`<div class="note">순매수 주식수는 일봉으로만 추정합니다(순매수대금 × 거래량 ÷ 거래대금). 투자자별 실제 체결 수량은 수집하지 않아 <b>평균 매수단가(= 순매수대금 ÷ 순매수 주식수)가 그날의 거래대금 ÷ 거래량(일 평균가)으로 모든 주체에서 같게</b> 나옵니다. 주체마다 다른 진짜 평단이 아니라 "그 큰 순매수가 들어온 날의 평균 가격대"로 보세요. 순매도 주체는 평균단가를 표시하지 않습니다.</div>`;
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
@@ -8800,7 +8800,7 @@ function smxDraw(all,win,E){
   const lead=(k,pos=true)=>{const a=m.subj.filter(z=>!z.flat&&(!pos||z[k]>0)).sort((x,y)=>y[k]-x[k])[0];return a?`<b>${a.nm}</b> ${f0(a[k])}억`:"<span class=\"faint\">없음</span>";};
   m.subj.forEach(z=>{z.hold=z.v[m.L];});
   E.status.innerHTML+=`<div style="font-size:12.5px;margin-top:6px;line-height:1.55">주도 세력 · 기간 내 순매수 누적 최다(가장 많은 물량) ${lead("hold")} · 매집 구간 최다 ${lead("acc")} · 최근 20일 최다 매수 ${lead("r20")} · 최근 5일 ${lead("r5")}</div>
-    <div class="faint" style="font-size:11px;margin-top:2px">주도 세력은 외국인·금융투자·투신·연기금·사모·기타기관 중에서 고릅니다. 기관합계는 기관 수급의 합계이지 세력이 아니므로 제외했습니다. 보유 물량은 실제 잔고가 아니라 이 기간 외+기 수급의 누적 순매수 기준입니다.</div>`;
+    <div class="faint" style="font-size:11px;margin-top:2px">주도 세력은 외국인·금융투자·투신·연기금·사모·기타기관 중에서 고릅니다. 보유 물량은 실제 잔고가 아니라 이 기간 외+기 수급의 누적 순매수 기준입니다.</div>`;
   const recov=x=>x.acc>0&&x.after<0?N(-x.after/x.acc*100,0)+"%":x.after>0?'<span class="up">매수중</span>':"–";
   const td=v=>`<td class="num ${sgn(v)}">${f0(v)}</td>`;
   const row=x=>`<tr><td class="l"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(${x.c});margin-right:4px"></i>${x.nm}</td>${td(x.acc)}${td(x.after)}<td>${recov(x)}</td>
