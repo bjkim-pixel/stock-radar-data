@@ -2970,7 +2970,8 @@ function updateFavLive(code,m){
 const SW_LIVE_MAX=20;
 
 /* ══ 실시간 종목: 등락률 상위 10 — 순위 후보는 릴레이 /live-top(8초), 가격은 KIS 웹소켓 체결가 ══ */
-const LIVE_TOP_N=10,LIVE_POOL=12,LIVE_SUB_GRACE=3,LIVE_EXCL=/스팩|ETN|인버스|레버리지|선물/;   // 2026-11-20: ETF(KODEX·TIGER 등)도 포함 — ETN·스팩·인버스·레버리지·선물만 제외
+const LIVE_TOP_N=10,LIVE_POOL=12,LIVE_SUB_GRACE=3,LIVE_EXCL=/스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/,
+  TR_EXCL=/스팩|ETN|인버스|레버리지|선물/;   // 종목 추세 전용: ETF(KODEX·TIGER 등)는 포함, ETN·스팩·인버스·레버리지·선물만 제외(실시간 종목은 ETF 제외 유지)
 S.liveMeta=S.liveMeta||{};   // code -> {mk, sc} (stocks.market · v_stock_sector.sector)
 S.live={min:0,fg:"",ob:"",pg:"",cs:"",on:false,pool:{},since:{},prev:{},log:[],timer:null,paint:0,at:0};
 function liveFcChanged(){const L=S.live;liveSelRender();L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();}
@@ -3188,7 +3189,7 @@ async function liveFetch(){
     const r=await fetch(RELAY_HTTP_BASE+"/live-top?min="+L.min+"&side="+(L.side||"up")+((lfActive()||L.amt||fcActive(L)||L.cs)?"&all=1":""),{cache:"no-store"});const j=await r.json();
     if(!L.on||j.min!==L.min||(j.side||"up")!==(L.side||"up"))return;
     if(!j.ok&&!(j.rows||[]).length){$("#liveStat").textContent="순위를 받지 못했습니다 — "+(j.err||j.error||"");return;}
-    let rows=j.rows.filter(x=>!LIVE_EXCL.test(x.name||""));   // ETN·스팩·인버스·레버리지 제외, ETF는 포함(우선주는 서버가 제외)
+    let rows=j.rows.filter(x=>!LIVE_EXCL.test(x.name||""));   // ETF·ETN·스팩 제외(우선주는 서버가 제외)
     if(L.amt)rows=rows.filter(x=>(x.amt||0)>=L.amt*1e8);   // 2026-11-14 거래대금 조건(억원 이상) — 시총 구간 전체 후보에서 걸러 상위 순서 유지
     const nAll=rows.length;
     if(lfActive()){rows=rows.filter(x=>lfPass(x.code));}
@@ -3338,9 +3339,9 @@ function trList(){
   const T=S.tr,raw=T.raw||[],f=S.tf;
   const useF=!!(f.sec||f.ma||f.ph||f.kw||f.div||f.grS||f.grO||f.grE||f.dart||f.smx);
   let l=raw.filter(r=>{
-    if(r.market==="ETF"){if(!r.code||LIVE_EXCL.test(r.name||"")||r.etf_field==="인버스·레버리지")return false;}   // ETF 포함(ETN·인버스·레버리지·선물 제외)
+    if(r.market==="ETF"){if(!r.code||TR_EXCL.test(r.name||"")||r.etf_field==="인버스·레버리지")return false;}   // ETF 포함(ETN·인버스·레버리지·선물 제외)
     else{
-    if(!r.code||!/^\d{6}$/.test(r.code)||LIVE_EXCL.test(r.name||"")||TR_PREF.test(r.name||""))return false;
+    if(!r.code||!/^\d{6}$/.test(r.code)||TR_EXCL.test(r.name||"")||TR_PREF.test(r.name||""))return false;
     if(r.market&&!/^KOS/.test(r.market))return false;}
     if(T.min&&!(+r.market_cap>=T.min*1e8))return false;
     if(T.amt&&!(+r.trade_amount>=T.amt*1e8))return false;
