@@ -107,3 +107,17 @@ test('이월 종목: 08:00~09:00 NXT 프리마켓에는 손절이 걸리지 않�
   assert.equal(stops().length, 1);
   await c.close();
 });
+
+test('모든 종목(이월 아님): NXT 프리마켓(~09:00)에는 손절 보류, 09:00 정규장부터 걸림', async () => {
+  const db = fakeDb(), c = await boot(db, { clock: at('10:20') }); await c.login();
+  const b = await c.order({ code: '000660', side: 'buy', type: 'limit', price: 10010, qty: 10, plan: { stopPct: 5, steps: [] } });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  const stops = () => [...db.t.paper_orders.values()].filter(o => o.reason === 'stop');   // setPreHold 없음 = 이월 기록 없는 일반 보유
+  c.st.clock = at('08:30'); move(c, 9400, { step: 1000 });
+  await c.t.paper.tick();
+  assert.equal(stops().length, 0); assert.equal(db.t.paper_positions.get('000660').qty, 10);
+  c.st.clock = at('09:01'); move(c, 9400, { step: 1000 });
+  await c.t.paper.tick();
+  assert.equal(stops().length, 1);
+  await c.close();
+});

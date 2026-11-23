@@ -292,7 +292,7 @@ function createLive(deps) {
   async function stopCheck0(code, q) {
     const p = posOf(code), pl = plans.get(code);
     if (!p || !pl || !pl.plan) return false;
-    { const m0 = kst().min; if (preHold && m0 < 12 * 60 && await preHold(code, m0)) return false; }   // 가상과 같음: 이월 종목은 NXT 프리마켓(08:00~09:00)에 손절·매도하지 않음(아침 보류 유예 포함)
+    { const m0 = kst().min; if (m0 < 540 || (preHold && m0 < 12 * 60 && await preHold(code, m0))) return false; }   // 가상과 같음(2026-11-23): NXT 프리마켓(~09:00)에는 모든 종목의 손절을 보류(익절은 계속) · 이월 종목은 아침 보류 유예 포함
     if (pl.plan.ratchet) {   // 보유 후 본 최고가(손절선을 올리는 기준) — 시세 사이에 찍은 새 고가도 반영
       const prevHi = highSeen.get(code), nh = q.high > 0 && prevHi != null && q.high > prevHi ? q.high : 0, pk = Math.max(pl.plan.peak || 0, q.price || 0, nh);
       if (pk > (pl.plan.peak || 0)) { pl.plan.peak = pk; dirty.plans.set(code, pl); }
