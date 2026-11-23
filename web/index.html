@@ -1773,7 +1773,8 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div style="margin:12px 0 4px"><button class="btn ghost" id="eBackTop">← 이전 화면으로</button></div>
   <div class="card" id="etfHead"><div class="load sk"></div></div>
     <div class="card" style="margin-top:10px"><h3>시세 정보 <span class="r" id="etfQtSub"></span></h3><div id="etfQt"></div></div>
-  <div class="qf seg" id="etfTab" style="margin:12px 0 4px"><button class="fchip" data-v="ov" aria-pressed="true">개요</button><button class="fchip" data-v="div">분배금</button></div>
+  <div class="qf seg" id="etfTab" style="margin:12px 0 4px"><button class="fchip" data-v="ov" aria-pressed="true">개요</button><button class="fchip" data-v="flow">수급</button><button class="fchip" data-v="div">분배금</button></div>
+  <div id="etfFlowWrap" class="hide"></div>
   <div id="etfOv">
     <div class="card" style="margin-top:10px"><h3>가격 추이 <span id="etfPerChg" style="font-weight:650;margin-left:6px"></span>
       <span class="r"><span class="qf seg" id="etfPer" style="display:inline-flex"><button class="fchip" data-v="5">1주</button><button class="fchip" data-v="21" aria-pressed="true">1개월</button><button class="fchip" data-v="126">6개월</button><button class="fchip" data-v="250">1년</button></span></span></h3>
@@ -3441,7 +3442,7 @@ for(const [id,key] of [["trCap","min"],["trAmt","amt"],["trSort","sort"]])
 const ETF_PAL=["#6366f1","#ec4899","#f59e0b","#10b981","#06b6d4","#8b5cf6","#f43f5e","#84cc16","#0ea5e9","#a855f7"];
 S.etf=S.etf||{per:21,tab:"ov",more:false};
 async function etfLoad(code){
-  const E=S.etf;E.code=code;E.more=false;const gen=E.gen=(E.gen||0)+1;
+  const E=S.etf;E.code=code;E.more=false;E.fc=null;E.inv=null;const gen=E.gen=(E.gen||0)+1;
   ["#etfHead","#etfChart","#etfPf"].forEach(id=>$(id).innerHTML='<div class="load sk"></div>');$("#etfQt").innerHTML="";$("#etfChg").innerHTML="";$("#etfDiv").innerHTML="";
   const sel="select=*&code=eq."+code;
   const [daily,info,hold,wk,dv]=await Promise.all([
@@ -3562,7 +3563,56 @@ function etfDiv(){
     <div class="tw"><table><thead><tr><th class="l">기준일</th><th>1좌당 분배금</th><th>분배율</th><th>지급일</th></tr></thead><tbody>${a.map(r=>`<tr><td class="l">${r.record_date}</td><td>${N(+r.dps,0)}원</td><td>${r.rate==null?"–":N(+r.rate,2)+"%"}</td><td>${r.pay_date||"–"}</td></tr>`).join("")}</tbody></table></div>`;
 }
 $("#etfPer").addEventListener("seg-change",e=>{S.etf.per=+e.detail;etfChart();});
-$("#etfTab").addEventListener("seg-change",e=>{S.etf.tab=e.detail;$("#etfOv").classList.toggle("hide",e.detail!=="ov");$("#etfDivWrap").classList.toggle("hide",e.detail!=="div");});
+$("#etfTab").addEventListener("seg-change",e=>{S.etf.tab=e.detail;$("#etfOv").classList.toggle("hide",e.detail!=="ov");$("#etfDivWrap").classList.toggle("hide",e.detail!=="div");$("#etfFlowWrap").classList.toggle("hide",e.detail!=="flow");if(e.detail==="flow")etfFlowLoad();});
+/* ── ETF 수급 탭: 투자자별 순매수(KIS 30거래일) + 자금 유출입(상장좌수 증감×NAV, 설정·환매 추정) + NAV·괴리율 ── */
+S.etf.fp=S.etf.fp||20;
+async function etfFlowLoad(){
+  const E=S.etf,code=E.code,host=$("#etfFlowWrap");if(!code)return;
+  if(E.fc===code&&E.inv){etfFlowRender();return;}
+  host.innerHTML='<div class="card" style="margin-top:10px"><div class="load sk"></div></div>';
+  const [inv,fl]=await Promise.all([
+    q("etf_investor_daily",`select=*&etf_code=eq.${code}&order=d.asc&limit=120`).catch(()=>[]),
+    q("etf_flow_daily",`select=d,listed,ntas_eok,nav,dprt&etf_code=eq.${code}&order=d.asc&limit=400`).catch(()=>[])]);
+  if(E.code!==code)return;E.fc=code;E.inv=inv;E.fl=fl;etfFlowRender();
+}
+function etfFlowRender(){
+  const E=S.etf,host=$("#etfFlowWrap"),inv=E.inv||[],fl=E.fl||[],n=E.fp||20,eok=v=>v==null?null:v/EOK;
+  const fe=v=>v==null?'<span class="dim">–</span>':`<span class="${sgn(v)}">${v>0?"+":""}${N(v,Math.abs(v)<10?1:0)}</span>`;
+  const sl=inv.slice(-n),sum=k=>sl.reduce((a,r)=>a+(+r[k]||0),0)/EOK;
+  const per=`<span class="qf seg" id="etfFlowPer" style="display:inline-flex">${[[5,"5일"],[10,"10일"],[20,"20일"],[30,"30일"]].map(([v,l])=>`<button class="fchip" data-v="${v}" aria-pressed="${n==v}">${l}</button>`).join("")}</span>`;
+  let h=`<div class="card" style="margin-top:10px"><h3>투자자별 순매수 <span class="r">${per}</span></h3>`;
+  if(!inv.length)h+='<div class="load">수급 데이터가 아직 없습니다 (장마감 후 수집 · 최근 30거래일)</div>';
+  else{
+    const row=(l,k)=>`<div><span>${l}</span><b>${fe(sum(k))}<small class="faint"> 억원</small></b></div>`;
+    h+=`<div class="etf-qt">${row("개인","prsn_amt")}${row("외국인","frgn_amt")}${row("기관 합계","orgn_amt")}${row("금융투자","scrt_amt")}${row("투신","ivtr_amt")}${row("사모","pe_amt")}${row("연기금","fund_amt")}${row("은행·보험",null).replace(/<b>.*<\/b>/,`<b>${fe((sl.reduce((a,r)=>a+(+r.bank_amt||0)+(+r.insu_amt||0),0))/EOK)}<small class="faint"> 억원</small></b>`)}</div>
+      <div class="note" style="margin:6px 0">최근 ${sl.length}거래일 누적 순매수(+매수 우위 · −매도 우위). 기관 세부는 합계의 분해이고, 연기금·투신 등은 ETF 설정·환매(LP) 거래가 섞여 있을 수 있습니다.</div>
+      ${etfFlowChart(sl)}
+      <div class="tw"><table><thead><tr><th class="l">일자</th><th>개인</th><th>외국인</th><th>기관</th><th>금융투자</th><th>투신</th><th>사모</th><th>연기금</th></tr></thead><tbody>${sl.slice().reverse().map(r=>`<tr><td class="l">${r.d.slice(5)}</td><td>${fe(eok(r.prsn_amt))}</td><td>${fe(eok(r.frgn_amt))}</td><td>${fe(eok(r.orgn_amt))}</td><td>${fe(eok(r.scrt_amt))}</td><td>${fe(eok(r.ivtr_amt))}</td><td>${fe(eok(r.pe_amt))}</td><td>${fe(eok(r.fund_amt))}</td></tr>`).join("")}</tbody></table></div><div class="note">단위 억원 · 출처 KIS 종목별 투자자 일별(장마감 후 갱신).</div>`;
+  }
+  h+='</div>';
+  /* 자금 유출입: 상장좌수 증감 × 당일 NAV */
+  const ls=fl.filter(r=>r.listed!=null);
+  h+=`<div class="card" style="margin-top:12px"><h3>자금 유출입 · NAV <span class="r">상장좌수 증감 × NAV</span></h3>`;
+  if(ls.length<2)h+='<div class="load">상장좌수 이력이 쌓이는 중입니다 (매일 장마감 후 1건씩 누적)</div>';
+  else{
+    const rows=ls.map((r,i)=>{const p=ls[i-1];const dq=p?+r.listed-+p.listed:null;const nv=+r.nav||null;return {d:r.d,listed:+r.listed,dq,amt:dq!=null&&nv?dq*nv/EOK:null,nav:nv,dprt:r.dprt==null?null:+r.dprt,ntas:r.ntas_eok==null?null:+r.ntas_eok};});
+    const lastN=k=>rows.slice(-k).reduce((a,r)=>a+(r.amt||0),0),cnt=rows.slice(1).filter(r=>r.amt!=null).length;
+    h+=`<div class="etf-qt"><div><span>5일 누적</span><b>${fe(lastN(5))}<small class="faint"> 억원</small></b></div><div><span>20일 누적</span><b>${fe(lastN(20))}<small class="faint"> 억원</small></b></div><div><span>순자산</span><b>${rows.at(-1).ntas==null?"–":fmtEokJo(rows.at(-1).ntas)}</b></div><div><span>괴리율</span><b>${rows.at(-1).dprt==null?"–":`<span class="${sgn(rows.at(-1).dprt)}">${pm(rows.at(-1).dprt,2)}%</span>`}</b></div></div>
+      <div class="note" style="margin:6px 0">+ = 설정(자금 유입) · − = 환매(자금 유출) 추정액입니다. 보유 이력 ${cnt}일 기준이라 20일 누적은 이력이 20일 미만이면 있는 만큼만 합산합니다.</div>
+      <div class="tw"><table><thead><tr><th class="l">일자</th><th>상장좌수</th><th>증감(좌)</th><th>유출입(억)</th><th>NAV</th><th>괴리율</th></tr></thead><tbody>${rows.slice(-30).reverse().map(r=>`<tr><td class="l">${r.d.slice(5)}</td><td>${N(r.listed,0)}</td><td>${r.dq==null?"–":`<span class="${sgn(r.dq)}">${r.dq>0?"+":""}${N(r.dq,0)}</span>`}</td><td>${fe(r.amt)}</td><td>${r.nav==null?"–":N(r.nav,2)}</td><td>${r.dprt==null?"–":`<span class="${sgn(r.dprt)}">${pm(r.dprt,2)}%</span>`}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+  h+='</div>';
+  host.innerHTML=h;
+  const sp=$("#etfFlowPer");if(sp)sp.addEventListener("seg-change",e=>{E.fp=+e.detail;etfFlowRender();});
+}
+/* 개인·외국인·기관 누적 순매수 선 그래프 */
+function etfFlowChart(sl){
+  if(sl.length<2)return "";
+  const ser=[["개인","prsn_amt","#8a8f98"],["외국인","frgn_amt","#2f6fe0"],["기관","orgn_amt","#e04b3a"]].map(([l,k,c])=>{let a=0;return {l,c,v:sl.map(r=>(a+=(+r[k]||0)/EOK))};});
+  const all=ser.flatMap(x=>x.v).concat(0),lo=Math.min(...all),hi=Math.max(...all),W=600,H=170,P=6,X=i=>P+i/(sl.length-1)*(W-2*P),Y=v=>P+(hi-v)/((hi-lo)||1)*(H-2*P);
+  return `<div style="margin:6px 0"><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;max-height:200px" preserveAspectRatio="none"><line x1="${P}" x2="${W-P}" y1="${Y(0).toFixed(1)}" y2="${Y(0).toFixed(1)}" stroke="var(--axis)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>${ser.map(x=>`<path d="${x.v.map((v,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1)).join("")}" fill="none" stroke="${x.c}" stroke-width="1.6" vector-effect="non-scaling-stroke"/>`).join("")}</svg>
+    <div class="note" style="margin:2px 0 0">${ser.map(x=>`<span style="color:${x.c};font-weight:700">━ ${x.l}</span> ${N(x.v.at(-1),Math.abs(x.v.at(-1))<10?1:0)}억`).join(" &nbsp; ")} · ${sl[0].d.slice(5)}~${sl.at(-1).d.slice(5)} 누적</div></div>`;
+}
 
 /* ══ ETF 허브 (액티브/패시브) — 2026-11-15 ═══════════════════════════════════════
    목적: ① 액티브 ETF 운용역들이 공통으로 담은 종목 발굴 ② 수익률·RS 높은 ETF 찾기.
