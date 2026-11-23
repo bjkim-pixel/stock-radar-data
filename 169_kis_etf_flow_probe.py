@@ -21,6 +21,10 @@ def rows(j):
 def show(tag,j,pick=None):
     k,v=rows(j)
     log(f"- **{tag}** rt_cd={j.get('rt_cd')} msg={str(j.get('msg1') or j.get('error') or '')[:60]} · {k or '-'} {len(v)}행")
+    if v and len(v)>1:
+        ne=[r for r in v if any(r.get(k) not in (None,"","0","0.00") for k in r if "ntby" in k)]
+        log(f"  수급값 있는 날 {len(ne)}/{len(v)}")
+        if ne: log("  최근 값 있는 행: "+json.dumps({a:ne[0][a] for a in ne[0] if a in ("stck_bsop_date","stck_clpr","prsn_ntby_qty","frgn_ntby_qty","orgn_ntby_qty","prsn_ntby_tr_pbmn","frgn_ntby_tr_pbmn","orgn_ntby_tr_pbmn")},ensure_ascii=False))
     if v:
         log("  키: "+", ".join(v[0].keys()))
         x={a:b for a,b in v[0].items() if (not pick or a in pick)}
@@ -29,12 +33,14 @@ def show(tag,j,pick=None):
 D=dt.date.today()
 while D.weekday()>=5: D-=dt.timedelta(days=1)
 BD=D.strftime("%Y%m%d")
-ETF=[("069500","KODEX 200"),("360750","TIGER 미국S&P500"),("122630","KODEX 레버리지"),("305720","KODEX 2차전지산업"),("091160","KODEX 반도체")]
+ETF=[("069500","KODEX 200"),("360750","TIGER 미국S&P500"),("122630","KODEX 레버리지"),("091160","KODEX 반도체")]
 log(f"# KIS ETF 수급·NAV 점검 (기준 {BD})\n")
 for code,nm in ETF:
     log(f"\n## {code} {nm}")
     J=lambda p,t,pr:kget("/uapi/domestic-stock/v1/quotations/"+p,t,pr)
     v=show("A 종목별 투자자 일별(FHPTJ04160001: 시세+수급 30일)",J("investor-trade-by-stock-daily","FHPTJ04160001",{"FID_COND_MRKT_DIV_CODE":"J","FID_INPUT_ISCD":code,"FID_INPUT_DATE_1":BD,"FID_ORG_ADJ_PRC":"0","FID_ETC_CLS_CODE":"0"}))
+    o2=J("investor-trade-by-stock-daily","FHPTJ04160001",{"FID_COND_MRKT_DIV_CODE":"J","FID_INPUT_ISCD":code,"FID_INPUT_DATE_1":(D-dt.timedelta(days=1)).strftime("%Y%m%d"),"FID_ORG_ADJ_PRC":"0","FID_ETC_CLS_CODE":"0"}).get("output2") or []
+    log(f"  A output2(일별) {len(o2)}행"+(" 예: "+json.dumps(o2[0],ensure_ascii=False)[:420] if o2 else ""))
     if v:
         fl=[k for k in v[0] if "ntby" in k]
         nz=sum(1 for r in v for k in fl if r.get(k) not in (None,"","0","0.00"))
