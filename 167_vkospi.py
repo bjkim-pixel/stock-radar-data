@@ -71,6 +71,31 @@ def probe_investing():
         log(f"- 페이지 HTTP {r.status_code} · 길이 {len(r.text)} · 현재가 {m.group(1) if m else '추출 실패'}")
     except Exception as e: log(f"- 실패 {str(e)[:120]}")
 
+def daily(days=7):
+    """최근 days일(주말 제외) 파생상품지수에서 코스피200 변동성지수 종가를 가져와 upsert. 값이 없는 날은 건너뜀(채우지 않음)."""
+    import psycopg2
+    if not KEY: log("KRX_API_KEY 없음"); sys.exit(1)
+    conn=psycopg2.connect(os.environ["SUPABASE_DB_URL"]); conn.autocommit=True; cur=conn.cursor()
+    d=dt.date.today(); got=0; err=0
+    for i in range(days+1):
+        x=d-dt.timedelta(days=i)
+        if x.weekday()>=5: continue
+        try:
+            r=requests.get("https://data-dbg.krx.co.kr/svc/apis/idx/drvprod_dd_trd",params={"basDd":x.strftime("%Y%m%d")},headers={**UA,"AUTH_KEY":KEY},timeout=30)
+            if r.status_code!=200: log(f"{x} HTTP {r.status_code}"); err+=1; continue
+            rows=r.json().get("OutBlock_1") or []
+            v=[q for q in rows if "코스피 200 변동성" in q.get("IDX_NM","").replace("  "," ") or "코스피200 변동성" in q.get("IDX_NM","").replace(" ","")[:0]+q.get("IDX_NM","") or "변동성" in q.get("IDX_NM","") and "200" in q.get("IDX_NM","") and "코스피" in q.get("IDX_NM","")]
+            if not v: log(f"{x} 해당 지수 없음(휴장/미공시) 행 {len(rows)}"); continue
+            c=float(str(v[0]["CLSPRC_IDX"]).replace(",",""))
+            cur.execute("insert into vkospi_daily(trade_date,close,src) values(%s,%s,'krx') on conflict (trade_date) do update set close=excluded.close, src=case when vkospi_daily.src='csv' then 'csv' else 'krx' end, updated_at=now()",(x,c)); got+=1
+            log(f"{x} {v[0]['IDX_NM']} {c}")
+        except Exception as e: log(f"{x} 실패 {str(e).replace(KEY,'***')[:100]}"); err+=1
+    log(f"반영 {got}건 · 오류 {err}")
+    open("vkospi_probe.md","w",encoding="utf-8").write("\n".join(L))
+    if got==0 and err: sys.exit(1)
+
+if __name__=="__main__" and len(sys.argv)>1 and sys.argv[1]=="daily":
+    daily(int(sys.argv[2]) if len(sys.argv)>2 else 7); sys.exit(0)
 if __name__=="__main__":
     log("# VKOSPI 수집 점검\n")
     if os.environ.get("SUPABASE_DB_URL"):

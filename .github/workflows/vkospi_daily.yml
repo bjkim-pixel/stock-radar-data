@@ -1,0 +1,29 @@
+name: "[수집] VKOSPI 일일 | 평일 09:10 KST + 수동"
+on:
+  schedule:
+    - cron: "10 0 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      days: {description: "최근 며칠 소급", default: "7"}
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - name: 수집
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          KRX_API_KEY:     ${{ secrets.KRX_API_KEY }}
+        run: python 167_vkospi.py daily "${{ github.event.inputs.days || '7' }}"
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: vkospi-report
+          file: vkospi_probe.md
