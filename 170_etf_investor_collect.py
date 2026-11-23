@@ -32,7 +32,8 @@ today = datetime.datetime.now(KST).date(); ok = fail = nrows = nnav = 0
 print(f"ETF {len(ETFS)}종목 수급·NAV 수집", flush=True)
 for i, (code, name) in enumerate(ETFS):
     rows = []
-    for anchor in (today, ):
+    for anchor in (today, today - datetime.timedelta(days=1), today - datetime.timedelta(days=3)):
+        if rows: break
         j = kget("/uapi/domestic-stock/v1/quotations/investor-trade-by-stock-daily", "FHPTJ04160001",
                  {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code, "FID_INPUT_DATE_1": anchor.strftime("%Y%m%d"), "FID_ORG_ADJ_PRC": "0", "FID_ETC_CLS_CODE": "0"})
         for r in (j.get("output2") or []):
