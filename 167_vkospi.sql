@@ -8,3 +8,4 @@ create table if not exists vkospi_daily (
 alter table vkospi_daily enable row level security;
 drop policy if exists vkospi_daily_read on vkospi_daily;
 create policy vkospi_daily_read on vkospi_daily for select using (true);
+grant select on public.vkospi_daily to anon, authenticated;
