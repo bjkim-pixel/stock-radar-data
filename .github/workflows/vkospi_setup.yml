@@ -1,0 +1,25 @@
+name: "[설정] VKOSPI 테이블·CSV 적재 + KRX 점검 | 수동"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - name: 테이블·CSV·점검
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          KRX_API_KEY:     ${{ secrets.KRX_API_KEY }}
+        run: python 167_vkospi.py 2>&1 | tail -60
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: vkospi-report
+          file: vkospi_probe.md
