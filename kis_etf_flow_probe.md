@@ -1,0 +1,94 @@
+# KIS ETF 수급·NAV 점검 (기준 20261123)
+
+
+## 069500 KODEX 200
+- **A 종목별 투자자 일별(FHPTJ04160001: 시세+수급 30일)** rt_cd=0 msg=정상처리 되었습니다. · output1 1행
+  키: stck_prpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, prdy_vol, rprs_mrkt_kor_name
+  예: {"stck_prpr": "73770", "prdy_vrss": "0", "prdy_vrss_sign": "3", "prdy_ctrt": "0.00", "acml_vol": "4", "prdy_vol": "29581658", "rprs_mrkt_kor_name": "ETF"}
+  A output2(일별) 30행 예: {"stck_bsop_date": "20261120", "stck_clpr": "76210", "prdy_vrss": "-4420", "prdy_vrss_sign": "5", "prdy_ctrt": "-5.48", "acml_vol": "21323459", "acml_tr_pbmn": "1635336637896", "stck_oprc": "77370", "stck_hgpr": "77900", "stck_lwpr": "75585", "frgn_ntby_qty": "-141486", "frgn_reg_ntby_qty": "-146878", "frgn_nreg_ntby_qty": "5392", "prsn_ntby_qty": "912519", "orgn_ntby_qty": "-830687", "scrt_ntby_qty": "-2320985", "iv
+  수급 필드 0개 · 0 아닌 값 0/1
+- **B 투자자 현재(FHKST01010900)** rt_cd=0 msg=정상처리 되었습니다. · output 30행
+  수급값 있는 날 29/30
+  최근 값 있는 행: {"stck_bsop_date": "20261123", "stck_clpr": "73770", "prsn_ntby_qty": "483850", "frgn_ntby_qty": "-436588", "orgn_ntby_qty": "-29854", "prsn_ntby_tr_pbmn": "35103", "frgn_ntby_tr_pbmn": "-31906", "orgn_ntby_tr_pbmn": "-1928"}
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prsn_ntby_qty, frgn_ntby_qty, orgn_ntby_qty, prsn_ntby_tr_pbmn, frgn_ntby_tr_pbmn, orgn_ntby_tr_pbmn, prsn_shnu_vol, frgn_shnu_vol, orgn_shnu_vol, prsn_shnu_tr_pbmn, frgn_shnu_tr_pbmn, orgn_shnu_tr_pbmn, prsn_seln_vol, frgn_seln_vol, orgn_seln_vol, prsn_seln_tr_pbmn, frgn_seln_tr_pbmn, orgn_seln_tr_pbmn
+  예: {"stck_bsop_date": "20261124", "stck_clpr": "73770", "prdy_vrss": "0", "prdy_vrss_sign": "3", "prsn_ntby_qty": "", "frgn_ntby_qty": "", "orgn_ntby_qty": "", "prsn_ntby_tr_pbmn": "", "frgn_ntby_tr_pbmn": "", "orgn_ntby_tr_pbmn": "", "prsn_shnu_vol": "", "frgn_shnu_vol": "", "orgn_shnu_vol": "", "prsn_shnu_tr_pbmn": "", "frgn_shnu_tr_pbmn": "", "orgn_shnu_tr_pbmn": "", "prsn_seln_vol": "", "frgn_seln_vol": "", "orgn_se
+- **C ETF 현재가(NAV·괴리율·좌수)** rt_cd=0 msg=정상처리 되었습니다. · output 1행
+  키: stck_prpr, prdy_vrss_sign, prdy_vrss, prdy_ctrt, acml_vol, prdy_vol, stck_mxpr, stck_llam, stck_prdy_clpr, stck_oprc, prdy_clpr_vrss_oprc_rate, stck_hgpr, prdy_clpr_vrss_hgpr_rate, stck_lwpr, prdy_clpr_vrss_lwpr_rate, prdy_last_nav, nav, nav_prdy_vrss, nav_prdy_vrss_sign, nav_prdy_ctrt, trc_errt, stck_sdpr, stck_sspr, etf_crcl_stcn, etf_ntas_ttam, etf_frcr_ntas_ttam, frgn_limt_rate, frgn_oder_able_qty, etf_cu_unit_scrt_cnt, etf_cnfg_issu_cnt, etf_dvdn_cycl, crcd, etf_crcl_ntas_ttam, etf_frcr_crcl_ntas_ttam, etf_frcr_last_ntas_wrth_val, lp_oder_able_cls_code, stck_dryy_hgpr, dryy_hgpr_vrss_prpr_rate, dryy_hgpr_date, stck_dryy_lwpr, dryy_lwpr_vrss_prpr_rate, dryy_lwpr_date, bstp_kor_isnm, vi_cls_code, lstn_stcn, frgn_hldn_qty, frgn_hldn_qty_rate, etf_trc_ert_mltp, dprt, mbcr_name, stck_lstn_date, mtrt_date, shrg_type_code, lp_hldn_rate, etf_trgt_nmix_bstp_code, etf_div_name, etf_rprs_bstp_kor_isnm, lp_hldn_vol
+  예: {"stck_prpr": "73770", "prdy_vrss_sign": "3", "prdy_vrss": "0", "prdy_ctrt": "0.00", "acml_vol": "4", "prdy_vol": "29581658", "stck_mxpr": "95900", "stck_llam": "51640", "stck_prdy_clpr": "73770", "stck_oprc": "0", "prdy_clpr_vrss_oprc_rate": "0.00", "stck_hgpr": "0", "prdy_clpr_vrss_hgpr_rate": "0.00", "stck_lwpr": "0", "prdy_clpr_vrss_lwpr_rate": "0.00", "prdy_last_nav": "73831.46", "nav": "73831.46", "nav_prdy_vrs
+- **D NAV 비교추이 일별** rt_cd=0 msg=정상처리 되었습니다. · output 21행
+  수급값 있는 날 0/21
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, cntg_vol, dprt, nav_vrss_prpr, nav, nav_prdy_vrss_sign, nav_prdy_vrss, nav_prdy_ctrt
+  예: {"stck_bsop_date": "20261123", "stck_clpr": "73770", "prdy_vrss": "-2440", "prdy_vrss_sign": "5", "prdy_ctrt": "-3.20", "acml_vol": "29581658", "cntg_vol": "", "dprt": "-0.08", "nav_vrss_prpr": "-61.46", "nav": "73831.46", "nav_prdy_vrss_sign": "5", "nav_prdy_vrss": "-2470.96", "nav_prdy_ctrt": "-3.24"}
+- **E 프로그램매매 일별** rt_cd=0 msg=정상처리 되었습니다. · output 30행
+  수급값 있는 날 0/30
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, acml_tr_pbmn, whol_smtn_seln_vol, whol_smtn_shnu_vol, whol_smtn_ntby_qty, whol_smtn_seln_tr_pbmn, whol_smtn_shnu_tr_pbmn, whol_smtn_ntby_tr_pbmn, whol_ntby_vol_icdc, whol_ntby_tr_pbmn_icdc2
+  예: {"stck_bsop_date": "20261123", "stck_clpr": "73770", "prdy_vrss": "-2440", "prdy_vrss_sign": "5", "prdy_ctrt": "-3.20", "acml_vol": "29581658", "acml_tr_pbmn": "2173415367932", "whol_smtn_seln_vol": "0", "whol_smtn_shnu_vol": "0", "whol_smtn_ntby_qty": "0", "whol_smtn_seln_tr_pbmn": "0", "whol_smtn_shnu_tr_pbmn": "0", "whol_smtn_ntby_tr_pbmn": "0", "whol_ntby_vol_icdc": "0", "whol_ntby_tr_pbmn_icdc2": "0"}
+
+## 360750 TIGER 미국S&P500
+- **A 종목별 투자자 일별(FHPTJ04160001: 시세+수급 30일)** rt_cd=0 msg=정상처리 되었습니다. · output1 1행
+  키: stck_prpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, prdy_vol, rprs_mrkt_kor_name
+  예: {"stck_prpr": "23585", "prdy_vrss": "0", "prdy_vrss_sign": "3", "prdy_ctrt": "0.00", "acml_vol": "653", "prdy_vol": "28054186", "rprs_mrkt_kor_name": "ETF"}
+  A output2(일별) 30행 예: {"stck_bsop_date": "20261120", "stck_clpr": "23665", "prdy_vrss": "-735", "prdy_vrss_sign": "5", "prdy_ctrt": "-3.01", "acml_vol": "31407503", "acml_tr_pbmn": "745176436673", "stck_oprc": "23765", "stck_hgpr": "23795", "stck_lwpr": "23615", "frgn_ntby_qty": "7209", "frgn_reg_ntby_qty": "1669", "frgn_nreg_ntby_qty": "5540", "prsn_ntby_qty": "1068066", "orgn_ntby_qty": "-1102173", "scrt_ntby_qty": "-1147279", "ivtr_ntb
+  수급 필드 0개 · 0 아닌 값 0/1
+- **B 투자자 현재(FHKST01010900)** rt_cd=0 msg=정상처리 되었습니다. · output 30행
+  수급값 있는 날 29/30
+  최근 값 있는 행: {"stck_bsop_date": "20261123", "stck_clpr": "23585", "prsn_ntby_qty": "588880", "frgn_ntby_qty": "140248", "orgn_ntby_qty": "-742549", "prsn_ntby_tr_pbmn": "13901", "frgn_ntby_tr_pbmn": "3246", "orgn_ntby_tr_pbmn": "-17464"}
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prsn_ntby_qty, frgn_ntby_qty, orgn_ntby_qty, prsn_ntby_tr_pbmn, frgn_ntby_tr_pbmn, orgn_ntby_tr_pbmn, prsn_shnu_vol, frgn_shnu_vol, orgn_shnu_vol, prsn_shnu_tr_pbmn, frgn_shnu_tr_pbmn, orgn_shnu_tr_pbmn, prsn_seln_vol, frgn_seln_vol, orgn_seln_vol, prsn_seln_tr_pbmn, frgn_seln_tr_pbmn, orgn_seln_tr_pbmn
+  예: {"stck_bsop_date": "20261124", "stck_clpr": "23585", "prdy_vrss": "0", "prdy_vrss_sign": "3", "prsn_ntby_qty": "", "frgn_ntby_qty": "", "orgn_ntby_qty": "", "prsn_ntby_tr_pbmn": "", "frgn_ntby_tr_pbmn": "", "orgn_ntby_tr_pbmn": "", "prsn_shnu_vol": "", "frgn_shnu_vol": "", "orgn_shnu_vol": "", "prsn_shnu_tr_pbmn": "", "frgn_shnu_tr_pbmn": "", "orgn_shnu_tr_pbmn": "", "prsn_seln_vol": "", "frgn_seln_vol": "", "orgn_se
+- **C ETF 현재가(NAV·괴리율·좌수)** rt_cd=0 msg=정상처리 되었습니다. · output 1행
+  키: stck_prpr, prdy_vrss_sign, prdy_vrss, prdy_ctrt, acml_vol, prdy_vol, stck_mxpr, stck_llam, stck_prdy_clpr, stck_oprc, prdy_clpr_vrss_oprc_rate, stck_hgpr, prdy_clpr_vrss_hgpr_rate, stck_lwpr, prdy_clpr_vrss_lwpr_rate, prdy_last_nav, nav, nav_prdy_vrss, nav_prdy_vrss_sign, nav_prdy_ctrt, trc_errt, stck_sdpr, stck_sspr, etf_crcl_stcn, etf_ntas_ttam, etf_frcr_ntas_ttam, frgn_limt_rate, frgn_oder_able_qty, etf_cu_unit_scrt_cnt, etf_cnfg_issu_cnt, etf_dvdn_cycl, crcd, etf_crcl_ntas_ttam, etf_frcr_crcl_ntas_ttam, etf_frcr_last_ntas_wrth_val, lp_oder_able_cls_code, stck_dryy_hgpr, dryy_hgpr_vrss_prpr_rate, dryy_hgpr_date, stck_dryy_lwpr, dryy_lwpr_vrss_prpr_rate, dryy_lwpr_date, bstp_kor_isnm, vi_cls_code, lstn_stcn, frgn_hldn_qty, frgn_hldn_qty_rate, etf_trc_ert_mltp, dprt, mbcr_name, stck_lstn_date, mtrt_date, shrg_type_code, lp_hldn_rate, etf_trgt_nmix_bstp_code, etf_div_name, etf_rprs_bstp_kor_isnm, lp_hldn_vol
+  예: {"stck_prpr": "23585", "prdy_vrss_sign": "3", "prdy_vrss": "0", "prdy_ctrt": "0.00", "acml_vol": "653", "prdy_vol": "28054186", "stck_mxpr": "30660", "stck_llam": "16510", "stck_prdy_clpr": "23585", "stck_oprc": "0", "prdy_clpr_vrss_oprc_rate": "0.00", "stck_hgpr": "0", "prdy_clpr_vrss_hgpr_rate": "0.00", "stck_lwpr": "0", "prdy_clpr_vrss_lwpr_rate": "0.00", "prdy_last_nav": "23053.86", "nav": "23053.86", "nav_prdy_v
+- **D NAV 비교추이 일별** rt_cd=0 msg=정상처리 되었습니다. · output 21행
+  수급값 있는 날 0/21
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, cntg_vol, dprt, nav_vrss_prpr, nav, nav_prdy_vrss_sign, nav_prdy_vrss, nav_prdy_ctrt
+  예: {"stck_bsop_date": "20261123", "stck_clpr": "23585", "prdy_vrss": "-80", "prdy_vrss_sign": "5", "prdy_ctrt": "-0.34", "acml_vol": "28054186", "cntg_vol": "", "dprt": "2.30", "nav_vrss_prpr": "531.14", "nav": "23053.86", "nav_prdy_vrss_sign": "5", "nav_prdy_vrss": "-710.49", "nav_prdy_ctrt": "-2.99"}
+- **E 프로그램매매 일별** rt_cd=0 msg=정상처리 되었습니다. · output 30행
+  수급값 있는 날 0/30
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, acml_tr_pbmn, whol_smtn_seln_vol, whol_smtn_shnu_vol, whol_smtn_ntby_qty, whol_smtn_seln_tr_pbmn, whol_smtn_shnu_tr_pbmn, whol_smtn_ntby_tr_pbmn, whol_ntby_vol_icdc, whol_ntby_tr_pbmn_icdc2
+  예: {"stck_bsop_date": "20261123", "stck_clpr": "23585", "prdy_vrss": "-80", "prdy_vrss_sign": "5", "prdy_ctrt": "-0.34", "acml_vol": "28054186", "acml_tr_pbmn": "661080727665", "whol_smtn_seln_vol": "0", "whol_smtn_shnu_vol": "0", "whol_smtn_ntby_qty": "0", "whol_smtn_seln_tr_pbmn": "0", "whol_smtn_shnu_tr_pbmn": "0", "whol_smtn_ntby_tr_pbmn": "0", "whol_ntby_vol_icdc": "0", "whol_ntby_tr_pbmn_icdc2": "0"}
+
+## 122630 KODEX 레버리지
+- **A 종목별 투자자 일별(FHPTJ04160001: 시세+수급 30일)** rt_cd=0 msg=정상처리 되었습니다. · output1 1행
+  키: stck_prpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, prdy_vol, rprs_mrkt_kor_name
+  예: {"stck_prpr": "46585", "prdy_vrss": "0", "prdy_vrss_sign": "3", "prdy_ctrt": "0.00", "acml_vol": "0", "prdy_vol": "30858678", "rprs_mrkt_kor_name": "ETF"}
+  A output2(일별) 30행 예: {"stck_bsop_date": "20261120", "stck_clpr": "49925", "prdy_vrss": "-6110", "prdy_vrss_sign": "5", "prdy_ctrt": "-10.90", "acml_vol": "25963411", "acml_tr_pbmn": "1314260422785", "stck_oprc": "51290", "stck_hgpr": "52245", "stck_lwpr": "49020", "frgn_ntby_qty": "15015", "frgn_reg_ntby_qty": "8879", "frgn_nreg_ntby_qty": "6136", "prsn_ntby_qty": "1976146", "orgn_ntby_qty": "-1596864", "scrt_ntby_qty": "-1376324", "ivtr
+  수급 필드 0개 · 0 아닌 값 0/1
+- **B 투자자 현재(FHKST01010900)** rt_cd=0 msg=정상처리 되었습니다. · output 30행
+  수급값 있는 날 29/30
+  최근 값 있는 행: {"stck_bsop_date": "20261123", "stck_clpr": "46585", "prsn_ntby_qty": "1927597", "frgn_ntby_qty": "-191325", "orgn_ntby_qty": "-1787494", "prsn_ntby_tr_pbmn": "89844", "frgn_ntby_tr_pbmn": "-9497", "orgn_ntby_tr_pbmn": "-82651"}
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prsn_ntby_qty, frgn_ntby_qty, orgn_ntby_qty, prsn_ntby_tr_pbmn, frgn_ntby_tr_pbmn, orgn_ntby_tr_pbmn, prsn_shnu_vol, frgn_shnu_vol, orgn_shnu_vol, prsn_shnu_tr_pbmn, frgn_shnu_tr_pbmn, orgn_shnu_tr_pbmn, prsn_seln_vol, frgn_seln_vol, orgn_seln_vol, prsn_seln_tr_pbmn, frgn_seln_tr_pbmn, orgn_seln_tr_pbmn
+  예: {"stck_bsop_date": "20261124", "stck_clpr": "46585", "prdy_vrss": "0", "prdy_vrss_sign": "0", "prsn_ntby_qty": "", "frgn_ntby_qty": "", "orgn_ntby_qty": "", "prsn_ntby_tr_pbmn": "", "frgn_ntby_tr_pbmn": "", "orgn_ntby_tr_pbmn": "", "prsn_shnu_vol": "", "frgn_shnu_vol": "", "orgn_shnu_vol": "", "prsn_shnu_tr_pbmn": "", "frgn_shnu_tr_pbmn": "", "orgn_shnu_tr_pbmn": "", "prsn_seln_vol": "", "frgn_seln_vol": "", "orgn_se
+- **C ETF 현재가(NAV·괴리율·좌수)** rt_cd=0 msg=정상처리 되었습니다. · output 1행
+  키: stck_prpr, prdy_vrss_sign, prdy_vrss, prdy_ctrt, acml_vol, prdy_vol, stck_mxpr, stck_llam, stck_prdy_clpr, stck_oprc, prdy_clpr_vrss_oprc_rate, stck_hgpr, prdy_clpr_vrss_hgpr_rate, stck_lwpr, prdy_clpr_vrss_lwpr_rate, prdy_last_nav, nav, nav_prdy_vrss, nav_prdy_vrss_sign, nav_prdy_ctrt, trc_errt, stck_sdpr, stck_sspr, etf_crcl_stcn, etf_ntas_ttam, etf_frcr_ntas_ttam, frgn_limt_rate, frgn_oder_able_qty, etf_cu_unit_scrt_cnt, etf_cnfg_issu_cnt, etf_dvdn_cycl, crcd, etf_crcl_ntas_ttam, etf_frcr_crcl_ntas_ttam, etf_frcr_last_ntas_wrth_val, lp_oder_able_cls_code, stck_dryy_hgpr, dryy_hgpr_vrss_prpr_rate, dryy_hgpr_date, stck_dryy_lwpr, dryy_lwpr_vrss_prpr_rate, dryy_lwpr_date, bstp_kor_isnm, vi_cls_code, lstn_stcn, frgn_hldn_qty, frgn_hldn_qty_rate, etf_trc_ert_mltp, dprt, mbcr_name, stck_lstn_date, mtrt_date, shrg_type_code, lp_hldn_rate, etf_trgt_nmix_bstp_code, etf_div_name, etf_rprs_bstp_kor_isnm, lp_hldn_vol
+  예: {"stck_prpr": "46585", "prdy_vrss_sign": "3", "prdy_vrss": "0", "prdy_ctrt": "0.00", "acml_vol": "0", "prdy_vol": "30858678", "stck_mxpr": "74535", "stck_llam": "18635", "stck_prdy_clpr": "46585", "stck_oprc": "0", "prdy_clpr_vrss_oprc_rate": "0.00", "stck_hgpr": "0", "prdy_clpr_vrss_hgpr_rate": "0.00", "stck_lwpr": "0", "prdy_clpr_vrss_lwpr_rate": "0.00", "prdy_last_nav": "46596.98", "nav": "46596.98", "nav_prdy_vrs
+- **D NAV 비교추이 일별** rt_cd=0 msg=정상처리 되었습니다. · output 21행
+  수급값 있는 날 0/21
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, cntg_vol, dprt, nav_vrss_prpr, nav, nav_prdy_vrss_sign, nav_prdy_vrss, nav_prdy_ctrt
+  예: {"stck_bsop_date": "20261123", "stck_clpr": "46585", "prdy_vrss": "-3340", "prdy_vrss_sign": "5", "prdy_ctrt": "-6.69", "acml_vol": "30858678", "cntg_vol": "", "dprt": "-0.03", "nav_vrss_prpr": "-11.98", "nav": "46596.98", "nav_prdy_vrss_sign": "5", "nav_prdy_vrss": "-3362.85", "nav_prdy_ctrt": "-6.73"}
+- **E 프로그램매매 일별** rt_cd=0 msg=정상처리 되었습니다. · output 30행
+  수급값 있는 날 0/30
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, acml_tr_pbmn, whol_smtn_seln_vol, whol_smtn_shnu_vol, whol_smtn_ntby_qty, whol_smtn_seln_tr_pbmn, whol_smtn_shnu_tr_pbmn, whol_smtn_ntby_tr_pbmn, whol_ntby_vol_icdc, whol_ntby_tr_pbmn_icdc2
+  예: {"stck_bsop_date": "20261123", "stck_clpr": "46585", "prdy_vrss": "-3340", "prdy_vrss_sign": "5", "prdy_ctrt": "-6.69", "acml_vol": "30858678", "acml_tr_pbmn": "1428466808558", "whol_smtn_seln_vol": "0", "whol_smtn_shnu_vol": "0", "whol_smtn_ntby_qty": "0", "whol_smtn_seln_tr_pbmn": "0", "whol_smtn_shnu_tr_pbmn": "0", "whol_smtn_ntby_tr_pbmn": "0", "whol_ntby_vol_icdc": "0", "whol_ntby_tr_pbmn_icdc2": "0"}
+
+## 091160 KODEX 반도체
+- **A 종목별 투자자 일별(FHPTJ04160001: 시세+수급 30일)** rt_cd=0 msg=정상처리 되었습니다. · output1 1행
+  키: stck_prpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, prdy_vol, rprs_mrkt_kor_name
+  예: {"stck_prpr": "83355", "prdy_vrss": "0", "prdy_vrss_sign": "3", "prdy_ctrt": "0.00", "acml_vol": "0", "prdy_vol": "2856982", "rprs_mrkt_kor_name": "ETF"}
+  A output2(일별) 30행 예: {"stck_bsop_date": "20261120", "stck_clpr": "84600", "prdy_vrss": "-8900", "prdy_vrss_sign": "5", "prdy_ctrt": "-9.52", "acml_vol": "2564049", "acml_tr_pbmn": "219930067656", "stck_oprc": "87705", "stck_hgpr": "88165", "stck_lwpr": "83640", "frgn_ntby_qty": "91052", "frgn_reg_ntby_qty": "91415", "frgn_nreg_ntby_qty": "-363", "prsn_ntby_qty": "51055", "orgn_ntby_qty": "-149495", "scrt_ntby_qty": "155611", "ivtr_ntby_q
+  수급 필드 0개 · 0 아닌 값 0/1
+- **B 투자자 현재(FHKST01010900)** rt_cd=0 msg=정상처리 되었습니다. · output 30행
+  수급값 있는 날 29/30
+  최근 값 있는 행: {"stck_bsop_date": "20261123", "stck_clpr": "83355", "prsn_ntby_qty": "227527", "frgn_ntby_qty": "-31871", "orgn_ntby_qty": "-188855", "prsn_ntby_tr_pbmn": "18940", "frgn_ntby_tr_pbmn": "-2613", "orgn_ntby_tr_pbmn": "-15755"}
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prsn_ntby_qty, frgn_ntby_qty, orgn_ntby_qty, prsn_ntby_tr_pbmn, frgn_ntby_tr_pbmn, orgn_ntby_tr_pbmn, prsn_shnu_vol, frgn_shnu_vol, orgn_shnu_vol, prsn_shnu_tr_pbmn, frgn_shnu_tr_pbmn, orgn_shnu_tr_pbmn, prsn_seln_vol, frgn_seln_vol, orgn_seln_vol, prsn_seln_tr_pbmn, frgn_seln_tr_pbmn, orgn_seln_tr_pbmn
+  예: {"stck_bsop_date": "20261124", "stck_clpr": "83355", "prdy_vrss": "0", "prdy_vrss_sign": "0", "prsn_ntby_qty": "", "frgn_ntby_qty": "", "orgn_ntby_qty": "", "prsn_ntby_tr_pbmn": "", "frgn_ntby_tr_pbmn": "", "orgn_ntby_tr_pbmn": "", "prsn_shnu_vol": "", "frgn_shnu_vol": "", "orgn_shnu_vol": "", "prsn_shnu_tr_pbmn": "", "frgn_shnu_tr_pbmn": "", "orgn_shnu_tr_pbmn": "", "prsn_seln_vol": "", "frgn_seln_vol": "", "orgn_se
+- **C ETF 현재가(NAV·괴리율·좌수)** rt_cd=0 msg=정상처리 되었습니다. · output 1행
+  키: stck_prpr, prdy_vrss_sign, prdy_vrss, prdy_ctrt, acml_vol, prdy_vol, stck_mxpr, stck_llam, stck_prdy_clpr, stck_oprc, prdy_clpr_vrss_oprc_rate, stck_hgpr, prdy_clpr_vrss_hgpr_rate, stck_lwpr, prdy_clpr_vrss_lwpr_rate, prdy_last_nav, nav, nav_prdy_vrss, nav_prdy_vrss_sign, nav_prdy_ctrt, trc_errt, stck_sdpr, stck_sspr, etf_crcl_stcn, etf_ntas_ttam, etf_frcr_ntas_ttam, frgn_limt_rate, frgn_oder_able_qty, etf_cu_unit_scrt_cnt, etf_cnfg_issu_cnt, etf_dvdn_cycl, crcd, etf_crcl_ntas_ttam, etf_frcr_crcl_ntas_ttam, etf_frcr_last_ntas_wrth_val, lp_oder_able_cls_code, stck_dryy_hgpr, dryy_hgpr_vrss_prpr_rate, dryy_hgpr_date, stck_dryy_lwpr, dryy_lwpr_vrss_prpr_rate, dryy_lwpr_date, bstp_kor_isnm, vi_cls_code, lstn_stcn, frgn_hldn_qty, frgn_hldn_qty_rate, etf_trc_ert_mltp, dprt, mbcr_name, stck_lstn_date, mtrt_date, shrg_type_code, lp_hldn_rate, etf_trgt_nmix_bstp_code, etf_div_name, etf_rprs_bstp_kor_isnm, lp_hldn_vol
+  예: {"stck_prpr": "83355", "prdy_vrss_sign": "3", "prdy_vrss": "0", "prdy_ctrt": "0.00", "acml_vol": "0", "prdy_vol": "2856982", "stck_mxpr": "108360", "stck_llam": "58350", "stck_prdy_clpr": "83355", "stck_oprc": "0", "prdy_clpr_vrss_oprc_rate": "0.00", "stck_hgpr": "0", "prdy_clpr_vrss_hgpr_rate": "0.00", "stck_lwpr": "0", "prdy_clpr_vrss_lwpr_rate": "0.00", "prdy_last_nav": "83348.45", "nav": "83348.45", "nav_prdy_vrs
+- **D NAV 비교추이 일별** rt_cd=0 msg=정상처리 되었습니다. · output 21행
+  수급값 있는 날 0/21
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, cntg_vol, dprt, nav_vrss_prpr, nav, nav_prdy_vrss_sign, nav_prdy_vrss, nav_prdy_ctrt
+  예: {"stck_bsop_date": "20261123", "stck_clpr": "83355", "prdy_vrss": "-1245", "prdy_vrss_sign": "5", "prdy_ctrt": "-1.47", "acml_vol": "2856982", "cntg_vol": "", "dprt": "0.01", "nav_vrss_prpr": "6.55", "nav": "83348.45", "nav_prdy_vrss_sign": "5", "nav_prdy_vrss": "-1332.23", "nav_prdy_ctrt": "-1.57"}
+- **E 프로그램매매 일별** rt_cd=0 msg=정상처리 되었습니다. · output 30행
+  수급값 있는 날 0/30
+  키: stck_bsop_date, stck_clpr, prdy_vrss, prdy_vrss_sign, prdy_ctrt, acml_vol, acml_tr_pbmn, whol_smtn_seln_vol, whol_smtn_shnu_vol, whol_smtn_ntby_qty, whol_smtn_seln_tr_pbmn, whol_smtn_shnu_tr_pbmn, whol_smtn_ntby_tr_pbmn, whol_ntby_vol_icdc, whol_ntby_tr_pbmn_icdc2
+  예: {"stck_bsop_date": "20261123", "stck_clpr": "83355", "prdy_vrss": "-1245", "prdy_vrss_sign": "5", "prdy_ctrt": "-1.47", "acml_vol": "2856982", "acml_tr_pbmn": "238064868978", "whol_smtn_seln_vol": "0", "whol_smtn_shnu_vol": "0", "whol_smtn_ntby_qty": "0", "whol_smtn_seln_tr_pbmn": "0", "whol_smtn_shnu_tr_pbmn": "0", "whol_smtn_ntby_tr_pbmn": "0", "whol_ntby_vol_icdc": "0", "whol_ntby_tr_pbmn_icdc2": "0"}
