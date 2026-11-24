@@ -1244,6 +1244,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="scr">종목 후보</button>
       <button data-v="trend">종목 추세</button>
       <button data-v="allinfo">전 종목 정보</button>
+      <button data-v="wtrec">주식무게수 종목</button>
       <button data-v="etfhub">ETF</button>
       <button data-v="pair">짝꿍매매</button>
       <button data-v="sw">국면 전략</button></div></div>
@@ -1442,22 +1443,6 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     </div></div>
     <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFlowBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
     <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
-  </div>
-  <div class="card" id="tdWtCard" style="margin-top:12px"><h3>무게/주식수 역대 1·2위일 종목 <span class="r" id="tdWtSub"></span></h3>
-    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdWtPer">
-      <button class="fchip" data-v="183">6개월</button><button class="fchip" data-v="92">3개월</button><button class="fchip" data-v="62">2개월</button><button class="fchip" data-v="31" aria-pressed="true">1개월</button><button class="fchip" data-v="14">2주</button><button class="fchip" data-v="7">1주</button><button class="fchip" data-v="0">오늘</button></div></div>
-    <div class="qf-group"><div class="qf-lb">순위</div><div class="qf seg" id="tdWtRk"><button class="fchip" data-v="all" aria-pressed="true">1·2위</button><button class="fchip" data-v="1">1위일만</button><button class="fchip" data-v="2">2위일만</button></div></div>
-    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdWtBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
-    <div class="note">그 종목의 <b>전체 이력(2025-09~)</b> 중 무게/주식수(등락률×거래량÷상장주식수)가 가장 컸던 날 = 1위일, 1위일 이후 가장 컸던 날 = 2위일(종목상세와 같은 규칙). 그 날짜가 선택한 기간 안에 있는 종목만 보여주며, 숫자는 합산이 아니라 그날 하루 값입니다. 시가총액 1천억원 이상 · 무게 큰 순.</div>
-  </div>
-
-  <div class="card" id="tdFrCard" style="margin-top:12px"><h3>순매수 역대 1·2위일 종목 <span class="r" id="tdFrSub"></span></h3>
-    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFrPer">
-      <button class="fchip" data-v="183">6개월</button><button class="fchip" data-v="92">3개월</button><button class="fchip" data-v="62">2개월</button><button class="fchip" data-v="31" aria-pressed="true">1개월</button><button class="fchip" data-v="14">2주</button><button class="fchip" data-v="7">1주</button><button class="fchip" data-v="0">오늘</button></div></div>
-    <div class="qf-group"><div class="qf-lb">주체</div><div class="qf seg" id="tdFrSubj"><button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button><button class="fchip" data-v="foreign">외국인</button><button class="fchip" data-v="inst">기관합계</button><button class="fchip" data-v="fin_inv">금융투자</button><button class="fchip" data-v="inv_trust">투신</button><button class="fchip" data-v="pension">연기금</button><button class="fchip" data-v="pe">사모</button></div></div>
-    <div class="qf-group"><div class="qf-lb">순위</div><div class="qf seg" id="tdFrRk"><button class="fchip" data-v="all" aria-pressed="true">1·2위</button><button class="fchip" data-v="1">1위일만</button><button class="fchip" data-v="2">2위일만</button></div></div>
-    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFrBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
-    <div class="note">그 종목의 <b>전체 이력(2025-09~)</b> 중 선택한 주체의 일 순매수 금액이 가장 컸던 날(1위일)·두 번째로 컸던 날(2위일)이 선택한 기간 안에 있는 종목입니다. 기간 합산이 아니라 그날 하루 값이고, 시총대비 = 그날 순매수 ÷ 오늘 시가총액입니다. 시가총액 1천억원 이상 · 순매수 큰 순.</div>
   </div>
 
   <div class="card" id="flowRankCard" style="margin-top:12px"><h3>종목별 수급 랭킹 · 주체별 시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시총 · 기간 누적 · 주체별 매수·매도 Top 10 · 조건은 종목 후보와 별개로 이 화면에서만 적용</span></h3>
@@ -1835,6 +1820,25 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="note" style="margin-bottom:8px">종가(장중 업데이트 후에는 잠정) 기준으로 추세가 강한 종목을 봅니다. 기본 조건은 시총 1조 이상 · 종가 &gt; 60일선 &gt; 120일선 정배열 · 매집 전체(지속+고점 후 정체)이고 RS20(최근 20일 시장 대비 강도) 상위 순입니다. 표의 열은 종목 후보와 같고 오른쪽으로 펼쳐집니다. 표에서는 <b>행을 누르면</b> 아래에 가격·이평선 차트가 펼쳐지고, <b>차트 카드</b> 보기에서는 같은 순서로 종목마다 차트가 이어집니다. 종목명을 누르면 종목상세로 이동합니다.</div>
     <div class="tw scrlike" id="trWrap"><table><thead></thead><tbody id="trBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
     <div id="trCards" class="hide"></div>
+  </div>
+</section>
+<section id="v-wtrec" class="hide">
+  <div style="margin-top:16px"></div>
+  <div class="card" id="tdWtCard" style="margin-top:12px"><h3>무게/주식수 역대 1·2위일 종목 <span class="r" id="tdWtSub"></span></h3>
+    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdWtPer">
+      <button class="fchip" data-v="183">6개월</button><button class="fchip" data-v="92">3개월</button><button class="fchip" data-v="62">2개월</button><button class="fchip" data-v="31" aria-pressed="true">1개월</button><button class="fchip" data-v="14">2주</button><button class="fchip" data-v="7">1주</button><button class="fchip" data-v="0">오늘</button></div></div>
+    <div class="qf-group"><div class="qf-lb">순위</div><div class="qf seg" id="tdWtRk"><button class="fchip" data-v="all" aria-pressed="true">1·2위</button><button class="fchip" data-v="1">1위일만</button><button class="fchip" data-v="2">2위일만</button></div></div>
+    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdWtBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="note">그 종목의 <b>전체 이력(2025-09~)</b> 중 무게/주식수(등락률×거래량÷상장주식수)가 가장 컸던 날 = 1위일, 1위일 이후 가장 컸던 날 = 2위일(종목상세와 같은 규칙). 그 날짜가 선택한 기간 안에 있는 종목만 보여주며, 숫자는 합산이 아니라 그날 하루 값입니다. 시가총액 1천억원 이상 · 무게 큰 순.</div>
+  </div>
+
+  <div class="card" id="tdFrCard" style="margin-top:12px"><h3>순매수 역대 1·2위일 종목 <span class="r" id="tdFrSub"></span></h3>
+    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFrPer">
+      <button class="fchip" data-v="183">6개월</button><button class="fchip" data-v="92">3개월</button><button class="fchip" data-v="62">2개월</button><button class="fchip" data-v="31" aria-pressed="true">1개월</button><button class="fchip" data-v="14">2주</button><button class="fchip" data-v="7">1주</button><button class="fchip" data-v="0">오늘</button></div></div>
+    <div class="qf-group"><div class="qf-lb">주체</div><div class="qf seg" id="tdFrSubj"><button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button><button class="fchip" data-v="foreign">외국인</button><button class="fchip" data-v="inst">기관합계</button><button class="fchip" data-v="fin_inv">금융투자</button><button class="fchip" data-v="inv_trust">투신</button><button class="fchip" data-v="pension">연기금</button><button class="fchip" data-v="pe">사모</button></div></div>
+    <div class="qf-group"><div class="qf-lb">순위</div><div class="qf seg" id="tdFrRk"><button class="fchip" data-v="all" aria-pressed="true">1·2위</button><button class="fchip" data-v="1">1위일만</button><button class="fchip" data-v="2">2위일만</button></div></div>
+    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFrBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="note">그 종목의 <b>전체 이력(2025-09~)</b> 중 선택한 주체의 일 순매수 금액이 가장 컸던 날(1위일)·두 번째로 컸던 날(2위일)이 선택한 기간 안에 있는 종목입니다. 기간 합산이 아니라 그날 하루 값이고, 시총대비 = 그날 순매수 ÷ 오늘 시가총액입니다. 시가총액 1천억원 이상 · 순매수 큰 순.</div>
   </div>
 </section>
 <section id="v-allinfo" class="hide">
@@ -4982,8 +4986,8 @@ function go(v,detailCode){
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===vOrig));
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend","allinfo","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
-  wideSet(v==="scr"||v==="trend"||v==="allinfo"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
+  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend","allinfo","wtrec","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  wideSet(v==="scr"||v==="trend"||v==="allinfo"||v==="wtrec"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
   // "아직 종목상세를 한 번도 안 봤으면(S.chart.code 없음) 디폴트 SK하이닉스를
@@ -5032,12 +5036,13 @@ function go(v,detailCode){
   if(v==="ai")aiOpen();
   if(v==="today"&&!S.flowLoaded){S.flowLoaded=true;   // 수급 카드(2026-11 수급 동향에서 이동)
     Promise.all([loadFlowLists()]).catch(()=>{});
-    loadFlowRawData().then(r=>{initRecordCards(r);return initTdFlowCard(r);}).catch(e=>{console.error("수급 상위",e);S._tdFlowInit=false;$("#tdFlowBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});}
+    loadFlowRawData().then(initTdFlowCard).catch(e=>{console.error("수급 상위",e);S._tdFlowInit=false;$("#tdFlowBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});}
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);}).finally(()=>{tdFitSoon();setTimeout(tdFit,2500);});}
   if(v==='today')tdFitSoon();
   if(v==="live")liveStart();
   if(v==="trend")trendStart();
   if(v==="allinfo")aliStart();
+  if(v==="wtrec"&&!S._recInit)loadFlowRawData().then(initRecordCards).catch(e=>{console.error("주식무게수 종목",e);$("#tdWtBody").innerHTML='<tr><td colspan="30" class="load">불러오지 못했습니다</td></tr>';});
   if(v==="trade")trdEnter();
   if(typeof tcBar==="function")tcBar();
   if(v==="fw")fwOpen();
@@ -13165,7 +13170,7 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
 /* 자동매매 컨트롤 타워 입력(체크박스·선택은 change, 글자는 input) */
 document.addEventListener("input",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&t.type!=="checkbox"&&t.tagName!=="SELECT")auInputEv(t);});
 document.addEventListener("change",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&(t.type==="checkbox"||t.tagName==="SELECT"))auInputEv(t);});
-const VIEW_IDS=["seclog","etfhub","etf","trend","allinfo","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
+const VIEW_IDS=["seclog","etfhub","etf","trend","allinfo","wtrec","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
 function setHash(v,code){
   const h="#"+(DESK_V.test(v)?v.replace("-","/"):v)+(code?"/"+code:"");   // 매매 화면: #paper/order · #real/auto
   if(location.hash!==h)history.pushState(null,"",h);
