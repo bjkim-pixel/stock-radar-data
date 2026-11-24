@@ -8239,7 +8239,7 @@ function kwRender(){
   const col=(k,lb,tip)=>`<th data-k="${k}" class="sortable${K.sort.k===k?" active":""}"${tip?` title="${tip}"`:""}>${lb}${K.sort.k===k?(K.sort.dir>0?" ▲":" ▾"):""}</th>`;
   // 오름차순(▲)=dir 1, 내림차순(▾)=dir -1
   $("#kwHead").innerHTML=`<tr><th class="l">#</th>`+col("name","종목").replace("<th ",'<th style="text-align:left" ')+
-    K.dates.map(d=>col("d"+d,dl(d))).join("")+col("r6","6월 대비",`최근 ÷ ${K.d6||""} 계좌수`)+col("r8","8월 대비",`최근 ÷ ${K.d8||""} 계좌수`)+"</tr>";
+    col("r6","6월",`최근 ÷ ${K.d6||""} 계좌수`)+col("r8","8월",`최근 ÷ ${K.d8||""} 계좌수`)+K.dates.map(d=>col("d"+d,dl(d))).join("")+"</tr>";
   const val=(r,k)=>k==="name"?r.name:k==="r6"?r.r6:k==="r8"?r.r8:r.sn[k.slice(1)];
   let a=K.rows.filter(r=>(K.mkt==="all"||r.market.startsWith(K.mkt))&&(!K.q||r.name.toLowerCase().includes(K.q)||r.code.includes(K.q)));
   const dir=K.sort.dir,k=K.sort.k;
@@ -8250,8 +8250,8 @@ function kwRender(){
   const rc=v=>{if(v==null)return"<td>–</td>";
     const t=Math.max(0,Math.min(1,(1-v)/0.5));   // 100%=0, 50% 이하=최대
     return `<td style="${t>0?`background:color-mix(in srgb,var(--up) ${Math.round(t*45)}%,transparent);`:""}font-weight:${v<=0.7?700:500}">${N(v*100,1)}%</td>`;};
-  $("#kwBody").innerHTML=a.length?a.map((r,i)=>`<tr><td class="l rank">${i+1}</td><td class="l">${known.has(r.code)?`<a class="lk nm" data-code="${r.code}">`:`<span class="nm">`}<span class="cd">${r.market.startsWith("KOSPI")?"피":"닥"}</span> ${r.name}${known.has(r.code)?"</a>":"</span>"}</td>`+
-    K.dates.map(d=>`<td${d===last?' style="font-weight:700"':""}>${r.sn[d]==null?"–":N(r.sn[d],0)}</td>`).join("")+rc(r.r6)+rc(r.r8)+"</tr>").join(""):
+  $("#kwBody").innerHTML=a.length?a.map((r,i)=>`<tr><td class="l rank">${i+1}</td><td class="l">${known.has(r.code)?`<a class="lk nm" data-code="${r.code}">`:`<span class="nm">`}${r.market?`<span class="cd">${r.market.startsWith("KOSPI")?"피":"닥"}</span> `:""}${r.name}${known.has(r.code)?"</a>":"</span>"}</td>`+
+    rc(r.r6)+rc(r.r8)+K.dates.map(d=>`<td${d===last?' style="font-weight:700"':""}>${r.sn[d]==null?"–":N(r.sn[d],0)}</td>`).join("")+"</tr>").join(""):
     '<tr><td colspan="30" class="load">조건에 맞는 종목이 없습니다</td></tr>';
   $$("#kwBody a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
 }

@@ -1,10 +1,10 @@
 name: "[수시] 키움 보유계좌수 엑셀 반영 | 수동·엑셀 푸시 | 매집 종목 페이지"
-# data/kiwoom_accounts.xlsx 를 저장소에 올리면(푸시) 자동 실행, 수동 실행도 가능. 여러 번 실행해도 안전(upsert).
+# data/kiwoom_accounts.csv(우선) 또는 .xlsx 를 저장소에 올리면(푸시) 자동 실행, 수동 실행도 가능. 여러 번 실행해도 안전(upsert).
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["data/kiwoom_accounts.xlsx"]
+    paths: ["data/kiwoom_accounts.xlsx", "data/kiwoom_accounts.csv"]
 permissions:
   contents: write
 concurrency:
