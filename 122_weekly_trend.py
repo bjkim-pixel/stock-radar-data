@@ -11,6 +11,8 @@ import requests, psycopg2
 # (코드, 이름, Yahoo 티커, 소수자리, 상관 계산 방식: ret=주간 수익률 / diff=주간 변화폭(금리))
 SYMS = [("IXIC", "나스닥 종합", "^IXIC", 0, "ret"), ("KS11", "코스피", "^KS11", 0, "ret"),
         ("TNX", "미국 10년물 금리(%)", "^TNX", 2, "diff"), ("WTI", "WTI 원유(선물, $)", "CL=F", 1, "ret"), ("GOLD", "금(선물, $)", "GC=F", 0, "ret"),
+        ("SOX", "필라델피아 반도체지수", "^SOX", 0, "ret"), ("SOXX", "미국 SOXX (반도체 ETF)", "SOXX", 2, "ret"),
+        ("SEC", "삼성전자", "005930.KS", 0, "ret"), ("HYX", "SK하이닉스", "000660.KS", 0, "ret"), ("MU", "마이크론", "MU", 2, "ret"),
         ("KR10", "한국 국채 10년 금리(%)", None, 3, "diff")]   # KR10 은 Yahoo 에 없어 네이버 API 사용(아래 fetch_kr10)
 KEEP = 1100         # 화면에 보낼 최근 주 수(약 21년 — 20년 보기 지원)
 EMAS = (20, 50, 100, 200)
