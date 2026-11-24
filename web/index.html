@@ -1769,6 +1769,14 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <tbody id="liveBody"><tr><td colspan="20" class="load sk"></td></tr></tbody></table></div>
   </div>
   <div class="card" style="margin-top:12px"><h3>진입·이탈 기록 <span class="r">이 화면을 연 뒤</span></h3><div id="liveLog" class="note">아직 변동이 없습니다</div></div>
+  <div class="card" style="margin-top:12px"><h3>노필터 종목 리스트 <span class="r" id="laStat">누르면 한 번 불러옵니다</span></h3>
+    <div class="note" style="margin-bottom:8px">위 조건(시총·이평선·수급·ETF 제외 등)을 전혀 적용하지 않은 KIS 순위 그대로입니다. 일반종목·우선주·스팩과 ETF(인버스·레버리지 포함)·ETN이 모두 들어옵니다. 자동 갱신은 없고 아래 버튼을 누를 때만 조회합니다.</div>
+    <div class="dfrow" style="gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><span class="qf seg" id="laSort" style="display:inline-flex"><button class="fchip" data-v="up" aria-pressed="true">상승률 상위</button><button class="fchip" data-v="down">하락률 상위</button><button class="fchip" data-v="amt">거래대금 상위</button></span>
+      <span class="qf seg" id="laKind" style="display:inline-flex"><button class="fchip" data-v="" aria-pressed="true">전체</button><button class="fchip" data-v="일반">일반</button><button class="fchip" data-v="ETF">ETF</button><button class="fchip" data-v="레버리지">레버리지</button><button class="fchip" data-v="인버스">인버스</button></span>
+      <button class="btn" id="laGo">불러오기</button></div>
+    <div class="tw"><table><thead><tr><th>#</th><th class="l">종목</th><th>구분</th><th>현재가</th><th>등락률</th><th>거래량</th><th>거래대금(억)</th></tr></thead><tbody id="laBody"><tr><td colspan="7" class="load">‘불러오기’를 누르세요</td></tr></tbody></table></div>
+    <div class="note">KIS 순위 API 한도로 한 번에 30종목까지입니다. 종목명을 누르면 ETF는 ETF 상세, 그 외는 종목상세로 이동합니다.</div>
+  </div>
 </section>
 <section id="v-etf" class="hide">
   <div style="margin:12px 0 4px;display:flex;gap:8px;align-items:stretch"><button class="btn ghost" id="eBackTop" style="flex:none">← 이전 화면으로</button><select id="etfSel" class="df" title="ETF 선택 (가나다순)" style="flex:1;min-width:0;height:auto;margin:0"></select></div>
@@ -3034,6 +3042,32 @@ function liveFcPass(x){
   if(L.cs){const C=(S.liveCs||{})[x.code]||{};const v=x.cttr!=null&&isFinite(x.cttr)?x.cttr:(C.err==null?C.cttr:null);if(!(v!=null&&v>=+L.cs))return false;}
   return true;
 }
+
+/* 노필터 종목 리스트: 릴레이 /live-all (한 번 조회, 자동 갱신 없음) */
+S.la=S.la||{sort:"up",kind:"",rows:[],at:0,busy:false};
+function laRender(){
+  const L=S.la,rows=L.rows.filter(r=>!L.kind||r.kind===L.kind);
+  $("#laBody").innerHTML=rows.length?rows.map(r=>{const etf=["ETF","레버리지","인버스","ETN"].includes(r.kind),tg=etf?`<span class="tag" style="background:${r.kind==="인버스"?"#e3f0ff":r.kind==="레버리지"?"#ffe9e3":"#eee"}">${r.kind}</span>`:(r.kind==="일반"?'<span class="faint">일반</span>':`<span class="tag">${r.kind}</span>`);
+    return `<tr><td>${r.rank}</td><td class="l"><a class="lk" data-code="${r.code}" data-etf="${etf?1:0}">${escH(r.name)}</a></td><td>${tg}</td><td>${N(r.price,0)}</td><td class="${sgn(r.changePct)}">${pm(r.changePct,2)}%</td><td>${N(r.vol,0)}</td><td>${r.amt?N(r.amt/EOK,0):"–"}</td></tr>`;}).join(""):'<tr><td colspan="7" class="load">해당 구분의 종목이 이번 순위에 없습니다</td></tr>';
+  $$("#laBody a.lk").forEach(a=>a.onclick=()=>{const c=a.dataset.code;if(a.dataset.etf==="1"||(S.etfMap&&S.etfMap[c]))go("etf",c);else go("detail",c);});
+}
+async function laLoad(){
+  const L=S.la;if(L.busy)return;L.busy=true;$("#laGo").disabled=true;$("#laStat").textContent="불러오는 중…";
+  $("#laBody").innerHTML='<tr><td colspan="7" class="load sk"></td></tr>';
+  try{
+    const r=await fetch(RELAY_HTTP_BASE+"/live-all?sort="+L.sort,{cache:"no-store"}),j=await r.json();
+    if(!j||!j.ok)throw new Error((j&&(j.err||j.error))||"응답 없음");
+    L.rows=j.rows||[];L.at=j.ts||Date.now();
+    const t=new Date(L.at).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+    $("#laStat").textContent=`${{up:"상승률",down:"하락률",amt:"거래대금"}[L.sort]} 상위 · ${t} 조회`;laRender();
+  }catch(e){$("#laBody").innerHTML=`<tr><td colspan="7" class="load">불러오지 못했습니다 — ${escH(String(e.message||e))}. 장이 열려 있는 시간에 다시 눌러 주세요</td></tr>`;$("#laStat").textContent="조회 실패";}
+  L.busy=false;$("#laGo").disabled=false;
+}
+(function(){
+  $("#laGo").onclick=laLoad;
+  $$("#laSort .fchip").forEach(b=>b.onclick=()=>{$$("#laSort .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));S.la.sort=b.dataset.v;laLoad();});
+  $$("#laKind .fchip").forEach(b=>b.onclick=()=>{$$("#laKind .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));S.la.kind=b.dataset.v;laRender();});
+})();
 function liveSelRender(){const L=S.live,el=$("#liveSel");if(!el)return;
   el.innerHTML=lfSelHtml([`시총 ${L.min?(L.min>=10000?N(L.min/10000)+"조":N(L.min)+"억")+" 이상":"전체"}`,`거래대금 ${L.amt?N(L.amt)+"억↑":"전체"}`,...fcDesc(L),...(L.cs?[`체결강도 ${L.cs}%↑`]:[]),...lfDesc(S.lf)]);}
 function liveStart(){

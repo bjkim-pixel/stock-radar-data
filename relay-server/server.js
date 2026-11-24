@@ -3427,6 +3427,34 @@ function handleSubStatus(req, res) {
   return true;
 }
 
+/* ── 노필터 종목 리스트(사이트 "실시간 종목" 맨 아래 카드): 일반종목 + ETF(인버스·레버리지 포함) + 우선주까지 걸러내지 않고
+   KIS 순위(등락률 상/하위·거래대금)를 그대로 돌려준다. 자동 갱신 없이 사이트에서 누를 때만 호출(5초 캐시). 순위 API 한도로 한 번에 30종목. ── */
+const _liveAll = new Map();
+const kindOfName = (code, name) => /인버스|곱버스/.test(name) ? '인버스' : /레버리지|2X|3X/i.test(name) ? '레버리지' : /ETN/.test(name) ? 'ETN'
+  : /KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|KIWOOM|1Q /.test(name) ? 'ETF' : isPreferred(code, name) ? '우선주' : /스팩/.test(name) ? '스팩' : '일반';
+async function refreshLiveAll(sort) {
+  const pr = _kisPrio.run(2, async () => {
+    const raw = sort === 'amt' ? await fetchVolumeRank(30) : sort === 'down' ? await fetchFallRateRank(30) : await fetchChangeRateRank(30);
+    const rows = raw.map((o, i) => { const code = o.stck_shrn_iscd || o.mksc_shrn_iscd, name = o.hts_kor_isnm || '';
+      return { rank: i + 1, code, name, kind: kindOfName(code, name), price: safeNum(o.stck_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }; }).filter(r => r.code);
+    _liveAll.set(sort, { at: Date.now(), rows, err: rows.length ? null : '순위 응답 없음' });
+  });
+  await pr;
+}
+function handleLiveAll(req, res) {
+  const path = (req.url || '').split('?')[0];
+  if (path !== '/live-all') return false;
+  accessCors(req, res, 'GET, OPTIONS');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  const q = new URLSearchParams((req.url.split('?')[1]) || '').get('sort');
+  const sort = q === 'down' ? 'down' : q === 'amt' ? 'amt' : 'up';
+  const send = () => { const c = _liveAll.get(sort) || { at: 0, rows: [], err: '없음' }; res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: !c.err, ts: c.at, err: c.err, sort, rows: c.rows })); };
+  const c = _liveAll.get(sort);
+  if (c && Date.now() - c.at < 5000) { send(); return true; }
+  refreshLiveAll(sort).then(send).catch(e => { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: e.message })); });
+  return true;
+}
+
 function handleLiveTop(req, res) {
   const path = (req.url || '').split('?')[0];
   if (path !== '/live-top') return false;
@@ -3888,7 +3916,7 @@ setInterval(() => { ghCron.tick().catch(e => console.error('[gh-cron] tick 실�
 
 const server = http.createServer((req, res) => {
   if (trade.handle(req, res)) return;
-  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleSubStatus(req, res) || handleLivePower(req, res) || handleLiveTop(req, res) || handleLiveFlow(req, res) || handleLiveCttr(req, res) || handleLiveMarket(req, res) || handleStockInfo(req, res)) return;
+  if (handleAccessLog(req, res) || handleJournal(req, res) || handleWatchlist(req, res) || handleThemes(req, res) || handleSubStatus(req, res) || handleLivePower(req, res) || handleLiveTop(req, res) || handleLiveAll(req, res) || handleLiveFlow(req, res) || handleLiveCttr(req, res) || handleLiveMarket(req, res) || handleStockInfo(req, res)) return;
   // /push-subscribe 는 GitHub Pages(다른 오리진)에서 fetch로 호출하므로 CORS 필요
   if (req.url === '/push-subscribe') {
     const origin = req.headers.origin;
