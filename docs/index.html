@@ -8217,7 +8217,10 @@ async function kwOpen(){
   $("#kwSearch").addEventListener("input",e=>{S.kw.q=e.target.value.trim().toLowerCase();kwRender();});
   $("#kwHead").addEventListener("click",e=>{const th=e.target.closest("th[data-k]");if(!th)return;
     const k=th.dataset.k,so=S.kw.sort;
-    S.kw.sort=so.k===k?{k,dir:-so.dir}:{k,dir:k==="name"?1:(k==="r6"||k==="r8"?1:-1)};kwRender();});
+    S.kw.sort=so.k===k?{k,dir:-so.dir}:{k,dir:k==="name"?1:(k==="r6"||k==="r8"?1:-1)};kwRender();
+    /* 정렬 뒤에는 표 맨 위(1위)가 보이도록 헤더 바로 아래로 스크롤 */
+    const tw=$("#kwHead").closest(".tw"),st=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stick-top"))||0;
+    window.scrollTo({top:Math.max(0,tw.getBoundingClientRect().top+scrollY-st),behavior:"auto"});});
   try{
     const rows=await q("v_kiwoom_accounts","select=code,name,market,snaps&limit=2000");
     const ds=new Set();rows.forEach(r=>Object.keys(r.snaps||{}).forEach(d=>ds.add(d)));
@@ -8237,7 +8240,7 @@ async function kwOpen(){
 }
 function kwRender(){
   const K=S.kw;if(!K.rows)return;
-  const dl=d=>`${+d.slice(5,7)}/${+d.slice(8,10)}`,last=K.dates[K.dates.length-1];
+  const dl=d=>`${d.slice(0,4)===K.dates[K.dates.length-1].slice(0,4)?"":d.slice(2,4)+"."}${+d.slice(5,7)}/${+d.slice(8,10)}`,last=K.dates[K.dates.length-1];
   const col=(k,lb,tip)=>`<th data-k="${k}" class="sortable${K.sort.k===k?" active":""}"${tip?` title="${tip}"`:""}>${lb}${K.sort.k===k?(K.sort.dir>0?" ▲":" ▾"):""}</th>`;
   // 오름차순(▲)=dir 1, 내림차순(▾)=dir -1
   $("#kwHead").innerHTML=`<tr><th class="l">#</th>`+col("name","종목").replace("<th ",'<th style="text-align:left" ')+
