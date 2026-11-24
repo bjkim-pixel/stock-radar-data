@@ -7460,9 +7460,11 @@ async function dartInit(){
 
 /* ══ 매집(키움 보유계좌수) 6월·8월 대비 비율 — 종목 표 공용 ══ */
 function kwBaseOf(dates,m){const a=dates.filter(d=>+d.slice(5,7)===m);return a.length?a[0]:null;}
+/* 종목 수가 늘어(2,700+) 한 번에 2000행 제한에 걸리므로 1000행씩 이어서 받음 */
+async function kwFetchAll(sel){let out=[];for(let o=0;o<10000;o+=1000){const r=await q("v_kiwoom_accounts",`select=${sel}&order=code.asc&limit=1000&offset=${o}`);out=out.concat(r||[]);if(!r||r.length<1000)break;}return out;}
 function kwLoadMap(){
   if(S._kwMapP)return S._kwMapP;
-  S._kwMapP=q("v_kiwoom_accounts","select=code,snaps&limit=2000").then(rows=>{
+  S._kwMapP=kwFetchAll("code,snaps").then(rows=>{
     const ds=new Set();rows.forEach(r=>Object.keys(r.snaps||{}).forEach(d=>ds.add(d)));
     const dates=[...ds].sort(),last=dates[dates.length-1],d6=kwBaseOf(dates,6),d8=kwBaseOf(dates,8),m={};
     rows.forEach(r=>{const sn=r.snaps||{},cur=sn[last];if(!cur)return;
@@ -8236,7 +8238,7 @@ async function kwOpen(){
     const tw=$("#kwHead").closest(".tw"),st=parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--stick-top"))||0;
     window.scrollTo({top:Math.max(0,tw.getBoundingClientRect().top+scrollY-st),behavior:"auto"});});
   try{
-    const rows=await q("v_kiwoom_accounts","select=code,name,market,snaps&limit=2000");
+    const rows=await kwFetchAll("code,name,market,snaps");
     const ds=new Set();rows.forEach(r=>Object.keys(r.snaps||{}).forEach(d=>ds.add(d)));
     const dates=[...ds].sort(),last=dates[dates.length-1];
     const d6=kwMonthBase(dates,6),d8=kwMonthBase(dates,8);
