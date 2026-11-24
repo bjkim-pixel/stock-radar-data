@@ -295,6 +295,8 @@ svg.tl-paths{position:absolute;left:0;top:0;width:100%;height:100%;pointer-event
 html.wide,html.wide body{overflow-x:visible}
 html:not(.wide) #scrWrap,html:not(.wide) .scrlike{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 #scrWrap,.scrlike{overflow:visible}
+/* 가로 스크롤 상자 안에서는 sticky top이 상자 기준이라 헤더가 --stick-top만큼 아래로 밀려 첫 행을 덮음 → 0으로 */
+html:not(.wide) #scrWrap th,html:not(.wide) .scrlike th{top:0}
 /* 2026-11-08: min-width:100%를 빼서 "열 보기"로 열을 줄여도 표가 카드 폭만큼 늘어나(셀이 넓어짐) 않고 항상 내용 폭으로 촘촘하게 유지 */
 #scrWrap table,.scrlike table{width:max-content;min-width:0;table-layout:auto}
 .tw.scrlike,#scrWrap{width:fit-content;max-width:100%}
@@ -8239,7 +8241,7 @@ function kwRender(){
   const col=(k,lb,tip)=>`<th data-k="${k}" class="sortable${K.sort.k===k?" active":""}"${tip?` title="${tip}"`:""}>${lb}${K.sort.k===k?(K.sort.dir>0?" ▲":" ▾"):""}</th>`;
   // 오름차순(▲)=dir 1, 내림차순(▾)=dir -1
   $("#kwHead").innerHTML=`<tr><th class="l">#</th>`+col("name","종목").replace("<th ",'<th style="text-align:left" ')+
-    col("r6","6월",`최근 ÷ ${K.d6||""} 계좌수`)+col("r8","8월",`최근 ÷ ${K.d8||""} 계좌수`)+K.dates.map(d=>col("d"+d,dl(d))).join("")+"</tr>";
+    col("r6","6월",`최근 ÷ ${K.d6||""} 계좌수`)+col("r8","8월",`최근 ÷ ${K.d8||""} 계좌수`)+K.dates.map(d=>`<th>${dl(d)}</th>`).join("")+"</tr>";
   const val=(r,k)=>k==="name"?r.name:k==="r6"?r.r6:k==="r8"?r.r8:r.sn[k.slice(1)];
   let a=K.rows.filter(r=>(K.mkt==="all"||r.market.startsWith(K.mkt))&&(!K.q||r.name.toLowerCase().includes(K.q)||r.code.includes(K.q)));
   const dir=K.sort.dir,k=K.sort.k;
