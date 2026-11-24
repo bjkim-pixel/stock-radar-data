@@ -2238,7 +2238,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     </div>
     <div id="dSmxStatus" style="margin-bottom:8px"></div>
     <div class="tw tw-scroll" style="margin-bottom:10px"><table class="earn-t" id="dSmxTable"></table></div>
-    <div class="faint" style="font-size:11.5px;margin:4px 0"><b>A. 외+기 누적</b> — ▲ 매집 시작 저점 · ▼ 고점 · 파란 음영 = 고점 이후 · 회색 = 종가 · 굵은 가로 점선 = 세력 평단 1·2위(기간 안 무게/주식수 1·2위일의 평균 매수단가)</div>
+    <div class="faint" style="font-size:11.5px;margin:4px 0"><b>A. 외+기 누적</b> — 파란 선·점 = 통장수(키움 보유계좌, 주 단위, 자체 축) · ▲ 매집 시작 저점 · ▼ 고점 · 파란 음영 = 고점 이후 · 회색 = 종가 · 굵은 가로 점선 = 세력 평단 1·2위(기간 안 무게/주식수 1·2위일의 평균 매수단가)</div>
     <div class="chart" id="dSmxA"></div>
     <div class="faint" style="font-size:11.5px;margin:10px 0 4px"><b>B. 주체별 누적 겹쳐 보기</b> — 기간 시작 = 0 · 점 = 각 주체의 누적 고점(먼저 꺾인 주체가 먼저 이탈)</div>
     <div id="dSmxLegend" style="font-size:11.5px;display:flex;flex-wrap:wrap;gap:4px 12px;margin-bottom:4px"></div>
@@ -4509,6 +4509,19 @@ function lineChart(host,series,labels,opt={}){
       }
     }
   }
+  /* opt.ov = {v:[...희소], n, c, ft}: 자기 값 범위로 맞춘 보조선(예: 키움 보유 계좌수 — 주 단위라 값이 있는 날만 잇고 점을 찍음). 눈금 없음, 오른쪽 끝에 이름·값 */
+  if(opt.ov){
+    const op=opt.ov.v.map((v,i)=>({v,i})).filter(o=>o.v!=null&&!isNaN(o.v));
+    if(op.length){
+      let omin=Math.min(...op.map(o=>o.v)),omax=Math.max(...op.map(o=>o.v));
+      if(omax===omin){omax+=1;omin-=1;}
+      const Yo=v=>P.t+4+(omax-v)/(omax-omin)*(H-P.t-P.b-8),oc=css(opt.ov.c||"--down");
+      if(op.length>1)svg.appendChild(el("path",{d:op.map((o,k)=>`${k?"L":"M"}${X(o.i).toFixed(1)},${Yo(o.v).toFixed(1)}`).join(""),fill:"none",stroke:oc,"stroke-width":1.8,"stroke-linecap":"round","stroke-linejoin":"round"}));
+      op.forEach(o=>svg.appendChild(el("circle",{cx:X(o.i),cy:Yo(o.v),r:2.6,fill:oc,stroke:css("--surface"),"stroke-width":1})));
+      const lo=op.at(-1),t=el("text",{x:Math.min(W-P.r-4,X(lo.i)+6),y:Yo(lo.v)-8,"text-anchor":X(lo.i)>W-P.r-90?"end":"start","font-size":9.5,"font-weight":700,fill:oc,stroke:css("--surface"),"stroke-width":3,"paint-order":"stroke"});
+      t.textContent=`${opt.ov.n||""} ${opt.ov.ft?opt.ov.ft(lo.v):N(lo.v,0)}`;svg.appendChild(t);
+    }
+  }
   /* opt.bands = [{lo,hi,c,label}]: 가격대 띠(예: 개인 매물대) — 차트 범위 밖은 잘라 그림 */
   if(opt.bands)opt.bands.forEach(b=>{
     const hi=Math.min(b.hi,max),lo=Math.max(b.lo,min);if(!(hi>lo))return;
@@ -4609,6 +4622,7 @@ function lineChart(host,series,labels,opt={}){
       dots[k].setAttribute("cx",X(i));dots[k].setAttribute("cy",Y(v));dots[k].setAttribute("opacity",1);});
     tip.innerHTML=`<b>${labels[i]}</b>`+series.map(s=>s.v[i]==null?"":
       `<div class="row"><span style="color:${css(s.c)}">${s.n}</span><b>${opt.ft?opt.ft(s.v[i]):N(s.v[i],0)}</b></div>`).join("")
+      +(opt.ov&&opt.ov.v[i]!=null?`<div class="row"><span style="color:${css(opt.ov.c||"--down")}">${opt.ov.n}</span><b>${opt.ov.ft?opt.ov.ft(opt.ov.v[i]):N(opt.ov.v[i],0)}</b></div>`:"")
       +(opt.bg&&opt.bg.v[i]!=null?`<div class="row"><span style="color:${css("--ink-3")}">${opt.bg.n}</span><b>${opt.bg.ft?opt.bg.ft(opt.bg.v[i]):N(opt.bg.v[i],0)}</b></div>`:"");
     tip.style.opacity=1;
     tip.style.left=Math.min(r.width-160,Math.max(0,X(i)/W*r.width+12))+"px";tip.style.top="4px";});
@@ -9129,7 +9143,16 @@ function renderSmx(){
   const all=S.chart&&S.chart.rows,card=$("#dSmxCard");
   if(!all||all.length<10||all[0].foreign_cum==null){card.style.display="none";return;}
   card.style.display="";
-  smxDraw(all,S.smxWin,{status:$("#dSmxStatus"),table:$("#dSmxTable"),sub:$("#dSmxSub"),a:$("#dSmxA"),legend:$("#dSmxLegend"),b:$("#dSmxB")});
+  smxDraw(all,S.smxWin,{kwCode:S.chart&&S.chart.code,status:$("#dSmxStatus"),table:$("#dSmxTable"),sub:$("#dSmxSub"),a:$("#dSmxA"),legend:$("#dSmxLegend"),b:$("#dSmxB")});
+}
+/* 종목별 키움 보유 계좌수 스냅샷(kiwoom_accounts) — 처음 요청 시 불러와 두고, 도착하면 매집 진단 카드를 다시 그림 */
+S.kwAcc=S.kwAcc||{};
+function kwAccGet(code){
+  const c=S.kwAcc[code];if(c)return c.rows||null;
+  S.kwAcc[code]={rows:null};
+  q("kiwoom_accounts",`select=snap_date,accounts&code=eq.${code}&order=snap_date.asc&limit=200`).then(r=>{S.kwAcc[code]={rows:r||[]};
+    if(S.chart&&S.chart.code===code&&r&&r.length){try{renderSmx();}catch(e){}}}).catch(e=>{S.kwAcc[code]={rows:[]};console.error("통장수",e);});
+  return null;
 }
 function smxDraw(all,win,E){
   const cp=E.compact,CW=cp?{w:700,pr:40,pl:8}:{};
@@ -9174,8 +9197,14 @@ function smxDraw(all,win,E){
         label:`세력 평단 ${x.rank}위(${md(x.d)}) ${N(x.vwap,0)}원 · 현재가 ${cur>0?pm((cur/x.vwap-1)*100,1)+"%":"–"}`}));
     }
   }catch(e){console.error("외+기 누적 덧그림",e);}
+  /* 키움 보유 계좌수(통장수, 주 단위 스냅샷): 스냅샷 날짜 이전의 마지막 거래일에 점을 찍음 */
+  let ov=null;
+  {const acc=E.kwCode&&kwAccGet(E.kwCode);
+   if(acc&&acc.length){const v=new Array(rows.length).fill(null);
+     acc.forEach(a=>{let j=-1;for(let i=0;i<rows.length;i++){if(rows[i].trade_date<=a.snap_date)j=i;else break;}if(j>=0)v[j]=a.accounts;});
+     if(v.some(x=>x!=null))ov={v,n:"통장수",c:"--down",ft:x=>N(x,0)};}}
   lineChart(E.a,[{n:"외+기 누적",v:m.combo,c:"--up"}],labels,
-    {...CW,h:cp?190:230,zero:true,monthTicks:true,labelEnds:false,pts,shadeFrom:m.build>0&&m.since>0?m.pk:null,ft:v=>pm(v,0)+"억",bg:bgx});
+    {...CW,ov,h:cp?190:230,zero:true,monthTicks:true,labelEnds:false,pts,shadeFrom:m.build>0&&m.since>0?m.pk:null,ft:v=>pm(v,0)+"억",bg:bgx});
   E.legend.innerHTML=m.subj.map(x=>`<span><i style="display:inline-block;width:10px;height:3px;background:var(${x.c});vertical-align:middle;margin-right:3px"></i>${x.nm} <b class="${sgn(x.v[m.L])}">${f0(x.v[m.L])}</b><span class="faint">(고점 이후 <span class="${sgn(x.after)}">${f0(x.after)}</span>)</span></span>`).join("");
   lineChart(E.b,m.subj.map(x=>({n:x.nm,v:x.v,c:x.c})),labels,
     {...CW,h:cp?200:250,zero:true,monthTicks:true,ft:v=>pm(v,0)+"억",shadeFrom:m.build>0&&m.since>0?m.pk:null,
