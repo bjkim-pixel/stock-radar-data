@@ -1443,6 +1443,22 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFlowBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
     <div class="note">공통매수는 외국인·금융투자·투신·연기금·사모·개인·기타법인 등 서로 독립적인 7개 주체 중 오늘 동시에 순매수 중인 주체 수입니다.</div>
   </div>
+  <div class="card" id="tdWtCard" style="margin-top:12px"><h3>무게/주식수 역대 1·2위일 종목 <span class="r" id="tdWtSub"></span></h3>
+    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdWtPer">
+      <button class="fchip" data-v="183">6개월</button><button class="fchip" data-v="92">3개월</button><button class="fchip" data-v="62">2개월</button><button class="fchip" data-v="31" aria-pressed="true">1개월</button><button class="fchip" data-v="14">2주</button><button class="fchip" data-v="7">1주</button><button class="fchip" data-v="0">오늘</button></div></div>
+    <div class="qf-group"><div class="qf-lb">순위</div><div class="qf seg" id="tdWtRk"><button class="fchip" data-v="all" aria-pressed="true">1·2위</button><button class="fchip" data-v="1">1위일만</button><button class="fchip" data-v="2">2위일만</button></div></div>
+    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdWtBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="note">그 종목의 <b>전체 이력(2025-09~)</b> 중 무게/주식수(등락률×거래량÷상장주식수)가 가장 컸던 날 = 1위일, 1위일 이후 가장 컸던 날 = 2위일(종목상세와 같은 규칙). 그 날짜가 선택한 기간 안에 있는 종목만 보여주며, 숫자는 합산이 아니라 그날 하루 값입니다. 시가총액 1천억원 이상 · 무게 큰 순.</div>
+  </div>
+
+  <div class="card" id="tdFrCard" style="margin-top:12px"><h3>순매수 역대 1·2위일 종목 <span class="r" id="tdFrSub"></span></h3>
+    <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="tdFrPer">
+      <button class="fchip" data-v="183">6개월</button><button class="fchip" data-v="92">3개월</button><button class="fchip" data-v="62">2개월</button><button class="fchip" data-v="31" aria-pressed="true">1개월</button><button class="fchip" data-v="14">2주</button><button class="fchip" data-v="7">1주</button><button class="fchip" data-v="0">오늘</button></div></div>
+    <div class="qf-group"><div class="qf-lb">주체</div><div class="qf seg" id="tdFrSubj"><button class="fchip" data-v="combo" aria-pressed="true">외국인+기관합계</button><button class="fchip" data-v="foreign">외국인</button><button class="fchip" data-v="inst">기관합계</button><button class="fchip" data-v="fin_inv">금융투자</button><button class="fchip" data-v="inv_trust">투신</button><button class="fchip" data-v="pension">연기금</button><button class="fchip" data-v="pe">사모</button></div></div>
+    <div class="qf-group"><div class="qf-lb">순위</div><div class="qf seg" id="tdFrRk"><button class="fchip" data-v="all" aria-pressed="true">1·2위</button><button class="fchip" data-v="1">1위일만</button><button class="fchip" data-v="2">2위일만</button></div></div>
+    <div class="tw scrlike" style="margin-top:10px"><table><thead></thead><tbody id="tdFrBody"><tr><td colspan="30" class="load sk"></td></tr></tbody></table></div>
+    <div class="note">그 종목의 <b>전체 이력(2025-09~)</b> 중 선택한 주체의 일 순매수 금액이 가장 컸던 날(1위일)·두 번째로 컸던 날(2위일)이 선택한 기간 안에 있는 종목입니다. 기간 합산이 아니라 그날 하루 값이고, 시총대비 = 그날 순매수 ÷ 오늘 시가총액입니다. 시가총액 1천억원 이상 · 순매수 큰 순.</div>
+  </div>
 
   <div class="card" id="flowRankCard" style="margin-top:12px"><h3>종목별 수급 랭킹 · 주체별 시가총액 대비 수급 비중 <span class="r">순매수 거래대금 ÷ 시총 · 기간 누적 · 주체별 매수·매도 Top 10 · 조건은 종목 후보와 별개로 이 화면에서만 적용</span></h3>
     <div class="qf-group"><div class="qf-lb">기간</div><div class="qf seg" id="flowPeriodSel">
@@ -5016,7 +5032,7 @@ function go(v,detailCode){
   if(v==="ai")aiOpen();
   if(v==="today"&&!S.flowLoaded){S.flowLoaded=true;   // 수급 카드(2026-11 수급 동향에서 이동)
     Promise.all([loadFlowLists()]).catch(()=>{});
-    loadFlowRawData().then(initTdFlowCard).catch(e=>{console.error("수급 상위",e);S._tdFlowInit=false;$("#tdFlowBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});}
+    loadFlowRawData().then(r=>{initRecordCards(r);return initTdFlowCard(r);}).catch(e=>{console.error("수급 상위",e);S._tdFlowInit=false;$("#tdFlowBody").innerHTML='<tr><td colspan="30" class="load">불러오기 실패</td></tr>';});}
   if(v==="today"&&!S.todayLoaded){S.todayLoaded=true;loadToday().catch(e=>{console.error(e);}).finally(()=>{tdFitSoon();setTimeout(tdFit,2500);});}
   if(v==='today')tdFitSoon();
   if(v==="live")liveStart();
@@ -6464,6 +6480,50 @@ function fmtEokJo(eok){
 }
 function todayAligned(r){return r.ma5!=null&&r.ma20!=null&&r.ma60!=null&&r.ma120!=null&&+r.close>+r.ma5&&+r.ma5>+r.ma20&&+r.ma20>+r.ma60&&+r.ma60>+r.ma120;}
 const TODAY_FLOW_KEY_MAP={pgtr:"program"};
+
+/* ── 역대 1·2위일 종목 표 2종 (무게/주식수 · 주체별 순매수): record_wt / record_flow(장마감 수집 뒤 갱신) ── */
+function recStart(days){
+  const d=new Date((S.date||new Date().toISOString().slice(0,10))+"T00:00:00Z");d.setUTCDate(d.getUTCDate()-(+days));return d.toISOString().slice(0,10);
+}
+function initRecordCards(raw){
+  if(S._recInit)return;S._recInit=true;
+  S.recWt=S.recWt||{per:"31",rk:"all"};S.recFr=S.recFr||{per:"31",rk:"all",subj:"combo"};
+  const byCode={};raw.forEach(r=>byCode[r.code]=r);S._recRaw=byCode;
+  $("#tdWtBody").closest("table").querySelector("thead").innerHTML=scrThead('<th>순위</th><th>발생일</th><th>무게</th><th>그날 등락</th><th>거래대금(억)</th>');
+  $("#tdFrBody").closest("table").querySelector("thead").innerHTML=scrThead('<th>순위</th><th>발생일</th><th>순매수(억)</th><th>시총대비</th>');
+  const wire=(id,st,key,fn)=>$("#"+id).querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{
+    $$("#"+id+" .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));st[key]=b.dataset.v;fn();});
+  wire("tdWtPer",S.recWt,"per",recWtRender);wire("tdWtRk",S.recWt,"rk",recWtRender);
+  wire("tdFrPer",S.recFr,"per",recFrRender);wire("tdFrSubj",S.recFr,"subj",recFrRender);wire("tdFrRk",S.recFr,"rk",recFrRender);
+  recWtRender();recFrRender();
+}
+async function recFetch(table,extra,per){
+  const st=recStart(per),f=`&trade_date=gte.${st}`+(per==="0"?`&trade_date=lte.${S.date||"9999"}`:"");
+  const res=await Promise.all([1,2].map(k=>q(table,`select=*&rk=eq.${k}${extra}${f}&limit=1000`).catch(()=>[])));
+  return res.flat();
+}
+function recBody(host,rows,mk,emptyMsg){
+  $(host).innerHTML=rows.length?rows.map((x,i)=>`<tr><td class="l rank">${i+1}</td>${scrNameCell(x.r)}${mk(x)}${scrCells(x.r)}</tr>`).join(""):`<tr><td colspan="30" class="load">${emptyMsg}</td></tr>`;
+  $$(host+" a.lk").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+  makeSortable(host.slice(1));
+}
+const recRkTag=k=>`<td><b${k==1?' style="color:#f26a00"':""}>${k}위</b></td>`;
+async function recWtRender(){
+  const T=S.recWt,my=(S._recWtGen=(S._recWtGen||0)+1);
+  $("#tdWtBody").innerHTML='<tr><td colspan="30" class="load sk"></td></tr>';
+  const a=await recFetch("record_wt","",T.per);if(my!==S._recWtGen)return;
+  const rows=a.filter(x=>T.rk==="all"||String(x.rk)===T.rk).map(x=>({...x,r:S._recRaw[x.code]})).filter(x=>x.r&&+x.r.market_cap>=TODAY_FLOW_CAP).sort((p,q2)=>(+q2.w)-(+p.w)).slice(0,60);
+  $("#tdWtSub").textContent=`${T.per==="0"?"오늘":recStart(T.per).slice(5)+" ~ "+(S.date||"").slice(5)} 발생 · ${rows.length}종목`;
+  recBody("#tdWtBody",rows,x=>`${recRkTag(x.rk)}<td>${x.trade_date.slice(5)}</td><td class="up">${N(+x.w*100,1)}%</td><td class="${sgn(+x.change_pct)}">${pm(+x.change_pct,1)}%</td><td>${x.trade_amount==null?"–":N(+x.trade_amount/EOK,0)}</td>`,"해당 기간에 무게 1·2위일이 나온 종목이 없습니다");
+}
+async function recFrRender(){
+  const T=S.recFr,my=(S._recFrGen=(S._recFrGen||0)+1);
+  $("#tdFrBody").innerHTML='<tr><td colspan="30" class="load sk"></td></tr>';
+  const a=await recFetch("record_flow",`&subj=eq.${T.subj}`,T.per);if(my!==S._recFrGen)return;
+  const rows=a.filter(x=>T.rk==="all"||String(x.rk)===T.rk).map(x=>({...x,r:S._recRaw[x.code]})).filter(x=>x.r&&+x.r.market_cap>=TODAY_FLOW_CAP).sort((p,q2)=>(+q2.net)-(+p.net)).slice(0,60);
+  $("#tdFrSub").textContent=`${T.per==="0"?"오늘":recStart(T.per).slice(5)+" ~ "+(S.date||"").slice(5)} 발생 · ${rows.length}종목`;
+  recBody("#tdFrBody",rows,x=>`${recRkTag(x.rk)}<td>${x.trade_date.slice(5)}</td><td class="up">+${N(+x.net/EOK,0)}</td><td class="${sgn(+x.net)}">${+x.r.market_cap>0?pm(+x.net/(+x.r.market_cap)*100,2)+"%":"–"}</td>`,"해당 기간에 순매수 1·2위일이 나온 종목이 없습니다");
+}
 function renderTodayFlow(raw){
   const key=TODAY_FLOW_KEY_MAP[S.tdFlowSubj]||S.tdFlowSubj;
   const rows=raw.filter(r=>+r.market_cap>=TODAY_FLOW_CAP).map(r=>{
