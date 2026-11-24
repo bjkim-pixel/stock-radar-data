@@ -23,3 +23,25 @@ select * from (
   where v.net > 0) x
 where rk <= 2;
 grant select on v_wt_record, v_flow_record to anon, authenticated;
+
+-- 속도: 뷰는 조회 때마다 3초대라, 결과를 표로 저장해 두고 장마감 수집 뒤 갱신(refresh_record_days)
+create table if not exists record_wt (
+  code text not null, rk smallint not null, trade_date date, w numeric, close bigint, change_pct numeric, trade_amount bigint, volume bigint,
+  primary key (code, rk));
+create table if not exists record_flow (
+  subj text not null, code text not null, rk smallint not null, trade_date date, net bigint,
+  primary key (subj, code, rk));
+create index if not exists idx_record_wt_d on record_wt (trade_date);
+create index if not exists idx_record_flow_d on record_flow (subj, trade_date);
+alter table record_wt enable row level security; alter table record_flow enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename='record_wt' and policyname='public read') then create policy "public read" on record_wt for select using (true); end if;
+  if not exists (select 1 from pg_policies where tablename='record_flow' and policyname='public read') then create policy "public read" on record_flow for select using (true); end if;
+end $$;
+grant select on record_wt, record_flow to anon, authenticated;
+create or replace function refresh_record_days() returns void language plpgsql as $f$
+begin
+  delete from record_wt;   insert into record_wt select code, rk, trade_date, w, close, change_pct, trade_amount, volume from v_wt_record;
+  delete from record_flow; insert into record_flow select subj, code, rk, trade_date, net from v_flow_record;
+end $f$;
+select refresh_record_days();

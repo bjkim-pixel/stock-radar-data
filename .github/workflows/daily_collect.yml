@@ -139,6 +139,12 @@ jobs:
             python 20_collect_market_extra.py "$DATE"
           fi
 
+      - name: 기록일 표 갱신 (무게·순매수 1·2위일)
+        continue-on-error: true
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: psql "$SUPABASE_DB_URL" -c "select refresh_record_days()"
+
       - name: Notify on failure
         if: failure()
         env:
