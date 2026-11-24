@@ -1938,7 +1938,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 
   <!-- 수급 동향에서 이동 -->
   <div class="card" style="margin-top:12px"><h3>자금 이동 타임라인
-    <span class="r">2026-06-01~ 전 기간 · 거래대금 상위 10개 업종 · 좌우로 밀어서 10거래일씩 보기(업종 열 고정) · 칸 = 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
+    <span class="r">2026-06-01~ 전 기간 · 거래대금 상위 10개 업종 + 매수·매도 1위였던 업종 · 좌우로 밀어서 10거래일씩 보기(업종 열 고정) · 칸 = 순매수(억원) · 월요일 세로선 = 주 경계</span></h3>
     <div class="tl-tabs" id="tlTabs"><button data-m="all" class="on">전체</button><button data-m="KOSPI">코스피</button><button data-m="KOSDAQ">코스닥</button></div>
     <div class="tl-legend">
       <span><i style="width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--up) 45%,transparent)"></i> 순매수</span>
@@ -5364,7 +5364,8 @@ function renderFlowTimeline(){
   if(!dates.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
   const sc=rows.filter(r=>dates.includes(r.trade_date)&&(mk==="all"||r.market===mk));
   const amtBy={};sc.forEach(r=>{amtBy[r.sector]=(amtBy[r.sector]||0)+(+r.trade_amount||0);});
-  const secs=Object.keys(amtBy).sort((a,b)=>amtBy[b]-amtBy[a]).slice(0,10);
+  const secsBase=Object.keys(amtBy).sort((a,b)=>amtBy[b]-amtBy[a]).slice(0,10);
+  const secs=secsBase;S._tlSecs={};
   host.style.minWidth="";
   const W=host.clientWidth||360, lw=60, cw=Math.max(28,Math.floor((W-lw-2*10)/10));   // 화면에 정확히 10거래일이 보이도록
   const parts=TL_SUBJ.map(([key,label,id])=>{
@@ -5372,9 +5373,13 @@ function renderFlowTimeline(){
     sc.forEach(r=>{const v=+r[key]||0,k=r.sector+"|"+r.trade_date;cell[k]=(cell[k]||0)+v;dayTot[r.trade_date]=(dayTot[r.trade_date]||0)+v;});
     const fmtC=v=>{const a=Math.abs(v),p=v>0?"+":v<0?"-":"";return a>=10000?p+N(a/10000,1)+"조":p+String(Math.round(a));};
     const val=(s,d)=>cell[s+"|"+d]||0;
+    /* 매수1위·매도1위는 전 업종 중에서 고르고, 그 업종이 거래대금 상위 10개 밖이어도 행으로 추가(예: 엔터·K컬처가 1위였던 날) */
+    const allS=Object.keys(amtBy);
+    const topB=dates.map(d=>allS.reduce((b,s)=>val(s,d)>val(b,d)?s:b,allS[0])),topS=dates.map(d=>allS.reduce((b,s)=>val(s,d)<val(b,d)?s:b,allS[0]));
+    const secs=[...new Set([...secsBase,...topB,...topS])].sort((a,b)=>amtBy[b]-amtBy[a]);
     const maxAbs=Math.max(1,...secs.flatMap(s=>dates.map(d=>Math.abs(val(s,d)))));
-    const topBuy=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)>val(secs[b],d))b=i;});return b;});
-    const topSell=dates.map(d=>{let b=0;secs.forEach((s,i)=>{if(val(s,d)<val(secs[b],d))b=i;});return b;});
+    const topBuy=topB.map(s=>secs.indexOf(s)),topSell=topS.map(s=>secs.indexOf(s));
+    S._tlSecs=S._tlSecs||{};S._tlSecs[id]=secs;
     let h=`<div class="tl-sub">${label} 순매수</div><div class="tl-chart" id="${id}"><div class="tl-scroll"><div class="tl-inner"><div class="tl-grid" style="--nc:${dates.length+3};--cw:${cw}px;--lw:${lw}px"><div class="tl-corner"></div>`
       +dates.map((d,i)=>tlHdCell(d,i,dates,WD,wd(d))).join("")+tlSumHd();
     const wins=tlSumWin(dates),sumV=(s,k)=>wins[k].reduce((a,d)=>a+val(s,d),0),sumT=k=>wins[k].reduce((a,d)=>a+(dayTot[d]||0),0);
@@ -5511,7 +5516,7 @@ let _tlRz;addEventListener("resize",()=>{clearTimeout(_tlRz);_tlRz=setTimeout(()
    업종별 자금흐름 카드의 펼침과 같은 형태. 맨 위 '업종 합계'는 누른 칸 숫자와 같은 값(종목 합). */
 async function tlOpenDetail(chartId,r,c){
   const meta=S.tlMeta;if(!meta)return;
-  const sec=meta.secs[r],date=meta.dates[c],mk=meta.mk,key=`${chartId}|${r}|${c}`;
+  const sec=((S._tlSecs||{})[chartId]||meta.secs)[r],date=meta.dates[c],mk=meta.mk,key=`${chartId}|${r}|${c}`;
   const old=$(".tl-detail");
   const same=old&&old.dataset.key===key;
   if(old)old.remove();
