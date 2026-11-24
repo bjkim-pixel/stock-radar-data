@@ -1,0 +1,21 @@
+name: "[설정] 기록일 뷰(무게·순매수 1~2위일) 적용+속도 점검 | 수동"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: 적용·점검
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: bash 171_record_probe.sh
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: record-report
+          file: record_probe.md
