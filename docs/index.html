@@ -1770,10 +1770,9 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div class="card" style="margin-top:12px"><h3>진입·이탈 기록 <span class="r">이 화면을 연 뒤</span></h3><div id="liveLog" class="note">아직 변동이 없습니다</div></div>
 </section>
 <section id="v-etf" class="hide">
-  <div style="margin:12px 0 4px"><button class="btn ghost" id="eBackTop">← 이전 화면으로</button></div>
+  <div style="margin:12px 0 4px;display:flex;gap:8px;align-items:stretch"><button class="btn ghost" id="eBackTop" style="flex:none">← 이전 화면으로</button><select id="etfSel" class="df" title="ETF 선택 (가나다순)" style="flex:1;min-width:0;height:auto;margin:0"></select></div>
   <div class="card" id="etfHead"><div class="load sk"></div></div>
     <div class="card" style="margin-top:10px"><h3>시세 정보 <span class="r" id="etfQtSub"></span></h3><div id="etfQt"></div></div>
-  <div class="card dfcard" style="margin-top:8px"><div class="dfrow"><select id="etfSel" class="df" title="ETF 선택 (가나다순)"></select></div></div>
   <div class="qf seg hide" id="etfTab"><button class="fchip" data-v="ov" aria-pressed="true">개요</button><button class="fchip" data-v="flow">수급</button><button class="fchip" data-v="div">분배금</button></div>
   <div id="etfOv">
     <div class="card" style="margin-top:10px"><h3>가격 추이 <span id="etfPerChg" style="font-weight:650;margin-left:6px"></span>
