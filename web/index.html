@@ -1773,8 +1773,8 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div style="margin:12px 0 4px"><button class="btn ghost" id="eBackTop">← 이전 화면으로</button></div>
   <div class="card" id="etfHead"><div class="load sk"></div></div>
     <div class="card" style="margin-top:10px"><h3>시세 정보 <span class="r" id="etfQtSub"></span></h3><div id="etfQt"></div></div>
-  <div class="qf seg" id="etfTab" style="margin:12px 0 4px"><button class="fchip" data-v="ov" aria-pressed="true">개요</button><button class="fchip" data-v="flow">수급</button><button class="fchip" data-v="div">분배금</button></div>
-  <div id="etfFlowWrap" class="hide"></div>
+  <div class="card dfcard" style="margin-top:8px"><div class="dfrow"><select id="etfSel" class="df" title="ETF 선택 (가나다순)"></select></div></div>
+  <div class="qf seg hide" id="etfTab"><button class="fchip" data-v="ov" aria-pressed="true">개요</button><button class="fchip" data-v="flow">수급</button><button class="fchip" data-v="div">분배금</button></div>
   <div id="etfOv">
     <div class="card" style="margin-top:10px"><h3>가격 추이 <span id="etfPerChg" style="font-weight:650;margin-left:6px"></span>
       <span class="r"><span class="qf seg" id="etfPer" style="display:inline-flex"><button class="fchip" data-v="5">1주</button><button class="fchip" data-v="21" aria-pressed="true">1개월</button><button class="fchip" data-v="126">6개월</button><button class="fchip" data-v="250">1년</button></span></span></h3>
@@ -1782,13 +1782,14 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="card" style="margin-top:12px"><h3>포트폴리오 <span class="r" id="etfPfSub"></span></h3><div id="etfPf"><div class="load sk"></div></div></div>
     <div class="card" style="margin-top:12px"><h3>구성종목 변동 <span class="r" id="etfChgSub">주간(금요일 기준) · 상위 20종목</span></h3><div id="etfChg" class="etf-chg"></div></div>
   </div>
-  <div id="etfDivWrap" class="hide"><div class="card" style="margin-top:10px"><h3>분배금 <span class="r" id="etfDivSub">예탁원 기준일 기준</span></h3><div id="etfDiv"></div></div></div>
+  <div id="etfFlowWrap"></div>
+  <div id="etfDivWrap"><div class="card" style="margin-top:10px"><h3>분배금 <span class="r" id="etfDivSub">예탁원 기준일 기준</span></h3><div id="etfDiv"></div></div></div>
   <div class="note" style="margin-top:8px">출처: 한국투자증권 KIS(구성종목·NAV·분배금, 매일 장마감 후 갱신), 일봉은 KRX 종가. 구성종목은 KIS 제공 한도인 상위 30개까지 표시합니다. 주식수는 CU(설정단위)당 수량, 보유금액은 상장좌수로 환산한 추정치입니다.</div>
   <div style="margin:16px 0 40px"><button class="btn ghost" id="eBack">← 이전 화면으로</button></div>
 </section>
 <section id="v-etfhub" class="hide">
   <div class="card" style="margin-top:16px"><h3>ETF <span class="r" id="ehAsOf"></span></h3>
-    <div class="qf seg" id="ehTab"><button class="fchip" data-v="port" aria-pressed="true">ETF 포털</button><button class="fchip" data-v="srch">ETF 검색</button><button class="fchip" data-v="act">액티브</button><button class="fchip" data-v="pas">패시브</button><button class="fchip" data-v="sec">섹터</button><button class="fchip" data-v="lev">레버리지/인버스</button></div>
+    <div class="qf seg" id="ehTab"><button class="fchip" data-v="port" aria-pressed="true">ETF 포털</button><button class="fchip" data-v="srch">ETF 검색</button><button class="fchip" data-v="act">액티브</button><button class="fchip" data-v="pas">패시브</button><button class="fchip" data-v="sec">섹터</button><button class="fchip" data-v="lev">레버리지/인버스</button><button class="fchip" data-v="det">ETF 상세</button></div>
     <div class="note" style="margin-top:8px">ETF 검색: ETF명·운용사·분야, 또는 일반 종목명으로 그 종목을 편입한 ETF를 찾습니다. ETF 포털: 오늘의 ETF 흐름(급등락·거래대금·자금 유입·위험선호)을 한눈에 봅니다. 액티브·패시브 탭: 액티브 ETF 운용역들이 <b>공통으로 담은 종목</b>을 찾고, 수익률·RS가 좋은 ETF를 비교합니다. 구성종목은 매일 장마감 후 KIS에서 수집(상위 30종목)합니다.</div></div>
   <div id="ehPort"><div class="card"><div class="load sk"></div></div></div>
   <div id="ehSrch" class="hide"></div>
@@ -3456,8 +3457,17 @@ async function etfLoad(code){
   const codes=hold.map(h=>h.stock_code).filter(c=>/^\d{6}$/.test(c));E.rs={};
   if(codes.length&&S.date){try{(await q("v_screener",`select=code,rs20_pctl&trade_date=eq.${S.date}&code=in.(${codes.join(",")})`)).forEach(r=>E.rs[r.code]=r.rs20_pctl);}catch(e){}}
   if(E.gen!==gen)return;
-  etfHead();etfChart();etfPf();etfQt();etfChg();etfDiv();ehSortAll($("#v-etf"));
+  etfHead();etfChart();etfPf();etfQt();etfChg();etfDiv();ehSortAll($("#v-etf"));etfSelFill();etfFlowLoad();
 }
+function etfSelFill(){
+  const sel=$("#etfSel"),E=S.etf,mp=S.etfMap||{};
+  if(sel.dataset.n!==String(Object.keys(mp).length)){
+    sel.innerHTML=Object.values(mp).sort((a,b)=>String(a.name).localeCompare(String(b.name),"ko")).map(e=>`<option value="${e.code}">${escH(e.name)}</option>`).join("");
+    sel.dataset.n=String(Object.keys(mp).length);
+  }
+  sel.value=E.code;
+}
+$("#etfSel").addEventListener("change",e=>{if(e.target.value)go("etf",e.target.value);});
 function etfTags(m,i){
   const t=[],f=(m.flags||"")+" "+(m.name||"");
   t.push(m.mgmt||(/액티브|Active/i.test(f)?"액티브":"패시브"));
@@ -4211,7 +4221,7 @@ function ehLvRender(){
   host.innerHTML=hdr+mv+gl+sent+pair+per+rank+effC+flow;ehWire();etfWire(host);
 }
 
-$("#ehTab").addEventListener("seg-change",e=>{S.eh.tab=["pas","lev","sec","port","srch"].includes(e.detail)?e.detail:"act";if(S.eh.tab==="srch")ehSrLoad();else if(S.eh.tab==="port")ehPortLoad();else if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();});
+$("#ehTab").addEventListener("seg-change",e=>{if(e.detail==="det"){$$("#ehTab button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===S.eh.tab)));go("etf",S.etf.code||"069500");return;}S.eh.tab=["pas","lev","sec","port","srch"].includes(e.detail)?e.detail:"act";if(S.eh.tab==="srch")ehSrLoad();else if(S.eh.tab==="port")ehPortLoad();else if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();});
 
 /* ══ 접속 기기 식별 · 보안 로그 — 2026-11-15 ═══════════════════════════════════
    모든 거래 요청에 기기 ID(무작위, 이 브라우저에만 저장)와 기기 이름·모델(Chrome UA-CH)을 실어 보냄 → 서버 감사 기록·텔레그램 알림에 표시. */
