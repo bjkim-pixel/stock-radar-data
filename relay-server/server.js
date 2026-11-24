@@ -3430,14 +3430,32 @@ function handleSubStatus(req, res) {
 /* ── 노필터 종목 리스트(사이트 "실시간 종목" 맨 아래 카드): 일반종목 + ETF(인버스·레버리지 포함) + 우선주까지 걸러내지 않고
    KIS 순위(등락률 상/하위·거래대금)를 그대로 돌려준다. 자동 갱신 없이 사이트에서 누를 때만 호출(5초 캐시). 순위 API 한도로 한 번에 30종목. ── */
 const _liveAll = new Map();
-const kindOfName = (code, name) => /인버스|곱버스/.test(name) ? '인버스' : /레버리지|2X|3X/i.test(name) ? '레버리지' : /ETN/.test(name) ? 'ETN'
+const kindOfName = (code, name) => /인버스|곱버스|레버리지|2X|3X/i.test(name) ? 'ETF' : /ETN/.test(name) ? 'ETN'
   : /KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|KIWOOM|1Q /.test(name) ? 'ETF' : isPreferred(code, name) ? '우선주' : /스팩/.test(name) ? '스팩' : '일반';
-async function refreshLiveAll(sort) {
+let _etfList = { at: 0, rows: [] };
+async function loadEtfList() {
+  if (Date.now() - _etfList.at < 3600e3 && _etfList.rows.length) return _etfList.rows;
+  const rows = await sbGet('etf_master?select=code,name&limit=3000');
+  _etfList = { at: Date.now(), rows: rows.map(r => ({ code: r.code, name: r.name || '' })) };
+  return _etfList.rows;
+}
+async function refreshLiveAll(sort, etf) {
+  const key = etf ? 'etf:' + sort : sort;
   const pr = _kisPrio.run(2, async () => {
+    if (etf) {   // ETF만: 순위 API 상위 30에는 ETF가 거의 안 들어와서, 사이트가 추적하는 ETF 전 종목을 멀티시세로 직접 조회
+      const list = await loadEtfList(), out = [];
+      for (let i = 0; i < list.length; i += 30) out.push(...(await fetchMultiPrice(list.slice(i, i + 30).map(u => u.code))));
+      const nm = new Map(list.map(u => [u.code, u.name]));
+      let rows = out.map(o => ({ code: o.inter_shrn_iscd, name: nm.get(o.inter_shrn_iscd) || o.inter_kor_isnm || '', kind: 'ETF', price: safeNum(o.inter2_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) })).filter(r => r.code && r.price > 0);
+      rows.sort(sort === 'amt' ? (a, b) => b.amt - a.amt : sort === 'down' ? (a, b) => a.changePct - b.changePct : (a, b) => b.changePct - a.changePct);
+      rows = rows.slice(0, 50).map((r, i) => ({ ...r, rank: i + 1 }));
+      _liveAll.set(key, { at: Date.now(), rows, err: rows.length ? null : 'ETF 시세 없음' });
+      return;
+    }
     const raw = sort === 'amt' ? await fetchVolumeRank(30) : sort === 'down' ? await fetchFallRateRank(30) : await fetchChangeRateRank(30);
     const rows = raw.map((o, i) => { const code = o.stck_shrn_iscd || o.mksc_shrn_iscd, name = o.hts_kor_isnm || '';
       return { rank: i + 1, code, name, kind: kindOfName(code, name), price: safeNum(o.stck_prpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }; }).filter(r => r.code);
-    _liveAll.set(sort, { at: Date.now(), rows, err: rows.length ? null : '순위 응답 없음' });
+    _liveAll.set(key, { at: Date.now(), rows, err: rows.length ? null : '순위 응답 없음' });
   });
   await pr;
 }
@@ -3448,10 +3466,11 @@ function handleLiveAll(req, res) {
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
   const q = new URLSearchParams((req.url.split('?')[1]) || '').get('sort');
   const sort = q === 'down' ? 'down' : q === 'amt' ? 'amt' : 'up';
-  const send = () => { const c = _liveAll.get(sort) || { at: 0, rows: [], err: '없음' }; res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: !c.err, ts: c.at, err: c.err, sort, rows: c.rows })); };
-  const c = _liveAll.get(sort);
+  const etf = new URLSearchParams((req.url.split('?')[1]) || '').get('etf') === '1', key = etf ? 'etf:' + sort : sort;
+  const send = () => { const c = _liveAll.get(key) || { at: 0, rows: [], err: '없음' }; res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: !c.err, ts: c.at, err: c.err, sort, rows: c.rows })); };
+  const c = _liveAll.get(key);
   if (c && Date.now() - c.at < 5000) { send(); return true; }
-  refreshLiveAll(sort).then(send).catch(e => { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: e.message })); });
+  refreshLiveAll(sort, etf).then(send).catch(e => { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: e.message })); });
   return true;
 }
 
