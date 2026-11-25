@@ -41,7 +41,7 @@ H={"User-Agent":"Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 M
 def naver_backfill(cur,codes,start):
     n=err=0
     for i,c in enumerate(codes):
-        page=1; got=0
+        page=1; got=0; prev_min=None
         while page<=40:
             time.sleep(0.12)
             try:
@@ -58,7 +58,8 @@ def naver_backfill(cur,codes,start):
                 q=num(x.get("foreignerPureBuyQuant"))
                 rows.append((d,c,v,None if q is None else int(q),"NAVER"))
             if rows: execute_values(cur,UP,rows); got+=len(rows)
-            if not ds or min(ds)<=start or len(a)<20: break
+            if not ds or min(ds)<=start or len(a)<20 or (prev_min is not None and min(ds)>=prev_min): break   # 더 과거가 없으면(같은 페이지 반복) 중단
+            prev_min=min(ds)
             page+=1
         n+=got
         if (i+1)%10==0: log(f"  … {i+1}/{len(codes)} 종목 · {n}행")
