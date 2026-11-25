@@ -293,9 +293,13 @@ function createLive(deps) {
     const p = posOf(code), pl = plans.get(code);
     if (!p || !pl || !pl.plan) return false;
     { const m0 = kst().min; if (m0 < 540 || (preHold && m0 < 12 * 60 && await preHold(code, m0))) return false; }   // 가상과 같음(2026-11-23): NXT 프리마켓(~09:00)에는 모든 종목의 손절을 보류(익절은 계속) · 이월 종목은 아침 보류 유예 포함
-    if (pl.plan.ratchet) {   // 보유 후 본 최고가(손절선을 올리는 기준) — 시세 사이에 찍은 새 고가도 반영
+    if (RT.active(pl.plan)) {   // 보유 후 본 최고가(손절선을 올리는 기준) — 시세 사이에 찍은 새 고가도 반영
       const prevHi = highSeen.get(code), nh = q.high > 0 && prevHi != null && q.high > prevHi ? q.high : 0, pk = Math.max(pl.plan.peak || 0, q.price || 0, nh);
       if (pk > (pl.plan.peak || 0)) { pl.plan.peak = pk; dirty.plans.set(code, pl); }
+    }
+    {   // 손절선이 올라갔으면 매도계획에 새 손절선·변경 이력을 저장하고 알림(가상과 같음)
+      const ch = RT.track(pl.plan, p.avg, pl.plan.peak || 0, E.floorTick, now());
+      if (ch) { dirty.plans.set(code, pl); if (ch.from != null) { event('stop_raise', code, { from: ch.from, to: ch.to, why: ch.why }); notify(`[실전] 🔼 손절선 상향: ${p.name || code} ${Math.round(ch.from).toLocaleString('ko-KR')} → ${Math.round(ch.to).toLocaleString('ko-KR')}원 (${ch.why})`, 'sr|' + code + '|' + Math.round(ch.to)); } }
     }
     const sp = stopOf(p, pl.plan), prevLow = lowSeen.get(code);
     const newLow = q.low > 0 && prevLow != null && q.low < prevLow;
@@ -378,7 +382,7 @@ function createLive(deps) {
     const steps = Array.isArray(p.steps) ? p.steps.slice(0, 5).map(s => ({ n: Math.floor(num(s && s.n, 1, 5) || 0), p: num(s && s.p, 1, 1e8), q: Math.floor(num(s && s.q, 1, 1e7) || 0), ...(s && s.runner ? { runner: true } : {}) })).filter(s => s.n && s.p && s.q && E.validTick(s.p)) : [];
     const seen = new Set(), uniq = steps.filter(s => !seen.has(s.n) && seen.add(s.n));
     const stop = num(p.stop, 1, 1e8);
-    const rt = p.ratchet && typeof p.ratchet === 'object' ? { floorPct: num(p.ratchet.floorPct, 0, 5) == null ? 0.35 : num(p.ratchet.floorPct, 0, 5) } : null;
+    const rt = p.ratchet === false ? false : (p.ratchet && typeof p.ratchet === 'object') || uniq.length ? { floorPct: num(p.ratchet && p.ratchet.floorPct, 0, 5) == null ? 0.35 : num(p.ratchet.floorPct, 0, 5) } : null;   // 익절 단계가 있으면 손절 올리기는 항상 켬
     return { stopPct: num(p.stopPct, 0.1, 50), stop: stop ? E.floorTick(stop) : null, target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq, ratchet: rt };
   }
   const ready = async () => { if (!(await init())) return bad(503, missing ? 'live tables missing' : 'live store unavailable'); if (!kis.configured()) return bad(503, 'account not configured'); return null; };
@@ -496,8 +500,9 @@ function createLive(deps) {
       for (const o of mine(code, o => o.side === 'sell' && isTp(o))) if (!(await cancelKis(o, 'plan_edit'))) return bad(409, '걸려 있는 익절 주문을 취소하지 못했습니다');
       const prev = plans.get(code);
       const old = (prev && prev.plan) || {}, oldRun = new Set((old.steps || []).filter(s => s.runner).map(s => s.n));
-      const rt = 'ratchet' in body ? pl.ratchet : (old.ratchet || null);   // 화면에서 계획을 고쳐도 손절 올리기·러너 표시는 이어받음(body.ratchet:null 이면 해제)
-      const np = { name: p.name, plan: { ...pl, ratchet: rt, ...(rt ? { peak: old.peak || 0 } : {}), steps: TR.keepTrail(old.steps, pl.steps.map(s => ({ ...s, sold: 0, ...(s.runner || oldRun.has(s.n) ? { runner: true } : {}) }))), orderId: old.orderId || null, stopped: false, ...(old.own != null ? { own: old.own, ownBase: old.ownBase || 0 } : {}) } };   // 자동매매 몫(own)은 계획을 고쳐도 유지
+      const rt = pl.ratchet === false ? false : pl.ratchet || (pl.steps.length ? old.ratchet || { floorPct: 0.35 } : null);   // 화면에서 계획을 고쳐도 손절 올리기·러너 표시는 이어받음. 익절 단계가 있으면 항상 켬
+      const hist0 = (Array.isArray(old.hist) ? old.hist : []).concat([{ t: now(), from: null, to: null, why: '매도계획 직접 수정' }]).slice(-30);
+      const np = { name: p.name, plan: { ...pl, ratchet: rt, hist: hist0, ...(rt ? { peak: old.peak || 0 } : {}), steps: TR.keepTrail(old.steps, pl.steps.map(s => ({ ...s, sold: 0, ...(s.runner || oldRun.has(s.n) ? { runner: true } : {}) }))), orderId: old.orderId || null, stopped: false, ...(old.own != null ? { own: old.own, ownBase: old.ownBase || 0 } : {}) } };   // 자동매매 몫(own)은 계획을 고쳐도 유지
       if (noStop && !pl.steps.length) { plans.delete(code); dirty.plans.set(code, null); } else { plans.set(code, np); dirty.plans.set(code, np); }
       await flush();
       event('plan_edit', code, { stop: stopOf(p, np.plan), steps: pl.steps.length });

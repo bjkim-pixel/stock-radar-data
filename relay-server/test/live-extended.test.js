@@ -6,7 +6,7 @@ const { fakeDb, boot, fakeKis } = require('./paper-harness');
 
 const REAL = { REAL_TRADING_ENABLED: '1', KIS_ACCOUNT_NO: '12345678-01' };
 const at = hm => Date.parse(`2027-01-13T${hm}:00+09:00`);
-const PLAN = { stopPct: 2, steps: [{ n: 1, p: 10200, q: 2 }, { n: 2, p: 10300, q: 3 }] };
+const PLAN = { ratchet: false, stopPct: 2, steps: [{ n: 1, p: 10200, q: 2 }, { n: 2, p: 10300, q: 3 }] };
 const posts = (kx, tr) => kx.posts.filter(p => p.tr === tr);
 const rows = db => [...db.t.live_orders.values()];
 function move(c, price, { vol = 1000, step = 5000 } = {}) {

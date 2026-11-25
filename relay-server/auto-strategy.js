@@ -103,7 +103,7 @@ const SCHEMA = {
     F('tp2Pct', '매도', '2단계 익절(고정 % 방식, 1단계보다 높게)', 'num', 9, { min: 2, max: 50, step: 0.5, unit: '%' }),
     F('tp1Share', '매도', '1단계 매도 비중(나머지는 2단계)', 'num', 50, { min: 10, max: 90, step: 10, unit: '%' }),
     F('runnerPct', '매도', '러너 비중(목표 없이 트레일링만 · 새 방식에서만)', 'num', 20, { min: 0, max: 50, step: 5, unit: '%' }),
-    F('ratchet', '매도', '손절 올리기(1단계 체결 시 본전, 이후 단계마다 상승)', 'bool', true),
+    F('ratchet', '매도', '손절 올리기(항상 적용 — 이 설정과 상관없이 1단계 체결 시 본전, 이후 단계마다 상승)', 'bool', true),
     F('split', '매도', '익절 분할 수', 'num', 5, { min: 1, max: 5, step: 1, unit: '회' }),
     F('minPct', '매도', '1단계 익절 최소', 'num', 3, { min: 1, max: 10, step: 0.5, unit: '%' }),
     F('trail', '매도', '트레일링', 'num', 2, { min: 0.5, max: 5, step: 0.1, unit: '%' }),

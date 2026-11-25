@@ -261,7 +261,7 @@ function createPaper(deps) {
       .filter(s => s.n && s.p && s.q && E.validTick(s.p)) : [];
     const seen = new Set(), uniq = steps.filter(s => !seen.has(s.n) && seen.add(s.n));
     const stop = num(p.stop, 1, 1e8);
-    const rt = p.ratchet && typeof p.ratchet === 'object' ? { floorPct: num(p.ratchet.floorPct, 0, 5) == null ? 0.35 : num(p.ratchet.floorPct, 0, 5) } : null;
+    const rt = p.ratchet === false ? false : (p.ratchet && typeof p.ratchet === 'object') || uniq.length ? { floorPct: num(p.ratchet && p.ratchet.floorPct, 0, 5) == null ? 0.35 : num(p.ratchet.floorPct, 0, 5) } : null;   // 익절 단계가 있으면 손절 올리기는 항상 켬
     return { stopPct: num(p.stopPct, 0.1, 50), stop: stop && E.validTick(stop) ? stop : (stop ? E.floorTick(stop) : null), target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq, ratchet: rt };
   }
   async function place(body) {
@@ -356,8 +356,9 @@ function createPaper(deps) {
       if (p.steps.some(s => s.p <= pos.avg * 0.5)) return bad(400, '익절 가격이 너무 낮습니다');
       for (const o of openFor(code, o => o.side === 'sell' && isTp(o))) cancelOrder(o, 'plan_edit');
       const old = pos.plan || {}, oldRun = new Set((old.steps || []).filter(s => s.runner).map(s => s.n));
-      const rt = 'ratchet' in body ? p.ratchet : (old.ratchet || null);   // 화면에서 계획을 고쳐도 손절 올리기·러너 표시는 이어받음(body.ratchet:null 이면 해제)
-      pos.plan = noStop && !p.steps.length ? null : { ...p, ratchet: rt, ...(rt ? { peak: old.peak || 0 } : {}), steps: TR.keepTrail(old.steps, p.steps.map(s => ({ ...s, sold: 0, ...(s.runner || oldRun.has(s.n) ? { runner: true } : {}) }))), orderId: old.orderId || null, stopped: false };
+      const rt = p.ratchet === false ? false : p.ratchet || (p.steps.length ? old.ratchet || { floorPct: 0.35 } : null);   // 화면에서 계획을 고쳐도 손절 올리기·러너 표시는 이어받음. 익절 단계가 있으면 항상 켬
+      const hist0 = (Array.isArray(old.hist) ? old.hist : []).concat([{ t: now(), from: null, to: null, why: '매도계획 직접 수정' }]).slice(-30);
+      pos.plan = noStop && !p.steps.length ? null : { ...p, ratchet: rt, hist: hist0, ...(rt ? { peak: old.peak || 0 } : {}), steps: TR.keepTrail(old.steps, p.steps.map(s => ({ ...s, sold: 0, ...(s.runner || oldRun.has(s.n) ? { runner: true } : {}) }))), orderId: old.orderId || null, stopped: false };
       pos.updatedAt = now(); dirty.pos.set(code, pos);
       await flush();
       event('plan_edit', code, { stop: stopOf(pos), steps: p.steps.length });
@@ -371,9 +372,13 @@ function createPaper(deps) {
     const pos = positions.get(code);
     if (!pos || !pos.plan) return false;
     { const m0 = kst().min; if (m0 < 540 || (preHold && m0 < 12 * 60 && await preHold(code, m0))) return false; }   // 2026-11-23: NXT 프리마켓(~09:00)에는 모든 종목의 손절을 보류(익절은 계속) — 얇은 호가·개인 털기로 가격이 흔들리는 시간대, 09:00 정규장부터 판단(이월 종목은 아침 보류 유예까지)
-    if (pos.plan.ratchet) {   // 보유 후 본 최고가(손절선을 올리는 기준) — 시세 사이에 찍은 새 고가도 반영
+    if (RT.active(pos.plan)) {   // 보유 후 본 최고가(손절선을 올리는 기준) — 시세 사이에 찍은 새 고가도 반영
       const prevHi = pos.highSeen, nh = q.high > 0 && prevHi != null && q.high > prevHi ? q.high : 0, pk = Math.max(pos.plan.peak || 0, q.price || 0, nh);
       if (pk > (pos.plan.peak || 0)) { pos.plan.peak = pk; dirty.pos.set(code, pos); }
+    }
+    {   // 손절선이 올라갔으면 매도계획에 새 손절선·변경 이력을 저장하고 알림
+      const ch = RT.track(pos.plan, pos.avg, pos.plan.peak || 0, E.floorTick, now());
+      if (ch) { dirty.pos.set(code, pos); if (ch.from != null) { event('stop_raise', code, { from: ch.from, to: ch.to, why: ch.why }); notify(`🔼 손절선 상향: ${pos.name || code} ${Math.round(ch.from).toLocaleString('ko-KR')} → ${Math.round(ch.to).toLocaleString('ko-KR')}원 (${ch.why})`, 'sr|' + code + '|' + Math.round(ch.to)); } }
     }
     const sp = stopOf(pos);
     const newLow = q.low > 0 && pos.lowSeen != null && q.low < pos.lowSeen;   // 시세 사이에 잠깐 찍고 올라온 저가도 잡음(재시작 직후 첫 시세는 기준만 잡음)

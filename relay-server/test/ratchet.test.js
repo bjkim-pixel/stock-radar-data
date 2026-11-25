@@ -44,13 +44,13 @@ test('새 익절 단계: 10,000원 100주·목표 11,500원 → 10,500/11,000/11
   assert.equal(low.reduce((a, s) => a + s.q, 0), 100); assert.equal(low[0].p, 10400);
 });
 
-test('주문 만들기: tpStyle r → 새 단계 + ratchet 표시, 예전 방식이면 균등 5분할·ratchet 없음, 종가베팅 저녁 매수(noTp)는 익절·ratchet 없음', () => {
+test('주문 만들기: tpStyle r → 새 단계 + ratchet 표시, 예전 방식도 손절 올리기 항상 적용(균등 5분할), 종가베팅 저녁 매수(noTp)는 익절·ratchet 없음', () => {
   const rows = Array.from({ length: 30 }, (_, i) => ({ close: 9000 + i * 30, high: 9100 + i * 30, low: 8900 + i * 30, trade_amount: 5e10 }));
   const q = { price: 10000, upper: 13000, bids: [{ p: 9990, q: 500 }], asks: [{ p: 10010, q: 500 }], amt: 5e10 };
   const a = X.makeOrder({ q, rows, perStockKrw: 1e6, opt: { tpStyle: 'r', ratchet: true, runnerPct: 20 } });
   assert.ok(a.plan.ratchet && a.plan.steps.some(s => s.runner));
   const b = X.makeOrder({ q, rows, perStockKrw: 1e6, opt: { tpStyle: 'even' } });
-  assert.ok(!b.plan.ratchet && b.plan.steps.length === 5 && !b.plan.steps.some(s => s.runner));
+  assert.ok(b.plan.ratchet && b.plan.steps.length === 5 && !b.plan.steps.some(s => s.runner));
   const c = X.makeOrder({ q, rows, perStockKrw: 1e6, opt: { tpStyle: 'r', ratchet: true, noTp: true } });
   assert.deepEqual(c.plan.steps, []); assert.ok(!c.plan.ratchet);
 });

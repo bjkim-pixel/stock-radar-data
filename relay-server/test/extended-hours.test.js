@@ -6,7 +6,7 @@ const { fakeDb, boot } = require('./paper-harness');
 
 const at = hm => Date.parse(`2027-01-13T${hm}:00+09:00`);
 const STEPS = [{ n: 1, p: 10200, q: 5 }, { n: 2, p: 10300, q: 5 }];
-const PLAN = { stopPct: 2, steps: STEPS };
+const PLAN = { ratchet: false, stopPct: 2, steps: STEPS };
 const open = db => [...db.t.paper_orders.values()].filter(o => ['open', 'partial'].includes(o.status));
 function move(c, price, { vol = 1000, step = 5000 } = {}) {
   const st = c.st; st.clock += step; st.price = price; st.vol += vol;

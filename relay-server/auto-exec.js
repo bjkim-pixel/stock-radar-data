@@ -126,9 +126,9 @@ function planFromAvg({ q, rows, avg, qty, opt = {} }) {
   const prevHigh = rows && rows.length ? Math.max(...rows.map(r => (+r.high > 0 ? +r.high : +r.close))) : 0;
   const tgt = calcTarget({ cur: avg, prof: buildProfile(rows || []), capEok, coef: o.coef, prevHigh, upper: q && q.upper, stopPct: o.stopPct, rr: o.rr });
   const fx = o.tpStyle === 'fixed' ? fixedPlan(avg, qty, o) : null;
-  if (fx) return { stopPct: o.stopPct, target: fx.target, steps: fx.steps, ratchet: o.ratchet ? { floorPct: 0.35 } : null };
+  if (fx) return { stopPct: o.stopPct, target: fx.target, steps: fx.steps, ratchet: { floorPct: 0.35 } };
   const steps = tgt.target ? (o.tpStyle === 'r' ? splitPlanR(avg, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(avg, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];
-  return { stopPct: o.stopPct, target: tgt.target || null, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ratchet: o.ratchet ? { floorPct: 0.35 } : null };
+  return { stopPct: o.stopPct, target: tgt.target || null, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ratchet: steps.length ? { floorPct: 0.35 } : null };
 }
 
 /* 매수 주문 내용 계산: 시세(q) + 일봉(rows) → 가격·수량·계획 */
@@ -167,7 +167,7 @@ function makeOrder({ q, rows, perStockKrw, opt = {}, force = null }) {   // forc
   const fx = o.tpStyle === 'fixed' && !o.noTp ? fixedPlan(buy, qty, o) : null;
   if (fx) tgt.target = fx.target;   // 고정 % 방식: 목표가 = 마지막 단계(손익비 계산·표시용)
   const steps = fx ? fx.steps : tgt.target && !o.noTp ? (o.tpStyle === 'r' ? splitPlanR(buy, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(buy, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];   // noTp(종가베팅 저녁 매수): 익절 없이 손절만 걸고 다음 날 아침 분할 매도
-  const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ...(o.ratchet && !o.noTp ? { ratchet: { floorPct: 0.35 } } : {}) };
+  const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ...(steps.length && !o.noTp ? { ratchet: { floorPct: 0.35 } } : {}) };   // 손절 올리기는 익절 단계가 있는 모든 계획에 항상 적용(2026-11-25)
   const tinfo = { cap: tgt.cap, cum: tgt.cum, topLo: tgt.topLo, topV: tgt.topV, rrT: tgt.rrT, clipped: tgt.clipped, prevHigh: tgt.prevHigh, upper: q.upper || null, capEok, ydEok, avg5Eok, todEok, dayEok, coef: o.coef, stopPct: o.stopPct, rr: o.rr, minRr: o.minRr, tpStyle: o.tpStyle, split: o.split, minPct: o.minPct, runnerPct: o.runnerPct, ratchet: !!(o.ratchet && !o.noTp), ref: cur, prof: prof.map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) };   // prof = 개인 순매수 매물대 [하한, 상한, 억원] — 목표가 그림용
   return { buy, qty, plan, target: tgt.target, mode: tgt.mode, market: !!mkt, pick: pick ? pick.k : 'cur', smartWhy, tinfo };
 }

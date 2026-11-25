@@ -12931,7 +12931,8 @@ function trdRenderPlanAll(){
   box.innerHTML=P.positions.map(h=>{
     const pl=h.plan,px=h.last||null,tr=(pl&&pl.trail)||2,al=trdAlloc(pl&&pl.steps,trdAvail(h)),pc=px?(px/h.avg-1)*100:null;
     return `<div class="trd-hr"><div class="top"><button type="button" class="nm" data-plgo="${h.code}">${trdEsc(h.name||trdNm(h.code))} →</button><span class="num ${pc>0?"up":pc<0?"down":"dim"}">${pc==null?"–":(pc>=0?"+":"")+N(pc,2)+"%"}</span></div>
-      <div class="sub num">평균 매수가 <b>${N(h.avg,0)}원</b> · 보유 <b>${N(h.qty)}주</b> · 현재 ${px?N(px)+"원":"–"}${pl?` · 트레일링 -${N(tr,1)}%`:""}${pl&&pl.stopped?' · <b class="down">손절 실행됨</b>':""}${pl&&pl.ratchet?' · <span class="faint">손절 올리기 켜짐(현재 손절가 '+N(h.stop)+'원)</span>':""}</div>
+      <div class="sub num">평균 매수가 <b>${N(h.avg,0)}원</b> · 보유 <b>${N(h.qty)}주</b> · 현재 ${px?N(px)+"원":"–"}${pl?` · 트레일링 -${N(tr,1)}%`:""}${pl&&pl.stopped?' · <b class="down">손절 실행됨</b>':""}${pl&&pl.ratchet!==false&&(pl.ratchet||(pl.steps||[]).length)?' · <span class="faint">손절 자동 상향(현재 손절가 '+N(h.stop)+'원)</span>':""}</div>
+      ${pl&&pl.hist&&pl.hist.length?`<details style="margin-top:4px;font-size:12px"><summary class="faint" style="cursor:pointer">손절 변경 이력 ${pl.hist.length}건</summary>${pl.hist.slice().reverse().map(x=>`<div class="num" style="margin-top:2px;line-height:1.5"><span class="faint">${trdTm(x.t)}</span> ${x.from!=null&&x.to!=null?`${N(x.from,0)} → <b>${N(x.to,0)}원</b> · `:x.to!=null?`<b>${N(x.to,0)}원</b> · `:""}${trdEsc(x.why||"")}</div>`).join("")}</details>`:""}
       ${pl?trdRrLine(h):""}
       ${!pl?'<div class="trd-wn" style="margin-top:4px">자동 매도가 설정되지 않았습니다 — 종목을 눌러 손절·익절을 설정하세요</div>':`
       <div class="trd-pt">${TRD_PT_HEAD}${trdHeldRows(h,px).join("")||'<div class="trd-nr faint">손절·익절 없음</div>'}</div>`}
@@ -13338,7 +13339,7 @@ function auTgtWhy(o,pl){
     const runner=st.some(x=>x.runner)||(t&&t.tpStyle==="r"),sp=t?t.stopPct:pl.stopPct;
     if(runner)L.push(`익절은 <b>1단계 = +1R</b>(손절폭 ${sp!=null?sp:"–"}%만큼 오르면 일부)${st.length>2?" → 중간 단계":""} → <b>목표가</b>에서 나눠 팔고, <b>러너</b>(일부 ${t&&t.runnerPct!=null?t.runnerPct+"%":""})는 목표 도달 뒤 추적(${pl.trail||2}%)으로 끝까지 따라가요.`);
     else L.push(`익절은 목표가까지 <b>${st.length}단계로 나눠</b> 팔아요${t&&t.minPct?`(첫 단계는 최소 +${t.minPct}% 이상)`:""}. 고점 대비 ${pl.trail||2}% 내리면 그 단계를 매도해요.`);
-    if(pl.ratchet||(t&&t.ratchet))L.push("1단계가 체결되면 <b>손절선이 본전 부근으로 올라가</b> 이후엔 손실이 나지 않아요.");
+    L.push("1단계가 체결되면 <b>손절선이 본전(수수료 포함) 부근으로 올라가</b> 이후엔 손실이 나지 않고, 단계가 체결될 때마다 직전 단계 가격으로 한 칸씩 올라가요. 올라간 손절선과 변경 이력은 매도 계획에 저장돼요.");
   }
   return L.length?`<div class="au-sub" style="margin-top:8px">왜 이 목표가인가</div>${L.map(x=>`<div style="font-size:12.5px;line-height:1.55;margin-top:2px">${x}</div>`).join("")}`:"";
 }

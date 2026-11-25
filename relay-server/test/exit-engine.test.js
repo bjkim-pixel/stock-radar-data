@@ -6,7 +6,7 @@ const { fakeDb, boot, T0 } = require('./paper-harness');
 const { allocSteps } = require('../paper');
 
 const STEPS = [{ n: 1, p: 10200, q: 2 }, { n: 2, p: 10300, q: 2 }, { n: 3, p: 10400, q: 2 }, { n: 4, p: 10500, q: 2 }, { n: 5, p: 10600, q: 2 }];
-const PLAN = { stopPct: 2, steps: STEPS };   // 평균 10010 → 손절가 9800
+const PLAN = { ratchet: false, stopPct: 2, steps: STEPS };   // 평균 10010 → 손절가 9800
 const tps = db => [...db.t.paper_orders.values()].filter(o => /^tp/.test(o.reason) && ['open', 'partial'].includes(o.status));
 const tpMap = db => Object.fromEntries(tps(db).map(o => [o.reason, o.qty - o.filled_qty]));
 /* 가격 이동: 매수·매도호가를 가격 주변으로 다시 만들고 거래량을 더함 */
