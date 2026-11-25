@@ -8,9 +8,6 @@ on:
     inputs:
       days: {description: "최근 며칠 소급(기본 7)", default: "7"}
       backfill_from: {description: "과거 채우기 시작일 YYYYMMDD(비우면 최근 며칠만)", default: ""}
-concurrency:
-  group: kis-rest-batch
-  cancel-in-progress: false
 permissions:
   contents: write
 jobs:
