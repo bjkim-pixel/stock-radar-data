@@ -20,7 +20,8 @@ const ENUM = {
   carryFlow: { any: '외국인·기관 중 하나', both: '외국인·기관 둘 다', ignore: '보지 않음' },
   regimeMode: { info: '표시만', scale: '종목당 금액 조절' },
   repriceTo: { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' },
-  tpStyle: { r: '새 방식(+1R·중간·목표 25/25/50 + 러너)', even: '예전 방식(목표까지 균등 분할)' },
+  tpStyle: { r: '새 방식(+1R·중간·목표 25/25/50 + 러너)',
+  fixed: '고정 % 단계(예: +6%·+9%에서 나눠 팔기)', even: '예전 방식(목표까지 균등 분할)' },
   unfilledEnd: { cancel: '취소', keep: '장 마감까지 유지' },
   execMode: { paper: '가상(가상 엔진으로 주문)', dryrun: '드라이런(실제 계좌로 금액·점검만, 주문은 가상)', live: '실전(실제 계좌로 주문)' },
   selector: { flow: '수급 돌파(외국인·기관·프로그램 + 체결강도)', ignite: '장초 상승 포착(거래 붙으며 오르기 시작하는 종목)' },
@@ -96,6 +97,9 @@ const SCHEMA = {
     F('rr', '매도', '손익비(매물대 없을 때 목표)', 'num', 3, { min: 1, max: 5, step: 0.5, unit: '배' }),
     F('minRr', '매도', '손익비 하한(목표가 이익 ÷ 손절 손실, 미달이면 매수 안 함 · 0=끔)', 'num', 3, { min: 0, max: 5, step: 0.5, unit: '배' }),
     F('tpStyle', '매도', '익절 방식', 'enum', 'r', { opts: ENUM.tpStyle }),
+    F('tp1Pct', '매도', '1단계 익절(고정 % 방식)', 'num', 6, { min: 1, max: 30, step: 0.5, unit: '%' }),
+    F('tp2Pct', '매도', '2단계 익절(고정 % 방식, 1단계보다 높게)', 'num', 9, { min: 2, max: 50, step: 0.5, unit: '%' }),
+    F('tp1Share', '매도', '1단계 매도 비중(나머지는 2단계)', 'num', 50, { min: 10, max: 90, step: 10, unit: '%' }),
     F('runnerPct', '매도', '러너 비중(목표 없이 트레일링만 · 새 방식에서만)', 'num', 20, { min: 0, max: 50, step: 5, unit: '%' }),
     F('ratchet', '매도', '손절 올리기(1단계 체결 시 본전, 이후 단계마다 상승)', 'bool', true),
     F('split', '매도', '익절 분할 수', 'num', 5, { min: 1, max: 5, step: 1, unit: '회' }),
@@ -147,7 +151,7 @@ const SCHEMA = {
    처음엔 장중 기본 전략(intraday-default)의 값을 복사해 시작(실행 모드·실전 자동 승인·안전장치는 복사하지 않고 가상·끔에서 시작) */
 const CLOSE_COPY = ['capMinEok', 'maTrend', 'smx', 'smxWin', 'flowForeign', 'flowInst', 'flowProgram', 'poolTop', 'sectorMax', 'weights',
   'perStockKrw', 'totalCapKrw', 'buyPick', 'fillWaitMin', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'regimeMode', 'regimeCaution', 'regimeDefense',
-  'stopPct', 'rr', 'tpStyle', 'runnerPct', 'ratchet', 'trail', 'split', 'minPct', 'eodWeak',
+  'stopPct', 'rr', 'tpStyle', 'runnerPct', 'tp1Pct', 'tp2Pct', 'tp1Share', 'ratchet', 'trail', 'split', 'minPct', 'eodWeak',
   'execMode', 'liveAutoOk', 'dryDays', 'amtMinEok', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop'];
 const CLOSE_NOCOPY = new Set(['execMode', 'liveAutoOk', 'dryDays', 'maxOrdersDay', 'rejectStop', 'unsureStop']);   // 처음 복사할 때도 장중 값을 가져오지 않음(가상·끔·기본 안전장치에서 시작)
 const CLOSE_GROUP = { '대상': '후보 조건(장중 전략과 따로)', '매수 조건': '후보 조건(장중 전략과 따로)', '후보 수': '후보 조건(장중 전략과 따로)', '점수': '후보 조건(장중 전략과 따로)',
@@ -224,6 +228,7 @@ function validate(kind, input, base) {
   if (!errs.length && kind === 'closing' && val.regimeDefense > val.regimeCaution) errs.push({ key: 'regimeDefense', msg: '방어 단계 금액은 보수 단계 금액보다 클 수 없습니다' });
   if (!errs.length && kind === 'intraday') {
     if (val.regimeDefense > val.regimeCaution) errs.push({ key: 'regimeDefense', msg: '방어 단계 금액은 보수 단계 금액보다 클 수 없습니다' });
+    if (val.tpStyle === 'fixed' && !(val.tp2Pct > val.tp1Pct)) errs.push({ key: 'tp2Pct', msg: '2단계 익절은 1단계보다 높아야 합니다' });
     if (val.notifyTop > val.poolTop) errs.push({ key: 'notifyTop', msg: '알림에 싣는 수는 점수 상위 후보 수보다 클 수 없습니다' });
     const dl = tmin(val.selectAt) + val.noticeAfter + val.approveWindow;
     if (dl > 14 * 60 + 30) errs.push({ key: 'approveWindow', msg: `승인 마감이 ${hhmm(dl)}입니다(14:30 이전이어야 함)` });
@@ -285,7 +290,7 @@ const BUILTIN0 = [
 /* 장초 상승 포착("시동", 2026-11-25) 기본값: 중소형(시총 3천억~4조 미만)을 09:15부터 10분 간격으로 훑어 종목당 100만원·하루 5종목, 15:14 전량 청산(가상) */
 const IGNITE_PRESET = { selector: 'ignite', capMinEok: 3000, capMaxEok: 40000, amtMinEok: 30, maTrend: false, smx: 'off', flowForeign: 'ignore', flowInst: 'ignore', flowProgram: 'ignore', altFlowOn: false, kwOn: false,
   selectAt: '09:15', noticeAfter: 0, approveWindow: 5, roundMin: 10, roundEnd: '14:30', openRiseMax: 6, cttrMin: 120, poolTop: 5, notifyTop: 5, sectorMax: 2, maxBuys: 5, maxTries: 1, retryUnfilled: false, perStockKrw: 1000000, approval: 'auto',
-  stopPct: 3, rr: 2, minRr: 0, tpStyle: 'r', runnerPct: 30, ratchet: true, trail: 2, flatOn: true, flatAt: '15:14', execMode: 'paper' };
+  stopPct: 3, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 6, tp2Pct: 9, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: true, flatAt: '15:14', execMode: 'paper' };
 const BUILTIN = BUILTIN0.concat([{ id: 'ignite-default', name: '장초 상승 포착(시동)', kind: 'intraday', builtin: true, off: true, preset: IGNITE_PRESET, desc: '시총 3천억~4조 미만 중소형주 중 처음부터 많이 뜬 종목은 빼고, 09시 이후 거래가 붙으며 오르기 시작하는 종목을 09:15부터 10분마다 포착해 가상 매수(종목당 100만원·하루 5종목) · 15:14 전량 청산' }]);
 const builtinRow = b => ({ ...b, enabled: !b.off, archived: false, version: 1, params: b.preset ? (validate(b.kind, b.preset).val || defaults(b.kind)) : defaults(b.kind), updated_at: null });
 
