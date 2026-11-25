@@ -1,0 +1,26 @@
+# 네이버 trend pageSize·페이지 점검
+
+- size {'pageSize': 30} → 200 · 30행 · 20261124 ~ 20261014
+- size {'pageSize': 50} → 200 · 50행 · 20261124 ~ 20260910
+- size {'pageSize': 60} → 200 · 60행 · 20261124 ~ 20260827
+- size {'pageSize': 80} → 400 · 0행 · - ~ - · 
+- size {'pageSize': 100} → 400 · 0행 · - ~ - · 
+- size {'pageSize': 120} → 400 · 0행 · - ~ - · 
+- size {'pageSize': 150} → 400 · 0행 · - ~ - · 
+- size {'pageSize': 200} → 400 · 0행 · - ~ - · 
+- size {'pageSize': 250} → 400 · 0행 · - ~ - · 
+- size {'pageSize': 300} → 400 · 0행 · - ~ - · 
+- page {'pageSize': 20, 'page': 2} → 200 · 20행 · 20261124 ~ 20261028
+- pageNo {'pageSize': 20, 'pageNo': 2} → 200 · 20행 · 20261124 ~ 20261028
+- pageNum {'pageSize': 20, 'pageNum': 2} → 200 · 20행 · 20261124 ~ 20261028
+- pageIndex {'pageSize': 20, 'pageIndex': 2} → 200 · 20행 · 20261124 ~ 20261028
+- startIdx {'pageSize': 20, 'startIdx': 2} → 200 · 20행 · 20261124 ~ 20261028
+- offset {'pageSize': 20, 'offset': 2} → 200 · 20행 · 20261124 ~ 20261028
+- start {'pageSize': 20, 'start': 2} → 200 · 20행 · 20261124 ~ 20261028
+- page=0 {'pageSize': 20, 'page': 0} → 200 · 20행 · 20261124 ~ 20261028
+- pageNo=0 {'pageSize': 20, 'pageNo': 0} → 200 · 20행 · 20261124 ~ 20261028
+- pageNum=0 {'pageSize': 20, 'pageNum': 0} → 200 · 20행 · 20261124 ~ 20261028
+- bizdate {'pageSize': 20, 'bizdate': '20261028'} → 200 · 20행 · 20261027 ~ 20260928
+- endDate {'pageSize': 20, 'endDate': '20261028'} → 200 · 20행 · 20261124 ~ 20261028
+- toDate {'pageSize': 20, 'toDate': '20261028'} → 200 · 20행 · 20261124 ~ 20261028
+- 무파라미터 {} → 200 · 10행 · 20261124 ~ 20261111
