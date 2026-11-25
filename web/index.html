@@ -12211,7 +12211,7 @@ function auWhy(o,q,P){
 }
 function auUnfilledRule(P){
   const f=+P.fillWaitMin||3,c=+P.cancelWaitMin||3;
-  return `${f}분 안에 안 사지면 ${P.repriceTo==="none"?"정정하지 않고":`${AU_REP[P.repriceTo]||"최우선 매수 호가"}로 한 번 정정하고`} 다시 ${c}분 기다린 뒤 ${P.unfilledEnd==="keep"?"장 마감까지 그대로 둬요":"남으면 취소해요"}.`;
+  return `${f}분 안에 안 사지면 ${P.repriceTo==="none"?"정정하지 않고":`${AU_REP[P.repriceTo]||"최우선 매수 호가"}로 한 번 정정하고`} ${P.chaseAsk!==false?`못 사면 최우선 매도 호가로 한 번 더 올려(알림 시점 가격 +${+P.chasePct||1}% 이내·손익비 재확인) ${f}분 기다리고 `:""}다시 ${c}분 기다린 뒤 ${P.unfilledEnd==="keep"?"장 마감까지 그대로 둬요":"남으면 취소해요"}.`;
 }
 function auOrderCard(sid,o,RP){   // RP = 일지 복기용({P,log}): 지난 기록이라 실시간 시세·타이머 없이 그날 설정으로 그림
   const I=auStrat(sid)||{},P=RP?(RP.P||{}):(I.params||{}),q=RP?null:auQ(o.code),pl=o.plan||{},sn=o.snap||{},px=o.buy2||o.buy,live=o.filled>0&&q?q.price:(q?q.price:null);
@@ -12225,7 +12225,7 @@ function auOrderCard(sid,o,RP){   // RP = 일지 복기용({P,log}): 지난 기�
   return `<div class="au-oc ${o.filled>0?"held":act?"wait":"off"}"><div class="au-och"><b>${auNm(o.name,o.code)}</b> <span class="faint">${trdEsc(o.code)}</span><span class="au-ost">${trdEsc(AU_ORD[o.st]||o.st)}</span>${o.cb?'<span class="au-ost">🌙 종가베팅</span>':""}${(o.tries||[]).length?`<span class="au-ost">🔁 ${o.tries.length+1}번째 시도</span>`:""}<span class="r">${px?`${N(px)}원`:""}${o.qty?` × ${N(o.qty)}주`:""}${o.filled?` · 체결 ${N(o.filled)}주${o.avg?` @ ${N(o.avg)}`:""}`:""}</span></div>
     <div class="au-ocb">
       <div class="au-ocl"><div class="au-sub">왜 이 가격에 샀나</div>
-        <div>${o.pick?`${trdEsc(AU_PICK[o.pick]||o.pick)}인 <b>${N(o.buy)}원</b>을 주문가로 골랐어요.`:off?"주문까지 가지 않았어요.":"주문가 정보 없음"}${o.buy2&&o.buy2!==o.buy?` 미체결이라 <b>${N(o.buy2)}원</b>으로 정정했어요.`:""}</div>
+        <div>${o.pick?`${trdEsc(AU_PICK[o.pick]||o.pick)}인 <b>${N(o.buy)}원</b>을 주문가로 골랐어요.${o.pickWhy?` (${trdEsc(o.pickWhy)}이라 최우선 매수 호가부터)`:""}`:off?"주문까지 가지 않았어요.":"주문가 정보 없음"}${o.buy2&&o.buy2!==o.buy?` 미체결이라 <b>${N(o.buy2)}원</b>으로 ${o.chased?"추격(최우선 매도 호가)":"정정"}했어요.`:""}${o.chaseNo?` <span class="faint">추격 안 함: ${trdEsc(o.chaseNo)}</span>`:""}</div>
         <div class="faint" style="font-size:11.5px;margin-top:2px">알림 가격 ${sn.notice?N(sn.notice):"–"} · 주문 시점 현재가 ${sn.price?N(sn.price):"–"} · 시가 ${sn.open?N(sn.open):"–"}${sn.price&&sn.open?` (시가대비 ${auPct((sn.price/sn.open-1)*100)})`:""}${sn.upper?` · 상한가 ${N(sn.upper)}`:""}</div>
         <div class="au-chips" style="margin-top:4px">${chip("체결강도",ck.cttr&&ck.cttr.v,ck.cttr&&ck.cttr.min!=null?`≥${ck.cttr.min}`:null,ck.cttr&&ck.cttr.v>=ck.cttr.min)}${chip("알림 대비",ck.move&&ck.move.v,ck.move&&ck.move.max!=null?`≤${ck.move.max}%`:null,ck.move&&Math.abs(ck.move.v)<=ck.move.max)}${chip("시가대비",ck.openRise&&ck.openRise.v,ck.openRise&&ck.openRise.max!=null?`≤${ck.openRise.max}%`:null,ck.openRise&&ck.openRise.v<=ck.openRise.max)}${ck.vi?'<span class="au-chip bad">VI 발동</span>':""}${ck.rr&&ck.rr.v!=null?`<span class="au-chip ${ck.rr.min&&ck.rr.v<ck.rr.min?"bad":"ok"}">손익비 1:${N(ck.rr.v,1)}${ck.rr.min?` / ≥1:${ck.rr.min}`:""}</span>`:""}</div>
         <div class="au-sub" style="margin-top:8px">지금 상태</div>

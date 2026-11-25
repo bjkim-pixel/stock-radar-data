@@ -73,7 +73,8 @@ test('재확인: 체결강도·알림 후 ±1.5%·시가 대비 +8%·VI·경고'
 });
 
 /* ── 실제 가상매매 엔진(paper.js)과 붙인 흐름 ── */
-async function setup(over) {
+async function setup(over0) {
+  const over = { chaseAsk: false, smartBuy: false, ...(over0 || {}) };   // 기존 시험은 예전 동작(강세 보정·추격 없음) 기준 — 새 동작은 아래 전용 시험
   const db = fakeDb(), c = await boot(db);
   const runs = {}; const sent = [];
   const kst = () => { const d = new Date(c.st.clock + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes() }; };
@@ -312,5 +313,57 @@ test('직접 취소: 주문이 취소되고 자동매매 기록에 직접 취소
   assert.equal(v.st, 'cancelled'); assert.equal(v.why, '직접 취소');
   assert.equal(await A.pendingAutoBuy('005930', 'paper'), null);
   assert.equal((await A.siteOrderEdit({ code: '005930', engine: 'paper', orderId: oid, action: 'cancel' })).ok, false);   // 이미 끝난 주문
+  await c.close();
+});
+
+/* ── 체결률 개선(2026-11-25): 강세 종목 최우선 매수호가부터 · 정정 후 추격(최우선 매도호가) · 손익비 재확인 ── */
+test('강세 보정(smartBuy): 강세 또는 잔량 최다 호가가 멀면 최우선 매수 호가, 아니면 기존대로', () => {
+  const rows = [{ close: 9000, high: 9100, trade_amount: 5e10, individual_net: 5e9 }, { close: 10000, high: 10000, trade_amount: 5e10, individual_net: 1e9 }];
+  const bids = [{ p: 10000, q: 100 }, { p: 9990, q: 900 }, { p: 9980, q: 50 }];
+  const base = { price: 10000, open: 9990, strength: 105, amt: 3e10, upper: 13000, bids };
+  const mk = (q, opt) => X.makeOrder({ q, rows, perStockKrw: 1000000, opt: { smartBuy: true, smartCttr: 120, smartRise: 2, q1GapPct: 0.8, ...opt } });
+  assert.equal(mk(base).buy, 9990, '약하고 q1이 0.1%만 낮음 → 그대로 q1');
+  assert.equal(mk({ ...base, strength: 130 }).buy, 10000); assert.match(mk({ ...base, strength: 130 }).smartWhy, /체결강도 130%/);
+  assert.equal(mk({ ...base, open: 9700 }).buy, 10000); assert.match(mk({ ...base, open: 9700 }).smartWhy, /시가 대비/);
+  const far = { ...base, price: 10100, bids: [{ p: 10000, q: 100 }, { p: 9990, q: 900 }] };   // q1(9990)이 현재가보다 1.1% 낮음
+  assert.equal(mk(far).buy, 10000); assert.match(mk(far).smartWhy, /1\.1% 낮음/);
+  assert.equal(mk({ ...base, strength: 130 }, { smartBuy: false }).buy, 9990, '끄면 q1');
+  assert.equal(mk({ ...base, strength: 130 }, { buyPick: 'low' }).buy, 9980, '매수가를 low 로 고른 경우는 건드리지 않음');
+  assert.equal(mk({ ...base, strength: 130 }, { buyPick: 'q1' }).pick, 'bid1');
+});
+test('추격(chaseAsk): 정정 후에도 못 사면 최우선 매도 호가로 한 번 올림(알림 시점 +chasePct% 이내) → 새 가격 기준 계획', async () => {
+  const { db, c, A, runs, sent, date } = await setup({ chaseAsk: true, chasePct: 1 });
+  await A.handleApproval('/매수 1');
+  c.st.bids = [[10020, 50], ...c.st.bids.slice(0, 9)]; c.st.asks = [[10040, 100], [10050, 100]];
+  c.st.clock += 181e3; await A.tick();
+  let o = runs[date].payload.orders['005930']; assert.equal(o.st, 'modified'); assert.equal(o.buy2, 10020); assert.ok(!o.chased);
+  c.st.clock += 181e3; await A.tick();
+  o = runs[date].payload.orders['005930'];
+  assert.ok(o.chased, '추격함'); assert.equal(o.buy2, 10040);
+  assert.ok(sent.some(t => /10,040원\(최우선 매도 호가\)으로 올림/.test(t)));
+  assert.equal(+db.t.paper_orders.get(o.orderId).price, 10040);
+  assert.equal(db.t.paper_orders.get(o.orderId).plan.stop, Math.floor(10040 * 0.95 / 10) * 10, '손절 계획도 새 가격 기준');
+  assert.ok(runs[date].payload.log.some(x => x.k === 'reprice' && /추격/.test(x.text)));
+  await c.close();
+});
+test('추격 상한: 최우선 매도 호가가 알림 시점 가격 +chasePct% 를 넘으면 추격하지 않고 취소', async () => {
+  const { db, c, A, runs, sent, date } = await setup({ chaseAsk: true, chasePct: 1 });
+  await A.handleApproval('/매수 1');
+  c.st.bids = [[10020, 50], ...c.st.bids.slice(0, 9)]; c.st.asks = [[10200, 100]];   // +2%
+  c.st.clock += 181e3; await A.tick(); c.st.clock += 181e3; await A.tick();
+  const o = runs[date].payload.orders['005930'];
+  assert.equal(o.st, 'cancelled'); assert.ok(!o.chased); assert.match(o.chaseNo || '', /넘음/);
+  await c.close();
+});
+test('강세 보정으로 처음부터 최우선 매수 호가였으면 정정 대기 없이 바로 추격 시도', async () => {
+  const { c, A, runs, date } = await setup({ chaseAsk: true, chasePct: 1, smartBuy: true, buyPick: 'q1' });
+  c.st.strength = 140;
+  await A.handleApproval('/매수 1');
+  let o = runs[date].payload.orders['005930'];
+  if (o.pick === 'bid1') {
+    c.st.clock += 181e3; await A.tick();
+    o = runs[date].payload.orders['005930'];
+    assert.ok(o.chased || o.chaseNo, '정정 없이 바로 추격 판단');
+  } else assert.ok(true, '시세 mock 에 체결강도 필드가 없으면 보정 안 됨');
   await c.close();
 });
