@@ -775,6 +775,10 @@ html.hg-g1 .g-g1,html.hg-g2 .g-g2,html.hg-g3 .g-g3,html.hg-g4 .g-g4,html.hg-g5 .
      #scrWrap처럼 "#"열 너비를 추정해 고정하는 대신 아예 두 번째 열만 고정해
      너비 추정 없이도 항상 정확히 맞습니다. */
   .tw-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tw-scroll .smx-t{width:100%}
+  .tw-scroll .smx-t th,.tw-scroll .smx-t td{padding:7px 4px;font-size:12px}
+  .tw-scroll .smx-t th:first-child,.tw-scroll .smx-t td:first-child{padding-left:6px}
+  .smx-t td.l i{margin-right:3px!important}
   .tw-scroll th,.tw-scroll td{white-space:nowrap}
   .tw-scroll:not(.tw-rank) th:first-child,.tw-scroll:not(.tw-rank) td:first-child{
     position:sticky;left:0;background:var(--surface);z-index:2}
@@ -10319,10 +10323,11 @@ function smxDraw(all,win,E){
   const td=v=>`<td class="num ${sgn(v)}">${f0(v)}</td>`;
   const row=x=>`<tr><td class="l"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(${x.c});margin-right:4px"></i>${x.nm}</td><td class="num ${sgn(x.hold)}" style="font-weight:700">${f0(x.hold)}</td>${td(x.acc)}${td(x.after)}<td>${recov(x)}</td></tr>`;
   const tot={acc:m.build,after:m.combo[m.L]-m.combo[m.pk],r5:m.r5,r20:m.r20};
+  E.table.classList.add("smx-t");
   E.table.innerHTML=`<thead><tr><th class="l">주체</th><th title="${wl} 동안(${md(D(0))}~${md(D(m.L))}, ${rows.length}거래일) 주체별 순매수 금액의 합계(억원). 실제 보유 잔고가 아니라 수급 누적입니다">${wl} 누적<br>순매수</th><th title="매집 시작 저점 → 외+기 고점">매집 구간<br><span class="faint" style="font-weight:400">${md(D(m.tr))}→${md(D(m.pk))}</span></th><th>고점→오늘</th><th title="고점 이후 순매도 ÷ 매집 구간 순매수">회수율</th></tr></thead><tbody>`+
     m.subj.map(row).join("")+
     `<tr style="border-top:2px solid var(--border);font-weight:700"><td class="l">외+기 합계</td>${td(holdTot)}${td(tot.acc)}${td(tot.after)}<td>${m.ratio==null?"–":m.dd>0?N(m.ratio*100,0)+"%":'<span class="up">매수중</span>'}</td></tr>`+
-    `<tr class="faint"><td class="l">${m.indiv.nm}</td>${td(holdInd)}${td(m.indiv.acc)}${td(m.indiv.after)}<td style="font-size:11px;text-align:left">${m.indiv.after>0&&tot.after<0?"← 고점 이후 개인이 물량 받음":""}</td></tr></tbody>`;
+    `<tr class="faint"><td class="l">${m.indiv.nm}</td>${td(holdInd)}${td(m.indiv.acc)}${td(m.indiv.after)}<td></td></tr></tbody>`;
   if(E.sub)E.sub.textContent=`외국인+기관합계 누적 기준 · 억원 · ${md(D(0))}~${md(D(m.L))} (${rows.length}거래일)`;
   const labels=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
   const pts=m.build>0?[{i:m.tr,s:0,c:"--up",t:`▲ 매집 시작 ${md(D(m.tr))} ${f0(m.combo[m.tr])}억`,below:true},{i:m.pk,s:0,c:"--up",t:`▼ 고점 ${md(D(m.pk))} ${f0(m.combo[m.pk])}억`}]:[];
