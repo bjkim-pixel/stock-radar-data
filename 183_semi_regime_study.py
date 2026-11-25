@@ -17,7 +17,8 @@ df["k_ret"]=F["chg"]/(F["close"]-F["chg"])*100; df["oi"]=F["oi"]; df["doi"]=F["o
 M=Q("select trade_date d,market,foreign_net from market_investor_daily where market in ('KOSPI','FUT') order by 1"); M["d"]=pd.to_datetime(M["d"])
 mw=M.pivot(index="d",columns="market",values="foreign_net").astype(float); df["fK"]=mw["KOSPI"]; df["fF"]=mw["FUT"]
 X=Q("select trade_date d,pension,personal,pe from market_investor_detail where market='KOSPI' order by 1"); X["d"]=pd.to_datetime(X["d"]); X=X.set_index("d").astype(float)
-df["pen"]=X["pension"]; df["prs"]=X["personal"]
+X2=Q("select trade_date d,foreign_net from market_investor_detail where market='KOSPI' order by 1"); X2["d"]=pd.to_datetime(X2["d"])
+df["pen"]=X["pension"]; df["prs"]=X["personal"]; df["fK"]=X2.set_index("d")["foreign_net"].astype(float)
 V=Q("select trade_date d,close from vkospi_daily order by 1"); V["d"]=pd.to_datetime(V["d"]); df["vk"]=V.set_index("d")["close"].astype(float); df["dvk5"]=df["vk"]-df["vk"].shift(5)
 E=Q("select event_date d,title,source from market_events where kind='sidecar'"); E["d"]=pd.to_datetime(E["d"]); E["dir"]=np.where(E["title"].str.contains("매수"),"buy","sell")
 df["sc"]="없음"
@@ -34,17 +35,22 @@ df["lev_idx"]=share(["122630"],["252670","114800"]); df["lev_one"]=share(["0193T
 df=df[df.index>=pd.Timestamp("2025-09-01")]
 df["fK5"]=df["fK"].rolling(5).sum(); df["fF5"]=df["fF"].rolling(5).sum(); df["fF20"]=df["fF"].rolling(20).sum()
 mid=df.index[len(df)//2]
+base=df.y1.mean()
 out=[]
 def p(s=""): out.append(s); print(s)
 def tbl(title,lab,note=""):
     d=df.assign(L=lab).dropna(subset=["L","y1"])
     p(f"\n### {title}"+(f"\n{note}" if note else ""))
-    p("| 구간 | n | 다음날 평균% | 상승비율 | 다음3일% | 다음날 갭% | 다음날 장중% | 전반 평균 | 후반 평균 |"); p("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    p("| 구간 | n | t | 다음날 평균% | 상승비율 | 다음3일% | 다음날 갭% | 다음날 장중% | 전반 평균 | 후반 평균 |"); p("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for k,g in d.groupby("L"):
         a,b=g[g.index<mid]["y1"],g[g.index>=mid]["y1"]
-        p(f"| {k} | {len(g)} | {g.y1.mean():+.2f} | {(g.y1>0).mean()*100:.0f}% | {g.y3.mean():+.2f} | {g.g1.mean():+.2f} | {g.i1.mean():+.2f} | {a.mean():+.2f} ({len(a)}) | {b.mean():+.2f} ({len(b)}) |")
+        t_=(g.y1.mean()-base)/(g.y1.std(ddof=1)/np.sqrt(len(g))) if len(g)>2 else float("nan")
+        p(f"| {k} | {len(g)} | {t_:+.1f} | {g.y1.mean():+.2f} | {(g.y1>0).mean()*100:.0f}% | {g.y3.mean():+.2f} | {g.g1.mean():+.2f} | {g.i1.mean():+.2f} | {a.mean():+.2f} ({len(a)}) | {b.mean():+.2f} ({len(b)}) |")
 sg=lambda s:np.where(s>0,"+","−")
 p(f"# 반도체 추종 3단계 신호 검증 — {df.index[0].date()} ~ {df.index[-1].date()} ({len(df)}거래일, 전·후반 경계 {mid.date()})")
+for k_ in ("fK","fF","pen","doi","vk","sh","lev_one"):
+    v_=df[k_].dropna(); p(f"- 범위 {k_}: {len(v_)}일 {v_.index.min().date() if len(v_) else '-'} ~ {v_.index.max().date() if len(v_) else '-'}")
+p("t = (구간 평균 − 전체 평균) ÷ 표준오차. |t|≥2 정도부터 우연이 아닐 가능성이 커짐(표본이 작아 참고용).")
 p("대상 수익률 = 삼성전자·SK하이닉스 종가 등락률 평균. 다음날 갭 = 다음날 시가/오늘 종가, 장중 = 다음날 종가/시가.")
 p(f"\n- 전체 다음날 평균 {df.y1.mean():+.2f}% · 상승비율 {(df.y1>0).mean()*100:.0f}% · 표준편차 {df.y1.std():.2f}%")
 p(f"- 자기상관(오늘 등락 vs 다음날): {df.big.corr(df.y1):+.3f} · 오늘 외국인 선물 vs 다음날: {df.fF.corr(df.y1):+.3f} · 오늘 외국인 현물 vs 다음날: {df.fK.corr(df.y1):+.3f} · 오늘 연기금 vs 다음날: {df.pen.corr(df.y1):+.3f}")
@@ -79,4 +85,14 @@ p(f"- 급등(≥3%) → 급락(≤-3%) 다음날: n={len(g)} · 다음날 평균
 s=np.sign(df.big); p(f"- 부호 교대율(오늘과 다음날 방향이 반대인 비율): {(s*s.shift(-1)<0).mean()*100:.0f}% (전반 {(s*s.shift(-1)<0)[df.index<mid].mean()*100:.0f}% · 후반 {(s*s.shift(-1)<0)[df.index>=mid].mean()*100:.0f}%)")
 big3=df[df.big.abs()>=3]; s3=np.sign(big3.big)*np.sign(big3.y1)
 p(f"- |등락|≥3% 날 다음날 반대 방향 비율: {(s3<0).mean()*100:.0f}% (n={len(big3)})")
+# 17. 조합 국면 후보(가설) 검증
+reg=pd.Series("중립",index=df.index)
+both_sell=(df.fK<0)&(df.fF<0); both_buy=(df.fK>0)&(df.fF>0)
+reg[both_buy]="귀환(현물+선물+)"; reg[both_sell]="공세(현물−선물−)"
+reg[(df.fK<0)&(df.fF>0)]="엇갈림(현물−선물+)"; reg[(df.fK>0)&(df.fF<0)]="엇갈림(현물+선물−)"
+reg[df.fK.isna()|df.fF.isna()]=np.nan
+tbl("17. 국면 후보 × VKOSPI 45 이상 여부",(reg+np.where(df.vk>=45," · 고변동"," · 보통")).where(reg.notna()&df.vk.notna()))
+tbl("18. 공세일 중 연기금 방어 여부",(reg+np.where(df.pen>0," · 연기금+"," · 연기금−")).where(reg.isin(["공세(현물−선물−)","귀환(현물+선물+)"])&df.pen.notna()))
+tbl("19. 오늘 +1~+5% 상승 × 외국인 선물 부호 (되밀림 조건?)",pd.Series(np.where(df.fF>0,"선물+","선물−"),index=df.index).where((df.big>=1)&(df.big<5)&df.fF.notna()))
+tbl("20. 오늘 −1~−5% 하락 × 외국인 선물 부호 (반등 조건?)",pd.Series(np.where(df.fF>0,"선물+","선물−"),index=df.index).where((df.big<=-1)&(df.big>-5)&df.fF.notna()))
 open("semi_regime_study.md","w",encoding="utf-8").write("\n".join(out))

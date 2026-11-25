@@ -70,7 +70,7 @@ cur.execute(open(os.path.join(HERE,"169_market_events.sql"),encoding="utf-8").re
 rows=rule_events(today)+manual_events()+dart_events(cur)
 if rows:
     execute_values(cur,"insert into market_events (kind,event_date,code,name,title,detail,source,ev_key) values %s on conflict (ev_key) do update set event_date=excluded.event_date,title=excluded.title,detail=excluded.detail,name=excluded.name,updated_at=now()",rows)
-cur.execute("delete from market_events where event_date < %s and source<>'dart'",(today-dt.timedelta(days=30),))   # 지난 규칙·수동 일정 정리(공시는 기록으로 남김)
+cur.execute("delete from market_events where event_date < %s and source<>'dart' and kind<>'sidecar'",(today-dt.timedelta(days=30),))   # 지난 규칙·수동 일정 정리(공시·사이드카는 기록으로 남김 — 반도체 추종 사이드카 달력이 과거를 씀)
 by={}
 for r in rows: by[(r[6],r[0])]=by.get((r[6],r[0]),0)+1
 print("저장",len(rows),"건:",", ".join(f"{k[0]}/{k[1]} {v}" for k,v in sorted(by.items())))
