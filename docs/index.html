@@ -848,8 +848,8 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 #v-live .tw{overflow:visible!important}
 #v-live table{width:100%;table-layout:auto}
 #v-live th,#v-live td{white-space:nowrap}
-@media(max-width:700px){#v-live table{font-size:10.5px}#v-live th,#v-live td{padding:4px 2px}#v-live .card{padding-left:8px;padding-right:8px}#v-live table .faint{display:none}#v-live thead th:nth-child(15),#v-live tbody tr:not(.lv2) td:nth-child(15),#v-live thead th:nth-child(16),#v-live tbody tr:not(.lv2) td:nth-child(16){display:none}#v-live thead th:nth-child(n+18),#v-live tbody tr:not(.lv2) td:nth-child(n+18){display:none}#v-live tbody tr.lv2{display:table-row}}
-#v-live thead th:nth-child(n+18),#v-live tbody tr:not(.lv2) td:nth-child(n+18){display:none}#v-live tr.lv2{display:table-row}#v-live tr.lv2 td{padding:0 4px 5px;font-size:11px;border-top:none;white-space:normal}#v-live tr.lv2 .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}#v-live tr.lv2 .lvs{margin-right:8px}#v-live tr.lv2 .kwc{padding:0 3px;border-radius:3px}
+@media(max-width:700px){#v-live table{font-size:10.5px}#v-live th,#v-live td{padding:4px 2px}#v-live .card{padding-left:8px;padding-right:8px}#v-live table .faint{display:none}#v-live thead th:nth-child(17),#v-live tbody tr:not(.lv2) td:nth-child(17),#v-live thead th:nth-child(18),#v-live tbody tr:not(.lv2) td:nth-child(18){display:none}#v-live thead th:nth-child(n+20),#v-live tbody tr:not(.lv2) td:nth-child(n+20){display:none}#v-live tbody tr.lv2{display:table-row}}
+#v-live thead th:nth-child(n+20),#v-live tbody tr:not(.lv2) td:nth-child(n+20){display:none}#v-live tr.lv2{display:table-row}#v-live tr.lv2 td{padding:0 4px 5px;font-size:11px;border-top:none;white-space:normal}#v-live tr.lv2 .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}#v-live tr.lv2 .lvs{margin-right:8px}#v-live tr.lv2 .kwc{padding:0 3px;border-radius:3px}
 /* 종목 추세 (2026-11-14): 종목 후보와 같은 표(scrlike) — 오른쪽으로 펼치고 행 높이 일정(줄바꿈 없음) */
 #trWrap table td,#trWrap table th{white-space:nowrap}#trWrap tr.trm{cursor:pointer}#trWrap tr.trm td{height:34px;box-sizing:border-box}#trWrap tr.trm.open td{background:var(--surface-2)}
 #trWrap tr.lv2 td{padding:0 4px 6px;font-size:11px;border-top:none;white-space:nowrap}#trWrap tr.lv2 .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}#trWrap tr.lv2 .lvs{margin-right:8px}#trWrap tr.lv2 .kwc{padding:0 3px;border-radius:3px}
@@ -1734,8 +1734,10 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="qf seg" id="liveAmt" style="margin-bottom:8px"><span class="faint" style="font-size:11px;align-self:center;margin-right:4px">거래대금</span><button class="fchip" data-v="0" aria-pressed="true">전체</button><button class="fchip" data-v="1000" aria-pressed="false">1,000억↑</button><button class="fchip" data-v="500" aria-pressed="false">500억↑</button><button class="fchip" data-v="300" aria-pressed="false">300억↑</button><button class="fchip" data-v="100" aria-pressed="false">100억↑</button></div>
     <div id="liveFc"></div>
     <div class="qf seg" id="liveCs" style="margin-bottom:8px"><span class="faint" style="font-size:11px;align-self:center;margin-right:4px;min-width:44px">체결강도</span><button class="fchip" data-v="" aria-pressed="true">전체</button><button class="fchip" data-v="100" aria-pressed="false">100%↑</button><button class="fchip" data-v="120" aria-pressed="false">120%↑</button><button class="fchip" data-v="150" aria-pressed="false">150%↑</button></div>
+    <div class="qf seg" id="liveK6" style="margin-bottom:8px"><span class="faint" style="font-size:11px;align-self:center;margin-right:4px;min-width:44px">통장 6월</span><button class="fchip" data-v="" aria-pressed="true">전체</button><button class="fchip" data-v="100" aria-pressed="false">100%↓</button><button class="fchip" data-v="90" aria-pressed="false">90%↓</button><button class="fchip" data-v="80" aria-pressed="false">80%↓</button><button class="fchip" data-v="70" aria-pressed="false">70%↓</button></div>
+    <div class="qf seg" id="liveK8" style="margin-bottom:8px"><span class="faint" style="font-size:11px;align-self:center;margin-right:4px;min-width:44px">통장 8월</span><button class="fchip" data-v="" aria-pressed="true">전체</button><button class="fchip" data-v="100" aria-pressed="false">100%↓</button><button class="fchip" data-v="90" aria-pressed="false">90%↓</button><button class="fchip" data-v="80" aria-pressed="false">80%↓</button><button class="fchip" data-v="70" aria-pressed="false">70%↓</button></div>
     <div class="note" style="margin-bottom:8px">거래대금(오늘 누적, 억원 이상)을 고르면 그 조건을 넘는 종목만 등락률 순서로 보입니다 — 시총 "전체"는 KIS 등락률 순위 30종목 안에서만 걸러지니 시총 1조 이상과 함께 쓰는 게 정확합니다. 시가총액 기준으로 나눠 오늘 등락률 상위를 봅니다(전체 = 코스피·코스닥 전 종목, 나머지는 시총이 기준 이상인 종목만). 순위 후보는 KIS에서 8초마다 새로 받고, 후보 12종목의 가격은 KIS 실시간 체결가로 바로 갱신해 순위를 다시 매깁니다. 순위 밖으로 밀린 종목은 빠지고 새로 올라온 종목이 들어옵니다. ETF·ETN·스팩·우선주는 뺐습니다. 시총 = 상장주식수 × 현재가.</div>
-    <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체(업종 표시) 순환">↔</span></th><th>현재가</th><th title="현재가가 오늘 시가 대비 몇 % 올랐는지">당일시가</th><th title="현재가가 전일 종가 대비 몇 % 올랐는지(등락률)">전일종가</th><th title="현재가 ÷ 당일 최고가. 100%면 지금이 당일 고가, 낮을수록 고점 대비 밀린 것(KIS 당일 고가 기준)">고가比</th><th>시총</th><th title="이 종목을 구성종목(상위 30)에 담은 ETF 수">ETF</th><th>거래대금</th><th title="외국인·기관 잠정(추정) 순매수 = 증권사 집계 수량 × 현재가. 외국인 09:30·기관 10:00부터, 이후 11:20·13:20·14:30 갱신. 시총 1조 이상 구간만 표시">외국인(잠정)</th><th title="외국인·기관 잠정(추정) 순매수 = 증권사 집계 수량 × 현재가. 외국인 09:30·기관 10:00부터, 이후 11:20·13:20·14:30 갱신. 시총 1조 이상 구간만 표시">기관(잠정)</th><th title="KIS 실시간 체결강도(당일 누적). 100 넘으면 매수 체결이 더 많음. 화살표는 약 5분 전 대비. 실시간 구독 종목만 표시(폴링 종목은 –)">체결강도</th><th title="프로그램매매 순매수(당일 누적, KIS 현재가 시세 · 30초 갱신). 수량×현재가로 환산">프로그램</th><th title="거래량 회전율 = 당일 거래량 ÷ 상장주식수 (KIS 현재가 시세)">회전율</th><th title="현재가가 당일 고가면 '당일', 52주 최고가 이상이면 '52주'">신고가</th><th>거래량</th><th title="이 화면에서 TOP 10에 들어온 뒤 지난 시간">진입 후</th><th>변동</th><th title="종목상세의 주도 세력 — 매집 구간(저점→고점)에서 외+기 순매수가 가장 큰 주체(전체 기간)">주도</th><th title="주도 주체의 최근 5일·20일 순매수 방향">추세</th><th title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록 (낮을수록 개인 물량 감소)">매집 6월</th><th title="최근 ÷ 8월 첫 기록">8월</th></tr></thead>
+    <div class="tw"><table><thead><tr><th>순위</th><th class="l">종목<span class="nmh" title="드래그: 종목명 폭 조절 · 탭: 6자→11자→전체(업종 표시) 순환">↔</span></th><th title="키움증권 회원 보유 계좌수: 최근 ÷ 6월 첫 기록 (낮을수록 개인 물량 감소)">통장 6월</th><th title="최근 ÷ 8월 첫 기록">통장 8월</th><th>현재가</th><th title="현재가가 오늘 시가 대비 몇 % 올랐는지">당일시가</th><th title="현재가가 전일 종가 대비 몇 % 올랐는지(등락률)">전일종가</th><th title="현재가 ÷ 당일 최고가. 100%면 지금이 당일 고가, 낮을수록 고점 대비 밀린 것(KIS 당일 고가 기준)">고가比</th><th>시총</th><th title="이 종목을 구성종목(상위 30)에 담은 ETF 수">ETF</th><th>거래대금</th><th title="외국인·기관 잠정(추정) 순매수 = 증권사 집계 수량 × 현재가. 외국인 09:30·기관 10:00부터, 이후 11:20·13:20·14:30 갱신. 시총 1조 이상 구간만 표시">외국인(잠정)</th><th title="외국인·기관 잠정(추정) 순매수 = 증권사 집계 수량 × 현재가. 외국인 09:30·기관 10:00부터, 이후 11:20·13:20·14:30 갱신. 시총 1조 이상 구간만 표시">기관(잠정)</th><th title="KIS 실시간 체결강도(당일 누적). 100 넘으면 매수 체결이 더 많음. 화살표는 약 5분 전 대비. 실시간 구독 종목만 표시(폴링 종목은 –)">체결강도</th><th title="프로그램매매 순매수(당일 누적, KIS 현재가 시세 · 30초 갱신). 수량×현재가로 환산">프로그램</th><th title="거래량 회전율 = 당일 거래량 ÷ 상장주식수 (KIS 현재가 시세)">회전율</th><th title="현재가가 당일 고가면 '당일', 52주 최고가 이상이면 '52주'">신고가</th><th>거래량</th><th title="이 화면에서 TOP 10에 들어온 뒤 지난 시간">진입 후</th><th>변동</th><th title="종목상세의 주도 세력 — 매집 구간(저점→고점)에서 외+기 순매수가 가장 큰 주체(전체 기간)">주도</th><th title="주도 주체의 최근 5일·20일 순매수 방향">추세</th></tr></thead>
       <tbody id="liveBody"><tr><td colspan="20" class="load sk"></td></tr></tbody></table></div>
   </div>
   <div class="card" style="margin-top:12px"><details id="liveLogBox"><summary style="cursor:pointer;list-style:none"><h3 style="margin:0">진입·이탈 기록 <span class="r">이 화면을 연 뒤 · 눌러서 펼치기</span></h3></summary><div id="liveLog" class="note" style="margin-top:8px">아직 변동이 없습니다</div></details></div>
@@ -3027,11 +3029,11 @@ const SW_LIVE_MAX=20;
 const LIVE_TOP_N=10,LIVE_POOL=12,LIVE_SUB_GRACE=3,LIVE_EXCL=/스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/,
   TR_EXCL=/스팩|ETN|인버스|레버리지|선물/;   // 종목 추세 전용: ETF(KODEX·TIGER 등)는 포함, ETN·스팩·인버스·레버리지·선물만 제외(실시간 종목은 ETF 제외 유지)
 S.liveMeta=S.liveMeta||{};   // code -> {mk, sc} (stocks.market · v_stock_sector.sector)
-S.live={min:0,fg:"",ob:"",pg:"",cs:"",on:false,pool:{},since:{},prev:{},log:[],timer:null,paint:0,at:0};
+S.live={min:0,fg:"",ob:"",pg:"",cs:"",k6:"",k8:"",on:false,pool:{},since:{},prev:{},log:[],timer:null,paint:0,at:0};
 function liveFcChanged(){const L=S.live;liveSelRender();L.pool={};L.since={};L.prev={};L.log=[];$("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";if(L.on)liveFetch();}
 /* 수급 조건이 켜져 있으면 후보(상위 25)의 외국인·기관 잠정(/live-flow)·프로그램(/live-power)을 먼저 받아 거른다. 릴레이가 30~60초 캐시하므로 8초 주기여도 KIS 호출은 늘지 않는다 */
 async function liveFcFetch(codes){
-  const L=S.live;S.liveFcAt=S.liveFcAt||{};S.liveCs=S.liveCs||{};
+  const L=S.live;if(L.k6||L.k8)await kwLoadMap().catch(()=>{});S.liveFcAt=S.liveFcAt||{};S.liveCs=S.liveCs||{};
   const kinds=[["flow",L.fg||L.ob,"/live-flow",S.liveFlow],["pow",L.pg,"/live-power",S.livePow],["cs",L.cs,"/live-cttr",S.liveCs]];
   await Promise.all(kinds.filter(k=>k[1]).map(async([k,,path,store])=>{
     const at=S.liveFcAt[k]=S.liveFcAt[k]||{},need=codes.filter(c=>Date.now()-(at[c]||0)>30000);if(!need.length)return;
@@ -3046,6 +3048,7 @@ function liveFcPass(x){
   if(L.fg&&!fcPass(F.err==null&&F.fq!=null&&px?F.fq*px:null,L.fg))return false;
   if(L.ob&&!fcPass(F.err==null&&F.oq!=null&&px?F.oq*px:null,L.ob))return false;
   if(L.pg&&!fcPass(P.err==null&&P.pgAmt!=null?P.pgAmt:null,L.pg))return false;
+  if(L.k6||L.k8){const m=(S.kwMap||{})[x.code]||{};if(L.k6&&!(m.r6!=null&&m.r6*100<=+L.k6))return false;if(L.k8&&!(m.r8!=null&&m.r8*100<=+L.k8))return false;}   // 통장수 비율(최근÷6월·8월 첫 기록) 이하만 — 값이 없는 종목은 제외
   if(L.cs){const C=(S.liveCs||{})[x.code]||{};const v=x.cttr!=null&&isFinite(x.cttr)?x.cttr:(C.err==null?C.cttr:null);if(!(v!=null&&v>=+L.cs))return false;}
   return true;
 }
@@ -3091,11 +3094,12 @@ async function laLoad(){
     if((v==="ETF")!==was||(S.la.etf!==(v==="ETF")))laLoad();else{laCrit();laRender();}});
 })();
 function liveSelRender(){const L=S.live,el=$("#liveSel");if(!el)return;
-  el.innerHTML=lfSelHtml([`시총 ${L.min?(L.min>=10000?N(L.min/10000)+"조":N(L.min)+"억")+" 이상":"전체"}`,`거래대금 ${L.amt?N(L.amt)+"억↑":"전체"}`,...fcDesc(L),...(L.cs?[`체결강도 ${L.cs}%↑`]:[]),...lfDesc(S.lf)]);}
+  el.innerHTML=lfSelHtml([`시총 ${L.min?(L.min>=10000?N(L.min/10000)+"조":N(L.min)+"억")+" 이상":"전체"}`,`거래대금 ${L.amt?N(L.amt)+"억↑":"전체"}`,...fcDesc(L),...(L.cs?[`체결강도 ${L.cs}%↑`]:[]),...(L.k6?[`통장 6월 ${L.k6}%↓`]:[]),...(L.k8?[`통장 8월 ${L.k8}%↓`]:[]),...lfDesc(S.lf)]);}
 function liveStart(){
   liveSelRender();
   fcBuild("liveFc",S.live,liveFcChanged);
   if(!$("#liveCs").dataset.b){$("#liveCs").dataset.b=1;$$("#liveCs .fchip").forEach(b=>b.onclick=()=>{S.live.cs=b.dataset.v;$$("#liveCs .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));liveFcChanged();});}
+  for(const [id,key] of [["liveK6","k6"],["liveK8","k8"]])if(!$("#"+id).dataset.b){$("#"+id).dataset.b=1;$$("#"+id+" .fchip").forEach(b=>b.onclick=()=>{S.live[key]=b.dataset.v;$$("#"+id+" .fchip").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));liveFcChanged();});}
   try{lfBuild();lfSyncSectors();}catch(e){console.error("조회 조건 UI",e);}
   try{kwLoadMap();smxLoadMap().then(()=>smxFill()).catch(()=>{});}catch(e){}
   lmPaint();lmLoadDb();lmLoadLive();
@@ -3281,14 +3285,14 @@ function lfChanged(){
 async function liveFetch(){
   const L=S.live;if(!L.on)return;
   try{
-    const r=await fetch(RELAY_HTTP_BASE+"/live-top?min="+L.min+"&side="+(L.side||"up")+((lfActive()||L.amt||fcActive(L)||L.cs)?"&all=1":""),{cache:"no-store"});const j=await r.json();
+    const r=await fetch(RELAY_HTTP_BASE+"/live-top?min="+L.min+"&side="+(L.side||"up")+((lfActive()||L.amt||fcActive(L)||L.cs||L.k6||L.k8)?"&all=1":""),{cache:"no-store"});const j=await r.json();
     if(!L.on||j.min!==L.min||(j.side||"up")!==(L.side||"up"))return;
     if(!j.ok&&!(j.rows||[]).length){$("#liveStat").textContent="순위를 받지 못했습니다 — "+(j.err||j.error||"");return;}
     let rows=j.rows.filter(x=>!LIVE_EXCL.test(x.name||""));   // ETF·ETN·스팩 제외(우선주는 서버가 제외)
     if(L.amt)rows=rows.filter(x=>(x.amt||0)>=L.amt*1e8);   // 2026-11-14 거래대금 조건(억원 이상) — 시총 구간 전체 후보에서 걸러 상위 순서 유지
     const nAll=rows.length;
     if(lfActive()){rows=rows.filter(x=>lfPass(x.code));}
-    if(fcActive(L)||L.cs){rows=rows.slice(0,25);await liveFcFetch(rows.map(x=>x.code));if(!L.on)return;rows=rows.filter(liveFcPass);}
+    if(fcActive(L)||L.cs||L.k6||L.k8){rows=rows.slice(0,25);await liveFcFetch(rows.map(x=>x.code));if(!L.on)return;rows=rows.filter(liveFcPass);}
     L.cand=nAll;
     const pool={};rows.slice(0,LIVE_POOL).forEach(x=>{const old=L.pool[x.code];pool[x.code]={...x,live:old&&old.liveAt>j.ts?old.price:null};if(old&&old.liveAt>j.ts){pool[x.code].price=old.price;pool[x.code].changePct=old.changePct;pool[x.code].liveAt=old.liveAt;if(old.open>0)pool[x.code].open=old.open;}
       if(old){pool[x.code].cttr=old.cttr;pool[x.code].cttrH=old.cttrH;pool[x.code].high=Math.max(old.high||0,x.high||0)||undefined;}});   // 8초마다 순위를 새로 받아도 체결강도 이력·당일 고가는 이어간다
@@ -3366,13 +3370,13 @@ function liveRender(){
   const mt=c=>{const m=S.liveMeta[c];return m?`${m.mk?`<span class="cd" title="${m.mk}">${m.mk==="KOSPI"?"피":m.mk==="KOSDAQ"?"닥":m.mk}</span> `:""}${m.sc?`<span class="cd sc">[${escH(m.sc)}]</span> `:""}`:"";};
   $("#liveBody").innerHTML=top.map((x,i)=>{
     const d=oldRank[x.code]?oldRank[x.code]-(i+1):null,mins=Math.floor((now-(L.since[x.code]||now))/60000);
-    return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--${L.side==="down"?"down":"up"}) 8%,transparent)"':""}><td>${i+1}</td><td class="l"><input type="checkbox" class="tchk" data-tc="${x.code}" title="매매로 보낼 종목 선택"${TSEL.has(x.code)?" checked":""}> ${mt(x.code)}${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)}${nxTag(x.code)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':x.changePct<=-29?' <span class="tg">하한가권</span>':""}</td>
+    return `<tr${!oldRank[x.code]&&Object.keys(oldRank).length?' style="background:color-mix(in srgb,var(--${L.side==="down"?"down":"up"}) 8%,transparent)"':""}><td>${i+1}</td><td class="l"><input type="checkbox" class="tchk" data-tc="${x.code}" title="매매로 보낼 종목 선택"${TSEL.has(x.code)?" checked":""}> ${mt(x.code)}${known.has(x.code)?`<a class="lk nm" data-code="${x.code}">${escH(x.name)}</a>`:escH(x.name)}${nxTag(x.code)} <span class="faint" style="font-size:11px">${x.code}</span>${x.changePct>=29?' <span class="tg">상한가권</span>':x.changePct<=-29?' <span class="tg">하한가권</span>':""}</td>${kwCell(x.code,"r6",false,true)}${kwCell(x.code,"r8",false,true)}
       <td class="num ${sgn(x.changePct)}">${N(x.price,0)}${x.liveAt&&now-x.liveAt<15000?(S.subPolled&&S.subPolled.has(x.code)?' <span class="faint" title="구독 한도 초과 — 멀티시세 7초 폴링">○</span>':' <span class="up" title="KIS 실시간 체결가">●</span>'):""}</td><td class="num ${x.open>0?sgn(x.price-x.open):"dim"}" title="${x.open>0?"시가 "+N(x.open,0):""}">${x.open>0?pm((x.price/x.open-1)*100,2)+"%":"–"}</td>
       <td class="num ${sgn(x.changePct)}">${pm(x.changePct,2)}%</td>
       ${liveHiCell(x)}
       <td class="num">${x.shares?fmtCap(x.shares*x.price):"–"}</td>${etfNCell(x.code)}<td class="num">${x.amt?N(x.amt/1e8,0)+"억":"–"}</td><td class="num lvflow" data-flow="${x.code}" data-w="f">${L.min?"–":""}</td><td class="num lvflow" data-flow="${x.code}" data-w="o">${L.min?"–":""}</td>${livePowCells(x)}<td class="num">${x.vol?N(x.vol/1e4,0)+"만":"–"}</td><td class="dim">${mins<1?"방금":mins+"분"}</td>
       <td class="${d>0?"up":d<0?"down":"dim"}">${d==null?(Object.keys(oldRank).length?"신규":"–"):d>0?"▲"+d:d<0?"▼"+(-d):"–"}</td>
-      <td data-smx="lead" data-code="${x.code}">–</td><td data-smx="ltr" data-code="${x.code}">–</td>${kwCell(x.code,"r6",false,true)}${kwCell(x.code,"r8",false,true)}</tr>
+      <td data-smx="lead" data-code="${x.code}">–</td><td data-smx="ltr" data-code="${x.code}">–</td></tr>
       <tr class="lv2"><td colspan="10" class="l"><span class="lvs"><span class="lvl">외+기 합계</span><span data-smx="st" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${x.code}">–</span> <span data-smx="ltr" data-code="${x.code}">–</span></span><span class="lvs"><span class="lvl">매집 6월</span><span class="kwc" data-kw="r6" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r6):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r6):"–"}</span></span><span class="lvs"><span class="lvl">8월</span><span class="kwc" data-kw="r8" data-kwc="${x.code}" style="${S.kwMap?kwStyle((S.kwMap[x.code]||{}).r8):""}">${S.kwMap?kwFmt((S.kwMap[x.code]||{}).r8):"–"}</span></span></td></tr>`;}).join("");
   liveFlowPaint();liveFlowFetch();livePowFetch();lmLoadLive();lmLoadDb();
   if(!top.length)$("#liveBody").innerHTML='<tr><td colspan="20" class="load">조건에 맞는 종목이 없습니다</td></tr>';
