@@ -449,6 +449,11 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .sv-t .sv-gl{font-size:9px;line-height:1.1;min-height:10px}
 .sv-t .sv-cur{background:color-mix(in srgb,var(--warn) 18%,var(--surface));font-weight:700}
 .sv-lt{font-size:11.5px;border-collapse:collapse;width:100%}.sv-lt th,.sv-lt td{padding:4px 6px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border)}.sv-lt .l{text-align:left}.sv-lt tr.sv-sel td{background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.sv-fl{flex-wrap:wrap}.sv-fl button{flex:0 0 auto;padding:6px 10px}
+.sv-x td{white-space:normal;text-align:left;background:var(--surface-2);padding:8px 6px}
+.svx{position:sticky;left:6px;width:min(760px,calc(100vw - 64px));white-space:normal;text-align:left}
+.sv-bd tr.sv-op td{background:color-mix(in srgb,var(--warn) 12%,var(--surface))}
+.sv-bd td{vertical-align:middle}
 .semi-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.hc{min-height:58px;border:1px solid var(--border);border-radius:8px;padding:3px 5px;font-size:11px;line-height:1.35;overflow:hidden}.hc.off{opacity:.35}.hc .faint{font-size:10px}
 .chart svg{display:block;width:100%;height:auto;overflow:visible}
 .smstage{display:inline-flex;gap:3px;vertical-align:middle}
@@ -1780,6 +1785,12 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="note">위 칸: 삼성전자·SK하이닉스 평균 주가(굵은 선, 기간 시작=100)와 코스피200 선물(회색). 배경 색 = 그날의 국면(되밀림 경고·귀환·공세). 가운데 칸: 외국인 일별 순매수(주황 현물·보라 선물, 억원). 아래 칸: 코스피200 선물 미결제약정. 표시를 누르면 그날을 ⑤에서 확대합니다.</div></div>
   <div class="card" id="svZoomCard"><h3>⑤ 변곡점 확대 분석 <span class="r faint" id="svZoomSub"></span></h3>
     <div id="svZoom"><div class="load sk"></div></div></div>
+  <div class="card"><h3>⑥ 종목별 주체 현황 보드 <span class="r faint" id="svBdSub"></span></h3>
+    <div class="tl-tabs" id="svBdWin" style="max-width:260px"><button data-w="63">3개월</button><button data-w="126" class="on">6개월</button></div>
+    <div id="svBdSum"></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"><label style="font-size:12px;color:var(--ink-3)">정렬 <select id="svBdSort" style="font-size:12.5px"><option value="cap">시가총액</option><option value="today">오늘 등락률</option><option value="hold">외국인 보유율 변화(20일)</option><option value="f">외국인 순매수</option><option value="i">기관합계 순매수</option><option value="p">연기금 순매수</option><option value="n">개인 순매수</option><option value="kw">통장 6월(낮은 순)</option></select></label></div>
+    <div id="svBd"><div class="load sk"></div></div>
+    <div class="note">반도체 업종 82종목 전체입니다. <b>종목을 누르면 아래로 ⑦ 매집·이탈 진단이 펼쳐지고</b>(외+기 누적과 주체별 누적, 외국인 보유율 추이), 종목명을 누르면 종목상세로 이동합니다. 주도 세력과 매집 상태는 종목상세와 같은 진단(외국인+기관합계 누적, 선택한 기간 기준)이고, 주체별 누적은 그 기간 순매수 합계(억원)입니다. 외국인 보유율은 매일 저녁 수집하는 상장주식 대비 외국인 보유 비율이며, 20일 변화는 %p입니다. 기관의 실제 보유 잔고는 공개 자료가 없어 순매수 누적으로 대신합니다. 통장 = 키움증권 보유 계좌수(최근 ÷ 6월·8월 첫 기록, 낮을수록 개인 물량 감소).</div></div>
   <details class="card" id="semiRef" style="padding:10px 12px"><summary style="cursor:pointer;list-style:none"><h3 style="margin:0">참고 지표 <span class="r faint">눌러서 펼치기 · 이전 카드 모음</span></h3></summary>
   <div id="semiRefBody" style="margin-top:10px">
   <div class="card" style="margin-top:0"><h3>A. 국면 요약</h3>
@@ -6064,6 +6075,7 @@ async function semiOpenV(){
   if(D.v===undefined){D.vBusy=true;
     try{D.v=await semiLoadV(D);}catch(e){console.error("반도체 추종 개편",e);D.v=null;}
     D.vBusy=false;}
+  semiOpenB();
   [semiRenderV1,semiRenderV2,semiRenderV3].forEach(f=>{try{f();}catch(e){console.error("반도체 추종",f.name,e);}});
 }
 
@@ -6332,6 +6344,118 @@ function semiRenderV5(){
   box.querySelectorAll("tr[data-d]").forEach(r=>r.onclick=()=>{D.zd=r.dataset.d;semiRenderV4();semiRenderV5();semiRenderStrip();});
 }
 
+/* ───────── 반도체 추종 개편 2차: ⑥ 종목별 주체 현황 보드 · ⑦ 종목 펼쳐 보기(매집·이탈 진단) ─────────
+   데이터: smx_state(주도 세력·매집 상태) · v_stock_flow_periods(3·6개월 주체별 순매수) · kiwoom_accounts(통장 6월·8월) · semi_hold_daily(외국인 보유율, 2차 신규 수집) */
+const SV_BS=[["f","외국인","--s1","foreign"],["i","기관합계","--ink-3","inst"],["p","연기금","--s2","pension"],["fi","금융투자","--s3","fin_inv"],["it","투신","--s4","inv_trust"],["pe","사모","--ma3","pe"],["n","개인","--warn","individual"]];
+const SV_STF=[["all","전체",null],["CONT","매집 지속",["CONT"]],["STALL","고점 후 정체",["STALL"]],["LEAVE","이탈 진행·심화",["LEAVE","HEAVY"]],["OUT","순유출",["OUT"]],["NONE","매집 이력 없음",["NONE"]]];
+async function semiLoadB(D){
+  const codes=D.uni.join(",");if(!codes)return null;
+  const cols=["3m","6m"].flatMap(w=>SV_BS.map(b=>`${b[3]}_${w}`)).join(",");
+  const [sm,kw,fp,hd]=await Promise.all([
+    smxLoadMap().catch(()=>({})),kwLoadMap().catch(()=>({})),
+    q("v_stock_flow_periods",`select=code,${cols}&code=in.(${codes})&limit=1000`).catch(()=>[]),
+    semiAll("semi_hold_daily",`select=trade_date,code,frgn_ratio&code=in.(${codes})&trade_date=gte.${svIso(S.date||new Date().toISOString().slice(0,10),200)}&order=trade_date.asc,code.asc`).catch(()=>[])]);
+  const B={fp:{},hold:{},chart:{}};
+  fp.forEach(r=>{const o={};["3m","6m"].forEach(w=>{o[w]={};SV_BS.forEach(b=>{const v=r[`${b[3]}_${w}`];o[w][b[0]]=v==null?null:(+v)/EOK;});});B.fp[r.code]=o;});
+  hd.forEach(r=>{if(r.frgn_ratio!=null)(B.hold[r.code]=B.hold[r.code]||[]).push({d:r.trade_date,r:+r.frgn_ratio});});
+  B.hasHold=Object.keys(B.hold).length>0;
+  return B;
+}
+async function semiOpenB(){
+  const D=S.semi;if(!D||!D.v||D.bBusy)return;
+  if(D.b===undefined){D.bBusy=true;
+    try{D.b=await semiLoadB(D);}catch(e){console.error("반도체 추종 보드",e);D.b=null;}
+    D.bBusy=false;}
+  try{semiRenderB6();}catch(e){console.error("반도체 추종 보드",e);}
+}
+function svSpark(a,w=76,h=22){
+  if(!a||a.length<2)return "";
+  let lo=Math.min(...a.map(x=>x.r)),hi=Math.max(...a.map(x=>x.r));if(hi===lo){hi+=.1;lo-=.1;}
+  const X=i=>1+i/(a.length-1)*(w-2),Y=v=>2+(hi-v)/(hi-lo)*(h-4);
+  const d=a.map((x,i)=>(i?"L":"M")+X(i).toFixed(1)+","+Y(x.r).toFixed(1)).join(""),up=a.at(-1).r>=a[0].r;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block"><path d="${d}" fill="none" stroke="var(${up?"--up":"--down"})" stroke-width="1.4"/><circle cx="${X(a.length-1).toFixed(1)}" cy="${Y(a.at(-1).r).toFixed(1)}" r="2.2" fill="var(${up?"--up":"--down"})"/></svg>`;
+}
+function svSubjBars(o,w,h=30){
+  const vals=SV_BS.map(b=>o?o[b[0]]:null);if(vals.every(v=>v==null))return '<span class="faint">–</span>';
+  const mx=Math.max(1,...vals.map(v=>Math.abs(v||0))),mid=h/2,bw=8,gap=2,W=SV_BS.length*(bw+gap);
+  const bars=SV_BS.map((b,i)=>{const v=vals[i];if(v==null)return "";const ht=Math.max(1,Math.abs(v)/mx*(mid-1));
+    return `<rect x="${i*(bw+gap)+1}" y="${v>=0?mid-ht:mid}" width="${bw}" height="${ht.toFixed(1)}" fill="var(${b[2]})"><title>${b[1]} ${pm(v,0)}억</title></rect>`;}).join("");
+  return `<svg width="${W+2}" height="${h}" viewBox="0 0 ${W+2} ${h}" style="display:block"><line x1="0" x2="${W+2}" y1="${mid}" y2="${mid}" stroke="var(--axis)" stroke-width=".6"/>${bars}</svg>`;
+}
+function semiB6Rows(){
+  const D=S.semi,V=D.v,B=D.b,st=D.b6,w=st.win,wk=w==="63"?"3m":"6m";
+  return V.codes.map(c=>{
+    const sm=((S.smxMap||{})[c]||{})[w]||null,hold=(B&&B.hold[c])||[],px=V.px[c]||{},last=V.pDates.at(-1),kw=(S.kwMap||{})[c]||{};
+    const h20=hold.length>20?hold.at(-1).r-hold.at(-21).r:(hold.length>1?hold.at(-1).r-hold[0].r:null);
+    return {c,nm:V.name(c),g:V.grp(c),cap:V.cap[c]||0,today:(px[last]||{}).p,sm,hold,h20,fp:B&&B.fp[c]?B.fp[c][wk]:null,r6:kw.r6,r8:kw.r8};});
+}
+function semiRenderB6(){
+  const D=S.semi,V=D.v,box=$("#svBd");if(!box)return;
+  if(!V){box.innerHTML='<div class="load">반도체 업종 자료가 없습니다</div>';return;}
+  const st=D.b6=D.b6||{win:"126",sort:"cap",flt:"all",open:null},wk=st.win==="63"?"3m":"6m",B=D.b;
+  $$("#svBdWin button").forEach(b=>b.classList.toggle("on",b.dataset.w===st.win));
+  let rows=semiB6Rows();
+  // 요약: 매집 상태 분포(눌러서 거르기)
+  const cnt={};rows.forEach(r=>{const k=r.sm?r.sm.st:"NONE";cnt[k]=(cnt[k]||0)+1;});
+  const sc=k=>(SV_STF.find(x=>x[0]===k)[2]||[]).reduce((s,x)=>s+(cnt[x]||0),0);
+  const stCol={CONT:"--up",STALL:"--warn",LEAVE:"--down",HEAVY:"--down",OUT:"--down",NONE:"--ink-3"};
+  const seg=["CONT","STALL","LEAVE","HEAVY","OUT","NONE"].filter(k=>cnt[k]).map(k=>`<div title="${SMX_ST[k][0]} ${cnt[k]}종목" style="flex:${cnt[k]};background:color-mix(in srgb,var(${stCol[k]}) ${k==="HEAVY"?85:k==="LEAVE"?55:60}%,var(--surface));height:18px"></div>`).join("");
+  const chips=SV_STF.map(([k,l])=>`<button type="button" data-f="${k}" class="${st.flt===k?"on":""}">${l} ${k==="all"?rows.length:sc(k)}</button>`).join("");
+  $("#svBdSum").innerHTML=`<div style="display:flex;border-radius:6px;overflow:hidden;margin:2px 0 6px">${seg}</div><div class="tl-tabs sv-fl">${chips}</div>`;
+  $$("#svBdSum button").forEach(b=>b.onclick=()=>{st.flt=b.dataset.f;semiRenderB6();});
+  const sel=SV_STF.find(x=>x[0]===st.flt)[2];
+  if(sel)rows=rows.filter(r=>sel.includes(r.sm?r.sm.st:"NONE"));
+  const key={cap:r=>r.cap,today:r=>r.today,hold:r=>r.h20,f:r=>r.fp&&r.fp.f,i:r=>r.fp&&r.fp.i,p:r=>r.fp&&r.fp.p,n:r=>r.fp&&r.fp.n,kw:r=>r.r6==null?null:-r.r6}[st.sort]||(r=>r.cap);
+  rows.sort((a,b)=>{const x=key(a),y=key(b);return (y==null?-1e18:y)-(x==null?-1e18:x);});
+  $("#svBdSub").textContent=`${rows.length}종목 · ${st.win==="63"?"3":"6"}개월 기준${B&&B.hasHold?"":" · 외국인 보유율 수집 전"}`;
+  const hd=`<tr><th class="l sv-nm">종목</th><th>시총</th><th>오늘</th><th>외국인 보유율<div class="faint">최근 6개월</div></th><th>주도 세력</th><th>매집 상태</th><th>주체별 누적<div class="faint">${st.win==="63"?"3":"6"}개월</div></th><th title="키움 보유 계좌수: 최근 ÷ 6월 첫 기록">통장 6월</th><th>8월</th></tr>`;
+  const gl={big:"대형",pre:"전",post:"후",etc:""};
+  const body=rows.map(r=>{
+    const S0=r.sm&&SMX_ST[r.sm.st],T=r.sm&&r.sm.lead_trend?(LEAD_TR[r.sm.lead_trend]||LEAD_TR.FLAT):null;
+    const hl=r.hold.length?r.hold.at(-1):null;
+    const tip=r.fp?SV_BS.map(b=>`${b[1]} ${r.fp[b[0]]==null?"–":pm(r.fp[b[0]],0)}억`).join(" · "):"";
+    return `<tr data-c="${r.c}" class="sv-r${st.open===r.c?" sv-op":""}" style="cursor:pointer"><td class="l sv-nm"><a class="lk" data-code="${r.c}">${escH(r.nm)}</a>${gl[r.g]?` <span class="faint">${gl[r.g]}</span>`:""}</td>
+      <td>${r.cap?fmtEokJo(r.cap/EOK):"–"}</td><td class="${sgn(r.today)}">${r.today==null?"–":pm(r.today,1)+"%"}</td>
+      <td>${hl?`<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">${svSpark(r.hold.slice(-125))}<div style="text-align:right;line-height:1.2"><b>${N(hl.r,1)}%</b><div class="${sgn(r.h20)}" style="font-size:10px">${r.h20==null?"":pm(r.h20,2)+"%p"}</div></div></div>`:'<span class="faint">–</span>'}</td>
+      <td>${r.sm&&r.sm.lead_nm?`<b>${escH(r.sm.lead_nm)}</b>${T?` <span class="${T[1]}" style="font-size:11px">${T[0]}</span>`:""}<div class="faint" style="font-size:10px">${r.sm.lead_eok==null?"":pm(+r.sm.lead_eok,0)+"억 매집"}</div>`:'<span class="faint">–</span>'}</td>
+      <td>${S0?`<b class="${S0[1]}">${S0[0]}</b><div class="faint" style="font-size:10px">${r.sm.ratio!=null&&r.sm.st!=="NONE"&&r.sm.st!=="OUT"?"회수 "+N(+r.sm.ratio*100,0)+"%":""}${r.sm.since&&r.sm.st!=="NONE"&&r.sm.st!=="OUT"?" · 고점 후 "+r.sm.since+"일":""}</div>`:'<span class="faint">–</span>'}</td>
+      <td title="${tip}">${svSubjBars(r.fp)}</td>
+      <td class="kwc" style="${kwStyle(r.r6)}">${kwFmt(r.r6)}</td><td class="kwc" style="${kwStyle(r.r8)}">${kwFmt(r.r8)}</td></tr>`
+      +(st.open===r.c?`<tr class="sv-x"><td colspan="9"><div class="svx" id="svx_${r.c}"><div class="load sk"></div></div></td></tr>`:"");}).join("");
+  const leg=SV_BS.map(b=>`<span><i style="width:10px;height:8px;background:var(${b[2]})"></i>${b[1]}</span>`).join("");
+  box.innerHTML=`<div class="tl-legend" style="margin-top:0">${leg}<span>· 막대 위쪽 = 순매수, 아래쪽 = 순매도 (종목마다 가장 큰 값에 맞춤)</span></div>
+    <div class="sv-sc sv-hv" style="max-height:640px"><table class="sv-t sv-bd"><thead>${hd}</thead><tbody>${body||'<tr><td colspan="9" class="load">조건에 맞는 종목이 없습니다</td></tr>'}</tbody></table></div>`;
+  box.querySelector("tbody").onclick=e=>{
+    const a=e.target.closest("a.lk[data-code]");if(a){e.stopPropagation();go("detail",a.dataset.code);return;}
+    const tr=e.target.closest("tr.sv-r");if(!tr)return;
+    st.open=st.open===tr.dataset.c?null:tr.dataset.c;semiRenderB6();
+    if(st.open){const el=$("#svx_"+st.open);if(el)el.scrollIntoView({block:"nearest",behavior:"smooth"});}};
+  if(st.open)svOpenX(st.open);
+}
+async function svOpenX(code){
+  const D=S.semi,B=D.b,host=$("#svx_"+code);if(!host)return;
+  try{
+    if(!B.chart[code])B.chart[code]=await q("v_stock_chart",`select=*&code=eq.${code}&order=trade_date.asc`);
+    const rows=B.chart[code],h=$("#svx_"+code);if(!h||!rows||rows.length<10||rows[0].foreign_cum==null){if(h)h.innerHTML='<div class="load">수급 이력이 부족합니다</div>';return;}
+    const w=(D.b6.xwin&&D.b6.xwin[code])||D.b6.win;
+    h.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px"><b>${escH(D.v.name(code))} — 매집·이탈 진단</b><button class="chip" type="button" data-go="${code}">종목상세 열기</button></div>
+      <div class="tl-tabs sv-xw" style="max-width:360px">${[["21","1개월"],["63","3개월"],["126","6개월"],["all","전체"]].map(([v,l])=>`<button data-w="${v}" class="${v===w?"on":""}">${l}</button>`).join("")}</div>
+      <div class="pcs-st" style="margin-bottom:6px"></div>
+      <div class="tw tw-scroll pc-tw" style="margin-bottom:8px"><table class="earn-t pcs-tb"></table></div>
+      <div class="chart pcs-a"></div><div class="pcs-lg" style="font-size:10.5px;display:flex;flex-wrap:wrap;gap:3px 10px;margin:6px 0 2px"></div><div class="chart pcs-b"></div>
+      <h4 style="margin:12px 0 4px;font-size:13px">외국인 보유율 추이 <span class="faint" style="font-weight:400">회색 = 종가</span></h4><div class="chart" id="svxh_${code}"></div>`;
+    const draw=()=>{const ww=(D.b6.xwin&&D.b6.xwin[code])||D.b6.win;
+      try{smxDraw(rows,ww,{compact:true,kwCode:code,status:h.querySelector(".pcs-st"),table:h.querySelector(".pcs-tb"),a:h.querySelector(".pcs-a"),legend:h.querySelector(".pcs-lg"),b:h.querySelector(".pcs-b")});}
+      catch(e){console.error(e);h.querySelector(".pcs-st").innerHTML='<div class="load">그리기 실패</div>';}};
+    draw();
+    const hb=(B.hold[code]||[]),hh=$("#svxh_"+code);
+    if(hb.length>2){const cm={};rows.forEach(r=>cm[r.trade_date]=+r.close);
+      lineChart(hh,[{n:"외국인 보유율",v:hb.map(x=>x.r),c:"--s1"}],hb.map(x=>x.d.slice(2).replace(/-/g,"/")),{h:170,w:560,pr:50,monthTicks:true,marks:true,fy:v=>N(v,1)+"%",ft:v=>N(v,2)+"%",fm:v=>N(v,2)+"%",bg:{v:hb.map(x=>cm[x.d]??null),n:"종가",ft:v=>N(v,0)}});}
+    else hh.innerHTML='<div class="load">외국인 보유율 수집 전입니다</div>';
+    h.querySelectorAll(".sv-xw button").forEach(b=>b.onclick=ev=>{ev.stopPropagation();(D.b6.xwin=D.b6.xwin||{})[code]=b.dataset.w;h.querySelectorAll(".sv-xw button").forEach(x=>x.classList.toggle("on",x===b));draw();});
+    h.querySelector("button[data-go]").onclick=ev=>{ev.stopPropagation();go("detail",code);};
+  }catch(e){console.error("종목 펼치기",e);const h=$("#svx_"+code);if(h)h.innerHTML='<div class="load">불러오기 실패</div>';}
+}
 function semiBindV(){
   const tabs=(id,fn)=>$$(`#${id} button`).forEach(b=>b.onclick=()=>{$$(`#${id} button`).forEach(x=>x.classList.toggle("on",x===b));fn(b);});
   tabs("svMacTabs",b=>{if(S.semi){S.semi.macP=b.dataset.p==="ytd"?"ytd":+b.dataset.p;semiRenderV1();}});
@@ -6339,6 +6463,8 @@ function semiBindV(){
   tabs("svTlMode",b=>{if(S.semi){(S.semi.v3=S.semi.v3||{mode:"sec",inc:1,subj:"f"}).mode=b.dataset.v;semiRenderV3();}});
   tabs("svTlInc",b=>{if(S.semi){(S.semi.v3=S.semi.v3||{mode:"sec",inc:1,subj:"f"}).inc=+b.dataset.v;semiRenderV3();}});
   tabs("svFlowTabs",b=>{if(S.semi){S.semi.v4N=+b.dataset.n;semiRenderV4();}});
+  tabs("svBdWin",b=>{if(S.semi){(S.semi.b6=S.semi.b6||{win:"126",sort:"cap",flt:"all",open:null}).win=b.dataset.w;semiRenderB6();}});
+  $("#svBdSort").onchange=e=>{if(S.semi){(S.semi.b6=S.semi.b6||{win:"126",sort:"cap",flt:"all",open:null}).sort=e.target.value;semiRenderB6();}};
   let rz;addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{const v=$("#v-semi");if(v&&!v.classList.contains("hide")&&S.semi&&S.semi.v)semiRenderV2();},200);});
 }
 async function semiOpen(){
