@@ -9069,18 +9069,20 @@ function renderWtTop(rows,start,end){
   if(!top.length){host.innerHTML='<div class="faint" style="font-size:12px;margin-top:8px">이 기간에는 외+기 순매수 우위(무게/주식수 양수)인 날이 없습니다.</div>';return;}
   const eok=v=>v==null?"–":pm(v/EOK,0)+"억",px=v=>v==null?"–":N(v,0)+"원";
   const cur=+rows.at(-1).close;
-  const blk=x=>{
+  /* 1위·2위를 순서대로 요약(날짜·무게·거래대금·세력 평단·주도 세력)하고, 아래 표 하나에 두 날의 주체별 순매수를 나란히 정리 */
+  const sum=x=>{
     const gap=(x.vwap&&cur>0)?`현재가 <span class="${sgn(cur/x.vwap-1)}">${pm((cur/x.vwap-1)*100,1)}%</span>`:"";
     const fi=x.subj[0];
     const LEAD=["외국인","금융투자","투신","연기금","사모","기타기관"],ld=x.subj.filter(z=>LEAD.includes(z.nm)&&z.net>0).sort((a,b)=>b.net-a.net),l1=ld[0];
     const leadTx=l1?`<div style="font-size:12.5px;margin-top:3px">주도 세력 <b>${l1.nm}</b> ${eok(l1.net)}${l1.pct==null?"":` (거래대금의 ${pm(l1.pct,1)}%)`}${ld[1]?` · 다음 ${ld[1].nm} ${eok(ld[1].net)}`:""}</div>`:`<div class="faint" style="font-size:12px;margin-top:3px">그날은 6개 주체(외국인·금융투자·투신·연기금·사모·기타기관) 중 순매수 우위 세력이 없습니다</div>`;
-    const body=x.subj.map((s,k)=>`<tr${k===0?' style="font-weight:700"':""}><td class="l">${s.nm}</td><td class="num ${sgn(s.net)}">${eok(s.net)}</td>
-      <td class="num ${sgn(s.pct)}">${s.pct==null?"–":pm(s.pct,1)+"%"}</td><td class="num">${s.sh==null?"–":N(s.sh,0)+"주"}</td><td class="num">${s.avg==null?'<span class="faint">순매수 아님</span>':px(s.avg)}</td></tr>`).join("");
-    return `<div style="margin-top:12px"><div style="font-size:13px"><b>${x.rank}위 ${x.d}</b> · 무게 <b>${pm(x.w,2)}%</b> · 종가 ${px(x.close)} · 당일 거래대금 <b>${x.amt==null?"–":N(x.amt/EOK,0)+"억"}</b>${fi&&fi.net>0&&x.vwap?` · 세력(외+기) 평단 <b>${px(x.vwap)}</b> ${gap}`:""}</div>${leadTx}
-      <div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">주체</th><th>순매수대금</th><th title="순매수대금 ÷ 그날 거래대금">거래대금 비중</th><th title="순매수대금 × 거래량 ÷ 거래대금 (추정)">순매수 주식수(추정)</th><th title="순매수대금 ÷ 순매수 주식수">평균 매수단가</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+    return `<div style="margin-top:10px"><div style="font-size:13px"><b>${x.rank}위 ${x.d}</b> · 무게 <b>${pm(x.w,2)}%</b> · 종가 ${px(x.close)} · 당일 거래대금 <b>${x.amt==null?"–":N(x.amt/EOK,0)+"억"}</b>${fi&&fi.net>0&&x.vwap?` · 세력(외+기) 평단 <b>${px(x.vwap)}</b> ${gap}`:""}</div>${leadTx}</div>`;
   };
-  host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>무게/주식수 1·2위일 분석</b> — 선택 기간(${start}~${end}) 안에서 무게/주식수가 가장 큰 날과, 그 날 이후 가장 큰 날. 각 날짜마다 <b>그날 가장 많이 사들인 주도 세력</b>을 함께 보여줍니다</div>`+top.map(blk).join("")
-    +`<div class="note">순매수 주식수는 일봉으로만 추정합니다(순매수대금 × 거래량 ÷ 거래대금). 투자자별 실제 체결 수량은 수집하지 않아 <b>평균 매수단가(= 순매수대금 ÷ 순매수 주식수)가 그날의 거래대금 ÷ 거래량(일 평균가)으로 모든 주체에서 같게</b> 나옵니다. 주체마다 다른 진짜 평단이 아니라 "그 큰 순매수가 들어온 날의 평균 가격대"로 보세요. 순매도 주체는 평균단가를 표시하지 않습니다.</div>`;
+  const mdd=d=>`${+d.slice(5,7)}/${+d.slice(8,10)}`,CN=["①","②"];
+  const cell=(s)=>s?`<td class="num ${sgn(s.net)}">${eok(s.net)}<div class="faint" style="font-size:10.5px">${s.pct==null?"":pm(s.pct,1)+"%"}${s.sh==null?"":(s.pct==null?"":" · ")+N(s.sh,0)+"주"}</div></td>`:'<td class="num faint">–</td>';
+  const rowsT=top[0].subj.map((s0,k)=>`<tr${k===0?' style="font-weight:700"':""}><td class="l">${s0.nm}</td>${top.map(x=>cell(x.subj.find(z=>z.nm===s0.nm))).join("")}</tr>`).join("");
+  const tbl=`<div class="tw tw-scroll" style="margin-top:8px"><table class="earn-t smx-t"><thead><tr><th class="l">주체</th>${top.map(x=>`<th title="${x.rank}위 ${x.d} — 순매수대금 · 거래대금 비중 · 순매수 주식수(추정)">${CN[x.rank-1]||x.rank+"위"} ${mdd(x.d)}<br><span class="faint" style="font-weight:400">순매수</span></th>`).join("")}</tr></thead><tbody>${rowsT}</tbody></table></div>`;
+  host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>무게/주식수 1·2위일 분석</b> — 선택 기간(${start}~${end}) 안에서 무게/주식수가 가장 큰 날(1위)과, 그 날 이후 가장 큰 날(2위). 각 날짜마다 <b>그날 가장 많이 사들인 주도 세력</b>을 함께 보여줍니다</div>`+top.map(sum).join("")+tbl
+    +`<div class="note">표의 칸 = 순매수대금, 그 아래 작은 글씨 = 그날 거래대금 비중 · 순매수 주식수(추정). 주식수는 일봉으로만 추정합니다(순매수대금 × 거래량 ÷ 거래대금). 투자자별 실제 체결 수량은 수집하지 않아 <b>평균 매수단가는 모든 주체가 그날의 일 평균가(거래대금 ÷ 거래량)로 같게</b> 나오므로 주체별 칸에서는 뺐고, 위 "세력(외+기) 평단"으로만 보여줍니다. 주체마다 다른 진짜 평단이 아니라 "그 큰 순매수가 들어온 날의 평균 가격대"로 보세요.</div>`;
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 // 2026-10-29: 종목상세 업종 필터 — 기본 "업종 전체". 업종을 고르면 종목 선택 목록과 "다음 종목"이 그 업종 안에서만 움직임.
