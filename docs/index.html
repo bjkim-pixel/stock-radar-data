@@ -1239,6 +1239,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="ng" data-g="flow"><div class="ngh" role="button" tabindex="0" aria-expanded="true">수급</div><div class="ngi">
       <button data-v="sm">스마트머니</button>
       <button data-v="fw">외국인 추종</button>
+      <button data-v="semi">반도체 추종</button>
       <button data-v="pe">사모 추종</button>
       <button data-v="acc">매집 종목</button></div></div>
     <div class="ng" data-g="stock"><div class="ngh" role="button" tabindex="0" aria-expanded="true">종목</div><div class="ngi">
@@ -1723,6 +1724,47 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div id="fwBody"><div class="load sk"></div></div>
     <div class="note" style="margin-top:8px">시가총액 상위 100종목(우선주·리츠·스팩 제외)을 업종별로 묶었습니다. 업종 줄은 해당 업종 TOP 100 종목의 합계이고, 종목은 업종 안에서 시총 큰 순서이며 이름 앞 숫자는 업종 내 시총 순위입니다. 종목 이름 아래는 시총과 오늘까지의 연속 순매수(+)/순매도(−) 일수입니다. 오른쪽 5·20·60일 열은 최근 거래일 합계입니다. 종목명을 누르면 종목 상세로 이동합니다.</div>
   </div>
+</section>
+<section id="v-semi" class="hide">
+  <div class="card" style="margin-top:16px"><h3>A. 국면 요약 <span class="r faint" id="semiAsOf">불러오는 중…</span></h3>
+    <div id="semiA"><div class="load sk"></div></div>
+    <div class="note">관찰용 요약입니다. 국면 판정 규칙과 과거 검증은 3단계에서 추가합니다. 선물 미결제약정은 KRX, 외국인 선물·현물 순매수는 네이버(장 마감 후 확정), 연기금은 KIS 종목별 투자자 중 "기금" 값입니다.</div></div>
+  <div class="card"><h3>B. 외국인 현물 대 선물 <span class="r faint">기준일 2025-09-01</span></h3>
+    <div class="tl-tabs" id="semiBTabs"><button data-n="63">3개월</button><button data-n="126" class="on">6개월</button><button data-n="0">전체</button></div>
+    <div class="tl-legend"><span>누적 순매수(억원) · 선택 기간 첫날을 0으로 시작</span></div>
+    <div class="chart" id="semiB1"></div>
+    <div class="tl-legend" style="margin-top:10px"><span>일별 순매수(억원) 최근 30거래일 — 주황 현물 · 보라 선물</span></div>
+    <div class="chart" id="semiB2"></div>
+    <div class="tl-legend" style="margin-top:10px"><span>코스피200 선물 미결제약정(계약) · 노란 선 = VKOSPI(2026-01-02부터)</span></div>
+    <div class="chart" id="semiB3"></div>
+    <div class="note">현물은 코스피 시장 전체, 선물은 코스피200 선물 투자자별 순매수입니다. 현물 매수 + 선물 매도가 같이 나오면 헤지성 거래일 수 있고, 둘 다 매도면 방향성 매도에 가깝습니다. 미결제약정이 늘면서 가격이 내리면 신규 매도(숏) 쌓임, 줄면서 오르면 숏커버로 읽습니다.</div></div>
+  <div class="card"><h3>D. 삼성전자 · SK하이닉스 <span class="r faint" id="semiDRng"></span></h3>
+    <div class="pt-grid"><div><h4 style="margin:0 0 4px;font-size:13px">삼성전자 — 외국인 누적(주황) · 종가(회색)</h4><div class="chart" id="semiD1"></div></div>
+      <div><h4 style="margin:0 0 4px;font-size:13px">SK하이닉스 — 외국인 누적(주황) · 종가(회색)</h4><div class="chart" id="semiD2"></div></div></div>
+    <div id="semiDT" style="margin-top:10px"></div>
+    <div class="note">표는 최근 10거래일, 단위 억원. 선물 열은 해당 주식선물 미결제약정의 전일 대비 증감(계약)입니다.</div></div>
+  <div class="card"><h3>E. 반도체 업종 확산 <span class="r faint" id="semiERng"></span></h3>
+    <div id="semiE"><div class="load sk"></div></div>
+    <div class="note">업종 = 사이트의 "반도체" 업종 전체. 전공정·후공정 구분은 SOL 반도체 전공정·후공정 ETF 구성종목 기준이고, 어느 쪽에도 없으면 "그 외(소재·부품 등)"입니다. 순매수 종목 비율 = 최근 5거래일 외국인 합계가 플러스인 종목 수 ÷ 전체.</div></div>
+  <div class="card"><h3>G. 사이클 위치 <span class="r faint">시작일 = 100</span></h3>
+    <div class="tl-tabs" id="semiGTabs"><button data-n="63">3개월</button><button data-n="126" class="on">6개월</button><button data-n="0">전체</button></div>
+    <div class="chart" id="semiG"></div>
+    <div class="note">미국 반도체(SOXX)·마이크론이 먼저 꺾이는지, 한국 대형주가 따라가는지 봅니다. 값이 없는 날은 선을 끊습니다.</div></div>
+  <div class="card"><h3>I. 창과 방패 — 외국인 vs 연기금 <span class="r faint" id="semiIRng"></span></h3>
+    <div class="chart" id="semiI"></div>
+    <div id="semiICover" style="margin-top:8px"></div>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px">국민연금 국내주식 비중 (직접 입력)</div>
+      <div id="semiNpsIn" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12.5px">
+        <label>현재 <input id="npsW" type="number" step="0.1" style="width:70px"> %</label>
+        <label>목표 <input id="npsT" type="number" step="0.1" style="width:70px"> %</label>
+        <label>허용폭 ± <input id="npsB" type="number" step="0.1" style="width:60px"> %p</label>
+        <button class="chip" id="npsSave" type="button">저장</button></div>
+      <div id="semiNpsG" style="margin-top:8px"></div></div>
+    <div class="note">연기금 순매수는 삼성전자·SK하이닉스 두 종목 합계입니다(시장 전체 연기금 시계열은 2단계에서 확인). 국민연금 비중은 분기 보고·언론 자료를 보고 직접 입력하면 이 브라우저에만 저장됩니다. 기본 목표 20.8%는 기획안 값이며 바뀌면 고쳐 주세요.</div></div>
+  <div class="card"><h3>J. 사이드카 달력 <span class="r faint" id="semiJRng"></span></h3>
+    <div id="semiJ"><div class="load sk"></div></div>
+    <div class="note">"확정"은 뉴스로 확인해 직접 넣은 날, "추정"은 KRX 코스피200 선물의 장중 고·저가가 전일 종가 대비 ±5%에 닿은 날입니다(실제 발동은 1분 지속·현물 ±1% 조건이 더 붙어서 추정일이 실제보다 많을 수 있음). 등락률은 종가 기준이고 다음날 = 다음 거래일입니다.</div></div>
 </section>
 <section id="v-live" class="hide">
   <div class="lmk" id="liveMkt" style="margin-top:16px" aria-label="코스피·코스닥 지수와 외국인·기관 순매수"></div>
@@ -5060,7 +5102,7 @@ function go(v,detailCode){
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===vOrig));
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","trade","trend","allinfo","wtrec","dart","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","semi","trade","trend","allinfo","wtrec","dart","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   wideSet(v==="scr"||v==="trend"||v==="allinfo"||v==="wtrec"||v==="dart"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -5121,6 +5163,7 @@ function go(v,detailCode){
   if(v==="trade")trdEnter();
   if(typeof tcBar==="function")tcBar();
   if(v==="fw")fwOpen();
+  if(v==="semi")semiOpen();
   if(v==="sw")loadSw().catch(e=>{console.error("국면 전략",e);});
   if(v==="pair"&&!S.pairLoaded){S.pairLoaded=true;loadPairSectors().catch(()=>{});}
   if(v==="sector"&&!S.sectorTrendLoaded){S.sectorTrendLoaded=true;loadHeatmap();loadFlowSectorMap().catch(()=>{});loadFlowTimeline().catch(()=>{});loadSectorTrend().catch(()=>{});loadSectorCluster().catch(()=>{});}
@@ -5572,6 +5615,189 @@ async function fwOpen(){
   if(S.fw&&Date.now()-S.fwAt<10*60*1000){fwRender();return;}
   try{S.fw=await fwLoad();S.fwAt=Date.now();fwRender();}
   catch(e){console.error("외국인 추종",e);$("#fwBody").innerHTML='<div class="load">불러오기 실패</div>';}
+}
+/* ───────── 수급 · 반도체 추종 (2026-11-25, 1단계) ─────────
+   카드: A 국면 요약 · B 외국인 현물 대 선물(+미결제약정·VKOSPI) · D 삼성전자·SK하이닉스 · E 업종 확산 · G 사이클 위치 · I 창과 방패 · J 사이드카 달력
+   데이터: market_investor_daily(KOSPI·FUT) · vkospi_daily · krx_fut_daily(KRX 선물) · daily_flow · daily_price · v_stock_sector · etf_holdings_now · global_series_daily · market_events(sidecar) */
+const SEMI_FROM="2025-09-01",SEMI_BIG=["005930","000660"],SEMI_NM={"005930":"삼성전자","000660":"SK하이닉스"};
+async function semiAll(view,params){let out=[];for(let o=0;o<30000;o+=1000){const r=await q(view,`${params}&limit=1000&offset=${o}`);out=out.concat(r||[]);if(!r||r.length<1000)break;}return out;}
+const semiLb=d=>d.slice(2).replace(/-/g,"/");
+const semiSum=(m,ds,n)=>ds.slice(-n).reduce((s,d)=>s+(m[d]||0),0);
+function semiEvents(rows){   // 같은 날·같은 방향은 확정(수동)을 우선하고 추정(KRX)은 버림
+  const m=new Map();
+  (rows||[]).forEach(r=>{const dir=/매수/.test(r.title)?"buy":"sell",k=r.event_date+"|"+dir,cur=m.get(k);
+    if(!cur||(r.source==="manual"&&cur.src!=="manual"))m.set(k,{date:r.event_date,dir,src:r.source==="manual"?"manual":"krx",title:r.title,detail:r.detail});});
+  return [...m.values()].sort((a,b)=>a.date<b.date?1:-1);
+}
+async function semiLoad(){
+  const F=SEMI_FROM,big=SEMI_BIG.join(",");
+  const d0=new Date((S.date||new Date().toISOString().slice(0,10))+"T00:00:00");d0.setDate(d0.getDate()-45);const dU=d0.toISOString().slice(0,10);
+  const [mi,vk,fut,fl,px,uni,ev,gs,etfm]=await Promise.all([
+    semiAll("market_investor_daily",`select=trade_date,market,foreign_net&market=in.(KOSPI,FUT)&trade_date=gte.${F}&order=trade_date.asc,market.asc`),
+    semiAll("vkospi_daily","select=trade_date,close&order=trade_date.asc"),
+    semiAll("krx_fut_daily",`select=trade_date,sym,close,chg,oi&trade_date=gte.${F}&order=trade_date.asc,sym.asc`).catch(()=>[]),
+    semiAll("daily_flow",`select=trade_date,code,foreign_net,inst_net,pension_net,individual_net&code=in.(${big})&trade_date=gte.${F}&order=trade_date.asc,code.asc`),
+    semiAll("daily_price",`select=trade_date,code,close,change_pct&code=in.(${big})&trade_date=gte.${F}&order=trade_date.asc,code.asc`),
+    q("v_stock_sector","select=code&sector=eq.반도체&limit=1000").catch(()=>[]),
+    q("market_events","select=event_date,kind,title,detail,source&kind=eq.sidecar&order=event_date.desc&limit=500").catch(()=>[]),
+    semiAll("global_series_daily",`select=symbol,trade_date,close&symbol=in.(US:SOXX,US:MU,KR:091160)&trade_date=gte.${F}&order=trade_date.asc,symbol.asc`).catch(()=>[]),
+    q("etf_master","select=code,name&or=(name.ilike.*전공정*,name.ilike.*후공정*)").catch(()=>[])]);
+  const D={bN:126,gN:126};
+  D.miDates=[...new Set(mi.filter(r=>r.market==="KOSPI").map(r=>r.trade_date))].sort();
+  D.fK={};D.fF={};mi.forEach(r=>{(r.market==="KOSPI"?D.fK:D.fF)[r.trade_date]=+r.foreign_net||0;});
+  D.vkRows=vk.map(r=>({d:r.trade_date,v:+r.close}));D.vk={};D.vkRows.forEach(r=>D.vk[r.d]=r.v);
+  D.fut={K200:{},SEC:{},HYX:{}};fut.forEach(r=>{if(D.fut[r.sym])D.fut[r.sym][r.trade_date]={close:+r.close,chg:+r.chg,oi:+r.oi};});
+  D.futDates=[...new Set(fut.map(r=>r.trade_date))].sort();
+  D.fl={};D.flDates=[...new Set(fl.map(r=>r.trade_date))].sort();
+  SEMI_BIG.forEach(c=>D.fl[c]={});fl.forEach(r=>{D.fl[r.code][r.trade_date]={f:(+r.foreign_net||0)/EOK,i:(+r.inst_net||0)/EOK,p:(+r.pension_net||0)/EOK,n:(+r.individual_net||0)/EOK};});
+  D.px={};D.pxDates=[...new Set(px.map(r=>r.trade_date))].sort();SEMI_BIG.forEach(c=>D.px[c]={});px.forEach(r=>{D.px[r.code][r.trade_date]={c:+r.close,p:r.change_pct==null?null:+r.change_pct};});
+  D.gs={};gs.forEach(r=>{(D.gs[r.symbol]=D.gs[r.symbol]||{})[r.trade_date]=+r.close;});
+  D.ev=semiEvents(ev);
+  // 업종 확산(E): 반도체 업종 종목의 최근 약 30거래일 외국인·연기금, 전공정/후공정은 ETF 구성종목으로 분류
+  const codes=uni.map(r=>r.code);D.uni=codes;
+  if(codes.length){
+    const inl=codes.join(","),ec=etfm.map(r=>r.code);
+    const [ufl,upx,hold]=await Promise.all([
+      semiAll("daily_flow",`select=trade_date,code,foreign_net,pension_net&code=in.(${inl})&trade_date=gte.${dU}&order=trade_date.asc,code.asc`),
+      q("daily_price",`select=code,market_cap&trade_date=eq.${S.date}&code=in.(${inl})&limit=1000`).catch(()=>[]),
+      ec.length?q("etf_holdings_now",`select=etf_code,stock_code&etf_code=in.(${ec.join(",")})&limit=1000`).catch(()=>[]):[]]);
+    const nm={};etfm.forEach(r=>nm[r.code]=/후공정/.test(r.name)?"post":"pre");
+    D.grp={};hold.forEach(h=>{const g=nm[h.etf_code];if(g&&!D.grp[h.stock_code])D.grp[h.stock_code]=g;});
+    D.ufl={};ufl.forEach(r=>{(D.ufl[r.code]=D.ufl[r.code]||[]).push({d:r.trade_date,f:(+r.foreign_net||0)/EOK,p:(+r.pension_net||0)/EOK});});
+    D.mcap={};upx.forEach(r=>D.mcap[r.code]=+r.market_cap||0);
+    D.uDates=[...new Set(ufl.map(r=>r.trade_date))].sort();
+  }
+  return D;
+}
+function semiVkLabel(v){return v>=40?["극단 공포","down"]:v>=30?["경계","warn"]:v>=20?["보통","dim"]:["안정","up"];}
+function semiRenderA(){
+  const D=S.semi,ds=D.miDates,last=ds.at(-1),box=$("#semiA");
+  if(!ds.length){box.innerHTML='<div class="load">시장 수급 데이터가 없습니다</div>';return;}
+  $("#semiAsOf").textContent=`${last} 기준`;
+  const k5=semiSum(D.fK,ds,5),k20=semiSum(D.fK,ds,20),f5=semiSum(D.fF,ds,5),f20=semiSum(D.fF,ds,20),fAll=ds.reduce((s,d)=>s+(D.fF[d]||0),0);
+  const combo=(k,f)=>k>0&&f<0?"현물 매수 + 선물 매도 (헤지성일 수 있음)":k<0&&f<0?"현물·선물 동반 매도 (방향성 매도)":k>0&&f>0?"현물·선물 동반 매수":k<0&&f>0?"현물 매도 + 선물 매수 (숏커버·전환 가능)":"–";
+  const C=(t,big,sub,cls="")=>`<div class="pt-c"><h4>${t}</h4><div style="font-size:19px;font-weight:700" class="${cls}">${big}</div><div class="note" style="margin-top:4px">${sub}</div></div>`;
+  const out=[];
+  const vl=D.vkRows.at(-1);
+  if(vl){const [lb,cl]=semiVkLabel(vl.v),pc=Math.round(D.vkRows.filter(x=>x.v<=vl.v).length/D.vkRows.length*100);
+    out.push(C("VKOSPI (변동성)",`${N(vl.v,1)} <span class="${cl}" style="font-size:13px">${lb}</span>`,`${vl.d} · 2026년 이후 중 하위 ${pc}% 수준`));}
+  out.push(C("외국인 현물 (코스피) 5일",`${pm(k5,0)}억`,`20일 ${pm(k20,0)}억`,sgn(k5)));
+  out.push(C("외국인 선물 (코스피200) 5일",`${pm(f5,0)}억`,`20일 ${pm(f20,0)}억 · 2025-09-01 이후 누적 ${pm(fAll,0)}억`,sgn(f5)));
+  out.push(C("5일 흐름 해석",`<span style="font-size:14px">${combo(k5,f5)}</span>`,"현물·선물 5일 합계 부호로만 나눈 단순 구분"));
+  const fd=D.flDates.at(-1);
+  if(fd){const g=(c,n)=>semiSum(Object.fromEntries(Object.entries(D.fl[c]).map(([d,x])=>[d,x.f])),D.flDates,n);
+    out.push(C(`삼성·하이닉스 외국인 (${fd.slice(5)})`,`<span class="${sgn(g("005930",1))}">${pm(g("005930",1),0)}</span> / <span class="${sgn(g("000660",1))}">${pm(g("000660",1),0)}</span>억`,`5일 ${pm(g("005930",5),0)} / ${pm(g("000660",5),0)}억 (삼성 / 하이닉스)`));
+    const pp=n=>SEMI_BIG.reduce((s,c)=>s+semiSum(Object.fromEntries(Object.entries(D.fl[c]).map(([d,x])=>[d,x.p])),D.flDates,n),0);
+    out.push(C("연기금 (삼성+하이닉스)",`${pm(pp(1),0)}억`,`5일 ${pm(pp(5),0)}억 · 20일 ${pm(pp(20),0)}억`,sgn(pp(1))));}
+  const ko=D.futDates.filter(d=>D.fut.K200[d]);
+  if(ko.length>5){const a=D.fut.K200[ko.at(-1)].oi,b=D.fut.K200[ko.at(-6)].oi;
+    out.push(C("코스피200 선물 미결제약정",`${N(a,0)}`,`5일 전 대비 ${pm(a-b,0)} 계약 (${ko.at(-1)})`,""));}
+  else out.push(C("코스피200 선물 미결제약정","–","KRX 선물 수집 후 표시됩니다"));
+  const t30=new Date(last+"T00:00:00");t30.setDate(t30.getDate()-30);const e30=D.ev.filter(e=>e.date>=t30.toISOString().slice(0,10));
+  out.push(C("사이드카 (최근 30일)",`${e30.length}회`,D.ev.length?`매도 ${e30.filter(e=>e.dir==="sell").length} · 매수 ${e30.filter(e=>e.dir==="buy").length} · 마지막 ${D.ev[0].date}`:"기록 없음"));
+  box.innerHTML=`<div class="pt-grid">${out.join("")}</div>`;
+}
+function semiRenderB(){
+  const D=S.semi;let ds=D.miDates;if(D.bN)ds=ds.slice(-D.bN);
+  let c1=0,c2=0;const a=[],b=[];ds.forEach(d=>{c1+=D.fK[d]||0;c2+=D.fF[d]||0;a.push(c1);b.push(c2);});
+  const lb=ds.map(semiLb),f0=v=>pm(v,0)+"억";
+  lineChart($("#semiB1"),[{n:"외국인 현물",v:a,c:"--s1"},{n:"외국인 선물",v:b,c:"--s3"}],lb,{h:230,w:900,pr:78,zero:true,marks:"today-each",fy:v=>N(v,0),ft:f0,fm:f0});
+  const t=D.miDates.slice(-30);
+  barChart($("#semiB2"),t.map(d=>({n:d.slice(8),full:d,g:[{v:D.fK[d]||0,c:"--s1",n:"현물"},{v:D.fF[d]||0,c:"--s3",n:"선물"}]})),{h:190,w:900,ft:f0,fy:v=>N(v,0)});
+  const od=D.futDates.filter(d=>D.fut.K200[d]);
+  if(od.length>1){const dd=D.bN?od.slice(-D.bN):od;
+    lineChart($("#semiB3"),[{n:"미결제약정",v:dd.map(d=>D.fut.K200[d].oi),c:"--s2"}],dd.map(semiLb),
+      {h:200,w:900,pr:78,marks:true,fy:v=>N(v/1000,0)+"k",fm:v=>N(v,0),ov:{v:dd.map(d=>D.vk[d]==null?null:D.vk[d]),n:"VKOSPI",c:"--warn",ft:v=>N(v,1)}});}
+  else $("#semiB3").innerHTML='<div class="load">KRX 선물 데이터 수집 전입니다 (Actions "반도체 추종 선물" 실행 후 표시)</div>';
+}
+function semiRenderD(){
+  const D=S.semi,ds=D.flDates.slice(-60);if(!ds.length)return;
+  $("#semiDRng").textContent=`최근 ${ds.length}거래일 · ${ds.at(-1)}`;
+  const sym={"005930":"SEC","000660":"HYX"};
+  SEMI_BIG.forEach((c,i)=>{
+    let cum=0;const cu=ds.map(d=>{cum+=(D.fl[c][d]||{}).f||0;return cum;});
+    lineChart($("#semiD"+(i+1)),[{n:"외국인 누적",v:cu,c:"--s1"}],ds.map(semiLb),{h:200,w:560,pr:70,zero:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억",marks:"today-each",bg:{v:ds.map(d=>(D.px[c][d]||{}).c??null),n:"종가"}});
+  });
+  const rows=ds.slice(-10).reverse();
+  $("#semiDT").innerHTML=`<div class="pt-grid">${SEMI_BIG.map(c=>{
+    const fo=D.fut[sym[c]]||{},fd=D.futDates.filter(d=>fo[d]);
+    const tr=rows.map(d=>{const x=D.fl[c][d]||{},p=D.px[c][d]||{},j=fd.indexOf(d),oc=j>0?fo[d].oi-fo[fd[j-1]].oi:null;
+      return `<tr><td class="l">${d.slice(5)}</td><td>${p.c!=null?N(p.c,0):"–"} <span class="${sgn(p.p)}">${p.p!=null?pm(p.p,1)+"%":""}</span></td><td class="${sgn(x.f)}">${pm(x.f,0)}</td><td class="${sgn(x.i)}">${pm(x.i,0)}</td><td class="${sgn(x.p)}">${pm(x.p,0)}</td><td class="${sgn(x.n)}">${pm(x.n,0)}</td><td class="${sgn(oc)}">${oc==null?"–":pm(oc,0)}</td></tr>`;}).join("");
+    return `<div><h4 style="margin:0 0 4px;font-size:13px">${SEMI_NM[c]}</h4><div class="tw"><table><thead><tr><th class="l">날짜</th><th>종가</th><th>외국인</th><th>기관</th><th>연기금</th><th>개인</th><th>선물 OI</th></tr></thead><tbody>${tr}</tbody></table></div></div>`;}).join("")}</div>`;
+}
+function semiRenderE(){
+  const D=S.semi,box=$("#semiE");
+  if(!D.uni.length||!D.ufl){box.innerHTML='<div class="load">반도체 업종 종목이 없습니다</div>';return;}
+  const ds=D.uDates,d5=ds.slice(-5),d20=ds.slice(-20),dl=ds.at(-1);$("#semiERng").textContent=`${D.uni.length}종목 · ${dl}`;
+  const nmOf=Object.fromEntries((S.codes||[]).map(s=>[s.code,s.name]));
+  const info=D.uni.map(c=>{const a=D.ufl[c]||[],by={};a.forEach(x=>by[x.d]=x);
+    const sm=(k,dd)=>dd.reduce((s,d)=>s+((by[d]||{})[k]||0),0);
+    return {c,nm:nmOf[c]||c,mc:D.mcap[c]||0,g:SEMI_BIG.includes(c)?"big":(D.grp[c]||"etc"),f1:sm("f",[dl]),f5:sm("f",d5),f20:sm("f",d20),p5:sm("p",d5)};});
+  const G=[["big","삼성전자·SK하이닉스"],["pre","전공정(장비 등)"],["post","후공정"],["etc","그 외(소재·부품 등)"]];
+  const tr=G.map(([k,t])=>{const a=info.filter(x=>x.g===k);if(!a.length)return "";const s=f=>a.reduce((z,x)=>z+x[f],0),up=a.filter(x=>x.f5>0).length;
+    return `<tr><td class="l">${t}</td><td>${a.length}</td><td class="${sgn(s("f1"))}">${pm(s("f1"),0)}</td><td class="${sgn(s("f5"))}">${pm(s("f5"),0)}</td><td class="${sgn(s("f20"))}">${pm(s("f20"),0)}</td><td class="${sgn(s("p5"))}">${pm(s("p5"),0)}</td><td>${Math.round(up/a.length*100)}%</td></tr>`;}).join("");
+  const rest=info.filter(x=>x.g!=="big"),buy=[...rest].sort((a,b)=>b.f5-a.f5).slice(0,5),sell=[...rest].sort((a,b)=>a.f5-b.f5).slice(0,5);
+  const gl={big:"대형",pre:"전공정",post:"후공정",etc:"기타"};
+  const li=a=>a.map(x=>`<tr><td class="l"><a class="lk" data-code="${x.c}" style="cursor:pointer">${escH(x.nm)}</a> <span class="faint">${gl[x.g]}</span></td><td class="${sgn(x.f5)}">${pm(x.f5,0)}</td><td class="${sgn(x.f20)}">${pm(x.f20,0)}</td></tr>`).join("");
+  box.innerHTML=`<div class="tw"><table><thead><tr><th class="l">그룹</th><th>종목수</th><th>외국인 오늘</th><th>5일</th><th>20일</th><th>연기금 5일</th><th>순매수 종목 비율</th></tr></thead><tbody>${tr}</tbody></table></div>
+    <div class="pt-grid" style="margin-top:10px"><div><h4 style="margin:0 0 4px;font-size:13px">대형 2종목 제외 — 외국인 5일 순매수 TOP5 (억)</h4><div class="tw"><table><thead><tr><th class="l">종목</th><th>5일</th><th>20일</th></tr></thead><tbody>${li(buy)}</tbody></table></div></div>
+    <div><h4 style="margin:0 0 4px;font-size:13px">외국인 5일 순매도 TOP5 (억)</h4><div class="tw"><table><thead><tr><th class="l">종목</th><th>5일</th><th>20일</th></tr></thead><tbody>${li(sell)}</tbody></table></div></div></div>`;
+}
+function semiRenderG(){
+  const D=S.semi;let ds=D.miDates;if(D.gN)ds=ds.slice(-D.gN);
+  const rb=(get)=>{const v=ds.map(get);const b=v.find(x=>x!=null&&x>0);return v.map(x=>x==null||!b?null:x/b*100);};
+  const S5=[["SOXX(미국 반도체)","--s2",d=>(D.gs["US:SOXX"]||{})[d]],["마이크론","--s4",d=>(D.gs["US:MU"]||{})[d]],["KODEX 반도체","--ma3",d=>(D.gs["KR:091160"]||{})[d]],
+    ["삼성전자","--s1",d=>(D.px["005930"][d]||{}).c],["SK하이닉스","--s3",d=>(D.px["000660"][d]||{}).c]];
+  lineChart($("#semiG"),S5.map(([n,c,g])=>({n,c,v:rb(g)})),ds.map(semiLb),{h:240,w:900,pr:100,fy:v=>N(v,0),ft:v=>N(v,0),fm:v=>N(v,0),marks:"today-each"});
+}
+function semiRenderI(){
+  const D=S.semi,ds=D.flDates;if(!ds.length){$("#semiI").innerHTML='<div class="load">데이터 없음</div>';return;}
+  $("#semiIRng").textContent=`삼성전자+SK하이닉스 · ${ds[0]} ~ ${ds.at(-1)}`;
+  const acc=k=>{let s=0;return ds.map(d=>{s+=SEMI_BIG.reduce((z,c)=>z+((D.fl[c][d]||{})[k]||0),0);return s;});};
+  const F=acc("f"),P=acc("p"),I=acc("n");
+  lineChart($("#semiI"),[{n:"외국인(창)",v:F,c:"--s1"},{n:"연기금(방패)",v:P,c:"--s2"},{n:"개인",v:I,c:"--s3",o:.6}],ds.map(semiLb),{h:230,w:900,pr:100,zero:true,marks:"today-each",fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
+  const f20=SEMI_BIG.reduce((z,c)=>z+semiSum(Object.fromEntries(ds.map(d=>[d,(D.fl[c][d]||{}).f||0])),ds,20),0),
+        p20=SEMI_BIG.reduce((z,c)=>z+semiSum(Object.fromEntries(ds.map(d=>[d,(D.fl[c][d]||{}).p||0])),ds,20),0);
+  $("#semiICover").innerHTML=`<div class="note" style="margin-top:0">최근 20거래일: 외국인 <b class="${sgn(f20)}">${pm(f20,0)}억</b> · 연기금 <b class="${sgn(p20)}">${pm(p20,0)}억</b> — ${f20<0?(p20>0?`방패 커버율 <b>${Math.round(p20/-f20*100)}%</b> (연기금 순매수 ÷ 외국인 순매도)`:"외국인 순매도에 연기금도 매도 — 방어 없음"):"외국인 순매수 구간 (커버율 해당 없음)"}</div>`;
+  semiNpsRender();
+}
+function semiNpsGet(){try{const o=JSON.parse(localStorage.getItem("semi_nps")||"{}");return {w:o.w==null?"":o.w,t:o.t==null?20.8:o.t,b:o.b==null?2:o.b};}catch(e){return {w:"",t:20.8,b:2};}}
+function semiNpsRender(){
+  const o=semiNpsGet();$("#npsW").value=o.w;$("#npsT").value=o.t;$("#npsB").value=o.b;
+  const w=parseFloat(o.w),t=+o.t,b=+o.b,box=$("#semiNpsG");
+  if(isNaN(w)||isNaN(t)){box.innerHTML='<div class="faint" style="font-size:12px">현재 비중을 입력하면 목표 대비 위치를 표시합니다.</div>';return;}
+  const lo=Math.min(w,t-b)-2,hi=Math.max(w,t+b)+2,P=v=>((v-lo)/(hi-lo)*100).toFixed(1)+"%";
+  const dev=w-t,st=w>t+b?["허용폭 초과 — 리밸런싱 매도 압력 요인(한도를 늘려 유예 중이면 방어 여력이 약한 상태)","down"]:w<t-b?["허용폭 미달 — 매수 여력","up"]:["허용 범위 안","dim"];
+  box.innerHTML=`<div style="position:relative;height:24px;background:var(--surface-2);border-radius:6px"><div style="position:absolute;top:0;bottom:0;left:${P(t-b)};width:${(2*b/(hi-lo)*100).toFixed(1)}%;background:color-mix(in srgb,var(--good) 28%,transparent)"></div><div style="position:absolute;top:0;bottom:0;left:${P(t)};width:2px;background:var(--ink-3)"></div><div style="position:absolute;top:-3px;bottom:-3px;left:${P(w)};width:4px;margin-left:-2px;border-radius:2px;background:var(--${w>t+b?"down":"ink"})"></div></div>
+    <div style="font-size:12.5px;margin-top:6px">현재 <b>${N(w,1)}%</b> · 목표 ${N(t,1)}% 대비 <b class="${sgn(dev)}">${pm(dev,1)}%p</b> · <span class="${st[1]}">${st[0]}</span></div>`;
+}
+function semiRenderJ(){
+  const D=S.semi,box=$("#semiJ"),ev=D.ev;
+  if(!ev.length){box.innerHTML='<div class="load">사이드카 기록이 없습니다 (Actions "반도체 추종 선물" 실행 후 추정일이 채워집니다)</div>';return;}
+  $("#semiJRng").textContent=`${ev.length}건 · ${ev.at(-1).date} ~ ${ev[0].date}`;
+  const pd=D.pxDates,px=(c,d)=>(D.px[c][d]||{}).p,nx=(c,d)=>{const i=pd.indexOf(d);return i>=0&&i+1<pd.length?px(c,pd[i+1]):null;};
+  const avg=a=>{a=a.filter(v=>v!=null);return a.length?a.reduce((s,v)=>s+v,0)/a.length:null;};
+  const st=dir=>{const e=ev.filter(x=>x.dir===dir);
+    return `<div class="pt-c"><h4>${dir==="sell"?"매도":"매수"} 사이드카 ${e.length}건 — 다음 거래일</h4>`+SEMI_BIG.map(c=>{const v=e.map(x=>nx(c,x.date)).filter(z=>z!=null),up=v.filter(z=>z>0).length;
+      return `<div style="font-size:13px">${SEMI_NM[c]} 평균 <b class="${sgn(avg(v))}">${avg(v)==null?"–":pm(avg(v),2)+"%"}</b> · 상승 ${up}/${v.length}</div>`;}).join("")+`</div>`;};
+  const tr=ev.map(e=>{const fk=D.fF[e.date];
+    return `<tr><td class="l">${e.date.slice(2)}</td><td class="${e.dir==="sell"?"down":"up"}">${e.dir==="sell"?"매도":"매수"} <span class="faint">${e.src==="manual"?"확정":"추정"}</span></td>`+
+      SEMI_BIG.map(c=>`<td class="${sgn(px(c,e.date))}">${px(c,e.date)==null?"–":pm(px(c,e.date),1)}</td>`).join("")+
+      SEMI_BIG.map(c=>`<td class="${sgn(nx(c,e.date))}">${nx(c,e.date)==null?"–":pm(nx(c,e.date),1)}</td>`).join("")+
+      `<td>${D.vk[e.date]==null?"–":N(D.vk[e.date],1)}</td><td class="${sgn(fk)}">${fk==null?"–":pm(fk,0)}</td></tr>`;}).join("");
+  box.innerHTML=`<div class="pt-grid">${st("sell")}${st("buy")}</div>
+    <div class="tw" style="margin-top:10px;max-height:380px;overflow:auto"><table><thead><tr><th class="l" rowspan="2">날짜</th><th rowspan="2">구분</th><th colspan="2">당일 등락(%)</th><th colspan="2">다음날 등락(%)</th><th rowspan="2">VKOSPI</th><th rowspan="2">외국인 선물(억)</th></tr><tr><th>삼성</th><th>하이닉스</th><th>삼성</th><th>하이닉스</th></tr></thead><tbody>${tr}</tbody></table></div>`;
+}
+function semiRenderAll(){[semiRenderA,semiRenderB,semiRenderD,semiRenderE,semiRenderG,semiRenderI,semiRenderJ].forEach(f=>{try{f();}catch(e){console.error("반도체 추종",f.name,e);}});}
+async function semiOpen(){
+  if(!S._semiBound){S._semiBound=true;
+    const tabs=(id,key,fn)=>$$(`#${id} button`).forEach(b=>b.onclick=()=>{if(!S.semi)return;S.semi[key]=+b.dataset.n;$$(`#${id} button`).forEach(x=>x.classList.toggle("on",x===b));fn();});
+    tabs("semiBTabs","bN",semiRenderB);tabs("semiGTabs","gN",semiRenderG);
+    $("#npsSave").onclick=()=>{try{localStorage.setItem("semi_nps",JSON.stringify({w:$("#npsW").value,t:$("#npsT").value,b:$("#npsB").value}));}catch(e){}semiNpsRender();};
+    $("#semiE").addEventListener("click",e=>{const a=e.target.closest("a.lk[data-code]");if(a)go("detail",a.dataset.code);});}
+  if(S.semi&&Date.now()-S.semiAt<10*60*1000){semiRenderAll();return;}
+  try{S.semi=await semiLoad();S.semiAt=Date.now();semiRenderAll();}
+  catch(e){console.error("반도체 추종",e);$("#semiA").innerHTML='<div class="load">불러오기 실패</div>';}
 }
 function updTlRange(){
   const m=S.tlMeta,sc=$("#tlBody .tl-scroll");if(!m||!sc)return;
@@ -13265,7 +13491,7 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
 /* 자동매매 컨트롤 타워 입력(체크박스·선택은 change, 글자는 input) */
 document.addEventListener("input",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&t.type!=="checkbox"&&t.tagName!=="SELECT")auInputEv(t);});
 document.addEventListener("change",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&(t.type==="checkbox"||t.tagName==="SELECT"))auInputEv(t);});
-const VIEW_IDS=["seclog","etfhub","etf","trend","allinfo","wtrec","dart","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
+const VIEW_IDS=["semi","seclog","etfhub","etf","trend","allinfo","wtrec","dart","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
 function setHash(v,code){
   const h="#"+(DESK_V.test(v)?v.replace("-","/"):v)+(code?"/"+code:"");   // 매매 화면: #paper/order · #real/auto
   if(location.hash!==h)history.pushState(null,"",h);
