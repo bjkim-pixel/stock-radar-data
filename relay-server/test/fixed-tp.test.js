@@ -30,3 +30,17 @@ test('시동 기본 전략은 fixed 6/9, tp2<=tp1 은 거부', () => {
   const bad = S.validate('intraday', { ...b.preset, tp1Pct: 9, tp2Pct: 6 });
   assert.ok(bad.errs && bad.errs.some(e => e.key === 'tp2Pct'));
 });
+test('makeOrder: buyType market 이면 최우선 매도 호가 기준 시장가, 손절 3% · 목표 +9%(손익비 1:3)', () => {
+  const q = { price: 20000, open: 19500, bids: [{ p: 19950, q: 100 }], asks: [{ p: 20050, q: 50 }, { p: 20100, q: 80 }], amt: 5e9 };
+  const o = X.makeOrder({ q, rows: [], perStockKrw: 1000000, opt: { buyType: 'market', tpStyle: 'fixed', stopPct: 3, ratchet: true } });
+  assert.equal(o.market, true); assert.equal(o.buy, 20050); assert.equal(o.pick, 'ask1');
+  const rr = (o.target - o.buy) / (o.buy - o.plan.stop);
+  assert.ok(rr > 2.5 && rr < 3.2, String(rr));
+  const l = X.makeOrder({ q, rows: [], perStockKrw: 1000000, opt: { tpStyle: 'fixed', stopPct: 3 } });
+  assert.equal(l.market, false);
+});
+test('시동 기본 전략은 시장가 매수', () => {
+  const b = S.BUILTIN.find(x => x.id === 'ignite-default');
+  assert.equal(S.validate('intraday', b.preset).val.buyType, 'market');
+  assert.equal(S.defaults('intraday').buyType, 'limit');
+});

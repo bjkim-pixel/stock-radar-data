@@ -57,6 +57,8 @@ test('09:15 포착 → 자동 가상 매수(종목당 100만원) → 15:14 남�
   assert.ok(o, '자동 승인으로 주문이 나가야 함: ' + JSON.stringify(P.decision));
   for (let m = 16; m <= 40; m++) { at(9, m); c.st.price = 10000; await A.tick(); }
   const S1 = await c.t.paper.state(); if (process.env.DBG) console.log('DBG', JSON.stringify(runs.r.payload.orders), JSON.stringify(S1.orders.map(o => [o.code, o.side, o.type, o.price, o.qty, o.status, o.note])), JSON.stringify(runs.r.payload.log || '').slice(0, 800));
+  const b1 = S1.orders.find(x => x.code === '035420' && x.side === 'buy');
+  assert.ok(b1 && b1.type === 'market', '시동 매수는 시장가: ' + JSON.stringify(b1));
   const pos1 = S1.positions.find(p => p.code === '035420');
   assert.ok(pos1 && pos1.qty > 0, '가상 보유가 있어야 함');
   assert.ok(pos1.qty * pos1.avg <= 1000000 + 10000, `종목당 100만원 이내: ${pos1.qty * pos1.avg}`);

@@ -12,6 +12,7 @@ const ENUM = {
   flow: { req: '필수', bonus: '가점만', ignore: '무시' },
   smx: { cont_stall: '매집 지속·정체', cont: '매집 지속만', off: '보지 않음' },
   smxWin: { '21': '1개월', '63': '3개월', '126': '6개월', all: '전체' },   // 2026-11-19: 매집 진단을 보는 기간(smx_state.win) — 기본 6개월
+  buyType: { limit: '지정가(호가에 걸고 기다림)', market: '시장가(바로 체결)' },
   buyPick: { q1: '잔량 최다 매수 호가', bid1: '최우선 매수 호가', low: '가장 낮은 매수 호가' },
   eodWeak: { ask: '알림 후 승인 시에만 정리', keep: '묻지 않고 유지' },
   approval: { manual: '텔레그램 승인 필수', auto: '알림 후 자동 매수' },
@@ -74,6 +75,7 @@ const SCHEMA = {
     F('maxTries', '매수 주문', '종목당 하루 최대 주문 시도', 'num', 3, { min: 1, max: 6, step: 1, unit: '번' }),
     F('perStockKrw', '매수 주문', '종목당 금액', 'num', 1000000, { min: 100000, max: 50000000, step: 10000, unit: '원' }),
     F('totalCapKrw', '매수 주문', '총액 상한(0=없음)', 'num', 0, { min: 0, max: 500000000, step: 1000000, unit: '원' }),
+    F('buyType', '매수 주문', '주문 방식(시장가는 기다리지 않고 바로 삼 — 아래 매수가·미체결 설정은 지정가일 때만)', 'enum', 'limit', { opts: ENUM.buyType }),
     F('buyPick', '매수 주문', '매수가', 'enum', 'q1', { opts: ENUM.buyPick }),
     F('smartBuy', '매수 주문', '강세 종목은 최우선 매수 호가부터(끄면 항상 위 매수가 기준) — 체결강도·시가 대비 상승이 크거나 잔량 최다 호가가 현재가보다 멀 때', 'bool', true),
     F('smartCttr', '매수 주문', '강세 기준: 체결강도 이상', 'num', 120, { min: 100, max: 300, step: 5, unit: '%' }),
@@ -290,7 +292,7 @@ const BUILTIN0 = [
 /* 장초 상승 포착("시동", 2026-11-25) 기본값: 중소형(시총 3천억~4조 미만)을 09:15부터 10분 간격으로 훑어 종목당 100만원·하루 5종목, 15:14 전량 청산(가상) */
 const IGNITE_PRESET = { selector: 'ignite', capMinEok: 3000, capMaxEok: 40000, amtMinEok: 30, maTrend: false, smx: 'off', flowForeign: 'ignore', flowInst: 'ignore', flowProgram: 'ignore', altFlowOn: false, kwOn: false,
   selectAt: '09:15', noticeAfter: 0, approveWindow: 5, roundMin: 10, roundEnd: '14:30', openRiseMax: 6, cttrMin: 120, poolTop: 5, notifyTop: 5, sectorMax: 2, maxBuys: 5, maxTries: 1, retryUnfilled: false, perStockKrw: 1000000, approval: 'auto',
-  stopPct: 3, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 6, tp2Pct: 9, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: true, flatAt: '15:14', execMode: 'paper' };
+  buyType: 'market', stopPct: 3, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 6, tp2Pct: 9, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: true, flatAt: '15:14', execMode: 'paper' };
 const BUILTIN = BUILTIN0.concat([{ id: 'ignite-default', name: '장초 상승 포착(시동)', kind: 'intraday', builtin: true, off: true, preset: IGNITE_PRESET, desc: '시총 3천억~4조 미만 중소형주 중 처음부터 많이 뜬 종목은 빼고, 09시 이후 거래가 붙으며 오르기 시작하는 종목을 09:15부터 10분마다 포착해 가상 매수(종목당 100만원·하루 5종목) · 15:14 전량 청산' }]);
 const builtinRow = b => ({ ...b, enabled: !b.off, archived: false, version: 1, params: b.preset ? (validate(b.kind, b.preset).val || defaults(b.kind)) : defaults(b.kind), updated_at: null });
 

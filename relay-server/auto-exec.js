@@ -22,7 +22,7 @@ const ceilTick = p => { const t = tickOf(p); return Math.ceil(p / t - 1e-9) * t;
 const below = p => { let f = floorTick(p); if (f >= p - 1e-9) f -= tickOf(f - 1); return f; };
 
 const PROFILE_DOWN = 0.30, PROFILE_UP = 0.70;
-const DEF = Object.freeze({ stopPct: 5, rr: 3, minRr: 0, tpStyle: 'even', runnerPct: 20, tp1Pct: 6, tp2Pct: 9, tp1Share: 50, ratchet: false, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', smartBuy: false, smartCttr: 120, smartRise: 2, q1GapPct: 0.8, chaseAsk: false, chasePct: 1, chaseWaitMs: 180e3, rrSlack: 10, unfilledEnd: 'cancel', intentLostMs: 60e3 });
+const DEF = Object.freeze({ stopPct: 5, rr: 3, minRr: 0, tpStyle: 'even', buyType: 'limit', runnerPct: 20, tp1Pct: 6, tp2Pct: 9, tp1Share: 50, ratchet: false, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', smartBuy: false, smartCttr: 120, smartRise: 2, q1GapPct: 0.8, chaseAsk: false, chasePct: 1, chaseWaitMs: 180e3, rrSlack: 10, unfilledEnd: 'cancel', intentLostMs: 60e3 });
 const REPRICE_KO = { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' };
 
 /* 주문 시점 스냅샷(F1): 호가·시가·재확인 수치 — 화면·일지에서 '왜 이 가격에 샀는지/못 샀는지' 복기용 */
@@ -137,10 +137,12 @@ function makeOrder({ q, rows, perStockKrw, opt = {}, force = null }) {   // forc
   const cur = q.price > 0 ? q.price : +(rows[rows.length - 1] || {}).close;
   const rec = recBids(q.bids, cur);
   const bid1 = (q.bids || []).filter(b => b.p > 0 && b.q > 0).reduce((m, b) => (!m || b.p > m.p ? b : m), null);   // 최우선 매수 호가
-  let pick = (o.buyPick === 'low' ? rec.find(r => r.k === 'low') : o.buyPick === 'bid1' ? (bid1 && { k: 'bid1', p: bid1.p }) : rec[0]) || null;
+  const ask1 = (q.asks || []).filter(a => a.p > 0 && a.q > 0).reduce((m, a) => (!m || a.p < m.p ? a : m), null);   // 최우선 매도 호가
+  const mkt = o.buyType === 'market' && !o.closing && !force;   // 시장가 매수(시동 전략): 기다리지 않고 바로 삼 — 계획은 최우선 매도 호가를 예상 체결가로 계산
+  let pick = mkt ? { k: 'ask1', p: ask1 ? ask1.p : floorTick(cur) } : (o.buyPick === 'low' ? rec.find(r => r.k === 'low') : o.buyPick === 'bid1' ? (bid1 && { k: 'bid1', p: bid1.p }) : rec[0]) || null;
   /* 강세 종목 보정(smartBuy): 잔량 최다 호가(q1)는 현재가보다 아래라 오르는 종목은 안 와서 체결이 안 됨 → 강세이거나 q1이 현재가보다 q1GapPct 넘게 낮으면 최우선 매수 호가부터 */
   let smartWhy = null;
-  if (o.buyPick !== 'low' && o.buyPick !== 'bid1' && o.smartBuy && !force && rec[0] && bid1 && bid1.p > rec[0].p && cur > 0) {
+  if (!mkt && o.buyPick !== 'low' && o.buyPick !== 'bid1' && o.smartBuy && !force && rec[0] && bid1 && bid1.p > rec[0].p && cur > 0) {
     const gap = (cur - rec[0].p) / cur * 100, rise = q.open > 0 ? (cur / q.open - 1) * 100 : null;
     const strongC = q.strength != null && q.strength >= o.smartCttr, strongR = rise != null && rise >= o.smartRise;
     if (strongC || strongR) smartWhy = `강세(${[strongC ? `체결강도 ${Math.round(q.strength)}%` : '', strongR ? `시가 대비 +${rise.toFixed(1)}%` : ''].filter(Boolean).join(' · ')})`;
@@ -167,7 +169,7 @@ function makeOrder({ q, rows, perStockKrw, opt = {}, force = null }) {   // forc
   const steps = fx ? fx.steps : tgt.target && !o.noTp ? (o.tpStyle === 'r' ? splitPlanR(buy, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(buy, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];   // noTp(종가베팅 저녁 매수): 익절 없이 손절만 걸고 다음 날 아침 분할 매도
   const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ...(o.ratchet && !o.noTp ? { ratchet: { floorPct: 0.35 } } : {}) };
   const tinfo = { cap: tgt.cap, cum: tgt.cum, topLo: tgt.topLo, topV: tgt.topV, rrT: tgt.rrT, clipped: tgt.clipped, prevHigh: tgt.prevHigh, upper: q.upper || null, capEok, ydEok, avg5Eok, todEok, dayEok, coef: o.coef, stopPct: o.stopPct, rr: o.rr, minRr: o.minRr, tpStyle: o.tpStyle, split: o.split, minPct: o.minPct, runnerPct: o.runnerPct, ratchet: !!(o.ratchet && !o.noTp), ref: cur, prof: prof.map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) };   // prof = 개인 순매수 매물대 [하한, 상한, 억원] — 목표가 그림용
-  return { buy, qty, plan, target: tgt.target, mode: tgt.mode, pick: pick ? pick.k : 'cur', smartWhy, tinfo };
+  return { buy, qty, plan, target: tgt.target, mode: tgt.mode, market: !!mkt, pick: pick ? pick.k : 'cur', smartWhy, tinfo };
 }
 
 /* 손익비 = (목표가 − 매수가) ÷ (매수가 − 손절가). 목표가가 없으면 null */
@@ -268,7 +270,7 @@ function createExec(deps) {
     let tn = 1;
     await D.mutateRun(date, run => { run.payload.orders = run.payload.orders || {}; const prev = run.payload.orders[code]; tn = tryNo(prev); run.payload.orders[code] = keepTries(prev, { st: 'intent', at, buy: ord.buy, qty: ord.qty, plan: ord.plan, mode: ord.mode, pick: ord.pick, ...(ord.smartWhy ? { pickWhy: ord.smartWhy } : {}), target: ord.target, tinfo: ord.tinfo || null, snap }); });
     // 2) 주문
-    const r = await B.place({ code, name: notice.name, side: 'buy', type: 'limit', price: ord.buy, qty: ord.qty, plan: ord.plan, cid: `auto${date.replace(/-/g, '')}${code}${tn > 1 ? 't' + tn : ''}` });
+    const r = await B.place({ code, name: notice.name, side: 'buy', ...(ord.market ? { type: 'market' } : { type: 'limit', price: ord.buy }), qty: ord.qty, plan: ord.plan, cid: `auto${date.replace(/-/g, '')}${code}${tn > 1 ? 't' + tn : ''}` });
     if (!r || !r.ok) {
       let hw = null;
       await D.mutateRun(date, run => { hw = r && r.status === 503 ? null : gateRec(run, 'reject', code, opt); run.payload.orders[code] = { ...run.payload.orders[code], st: 'failed', why: (r && r.error) || '주문 거부' }; LOG.push(run.payload, 'order_fail', `${notice.name}: 주문 실패 — ${(r && r.error) || '주문 거부'}`, { code }, now()); });
@@ -282,9 +284,9 @@ function createExec(deps) {
       hw2 = gateRec(run, o.status === 'unsure' ? 'unsure' : 'order', code, opt);
       if (filled > 0) gateRec(run, 'filled', code, opt);
       if (size && (B.dry || size.mode === 'balance' || size.capBy)) LOG.push(run.payload, 'size', `${notice.name}: 종목당 금액 ${SZ.sizeText(size, size.mode)}`, { code }, now());
-      if (B.dry) LOG.push(run.payload, 'dryrun', `🧪 드라이런 — 실전이었다면: ${notice.name} ${fmt(ord.buy)}원 ${fmt(ord.qty)}주 지정가 매수(주문 가능 금액 ${size && size.cash != null ? fmt(size.cash) + '원' : '확인 안 됨'}) · 실제 주문은 가상 엔진으로`, { code }, now());
+      if (B.dry) LOG.push(run.payload, 'dryrun', `🧪 드라이런 — 실전이었다면: ${notice.name} ${fmt(ord.buy)}원 ${fmt(ord.qty)}주 ${ord.market ? '시장가' : '지정가'} 매수(주문 가능 금액 ${size && size.cash != null ? fmt(size.cash) + '원' : '확인 안 됨'}) · 실제 주문은 가상 엔진으로`, { code }, now());
       run.payload.orders[code] = { ...run.payload.orders[code], st, orderId: o.id, placedAt: at, filled, avg: o.avg || null, ...(B.real || B.dry ? { mode: B.mode } : {}), ...(size ? { krw: size.krw } : {}) };
-      LOG.push(run.payload, 'order', `${notice.name}${tn > 1 ? ` (${tn}번째 시도)` : ''}: ${fmt(ord.buy)}원 ${fmt(ord.qty)}주 지정가 매수 주문(${LOG.PICK_KO[ord.pick] || ord.pick}${ord.smartWhy ? ' · ' + ord.smartWhy + '이라 최우선 매수 호가부터' : ''}) · 현재가 ${snap && snap.price ? fmt(snap.price) : '–'}원 · 손절 ${fmt(ord.plan.stop)} · 목표 ${ord.target ? fmt(ord.target) : '없음'}`, { code }, at);
+      LOG.push(run.payload, 'order', `${notice.name}${tn > 1 ? ` (${tn}번째 시도)` : ''}: ${fmt(ord.buy)}원 ${fmt(ord.qty)}주 ${ord.market ? '시장가' : '지정가'} 매수 주문(${LOG.PICK_KO[ord.pick] || ord.pick}${ord.smartWhy ? ' · ' + ord.smartWhy + '이라 최우선 매수 호가부터' : ''}) · 현재가 ${snap && snap.price ? fmt(snap.price) : '–'}원 · 손절 ${fmt(ord.plan.stop)} · 목표 ${ord.target ? fmt(ord.target) : '없음'}`, { code }, at);
       if (st === 'filled') LOG.push(run.payload, 'filled', `${notice.name}: 바로 체결 ${fmt(filled)}주 평균 ${fmt(o.avg)}원`, { code }, now());
     });
     if (B.dry && D.dryLog) await D.dryLog({ code, name: notice.name, side: 'buy', price: ord.buy, qty: ord.qty, krw: size ? size.krw : null, cash: size ? size.cash : null, capital: size ? size.capital : null, paperOrderId: o.id }).catch(() => {});
