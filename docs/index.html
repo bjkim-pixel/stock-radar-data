@@ -776,8 +776,9 @@ html.hg-g1 .g-g1,html.hg-g2 .g-g2,html.hg-g3 .g-g3,html.hg-g4 .g-g4,html.hg-g5 .
      너비 추정 없이도 항상 정확히 맞습니다. */
   .tw-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .tw-scroll .smx-t{width:100%}
-  .tw-scroll .smx-t th,.tw-scroll .smx-t td{padding:7px 4px;font-size:12px}
-  .tw-scroll .smx-t th:first-child,.tw-scroll .smx-t td:first-child{padding-left:6px}
+  .tw-scroll .smx-t th,.tw-scroll .smx-t td{padding:6px 3px;font-size:11.5px;letter-spacing:-.2px}
+  .tw-scroll .smx-t th:first-child,.tw-scroll .smx-t td:first-child{padding-left:5px}
+  .tw-scroll .smx-t th:last-child,.tw-scroll .smx-t td:last-child{padding-right:5px}
   .smx-t td.l i{margin-right:3px!important}
   .tw-scroll th,.tw-scroll td{white-space:nowrap}
   .tw-scroll:not(.tw-rank) th:first-child,.tw-scroll:not(.tw-rank) td:first-child{
@@ -10316,18 +10317,22 @@ function smxDraw(all,win,E){
   const pv=all.length-w-1>=0?all[all.length-w-1]:rows[0],per=f=>(f(rows[m.L])-f(pv))/EOK;
   m.subj.forEach((z,i)=>{z.hold=per(SMX_SUBJ[i][2]);});
   const holdTot=per(r=>+r.foreign_cum+ +r.inst_cum),holdInd=per(r=>+r.individual_cum);
+  /* 당일(가장 최근 거래일) 순매수: 주도 세력이 아직 사고 있는지 보는 용도 */
+  const dpv=m.L>0?rows[m.L-1]:pv,day=f=>(f(rows[m.L])-f(dpv))/EOK;
+  m.subj.forEach((z,i)=>{z.day=day(SMX_SUBJ[i][2]);});
+  const dayTot=day(r=>+r.foreign_cum+ +r.inst_cum),dayInd=day(r=>+r.individual_cum);
   const wl=win==="all"?"전체":({21:"1개월",63:"3개월",126:"6개월"})[+win]||`${w}거래일`;
   E.status.innerHTML+=`<div style="font-size:12.5px;margin-top:6px;line-height:1.55">주도 세력 · 기간 내 순매수 누적 최다(가장 많은 물량) ${lead("hold")} · 매집 구간 최다 ${lead("acc")} · 최근 20일 최다 매수 ${lead("r20")} · 최근 5일 ${lead("r5")}</div>
     <div class="faint" style="font-size:11px;margin-top:2px">주도 세력은 외국인·금융투자·투신·연기금·사모·기타기관 중에서 고릅니다. 보유 물량은 실제 잔고가 아니라 이 기간 외+기 수급의 누적 순매수 기준입니다.</div>`;
   const recov=x=>x.acc>0&&x.after<0?N(-x.after/x.acc*100,0)+"%":x.after>0?'<span class="up">매수중</span>':"–";
   const td=v=>`<td class="num ${sgn(v)}">${f0(v)}</td>`;
-  const row=x=>`<tr><td class="l"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(${x.c});margin-right:4px"></i>${x.nm}</td><td class="num ${sgn(x.hold)}" style="font-weight:700">${f0(x.hold)}</td>${td(x.acc)}${td(x.after)}<td>${recov(x)}</td></tr>`;
+  const row=x=>`<tr><td class="l"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(${x.c});margin-right:4px"></i>${x.nm}</td>${td(x.day)}<td class="num ${sgn(x.hold)}" style="font-weight:700">${f0(x.hold)}</td>${td(x.acc)}${td(x.after)}<td>${recov(x)}</td></tr>`;
   const tot={acc:m.build,after:m.combo[m.L]-m.combo[m.pk],r5:m.r5,r20:m.r20};
   E.table.classList.add("smx-t");
-  E.table.innerHTML=`<thead><tr><th class="l">주체</th><th title="${wl} 동안(${md(D(0))}~${md(D(m.L))}, ${rows.length}거래일) 주체별 순매수 금액의 합계(억원). 실제 보유 잔고가 아니라 수급 누적입니다">${wl} 누적<br>순매수</th><th title="매집 시작 저점 → 외+기 고점">매집 구간<br><span class="faint" style="font-weight:400">${md(D(m.tr))}→${md(D(m.pk))}</span></th><th>고점→오늘</th><th title="고점 이후 순매도 ÷ 매집 구간 순매수">회수율</th></tr></thead><tbody>`+
+  E.table.innerHTML=`<thead><tr><th class="l">주체</th><th title="가장 최근 거래일(${md(D(m.L))}) 하루 순매수 금액(억원) — 주도 세력이 아직 사고 있는지 확인용">당일<br><span class="faint" style="font-weight:400">${md(D(m.L))}</span></th><th title="${wl} 동안(${md(D(0))}~${md(D(m.L))}, ${rows.length}거래일) 주체별 순매수 금액의 합계(억원). 실제 보유 잔고가 아니라 수급 누적입니다">${wl}<br>누적</th><th title="매집 시작 저점 → 외+기 고점">매집 구간<br><span class="faint" style="font-weight:400">${md(D(m.tr))}→${md(D(m.pk))}</span></th><th>고점→오늘</th><th title="고점 이후 순매도 ÷ 매집 구간 순매수">회수율</th></tr></thead><tbody>`+
     m.subj.map(row).join("")+
-    `<tr style="border-top:2px solid var(--border);font-weight:700"><td class="l">외+기 합계</td>${td(holdTot)}${td(tot.acc)}${td(tot.after)}<td>${m.ratio==null?"–":m.dd>0?N(m.ratio*100,0)+"%":'<span class="up">매수중</span>'}</td></tr>`+
-    `<tr class="faint"><td class="l">${m.indiv.nm}</td>${td(holdInd)}${td(m.indiv.acc)}${td(m.indiv.after)}<td></td></tr></tbody>`;
+    `<tr style="border-top:2px solid var(--border);font-weight:700"><td class="l">외+기 합계</td>${td(dayTot)}${td(holdTot)}${td(tot.acc)}${td(tot.after)}<td>${m.ratio==null?"–":m.dd>0?N(m.ratio*100,0)+"%":'<span class="up">매수중</span>'}</td></tr>`+
+    `<tr class="faint"><td class="l">${m.indiv.nm}</td>${td(dayInd)}${td(holdInd)}${td(m.indiv.acc)}${td(m.indiv.after)}<td></td></tr></tbody>`;
   if(E.sub)E.sub.textContent=`외국인+기관합계 누적 기준 · 억원 · ${md(D(0))}~${md(D(m.L))} (${rows.length}거래일)`;
   const labels=rows.map(r=>r.trade_date.slice(2).replace(/-/g,"/"));
   const pts=m.build>0?[{i:m.tr,s:0,c:"--up",t:`▲ 매집 시작 ${md(D(m.tr))} ${f0(m.combo[m.tr])}억`,below:true},{i:m.pk,s:0,c:"--up",t:`▼ 고점 ${md(D(m.pk))} ${f0(m.combo[m.pk])}억`}]:[];
