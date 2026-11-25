@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """반도체 추종 2차 수집: 반도체 업종 종목의 외국인 보유율(소진율) 일별 → semi_hold_daily.
 사용법: python 185_semi_hold.py            매일 저녁: KIS 일자별 시세(FHKST01010400, 최근 30거래일, hts_frgn_ehrt)로 갱신
-        python 185_semi_hold.py backfill 20250901   과거 채우기: 네이버 모바일 종목 trend(pageSize=20, page 증가)에서 보유율·순매수수량
+        python 185_semi_hold.py backfill 20250901   과거 채우기: 네이버 모바일 종목 trend(pageSize=60, bizdate를 거꾸로 밀며)에서 보유율·순매수수량
 여러 번 실행해도 안전(업서트). 점검 결과(2026-11-25): 두 출처의 삼성전자 보유율이 45.90%로 일치."""
 import os,sys,time,datetime as dt,requests,importlib,psycopg2
 from psycopg2.extras import execute_values
@@ -39,16 +39,19 @@ def kis_daily(cur,codes):
     return n,err
 H={"User-Agent":"Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36","Accept":"application/json"}
 def naver_backfill(cur,codes,start):
+    # 점검(2026-11-25): pageSize 최대 60, page 파라미터는 무시됨, bizdate=YYYYMMDD를 주면 그 날짜 "이전" 행부터 반환 → bizdate를 거꾸로 밀며 호출
     n=err=0
     for i,c in enumerate(codes):
-        page=1; got=0; prev_min=None
-        while page<=40:
+        before=None; got=0
+        for _ in range(12):
             time.sleep(0.12)
+            p={"pageSize":60}
+            if before: p["bizdate"]=before.strftime("%Y%m%d")
             try:
-                r=requests.get(f"https://m.stock.naver.com/api/stock/{c}/trend",params={"pageSize":20,"page":page},headers=H,timeout=20)
-                a=r.json() if r.status_code==200 else []
+                r=requests.get(f"https://m.stock.naver.com/api/stock/{c}/trend",params=p,headers=H,timeout=20)
+                a=r.json() if r.status_code==200 and r.text else []
             except Exception: a=[]; err+=1
-            if not a: break
+            if not isinstance(a,list) or not a: break
             rows=[]; ds=[]
             for x in a:
                 try: d=d8(x["bizdate"])
@@ -58,9 +61,8 @@ def naver_backfill(cur,codes,start):
                 q=num(x.get("foreignerPureBuyQuant"))
                 rows.append((d,c,v,None if q is None else int(q),"NAVER"))
             if rows: execute_values(cur,UP,rows); got+=len(rows)
-            if not ds or min(ds)<=start or len(a)<20 or (prev_min is not None and min(ds)>=prev_min): break   # 더 과거가 없으면(같은 페이지 반복) 중단
-            prev_min=min(ds)
-            page+=1
+            if not ds or min(ds)<=start or (before is not None and min(ds)>=before): break
+            before=min(ds)
         n+=got
         if (i+1)%10==0: log(f"  … {i+1}/{len(codes)} 종목 · {n}행")
     return n,err
