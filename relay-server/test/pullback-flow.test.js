@@ -134,3 +134,20 @@ test('관찰 목록 API: 막대 신고 후 아직 재터치 전인 종목을 평
   const r2 = await rig({ lastDelta: 3 });
   try { r2.at(0, 14, 0); const w = await r2.A.pullbackWatch(); assert.equal(w.stale, true); assert.deepEqual(w.rows, []); } finally { await r2.c.close(); }
 });
+
+test('화면 상태: 어제 산 눌림목 종목도 보유 목록에 전략 id 와 함께 나오고, 오늘 청산 내역에도 전략 id 가 붙음', async () => {
+  const { c, A, at, quote } = await rig({ pExtra: { pbHoldDays: 2 } });
+  try {
+    at(0, 15, 10); quote(10600); await A.tick();
+    at(1, 11, 0); quote(10700);
+    let u = await A.uiState(null, 'paper');
+    const p = (u.positions || []).find(x => x.code === '035420');
+    assert.ok(p, '다음 날 아침 오늘 주문이 없어도 보유 목록에 있어야 함: ' + JSON.stringify(u.positions));
+    assert.equal(p.sid, 'pullback-default');
+    at(2, 15, 6); quote(10700); await A.tick();
+    u = await A.uiState(null, 'paper');
+    const f = (u.trades || []).find(x => x.code === '035420' && x.side === 'sell');
+    assert.ok(f, '시간 청산 체결이 오늘 매매 내역에 보여야 함');
+    assert.equal(f.sid, 'pullback-default');
+  } finally { await c.close(); }
+});

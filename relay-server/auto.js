@@ -529,7 +529,7 @@ function createAuto(deps) {
     if (!S || !S.ok) return { ok: false, err: '매매 상태를 읽지 못했어요' };
     const n = +I.params.pbHoldDays || 10, res = [];
     for (const p of S.positions || []) {
-      if (!(p.qty > 0) || !p.openedAt) continue;
+      if (!(p.qty > 0) || !p.openedAt || !(p.plan && p.plan.closeStop)) continue;   // 엔진은 전략이 공유하므로 눌림목이 산 종목(종가 마감 손절 계획)만
       const od = new Date(p.openedAt + 9 * 3600e3).toISOString().slice(0, 10);
       if (PB.tradingDaysBetween(od, date, D.isTradingDay) < n) continue;
       const qty = p.avail > 0 ? p.avail : p.qty;
@@ -1557,8 +1557,9 @@ function createAuto(deps) {
       }
     } catch (_) {}
     // 오늘 자동매매 종목·종가 베팅으로 넘긴 종목의 현재 보유 상태(어느 전략 종목인지 함께). 키 = 장부|종목(가상·실전이 같은 종목을 각자 보유)
-    const owner = {}, ownerKind = {};
-    todays.forEach(t => t.orders.filter(o => o.filled > 0).forEach(o => { owner[`${t.engine}|${o.code}`] = t.strategy ? t.strategy.name : t.sid; ownerKind[`${t.engine}|${o.code}`] = t.kind; }));
+    const owner = {}, ownerKind = {}, ownerSid = {};
+    todays.forEach(t => t.orders.filter(o => o.filled > 0).forEach(o => { owner[`${t.engine}|${o.code}`] = t.strategy ? t.strategy.name : t.sid; ownerKind[`${t.engine}|${o.code}`] = t.kind; ownerSid[`${t.engine}|${o.code}`] = t.sid; }));
+    const pbI = (A.Is || []).find(i => i.params && i.params.selector === 'pullback');   // 눌림목은 며칠 들고 가므로 어제 이전에 산 종목도 보유 목록에 넣는다(종가 마감 손절 계획이 붙은 종목)
     const mine = i => (kindOfCarry(i) === 'paper' ? 'paper' : 'real') === side;   // 이월 종목은 넘긴 장부로 쪽을 가름
     const carryItems = Object.values((carry && carry.items) || {}).filter(i => i.state !== 'done' && mine(i));
     const dayOf = ms => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10);
@@ -1574,6 +1575,7 @@ function createAuto(deps) {
         const ps = await BR.stateOf(k).catch(() => null);
         if (!ps || !ps.ok) continue;
         anyOk = true;
+        if (pbI) ps.positions.filter(p => p.qty > 0 && p.plan && p.plan.closeStop && !owner[`${k}|${p.code}`]).forEach(p => { owner[`${k}|${p.code}`] = pbI.name; ownerKind[`${k}|${p.code}`] = 'intraday'; ownerSid[`${k}|${p.code}`] = pbI.id; });
         const watch = new Set([...Object.keys(owner).filter(x => x.startsWith(k + '|')).map(x => x.slice(k.length + 1)), ...carryItems.filter(i => kindOfCarry(i) === k).map(i => i.code)]);
         const watchTr = new Set([...watch, ...carryDoneToday.filter(i => kindOfCarry(i) === k).map(i => i.code)]);   // 체결 내역용(이미 다 판 종목 포함)
         const nx = {};
@@ -1583,8 +1585,8 @@ function createAuto(deps) {
         } catch (_) {}
         ps.positions.forEach(p => { nm[p.code] = nm[p.code] || p.name; });
         (ps.orders || []).forEach(o => { if (o.name) nm[o.code] = nm[o.code] || o.name; });
-        positions.push(...ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop, plan: p.plan || null, dayHigh: p.dayHigh || null, dayLow: p.dayLow || null, avail: p.avail, strategy: owner[`${k}|${p.code}`] || null, skind: ownerKind[`${k}|${p.code}`] || null, kind: k, nxt: nx[p.code] == null ? null : nx[p.code] })));
-        trades.push(...(ps.fills || []).filter(f => watchTr.has(f.code) && (k !== 'live' || f.reason !== 'manual' || (ps.orders || []).some(o => o.id === f.orderId && o.origin))).map(f => ({ ts: f.ts, code: f.code, name: nm[f.code] || f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee || 0, realized: f.realized == null ? null : f.realized, reason: f.reason || null, kind: k })));
+        positions.push(...ps.positions.filter(p => watch.has(p.code)).map(p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, last: p.last, stop: p.stop, plan: p.plan || null, dayHigh: p.dayHigh || null, dayLow: p.dayLow || null, avail: p.avail, strategy: owner[`${k}|${p.code}`] || null, sid: ownerSid[`${k}|${p.code}`] || ((carryItems.concat(carryDoneToday).find(i => i.code === p.code)) || {}).sid || null, skind: ownerKind[`${k}|${p.code}`] || null, kind: k, nxt: nx[p.code] == null ? null : nx[p.code] })));
+        trades.push(...(ps.fills || []).filter(f => watchTr.has(f.code) && (k !== 'live' || f.reason !== 'manual' || (ps.orders || []).some(o => o.id === f.orderId && o.origin))).map(f => ({ ts: f.ts, code: f.code, name: nm[f.code] || f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee || 0, realized: f.realized == null ? null : f.realized, reason: f.reason || null, kind: k, sid: ownerSid[`${k}|${f.code}`] || ((carryItems.concat(carryDoneToday).find(i => i.code === f.code)) || {}).sid || null })));
         if (k === 'paper') accountRealized = ps.realizedToday == null ? null : ps.realizedToday;
       }
       if (anyOk) {
