@@ -1,0 +1,23 @@
+name: "[점검] 외국인 매도→공매도→되사기 가설 검증 | 수동(읽기 전용)"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary pandas numpy
+      - run: python 187_fs_flow_study.py
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: fs-flow-report
+          file: fs_flow_study.md
