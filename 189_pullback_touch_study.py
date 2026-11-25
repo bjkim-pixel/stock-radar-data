@@ -32,6 +32,7 @@ VAR = {  # (WMIN, BOX, TOUCH, smart 조건 사용)
     "C 앵커·수급 제외(박스 지지선 3번째 터치만)": (None, 0.25, 3, False),
 }
 MAIN = list(VAR)[0]
+EXITS = {"손절 −5%(장중)": (0.05, False), "손절 지지선−3%·종가 기준": (0.08, True), "손절 −8%(장중)": (0.08, False)}
 base, sigs, trades, diag = [], [], [], []
 for code, g in D.groupby("code", sort=False):
     g = g.reset_index(drop=True); n = len(g)
@@ -46,14 +47,18 @@ for code, g in D.groupby("code", sort=False):
     for t in range(125, n):
         if not (CAP_LO <= mc[t] <= CAP_HI) or not (a20[t] >= AMT20): continue
         base.append((code, dates[t], *(fwd[k][t] for k in (1, 3, 5, 10))))
-        sup = l[t - 20:t].min()
-        touch_today = l[t] <= sup * 1.02 and cl[t] >= sup * 0.98
-        if not touch_today: continue
-        idx = [i for i in range(t - 20, t) if l[i] <= sup * 1.02]
+        # 지지선 = 최근 30일의 전환점(좌우 2일 기준 저점·고점) 가격 중 오늘 저가와 ±2.5% 안에 있는 가격대(고점이 지지로 바뀐 매물선 포함)
+        piv = [i for i in range(t - 30, t - 2) if (l[i] <= l[i - 2:i + 3].min()) or (h[i] >= h[i - 2:i + 3].max())]
+        lv = [(l[i] if l[i] <= l[i - 2:i + 3].min() else h[i]) for i in piv]
+        near = [(i, x) for i, x in zip(piv, lv) if abs(x / l[t] - 1) <= 0.025]
+        if not near: continue
+        sup = float(np.median([x for _, x in near]))
+        if not (cl[t] >= sup * 0.98 and l[t] <= sup * 1.025): continue
         cnt, lastk = 0, -9
-        for i in idx:
+        for i, _ in near:
             if i - lastk >= 3: cnt += 1; lastk = i
         box = (h[t - 20:t + 1].max() - l[t - 20:t + 1].min()) / l[t - 20:t + 1].min()
+        if code == "053800" and dates[t] >= np.datetime64("2026-11-10"): diag.append((dates[t], round(sup), cnt + 1, round(box, 3)))
         for vn, (wmin, bmax, tch, use_sm) in VAR.items():
             if box > bmax or cnt + 1 < tch: continue
             vw = np.nan; ai = None
@@ -68,17 +73,21 @@ for code, g in D.groupby("code", sort=False):
                 if not (cum[-1] > 0 and cum[-1] >= 0.8 * pk and (len(cum) <= 10 or cum[-1] > cum[-11])): continue
             sigs.append((vn, code, dates[t], cl[t] / vw - 1 if vw == vw else np.nan, cnt + 1, *(fwd[k][t] for k in (1, 3, 5, 10))))
             if t <= last_exit[vn] or t + 1 >= n: continue
-            ent = cl[t]; stop = max(ent * 0.95, sup * 0.97); R = 1 - stop / ent
-            left, pnl, k, why = 1.0, 0.0, t + 1, ""
-            while True:
-                if l[k] <= stop:
-                    px = min(stop, o[k]); pnl += left * (px / ent - 1); why = "손절" if stop < ent else "본전손절"; break
-                if left == 1.0 and h[k] >= ent * 1.08: pnl += 0.04; left = 0.5; stop = max(stop, ent * 1.0035)
-                if left == 0.5 and h[k] >= ent * 1.12: pnl += 0.06; left = 0; why = "익절2"; break
-                if k - t >= 10 or k + 1 >= n: pnl += left * (cl[k] / ent - 1); why = "시간청산" if k - t >= 10 else "자료끝"; break
-                k += 1
-            last_exit[vn] = k
-            trades.append((vn, code, dates[t], ent, R * 100, pnl * 100 - COST, why, k - t))
+            ent = cl[t]; kmax = 0
+            for ex, (sp, close_stop) in EXITS.items():
+                stop = max(ent * (1 - sp), sup * 0.97) if sp else 0; R = 1 - stop / ent if stop else 0
+                left, pnl, k, why = 1.0, 0.0, t + 1, ""
+                while True:
+                    hit = (cl[k] < stop) if close_stop else (l[k] <= stop)
+                    if stop and hit:
+                        px = cl[k] if close_stop else min(stop, o[k]); pnl += left * (px / ent - 1); why = "손절" if stop < ent else "본전손절"; break
+                    if left == 1.0 and h[k] >= ent * 1.08: pnl += 0.04; left = 0.5; stop = max(stop, ent * 1.0035)
+                    if left == 0.5 and h[k] >= ent * 1.12: pnl += 0.06; left = 0; why = "익절2"; break
+                    if k - t >= 10 or k + 1 >= n: pnl += left * (cl[k] / ent - 1); why = "시간청산" if k - t >= 10 else "자료끝"; break
+                    k += 1
+                kmax = max(kmax, k)
+                trades.append((vn + " | " + ex, code, dates[t], ent, R * 100, pnl * 100 - COST, why, k - t))
+            last_exit[vn] = kmax
 
 B = pd.DataFrame(base, columns=["code", "d", "y1", "y3", "y5", "y10"])
 SG = pd.DataFrame(sigs, columns=["var", "code", "d", "gap", "touch", "y1", "y3", "y5", "y10"])
@@ -94,14 +103,14 @@ def line(lab, x):
     p(f"| {lab} | {len(x):,} | {x.code.nunique()} | {x.y1.mean():+.2f} | {x.y3.mean():+.2f} | {x.y5.mean():+.2f} | {x.y10.mean():+.2f} | {(x.y10>0).mean()*100:.0f}% | {t:+.1f} | {a_.mean():+.2f} ({len(a_)}) / {b_.mean():+.2f} ({len(b_)}) |")
 line("기준(같은 시총대 전체)", B)
 for vn in VAR: line(vn, SG[SG["var"] == vn])
-p("\n## 2. 매매 모의(신호일 종가 매수 · 손절 max(−5%, 지지선 −3%) · 익절 +8/+12% · 10일 · 비용 0.25%)\n")
+p("\n## 2. 매매 모의(신호일 종가 매수 · 손절 3종 비교(지지선 −3%와 고정 % 중 높은 쪽) · 익절 +8/+12% · 10일 · 비용 0.25%)\n")
 p("| 구분 | 거래 | 승률 | 평균% | 중앙값% | PF | 평균 손절폭% | 평균 보유일 | 청산 사유 |\n|---|---:|---:|---:|---:|---:|---:|---:|---|")
-for vn in VAR:
+for vn in sorted(TR["var"].unique(), key=lambda z: (list(VAR).index(z.split(" | ")[0]), z)):
     x = TR[TR["var"] == vn]
     if not len(x): p(f"| {vn} | 0 | | | | | | | |"); continue
     wn, ls = x[x.ret > 0].ret.sum(), -x[x.ret <= 0].ret.sum()
     p(f"| {vn} | {len(x)} | {(x.ret>0).mean()*100:.0f}% | {x.ret.mean():+.2f} | {x.ret.median():+.2f} | {wn/ls if ls>0 else float('inf'):.2f} | {x.R.mean():.1f} | {x.hold.mean():.1f} | " + " · ".join(f"{k} {v}" for k, v in x.why.value_counts().items()) + " |")
-x = TR[TR["var"] == MAIN].copy()
+x = TR[TR["var"] == MAIN + " | 손절 지지선−3%·종가 기준"].copy()
 if len(x):
     x["m"] = pd.to_datetime(x.d).dt.to_period("M")
     p(f"\n{MAIN} 월별\n\n| 월 | 거래 | 승률 | 평균% |\n|---|---:|---:|---:|")
@@ -112,8 +121,9 @@ for cd in ("053800", "192820"):
     for vn in VAR:
         y = SG[(SG.code == cd) & (SG["var"] == vn)].tail(10)
         if len(y): p(f"- {vn}: " + ", ".join(f"{pd.Timestamp(d).strftime('%y/%m/%d')}({int(tc)}회)" for d, tc in zip(y.d, y.touch)))
-    for _, r in TR[(TR.code == cd) & (TR["var"] == MAIN)].tail(5).iterrows():
-        p(f"  - 모의: {pd.Timestamp(r.d).date()} 종가 {r.ent:,.0f}원 · {r.why} · {r.ret:+.2f}% · {r.hold}일")
+    for _, r in TR[(TR.code == cd) & TR["var"].str.startswith(MAIN)].tail(5).iterrows():
+        p(f"  - 모의[{r['var'].split(' | ')[1]}]: {pd.Timestamp(r.d).date()} 종가 {r.ent:,.0f}원 · {r.why} · {r.ret:+.2f}% · {r.hold}일")
+p("\n안랩 11/10 이후 지지선 진단(날짜·지지선·터치 수·20일 박스폭): " + ", ".join(f"{pd.Timestamp(d).strftime('%m/%d')} {s_:,}원 {c_}회 {b_*100:.0f}%" for d, s_, c_, b_ in diag))
 p("\n## 4. 최근 신호(기본, 최근 10거래일)\n")
 y = SG[SG["var"] == MAIN]
 if len(y):
