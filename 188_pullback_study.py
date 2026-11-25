@@ -37,11 +37,14 @@ def tick(x):
 
 sig_rows, base_rows, trades = [], [], []
 DIAG = {"053800": [], "192820": []}
-VAR = {  # 변형: 각 조건을 빼 보며 기여도 확인
-    "A 전체 조건": dict(anchor=True, flow=True, pull=True),
-    "B 수급 이탈 조건 제외": dict(anchor=True, flow=False, pull=True),
-    "C 앵커·수급 제외(눌림+추세만)": dict(anchor=False, flow=False, pull=True),
+VAR = {  # 변형: 앵커 정의 · 조건을 빼 보며 기여도 확인. am: w=무게 최대일, wb=외+기 순매수일 중 무게 최대일, sb=외+기 순매수/시총 최대일
+    "A 전체(앵커=외+기 매수일 중 무게 최대, 120일)": dict(anchor=True, flow=True, am="wb"),
+    "A2 전체(앵커=외+기 순매수/시총 최대, 120일)": dict(anchor=True, flow=True, am="sb"),
+    "A0 전체(앵커=무게 최대일, 60일 — 1차안)": dict(anchor=True, flow=True, am="w"),
+    "B A에서 수급 이탈 조건 제외": dict(anchor=True, flow=False, am="wb"),
+    "C 앵커·수급 제외(눌림+추세만)": dict(anchor=False, flow=False, am="wb"),
 }
+MAIN = "A 전체(앵커=외+기 매수일 중 무게 최대, 120일)"
 for code, g in D.groupby("code", sort=False):
     g = g.reset_index(drop=True)
     n = len(g)
@@ -64,16 +67,23 @@ for code, g in D.groupby("code", sort=False):
         base_rows.append((code, dates[t], trend, *(fwd[k][t] for k in (1, 3, 5, 10, 20))))
         if not trend: continue
         if up[t - 4:t + 1].any(): continue
-        # ① 앵커
-        lo, hi = t - 60, t - 5
-        ww = np.where(np.isnan(w[lo:hi + 1]), -np.inf, w[lo:hi + 1])
-        ai = lo + int(np.argmax(ww))
-        anchor_ok = hasf[ai] and sm[ai] > 0 and a[ai] > 0 and sm[ai] / a[ai] * 100 >= ANCH and w[ai] > 0
-        vw = a[ai] / v[ai] if v[ai] > 0 else np.nan
-        # ② 이탈 없음
-        cum = np.cumsum(sm[ai:t + 1]); pk = cum.max()
-        rec = (pk - cum[-1]) / pk if pk > 0 else 1.0
-        flow_ok = hasf[ai:t + 1].mean() > 0.9 and cum[-1] > 0 and rec < 0.20 and sm[t - 19:t + 1].sum() >= 0
+        def anc(am):
+            lo, hi = max(0, t - (60 if am == "w" else 120)), t - 5
+            if am == "w": key = np.where(np.isnan(w[lo:hi + 1]), -np.inf, w[lo:hi + 1])
+            elif am == "wb": key = np.where((sm[lo:hi + 1] > 0) & (a[lo:hi + 1] > 0) & (sm[lo:hi + 1] / np.maximum(a[lo:hi + 1], 1) * 100 >= ANCH) & ~np.isnan(w[lo:hi + 1]), w[lo:hi + 1], -np.inf)
+            else: key = np.where(mc[lo:hi + 1] > 0, sm[lo:hi + 1] / np.maximum(mc[lo:hi + 1], 1), -np.inf)
+            if not np.isfinite(key).any() or key.max() == -np.inf: return None
+            ai = lo + int(np.argmax(key))
+            ok = hasf[ai] and sm[ai] > 0 and a[ai] > 0 and sm[ai] / a[ai] * 100 >= ANCH
+            vw = a[ai] / v[ai] if v[ai] > 0 else np.nan
+            cum = np.cumsum(sm[ai:t + 1]); pk = cum.max()
+            rec = (pk - cum[-1]) / pk if pk > 0 else 9.0
+            fok = hasf[ai:t + 1].mean() > 0.9 and cum[-1] >= 0.5 * sm[ai] and rec < 0.30 and sm[t - 19:t + 1].sum() >= 0
+            return ai, ok, vw, rec, fok
+        AN = {m: anc(m) for m in ("w", "wb", "sb")}
+        R = AN["wb"] or AN["w"]
+        if R is None: continue
+        ai, anchor_ok, vw, rec, flow_ok = R
         # ③ 눌림
         hh = h[ai:t + 1].max(); dd = cl[t] / hh - 1
         rng5 = (h[t - 4:t + 1].max() - l[t - 4:t + 1].min()) / cl[t]
@@ -87,10 +97,17 @@ for code, g in D.groupby("code", sort=False):
         if code in DIAG and dates[t] >= np.datetime64("2026-10-20"):
             DIAG[code].append((dates[t], anchor_ok, round(sm[ai] / a[ai] * 100, 1) if a[ai] > 0 else None, str(pd.Timestamp(dates[ai]).date()), near_vw, round(cl[t] / vw - 1, 3) if vw > 0 else None, flow_ok, round(rec, 2), pull_core, bool(v[t - 2:t + 1].mean() <= 0.7 * vpost), cl[t] / cl[ai] - 1 <= 0.40))
         for vn, cfg in VAR.items():
+            Rv = AN[cfg["am"]]
+            if Rv is None: continue
+            ai, anchor_ok, vw, rec, flow_ok = Rv
+            near_vw = vw > 0 and 0.97 * vw <= cl[t] <= 1.25 * vw
+            hh = h[ai:t + 1].max(); dd = cl[t] / hh - 1
+            vpost = v[ai + 1:t + 1].mean() if t > ai else np.nan
+            pull_ok = ((-0.15 <= dd <= -0.05) or rng5 <= 0.08) and v[t - 2:t + 1].mean() <= 0.7 * vpost and cl[t] / cl[ai] - 1 <= 0.40
             ok = pull_ok and (not cfg["anchor"] or (anchor_ok and near_vw)) and (not cfg["flow"] or flow_ok)
             if not ok: continue
             sig_rows.append((vn, code, dates[t], ye, nz, cl[t] / vw - 1 if vw > 0 else np.nan, *(fwd[k][t] for k in (1, 3, 5, 10, 20))))
-            if vn != "A 전체 조건" or t <= last_exit: continue
+            if vn != MAIN or t <= last_exit: continue
             # ④ 다음날 진입 모의
             j = t + 1; trig = h[t] + tick(h[t])
             if h[j] < trig: continue
@@ -135,7 +152,7 @@ def line(lab, x, ref=B):
     p(f"| {lab} | {len(x):,} | {x.code.nunique():,} | {x.y1.mean():+.2f} | {x.y3.mean():+.2f} | {x.y5.mean():+.2f} | {x.y10.mean():+.2f} | {x.y20.mean():+.2f} | {(x.y10>0).mean()*100:.0f}% | {t:+.1f} | {a_.mean():+.2f} ({len(a_)}) / {b_.mean():+.2f} ({len(b_)}) |")
 line("기준(전체)", B); line("추세 기준", B[B.trend])
 for vn in VAR: line(vn, SG[SG["var"] == vn])
-A_ = SG[SG["var"] == "A 전체 조건"]
+A_ = SG[SG["var"] == MAIN]
 line("A + 양음 태그", A_[A_.ye]); line("A + N자 태그", A_[A_.nz])
 line("A + 평단 0~+10% 근접", A_[(A_.vwgap >= -0.03) & (A_.vwgap <= 0.10)])
 
