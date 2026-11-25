@@ -213,6 +213,7 @@ body.nav-open .navopen{display:none}
 .tl-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--ink-3);margin:0 2px 4px}
 .tl-legend span{display:inline-flex;align-items:center;gap:4px}
 .tl-legend i{display:inline-block}
+.sv-lg div{margin-top:4px;line-height:1.55}
 .tl-sub{font-size:12.5px;font-weight:700;margin:12px 0 6px}
 .tl-chart{position:relative}
 .tl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:thin}
@@ -1788,6 +1789,17 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="tl-tabs" id="svFlowTabs"><button data-n="63" class="on">3개월</button><button data-n="126">6개월</button><button data-n="0">전체</button></div>
     <div class="chart" id="svFlow"><div class="load sk" style="height:300px"></div></div>
     <div id="svFlowLeg"></div>
+    <div class="note sv-lg"><b>표시 의미</b>
+      <div><b style="color:var(--warn)">◆ 현물 매수·선물 매도</b> 외국인이 같은 날 현물은 크게 사고 선물은 크게 판 날. 현물 매수의 헤지(선물 매도)일 수 있어 방향 신호는 아니고, 다음날 지수가 약했는지 봅니다.</div>
+      <div><b style="color:var(--s4)">◆ 현물 매도·선물 매수</b> 반대로 현물은 크게 팔고 선물은 크게 산 날. 기존 선물 매도분의 청산(숏커버)이나 포지션 전환일 수 있습니다. (◆ 기준: 두 쪽 모두 이 기간 일별 규모 상위 40% 이상)</div>
+      <div><b style="color:var(--down)">▼ 매도 사이드카</b> 코스피200 선물이 급락해 프로그램 매도호가 5분간 정지된 날(다음날 반등이 나왔는지 확인).</div>
+      <div><b style="color:var(--up)">▲ 매수 사이드카</b> 선물이 급등해 프로그램 매수호가가 정지된 날(다음날 시가 갭 이후 장중 흐름 확인).</div>
+      <div><b style="color:var(--s3)">● 미결제약정 급증</b> 선물 미결제약정(아직 청산 안 된 계약 수)이 하루에 크게 늘어난 날(상위 10%). 가격이 내렸다면 신규 매도 쌓임, 올랐다면 신규 매수 유입.</div>
+      <div><b style="color:var(--ma3)">● 미결제약정 급감</b> 크게 줄어든 날. 가격이 올랐다면 숏커버, 내렸다면 롱 청산으로 읽습니다.</div>
+      <div><span style="display:inline-block;width:12px;height:10px;background:color-mix(in srgb,var(--warn) 35%,transparent)"></span> <b>되밀림 경고</b> 삼성·하이닉스 평균이 +1~+5% 오른 날인데 외국인이 선물을 순매도 — 오른 만큼 다음날 밀릴 수 있다는 주의.</div>
+      <div><span style="display:inline-block;width:12px;height:10px;background:color-mix(in srgb,var(--up) 35%,transparent)"></span> <b>귀환</b> 외국인 현물·선물 동반 순매수 — 다음날 강세 경향.</div>
+      <div><span style="display:inline-block;width:12px;height:10px;background:color-mix(in srgb,var(--down) 35%,transparent)"></span> <b>공세</b> 외국인 현물·선물 동반 순매도 — 다음날 시가 반등 후 장중 밀림 주의(연기금도 팔면 더 강함).</div>
+      <div class="faint">띠 색은 방향 예측이 아니라 그날의 국면 분류입니다. 외국인 선물 자료가 2026-04-27부터라 표본이 작아 참고용입니다.</div></div>
     <div class="note">위 칸: 삼성전자·SK하이닉스 평균 주가(굵은 선, 기간 시작=100)와 코스피200 선물(회색). 배경 색 = 그날의 국면(되밀림 경고·귀환·공세). 가운데 칸: 외국인 일별 순매수(주황 현물·보라 선물, 억원). 아래 칸: 코스피200 선물 미결제약정. 표시를 누르면 그날을 ⑤에서 확대합니다.</div></div>
   <div class="card" id="svZoomCard"><h3>⑤ 변곡점 확대 분석 <span class="r faint" id="svZoomSub"></span></h3>
     <div id="svZoom"><div class="load sk"></div></div></div>
