@@ -262,7 +262,7 @@ function createPaper(deps) {
     const seen = new Set(), uniq = steps.filter(s => !seen.has(s.n) && seen.add(s.n));
     const stop = num(p.stop, 1, 1e8);
     const rt = p.ratchet === false ? false : (p.ratchet && typeof p.ratchet === 'object') || uniq.length ? { floorPct: num(p.ratchet && p.ratchet.floorPct, 0, 5) == null ? 0.35 : num(p.ratchet.floorPct, 0, 5) } : null;   // 익절 단계가 있으면 손절 올리기는 항상 켬
-    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop && E.validTick(stop) ? stop : (stop ? E.floorTick(stop) : null), target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq, ratchet: rt };
+    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop && E.validTick(stop) ? stop : (stop ? E.floorTick(stop) : null), target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq, ratchet: rt, ...(p.closeStop ? { closeStop: true } : {}) };
   }
   async function place(body) {
     if (!(await init())) return bad(503, missing ? `${PFX} tables missing` : `${PFX} store unavailable`);
@@ -383,7 +383,9 @@ function createPaper(deps) {
     const sp = stopOf(pos);
     const newLow = q.low > 0 && pos.lowSeen != null && q.low < pos.lowSeen;   // 시세 사이에 잠깐 찍고 올라온 저가도 잡음(재시작 직후 첫 시세는 기준만 잡음)
     if (q.low > 0) pos.lowSeen = pos.lowSeen == null ? q.low : Math.min(pos.lowSeen, q.low);
-    const hit = !!sp && (q.price <= sp || (newLow && q.low <= sp));
+    /* 종가 마감 손절(눌림목, 2026-11-26): plan.closeStop 이면 장중 흔들림은 무시하고 15:15 이후 현재가가 손절가 이하일 때만 손절 */
+    if (pos.plan.closeStop && !pos.plan.stopped && kst().min < 15 * 60 + 15) return false;
+    const hit = !!sp && (pos.plan.closeStop ? q.price <= sp : (q.price <= sp || (newLow && q.low <= sp)));
     if (!hit && !pos.plan.stopped) return false;                              // 한 번 손절이 시작되면 가격이 돌아와도 남은 수량을 끝까지 팜
     if (q.vi) { notify(`손절 조건이지만 VI 발동 중이라 대기합니다: ${pos.name || code}`, 'vi|' + code); return true; }
     const ses = SES.sessionOf(kst().min, q.info);
@@ -461,7 +463,7 @@ function createPaper(deps) {
   /* ── 조회 ── */
   const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, queueAhead: o.queueAhead, reason: o.reason, note: o.note, venue: o.venue || null, origin: o.origin || null });
   const pubFill = f => ({ id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee, realized: f.realized, reason: f.reason });
-  const pubPos = p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, plan: p.plan, stop: stopOf(p), last: (lastPx.get(p.code) || {}).price || null, dayHigh: p.highSeen || null, dayLow: p.lowSeen || null,
+  const pubPos = p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, openedAt: p.openedAt || null, plan: p.plan, stop: stopOf(p), last: (lastPx.get(p.code) || {}).price || null, dayHigh: p.highSeen || null, dayLow: p.lowSeen || null,
     avail: p.qty - remainOf(openFor(p.code, o => o.side === 'sell' && !isTp(o))) });
   async function state() {
     if (!(await init())) return bad(503, missing ? `${PFX} tables missing` : `${PFX} store unavailable`);

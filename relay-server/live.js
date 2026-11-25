@@ -304,7 +304,9 @@ function createLive(deps) {
     const sp = stopOf(p, pl.plan), prevLow = lowSeen.get(code);
     const newLow = q.low > 0 && prevLow != null && q.low < prevLow;
     if (q.low > 0) lowSeen.set(code, prevLow == null ? q.low : Math.min(prevLow, q.low));
-    const hit = !!sp && (q.price <= sp || (newLow && q.low <= sp));
+    /* 종가 마감 손절(눌림목, 2026-11-26): plan.closeStop 이면 장중 흔들림은 무시하고 15:15 이후 현재가가 손절가 이하일 때만 손절 */
+    if (pl.plan.closeStop && !pl.plan.stopped && kst().min < 15 * 60 + 15) return false;
+    const hit = !!sp && (pl.plan.closeStop ? q.price <= sp : (q.price <= sp || (newLow && q.low <= sp)));
     if (!hit && !pl.plan.stopped) { stopHit.delete(code); return false; }                  // 손절이 시작되면 가격이 돌아와도 남은 수량을 끝까지 팜
     if (!stopHit.has(code)) stopHit.set(code, now());
     if (q.vi) { notify(`[실전] 손절 조건이지만 VI 발동 중이라 대기: ${p.name || code}`, 'vi|' + code); return true; }
@@ -383,7 +385,7 @@ function createLive(deps) {
     const seen = new Set(), uniq = steps.filter(s => !seen.has(s.n) && seen.add(s.n));
     const stop = num(p.stop, 1, 1e8);
     const rt = p.ratchet === false ? false : (p.ratchet && typeof p.ratchet === 'object') || uniq.length ? { floorPct: num(p.ratchet && p.ratchet.floorPct, 0, 5) == null ? 0.35 : num(p.ratchet.floorPct, 0, 5) } : null;   // 익절 단계가 있으면 손절 올리기는 항상 켬
-    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop ? E.floorTick(stop) : null, target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq, ratchet: rt };
+    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop ? E.floorTick(stop) : null, target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq, ratchet: rt, ...(p.closeStop ? { closeStop: true } : {}) };
   }
   const ready = async () => { if (!(await init())) return bad(503, missing ? 'live tables missing' : 'live store unavailable'); if (!kis.configured()) return bad(503, 'account not configured'); return null; };
   async function place(body) {

@@ -12,7 +12,7 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   for (const k of ['intraday', 'closing']) assert.deepEqual(S.validate(k, S.defaults(k)).val, S.defaults(k));
   const sql = fs.readFileSync(path.join(__dirname, '..', '..', '165_auto_strategy.sql'), 'utf8');
   const js = [...sql.matchAll(/'(\{"[^']+\})'::jsonb/g)].map(m => JSON.parse(m[1]));
-  const LATER = ['buyType', 'tp1Pct', 'tp2Pct', 'tp1Share', 'selector', 'capMaxEok', 'gapMaxPct', 'chgMaxPct', 'openRiseMin', 'riseWinMin', 'riseMinPct', 'amtSurge', 'minMinAmtKrw', 'pullbackMaxPct', 'optMin', 'flatOn', 'flatAt', 'chaseWaitMin', 'rrSlack', 'intentLostSec', 'smartBuy', 'smartCttr', 'smartRise', 'q1GapPct', 'chaseAsk', 'chasePct', 'regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries', 'minRr', 'tpStyle', 'runnerPct', 'ratchet', 'kwOn', 'kwMax', 'execMode', 'liveAutoOk', 'dryDays', 'amtMinEok', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'smxWin'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
+  const LATER = ['pbWMin', 'pbTouchPct', 'pbMaxAge', 'pbStopBelowPct', 'pbHoldDays', 'pbSmBuy', 'pbUpOnly', 'buyType', 'tp1Pct', 'tp2Pct', 'tp1Share', 'selector', 'capMaxEok', 'gapMaxPct', 'chgMaxPct', 'openRiseMin', 'riseWinMin', 'riseMinPct', 'amtSurge', 'minMinAmtKrw', 'pullbackMaxPct', 'optMin', 'flatOn', 'flatAt', 'chaseWaitMin', 'rrSlack', 'intentLostSec', 'smartBuy', 'smartCttr', 'smartRise', 'q1GapPct', 'chaseAsk', 'chasePct', 'regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries', 'minRr', 'tpStyle', 'runnerPct', 'ratchet', 'kwOn', 'kwMax', 'execMode', 'liveAutoOk', 'dryDays', 'amtMinEok', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'smxWin'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
   const I0 = Object.fromEntries(Object.entries(S.defaults('intraday')).filter(([k]) => !LATER.includes(k)));
   I0.weights = { flow: 40, cttr: 15, rise: 15, amt: 15, trend: 15 };               // 165 의 예전 기본 배점 → 검증에서 새 기본 배점(개인 물량 항목 포함)으로 올라감
   I0.eodTimeout = 'keep';                                                           // 165 에는 있었지만 지금은 없는 설정(무응답이면 항상 유지) — 저장돼 있어도 검증이 버림
@@ -76,7 +76,7 @@ const row = (id, kind, extra = {}) => ({ id, name: id, kind, enabled: true, buil
 test('저장소: 테이블이 없으면 기본 전략으로 동작하고 저장은 거부', async () => {
   const f = fakeDb(null), st = S.createStore(f);
   const L = await st.list();
-  assert.deepEqual(L.map(r => r.id).sort(), ['closing-default', 'ignite-default', 'intraday-default']);   // 장초 상승 포착(시동)은 꺼진 기본 전략
+  assert.deepEqual(L.map(r => r.id).sort(), ['closing-default', 'ignite-default', 'intraday-default', 'pullback-default']);   // 장초 상승 포착(시동)은 꺼진 기본 전략
   assert.equal(st.isMissing(), true);
   const P = await st.pair();
   assert.equal(P.I.enabled, true); assert.equal(P.T.sel, 605);

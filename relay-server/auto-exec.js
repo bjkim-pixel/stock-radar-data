@@ -22,7 +22,7 @@ const ceilTick = p => { const t = tickOf(p); return Math.ceil(p / t - 1e-9) * t;
 const below = p => { let f = floorTick(p); if (f >= p - 1e-9) f -= tickOf(f - 1); return f; };
 
 const PROFILE_DOWN = 0.30, PROFILE_UP = 0.70;
-const DEF = Object.freeze({ stopPct: 5, rr: 3, minRr: 0, tpStyle: 'even', buyType: 'limit', runnerPct: 20, tp1Pct: 6, tp2Pct: 9, tp1Share: 50, ratchet: false, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', smartBuy: false, smartCttr: 120, smartRise: 2, q1GapPct: 0.8, chaseAsk: false, chasePct: 1, chaseWaitMs: 180e3, rrSlack: 10, unfilledEnd: 'cancel', intentLostMs: 60e3 });
+const DEF = Object.freeze({ noTape: false, closeStop: false, stopAbs: 0, stopPct: 5, rr: 3, minRr: 0, tpStyle: 'even', buyType: 'limit', runnerPct: 20, tp1Pct: 6, tp2Pct: 9, tp1Share: 50, ratchet: false, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', smartBuy: false, smartCttr: 120, smartRise: 2, q1GapPct: 0.8, chaseAsk: false, chasePct: 1, chaseWaitMs: 180e3, rrSlack: 10, unfilledEnd: 'cancel', intentLostMs: 60e3 });
 const REPRICE_KO = { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' };
 
 /* 주문 시점 스냅샷(F1): 호가·시가·재확인 수치 — 화면·일지에서 '왜 이 가격에 샀는지/못 샀는지' 복기용 */
@@ -167,7 +167,9 @@ function makeOrder({ q, rows, perStockKrw, opt = {}, force = null }) {   // forc
   const fx = o.tpStyle === 'fixed' && !o.noTp ? fixedPlan(buy, qty, o) : null;
   if (fx) tgt.target = fx.target;   // 고정 % 방식: 목표가 = 마지막 단계(손익비 계산·표시용)
   const steps = fx ? fx.steps : tgt.target && !o.noTp ? (o.tpStyle === 'r' ? splitPlanR(buy, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(buy, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];   // noTp(종가베팅 저녁 매수): 익절 없이 손절만 걸고 다음 날 아침 분할 매도
-  const plan = { stopPct: o.stopPct, stop: stopPrice(buy, o.stopPct), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ...(steps.length && !o.noTp ? { ratchet: { floorPct: 0.35 } } : {}) };   // 손절 올리기는 익절 단계가 있는 모든 계획에 항상 적용(2026-11-25)
+  const stopPx = o.stopAbs > 0 && o.stopAbs < buy ? floorTick(o.stopAbs) : stopPrice(buy, o.stopPct);   // 눌림목: 손절가를 평균가 기준 절대 가격으로
+  const stopPctEff = o.stopAbs > 0 && o.stopAbs < buy ? Math.round((1 - stopPx / buy) * 1000) / 10 : o.stopPct;
+  const plan = { stopPct: stopPctEff, stop: stopPx, ...(o.closeStop ? { closeStop: true } : {}), target: tgt.target, trail: o.trail, steps: steps.map(s => ({ n: s.n, p: s.p, q: s.q, ...(s.runner ? { runner: true } : {}) })), ...(steps.length && !o.noTp ? { ratchet: { floorPct: 0.35 } } : {}) };   // 손절 올리기는 익절 단계가 있는 모든 계획에 항상 적용(2026-11-25)
   const tinfo = { cap: tgt.cap, cum: tgt.cum, topLo: tgt.topLo, topV: tgt.topV, rrT: tgt.rrT, clipped: tgt.clipped, prevHigh: tgt.prevHigh, upper: q.upper || null, capEok, ydEok, avg5Eok, todEok, dayEok, coef: o.coef, stopPct: o.stopPct, rr: o.rr, minRr: o.minRr, tpStyle: o.tpStyle, split: o.split, minPct: o.minPct, runnerPct: o.runnerPct, ratchet: !!(o.ratchet && !o.noTp), ref: cur, prof: prof.map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) };   // prof = 개인 순매수 매물대 [하한, 상한, 억원] — 목표가 그림용
   return { buy, qty, plan, target: tgt.target, mode: tgt.mode, market: !!mkt, pick: pick ? pick.k : 'cur', smartWhy, tinfo };
 }
@@ -184,13 +186,13 @@ function recheck(q, notice, opt = {}) {
   if (!q || !(q.price > 0)) return ['시세 없음'];
   if (q.vi) why.push('VI 발동 중');
   if ((q.warnings || []).some(w => /거래정지|정리매매|관리종목|투자위험|투자경고/.test(w))) why.push(`경고 종목(${q.warnings.join(',')})`);
-  if (!o.closing) { if (q.strength == null) why.push('체결강도 없음'); else if (q.strength < o.cttrMin) why.push(`체결강도 ${Math.round(q.strength)}%`); }   // 종가베팅 저녁 매수는 애프터마켓이라 체결강도·시가 대비는 보지 않음
+  if (!o.closing && !o.noTape) { if (q.strength == null) why.push('체결강도 없음'); else if (q.strength < o.cttrMin) why.push(`체결강도 ${Math.round(q.strength)}%`); }   // 종가베팅 저녁 매수는 애프터마켓이라 체결강도·시가 대비는 보지 않음
   if (notice && notice.price > 0) {
     const d = (q.price / notice.price - 1) * 100;
     if (d > o.recheckPct) why.push(`알림 후 +${d.toFixed(1)}% 더 오름`);
     if (d < -o.recheckPct) why.push(`알림 후 ${d.toFixed(1)}% 밀림`);
   }
-  if (!o.closing && q.open > 0 && Math.round((q.price / q.open - 1) * 1e4) / 100 > o.openRiseMax) why.push(`시가 대비 +${((q.price / q.open - 1) * 100).toFixed(1)}%`);
+  if (!o.closing && !o.noTape && q.open > 0 && Math.round((q.price / q.open - 1) * 1e4) / 100 > o.openRiseMax) why.push(`시가 대비 +${((q.price / q.open - 1) * 100).toFixed(1)}%`);
   return why;
 }
 
@@ -249,6 +251,7 @@ function createExec(deps) {
     let held; try { held = await heldNow(); } catch (e) { return { st: 'skipped', why: '보유 종목 확인 실패 — ' + ((e && e.message) || '알 수 없음') }; }
     if (held && held.has(code)) return { st: 'skipped', why: '이미 보유·주문 중(다른 전략 또는 직접 매매)' };
     let q; try { q = await D.getQuote(code); } catch (e) { return { st: 'skipped', why: '시세 조회 실패: ' + e.message }; }
+    if (notice && notice.pb && notice.pb.stopPx > 0) opt = { ...opt, stopAbs: notice.pb.stopPx };
     const why = recheck(q, notice, opt), snap = snapOf(q, notice, opt);
     if (snap) snap.at = now();
     if (why.length) return { st: 'skipped', why: why.join(', '), snap };

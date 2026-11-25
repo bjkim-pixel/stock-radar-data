@@ -3975,6 +3975,14 @@ const autoTrade = require('./auto').createAuto({
     return (x && (x.all || x.rows)) || [];
   },
   ignitePool,
+  pbQuotes: codes => _kisPrio.run(1, async () => {   // 눌림목: 관찰 종목의 현재가·저가·거래대금(멀티시세 30개씩)
+    const out = [];
+    for (let i = 0; i < codes.length; i += 30) {
+      const part = await fetchMultiPrice(codes.slice(i, i + 30));
+      part.forEach(o => { const r = { code: o.inter_shrn_iscd, name: o.inter_kor_isnm || '', price: safeNum(o.inter2_prpr), open: safeNum(o.inter2_oprc), high: safeNum(o.inter2_hgpr), low: safeNum(o.inter2_lwpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }; if (r.code && r.price > 0) out.push(r); });
+    }
+    return out;
+  }),
   fetchFlow: code => _kisPrio.run(1, () => fetchFlowEst(code)).catch(e => ({ err: e.message })),
   fetchPower: code => _kisPrio.run(1, () => fetchPower(code)).catch(e => ({ err: e.message })),
   fetchCttr: code => _kisPrio.run(1, () => fetchCttr(code)).catch(e => ({ err: e.message })),

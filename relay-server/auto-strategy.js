@@ -25,7 +25,7 @@ const ENUM = {
   fixed: '고정 % 단계(예: +6%·+9%에서 나눠 팔기)', even: '예전 방식(목표까지 균등 분할)' },
   unfilledEnd: { cancel: '취소', keep: '장 마감까지 유지' },
   execMode: { paper: '가상(가상 엔진으로 주문)', dryrun: '드라이런(실제 계좌로 금액·점검만, 주문은 가상)', live: '실전(실제 계좌로 주문)' },
-  selector: { flow: '수급 돌파(외국인·기관·프로그램 + 체결강도)', ignite: '장초 상승 포착(거래 붙으며 오르기 시작하는 종목)' },
+  selector: { flow: '수급 돌파(외국인·기관·프로그램 + 체결강도)', ignite: '장초 상승 포착(거래 붙으며 오르기 시작하는 종목)', pullback: '눌림목(무게 신고 막대 → 그날 평균가 첫 재터치 종가 매수)' },
   sizeMode: { fixed: '고정(종목당 금액)', balance: '계좌 잔고 기준 자동' },
 };
 
@@ -33,12 +33,12 @@ const ENUM = {
 const F = (key, group, label, type, def, more = {}) => ({ key, group, label, type, def, ...more });
 const SCHEMA = {
   intraday: [
-    F('selectAt', '적용 시간', '후보 선정 시각', 'time', '10:05', { min: '09:10', max: '14:00' }),
+    F('selectAt', '적용 시간', '후보 선정 시각(눌림목은 종가 매수라 15:10)', 'time', '10:05', { min: '09:10', max: '15:10' }),
     F('noticeAfter', '적용 시간', '선정 후 알림까지', 'num', 10, { min: 0, max: 30, step: 1, unit: '분' }),
     F('approveWindow', '적용 시간', '알림 후 승인 마감까지', 'num', 15, { min: 5, max: 60, step: 1, unit: '분' }),
     F('roundMin', '적용 시간', '장중 반복 검토 간격(0=반복 안 함)', 'num', 30, { min: 0, max: 120, step: 5, unit: '분' }),
     F('roundEnd', '적용 시간', '마지막 검토 시각', 'time', '14:30', { min: '10:30', max: '15:00' }),
-    F('selector', '선정 방식', '후보를 고르는 방식(아래 \'장초 상승 포착\' 묶음은 이 방식을 고른 전략에서만 적용)', 'enum', 'flow', { opts: ENUM.selector }),
+    F('selector', '선정 방식', '후보를 고르는 방식(아래 \'장초 상승 포착\'·\'눌림목\' 묶음은 이 방식을 고른 전략에서만 적용)', 'enum', 'flow', { opts: ENUM.selector }),
     F('capMaxEok', '대상', '시가총액 상한(0=상한 없음 · 장초 상승 포착에서 큰 대형주 제외용)', 'num', 0, { min: 0, max: 1000000, step: 1000, unit: '억원' }),
     F('capMinEok', '대상', '시가총액 하한', 'num', 10000, { min: 1000, max: 100000, step: 1000, unit: '억원' }),
     F('amtMinEok', '대상', '거래대금 하한(실시간 종목의 거래대금 조건 · 0=끔)', 'num', 100, { min: 0, max: 5000, step: 10, unit: '억원' }),
@@ -69,6 +69,13 @@ const SCHEMA = {
     F('optMin', '장초 상승 포착', '보조 조건(VWAP 위·고가 근처·체결강도·프로그램) 최소 충족 수', 'num', 2, { min: 0, max: 4, step: 1, unit: '개' }),
     F('flatOn', '장초 상승 포착', '당일 청산(지정 시각에 남은 보유분 전량 시장가 매도)', 'bool', false),
     F('flatAt', '장초 상승 포착', '당일 청산 시각', 'time', '15:14', { min: '14:30', max: '15:19' }),
+    F('pbWMin', '눌림목', '막대 기준: 무게/주식수 하한(0.3 = 30%) — 그때까지의 신고 무게여야 막대', 'num', 0.3, { min: 0.1, max: 1, step: 0.05, unit: '' }),
+    F('pbTouchPct', '눌림목', '평균가 재터치 범위(저가 ≤ 평균가+이 % · 종가 ≥ 평균가−이 %)', 'num', 3, { min: 1, max: 6, step: 0.5, unit: '%' }),
+    F('pbMaxAge', '눌림목', '막대 후 기다리는 최대 거래일(넘으면 관찰 종료)', 'num', 30, { min: 5, max: 40, step: 1, unit: '일' }),
+    F('pbStopBelowPct', '눌림목', '손절: 평균가 아래 이 % 밑에서 종가 마감(15:15 이후 판단)', 'num', 5, { min: 2, max: 10, step: 0.5, unit: '%' }),
+    F('pbHoldDays', '눌림목', '시간 청산: 매수 후 이 거래일째 15:05 에 남은 수량 전량 매도', 'num', 10, { min: 2, max: 30, step: 1, unit: '일' }),
+    F('pbSmBuy', '눌림목', '막대일 외국인+기관 순매수일 때만(끄면 상관없음)', 'bool', false),
+    F('pbUpOnly', '눌림목', '상한가 막대만(등락률 29% 이상)', 'bool', false),
     F('weights', '점수', '배점(합계 100)', 'weights', { flow: 35, cttr: 15, rise: 15, amt: 15, trend: 10, kw: 10 }, { parts: { flow: '수급', cttr: '체결강도', rise: '상승률', amt: '거래대금', trend: '추세', kw: '개인 물량 감소' } }),
     F('maxBuys', '매수 주문', '하루 최대 매수 종목 수', 'num', 5, { min: 1, max: 20, step: 1, unit: '종목' }),
     F('retryUnfilled', '매수 주문', '다음 검토 때 못 산 종목 다시 시도', 'bool', true),
@@ -233,7 +240,8 @@ function validate(kind, input, base) {
     if (val.tpStyle === 'fixed' && !(val.tp2Pct > val.tp1Pct)) errs.push({ key: 'tp2Pct', msg: '2단계 익절은 1단계보다 높아야 합니다' });
     if (val.notifyTop > val.poolTop) errs.push({ key: 'notifyTop', msg: '알림에 싣는 수는 점수 상위 후보 수보다 클 수 없습니다' });
     const dl = tmin(val.selectAt) + val.noticeAfter + val.approveWindow;
-    if (dl > 14 * 60 + 30) errs.push({ key: 'approveWindow', msg: `승인 마감이 ${hhmm(dl)}입니다(14:30 이전이어야 함)` });
+    const dlMax = val.selector === 'pullback' ? 15 * 60 + 15 : 14 * 60 + 30;
+    if (dl > dlMax) errs.push({ key: 'approveWindow', msg: `승인 마감이 ${hhmm(dl)}입니다(${hhmm(dlMax)} 이전이어야 함)` });
   }
   if (!errs.length && kind === 'intraday' && val.roundMin > 0) {
     if (tmin(val.roundEnd) <= tmin(val.selectAt)) errs.push({ key: 'roundEnd', msg: '마지막 검토 시각은 첫 선정 시각보다 늦어야 합니다' });
@@ -294,6 +302,13 @@ const IGNITE_PRESET = { selector: 'ignite', capMinEok: 3000, capMaxEok: 40000, a
   selectAt: '09:15', noticeAfter: 0, approveWindow: 5, roundMin: 10, roundEnd: '14:30', openRiseMax: 6, cttrMin: 120, poolTop: 5, notifyTop: 5, sectorMax: 2, maxBuys: 5, maxTries: 1, retryUnfilled: false, perStockKrw: 1000000, approval: 'auto',
   buyType: 'market', stopPct: 3, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 6, tp2Pct: 9, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: true, flatAt: '15:14', execMode: 'paper' };
 const BUILTIN = BUILTIN0.concat([{ id: 'ignite-default', name: '장초 상승 포착(시동)', kind: 'intraday', builtin: true, off: true, preset: IGNITE_PRESET, desc: '시총 3천억~4조 미만 중소형주 중 처음부터 많이 뜬 종목은 빼고, 09시 이후 거래가 붙으며 오르기 시작하는 종목을 09:15부터 10분마다 포착해 가상 매수(종목당 100만원·하루 5종목) · 15:14 전량 청산' }]);
+/* 눌림목("무게 신고 막대 → 평균가 첫 재터치", 2026-11-26) 기본값: 15:10 에 후보를 골라 시장가로 종가 부근 매수(가상), 평균가 −5% 아래 종가 마감 손절 · +8/+12% 2분할 · 10거래일 시간 청산.
+   하루 최대 3종목(종목당 100만원). 막대일 외+기·시총 상한 같은 조건은 처음엔 모두 끄고 신호를 모은다 */
+const PULLBACK_PRESET = { selector: 'pullback', capMinEok: 1000, capMaxEok: 0, amtMinEok: 0, maTrend: false, smx: 'off', flowForeign: 'ignore', flowInst: 'ignore', flowProgram: 'ignore', altFlowOn: false, kwOn: false,
+  selectAt: '15:10', noticeAfter: 0, approveWindow: 5, roundMin: 0, poolTop: 5, notifyTop: 5, sectorMax: 2, maxBuys: 3, maxTries: 1, retryUnfilled: false, perStockKrw: 1000000, approval: 'auto',
+  buyType: 'market', stopPct: 5, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 8, tp2Pct: 12, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: false, execMode: 'paper',
+  pbWMin: 0.3, pbTouchPct: 3, pbMaxAge: 30, pbStopBelowPct: 5, pbHoldDays: 10, pbSmBuy: false, pbUpOnly: false };
+BUILTIN.push({ id: 'pullback-default', name: '눌림목(무게 신고 막대 평균가 재터치)', kind: 'intraday', builtin: true, off: true, preset: PULLBACK_PRESET, desc: '무게/주식수 신고 막대가 나온 뒤 처음으로 그날 평균가 부근을 다시 밟은 종목을 15:10 에 가상 매수(종목당 100만원·하루 3종목) · 평균가 −5% 아래 종가 마감 시 손절, +8/+12% 2분할 익절, 10거래일 시간 청산(과거 14개월 검증: 승률 57%·평균 +0.9%·손익비 1.25, 아직 검증 중)' });
 const builtinRow = b => ({ ...b, enabled: !b.off, archived: false, version: 1, params: b.preset ? (validate(b.kind, b.preset).val || defaults(b.kind)) : defaults(b.kind), updated_at: null });
 
 /* 저장소: auto_strategies · auto_strategy_versions. 30초 캐시, 테이블이 없으면 기본 전략으로 동작 */

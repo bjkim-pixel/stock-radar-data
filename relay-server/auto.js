@@ -7,7 +7,7 @@
    · 업종당 2종목까지(같은 업종 3번째부터 제외)
    · 승인하지 않은 후보도 auto_runs 에 남겨(그림자 기록) 점수와 내 판단을 나중에 비교한다 */
 
-const ST = require('./auto-strategy'), XE = require('./auto-exec'), IG = require('./ignite');
+const ST = require('./auto-strategy'), XE = require('./auto-exec'), IG = require('./ignite'), PB = require('./pullback');
 const DEFP = Object.freeze(ST.defaults('intraday'));   // 기본 장중 전략 조건값(= 1~3단계 확정값). 함수 인자를 안 주면 이 값
 const EXCL_NAME = /스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/;
 const RULES = Object.freeze({
@@ -139,8 +139,9 @@ function formatMessage(date, picks, ctx = {}) {
     const m = c.m, s = c.score;
     lines.push(`${c.num || (i + 1 + (ctx.startNum || 0))}. ${c.name}(${c.code}) ${s.total}점${c.retry ? ' 🔁 재시도' : ''}`);
     if (c.retry && c.retryWhy) lines.push(`   지난번: ${c.retryWhy}`);
-    lines.push(ctx.cb ? `   종가 ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${c.changePct.toFixed(2)}% · 고가 대비 ${c.dd != null ? c.dd.toFixed(1) + '%' : '–'}${s.penalty ? ` (감점 −${s.penalty})` : ''}` : `   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${c.changePct.toFixed(2)}% (시가대비 ${c.open > 0 ? ((c.price / c.open - 1) * 100).toFixed(1) : '–'}%) · 체결강도 ${m.cttr.toFixed(0)}%`);
-    lines.push(`   순매수 외 ${won(m.fAmt)} · 기 ${won(m.oAmt)} · 프 ${won(m.pAmt)} (거래대금 대비 ${(s.ratio * 100).toFixed(1)}%)`);
+    if (c.pb) lines.push(`   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${(+c.changePct || 0).toFixed(2)}% · ${c.pb.barDate.slice(5)} 막대 평균가 ${fmtN(Math.round(c.pb.vw))}원 대비 ${c.pb.gapPct >= 0 ? '+' : ''}${c.pb.gapPct.toFixed(1)}% · 손절 ${fmtN(Math.floor(c.pb.stopPx))}원 아래 종가 마감`);
+    else lines.push(ctx.cb ? `   종가 ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${c.changePct.toFixed(2)}% · 고가 대비 ${c.dd != null ? c.dd.toFixed(1) + '%' : '–'}${s.penalty ? ` (감점 −${s.penalty})` : ''}` : `   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${c.changePct.toFixed(2)}% (시가대비 ${c.open > 0 ? ((c.price / c.open - 1) * 100).toFixed(1) : '–'}%) · 체결강도 ${m.cttr.toFixed(0)}%`);
+    if (!c.pb) lines.push(`   순매수 외 ${won(m.fAmt)} · 기 ${won(m.oAmt)} · 프 ${won(m.pAmt)} (거래대금 대비 ${(s.ratio * 100).toFixed(1)}%)`);
     lines.push(`   ${c.sector} · ${(c.reasons || []).join(' · ')}`);
     if (c.warns && c.warns.length) lines.push(`   ⚠ ${c.warns.join(' · ')}`);
   });
@@ -343,6 +344,7 @@ function createAuto(deps) {
   }
   /* X(종가베팅 저녁 선정 전용): { nxtOnly, skip:Set(이미 후보·주문한 종목), closeHigh:{maxPct, from, max} } — 종가가 당일 고가에서 maxPct 이내만, from% 넘게 내렸으면 점수 감점 */
   async function select(P = DEFP, X = null, sid = null) {
+    if (P.selector === 'pullback' && !X) return selectPullback(P, sid);   // 눌림목(무게 신고 막대 → 평균가 첫 재터치)
     if (P.selector === 'ignite' && !X) return selectIgnite(P, sid);   // 장초 상승 포착(시동) 전략은 자기 방식으로 고름
     const useKw = !X && P.kwOn !== false && P.weights !== undefined;   // 장중 전략만(종가베팅 저녁 선정은 해당 없음)
     const [scr, smx, held, pool, kwMap] = await Promise.all([loadScreener(P), loadSmx(smxWinOf(P)), loadHeld(sid || (X && X.sid) || null), D.livePool(P.capMinEok), useKw ? loadKw().catch(() => ({})) : {}]);
@@ -435,6 +437,114 @@ function createAuto(deps) {
     return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed, rejected: rejected.slice(0, 20).map(({ amt, ...x }) => x), alt: [] };
   }
 
+  /* 눌림목(2026-11-26): "무게 신고 막대 → 그날 평균가(거래대금÷거래량) 첫 재터치" 후보.
+     일봉(daily_price·daily_flow)에서 관찰 목록(막대 +2~maxAge 거래일, 아직 재터치 안 함)을 만들어 30분 캐시 → 관찰 종목의 현재 시세(현재가·저가)로 오늘 봉을 붙여 같은 규칙으로 판정 */
+  const pb = { at: 0, key: '', data: null };
+  async function pbPages(path, max = 40) {
+    const out = [];
+    for (let off = 0; off < max * 1000; off += 1000) {
+      const part = await D.sbGet(`${path}&limit=1000&offset=${off}`);
+      out.push(...(part || []));
+      if (!part || part.length < 1000) break;
+    }
+    return out;
+  }
+  async function loadPbWatch(P, date) {
+    const key = `${date}|${P.pbWMin}|${P.capMinEok}|${P.pbMaxAge}|${P.pbTouchPct}|${P.pbStopBelowPct}`;
+    if (pb.data && pb.key === key && Date.now() - pb.at < 30 * 60e3) return pb.data;
+    const o = { wMin: +P.pbWMin || 0.3, capMinEok: +P.capMinEok || 1000, touchPct: +P.pbTouchPct || 3, maxAge: +P.pbMaxAge || 30, stopBelowPct: +P.pbStopBelowPct || 5 };
+    const last = await D.sbGet('daily_price?select=trade_date&order=trade_date.desc&limit=1');
+    const lastD = last && last[0] && last[0].trade_date;
+    const prevD = D.prevTradingDay ? D.prevTradingDay(date) : null;
+    const res = { lastD, prevD, stale: !!(prevD && lastD && lastD < prevD), watch: [], bars: 0 };
+    if (res.stale) { pb.data = res; pb.key = key; pb.at = Date.now(); return res; }
+    const heavy = await pbPages(`daily_price?select=code,trade_date,weight_per_share,change_pct,market_cap&weight_per_share=gte.${o.wMin}&trade_date=gte.2025-09-01&trade_date=lte.${prevD || lastD}&order=trade_date.asc,code.asc`);
+    const bars = PB.findBars(heavy.map(r => ({ code: r.code, d: String(r.trade_date), w: +r.weight_per_share, chg: +r.change_pct, mc: +r.market_cap })), o);
+    const cut = new Date(`${date}T00:00:00Z`); cut.setUTCDate(cut.getUTCDate() - Math.ceil(o.maxAge * 7 / 5) - 8);
+    const cutD = cut.toISOString().slice(0, 10), recent = bars.filter(b => b.d >= cutD);
+    res.bars = recent.length;
+    const codes = [...new Set(recent.map(b => b.code))], minD = recent.reduce((m, b) => (b.d < m ? b.d : m), '9999');
+    const px = new Map(), fl = new Map();
+    for (let i = 0; i < codes.length; i += 60) {
+      const cs = codes.slice(i, i + 60).join(',');
+      for (const r of await pbPages(`daily_price?select=code,trade_date,open,high,low,close,volume,trade_amount&code=in.(${cs})&trade_date=gte.${minD}&trade_date=lte.${prevD || lastD}&order=code.asc,trade_date.asc`, 10)) { let a = px.get(r.code); if (!a) px.set(r.code, a = []); a.push({ d: String(r.trade_date), o: +r.open, h: +r.high, l: +r.low, c: +r.close, v: +r.volume, a: +r.trade_amount }); }
+      for (const r of await pbPages(`daily_flow?select=code,trade_date,foreign_net,inst_net&code=in.(${cs})&trade_date=gte.${minD}&trade_date=lte.${prevD || lastD}&order=code.asc,trade_date.asc`, 10)) fl.set(r.code + '|' + r.trade_date, (+r.foreign_net || 0) + (+r.inst_net || 0));
+    }
+    const names = new Map();
+    if (codes.length) for (let i = 0; i < codes.length; i += 100) for (const r of await D.sbGet(`stocks?select=code,name,security_type&code=in.(${codes.slice(i, i + 100).join(',')})&limit=200`).catch(() => [])) names.set(r.code, r);
+    for (const b of recent) {
+      const nm = names.get(b.code); if (!nm || nm.security_type !== 'STOCK') continue;
+      const hist = (px.get(b.code) || []).filter(x => x.d >= b.d);
+      if (!hist.length || hist[0].d !== b.d) continue;
+      const st = PB.barState(hist, o);
+      if (!st || !st.ok) continue;
+      const sm = fl.has(b.code + '|' + b.d) ? fl.get(b.code + '|' + b.d) : null;
+      res.watch.push({ code: b.code, name: nm.name || b.code, barDate: b.d, w: b.w, chg: b.chg, mcEok: b.mc / 1e8, vw: st.vw, stop: st.stop, age: st.age, broken: st.broken, smEok: sm == null ? null : sm / 1e8 });
+    }
+    pb.data = res; pb.key = key; pb.at = Date.now();
+    return res;
+  }
+  async function selectPullback(P, sid) {
+    const { date } = kstParts();
+    const [held, scr] = await Promise.all([loadHeld(sid), loadScreener(P).catch(() => ({ date: null, map: {} }))]);
+    const stat = { pool: 0, base: 0, flowPass: 0, errs: 0, pullback: true, scanAt: null, scanErr: null };
+    const W = await loadPbWatch(P, date);
+    stat.pool = W.bars; stat.base = W.watch.length; stat.hist = W.watch.length;
+    if (W.stale) { stat.scanErr = `일봉이 ${W.lastD}까지만 있어요(어제 ${W.prevD} 자료가 아직 없음) — 오늘 눌림목 선정은 건너뜁니다`; return { picks: [], dropped: [], stat, scrDate: scr.date, passedAll: [], rejected: [], alt: [] }; }
+    const qs = W.watch.length ? await D.pbQuotes(W.watch.map(w => w.code)).catch(e => { stat.scanErr = e.message; return []; }) : [];
+    stat.scanAt = new Date().toISOString();
+    const qm = new Map(qs.map(q => [q.code, q])), o = { touchPct: +P.pbTouchPct || 3 };
+    const passed = [], rejected = [];
+    for (const w of W.watch) {
+      const q = qm.get(w.code);
+      if (!q) { stat.errs++; continue; }
+      if (EXCL_NAME.test(q.name || w.name || '') || (held && held.has(w.code))) continue;
+      const st = { hi: w.vw * (1 + o.touchPct / 100), lo: w.vw * (1 - o.touchPct / 100), vw: w.vw };
+      const gapPct = (q.price / w.vw - 1) * 100, fails = [];
+      if (!PB.todayTouch(st, q, o)) { if (Math.abs(gapPct) < 12) rejected.push({ code: w.code, name: w.name, changePct: q.changePct, fails: [`평균가 ${Math.round(w.vw).toLocaleString('ko-KR')}원 대비 ${gapPct >= 0 ? '+' : ''}${gapPct.toFixed(1)}% (재터치 아님)`] }); continue; }
+      if (P.pbSmBuy && !(w.smEok > 0)) fails.push(`막대일 외+기 ${w.smEok == null ? '자료 없음' : Math.round(w.smEok) + '억'} (순매수 아님)`);
+      if (P.pbUpOnly && !(w.chg >= 29)) fails.push(`막대일 +${w.chg.toFixed(1)}% (상한가 아님)`);
+      if ((+P.capMaxEok || 0) > 0 && w.mcEok >= P.capMaxEok) fails.push(`시총 ${Math.round(w.mcEok).toLocaleString('ko-KR')}억 (상한 ${P.capMaxEok}억)`);
+      if ((+P.amtMinEok || 0) > 0 && !(q.amt >= P.amtMinEok * 1e8)) fails.push(`거래대금 ${Math.round(q.amt / 1e8)}억 (하한 ${P.amtMinEok}억)`);
+      if (fails.length) { rejected.push({ code: w.code, name: w.name, changePct: q.changePct, fails }); continue; }
+      const sig = { barDate: w.barDate, w: w.w, chg: w.chg, up30: w.chg >= 29, vw: w.vw, gapPct, smEok: w.smEok, smBuy: w.smEok == null ? null : w.smEok > 0, mcEok: w.mcEok, age: w.age };
+      const s0 = scr.map[w.code], c = { code: w.code, name: q.name || w.name, price: q.price, open: q.open, high: q.high, low: q.low, changePct: q.changePct, vol: q.vol, amt: q.amt,
+        sector: (s0 && s0.sector) || `미분류-${w.code}`, rs20: s0 ? num(s0.rs20_pctl) : null, smx: null, m: { fq: null, oq: null, pq: null, cttr: null, fAmt: null, oAmt: null, pAmt: null, w52: null },
+        pb: { vw: w.vw, stopPx: w.vw * (1 - (+P.pbStopBelowPct || 5) / 100), barDate: w.barDate, age: w.age, gapPct } };
+      c.score = PB.score(sig); c.reasons = PB.reasons(sig);
+      if (w.broken) c.warns = [`막대 뒤 ${w.broken.slice(5)}에 종가가 평균가 −${P.pbStopBelowPct}% 아래로 마감한 적 있어요(연구 규칙은 이를 막지 않음)`];
+      passed.push(c); stat.flowPass++;
+    }
+    const { pick, dropped } = rankAndPick(passed, P.poolTop, P.sectorMax);
+    rejected.sort((a, b) => Math.abs(a.changePct || 0) - Math.abs(b.changePct || 0));
+    return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed, rejected: rejected.slice(0, 20), alt: [] };
+  }
+  /* 눌림목 시간 청산(pbHoldDays): 매수 후 N거래일째 15:05 이후 이 전략이 들고 있는 종목의 남은 수량 전량 시장가 매도 — 못 판 종목은 30초 뒤 다시, 하루 최대 6번 */
+  async function holdExitFor(I, date) {
+    state.hexit = state.hexit || {};
+    const k = `${date}|${I.id}`, f = state.hexit[k] = state.hexit[k] || { done: false, tries: 0 };
+    if (f.done || f.tries >= 6 || (f.at && Date.now() - f.at < 25000)) return { ok: true, skipped: true };
+    f.at = Date.now(); f.tries++;
+    const b = BR.of(I.id), S = await b.state();
+    if (!S || !S.ok) return { ok: false, err: '매매 상태를 읽지 못했어요' };
+    const n = +I.params.pbHoldDays || 10, res = [];
+    for (const p of S.positions || []) {
+      if (!(p.qty > 0) || !p.openedAt) continue;
+      const od = new Date(p.openedAt + 9 * 3600e3).toISOString().slice(0, 10);
+      if (PB.tradingDaysBetween(od, date, D.isTradingDay) < n) continue;
+      const qty = p.avail > 0 ? p.avail : p.qty;
+      const r = await b.place({ code: p.code, name: p.name, side: 'sell', type: 'market', qty, cid: `hold_${I.id}_${p.code}_${date.replace(/-/g, '')}_${f.tries}` }).catch(e => ({ ok: false, error: e.message }));
+      res.push({ code: p.code, name: p.name, ok: !!(r && r.ok), qty: r && r.ok ? (r.fills || []).reduce((a, x) => a + x.qty, 0) : 0, err: r && !r.ok ? r.error : null, od });
+    }
+    const left = res.filter(x => !x.ok || x.qty < 1).length;
+    if (!res.length || !left) f.done = true;
+    if (res.length) {
+      await mutateRun(date, I.id, r => { LOG.push(r.payload, 'flat', `${n}거래일 시간 청산: ${res.map(x => `${x.name || x.code} ${x.ok ? x.qty + '주 매도' : '실패(' + x.err + ')'}`).join(', ')}`); state.runs[I.id] = r; }).catch(() => {});
+      await tgFor(I.id)(`⏱ [${I.name}] ${n}거래일 시간 청산\n` + res.map(x => `· ${x.name || x.code}(${x.od} 매수): ${x.ok ? `${x.qty}주 시장가 매도` : '실패 — ' + x.err}`).join('\n') + (left ? '\n(남은 종목은 30초 뒤 다시 시도)' : '')).catch(() => {});
+    }
+    return { ok: true, res, done: f.done };
+  }
+
   /* 장초 상승 포착 전략의 당일 청산(flatOn): flatAt 이후 이 전략이 산 종목의 남은 보유분을 시장가로 전량 매도 — 못 판 종목은 30초 뒤 다시 시도, 하루 최대 6번 */
   async function flattenFor(I, date) {
     state.flat = state.flat || {};
@@ -515,7 +625,7 @@ function createAuto(deps) {
   /* 엔진별로 쓰는 형태 */
   async function execOpt(sid) {
     const p = (await intraOf(sid)).I.params;
-    return { stopPct: p.stopPct, rr: p.rr, minRr: +p.minRr || 0, tpStyle: p.tpStyle || 'even', buyType: p.buyType === 'market' ? 'market' : 'limit', runnerPct: p.runnerPct == null ? 20 : +p.runnerPct, tp1Pct: +p.tp1Pct || 6, tp2Pct: +p.tp2Pct || 9, tp1Share: +p.tp1Share || 50, ratchet: !!p.ratchet, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, smartBuy: p.smartBuy !== false, smartCttr: +p.smartCttr || 120, smartRise: p.smartRise == null ? 2 : +p.smartRise, q1GapPct: +p.q1GapPct || 0.8, chaseAsk: p.chaseAsk !== false, chasePct: +p.chasePct || 1, chaseWaitMs: (+p.chaseWaitMin || 3) * 60e3, rrSlack: p.rrSlack == null ? 10 : +p.rrSlack, intentLostMs: (+p.intentLostSec || 60) * 1e3, fillWaitMs: p.fillWaitMin * 60e3, cancelWaitMs: (p.cancelWaitMin || p.fillWaitMin) * 60e3, repriceTo: p.repriceTo || 'bid1', unfilledEnd: p.unfilledEnd || 'cancel', totalCapKrw: +p.totalCapKrw || 0,
+    return { stopPct: p.stopPct, rr: p.rr, minRr: +p.minRr || 0, tpStyle: p.tpStyle || 'even', buyType: p.buyType === 'market' ? 'market' : 'limit', noTape: p.selector === 'pullback', closeStop: p.selector === 'pullback', runnerPct: p.runnerPct == null ? 20 : +p.runnerPct, tp1Pct: +p.tp1Pct || 6, tp2Pct: +p.tp2Pct || 9, tp1Share: +p.tp1Share || 50, ratchet: !!p.ratchet, trail: p.trail, split: p.split, minPct: p.minPct, recheckPct: p.recheckPct, openRiseMax: p.openRiseMax, cttrMin: p.cttrMin, buyPick: p.buyPick, smartBuy: p.smartBuy !== false, smartCttr: +p.smartCttr || 120, smartRise: p.smartRise == null ? 2 : +p.smartRise, q1GapPct: +p.q1GapPct || 0.8, chaseAsk: p.chaseAsk !== false, chasePct: +p.chasePct || 1, chaseWaitMs: (+p.chaseWaitMin || 3) * 60e3, rrSlack: p.rrSlack == null ? 10 : +p.rrSlack, intentLostMs: (+p.intentLostSec || 60) * 1e3, fillWaitMs: p.fillWaitMin * 60e3, cancelWaitMs: (p.cancelWaitMin || p.fillWaitMin) * 60e3, repriceTo: p.repriceTo || 'bid1', unfilledEnd: p.unfilledEnd || 'cancel', totalCapKrw: +p.totalCapKrw || 0,
       sizeMode: p.sizeMode || 'fixed', maxOrdersDay: +p.maxOrdersDay || 20, rejectStop: +p.rejectStop || 3, unsureStop: +p.unsureStop || 2 };
   }
   /* 종목당 금액(2단계 C-2): 가상·고정이면 null(지금처럼 perStock). 실전·드라이런은 고정이어도 실제 계좌의 미수 없는 매수 가능 금액·1회 상한 안에서만 */
@@ -795,7 +905,7 @@ function createAuto(deps) {
       regime: regime ? { date: regime.date, score: regime.score, stage: regime.stage, mult: regimeMult(I.params, regime), mode: I.params.regimeMode || 'info' } : null,
       strategy: { id: I.id, version: I.version, name: I.name }, params: I.params, letter: I.letter || 'A',
       events: EV.marketNotes(evs, date, 1),
-      picks: listP.slice(0, I.params.notifyTop).map(c => ({ ...(useAlt ? { alt: true, altSum: Math.round(c.altSum || 0) } : {}), ...(c.kw8 != null ? { kw8: Math.round(c.kw8 * 1000) / 1000, kwHigh: !!c.kwHigh } : {}), code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date) })),
+      picks: listP.slice(0, I.params.notifyTop).map(c => ({ ...(c.pb ? { pb: c.pb } : {}), ...(useAlt ? { alt: true, altSum: Math.round(c.altSum || 0) } : {}), ...(c.kw8 != null ? { kw8: Math.round(c.kw8 * 1000) / 1000, kwHigh: !!c.kwHigh } : {}), code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date) })),
       shadow, dropped: sel.dropped, rejected: sel.rejected.slice(0, 40), approved: [], decision: null, noticeSent: false,
     };
     const st0 = sel.stat || {};
@@ -1044,6 +1154,11 @@ function createAuto(deps) {
       if (!(await onFor(sideOfSid(I.id)))) continue;
       (out.flat = out.flat || {})[I.id] = await flattenFor(I, date).catch(err);
     }
+    for (const I of A.Is) {   // 눌림목: 매수 후 pbHoldDays 거래일째 15:05 이후 시간 청산 — 선정 창 밖에서도 돈다
+      if (I.params.selector !== 'pullback' || min < 15 * 60 + 5 || min >= 15 * 60 + 20) continue;
+      if (!(await onFor(sideOfSid(I.id)))) continue;
+      (out.hold = out.hold || {})[I.id] = await holdExitFor(I, date).catch(err);
+    }
     if (!selNow.length) return { ok: true, date, min, ...out };
     const selOn = [];
     for (const I of selNow) if (await onFor(sideOfSid(I.id))) selOn.push(I);
@@ -1139,7 +1254,7 @@ function createAuto(deps) {
       await mutateRun(date, I.id, r => { LOG.push(r.payload, 'round', `${n}회차 ${hh} 검토: 새 후보 없음 (풀 ${sel.stat.pool} → 기본조건 ${sel.stat.base} → 수급 통과 ${sel.stat.flowPass})`); state.runs[I.id] = r; });
       return { ok: true, fresh: 0, dropped: dropped.length };
     }
-    const mk = c => ({ ...(c.kw8 != null ? { kw8: Math.round(c.kw8 * 1000) / 1000, kwHigh: !!c.kwHigh } : {}), code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date), round: n });
+    const mk = c => ({ ...(c.pb ? { pb: c.pb } : {}), ...(c.kw8 != null ? { kw8: Math.round(c.kw8 * 1000) / 1000, kwHigh: !!c.kwHigh } : {}), code: c.code, name: c.name, score: c.score.total, ratio: c.score.ratio, amt: c.amt, price: c.price, open: c.open, changePct: c.changePct, sector: c.sector, smx: c.smx, reasons: c.reasons, m: c.m, parts: c.score.parts, ev: EV.stockBadges(evs, c.code, date), round: n });
     let startNum = 0, text = null, nums = [], nRetry = 0, holdNums = [];
     await mutateRun(date, I.id, r => {
       const P = r.payload; startNum = (P.picks || []).length; P.orders = P.orders || {};
