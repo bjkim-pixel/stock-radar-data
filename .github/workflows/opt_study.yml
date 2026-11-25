@@ -1,0 +1,25 @@
+name: "[점검] KRX 옵션 풋/콜 검증 | 수동(읽기 전용)"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install requests psycopg2-binary pandas numpy holidays
+      - name: 풋/콜 검증
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          KRX_API_KEY:     ${{ secrets.KRX_API_KEY }}
+        run: python 186_opt_pcr_study.py
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: opt-study-report
+          file: opt_pcr_study.md
