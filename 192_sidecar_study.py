@@ -12,6 +12,7 @@ def p(s=""): out.append(str(s)); print(s, flush=True)
 E = Q("select event_date d,title,source from market_events where kind='sidecar' order by 1")
 E["d"] = pd.to_datetime(E["d"])
 E["dir"] = np.where(E.title.str.contains("매수"), "buy", np.where(E.title.str.contains("매도"), "sell", "?"))
+E["source"] = np.where(E.title.str.contains("추정"), "추정", "발동(확정)")
 E["mkt"] = np.where(E.title.str.contains("코스닥"), "코스닥", "코스피")
 p("# 사이드카 역방향 매매 검증\n")
 p(f"- 사이드카 기록 {len(E)}건 · 기간 {E.d.min().date()} ~ {E.d.max().date()}")
@@ -52,7 +53,7 @@ def stats(rs):
     if not len(a): return "0 | – | – | – | – | –"
     w, l = a[a > 0].sum(), -a[a < 0].sum(); pf = w / l if l > 0 else float("inf")
     t = a.mean() / (a.std(ddof=1) / np.sqrt(len(a))) if len(a) > 2 and a.std() > 0 else float("nan")
-    return f"{len(a)} | {(a>0).mean()*100:.0f}% | {a.mean():+.2f}% | {pf:.2f} | {t:+.1f} | {a.sum():+.1f}%"
+    return f"{len(a)} | {(a>0).mean()*100:.0f}% | {a.mean():+.2f}% (중앙 {np.median(a):+.2f}%) | {pf:.2f} | {t:+.1f} | {a.sum():+.1f}%"
 
 HOW = ["다음날 시가", "다음날 종가", "2일째 종가"]
 def table(title, days, U):
@@ -69,10 +70,10 @@ p("\n## 2. 매도 사이드카 → 종가 레버리지·1X 매수")
 table("전체", days("sell"), LEV)
 table("하락장 2026-08-01 이후", days("sell", lo="2026-08-01"), LEV)
 table("그 전", days("sell", hi="2026-07-31"), LEV)
-p("\n## 3. 확정 사이드카만(출처별)")
+p("\n## 3. 발동(확정) vs 추정")
 for src in E.source.dropna().unique():
-    table(f"매수 · 출처 {src}", days("buy", src=src), {"114800": INV["114800"], "252670": INV["252670"]})
-    table(f"매도 · 출처 {src}", days("sell", src=src), {"069500": LEV["069500"], "122630": LEV["122630"]})
+    table(f"매수 · {src}", days("buy", src=src), INV)
+    table(f"매도 · {src}", days("sell", src=src), LEV)
 p("\n## 4. 사건별(코스피200 1X·2X, 다음날 종가 청산)")
 p("| 날짜 | 방향 | 시장 | 출처 | 인버스1X | 인버스2X | KODEX200 | 레버리지2X |\n|---|---|---|---|---:|---:|---:|---:|")
 f = lambda v: "–" if v is None else f"{v:+.2f}%"
