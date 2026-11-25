@@ -9,7 +9,7 @@
  · 장중 모의 두 가지: 종가 청산 / 손절 −1.5%·익절 +1.5%(50%)·+2.5%(50%) (같은 날 손절·익절 둘 다 닿으면 손절 먼저 — 보수적)
  · 비용 0.1%(ETF는 거래세 없음: 수수료+슬리피지 가정)."""
 import os, sys, numpy as np, pandas as pd, psycopg2
-FROM = os.environ.get("FROM_D", "2026-08-01"); TO = os.environ.get("TO_D", "2026-11-25"); COST = 0.10
+FROM = os.environ.get("FROM_D") or "2026-08-01"; TO = os.environ.get("TO_D") or "2026-11-25"; COST = 0.10
 c = psycopg2.connect(os.environ["SUPABASE_DB_URL"]); c.set_session(readonly=True, autocommit=True)
 Q = lambda s: pd.read_sql(s, c)
 out = []
@@ -26,12 +26,12 @@ semi_inv = M[M.name.str.contains("삼성전자|SK하이닉스|하이닉스|반�
 INS = {"114800": "코스피200 인버스 1X", "252670": "코스피200 선물인버스 2X"}
 for _, r in semi_inv.iterrows(): INS[r.code] = r["name"]
 codes = list(INS) + ["069500"]
-E = Q(f"select code,trade_date d,open,high,low,close from etf_daily where code in ({','.join(repr(x) for x in codes)}) and trade_date>='2026-03-01' order by 2")
+E = Q(f"select code,trade_date d,open,high,low,close from etf_daily where code in ({','.join(repr(x) for x in codes)}) and trade_date>='2025-06-01' order by 2")
 E["d"] = pd.to_datetime(E["d"]); E[["open", "high", "low", "close"]] = E[["open", "high", "low", "close"]].astype(float)
 px = {k: g.set_index("d")[["open", "high", "low", "close"]] for k, g in E.groupby("code")}
 
 # ── 시장·신호
-P = Q("select trade_date d,code,open,close,change_pct from daily_price where code in ('005930','000660') and trade_date>='2026-03-01' order by 1")
+P = Q("select trade_date d,code,open,close,change_pct from daily_price where code in ('005930','000660') and trade_date>='2025-06-01' order by 1")
 P["d"] = pd.to_datetime(P["d"]); w = P.pivot(index="d", columns="code")
 df = pd.DataFrame(index=w.index)
 cl, op = w["close"].astype(float), w["open"].astype(float)

@@ -7,6 +7,8 @@ on:
       script: {description: "검증 스크립트", default: "188_pullback_study.py"}
       sup: {description: "지지선 pivot|vp", default: "pivot"}
       ed: {description: "진입 당일 손절 판정 close|low", default: "close"}
+      d0: {description: "검증 시작일(191)", default: ""}
+      d1: {description: "검증 종료일(191)", default: ""}
 permissions:
   contents: write
 jobs:
@@ -19,6 +21,8 @@ jobs:
       FROM: ${{ inputs.from }}
       ED: ${{ inputs.ed }}
       SUP: ${{ inputs.sup }}
+      FROM_D: ${{ inputs.d0 }}
+      TO_D: ${{ inputs.d1 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
