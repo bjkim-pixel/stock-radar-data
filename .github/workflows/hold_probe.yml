@@ -1,9 +1,6 @@
 name: "[점검] 외국인 보유율 이력 | 수동 | 읽기 전용"
 on:
   workflow_dispatch:
-concurrency:
-  group: kis-rest-batch
-  cancel-in-progress: false
 permissions:
   contents: write
 jobs:
