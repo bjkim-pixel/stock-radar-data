@@ -13546,11 +13546,36 @@ function auTodayHtml(){
   let h=auNowBar()+`<div class="card"><h3>오늘 흐름 <span class="r au-upd"><span class="faint" style="font-size:11px">${trdEsc(A.date)}${A.tradingDay?"":" · 휴장일"} · ${trdEsc(auUpdTx())} 업데이트</span><button type="button" class="au-rf${TRD.auBusy?" spin":""}" data-aur="1" aria-label="새로고침" title="지금 새로고침"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg></button></span></h3>${ids.length?ids.map(sid=>auLane(`장중매매 ${auTag(sid)}`,auStepsI(sid),sid)).join(""):`<div class="faint" style="font-size:12.5px">${auReal()?"실전매매에 켜진 장중 전략이 없습니다. 가상매매 › 자동매매 › 전략에서 전략 카드의 <b>실전에 적용</b>을 누르면 이 탭에 드라이런으로 생깁니다(꺼진 상태 · 직접 승인). 전략 탭에서 켜세요.":"켜진 장중 전략이 없습니다. 전략 탭에서 켜세요."}</div>`}${auCHere()?auLane(`종가베팅 <span class="au-letter">${trdEsc(auLetter(G.active.closing)||"N")}</span>${trdEsc((auStrat(G.active.closing)||{}).name||"")} ${auModeB(auModeOf(auStrat(G.active.closing)),auDryOf(G.active.closing))}`,auStepsC()):auCAway()}</div>`;
   for(const sid of ids)h+=auRunHtml(sid);
   for(const r of auCRuns())h+=auRunHtml(r.sid);   // 종가베팅 기록(저녁 매수·판정·이월)
+  h+=auPWHtml();
   h+=auStatusHtml();
   return h;
 }
 
 /* ── 전략 탭 ── */
+/* 눌림목 관찰 목록: 무게 신고 막대가 나온 뒤 아직 그날 평균가를 다시 안 밟은 종목(막대 +2~30거래일) — 눌림목 전략이 켜져 있거나 설정에 있을 때만 */
+const auPBOn=()=>auIds().some(id=>{const S=auStrat(id);return S&&S.params&&S.params.selector==="pullback";});
+async function auPWLoad(){
+  const W=TRD.auPW=TRD.auPW||{rows:null};if(W.busy)return;W.busy=true;
+  try{const r=await trdApi("/trade/auto/pullback-watch");Object.assign(W,r,{err:null});}
+  catch(e){W.err=trdErrTx(e);}
+  W.busy=false;if(TRD.auTab==="today")trdAutoRender();
+}
+function auPWHtml(){
+  if(!auPBOn())return "";
+  const W=TRD.auPW;if(!W){TRD.auPW={rows:null};setTimeout(auPWLoad,0);return `<div class="card"><h3>눌림목 관찰 목록</h3><div class="load">불러오는 중…</div></div>`;}
+  const hd=`<h3>눌림목 관찰 목록 <span class="r"><button type="button" class="au-rf${W.busy?" spin":""}" data-aupw="1" aria-label="새로고침" title="새로고침">↻</button></span></h3>`;
+  if(W.err)return `<div class="card">${hd}<div class="trd-halt">${trdEsc(W.err)}</div></div>`;
+  if(!W.rows&&!W.stale)return `<div class="card">${hd}<div class="load">불러오는 중…</div></div>`;
+  if(W.stale)return `<div class="card">${hd}<div class="faint">일봉이 ${trdEsc(W.lastD||"–")}까지만 있어 오늘은 계산하지 않아요(어제 ${trdEsc(W.prevD||"–")} 자료 대기 중).</div></div>`;
+  const R=W.rows,nT=R.filter(x=>x.touch).length;
+  const st=x=>x.touch?`<b style="color:var(--up,#d33)">재터치</b>`:x.gap==null?"–":x.gap<-W.touchPct?"평균가 아래":x.gap<=8?"근접":"위";
+  const body=R.map(x=>`<tr${x.touch?' style="background:rgba(214,51,51,.08)"':""}><td class="l"><a class="au-nm" data-code="${x.code}">${trdEsc(x.name)}</a><div class="faint" style="font-size:10px">${N(x.mcEok,0)}억${x.broken?" · 종가 손절선 아래 마감 이력":""}</div></td>
+    <td>${trdEsc(x.barDate.slice(5))}<div class="faint" style="font-size:10px">${N(x.w*100,0)}%·${x.chg>=29?"상한가":"+"+N(x.chg,1)+"%"}</div></td>
+    <td>${N(x.vw,0)}</td><td>${x.price==null?"–":N(x.price,0)}<div class="faint" style="font-size:10px">${x.gap==null?"":(x.gap>0?"+":"")+N(x.gap,1)+"%"}</div></td>
+    <td>${N(x.stop,0)}</td><td>${x.age}일</td><td>${x.smEok==null?"–":(x.smEok>0?"+":"")+N(x.smEok,0)}</td><td>${st(x)}</td></tr>`).join("");
+  return `<div class="card">${hd}<div class="faint" style="font-size:11px;margin-bottom:6px">무게 신고 막대 뒤 아직 그날 평균가(거래대금÷거래량)를 다시 안 밟은 ${R.length}종목 · 재터치 ${nT}종목 · 평균가 ±${W.touchPct}% 안에 들어오면 15:10 매수 후보 · 막대 후 ${W.maxAge}거래일까지 관찰</div>
+    ${R.length?`<div class="tw"><table class="eh-t" style="font-size:11px"><thead><tr><th class="l">종목</th><th>막대</th><th>평균가</th><th>현재가</th><th>손절선</th><th>경과</th><th>외+기(억)</th><th>상태</th></tr></thead><tbody>${body}</tbody></table></div>`:'<div class="faint">관찰 중인 종목이 없어요.</div>'}</div>`;
+}
 function auStratHtml(){
   const G=TRD.aus,R=auReal(),mine=s=>{const sd=auSideOfS(s);return sd==="both"||sd===auSide();},L=(G.strategies||[]).filter(s=>!s.archived&&mine(s));
   let h=G.missing?`<div class="trd-halt">전략 테이블이 아직 없습니다. GitHub Actions "DB 테이블·뷰 생성"을 auto_strategy 로 실행해야 저장할 수 있습니다. 지금은 기본값으로 동작합니다.</div>`:"";
@@ -13934,6 +13959,7 @@ function trdAutoHtml(){
 function auClick(t){
   let el;
   if((el=t.closest("a.au-nm"))){go("detail",el.dataset.code);return true;}
+  if((el=t.closest("[data-aupw]"))){TRD.auPW=TRD.auPW||{rows:null};auPWLoad();trdAutoRender();return true;}
   if((el=t.closest("[data-aut]"))){TRD.auTab=el.dataset.aut;TRD.auMsg=null;trdAutoRender();if(TRD.auTab==="journal"&&TRD.auL.rows===null)auLLoad();if(TRD.auTab==="perf"&&TRD.auJ.rows===null)auJLoad();return true;}
   if((el=t.closest("[data-auon]"))){auSetOn(el.dataset.auon==="1");return true;}
   if((el=t.closest("[data-augoside]"))){TRD.auTab="strat";go(el.dataset.augoside==="real"?"real-auto":"paper-auto");return true;}

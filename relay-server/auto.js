@@ -1873,8 +1873,26 @@ function createAuto(deps) {
     return store.archive ? store.archive(id, who) : { ok: false, status: 503, error: '지원하지 않음' };
   }
   /* 서버 추적기용: 켜진 장초 상승 포착 전략의 조건값(없으면 null) */
+  /* 눌림목 관찰 목록(화면용): 켜진 눌림목 전략 설정(없으면 기본값)으로 관찰 종목 + 현재 시세 → 평균가 대비 위치. 시세는 20초 캐시 */
+  const pwq = { at: 0, key: '', rows: [] };
+  async function pullbackWatch() {
+    const A = await store.actives().catch(() => null), on = A && A.Is.find(x => x.params && x.params.selector === 'pullback');
+    const b = ST.BUILTIN.find(x => x.id === 'pullback-default'), P = on ? on.params : ST.validate('intraday', { ...ST.defaults('intraday'), ...b.preset }).val;
+    const { date } = kstParts(), W = await loadPbWatch(P, date);
+    if (W.stale) return { ok: true, on: !!on, stale: true, lastD: W.lastD, prevD: W.prevD, rows: [] };
+    const codes = W.watch.map(w => w.code), key = codes.join(',');
+    if (codes.length && (pwq.key !== key || Date.now() - pwq.at > 20000)) { pwq.rows = await D.pbQuotes(codes).catch(() => []); pwq.key = key; pwq.at = Date.now(); }
+    const qm = new Map(pwq.rows.map(q => [q.code, q])), tp = +P.pbTouchPct || 3, rows = [];
+    for (const w of W.watch) {
+      const q = qm.get(w.code), gap = q ? (q.price / w.vw - 1) * 100 : null;
+      const touch = q ? PB.todayTouch({ hi: w.vw * (1 + tp / 100), lo: w.vw * (1 - tp / 100) }, q) : false;
+      rows.push({ code: w.code, name: w.name, barDate: w.barDate, w: w.w, chg: w.chg, mcEok: Math.round(w.mcEok), vw: Math.round(w.vw), stop: Math.round(w.stop), age: w.age, broken: w.broken, smEok: w.smEok == null ? null : Math.round(w.smEok), price: q ? q.price : null, dayChg: q ? q.changePct : null, gap: gap == null ? null : Math.round(gap * 10) / 10, touch });
+    }
+    rows.sort((a, b) => (b.touch - a.touch) || (Math.abs(a.gap == null ? 999 : a.gap) - Math.abs(b.gap == null ? 999 : b.gap)));
+    return { ok: true, on: !!on, stale: false, lastD: W.lastD, touchPct: tp, maxAge: +P.pbMaxAge || 30, rows, at: new Date().toISOString() };
+  }
   async function igniteParams() { const A = await store.actives().catch(() => null); const I = A && A.Is.find(x => x.params && x.params.selector === 'ignite'); return I ? I.params : null; }
-  return { igniteParams, tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, setHalt, haltLevel, modeOf: sid => BR.execOf(sid), siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode, deskOk,
+  return { pullbackWatch, igniteParams, tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, setHalt, haltLevel, modeOf: sid => BR.execOf(sid), siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode, deskOk,
     daylogList: (n, side) => DL.list(n, side), daylogGet: (d, side) => DL.get(d, side), daylogMemo: (d, t) => DL.memo(d, t), daylogSave: d => DL.save(/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : kstParts().date, { force: true }), siteStage, journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalCompare: q => JR.compare(q), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
     sourceDiff, applySource, kindsInUse: () => BR.kindsInUse(),
     _select: select, _mutateRun: mutateRun, _readRun: readRun, _readRuns: readRuns, _readCarry: readCarry, _exec: exec };

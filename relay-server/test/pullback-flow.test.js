@@ -120,3 +120,17 @@ test('조건: 막대일 외+기 순매도면 pbSmBuy 가 막고, 상한가 막�
   r = await rig({ lastDelta: 3 });   // 일봉이 어제까지 안 들어옴
   try { r.at(0, 15, 10); r.quote(10600); await r.A.tick(); const P = r.runs.r && r.runs.r.payload; assert.deepEqual((P && P.picks) || [], []); assert.match(JSON.stringify(P), /일봉이/); } finally { await r.c.close(); }
 });
+
+test('관찰 목록 API: 막대 신고 후 아직 재터치 전인 종목을 평균가 대비 위치와 함께 돌려줌(재터치 종목 먼저)', async () => {
+  const { c, A, at, quote } = await rig();
+  try {
+    at(0, 14, 0); quote(10600);
+    const r = await A.pullbackWatch();
+    assert.equal(r.ok, true); assert.equal(r.stale, false); assert.equal(r.rows.length, 1);
+    const x = r.rows[0];
+    assert.equal(x.code, '035420'); assert.equal(x.vw, 10500); assert.equal(x.stop, 9975); assert.equal(x.gap, 1); assert.equal(x.touch, true); assert.equal(x.smEok, 60);
+    assert.equal(r.touchPct, 3);
+  } finally { await c.close(); }
+  const r2 = await rig({ lastDelta: 3 });
+  try { r2.at(0, 14, 0); const w = await r2.A.pullbackWatch(); assert.equal(w.stale, true); assert.deepEqual(w.rows, []); } finally { await r2.c.close(); }
+});
