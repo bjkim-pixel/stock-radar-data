@@ -4,10 +4,12 @@ const assert = require('node:assert/strict');
 
 const { fakeDb, boot, T0 } = require('./paper-harness');
 
-test('세션 없이는 가상매매 API 거부', async () => {
+test('가상매매 API: 로그인만으로(PIN 세션 없이) 쓸 수 있고, 로그인 없으면 거부', async () => {
   const db = fakeDb(), c = await boot(db);
-  assert.equal((await c.call('GET', '/trade/paper/state')).status, 401);
-  assert.equal((await c.order({ code: '005930', side: 'buy', type: 'market', qty: 1 })).status, 401);
+  assert.equal((await c.call('GET', '/trade/paper/state', { token: null })).status, 401);
+  assert.equal((await c.call('GET', '/trade/paper/state')).status, 200);
+  const r = await c.call('POST', '/trade/paper/order', { body: { desk: 'paper', code: '005930', side: 'buy', type: 'market', qty: 1 } });   // desk 'paper' 를 붙이는 화면 요청은 PIN 없이 통과
+  assert.notEqual(r.status, 401); assert.notEqual(r.status, 403);
   await c.close();
 });
 

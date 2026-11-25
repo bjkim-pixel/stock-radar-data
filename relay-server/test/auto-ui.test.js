@@ -153,7 +153,7 @@ test('/trade/auto/*: 세션 없으면 401 · 세션이 있으면 조회·설정,
     return { status: r.status, body: await r.json().catch(() => null) };
   };
   try {
-    assert.equal((await call('GET', '/trade/auto/state')).status, 401);                  // 세션 없음
+    assert.equal((await call('GET', '/trade/auto/state?side=real')).status, 401);       // 세션 없음 — 실전 쪽은 PIN 필요(가상 쪽은 로그인만으로 열림)
     const so = await call('POST', '/trade/session', { body: { pin: '123456' } });
     assert.equal(so.status, 200); const session = so.body.session;
     assert.equal((await call('GET', '/trade/auto/state', { session })).status, 503);    // 자동매매 미연결
@@ -165,7 +165,8 @@ test('/trade/auto/*: 세션 없으면 401 · 세션이 있으면 조회·설정,
     assert.equal(ok.status, 200); assert.equal(ok.body.cfg.on, true);
     const no = await call('POST', '/trade/auto/config', { session, body: { perStockKrw: 12345 } });
     assert.equal(no.status, 400); assert.match(no.body.error, /금액/);
-    assert.equal((await call('GET', '/trade/auto/strategies')).status, 401);
+    assert.deepEqual((await call('GET', '/trade/auto/strategies')).body.strategies, []);   // 세션 없이(가상 범위)는 가상 쪽 전략만 — 이 시험의 가짜 자동매매엔 deskOk 가 없어 빈 목록
+    assert.equal((await call('GET', '/trade/auto/strategy-versions?id=intraday-default')).status, 401);   // 쪽을 알 수 없는 전략은 PIN 세션만
     assert.equal((await call('GET', '/trade/auto/strategies', { session })).body.strategies[0].id, 'intraday-default');
     assert.equal((await call('GET', '/trade/auto/strategy-versions?id=intraday-default', { session })).body.versions[0].id, 'intraday-default');
     assert.equal((await call('POST', '/trade/auto/strategy', { body: { id: 'intraday-default', params: { cttrMin: 120 } } })).status, 401);

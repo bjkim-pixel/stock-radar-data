@@ -103,8 +103,8 @@ test('PIN: 맞으면 세션 발급, 세션 없이 ping/resume은 거부', async 
   await c.close();
 });
 
-test('PIN 5회 틀리면 30분 잠금(맞는 PIN도 거부) → 시간이 지나면 해제, 알림 발송', async () => {
-  const c = await boot();
+test('PIN 5회 틀리면 30분 잠금(맞는 PIN도 거부) → 시간이 지나면 해제, 알림 발송 (자동 실전잠금은 끄고 확인)', async () => {
+  const c = await boot({ PIN_AUTOLOCK_FAILS: '0' });
   for (let i = 0; i < 4; i++) { const r = await open(c, '000000'); assert.equal(r.status, 401); assert.equal(r.body.left, 4 - i); }
   const l = await open(c, '000000');
   assert.equal(l.status, 423);
@@ -116,7 +116,7 @@ test('PIN 5회 틀리면 30분 잠금(맞는 PIN도 거부) → 시간이 지나
 });
 
 test('PIN 동시 시도로 횟수 제한을 우회할 수 없음', async () => {
-  const c = await boot();
+  const c = await boot({ PIN_AUTOLOCK_FAILS: '0' });
   const rs = await Promise.all(Array.from({ length: 12 }, () => open(c, '000000')));
   assert.equal(rs.filter(r => r.status === 401).length, 4);
   assert.ok(rs.filter(r => r.status === 423).length >= 8);
@@ -246,7 +246,8 @@ test('재시작 복구: 30분 안의 PIN 5회 실패는 잠금 유지', async ()
 
 test('재시작 복구: 실패 3회 기록 후 재시작해도 남은 시도는 2회', async () => {
   const ts = new Date(clock - 60000).toISOString();
-  const c = await bootWith({ 'in.(pin_fail,session_open)': [{ event: 'pin_fail', ts }, { event: 'pin_fail', ts }, { event: 'pin_fail', ts }] });
+  const rows = [{ event: 'pin_fail', ts }, { event: 'pin_fail', ts }, { event: 'pin_fail', ts }];
+  const c = await boot({ TRADE_HOURS: '00:00-23:59', PIN_AUTOLOCK_FAILS: '0' }, { sbGet: async q => (q.includes('in.(pin_fail,session_open)') ? rows : []) });   // 자동 실전잠금은 끄고 기존 횟수 계산 확인
   await c.t.ready();
   const r = await open(c, '000000');
   assert.equal(r.body.left, 1);
@@ -496,5 +497,82 @@ test('가상매매 화면(desk=paper)은 텔레그램 승인 없이 PIN만으로
   // 실전 화면 입장(desk=real)은 그대로 텔레그램 승인 대기
   const r = await c.call('POST', '/trade/session', { body: { pin: '123456', desk: 'real' } });
   assert.equal(r.status, 202); assert.equal(r.body.pending, true);
+  await c.close();
+});
+
+/* ── 2026-11-25: 가상매매 PIN 면제 · 실전 PIN 단일 입장 · 실전잠금(텔레그램) ── */
+test('가상 주소는 로그인만으로 쓰고(PIN 세션 없이), 실전 주소·정지 해제·ping 은 PIN 세션이 필요', async () => {
+  const c = await boot();
+  assert.equal((await c.call('GET', '/trade/paper/state', { token: null })).status, 401);          // 로그인은 여전히 필요
+  assert.notEqual((await c.call('GET', '/trade/paper/state')).status, 401);                           // 로그인만으로 통과(엔진이 없으면 503)
+  assert.equal((await c.call('GET', '/trade/live/state')).status, 401);
+  assert.equal((await c.call('GET', '/trade/ping')).status, 401);
+  assert.equal((await c.call('POST', '/trade/resume', { body: {} })).status, 401);
+  assert.equal((await c.call('GET', '/trade/auto/state?side=real')).status, 401);                    // 실전 쪽 자동매매 자료는 못 읽음
+  assert.equal((await c.call('GET', '/trade/auto/journal?engine=live')).status, 401);
+  assert.equal((await c.call('POST', '/trade/auto/halt', { body: { desk: 'paper', level: 'none' } })).status, 401);   // 정지 해제는 PIN 세션만
+  assert.equal((await c.call('POST', '/trade/paper/order', { body: { code: '005930', side: 'buy', type: 'market', qty: 1 } })).status, 401);   // desk 없는(실전 취급) 요청은 PIN 필요
+  assert.equal((await c.call('POST', '/trade/live/order', { body: { desk: 'real', code: '005930', side: 'buy', type: 'market', qty: 1 } })).status, 401);
+  await c.close();
+});
+
+test('실전 입장은 텔레그램 승인 없이 PIN 만으로(기본), 입장 알림에 /실전잠금 안내', async () => {
+  const c = await boot({ TRADE_APPROVAL: undefined, REAL_TRADING_ENABLED: '1' });
+  const r = await open(c);
+  assert.equal(r.status, 200); assert.ok(r.body.session);
+  assert.ok(c.alerts.some(a => /거래 세션 열림/.test(a) && /\/실전잠금/.test(a)));
+  await c.close();
+});
+
+test('PIN 3회 연속 틀리면 자동 실전잠금 → 맞는 PIN도 거부(대입 차단) · 실전 주소 423 · 텔레그램 해제 후 정상', async () => {
+  const c = await boot({ REAL_TRADING_ENABLED: '1' });
+  const s0 = await open(c); assert.equal(s0.status, 200);                       // 이미 열린 세션도 잠금 때 종료돼야 함
+  const f1 = await open(c, '000000'); assert.equal(f1.status, 401); assert.equal(f1.body.left, 2);   // 3회에서 잠기므로 남은 시도는 3회 기준
+  assert.equal((await open(c, '000000')).status, 401);
+  const f3 = await open(c, '000000'); assert.equal(f3.status, 423); assert.equal(f3.body.realLocked, true);   // 3번째 실패가 곧 잠금
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(c.t.state.realLock, true);
+  assert.ok(c.audits.some(a => a.event === 'real_lock'));
+  assert.ok(c.alerts.some(a => /실전잠금/.test(a) && /\/실전해제/.test(a)));
+  const ok = await open(c, '123456'); assert.equal(ok.status, 423); assert.equal(ok.body.realLocked, true);
+  assert.equal((await c.call('GET', '/trade/ping', { session: s0.body.session })).status, 401);   // 기존 세션 종료됨
+  const st = await c.call('GET', '/trade/status'); assert.equal(st.body.realLocked, true); assert.equal(st.body.paperOpen, true);
+  assert.notEqual((await c.call('GET', '/trade/paper/state')).status, 423);                        // 가상매매는 잠금과 무관
+  await c.t.adminUnlockReal('telegram');
+  assert.equal(c.t.state.realLock, false);
+  assert.ok(c.audits.some(a => a.event === 'real_unlock'));
+  assert.equal((await open(c, '123456')).status, 200);
+  await c.close();
+});
+
+test('/실전잠금(adminLockReal): 세션 전부 종료 · 사이트 실전 스위치 끔 · 사이트 PIN 로는 못 품 · 실전 주소 423', async () => {
+  const c = await boot({ REAL_TRADING_ENABLED: '1' });
+  const so = await open(c); const sess = so.body.session;
+  assert.equal((await c.call('GET', '/trade/ping', { session: sess })).status, 200);
+  await c.t.adminLockReal('telegram');
+  assert.equal(c.t.state.realLock, true); assert.equal(c.t.state.realOn, false);
+  assert.equal((await c.call('GET', '/trade/ping', { session: sess })).status, 401);
+  assert.equal((await open(c)).status, 423);
+  assert.equal((await c.call('POST', '/trade/live/switch', { body: { desk: 'real', on: true, pin: '123456' }, session: sess })).status, 401);
+  assert.match(c.t.adminStatus(), /실전잠금 🔒 ON/);
+  await c.close();
+});
+
+test('재시작 복구: 마지막 기록이 real_lock 이면 잠금 유지(REAL_LOCK_IGNORE=1 이면 무시)', async () => {
+  const rows = { 'in.(real_lock,real_unlock)': [{ event: 'real_lock', ts: new Date(clock).toISOString() }] };
+  const c = await bootWith(rows); await c.t.ready();
+  assert.equal(c.t.state.realLock, true);
+  assert.equal((await open(c)).status, 423);
+  await c.close();
+  const c3 = await boot({ TRADE_HOURS: '00:00-23:59', REAL_LOCK_IGNORE: '1' }, { sbGet: async q => (q.includes('in.(real_lock,real_unlock)') ? rows['in.(real_lock,real_unlock)'] : []) });
+  await c3.t.ready();
+  assert.equal(c3.t.state.realLock, false);
+  await c3.close();
+});
+
+test('재시작 복구: 마지막 기록이 real_unlock 이면 잠금 아님', async () => {
+  const c = await bootWith({ 'in.(real_lock,real_unlock)': [{ event: 'real_unlock', ts: new Date(clock).toISOString() }] });
+  await c.t.ready();
+  assert.equal(c.t.state.realLock, false);
   await c.close();
 });

@@ -60,12 +60,14 @@ function loadConfig(env) {
     realEnabled: env.REAL_TRADING_ENABLED === '1',
     sessionMs: numEnv(env.TRADE_SESSION_MIN, 15) * 60000,
     idleMs: numEnv(env.TRADE_IDLE_MIN, 5) * 60000,          // 무조작 자동 잠금(클라이언트가 조작 중일 때만 x-active 를 보냄)
-    approval: env.TRADE_APPROVAL !== '0',                  // 새 기기·실전 스위치 ON 일 때 텔레그램 승인 요구(0 이면 끔 — 텔레그램 불능으로 잠겼을 때의 비상구)
+    approval: env.TRADE_APPROVAL === '1',                  // 2026-11-25: 기본 꺼짐(실전도 PIN 만으로 입장). 1 로 두면 새 기기·실전 스위치 ON 일 때 텔레그램 승인을 다시 요구)
     approvalMs: 3 * 60000,
     sessionMaxMs: numEnv(env.TRADE_SESSION_MAX_HOURS, 4) * 3600000,
     maxSessions: numEnv(env.TRADE_MAX_SESSIONS, 1),
     pinMaxFails: numEnv(env.PIN_MAX_FAILS, 5),
     pinLockMs: numEnv(env.PIN_LOCK_MIN, 30) * 60000,
+    pinAutoLock: numEnv(env.PIN_AUTOLOCK_FAILS, 3),        // PIN 을 이만큼 연속으로 틀리면 실전잠금(텔레그램 /실전해제 로만 풀림). 0 이면 끔
+    lockIgnore: env.REAL_LOCK_IGNORE === '1',              // 비상구: 텔레그램이 영영 안 될 때 Render 환경변수로 실전잠금 기록을 무시하고 시작
     replayMs: numEnv(env.REPLAY_WINDOW_SEC, 30) * 1000,
     hours: parseHours(env.TRADE_HOURS || '08:00-20:00'),      // KST, 신규 매수 허용 시간대
     ntfyTopic: String(env.NTFY_TOPIC || '').trim(),
@@ -115,7 +117,8 @@ function createTrade(deps = {}) {
 
   /* realOn = 사이트 "실전 주문" 스위치(2026-11-19). REAL_TRADING_ENABLED(환경변수)는 "실전 주문을 낼 수 있는 상한"이고,
      이 스위치가 꺼져 있으면 실전 신규 매수(직접·자동)만 막는다 — 손절·익절·이월 매도와 취소는 계속. 기본 꺼짐, 켜고 끈 기록(real_on/real_off)을 감사 기록에 남겨 재시작 뒤에도 유지 */
-  const state = { halted: false, realOn: false, realSetAt: 0, pinFails: 0, pinLockUntil: 0 };
+  const state = { halted: false, realOn: false, realSetAt: 0, pinFails: 0, pinLockUntil: 0, realLock: false, lockSetAt: 0 };
+  /* realLock = 실전잠금(2026-11-25): 실전 입장·실전 API 전부 거부, 실전 스위치·실전 자동매매 끔. 켜기는 텔레그램 /실전잠금 · PIN 연속 실패, 풀기는 텔레그램 /실전해제 로만(사이트에서는 못 풂). 서버 안의 손절·익절 감시는 계속 */
   const sessions = new Map();     // sid -> { uid, exp, abs, act }
   const pending = new Map();     // reqId -> { uid, code, c, exp, status:'wait'|'ok'|'deny', devId }
   const nonces = new Map();       // nonce -> 만료시각
@@ -221,6 +224,9 @@ function createTrade(deps = {}) {
         state.halted = !!(k[0] && k[0].event === 'kill');
         const rk = await deps.sbGet('trade_audit?select=event,ts&event=in.(real_on,real_off)&order=ts.desc&limit=1');
         state.realOn = !!(rk[0] && rk[0].event === 'real_on');   // 기록이 없거나 못 읽으면 꺼짐(안전 쪽)
+        const lk = await deps.sbGet('trade_audit?select=event,ts&event=in.(real_lock,real_unlock)&order=ts.desc&limit=1');
+        state.realLock = !cfg.lockIgnore && !!(lk[0] && lk[0].event === 'real_lock');
+        if (state.realLock) console.log('[trade] 재시작 복구: 실전잠금 상태 유지');
         const since = new Date(now() - cfg.pinLockMs).toISOString();
         const rows = await deps.sbGet(`trade_audit?select=event,ts&event=in.(pin_fail,session_open)&ts=gte.${encodeURIComponent(since)}&order=ts.asc&limit=500`);
         let fails = 0, lockUntil = 0;
@@ -262,13 +268,25 @@ function createTrade(deps = {}) {
       state.realOn = on;
     } catch (_) {}
   }
+  /* 실전잠금도 같은 방식으로 다시 읽음 — 다른 인스턴스(배포 겹침)가 받은 /실전잠금·/실전해제가 따라오게 */
+  async function reloadLock() {
+    if (!deps.sbGet || cfg.lockIgnore) return;
+    try {
+      const k = await deps.sbGet('trade_audit?select=event,ts&event=in.(real_lock,real_unlock)&order=ts.desc&limit=1');
+      if (k[0] && Date.parse(k[0].ts) < (state.lockSetAt || 0) - 1000) return;   // 이 서버에서 방금 바꾼 상태를 옛 기록으로 되돌리지 않음
+      if (!k[0] && state.lockSetAt) return;
+      const on = !!(k[0] && k[0].event === 'real_lock');
+      if (on !== state.realLock) { console.log(`[trade] 실전잠금 ${on ? '걸림' : '풀림'}(다른 인스턴스·기록에서 이어받음)`); if (on) sessions.clear(); }
+      state.realLock = on;
+    } catch (_) {}
+  }
   async function announce() {
     if (deps.skipLoop || !deps.notify) return;
-    await alert(`🔁 서버 시작${BUILD ? ' (' + BUILD + ')' : ''}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치(환경변수) ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 사이트 실전 주문 ${cfg.realEnabled ? (state.realOn ? '🚨 ON(유지)' : 'OFF') : '—'} · 긴급정지 ${state.halted ? 'ON(유지)' : '해제'}`, '서버 상태');
+    await alert(`🔁 서버 시작${BUILD ? ' (' + BUILD + ')' : ''}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치(환경변수) ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 사이트 실전 주문 ${cfg.realEnabled ? (state.realOn ? '🚨 ON(유지)' : 'OFF') : '—'} · 긴급정지 ${state.halted ? 'ON(유지)' : '해제'} · 실전잠금 ${state.realLock ? '🔒 ON(유지)' : '해제'}`, '서버 상태');
   }
   if (deps.sbGet && !deps.skipRestore) ready = restore().then(announce, announce);
   /* 다른 인스턴스(배포 겹침)가 받은 /정지·해제도 15초 안에 따라가도록 주기적으로 다시 읽음(읽기 실패는 그대로 둠) */
-  if (deps.sbGet && !deps.skipRestore && !deps.skipLoop) { const kt = setInterval(() => { ready.then(() => Promise.all([reloadKill(true), reloadReal()])).catch(() => {}); }, 15000); if (kt.unref) kt.unref(); }
+  if (deps.sbGet && !deps.skipRestore && !deps.skipLoop) { const kt = setInterval(() => { ready.then(() => Promise.all([reloadKill(true), reloadReal(), reloadLock()])).catch(() => {}); }, 15000); if (kt.unref) kt.unref(); }
   /* 인증 실패처럼 반복될 수 있는 기록은 IP·사유별로 분당 1회만 */
   function auditOnce(event, detail, req) {
     const k = event + '|' + (req ? clientIp(req) : '');
@@ -333,13 +351,15 @@ function createTrade(deps = {}) {
   const sessionTtlSec = s => Math.max(0, Math.round((s.exp - now()) / 1000));
 
   /* 로그인(+선택: 거래 세션) 통과 여부. 주문 API는 반드시 session:true 로 호출 */
-  async function authz(req, { session = false } = {}) {
+  async function authz(req, { session = false, paperOk = false } = {}) {
     const u = await verifyUser(req);
     if (!u.ok) return u;
     if (session) {
       const s = getSession(req.headers['x-trade-session'], u.user.id);
-      if (!s) return { ok: false, status: 401, error: 'pin required' };
-      return { ...u, session: s };
+      if (s) return { ...u, session: s };
+      /* 2026-11-25: 가상매매 화면은 PIN 없이 로그인만으로 — 가상 전용 범위(noPin). 실전 주소·실전 자동매매·정지 해제는 이 범위로는 못 씀 */
+      if (paperOk) return { ...u, session: { uid: u.user.id, scope: 'paper', noPin: true } };
+      return { ok: false, status: 401, error: 'pin required' };
     }
     return u;
   }
@@ -353,11 +373,16 @@ function createTrade(deps = {}) {
       const good = typeof pin === 'string' && pin.length >= 4 && pin.length <= 64 && await verifyHash(pin, cfg.pinHash);
       if (good) { state.pinFails = 0; return { ok: true }; }
       state.pinFails++;
+      if (cfg.pinAutoLock > 0 && state.pinFails >= cfg.pinAutoLock && !state.realLock) {   // 해킹 시도로 보고 실전잠금(텔레그램 /실전해제 로만 풀림)
+        state.pinFails = 0;
+        setRealLock(true, null, 'pin_fail').catch(() => {});
+        return { ok: false, status: 423, error: 'real locked', realLocked: true };
+      }
       if (state.pinFails >= cfg.pinMaxFails) {
         state.pinFails = 0; state.pinLockUntil = now() + cfg.pinLockMs;
         return { ok: false, status: 423, error: 'pin locked', locked: true, retrySec: Math.round(cfg.pinLockMs / 1000) };
       }
-      return { ok: false, status: 401, error: 'invalid pin', left: cfg.pinMaxFails - state.pinFails };
+      return { ok: false, status: 401, error: 'invalid pin', left: Math.max(0, (cfg.pinAutoLock > 0 ? Math.min(cfg.pinAutoLock, cfg.pinMaxFails) : cfg.pinMaxFails) - state.pinFails), ...(cfg.pinAutoLock > 0 && cfg.pinAutoLock < cfg.pinMaxFails ? { autoLock: true } : {}) };
     };
     const p = pinChain.then(run, run);
     pinChain = p.catch(() => {});
@@ -570,6 +595,7 @@ function createTrade(deps = {}) {
   const statusBody = (a) => ({
     ok: true, now: now(),
     enabled: cfg.enabled, realEnabled: cfg.realEnabled, realOn: cfg.realEnabled && state.realOn, halted: state.halted,
+    realLocked: state.realLock, paperOpen: true,
     pinConfigured: !!cfg.pinHash, pinLockedSec: Math.max(0, Math.ceil((state.pinLockUntil - now()) / 1000)),
     session: a.session ? { active: true, ttlSec: sessionTtlSec(a.session), scope: a.session.scope || 'full' } : { active: false },
     limits: cfg.limits, hours: cfg.hours, accountConfigured: !!(kisOrder && kisOrder.configured()),
@@ -582,7 +608,7 @@ function createTrade(deps = {}) {
     await audit('session_open', true, { flags: c.flags.length ? c.flags : undefined, kicked: kicked || undefined, ...(scope ? { scope } : {}) }, req);
     if (scope === 'paper') return json(res, 200, { ok: true, session: sid, scope, ttlSec: Math.round(cfg.sessionMs / 1000), idleSec: Math.round(cfg.idleMs / 1000) });   // 가상매매 전용: 텔레그램 알림 없음 · 기기를 "아는 기기"로 등록하지 않음(실전 입장 시 승인 유지)
     remember(c);
-    alert(`${warnText(c)}🔓 거래 세션 열림 · ${kst()}\n${whoText(c)}\n실전 스위치 ${cfg.realEnabled ? 'ON 🔴' : 'OFF'}${cfg.realEnabled ? ' · 사이트 실전 주문 ' + (state.realOn ? 'ON 🔴' : 'OFF') : ''} · 긴급정지 ${state.halted ? 'ON' : '해제'}${kicked ? '\n(기존에 열려 있던 세션은 종료됨)' : ''}\n본인이 아니면 /kill`, '매매 세션');
+    alert(`${warnText(c)}🔓 거래 세션 열림 · ${kst()}\n${whoText(c)}\n실전 스위치 ${cfg.realEnabled ? 'ON 🔴' : 'OFF'}${cfg.realEnabled ? ' · 사이트 실전 주문 ' + (state.realOn ? 'ON 🔴' : 'OFF') : ''} · 긴급정지 ${state.halted ? 'ON' : '해제'}${kicked ? '\n(기존에 열려 있던 세션은 종료됨)' : ''}\n본인이 아니면 /실전잠금 (신규 매수만 막으려면 /kill)`, '매매 세션');
     return json(res, 200, { ok: true, session: sid, ttlSec: Math.round(cfg.sessionMs / 1000), idleSec: Math.round(cfg.idleMs / 1000) });
   }
 
@@ -597,7 +623,8 @@ function createTrade(deps = {}) {
       if (ss) { const t = now(); if (cfg.idleMs && t - (ss.act || 0) > cfg.idleMs) { sessions.delete(sidH); audit('session_idle_lock', true, {}, req); } else if (req.method !== 'GET' || req.headers['x-active'] === '1') ss.act = t; } }
     const needSession = path === '/trade/resume' || path === '/trade/ping' || path.startsWith('/trade/paper/') || path.startsWith('/trade/live/') || path.startsWith('/trade/auto/');
     // 상태 조회는 세션이 있으면 그 정보도 함께 돌려줌(없어도 통과)
-    const a = await authz(req, { session: needSession });
+    const paperOk = path.startsWith('/trade/paper/') || path.startsWith('/trade/auto/');   // 가상 주소(자동매매는 아래에서 쪽·전략을 다시 가림)
+    const a = await authz(req, { session: needSession, paperOk });
     if (!a.ok) {
       if (a.wrongUser) { if (auditOnce('login_wrong_user', { path }, req)) { const c = classify(req); alert(`🚨 허용되지 않은 계정이 매매 API에 접근했습니다.\n${whoText(c)}`); } }
       else if (a.status === 401 && !needSession) auditOnce('login_invalid', { path }, req);
@@ -609,7 +636,16 @@ function createTrade(deps = {}) {
     }
     /* 가상매매 전용 세션(텔레그램 승인 없이 PIN만으로 연 세션)은 실전·실전 자동매매·긴급정지 해제를 쓸 수 없다 */
     if (a.session && a.session.scope === 'paper' && needSession) {
-      if (path.startsWith('/trade/live/') || path === '/trade/resume') return json(res, 403, { ok: false, error: '가상매매 전용 세션입니다 — 실전은 PIN·승인으로 다시 입장하세요', paperOnly: true });
+      if (path.startsWith('/trade/live/') || path === '/trade/resume') return json(res, 403, { ok: false, error: '가상매매 전용 세션입니다 — 실전은 PIN으로 입장하세요', paperOnly: true });
+    }
+    /* 실전잠금 중: 실전 주소는 세션이 있어도 전부 거부(실전 입장은 /trade/session 에서 막음) */
+    if (state.realLock && path.startsWith('/trade/live/')) return json(res, 423, { ok: false, error: '실전매매가 잠겨 있습니다 — 텔레그램에서 /실전해제 를 보내세요', realLocked: true });
+    /* 가상 범위(PIN 없이 연 것 포함)는 실전 쪽 자동매매 자료를 읽지 못함 */
+    if (a.session && a.session.scope === 'paper' && path.startsWith('/trade/auto/') && req.method === 'GET') {
+      const sp = new URL(req.url, 'http://x').searchParams, bad = sp.get('side') === 'real' || ['live', 'dry'].includes(sp.get('engine'));
+      let badSid = false;
+      { const sidQ = sp.get('sid') || sp.get('id'); if (!bad && sidQ) badSid = !(autoRef && autoRef.deskOk && await autoRef.deskOk(String(sidQ), 'paper').catch(() => false)); }
+      if (bad || badSid) return a.session.noPin ? json(res, 401, { ok: false, error: 'pin required' }) : json(res, 403, { ok: false, error: '가상매매 전용 세션입니다 — 실전은 PIN으로 입장하세요', paperOnly: true });
     }
     if (path === '/trade/audit' && req.method === 'GET') {   // 보안 로그 화면용(로그인한 주인만)
       if (!deps.sbGet) return json(res, 503, { ok: false, error: 'audit unavailable' });
@@ -679,7 +715,15 @@ function createTrade(deps = {}) {
     if ((path === '/trade/auto/strategies' || path === '/trade/auto/strategy-versions' || path === '/trade/auto/strategy-source') && req.method === 'GET') {   // 컨트롤 타워: 전략 목록·스키마 / 버전 이력 / 원본 변경 미리 보기
       if (!autoRef || !autoRef.strategies) return json(res, 503, { ok: false, error: 'auto unavailable' });
       try {
-        if (path === '/trade/auto/strategies') return json(res, 200, await autoRef.strategies());
+        if (path === '/trade/auto/strategies') {
+          const r = await autoRef.strategies();
+          if (a.session && a.session.scope === 'paper' && r && Array.isArray(r.strategies)) {   // 가상 범위에는 가상 쪽 전략만 보여줌(실전 전략 설정은 PIN 세션만)
+            const keep = [];
+            for (const x of r.strategies) if (autoRef.deskOk && await autoRef.deskOk(String(x.id), 'paper').catch(() => false)) keep.push(x);
+            return json(res, 200, { ...r, strategies: keep });
+          }
+          return json(res, 200, r);
+        }
         if (path === '/trade/auto/strategy-source') { const r = await autoRef.sourceDiff(new URL(req.url, 'http://x').searchParams.get('id')); return json(res, r.ok ? 200 : (r.status || 400), r); }
         return json(res, 200, await autoRef.strategyVersions(new URL(req.url, 'http://x').searchParams.get('id')));
       } catch (e) { console.warn('[trade] 전략 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'strategy read failed' }); }
@@ -704,7 +748,9 @@ function createTrade(deps = {}) {
     const desk = body && body.desk != null ? String(body.desk) : null;
     if (body && typeof body === 'object') delete body.desk;
     if (desk !== null && desk !== 'real' && desk !== 'paper') return json(res, 400, { ok: false, error: 'bad desk' });
-    if (a.session && a.session.scope === 'paper' && path !== '/trade/session' && path !== '/trade/session/poll' && desk !== 'paper') return json(res, 403, { ok: false, error: '가상매매 전용 세션입니다 — 실전은 PIN·승인으로 다시 입장하세요', paperOnly: true });
+    if (a.session && a.session.scope === 'paper' && path !== '/trade/session' && path !== '/trade/session/poll' && desk !== 'paper') return a.session.noPin ? json(res, 401, { ok: false, error: 'pin required' }) : json(res, 403, { ok: false, error: '가상매매 전용 세션입니다 — 실전은 PIN으로 입장하세요', paperOnly: true });
+    /* 자동매매 정지 해제는 PIN 세션만(가상 범위로는 정지만 가능 — 해커가 로그인만으로 풀지 못하게) */
+    if (a.session && a.session.scope === 'paper' && path === '/trade/auto/halt' && String(body.level || '') === 'none') return a.session.noPin ? json(res, 401, { ok: false, error: 'pin required' }) : json(res, 403, { ok: false, error: '자동매매 정지 해제는 PIN 세션이나 텔레그램(/자동재개)에서만 됩니다', paperOnly: true });
     if (desk) {
       const deskErr = msg => { audit('desk_mismatch', false, { path, desk, why: msg }, req, desk === 'real' ? 'REAL' : 'VIRTUAL'); return json(res, 409, { ok: false, error: msg + ' — 화면을 새로고침하세요' }); };
       if (path.startsWith('/trade/live/') && desk !== 'real') return deskErr('가상매매 화면에서 실전 주문을 보낼 수 없습니다');
@@ -716,13 +762,15 @@ function createTrade(deps = {}) {
     }
 
     if (path === '/trade/session') {
+      if (state.realLock) { audit('session_locked_reject', false, {}, req); return json(res, 423, { ok: false, error: 'real locked', realLocked: true }); }   // 잠금 중에는 PIN 대입도 받지 않음
       const r = await checkPin(body.pin);
       if (!r.ok) {
         await audit('pin_fail', false, { left: r.left, locked: !!r.locked }, req);
         const c = classify(req);
-        if (r.locked) alert(`🚨 거래 PIN을 ${cfg.pinMaxFails}회 틀려 ${Math.round(cfg.pinLockMs / 60000)}분간 잠겼습니다.\n${warnText(c)}${whoText(c)}`);
+        if (r.realLocked) { /* 실전잠금 알림은 setRealLock 이 보냄 */ }
+        else if (r.locked) alert(`🚨 거래 PIN을 ${cfg.pinMaxFails}회 틀려 ${Math.round(cfg.pinLockMs / 60000)}분간 잠겼습니다.\n${warnText(c)}${whoText(c)}`);
         else if (r.status === 401) alert(`${warnText(c)}⚠ 거래 PIN 오류 (남은 시도 ${r.left}회)\n${whoText(c)}`);
-        return json(res, r.status, { ok: false, error: r.error, ...(r.left != null ? { left: r.left } : {}), ...(r.retrySec ? { retrySec: r.retrySec } : {}) });
+        return json(res, r.status, { ok: false, error: r.error, ...(r.left != null ? { left: r.left } : {}), ...(r.retrySec ? { retrySec: r.retrySec } : {}), ...(r.realLocked ? { realLocked: true } : {}), ...(r.autoLock ? { autoLock: true } : {}) });
       }
       const c = classify(req);
       const kd = c.d.id ? known.devs.get(c.d.id) : null;
@@ -964,7 +1012,7 @@ function createTrade(deps = {}) {
   if (!cfg.pinHash) console.warn('[trade] TRADE_PIN_HASH 미설정 — 거래 세션을 열 수 없습니다.');
 
   /* ── 텔레그램 관리 명령(채팅 ID 확인은 server.js) ── */
-  const adminStatus = () => `📊 매매 상태 · ${kst()}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치(환경변수) ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 사이트 실전 주문 ${cfg.realEnabled ? (state.realOn ? '🚨 ON' : 'OFF') : '—'} · 긴급정지 ${state.halted ? 'ON' : '해제'}\n열린 거래 세션 ${[...sessions.values()].filter(x => x.exp > now() && x.abs > now()).length}개 · PIN 잠금 ${state.pinLockUntil > now() ? Math.ceil((state.pinLockUntil - now()) / 60000) + '분 남음' : '없음'}${BUILD ? '\n빌드 ' + BUILD : ''}`;
+  const adminStatus = () => `📊 매매 상태 · ${kst()}\n매매 ${cfg.enabled ? 'ON' : 'OFF'} · 실전 스위치(환경변수) ${cfg.realEnabled ? '🚨 ON' : 'OFF'} · 사이트 실전 주문 ${cfg.realEnabled ? (state.realOn ? '🚨 ON' : 'OFF') : '—'} · 긴급정지 ${state.halted ? 'ON' : '해제'} · 실전잠금 ${state.realLock ? '🔒 ON' : '해제'}\n열린 거래 세션 ${[...sessions.values()].filter(x => x.exp > now() && x.abs > now()).length}개 · PIN 잠금 ${state.pinLockUntil > now() ? Math.ceil((state.pinLockUntil - now()) / 60000) + '분 남음' : '없음'}${BUILD ? '\n빌드 ' + BUILD : ''}`;
   async function adminDecide(code, ok) {
     const t = now();
     for (const v of pending.values()) {
@@ -978,6 +1026,23 @@ function createTrade(deps = {}) {
     return '해당 코드의 대기 중인 요청이 없어요 (만료됐거나 이미 처리됨).';
   }
   async function adminLock(via) { const n = sessions.size; sessions.clear(); await audit('session_close_all', true, { via, n }, null); return n; }
+  /* 실전잠금: 세션 전부 종료 · 실전 스위치 끔 · 실전 자동매매 끔 · 새 실전 입장 불가. 잠그기는 메모리에서 먼저(기록 실패해도 잠긴 채), 풀기는 텔레그램에서만 */
+  async function setRealLock(on, req, via) {
+    state.lockSetAt = now();
+    if (on) { state.realLock = true; sessions.clear(); pending.clear(); }
+    const saved = await audit(on ? 'real_lock' : 'real_unlock', true, { via }, req || null, 'REAL');
+    if (on) {
+      try { if (state.realOn) await setRealOn(false, null, via || 'lock'); } catch (_) {}
+      try { if (autoRef && autoRef.setConfig) await autoRef.setConfig({ liveOn: false }, {}); } catch (_) {}
+      alert(`🔒 실전잠금 — 열린 세션을 모두 종료했고, 실전 주문 스위치·실전 자동매매를 껐습니다. 새 실전 입장도 막혔습니다.\n(원인: ${via === 'pin_fail' ? 'PIN ' + cfg.pinAutoLock + '회 연속 오류' : via === 'telegram' ? '텔레그램 명령' : via})${req ? '\n' + whoText(classify(req)) : ''}\n서버 안의 손절·익절 감시는 계속됩니다. 본인이 맞으면 /실전해제` + (saved ? '' : '\n⚠ 기록 저장 실패 — 서버가 재시작되면 풀릴 수 있어요. Render 에서 REAL_TRADING_ENABLED=0 으로도 막으세요.'), '실전잠금');
+    } else {
+      state.realLock = false; state.pinFails = 0; state.pinLockUntil = 0;
+      alert(`🔓 실전잠금을 풀었습니다. 실전 주문 스위치·실전 자동매매는 꺼진 채이니 필요하면 사이트에서 PIN으로 다시 켜세요.${saved ? '' : '\n⚠ 기록 저장 실패 — 서버가 재시작되면 다시 잠길 수 있어요.'}`, '실전잠금');
+    }
+    return { saved };
+  }
+  const adminLockReal = via => setRealLock(true, null, via || 'telegram');
+  const adminUnlockReal = via => setRealLock(false, null, via || 'telegram');
   async function adminKill(via) { state.halted = true; state.haltSetAt = now(); return audit('kill', true, { via }, null); }
   /* 사이트 "실전 주문" 스위치 켜기/끄기. 끄기는 먼저 메모리에서 끄고 기록(기록이 실패해도 꺼진 채 — 안전 쪽), 켜기는 기록이 남은 뒤에만 켬 */
   async function setRealOn(on, req, via) {
@@ -1018,7 +1083,7 @@ function createTrade(deps = {}) {
   const attachRecon = r => { reconRef = r; };
   const ENG = () => [['paper', paper], ['dry', dry], ['live', live]].filter(([, e]) => e);
   const dryInUse = () => { try { return !!(dry && autoRef && autoRef.kindsInUse && autoRef.kindsInUse().includes('dry')); } catch (_) { return !!dry; } };
-  return { handle, attachAuto, attachRecon, paper, dry, live, getQuote, adminStatus, adminLock, adminDecide, adminKill, securitySummary,
+  return { handle, attachAuto, attachRecon, paper, dry, live, getQuote, adminStatus, adminLock, adminDecide, adminKill, adminLockReal, adminUnlockReal, securitySummary,
     realOrdersOn: () => !!(cfg.enabled && cfg.realEnabled && state.realOn), setRealOn, reloadReal,   // 사이트 "실전 주문" 스위치(자동매매가 실전 전략 매수를 건너뛸 때도 봄)
     // 체결 틱 깨우기(2026-11-13): 엔진별 감시선 · 깨우기(판정은 엔진이 REST 시세로)
     watchLines: code => ENG().filter(([, e]) => e.watchLines).map(([k, e]) => { try { return [k, e.watchLines(code)]; } catch (_) { return [k, null]; } }).filter(([, L]) => L),
@@ -1027,7 +1092,7 @@ function createTrade(deps = {}) {
     engineHealth: () => ({ paper: paper && paper.health ? paper.health() : null, live: live && live.health ? live.health() : null, ...(dry && dry.health ? { dry: dry.health() } : {}) }),
     /* 드라이런 장부는 드라이런 전략이 있을 때만(자동매매가 알려 줌) 재시작 손절 점검 완료를 기다림 */
     sweepReady: () => hasAuthority() && [paper, dryInUse() ? dry : null, live].every(e => !e || !e.health || e.health().swept),
-    hasAuthority, reloadEngines: () => { for (const e of [paper, dry, live]) { try { e && e.reload && e.reload(); } catch (_) {} } reloadKill().catch(() => {}); }, reloadKill,
+    hasAuthority, reloadEngines: () => { for (const e of [paper, dry, live]) { try { e && e.reload && e.reload(); } catch (_) {} } reloadKill().catch(() => {}); reloadLock().catch(() => {}); }, reloadKill,
     heldCodes: () => { const s = new Set(); for (const e of [paper, dry, live]) { if (e && e.heldCodes) { try { for (const c of e.heldCodes()) s.add(c); } catch (_) {} } } return s; }, ready: () => ready, authz, guard, checkLimits: (x) => checkLimits(cfg.limits, x), checkReplay, audit, alert, cfg, state, _sessions: sessions };
 }
 

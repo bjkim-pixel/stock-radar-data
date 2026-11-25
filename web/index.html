@@ -11869,13 +11869,14 @@ const trdNm=c=>((S.codes||[]).find(x=>x.code===c)||{}).name||c;
 /* ── 쪽 설정표(2026-11-19 화면 분리): 가상매매·실전매매의 차이는 여기에만 둔다. 화면 코드는 하나이고 이 표로 두 쪽을 띄움 ──
    새 기능을 넣을 때: 두 쪽 모두 동작하게 만들고, 한쪽에만 있어야 하는 것은 이 표에 항목을 추가(시험 test/desk-parity 가 표 밖 분기를 셈) */
 const DESKS={
-  paper:{key:"paper",mode:"VIRTUAL",label:"가상매매",short:"가상",base:"/trade/paper",ledger:"paper",side:"paper",band:"virt",limitsKey:"VIRTUAL",realOnly:false},
-  real:{key:"real",mode:"REAL",label:"실전매매",short:"실전",base:"/trade/live",ledger:"live",side:"real",band:"real",limitsKey:"REAL",realOnly:true},
+  paper:{key:"paper",mode:"VIRTUAL",label:"가상매매",short:"가상",base:"/trade/paper",ledger:"paper",side:"paper",band:"virt",limitsKey:"VIRTUAL",realOnly:false,needPin:false},
+  real:{key:"real",mode:"REAL",label:"실전매매",short:"실전",base:"/trade/live",ledger:"live",side:"real",band:"real",limitsKey:"REAL",realOnly:true,needPin:true},
 };
 const DESK_V=/^(paper|real)-(order|plan|hold|hist|auto)$/;
 const DESK_LEGACY={trade:"paper-order",trplan:"paper-plan",trhold:"paper-hold",trhist:"paper-hist",trauto:"paper-auto"};
 const trdDeskCfg=()=>TRD.mode==="REAL"?DESKS.real:DESKS.paper;   // desk-config: 화면 코드에서 가상/실전을 직접 비교하는 유일한 곳
 const trdBase=()=>trdDeskCfg().base;
+const trdOk=()=>!!TRD.sess||!trdDeskCfg().needPin;   // 가상매매는 PIN 없이(로그인만) · 실전매매는 PIN 세션 필요
 TRD.type="limit";TRD.ps=null;TRD.hq={};TRD.pe={};
 try{TRD.q=(JSON.parse(localStorage.getItem("sr_trade_q")||"[]")||[]).filter(c=>/^\d{6}$/.test(c)).slice(0,10);}catch(_){}
 try{TRD.sess=sessionStorage.getItem("sr_trade_sess");}catch(_){}
@@ -12002,6 +12003,7 @@ async function trdRefreshStatus(){
 function trdGateMsg(html){const g=$("#trdGate");g.classList.remove("hide");$("#trdMain").classList.add("hide");$("#trdGateMsg").innerHTML=html;}
 /* 실전 띠 문구: 환경변수 스위치 → 사이트 "실전 주문" 스위치 순으로 안내 */
 function trdBandReal(st){
+  if(st&&st.realLocked)return "<b>실전</b> · 🔒 실전잠금 — 텔레그램 /실전해제 전까지 실전 입장·주문 불가";
   if(st&&st.realEnabled===false)return "<b>실전</b> · 서버 스위치 꺼짐(REAL_TRADING_ENABLED=0) — 주문 불가, 조회만 가능";
   if(st&&st.realEnabled&&st.realOn===false)return "<b>실전</b> · 실전 주문 꺼짐 — 신규 매수 불가";
   return "<b>실전</b> · KIS 실제 계좌 — 주문이 실제로 체결됩니다";
@@ -12016,8 +12018,10 @@ async function trdEnter(){
   if(!AUTH.s){$("#trdPinRow").classList.add("hide");trdGateMsg('로그인이 필요합니다. <button class="btn" id="trdLogin" type="button">로그인</button>');$("#trdLogin").onclick=()=>authShow();return;}
   try{
     const st=await trdRefreshStatus();
+    if(!trdDeskCfg().needPin){trdOpenMain();return;}   // 가상매매: PIN·세션 없이 바로(로그인만)
+    if(st.realLocked){trdStop();trdSetSess(null);$("#trdPinRow").classList.add("hide");trdGateMsg("🔒 <b>실전매매가 잠겨 있습니다.</b><br>텔레그램에서 <b>/실전해제</b> 를 보내면 풀립니다. 가상매매는 그대로 쓸 수 있어요.");return;}
     if(!st.pinConfigured){$("#trdPinRow").classList.add("hide");trdGateMsg("서버에 거래 PIN이 아직 설정되지 않았습니다. Render 환경변수 <code>TRADE_PIN_HASH</code>를 확인하세요.");return;}
-    if(st.session.active&&!(trdDeskCfg().realOnly&&st.session.scope==="paper")){trdOpenMain();return;}   // 가상 전용 세션(텔레그램 승인 생략)으로는 실전 화면에 못 들어감 → PIN·승인으로 다시 입장
+    if(st.session.active&&st.session.scope!=="paper"){trdOpenMain();return;}   // 가상 전용 세션으로는 실전 화면에 못 들어감 → PIN 으로 다시 입장
     if(st.session.active){trdSetSess(null);}
     trdShowPin(st.pinLockedSec>0?`PIN이 잠겨 있습니다. ${Math.ceil(st.pinLockedSec/60)}분 뒤 다시 시도하세요.`:"");
   }catch(e){
@@ -12059,7 +12063,8 @@ async function trdSubmitPin(){
     TRD.act=Date.now();trdSetSess(j.session);$("#trdPin").value="";await trdRefreshStatus();trdOpenMain();
   }catch(e){
     const b=e.body||{};
-    if(e.status===401&&b.error==="invalid pin")trdShowPin(`PIN이 맞지 않습니다. (남은 시도 ${b.left}회)`);
+    if(b.realLocked||(e.status===423&&b.error==="real locked")){trdSetSess(null);$("#trdPinRow").classList.add("hide");trdGateMsg("🔒 <b>실전매매가 잠겼습니다.</b><br>"+(b.error==="real locked"&&e.status===423&&!b.left?"PIN을 여러 번 틀리면 해킹 시도로 보고 자동으로 잠급니다. ":"")+"본인이면 텔레그램에서 <b>/실전해제</b> 를 보내세요.");trdRefreshStatus().catch(()=>{});}
+    else if(e.status===401&&b.error==="invalid pin")trdShowPin(`PIN이 맞지 않습니다. (남은 시도 ${b.left}회${b.autoLock?" · 모두 틀리면 실전이 자동으로 잠깁니다":""})`);
     else if(e.code==='denied')trdShowPin("텔레그램에서 거부되었거나 승인 시간이 지났습니다. 다시 시도하세요.");
     else if(e.status===423)trdShowPin(`PIN이 잠겼습니다. ${Math.ceil((b.retrySec||1800)/60)}분 뒤 다시 시도하세요.`);
     else if(e.status===400)trdShowPin("요청 시각이 서버와 맞지 않습니다. 다시 시도하세요.");
@@ -12068,7 +12073,7 @@ async function trdSubmitPin(){
 }
 function trdOpenMain(){
   clearInterval(TRD.psPoll);trdLoadState();TRD.psPoll=setInterval(()=>{if(!document.hidden&&S.curTab==="trade")trdLoadState();},4000);
-  clearInterval(TRD.auPoll);TRD.auPoll=setInterval(()=>{if(document.hidden||S.curTab!=="trade"||!TRD.sess||TRD.auBusy)return;if(TRD.pane==="auto")trdLoadAuto(true);else trdAuSync();},20000);
+  clearInterval(TRD.auPoll);TRD.auPoll=setInterval(()=>{if(document.hidden||S.curTab!=="trade"||!trdOk()||TRD.auBusy)return;if(TRD.pane==="auto")trdLoadAuto(true);else trdAuSync();},20000);
   $("#trdGate").classList.add("hide");$("#trdMain").classList.remove("hide");
   trdTab(TRD.pane||"order");
   trdRenderStatus();trdRenderQ();
@@ -12076,7 +12081,7 @@ function trdOpenMain(){
   if(!TRD.cur||!TRD.q.includes(TRD.cur))TRD.cur=TRD.q[0]||null;
   if(TRD.cur)trdSelect(TRD.cur,true);else trdRenderEmpty();
   clearInterval(TRD.stPoll);TRD.stPoll=setInterval(()=>{
-    trdRefreshStatus().then(()=>{if(!TRD.sess){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");}else trdRenderStatus();}).catch(e=>{if(e.status===401||e.status===403){trdStop();trdEnter();}});},45000);
+    trdRefreshStatus().then(()=>{if(TRD.st&&TRD.st.realLocked&&trdDeskCfg().needPin){trdStop();trdEnter();}else if(!trdOk()){trdStop();trdShowPin("세션이 만료되었습니다. PIN을 다시 입력하세요.");}else trdRenderStatus();}).catch(e=>{if(e.status===401||e.status===403){trdStop();trdEnter();}});},45000);
 }
 /* 매매 화면 맨 아래에 종목상세 화면(#v-detail)의 내용을 그대로 옮겨 붙임 — 같은 요소·같은 loadDetail() 을 쓰므로 종목상세와 내용이 항상 같음.
    매매 화면을 떠나거나 종목상세로 갈 때(go) 원래 자리로 되돌림. 종목 고르기용 필터 줄은 매매 대기 목록이 대신하므로 숨김 */
@@ -12131,13 +12136,13 @@ async function trdKill(){
   try{
     if(TRD.st&&TRD.st.halted)await trdApi("/trade/resume",{method:"POST"});else await trdApi("/trade/kill",{method:"POST"});
     await trdRefreshStatus();trdRenderStatus();
-  }catch(e){alert(e.status===401?"해제하려면 PIN 세션이 필요합니다. 새로고침 후 PIN을 입력하세요.":"실패: "+e.message);}
+  }catch(e){alert(e.status===401?(trdDeskCfg().needPin?"해제하려면 PIN 세션이 필요합니다. 새로고침 후 PIN을 입력하세요.":"긴급 정지 해제는 PIN이 필요합니다. 실전매매 화면에서 PIN으로 입장해 해제하세요."):"실패: "+e.message);}
 }
 // 2026-11-15: 화면은 바로 잠그고(서버가 느리거나 재배포 중이어도 반응 없음 방지), 서버 세션 종료는 뒤에서 보냄.
 /* 무조작 자동 잠금(5분): 화면을 만지거나 키를 누르지 않으면 세션을 닫음 */
 ["pointerdown","keydown","touchstart","wheel"].forEach(ev=>addEventListener(ev,()=>{TRD.act=Date.now();},{passive:true,capture:true}));
 setInterval(()=>{if(TRD.sess&&Date.now()-(TRD.act||0)>300000){trdLock();trdGateMsg("5분 동안 조작이 없어 자동으로 잠갔습니다. PIN을 다시 입력하세요.");}},15000);
-function trdLock(){const sess=TRD.sess;trdSetSess(null);trdStop();trdShowPin("세션을 잠갔습니다.");
+function trdLock(){if(!trdDeskCfg().needPin)return;const sess=TRD.sess;trdSetSess(null);trdStop();trdShowPin("세션을 잠갔습니다.");
   if(sess)trdApi("/trade/lock",{method:"POST",sess,timeout:15000}).catch(()=>{});}
 
 /* ── 대기 목록 ── */
@@ -12218,7 +12223,7 @@ async function trdAuEdit(kind){
 }
 /* 주문 화면이 열려 있는 동안 자동매매 상태를 가볍게 따로 읽어 대기 목록에 반영 */
 async function trdAuSync(){
-  if(TRD.auBusy||!TRD.sess)return;
+  if(TRD.auBusy||!trdOk())return;
   auSideReset();const side0=auSide();
   let st;try{st=await trdApi("/trade/auto/state"+auSideQ());}catch(_){return;}
   if(auSide()!==side0)return;

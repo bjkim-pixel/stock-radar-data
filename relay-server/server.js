@@ -2700,7 +2700,7 @@ function telegramHelpText() {
       '/오늘요약 — "오늘의 종목" 요약 즉시 받기 (매 거래일 수집·계산이 끝나면 자동 발송)\n' +
       '/알림끄기 — 신고가·신저가·손절·목표가 알림 일시정지 (오늘의 종목 요약은 계속 발송)\n' +
       '/알림켜기 — 알림 다시 켜기\n' +
-      '/status — 매매 상태(스위치·정지·세션)\n/lock — 열린 거래 세션 모두 종료\n/kill — 긴급 정지(신규 매수 차단)\n/승인 코드 · /거부 코드 — 거래 세션 열기 요청(새 기기·실전) 승인/거부\n' +
+      '/status — 매매 상태(스위치·정지·잠금·세션)\n/lock — 열린 거래 세션 모두 종료\n/kill — 긴급 정지(신규 매수 차단)\n/실전잠금 — 해킹 의심 시: 세션 종료 + 실전 스위치·실전 자동매매 끔 + 새 실전 입장 차단 · /실전해제 — 잠금 풀기(텔레그램에서만 가능)\n/승인 코드 · /거부 코드 — (TRADE_APPROVAL=1 일 때만) 거래 세션 열기 승인/거부\n' +
       '/자동켜기 · /자동끄기 · /자동상태 — 자동매매(평일 10:05 선정 · 10:15 후보 알림)\n/매수정지 — 자동매매 신규 매수만 정지 · /자동정지 — 자동매매 전체 정지(손절·익절 감시는 계속) · /자동재개 — 풀기 · /대사 — 일일 대사 지금 실행 · /대사해제 — 대사 불일치로 막힌 전략 풀기 · /정지 — 긴급 정지(직접 매수 포함) · /실전정지 — 사이트 "실전 주문" 스위치 끄기(실전 신규 매수만 멈춤, 손절·익절·이월 매도는 계속)\n/매수 1 3 · /매수 전체 · /패스 — 후보 승인(10:30까지, 가상매매로 매수)\n/자동후보 — 후보 다시 고르기(승인 전만)\n/정리 1 · /정리 전체 · /유지 — 15:10 종가 판정 답장(15:18까지)\n' +
       '※ 종목명은 현재 보유 중인 종목만 인식돼요.\n\n' +
       `보유 종목의 당일 신고가·신저가 갱신(직전 알림 대비 ${ALERT_MIN_MOVE_PCT}% 이상 갱신 시), 트레일링 손절(-7%) 근접·도달은 자동으로 알려드려요.`;
@@ -2716,6 +2716,14 @@ async function handleTelegramCommand(chatId, text) {
     if (c === 'lock' || c === '잠금') { const n = await trade.adminLock('telegram'); await sendTelegramTo(chatId, `🔒 열려 있던 거래 세션 ${n}개를 모두 종료했어요. (PIN을 다시 입력해야 해요)`); return; }
     const saved = await trade.adminKill('telegram');
     await sendTelegramTo(chatId, '🛑 긴급 정지: 신규 매수를 막았어요. (보유 종목 매도·취소는 가능)' + (saved ? '' : '\n⚠ 기록 저장 실패 — 서버가 재시작되면 풀릴 수 있어요. Render에서 TRADING_ENABLED=0 으로 막으세요.'));
+    return;
+  }
+  if (/^\/?(?:실전잠금|실전해제)(?:@\w+)?\s*$/.test(text)) {   // 2026-11-25 해킹 대비: 실전잠금(세션 전부 종료·실전 스위치/자동매매 끔·새 실전 입장 불가). 풀기는 여기서만
+    if (!TELEGRAM_CHAT_ID || String(chatId) !== String(TELEGRAM_CHAT_ID)) return;
+    try {
+      if (/실전잠금/.test(text)) { const r = await trade.adminLockReal('telegram'); await sendTelegramTo(chatId, '🔒 실전잠금을 걸었어요. 풀려면 /실전해제' + (r.saved ? '' : '\n⚠ 기록 저장 실패 — 서버가 재시작되면 풀릴 수 있어요. Render에서 REAL_TRADING_ENABLED=0 으로도 막으세요.')); }
+      else { const r = await trade.adminUnlockReal('telegram'); await sendTelegramTo(chatId, '🔓 실전잠금을 풀었어요. 실전 주문 스위치·실전 자동매매는 꺼진 채이니 사이트에서 PIN으로 다시 켜세요.' + (r.saved ? '' : '\n⚠ 기록 저장 실패 — 재시작되면 다시 잠길 수 있어요.')); }
+    } catch (e) { await sendTelegramTo(chatId, '실패: ' + e.message); }
     return;
   }
   if (/^\/?(?:실전정지|실전끄기)(?:@\w+)?\s*$/.test(text)) {   // 사이트 "실전 주문" 스위치 끄기(실전 신규 매수만 멈춤 — 손절·익절·이월 매도는 계속). 켜기는 사이트에서 PIN 으로만
