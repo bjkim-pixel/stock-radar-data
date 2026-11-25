@@ -1,0 +1,33 @@
+name: "[수집] 반도체 추종 선물(KRX) | 평일 19:40 KST + 수동"
+
+# 반도체 추종 페이지(2026-11-25): 코스피200 선물·삼성전자/SK하이닉스 주식선물의 종가·미결제약정(KRX OpenAPI) + 사이드카 추정일
+#  · 수동 실행에서 backfill_from(예: 20250901)을 넣으면 그 날짜부터 오늘까지 채움
+on:
+  schedule:
+    - cron: "40 10 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      days: {description: "최근 며칠 소급(기본 5)", default: "5"}
+      backfill_from: {description: "과거 채우기 시작일 YYYYMMDD(비우면 최근 며칠만)", default: ""}
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency: { group: semi-collect, cancel-in-progress: false }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests holidays
+      - name: 수집
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          KRX_API_KEY:     ${{ secrets.KRX_API_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.backfill_from }}" ]; then python 180_semi_collect.py backfill "${{ github.event.inputs.backfill_from }}"; else python 180_semi_collect.py "${{ github.event.inputs.days || '5' }}"; fi
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with: { branch: semi-report, file: semi_collect_report.md }
