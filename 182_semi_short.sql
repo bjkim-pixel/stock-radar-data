@@ -13,7 +13,7 @@ create table if not exists public.kis_short_daily (
 create table if not exists public.kis_credit_daily (
   trade_date date not null, code text not null,
   loan_qty bigint,             -- 신용 융자 잔고(주)
-  loan_amt bigint,             -- 융자 잔고 금액(KIS 단위 그대로, 백만원)
+  loan_amt bigint,             -- 융자 잔고 금액(KIS 단위 그대로 — 삼성전자 잔고수량×주가와 대조하면 만원 단위)
   loan_rate numeric,           -- 융자 잔고율(%)
   loan_gvrt numeric,           -- 융자 공여율(%)
   stln_qty bigint,             -- 대주 잔고(주)
