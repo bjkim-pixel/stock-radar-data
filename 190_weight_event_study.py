@@ -16,7 +16,7 @@ F = Q("select trade_date d,code,foreign_net fn,inst_net inn,pension_net pen,inv_
 D = P.merge(F, on=["d", "code"], how="left"); D["d"] = pd.to_datetime(D["d"])
 days = sorted(D.d.unique()); last = days[-1]; recent = set(days[-10:])
 p(f"# 무게/주식수 큰 막대 이후 경로 분석\n\n데이터 {pd.Timestamp(days[0]).date()} ~ {pd.Timestamp(last).date()} · 종목 {D.code.nunique():,}\n")
-R, EV = [], []
+R, EV, TRD = [], [], []
 for code, g in D.groupby("code", sort=False):
     g = g.reset_index(drop=True); n = len(g)
     if n < 30: continue
@@ -52,6 +52,21 @@ for code, g in D.groupby("code", sort=False):
         if rt is not None and cl[rt] >= vw * 0.97:   # 평균가 근처에서 지지(종가가 평균가 −3% 위)
             rt_hold = rt_ret
         sm5 = sm[i + 1:i + 6].sum() / 1e8 if i + 5 < n else np.nan
+        # 매매 모의: 이벤트 뒤 (a) 바로 재터치 매수 (b) 확인 매수 = 이벤트 다음날~그날 외+기 누적>0 이고 경과 3일 이상일 때 평균가 +3% 이내 터치, 종가 ≥ 평균가 −3%
+        for mode in ("a", "b"):
+            for j in range(i + 2, min(n - 1, i + 31)):
+                if not (l[j] <= vw * 1.03 and cl[j] >= vw * 0.97): continue
+                if mode == "b" and not (j - i >= 3 and sm[i + 1:j + 1].sum() > 0): continue
+                ent = cl[j]; stop = vw * 0.95; left, pnl, k, why = 1.0, 0.0, j + 1, ""
+                while True:
+                    if cl[k] < stop: pnl += left * (cl[k] / ent - 1); why = "손절"; break
+                    if left == 1.0 and h[k] >= ent * 1.08: pnl += 0.04; left = 0.5; stop = max(stop, ent * 1.0035)
+                    if left == 0.5 and h[k] >= ent * 1.12: pnl += 0.06; left = 0; why = "익절"; break
+                    if k - j >= 10 or k + 1 >= n: pnl += left * (cl[k] / ent - 1); why = "시간"; break
+                    k += 1
+                TRD.append(dict(mode=mode, code=code, ev=d[i], d=d[j], buy=sm[i] > 0, smr=sm[i] / a[i] * 100 if a[i] else 0, up30=chg[i] >= 29, mc=mc[i] / 1e8,
+                                ret=pnl * 100 - 0.25, why=why, hold=k - j, wait=j - i, R=(1 - stop / ent) * 100 if why != "익절" else np.nan))
+                break
         EV.append(dict(code=code, d=d[i], w=w[i], chg=chg[i], buy=sm[i] > 0, smr=sm[i] / a[i] * 100 if a[i] else 0, sm5=sm5, mc=mc[i] / 1e8,
                        **{f"y{k}": f[k] for k in f}, mu=mu, md=md, rt=rt is not None, rt_ret=rt_ret, rt_hold=rt_hold, rtday=(rt - i) if rt is not None else np.nan,
                        up30=chg[i] >= 29))
@@ -82,5 +97,26 @@ if len(E):
     E["m"] = pd.to_datetime(E.d).dt.to_period("M")
     p("\n| 월 | 이벤트 | 10일 평균 | 재터치·지지 매수 10일 |\n|---|---:|---:|---|")
     for m_, x in E.groupby("m"): p(f"| {m_} | {len(x)} | {x.y10.mean():+.2f} | {x.rt_hold.dropna().mean():+.2f} ({x.rt_hold.notna().sum()}) |")
+T = pd.DataFrame(TRD)
+p("\n## 3. 매매 모의 — 이벤트 뒤 평균가 재터치 종가 매수 · 손절 = 평균가 −5% 아래 종가 마감 · 익절 +8/+12% · 10일 · 비용 0.25%\n")
+p("(a) = 처음 재터치한 날 바로 · (b) = 이벤트 3일 이상 지나고 그 사이 외+기 누적이 순매수일 때의 재터치(확인 매수)\n")
+p("| 구분 | 거래 | 승률 | 평균% | 중앙값% | PF | 평균 대기일 | 평균 보유일 | 청산 |\n|---|---:|---:|---:|---:|---:|---:|---:|---|")
+def tl(lab, x):
+    if len(x) < 5: p(f"| {lab} | {len(x)} | | | | | | | |"); return
+    wn, ls = x[x.ret > 0].ret.sum(), -x[x.ret <= 0].ret.sum()
+    p(f"| {lab} | {len(x)} | {(x.ret>0).mean()*100:.0f}% | {x.ret.mean():+.2f} | {x.ret.median():+.2f} | {wn/ls if ls>0 else float('inf'):.2f} | {x.wait.mean():.1f} | {x.hold.mean():.1f} | " + " · ".join(f"{k} {v}" for k, v in x.why.value_counts().items()) + " |")
+if len(T):
+    for m in ("a", "b"):
+        x = T[T["mode"] == m]
+        tl(f"({m}) 전체", x)
+        tl(f"({m}) 그날 외+기 ≥ 5% · 상한가 아님", x[(x.smr >= 5) & ~x.up30])
+        tl(f"({m}) 위 + 시총 2조 미만", x[(x.smr >= 5) & ~x.up30 & (x.mc < 20000)])
+        tl(f"({m}) 상한가 이벤트", x[x.up30])
+    x = T[(T["mode"] == "b") & (T.smr >= 5) & ~T.up30 & (T.mc < 20000)].copy()
+    if len(x):
+        x["m"] = pd.to_datetime(x.d).dt.to_period("M")
+        p("\n(b) 외+기 ≥5% · 상한가 아님 · 2조 미만 — 월별\n\n| 월 | 거래 | 승률 | 평균% |\n|---|---:|---:|---:|")
+        for m_, y in x.groupby("m"): p(f"| {m_} | {len(y)} | {(y.ret>0).mean()*100:.0f}% | {y.ret.mean():+.2f} |")
+        p("\n최근 거래(최대 15건): " + ", ".join(f"{NAME.get(r.code, r.code)} {pd.Timestamp(r.d).strftime('%m/%d')} {r.ret:+.1f}%" for _, r in x.sort_values("d").tail(15).iterrows()))
 p(f"\n총 {time.time()-T0:.0f}초. '사후 정보' 행은 이벤트 다음 5일 수급을 알고 나서 나눈 것이라 실제 매매 조건으로 쓸 수 없고 참고용.")
 open("pullback_study.md", "w", encoding="utf-8").write("\n".join(out))
