@@ -262,7 +262,7 @@ function createPaper(deps) {
     const seen = new Set(), uniq = steps.filter(s => !seen.has(s.n) && seen.add(s.n));
     const stop = num(p.stop, 1, 1e8);
     const rt = p.ratchet === false ? false : (p.ratchet && typeof p.ratchet === 'object') || uniq.length ? { floorPct: num(p.ratchet && p.ratchet.floorPct, 0, 5) == null ? 0.35 : num(p.ratchet.floorPct, 0, 5) } : null;   // 익절 단계가 있으면 손절 올리기는 항상 켬
-    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop && E.validTick(stop) ? stop : (stop ? E.floorTick(stop) : null), target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq, ratchet: rt, ...(p.closeStop ? { closeStop: true } : {}) };
+    return { stopPct: num(p.stopPct, 0.1, 50), stop: stop && E.validTick(stop) ? stop : (stop ? E.floorTick(stop) : null), target: num(p.target, 1, 1e8), trail: num(p.trail, 0.3, 20), steps: uniq, ratchet: rt, ...(p.closeStop ? { closeStop: true } : {}), ...(typeof p.tag === 'string' && /^[A-Z][A-Z0-9]{0,3}$/.test(p.tag) ? { tag: p.tag } : {}) };
   }
   async function place(body) {
     if (!(await init())) return bad(503, missing ? `${PFX} tables missing` : `${PFX} store unavailable`);

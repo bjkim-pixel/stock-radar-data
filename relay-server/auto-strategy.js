@@ -25,7 +25,9 @@ const ENUM = {
   fixed: '고정 % 단계(예: +6%·+9%에서 나눠 팔기)', even: '예전 방식(목표까지 균등 분할)' },
   unfilledEnd: { cancel: '취소', keep: '장 마감까지 유지' },
   execMode: { paper: '가상(가상 엔진으로 주문)', dryrun: '드라이런(실제 계좌로 금액·점검만, 주문은 가상)', live: '실전(실제 계좌로 주문)' },
-  selector: { flow: '수급 돌파(외국인·기관·프로그램 + 체결강도)', ignite: '장초 상승 포착(거래 붙으며 오르기 시작하는 종목)', pullback: '눌림목(무게 신고 막대 → 그날 평균가 첫 재터치 종가 매수)' },
+  selector: { flow: '수급 돌파(외국인·기관·프로그램 + 체결강도)', ignite: '장초 상승 포착(거래 붙으며 오르기 시작하는 종목)', pullback: '눌림목(무게 신고 막대 → 그날 평균가 첫 재터치 종가 매수)', inverse: '인버스·사이드카(지수 ETF 매매: 하락 국면 보유 · 외국인 동반 순매도 · 매도 사이드카 반등)' },
+  invMode: { regime: 'A 하락 국면 보유(코스피200 < 60일선이면 보유)', flow: 'B 외국인 현물·선물 동반 순매도 다음날 장중 매수', sidecar: 'C 매도 사이드카 반등 매수(이틀째 정리)' },
+  invCode: { '114800': 'KODEX 인버스(1X)', '252670': 'KODEX 200선물인버스2X', '251340': 'KODEX 코스닥150선물인버스', '0197X0': 'SOL SK하이닉스단일종목인버스2X', '069500': 'KODEX 200(1X)', '122630': 'KODEX 레버리지(2X)', '494310': 'KODEX 반도체레버리지(2X)' },
   sizeMode: { fixed: '고정(종목당 금액)', balance: '계좌 잔고 기준 자동' },
 };
 
@@ -76,6 +78,11 @@ const SCHEMA = {
     F('pbHoldDays', '눌림목', '시간 청산: 매수 후 이 거래일째 15:05 에 남은 수량 전량 매도', 'num', 10, { min: 2, max: 30, step: 1, unit: '일' }),
     F('pbSmBuy', '눌림목', '막대일 외국인+기관 순매수일 때만(끄면 상관없음)', 'bool', false),
     F('pbUpOnly', '눌림목', '상한가 막대만(등락률 29% 이상)', 'bool', false),
+    F('invMode', '인버스·사이드카', '전략 종류(A·B·C)', 'enum', 'regime', { opts: ENUM.invMode }),
+    F('invCode', '인버스·사이드카', '매매할 ETF', 'enum', '114800', { opts: ENUM.invCode }),
+    F('invMaDays', '인버스·사이드카', '하락 국면 기준: 코스피200이 이 일수 이동평균선 아래(A·C)', 'num', 60, { min: 20, max: 120, step: 5, unit: '일' }),
+    F('invDropPct', '인버스·사이드카', 'C 사이드카 대리 신호: KODEX 200 이 이만큼 이상 하락(발동 기록이 없을 때)', 'num', 4, { min: 2, max: 8, step: 0.5, unit: '%' }),
+    F('invHoldDays', '인버스·사이드카', 'C 보유 거래일(하락 국면이면 1일로 줄임) — 이 일수째 15:15 에 정리', 'num', 2, { min: 1, max: 5, step: 1, unit: '일' }),
     F('weights', '점수', '배점(합계 100)', 'weights', { flow: 35, cttr: 15, rise: 15, amt: 15, trend: 10, kw: 10 }, { parts: { flow: '수급', cttr: '체결강도', rise: '상승률', amt: '거래대금', trend: '추세', kw: '개인 물량 감소' } }),
     F('maxBuys', '매수 주문', '하루 최대 매수 종목 수', 'num', 5, { min: 1, max: 20, step: 1, unit: '종목' }),
     F('retryUnfilled', '매수 주문', '다음 검토 때 못 산 종목 다시 시도', 'bool', true),
@@ -240,7 +247,7 @@ function validate(kind, input, base) {
     if (val.tpStyle === 'fixed' && !(val.tp2Pct > val.tp1Pct)) errs.push({ key: 'tp2Pct', msg: '2단계 익절은 1단계보다 높아야 합니다' });
     if (val.notifyTop > val.poolTop) errs.push({ key: 'notifyTop', msg: '알림에 싣는 수는 점수 상위 후보 수보다 클 수 없습니다' });
     const dl = tmin(val.selectAt) + val.noticeAfter + val.approveWindow;
-    const dlMax = val.selector === 'pullback' ? 15 * 60 + 15 : 14 * 60 + 30;
+    const dlMax = (val.selector === 'pullback' || val.selector === 'inverse') ? 15 * 60 + 15 : 14 * 60 + 30;
     if (dl > dlMax) errs.push({ key: 'approveWindow', msg: `승인 마감이 ${hhmm(dl)}입니다(${hhmm(dlMax)} 이전이어야 함)` });
   }
   if (!errs.length && kind === 'intraday' && val.roundMin > 0) {
@@ -309,6 +316,15 @@ const PULLBACK_PRESET = { selector: 'pullback', capMinEok: 1000, capMaxEok: 0, a
   buyType: 'market', stopPct: 5, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 8, tp2Pct: 12, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: false, execMode: 'paper',
   pbWMin: 0.3, pbTouchPct: 3, pbMaxAge: 30, pbStopBelowPct: 5, pbHoldDays: 10, pbSmBuy: false, pbUpOnly: false };
 BUILTIN.push({ id: 'pullback-default', name: '눌림목(무게 신고 막대 평균가 재터치)', kind: 'intraday', builtin: true, off: true, preset: PULLBACK_PRESET, desc: '무게/주식수 신고 막대가 나온 뒤 처음으로 그날 평균가 부근을 다시 밟은 종목을 15:10 에 가상 매수(종목당 100만원·하루 3종목) · 평균가 −5% 아래 종가 마감 시 손절, +8/+12% 2분할 익절, 10거래일 시간 청산(과거 14개월 검증: 승률 57%·평균 +0.9%·손익비 1.25, 아직 검증 중)' });
+/* 인버스·사이드카(2026-11-26): 191·192·193 연구. 지수 ETF 를 시장가로(승인 자동·종목 1개 100만원). 익절 없이 정리 규칙으로만 나온다(A 60일선 회복 · B 15:15 · C 보유일) — 모두 꺼진 가상 전략 */
+const INV_BASE = { selector: 'inverse', capMinEok: 1000, capMaxEok: 0, amtMinEok: 0, maTrend: false, smx: 'off', flowForeign: 'ignore', flowInst: 'ignore', flowProgram: 'ignore', altFlowOn: false, kwOn: false,
+  selectAt: '15:10', noticeAfter: 0, approveWindow: 5, roundMin: 0, poolTop: 1, notifyTop: 1, sectorMax: 1, maxBuys: 1, maxTries: 1, retryUnfilled: false, perStockKrw: 1000000, approval: 'auto',
+  buyType: 'market', stopPct: 5, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 8, tp2Pct: 12, tp1Share: 50, runnerPct: 30, ratchet: false, trail: 2, flatOn: false, execMode: 'paper', invMaDays: 60, invDropPct: 4, invHoldDays: 2 };
+BUILTIN.push(
+  { id: 'inverse-regime', name: '인버스 A(하락 국면 보유)', kind: 'intraday', builtin: true, off: true, preset: { ...INV_BASE, invMode: 'regime', invCode: '114800', stopPct: 7 }, desc: '코스피200(KODEX 200)이 60일선 아래인 하락 국면에서 15:10 에 KODEX 인버스(1X)를 가상 매수(100만원), 60일선 위로 올라오면 15:15 에 정리 · 손절 −7%(종가 마감) · 검증: 하락장 1X +28%, 상승장 −13%(국면 필터 필수)' },
+  { id: 'inverse-flow', name: '인버스 B(외국인 동반 순매도)', kind: 'intraday', builtin: true, off: true, preset: { ...INV_BASE, invMode: 'flow', invCode: '252670', selectAt: '09:10', stopPct: 4, flatOn: true, flatAt: '15:15' }, desc: '어제 외국인이 코스피 현물과 코스피200 선물을 둘 다 순매도하면 09:10 에 KODEX 200선물인버스2X 를 가상 매수, 15:15 에 청산 · 손절 −4% · 검증: 상승장 24건 승률 62% 평균 +3.3%, 하락장 19건 본전(검증 중)' },
+  { id: 'sidecar-rebound', name: '사이드카 C(매도 사이드카 반등)', kind: 'intraday', builtin: true, off: true, preset: { ...INV_BASE, invMode: 'sidecar', invCode: '122630', stopPct: 10 }, desc: '매도 사이드카(발동 기록 또는 KODEX 200 −4% 이하)가 난 날 15:10 에 KODEX 레버리지를 가상 매수, 이틀째 15:15 정리(하락 국면이면 다음날) · 손절 −10%(1X는 −5%) · 검증: 38건 이틀째 종가 레버리지 +4.3%, 하락장 9건은 약함' }
+);
 const builtinRow = b => ({ ...b, enabled: !b.off, archived: false, version: 1, params: b.preset ? (validate(b.kind, b.preset).val || defaults(b.kind)) : defaults(b.kind), updated_at: null });
 
 /* 저장소: auto_strategies · auto_strategy_versions. 30초 캐시, 테이블이 없으면 기본 전략으로 동작 */
@@ -422,7 +438,7 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       if (!SCHEMA[k]) return { ok: false, status: 400, error: '전략 유형이 올바르지 않습니다' };
       const n = String(name || (src ? src.name + ' 복사본' : KINDS[k] + ' 새 전략')).trim().slice(0, 30);
       if (!n) return { ok: false, status: 400, error: '이름을 입력하세요' };
-      if (L.filter(r => !r.archived).length >= 12) return { ok: false, status: 400, error: '전략은 최대 12개까지 만들 수 있습니다(보관 제외)' };
+      if (L.filter(r => !r.archived).length >= 20) return { ok: false, status: 400, error: '전략은 최대 20개까지 만들 수 있습니다(보관 제외)' };
       const id = `${k}-${now().toString(36)}`, ts = new Date(now()).toISOString();
       const row = { id, name: n, kind: k, desc: String(desc != null ? desc : (src ? src.desc : '')).slice(0, 200), enabled: false, archived: false, builtin: false, version: 1, params: src ? JSON.parse(JSON.stringify(src.params)) : defaults(k), ...(src && linkSource ? { source: src.id } : {}) };
       await writeRow(row, [{ key: 'init', label: '처음 만듦', from: '', to: src ? `${linkSource ? '실전에 적용' : '복제'}: ${src.name} v${src.version}` : '기본값' }], who, ts);

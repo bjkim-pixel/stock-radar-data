@@ -3965,7 +3965,12 @@ const autoTrade = require('./auto').createAuto({
   liveLimits: () => trade.cfg.limits.REAL,                // 실전 오작동 상한(1회·1일·종목 수) — 금액 자동 조정의 상한
   getQuote: code => _kisPrio.run(1, () => trade.getQuote(code, true)),
   getQuoteUi: code => _kisPrio.run(2, () => trade.getQuote(code)),   // 사이트 자동매매 화면용(우선순위 최하, 1.5초 캐시)
-  loadChart: async code => (await sbGet(`v_stock_chart?select=trade_date,close,high,low,trade_amount,individual_net&code=eq.${code}&order=trade_date.desc&limit=1000`)).reverse(),   // 최근 1000일(매매 화면과 같은 이력)
+  loadChart: async code => {   // 주식은 v_stock_chart, 없으면(ETF — 인버스·사이드카 전략) etf_daily 로
+    const r = await sbGet(`v_stock_chart?select=trade_date,close,high,low,trade_amount,individual_net&code=eq.${code}&order=trade_date.desc&limit=1000`);
+    if (r && r.length) return r.reverse();
+    const e = await sbGet(`etf_daily?select=trade_date,close,high,low,amount&code=eq.${code}&order=trade_date.desc&limit=300`).catch(() => []);
+    return (e || []).reverse().map(x => ({ trade_date: x.trade_date, close: +x.close, high: +x.high, low: +x.low, trade_amount: +x.amount || 0, individual_net: 0 }));
+  },   // 최근 1000일(매매 화면과 같은 이력)
   kstNow: () => ({ date: kstDateStr(), min: kstMinutesNow() }),
   isTradingDay: d => { const dow = new Date(`${d}T00:00:00Z`).getUTCDay(); return dow !== 0 && dow !== 6 && !KRX_HOLIDAYS.has(d); },
   livePool: async (cap = 10000) => {   // 장중 전략의 시총 하한(억원)
