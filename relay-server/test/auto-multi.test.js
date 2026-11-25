@@ -27,7 +27,7 @@ function fakeStoreDb() {
     sbWrite: async (p, m, b) => { if (p.startsWith('auto_strategies')) b.forEach(x => { const i = db.auto_strategies.findIndex(r => r.id === x.id); if (i >= 0) db.auto_strategies[i] = { ...db.auto_strategies[i], ...x }; else db.auto_strategies.push(x); }); else db.versions.push(...b); },
     now: () => (t += 1000),
   };
-  for (const b of S.BUILTIN) db.auto_strategies.push({ ...b, enabled: true, archived: false, version: 1, params: S.defaults(b.kind) });
+  for (const b of S.BUILTIN.filter(x => !x.off)) db.auto_strategies.push({ ...b, enabled: true, archived: false, version: 1, params: S.defaults(b.kind) });
   return { db, io };
 }
 test('장중 전략은 최대 3개까지 켜지고 글자 A·B·C 가 붙는다', async () => {

@@ -3373,6 +3373,59 @@ function refreshLiveTop(min, side = 'up') {
   _liveBusy.set(key, pr);
   return pr;
 }
+/* ── 장초 상승 포착(시동) 추적기(2026-11-25): 시총 하한~상한 유니버스를 KIS 멀티시세(30종목/호출)로 1분마다 훑어 종목별 시세 이력을 쌓는다.
+   자동매매(auto.js selectIgnite)가 이 이력으로 "거래가 붙으며 오르기 시작하는" 종목을 판정. 켜진 장초 상승 포착 전략이 있을 때만 09:00~14:35 동안 돈다. ── */
+const IGN = require('./ignite');
+const _ign = { tr: IGN.createTracker(), day: '', rows: new Map(), at: 0, err: null, uni: { key: '', at: 0, rows: [] }, busy: null };
+async function loadIgniteUniverse(minEok, maxEok) {
+  const key = `${minEok}|${maxEok}`;
+  if (_ign.uni.key === key && Date.now() - _ign.uni.at < 3600e3 && _ign.uni.rows.length) return _ign.uni.rows;
+  const d = await sbGet('daily_price?select=trade_date&order=trade_date.desc&limit=1');
+  const rows = [];
+  for (let off = 0; off < 4000; off += 1000) {
+    const part = await sbGet(`daily_price?select=code,market_cap&trade_date=eq.${d[0].trade_date}&market_cap=gte.${minEok * 1e8}${maxEok > 0 ? `&market_cap=lt.${maxEok * 1e8}` : ''}&order=code.asc&limit=1000&offset=${off}`);
+    rows.push(...part.map(r => ({ code: r.code, cap: Number(r.market_cap) })));
+    if (part.length < 1000) break;
+  }
+  _ign.uni = { key, at: Date.now(), rows };
+  return rows;
+}
+function igniteScan(P) {
+  if (_ign.busy) return _ign.busy;
+  const pr = _kisPrio.run(1, async () => {
+    try {
+      const day = kstDateStr();
+      if (_ign.day !== day) { _ign.tr.reset(); _ign.rows.clear(); _ign.day = day; }
+      const uni = (await loadIgniteUniverse(+P.capMinEok || 3000, +P.capMaxEok || 0)).filter(u => !isPreferred(u.code, ''));
+      const now = Date.now(), min = kstMinutesNow(), got = [];
+      for (let i = 0; i < uni.length; i += 30) {
+        const out = await fetchMultiPrice(uni.slice(i, i + 30).map(u => u.code));
+        out.forEach(o => { const r = { code: o.inter_shrn_iscd, name: o.inter_kor_isnm || '', price: safeNum(o.inter2_prpr), open: safeNum(o.inter2_oprc), high: safeNum(o.inter2_hgpr), changePct: safeNum(o.prdy_ctrt), vol: safeNum(o.acml_vol), amt: safeNum(o.acml_tr_pbmn) }; if (r.code && r.price > 0) got.push(r); });
+      }
+      _ign.tr.ingest(got, now, min);
+      for (const r of got) _ign.rows.set(r.code, r);
+      _ign.at = now; _ign.err = null;
+    } catch (e) { _ign.err = e.message; }
+    finally { _ign.busy = null; }
+  });
+  _ign.busy = pr;
+  return pr;
+}
+async function ignitePool(P) {
+  if (!_ign.at || Date.now() - _ign.at > 45000) await igniteScan(P);
+  return { rows: [..._ign.rows.values()], get: c => _ign.tr.get(c), scanAt: _ign.at ? new Date(_ign.at).toISOString() : null, scanErr: _ign.err, size: _ign.tr.size() };
+}
+/* 켜진 장초 상승 포착 전략이 있으면 평일 08:59~14:36 에 1분마다(자동매매 선정과 별개로) 이력을 쌓는다 */
+let _ignTick = false;
+setInterval(async () => {
+  if (_ignTick) return; _ignTick = true;
+  try {
+    const d = kstDateStr(), m = kstMinutesNow(), dow = new Date(`${d}T00:00:00Z`).getUTCDay();
+    if (dow === 0 || dow === 6 || KRX_HOLIDAYS.has(d) || m < 8 * 60 + 59 || m > 14 * 60 + 36) return;
+    const P = typeof autoTrade !== 'undefined' && autoTrade.igniteParams ? await autoTrade.igniteParams() : null;
+    if (P) await igniteScan(P);
+  } catch (e) { console.error('[시동] 추적 실패:', e.message); } finally { _ignTick = false; }
+}, 60000).unref();
 /* ── 실시간 종목 참고 지표(2026-11-13): KIS 주식현재가 시세(FHKST01010100)에서 프로그램 순매수(당일 누적)·회전율·52주 고가를 종목별로 조회. 30초 캐시.
    웹소켓 슬롯을 쓰지 않고 REST만 사용. 필드명은 실서버 확인 전 → /live-power?code=종목&raw=1 로 원본 확인 ── */
 const _power = new Map();   // code -> {at, v}
@@ -3921,6 +3974,7 @@ const autoTrade = require('./auto').createAuto({
     const x = _liveTop.get(cap);
     return (x && (x.all || x.rows)) || [];
   },
+  ignitePool,
   fetchFlow: code => _kisPrio.run(1, () => fetchFlowEst(code)).catch(e => ({ err: e.message })),
   fetchPower: code => _kisPrio.run(1, () => fetchPower(code)).catch(e => ({ err: e.message })),
   fetchCttr: code => _kisPrio.run(1, () => fetchCttr(code)).catch(e => ({ err: e.message })),

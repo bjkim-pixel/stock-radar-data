@@ -7,7 +7,7 @@
    · 업종당 2종목까지(같은 업종 3번째부터 제외)
    · 승인하지 않은 후보도 auto_runs 에 남겨(그림자 기록) 점수와 내 판단을 나중에 비교한다 */
 
-const ST = require('./auto-strategy'), XE = require('./auto-exec');
+const ST = require('./auto-strategy'), XE = require('./auto-exec'), IG = require('./ignite');
 const DEFP = Object.freeze(ST.defaults('intraday'));   // 기본 장중 전략 조건값(= 1~3단계 확정값). 함수 인자를 안 주면 이 값
 const EXCL_NAME = /스팩|ETN|KODEX|TIGER|KBSTAR|ARIRANG|HANARO|KOSEF|SOL |ACE |RISE |PLUS |TIMEFOLIO|WON |BNK |마이티|히어로즈|인버스|레버리지|선물/;
 const RULES = Object.freeze({
@@ -343,6 +343,7 @@ function createAuto(deps) {
   }
   /* X(종가베팅 저녁 선정 전용): { nxtOnly, skip:Set(이미 후보·주문한 종목), closeHigh:{maxPct, from, max} } — 종가가 당일 고가에서 maxPct 이내만, from% 넘게 내렸으면 점수 감점 */
   async function select(P = DEFP, X = null, sid = null) {
+    if (P.selector === 'ignite' && !X) return selectIgnite(P, sid);   // 장초 상승 포착(시동) 전략은 자기 방식으로 고름
     const useKw = !X && P.kwOn !== false && P.weights !== undefined;   // 장중 전략만(종가베팅 저녁 선정은 해당 없음)
     const [scr, smx, held, pool, kwMap] = await Promise.all([loadScreener(P), loadSmx(smxWinOf(P)), loadHeld(sid || (X && X.sid) || null), D.livePool(P.capMinEok), useKw ? loadKw().catch(() => ({})) : {}]);
     let base = baseFilter(pool, scr.map, smx, held, P).sort((a, b) => b.changePct - a.changePct);
@@ -399,6 +400,68 @@ function createAuto(deps) {
     }
     stat.altN = alt.length;
     return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed, rejected, alt };
+  }
+
+  /* 장초 상승 포착(시동, 2026-11-25): 서버 추적기(D.ignitePool)가 1분마다 쌓은 시세 이력으로 "시가부터 뜬 종목"이 아니라 "09시 이후 거래가 붙으며 오르기 시작하는 종목"을 고른다.
+     1차 = 이력 기반 조건(ignite.js evaluate, 보조 조건은 VWAP·고가 근처만) → 통과 상위 12개만 체결강도·프로그램을 조회해 2차 판정 → 점수 순으로 상위 N */
+  async function selectIgnite(P, sid) {
+    const { min } = kstParts();
+    const [held, scr, pool] = await Promise.all([loadHeld(sid), loadScreener(P).catch(() => ({ date: null, map: {} })), D.ignitePool ? D.ignitePool(P) : Promise.resolve({ rows: [], get: () => [] })]);
+    const stat = { pool: pool.rows.length, base: 0, flowPass: 0, errs: 0, ignite: true, scanAt: pool.scanAt || null, scanErr: pool.scanErr || null, hist: pool.size || 0 };
+    const rejected = [], cand = [];
+    for (const r of pool.rows) {
+      if (!r || !r.code || EXCL_NAME.test(r.name || '') || (held && held.has(r.code)) || !(r.price > 0)) continue;
+      if ((+P.amtMinEok || 0) > 0 && !(r.amt >= P.amtMinEok * 1e8)) continue;
+      const ev = IG.evaluate(r, pool.get(r.code), { ...P, optMin: 0 }, min);
+      if (ev.pass) cand.push({ r, ev }); else if (ev.fails.length && rejected.length < 400) rejected.push({ code: r.code, name: r.name, changePct: r.changePct, fails: ev.fails, amt: r.amt });
+    }
+    stat.base = cand.length;
+    cand.sort((a, b) => (b.ev.m.amtRatio || 0) - (a.ev.m.amtRatio || 0));
+    const passed = [];
+    for (const { r, ev } of cand.slice(0, 12)) {
+      const [power, cttr] = await Promise.all([D.fetchPower(r.code), D.fetchCttr(r.code)]);
+      const cs = cttr && cttr.err == null ? num(cttr.cttr) : null, pq = power && power.err == null ? num(power.pgQty) : null;
+      if (cs == null && pq == null) stat.errs++;
+      const ev2 = IG.evaluate(r, pool.get(r.code), P, min, { cttr: cs, pgQty: pq });
+      if (!ev2.pass) { rejected.push({ code: r.code, name: r.name, changePct: r.changePct, fails: ev2.fails }); continue; }
+      const s0 = scr.map[r.code], c = { ...r, sector: (s0 && s0.sector) || `미분류-${r.code}`, rs20: s0 ? num(s0.rs20_pctl) : null, smx: null,
+        m: { fq: null, oq: null, pq, cttr: cs, fAmt: null, oAmt: null, pAmt: pq != null ? pq * r.price : null, w52: null }, ig: ev2.m };
+      c.score = IG.score(ev2.m, P); c.reasons = IG.reasons(ev2.m, P);
+      if (ev2.partial) c.warns = ['장 초반 이력이 일부 없어 판단이 덜 정확해요(서버 재시작 직후 등)'];
+      passed.push(c); stat.flowPass++;
+    }
+    const { pick, dropped } = rankAndPick(passed, P.poolTop, P.sectorMax);
+    rejected.sort((a, b) => (b.amt || 0) - (a.amt || 0));
+    return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed, rejected: rejected.slice(0, 20).map(({ amt, ...x }) => x), alt: [] };
+  }
+
+  /* 장초 상승 포착 전략의 당일 청산(flatOn): flatAt 이후 이 전략이 산 종목의 남은 보유분을 시장가로 전량 매도 — 못 판 종목은 30초 뒤 다시 시도, 하루 최대 6번 */
+  async function flattenFor(I, date) {
+    state.flat = state.flat || {};
+    const k = `${date}|${I.id}`, f = state.flat[k] = state.flat[k] || { done: false, tries: 0, sold: {} };
+    if (f.done || f.tries >= 6 || (f.at && Date.now() - f.at < 25000)) return { ok: true, skipped: true };
+    f.at = Date.now(); f.tries++;
+    const run = state.runs[I.id] || await readRun(date, I.id).catch(() => null);
+    const codes = Object.entries((run && run.payload && run.payload.orders) || {}).filter(([, o]) => o && !['skipped', 'failed', 'rejected', 'cancelled'].includes(o.st)).map(([c]) => c);   // 이 전략이 주문한 종목 — 실제로 보유 중인지는 엔진 상태로 판단
+    if (!codes.length) { f.done = true; return { ok: true, none: true }; }
+    const b = BR.of(I.id), S = await b.state();
+    if (!S || !S.ok) return { ok: false, err: '매매 상태를 읽지 못했어요' };
+    const pos = new Map((S.positions || []).map(p => [p.code, p]));
+    const res = [];
+    for (const code of codes) {
+      const p = pos.get(code);
+      if (!p || !(p.qty > 0)) continue;
+      const qty = p.avail > 0 ? p.avail : p.qty;
+      const r = await b.place({ code, name: p.name, side: 'sell', type: 'market', qty, cid: `flat_${I.id}_${code}_${date.replace(/-/g, '')}_${f.tries}` }).catch(e => ({ ok: false, error: e.message }));
+      res.push({ code, name: p.name, ok: !!(r && r.ok), qty: r && r.ok ? (r.fills || []).reduce((a, x) => a + x.qty, 0) : 0, err: r && !r.ok ? r.error : null });
+    }
+    const left = res.filter(x => !x.ok || x.qty < 1).length;
+    if (!res.length || !left) f.done = true;
+    if (res.length) {
+      await mutateRun(date, I.id, r => { LOG.push(r.payload, 'flat', `${I.params.flatAt} 당일 청산: ${res.map(x => `${x.name || x.code} ${x.ok ? x.qty + '주 매도' : '실패(' + x.err + ')'}`).join(', ')}`); state.runs[I.id] = r; }).catch(() => {});
+      await tgFor(I.id)(`🧹 [${I.name}] ${I.params.flatAt} 당일 청산\n` + res.map(x => `· ${x.name || x.code}: ${x.ok ? `${x.qty}주 시장가 매도` : '실패 — ' + x.err}`).join('\n') + (left ? '\n(남은 종목은 30초 뒤 다시 시도)' : '')).catch(() => {});
+    }
+    return { ok: true, res, done: f.done };
   }
 
   /* auto_runs(날짜+전략) 쓰기는 모두 이 잠금 안에서 "새로 읽기 → 고치기 → 저장" — 알림·승인·주문 관리가 서로 덮어쓰지 않게 */
@@ -976,6 +1039,11 @@ function createAuto(deps) {
     out.exc = await excTick(date, min).catch(err);
     if (min >= require('./auto-daylog').SAVE_AT) out.daylog = await DL.tick(date, min).catch(err);
     if (inJr) out.journal = await JR.tick(date, min, T0.convert).catch(err);   // 일지는 자동매매를 껐어도 지난 기록을 정리한다
+    for (const I of A.Is) {   // 장초 상승 포착: 지정 시각(기본 15:14) 이후 남은 보유분 전량 청산 — 선정 창 밖에서도 돈다
+      if (!I.params.flatOn || min < ST.tmin(I.params.flatAt) || min >= 15 * 60 + 30) continue;
+      if (!(await onFor(sideOfSid(I.id)))) continue;
+      (out.flat = out.flat || {})[I.id] = await flattenFor(I, date).catch(err);
+    }
     if (!selNow.length) return { ok: true, date, min, ...out };
     const selOn = [];
     for (const I of selNow) if (await onFor(sideOfSid(I.id))) selOn.push(I);
@@ -1689,7 +1757,9 @@ function createAuto(deps) {
     if (Object.values(c.items || {}).some(i => i.sid === id && i.state !== 'done')) return { ok: false, status: 400, error: '아직 팔지 않은 이월 종목이 있어 삭제할 수 없습니다' };
     return store.archive ? store.archive(id, who) : { ok: false, status: 503, error: '지원하지 않음' };
   }
-  return { tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, setHalt, haltLevel, modeOf: sid => BR.execOf(sid), siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode, deskOk,
+  /* 서버 추적기용: 켜진 장초 상승 포착 전략의 조건값(없으면 null) */
+  async function igniteParams() { const A = await store.actives().catch(() => null); const I = A && A.Is.find(x => x.params && x.params.selector === 'ignite'); return I ? I.params : null; }
+  return { igniteParams, tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, setHalt, haltLevel, modeOf: sid => BR.execOf(sid), siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode, deskOk,
     daylogList: (n, side) => DL.list(n, side), daylogGet: (d, side) => DL.get(d, side), daylogMemo: (d, t) => DL.memo(d, t), daylogSave: d => DL.save(/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : kstParts().date, { force: true }), siteStage, journalList: q => JR.list(q), journalGet: (d, sid) => JR.get(d, sid), journalCompare: q => JR.compare(q), journalMemo: (d, sid, t) => JR.memo(d, sid, t), journalRun: d => JR.run(d, kstParts().date), journal: JR,
     sourceDiff, applySource, kindsInUse: () => BR.kindsInUse(),
     _select: select, _mutateRun: mutateRun, _readRun: readRun, _readRuns: readRuns, _readCarry: readCarry, _exec: exec };
