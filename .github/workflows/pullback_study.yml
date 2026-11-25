@@ -4,6 +4,7 @@ on:
     inputs:
       anch: {description: "앵커일 외+기 순매수 / 거래대금 최소 %", default: "8"}
       from: {description: "데이터 시작일", default: "2024-10-01"}
+      ed: {description: "진입 당일 손절 판정 close|low", default: "close"}
 permissions:
   contents: write
 jobs:
@@ -14,6 +15,7 @@ jobs:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       ANCH: ${{ inputs.anch }}
       FROM: ${{ inputs.from }}
+      ED: ${{ inputs.ed }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
