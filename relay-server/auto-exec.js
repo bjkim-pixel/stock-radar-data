@@ -22,7 +22,7 @@ const ceilTick = p => { const t = tickOf(p); return Math.ceil(p / t - 1e-9) * t;
 const below = p => { let f = floorTick(p); if (f >= p - 1e-9) f -= tickOf(f - 1); return f; };
 
 const PROFILE_DOWN = 0.30, PROFILE_UP = 0.70;
-const DEF = Object.freeze({ stopPct: 5, rr: 3, minRr: 0, tpStyle: 'even', runnerPct: 20, ratchet: false, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', smartBuy: false, smartCttr: 120, smartRise: 2, q1GapPct: 0.8, chaseAsk: false, chasePct: 1, unfilledEnd: 'cancel', intentLostMs: 60e3 });
+const DEF = Object.freeze({ stopPct: 5, rr: 3, minRr: 0, tpStyle: 'even', runnerPct: 20, ratchet: false, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', smartBuy: false, smartCttr: 120, smartRise: 2, q1GapPct: 0.8, chaseAsk: false, chasePct: 1, chaseWaitMs: 180e3, rrSlack: 10, unfilledEnd: 'cancel', intentLostMs: 60e3 });
 const REPRICE_KO = { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' };
 
 /* 주문 시점 스냅샷(F1): 호가·시가·재확인 수치 — 화면·일지에서 '왜 이 가격에 샀는지/못 샀는지' 복기용 */
@@ -183,7 +183,7 @@ const fmt = v => Math.round(v).toLocaleString('ko-KR');
 function unfilledText(o) {
   const wm = Math.round(o.fillWaitMs / 60e3), cm = Math.round(o.cancelWaitMs / 60e3);
   const a = o.repriceTo === 'none' ? `미체결은 ${wm}분 뒤 정정하지 않고` : `미체결은 ${wm}분 뒤 ${REPRICE_KO[o.repriceTo] || '매수 1호가'}로 한 번 정정,`;
-  const ch = o.chaseAsk ? `못 사면 최우선 매도 호가로 한 번 더 올려(알림 시점 가격 +${o.chasePct}% 이내·손익비 재확인) ${wm}분 기다리고, ` : '';
+  const ch = o.chaseAsk ? `못 사면 최우선 매도 호가로 한 번 더 올려(알림 시점 가격 +${o.chasePct}% 이내·손익비 재확인) ${Math.round(o.chaseWaitMs / 60e3)}분 기다리고, ` : '';
   return `${a} ${ch}다시 ${cm}분 뒤 남으면 ${o.unfilledEnd === 'keep' ? '장 마감까지 그대로 둬요' : '취소해요'}.`;
 }
 function planText(r, closing) {
@@ -340,7 +340,7 @@ function createExec(deps) {
       const ord2 = makeOrder({ q, rows, perStockKrw: ask * o.qty, opt: o2, force: { buy: ask, qty: o.qty } });
       if (ord2.skip) return note(ord2.skip);
       const minRrC = +o2.minRr || 0;
-      if (minRrC > 0) { const rr2 = rrOf(ord2); if (rr2 == null || rr2 < minRrC * 0.9) return note(`${fmt(ask)}원 기준 손익비 ${rr2 == null ? '계산 불가' : '1:' + (Math.floor(rr2 * 10) / 10).toFixed(1)} — 기준(1:${minRrC}) 미달`); }
+      if (minRrC > 0) { const rr2 = rrOf(ord2); if (rr2 == null || rr2 < minRrC * (1 - (o2.rrSlack == null ? 10 : o2.rrSlack) / 100)) return note(`${fmt(ask)}원 기준 손익비 ${rr2 == null ? '계산 불가' : '1:' + (Math.floor(rr2 * 10) / 10).toFixed(1)} — 기준(1:${minRrC}) 미달`); }
       const m = await B.modify({ id: o.id, price: ask, plan: ord2.plan });
       if (!(m && m.ok)) return false;
       await D.mutateRun(date, r => { gateRec(r, 'modify', code, o2); if (m.order.status === 'filled') gateRec(r, 'filled', code, o2);
@@ -373,7 +373,7 @@ function createExec(deps) {
         continue;
       }
       const since = v.st === 'modified' ? v.modifiedAt : v.placedAt;
-      if (now() - since < (v.st === 'modified' ? (v.chased ? o2.fillWaitMs : o2.cancelWaitMs) : o2.fillWaitMs)) continue;
+      if (now() - since < (v.st === 'modified' ? (v.chased ? o2.chaseWaitMs : o2.cancelWaitMs) : o2.fillWaitMs)) continue;
       if (v.st === 'open') {   // 미체결 → 설정한 가격으로 한 번 정정(정정 안 함이면 그대로 다음 대기로)
         if (o2.repriceTo === 'none') {
           await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'modified', modifiedAt: now(), noReprice: true }; LOG.push(r.payload, 'wait', `${name}: ${wm}분 미체결 — 정정하지 않고 ${cm}분 더 기다림`, { code }, now()); });
@@ -402,7 +402,7 @@ function createExec(deps) {
         const minRrC = ord2 && !ord2.skip ? (+((v.cb ? { ...o2, ...(D.optCb ? await D.optCb() : {}) } : o2).minRr) || 0) : 0;
         if (minRrC > 0) {
           const rr2 = rrOf(ord2);
-          if (rr2 == null || rr2 < minRrC * 0.9) {   // 호가 단위 내림으로 1:3 이 1:2.9 쯤 나오는 것까지는 통과(처음 주문 가격은 기준을 그대로 적용)
+          if (rr2 == null || rr2 < minRrC * (1 - (o2.rrSlack == null ? 10 : o2.rrSlack) / 100)) {   // 호가 단위 내림으로 1:3 이 1:2.9 쯤 나오는 것까지는 통과(처음 주문 가격은 기준을 그대로 적용)
             const c = await B.cancel(o.id);
             const why = `정정가 ${fmt(px)}원 기준 손익비 ${rr2 == null ? '계산 불가' : '1:' + (Math.floor(rr2 * 10) / 10).toFixed(1)} — 기준(1:${minRrC}) 미달이라 올려 사지 않고 취소`;
             await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'cancelled', why, cancelledAt: now(), lowSeen: null }; LOG.push(r.payload, 'cancel', `${name}: ${why}${c && c.ok ? '' : ' (취소 실패)'}`, { code }, now()); });

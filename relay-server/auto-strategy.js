@@ -66,6 +66,8 @@ const SCHEMA = {
     F('q1GapPct', '매수 주문', '잔량 최다 호가가 현재가보다 이만큼 낮으면 최우선 매수 호가로', 'num', 0.8, { min: 0.3, max: 3, step: 0.1, unit: '%' }),
     F('chaseAsk', '매수 주문', '정정 후에도 못 사면 한 번 더 최우선 매도 호가로(추격 상한 안에서만, 손익비 재확인)', 'bool', true),
     F('chasePct', '매수 주문', '추격 상한(알림 시점 가격 대비)', 'num', 1, { min: 0.3, max: 3, step: 0.1, unit: '%' }),
+    F('chaseWaitMin', '매수 주문', '추격 뒤 체결 대기(못 사면 취소)', 'num', 3, { min: 1, max: 30, step: 1, unit: '분' }),
+    F('rrSlack', '매수 주문', '정정·추격 때 손익비 허용 오차(호가 단위 내림 감안)', 'num', 10, { min: 0, max: 30, step: 1, unit: '%' }),
     F('recheckPct', '매수 주문', '승인 후 재확인 허용 변동', 'num', 1.5, { min: 0.5, max: 5, step: 0.1, unit: '%' }),
     F('fillWaitMin', '매수 주문', '미체결 → 정정까지 대기', 'num', 3, { min: 1, max: 30, step: 1, unit: '분' }),
     F('repriceTo', '매수 주문', '정정 가격', 'enum', 'bid1', { opts: ENUM.repriceTo }),

@@ -12211,7 +12211,7 @@ function auWhy(o,q,P){
 }
 function auUnfilledRule(P){
   const f=+P.fillWaitMin||3,c=+P.cancelWaitMin||3;
-  return `${f}분 안에 안 사지면 ${P.repriceTo==="none"?"정정하지 않고":`${AU_REP[P.repriceTo]||"최우선 매수 호가"}로 한 번 정정하고`} ${P.chaseAsk!==false?`못 사면 최우선 매도 호가로 한 번 더 올려(알림 시점 가격 +${+P.chasePct||1}% 이내·손익비 재확인) ${f}분 기다리고 `:""}다시 ${c}분 기다린 뒤 ${P.unfilledEnd==="keep"?"장 마감까지 그대로 둬요":"남으면 취소해요"}.`;
+  return `${f}분 안에 안 사지면 ${P.repriceTo==="none"?"정정하지 않고":`${AU_REP[P.repriceTo]||"최우선 매수 호가"}로 한 번 정정하고`} ${P.chaseAsk!==false?`못 사면 최우선 매도 호가로 한 번 더 올려(알림 시점 가격 +${+P.chasePct||1}% 이내·손익비 재확인) ${+P.chaseWaitMin||3}분 기다리고 `:""}다시 ${c}분 기다린 뒤 ${P.unfilledEnd==="keep"?"장 마감까지 그대로 둬요":"남으면 취소해요"}.`;
 }
 function auOrderCard(sid,o,RP){   // RP = 일지 복기용({P,log}): 지난 기록이라 실시간 시세·타이머 없이 그날 설정으로 그림
   const I=auStrat(sid)||{},P=RP?(RP.P||{}):(I.params||{}),q=RP?null:auQ(o.code),pl=o.plan||{},sn=o.snap||{},px=o.buy2||o.buy,live=o.filled>0&&q?q.price:(q?q.price:null);
