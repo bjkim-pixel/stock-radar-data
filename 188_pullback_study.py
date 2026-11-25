@@ -19,6 +19,7 @@ FROM = os.environ.get("FROM", "2024-10-01")
 CAP_LO, CAP_HI, AMT20 = 3000e8, 50000e8, 30e8
 ANCH = float(os.environ.get("ANCH", "8"))
 COST = 0.25
+ED = os.environ.get("ED", "close")   # 진입 당일 손절 판정: close(종가 기준) | low(저가 기준, 가장 보수적)
 EOK = 1e8
 
 S = Q("select code,name,market from stocks where security_type='STOCK'")
@@ -35,6 +36,7 @@ def tick(x):
     return 1 if x < 2000 else 5 if x < 5000 else 10 if x < 20000 else 50 if x < 50000 else 100 if x < 200000 else 500 if x < 500000 else 1000
 
 sig_rows, base_rows, trades = [], [], []
+DIAG = {"053800": [], "192820": []}
 VAR = {  # 변형: 각 조건을 빼 보며 기여도 확인
     "A 전체 조건": dict(anchor=True, flow=True, pull=True),
     "B 수급 이탈 조건 제외": dict(anchor=True, flow=False, pull=True),
@@ -82,6 +84,8 @@ for code, g in D.groupby("code", sort=False):
         # 패턴 태그
         ye = cl[t - 1] > o[t - 1] and cl[t] < o[t] and v[t] < v[t - 1] and cl[t] > ma10[t]
         nz = hh >= cl[ai] * 1.10 and l[int(np.argmax(h[ai:t + 1])) + ai:t + 1].min() > cl[ai] and dd < 0
+        if code in DIAG and dates[t] >= np.datetime64("2026-10-20"):
+            DIAG[code].append((dates[t], anchor_ok, round(sm[ai] / a[ai] * 100, 1) if a[ai] > 0 else None, str(pd.Timestamp(dates[ai]).date()), near_vw, round(cl[t] / vw - 1, 3) if vw > 0 else None, flow_ok, round(rec, 2), pull_core, bool(v[t - 2:t + 1].mean() <= 0.7 * vpost), cl[t] / cl[ai] - 1 <= 0.40))
         for vn, cfg in VAR.items():
             ok = pull_ok and (not cfg["anchor"] or (anchor_ok and near_vw)) and (not cfg["flow"] or flow_ok)
             if not ok: continue
@@ -95,8 +99,9 @@ for code, g in D.groupby("code", sort=False):
             stop = ent * 0.96; tp1, tp2 = ent * 1.08, ent * 1.12
             left, pnl, k, below, why = 1.0, 0.0, j, 0, ""
             while True:
-                if l[k] <= stop:
-                    px = min(stop, o[k]) if k > j else stop
+                hit = (l[k] <= stop) if k > j else ((cl[k] <= stop) if ED == "close" else (l[k] <= stop))   # 진입 당일 저가는 매수 전에 찍혔을 수 있음 → 기본은 종가로만 판단
+                if hit:
+                    px = min(stop, o[k]) if k > j else (cl[k] if ED == "close" else stop)
                     pnl += left * (px / ent - 1); left = 0; why = "손절" if stop < ent else "본전손절"; break
                 if left == 1.0 and h[k] >= tp1:
                     pnl += 0.5 * 0.08; left = 0.5; stop = max(stop, ent * 1.0035)
@@ -162,6 +167,11 @@ for cd in ("053800", "192820"):
     for _, r in t_.tail(8).iterrows():
         p(f"  - 매매 모의: 신호 {pd.Timestamp(r.sig).date()} → 진입 {pd.Timestamp(r.ent_d).date()} {r.ent:,.0f}원 · {r.why} · {r.ret:+.2f}% · {r.hold}일")
 
+p("\n### 사례 조건 진단(10/20 이후, 추세·상한가 조건 통과한 날만)\n")
+p("| 종목 | 날짜 | 앵커 통과 | 앵커일 외+기/거래대금% | 앵커일 | 평단 범위 | 평단 대비 | 이탈 없음 | 회수율 | 눌림(조정/횡보) | 거래 감소 | +40% 이내 |")
+p("|---|---|---|---:|---|---|---:|---|---:|---|---|---|")
+for cd, rows in DIAG.items():
+    for r in rows: p(f"| {NAME.get(cd, cd)} | {pd.Timestamp(r[0]).strftime('%m/%d')} | {'O' if r[1] else 'X'} | {r[2]} | {r[3]} | {'O' if r[4] else 'X'} | {r[5]} | {'O' if r[6] else 'X'} | {r[7]} | {'O' if r[8] else 'X'} | {'O' if r[9] else 'X'} | {'O' if r[10] else 'X'} |")
 p("\n## 4. 최근 신호(A, 최근 10거래일)\n")
 if len(A_):
     last = sorted(A_.d.unique())[-10:]
@@ -174,5 +184,5 @@ p(f"""
 - 신호일 수익률은 그날 종가 기준(진입 조건 없음), 매매 모의는 다음날 돌파 진입 + 손절·익절 규칙 적용.
 - 일봉 모의라 같은 날 손절·익절이 겹치면 손절로 처리(보수적). 장중 트리거(분당 거래대금·프로그램·체결강도)는 빠져 있어 실제보다 신호가 많음.
 - 스마트머니 판정은 매일 저장되는 현재 상태가 아니라 그날까지의 수급으로 다시 계산(미래 정보 없음). 상장폐지 종목은 데이터에 없을 수 있음(생존 편향).
-- 앵커 거래대금 비중 기준 {ANCH}% · 기간 {FROM}~ · 총 {time.time()-T0:.0f}초.""")
+- 진입 당일 손절 판정 {ED} · 앵커 거래대금 비중 기준 {ANCH}% · 기간 {FROM}~ · 총 {time.time()-T0:.0f}초.""")
 open("pullback_study.md", "w", encoding="utf-8").write("\n".join(out))
