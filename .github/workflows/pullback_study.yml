@@ -1,0 +1,28 @@
+name: "[점검] 눌림목(수급 앵커형) 0단계 과거 검증 | 수동(읽기 전용)"
+on:
+  workflow_dispatch:
+    inputs:
+      anch: {description: "앵커일 외+기 순매수 / 거래대금 최소 %", default: "8"}
+      from: {description: "데이터 시작일", default: "2024-10-01"}
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      ANCH: ${{ inputs.anch }}
+      FROM: ${{ inputs.from }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary pandas numpy
+      - run: python 188_pullback_study.py
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: pullback-report
+          file: pullback_study.md
