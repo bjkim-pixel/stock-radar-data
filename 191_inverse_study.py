@@ -116,4 +116,39 @@ p("| 월 | 거래 | 승률 | 평균 | 손익비 | t | 합계 |\n|---|---:|---:|-
 idx = SIG["S2a 외국인 현물− 선물−"]
 for m, g in pd.Series(idx, index=idx).groupby(idx.to_period("M")): p(f"| {m} | {stats([intraday('252670', nxt(d), 'close') for d in g if nxt(d)])} |")
 p(f"\n## 데이터 범위\n- 외국인 선물 {D.fF.notna().sum()}일 · 외국인 현물 {D.fK.notna().sum()}일 · VKOSPI {D.vk.notna().sum()}일")
+
+# ── 추가: S1 겹침 제거 · 아무 날 5일 보유 기준선
+def s1_nonover(code, idx):
+    rs, busy = [], None
+    for d in idx:
+        d1 = nxt(d)
+        if d1 is None or (busy is not None and d1 <= busy): continue
+        rs.append(swing(code, d1)); busy = nxt(d, 5)
+    return rs
+p("\n## S1 겹침 제거(보유 중 신호는 건너뜀) vs 아무 날 5일 보유(기준선)")
+p("| 상품 | S1 겹침 제거 | 기준선(매일 5일 보유) |\n|---|---|---|")
+for code, nm in INS.items():
+    if code in px: p(f"| {nm} | {stats(s1_nonover(code, S1))} | {stats([swing(code, nxt(d)) for d in D.index if nxt(d)])} |")
+
+# ── 추가: 국면 추종 보유(조건이 켜진 날 종가에 사서, 꺼진 날 종가에 판다 — 종가→종가)
+k_ = df["k"]; df["ma20"] = k_.rolling(20).mean(); df["ma5"] = k_.rolling(5).mean()
+R = {
+  "코스피200 < 20일선": df.k < df.ma20,
+  "코스피200 < 60일선": df.k < df.ma60,
+  "20일선·60일선 모두 아래": (df.k < df.ma20) & (df.k < df.ma60),
+  "5일선 < 20일선": df.ma5 < df.ma20,
+}
+p("\n## 국면 추종 보유(종가 판정 → 그 종가에 사고/팔기, 종가→종가 수익) · 전환마다 비용 0.1%")
+p("| 상품 | 조건 | 보유일 | 전환 | 누적 | 최대 낙폭 | 그냥 보유 |\n|---|---|---:|---:|---:|---:|---:|")
+for code, nm in INS.items():
+    if code not in px: continue
+    x = px[code]["close"]; r = x.pct_change()
+    bh = x[(x.index >= FROM) & (x.index <= TO)]; bhr = (bh.iloc[-1] / bh.iloc[0] - 1) * 100
+    for lab, cond in R.items():
+        pos = cond.reindex(x.index).fillna(False).astype(int).shift(1).fillna(0)
+        rr = (pos * r).fillna(0); sw = pos.diff().abs().fillna(0)
+        rr = rr - sw * COST / 100
+        rr = rr[(rr.index > FROM) & (rr.index <= TO)]; pp = pos[(pos.index > FROM) & (pos.index <= TO)]
+        eq = (1 + rr).cumprod(); mdd = ((eq / eq.cummax()) - 1).min() * 100
+        p(f"| {nm} | {lab} | {int(pp.sum())} | {int(sw[(sw.index > FROM) & (sw.index <= TO)].sum())} | {(eq.iloc[-1]-1)*100:+.1f}% | {mdd:.1f}% | {bhr:+.1f}% |")
 open("pullback_study.md", "w", encoding="utf-8").write("\n".join(out) + "\n")
