@@ -12,7 +12,10 @@ def bd(n):
 P=["idx/bon_dd_trd","idx/drvprod_dd_trd","idx/kosdaq_dd_trd","idx/kospi_dd_trd","idx/krx_dd_trd",
    "etp/etf_bydd_trd","etp/etn_bydd_trd","etp/elw_bydd_trd",
    "drv/fut_bydd_trd","drv/opt_bydd_trd","drv/eqsfu_stk_bydd_trd","drv/eqkfu_ksp_bydd_trd","drv/eqsop_bydd_trd","drv/eqkop_bydd_trd",
+   "drv/eqkfu_ksq_bydd_trd",
+   "sto/stk_bydd_trd","sto/ksq_bydd_trd","sto/knx_bydd_trd","sto/sw_bydd_trd","sto/sr_bydd_trd","sto/stk_isu_base_info","sto/ksq_isu_base_info","sto/knx_isu_base_info",
    "sts/stk_bydd_trd","sts/ksq_bydd_trd","sts/stk_isu_base_info","sts/ksq_isu_base_info",
+   "bon/kts_bydd_trd","bon/bnd_bydd_trd","bon/smb_bydd_trd",
    "gen/oil_bydd_trd","gen/gold_bydd_trd","gen/ets_bydd_trd"]
 log("# KRX Open API 엔드포인트 점검 (기준일 "+bd(1)+")\n")
 for p in P:
