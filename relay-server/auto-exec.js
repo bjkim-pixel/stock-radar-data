@@ -354,7 +354,7 @@ function createExec(deps) {
       if (v.st === 'intent') {   // 재시작 등으로 결과 모름 → 의도 시각 이후 같은 종목 매수 주문을 찾아 이어받기
         const found = (S.orders || []).filter(o => o.code === code && o.side === 'buy' && o.ts >= v.at - 2000).sort((a, b) => a.ts - b.ts)[0];
         if (found) await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: found.status === 'filled' ? 'filled' : 'open', orderId: found.id, placedAt: found.ts, filled: found.filled }; LOG.push(r.payload, 'resume', `${name}: 재시작 뒤 주문을 찾아 이어받음`, { code }, now()); });
-        else if (now() - v.at > DEF.intentLostMs) {
+        else if (now() - v.at > (o2.intentLostMs || DEF.intentLostMs)) {
           await D.mutateRun(date, r => { r.payload.orders[code] = { ...r.payload.orders[code], st: 'lost' }; LOG.push(r.payload, 'lost', `${name}: 주문 결과 확인 불가(서버 재시작 추정) — 다시 내지 않음`, { code }, now()); });
           msgs.push(`⚠ ${name}: 주문 결과를 확인하지 못했어요(서버 재시작 추정). 중복을 막으려고 다시 내지 않았어요 — 매매 화면에서 확인하세요.`);
         }
