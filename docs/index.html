@@ -447,6 +447,8 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .sv-t tr.sv-g td{background:var(--surface-2);font-weight:700;font-size:11px;text-align:left;position:static}.sv-gt{position:sticky;left:8px;display:inline-block}
 .sv-t tr.sv-sum td{background:var(--surface-2);font-weight:700}
 .sv-t .sv-gl{font-size:9px;line-height:1.1;min-height:10px}
+.sv-dt{font-size:11.5px}.sv-dt td,.sv-dt th{padding:7px 6px;min-width:50px;text-align:center}.sv-dt .sv-d1{min-width:64px;max-width:64px;padding:6px 6px;line-height:1.25}
+.sv-dt .sv-d2{position:sticky;left:64px;z-index:1;min-width:58px;border-right:1px solid var(--border);background:var(--surface-2)}.sv-dt thead .sv-d2{z-index:3}
 .sv-t .sv-cur{background:color-mix(in srgb,var(--warn) 18%,var(--surface));font-weight:700}
 .sv-lt{font-size:11.5px;border-collapse:collapse;width:100%}.sv-lt th,.sv-lt td{padding:4px 6px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border)}.sv-lt .l{text-align:left}.sv-lt tr.sv-sel td{background:color-mix(in srgb,var(--warn) 16%,transparent)}
 .sv-fl{flex-wrap:wrap}.sv-fl button{flex:0 0 auto;padding:6px 10px}
@@ -1763,7 +1765,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div class="card"><h3>삼성전자·SK하이닉스 일별 수급 <span class="r faint" id="svDaySub"></span></h3>
     <div class="tl-tabs" id="svDayTabs" style="max-width:300px"><button data-c="005930" class="on">삼성전자</button><button data-c="000660">SK하이닉스</button></div>
     <div id="svDay"><div class="load sk"></div></div>
-    <div class="note">최근 20거래일이며 위가 최신입니다. 색은 열마다 평소보다 큰 정도(빨강 순매수·상승, 파랑 순매도·하락)입니다. <b>외국인·연기금은 종목별 현물 순매수</b>(KIS, 억원)입니다. 프로그램(종목별), 공매도(공시가 다음 영업일이라 최근일은 비어 있음), 신용 융자잔고율, 주식선물 미결제약정 증감은 <b>투자자별로 나뉘지 않은 종목·시장 전체 값</b>이라 외국인 몫과 연기금 몫을 가를 수 없습니다. K200 외국인은 코스피200 선물 시장 전체 값이고 2026-04-27부터입니다. <b>대차거래 잔고와 옵션 투자자별 롱·숏은 공개 API가 없어 넣지 못했습니다.</b> 제가 추가한 항목: 외국인 순매수÷거래대금, 외국인 보유율과 전일 대비, 외국인+연기금 합, 시가 갭·장중 등락, 5일·20일 합계.</div></div>
+    <div class="note">오른쪽이 최근이고 맨 왼쪽 "20일"은 합계(등락률은 20일 누적, 공매도는 평균)입니다. 빨강 순매수·상승, 파랑 순매도·하락이며 행마다 평소보다 큰 날이 진합니다. 외국인·연기금은 종목별 현물 순매수(억원), 공매도는 종목 전체 공매도 대금 비중(공시가 다음 영업일이라 최근일은 비어 있음), 선물은 <b>코스피200 선물 시장 전체</b> 외국인 순매수(억원, 2026-04-27부터)입니다. 대차거래와 옵션 롱·숏은 공개 자료가 없어 뺐습니다.</div></div>
   <div class="card"><h3>① 시장 매크로 <span class="r faint" id="svMacSub"></span></h3>
     <div class="tl-tabs" id="svMacTabs"><button data-p="63">3개월</button><button data-p="126">6개월</button><button data-p="ytd" class="on">연초 이후</button><button data-p="252">1년</button></div>
     <div id="svMac"><div class="load sk"></div></div>
@@ -6460,63 +6462,32 @@ async function svOpenX(code){
     h.querySelector("button[data-go]").onclick=ev=>{ev.stopPropagation();go("detail",code);};
   }catch(e){console.error("종목 펼치기",e);const h=$("#svx_"+code);if(h)h.innerHTML='<div class="load">불러오기 실패</div>';}
 }
-/* ───────── 삼성전자·SK하이닉스 일별 수급(최근 20거래일) ───────── */
-async function semiLoadT(){
-  const cs=SEMI_BIG.join(","),d0=new Date((S.date||new Date().toISOString().slice(0,10))+"T00:00:00");d0.setDate(d0.getDate()-50);const from=d0.toISOString().slice(0,10);
-  const [pr,pg,hd]=await Promise.all([
-    semiAll("daily_price",`select=trade_date,code,trade_amount&code=in.(${cs})&trade_date=gte.${from}&order=trade_date.asc,code.asc`).catch(()=>[]),
-    semiAll("daily_program",`select=trade_date,code,pgtr_net_amt&code=in.(${cs})&trade_date=gte.${from}&order=trade_date.asc,code.asc`).catch(()=>[]),
-    semiAll("semi_hold_daily",`select=trade_date,code,frgn_ratio&code=in.(${cs})&trade_date=gte.${from}&order=trade_date.asc,code.asc`).catch(()=>[])]);
-  const T={amt:{},prog:{},hold:{}};SEMI_BIG.forEach(c=>{T.amt[c]={};T.prog[c]={};T.hold[c]={};});
-  pr.forEach(r=>{if(r.trade_amount!=null&&T.amt[r.code])T.amt[r.code][r.trade_date]=(+r.trade_amount)/EOK;});
-  pg.forEach(r=>{if(r.pgtr_net_amt!=null&&T.prog[r.code])T.prog[r.code][r.trade_date]=(+r.pgtr_net_amt)/EOK;});
-  hd.forEach(r=>{if(r.frgn_ratio!=null&&T.hold[r.code])T.hold[r.code][r.trade_date]=+r.frgn_ratio;});
-  return T;
-}
-async function semiOpenT(){
-  const D=S.semi;if(!D||D.tBusy)return;
-  if(D.t===undefined){D.tBusy=true;try{D.t=await semiLoadT();}catch(e){console.error("일별 수급",e);D.t=null;}D.tBusy=false;}
-  try{semiRenderT();}catch(e){console.error("일별 수급",e);}
-}
+/* ───────── 삼성전자·SK하이닉스 일별 수급(최근 20거래일, 날짜 가로) ───────── */
 function semiRenderT(){
   const D=S.semi,box=$("#svDay");if(!D||!box)return;
   const c=D.tSel||SEMI_BIG[0],ds=D.flDates.slice(-20);
   if(!ds.length){box.innerHTML='<div class="load">수급 자료가 없습니다</div>';return;}
   $$("#svDayTabs button").forEach(b=>b.classList.toggle("on",b.dataset.c===c));
-  $("#svDaySub").textContent=`${ds[0]} ~ ${ds.at(-1)}`;
-  const T=D.t,X=D.x,sym={"005930":"SEC","000660":"HYX"}[c],fo=(D.fut&&D.fut[sym])||{},fd=D.futDates.filter(d=>fo[d]);
-  const cr={};if(X&&X.crU)X.crU.forEach(r=>{if(r.code===c&&r.loan_rate!=null)cr[r.trade_date]=+r.loan_rate;});
-  const hold=T?T.hold[c]:{},hk=Object.keys(hold).sort();
-  const pd=D.pxDates;
-  const rows=ds.map(d=>{
-    const x=D.fl[c][d]||{},p=D.px[c][d]||{},k=pd.indexOf(d),pv=k>0?D.px[c][pd[k-1]]:null,j=fd.indexOf(d),amt=T?T.amt[c][d]:null,sh=X&&X.shB?(X.shB[c]||{})[d]:null,hi=hk.indexOf(d);
-    return {d,close:p.c,chg:p.p,gap:p.o&&pv&&pv.c?(p.o/pv.c-1)*100:null,intra:p.o&&p.c?(p.c/p.o-1)*100:null,amt,
-      f:x.f,p:x.p,fp:x.f==null?null:x.f+(x.p||0),i:x.i,n:x.n,fr:amt&&x.f!=null?x.f/amt*100:null,
-      hold:hold[d]??null,dh:hi>0?hold[d]-hold[hk[hi-1]]:null,prog:T?(T.prog[c][d]??null):null,
-      sr:sh?sh.r:null,sa:sh?sh.a:null,cr:cr[d]??null,oi:j>0?fo[d].oi-fo[fd[j-1]].oi:null,ff:D.fF[d]??null};});
-  const C=[["시세","close","종가",0,"n"],["시세","chg","등락%",2,"s"],["시세","gap","갭%",2,"s"],["시세","intra","장중%",2,"s"],["시세","amt","거래대금(억)",0,"n"],
-    ["현물 순매수(억)","f","외국인",0,"s"],["현물 순매수(억)","p","연기금",0,"s"],["현물 순매수(억)","fp","외+연",0,"s"],["현물 순매수(억)","i","기관계",0,"s"],["현물 순매수(억)","n","개인",0,"s"],
-    ["외국인","fr","순매수÷대금%",1,"s"],["외국인","hold","보유율%",2,"n"],["외국인","dh","전일比%p",2,"s"],
-    ["프로그램","prog","순매수(억)",0,"s"],["공매도","sr","대금비중%",2,"u"],["공매도","sa","대금(억)",0,"u"],["신용","cr","융자잔고율%",2,"n"],
-    ["선물","oi","주식선물 OI증감",0,"s"],["선물","ff","K200 외국인(억)",0,"s"]];
-  const scale={};C.forEach(([g,k])=>{const a=rows.map(r=>r[k]).filter(v=>v!=null).map(Math.abs).sort((x,y)=>x-y);scale[k]=(a.length?a[Math.floor(a.length*.9)]||a.at(-1):1)||1;});
-  const fmt=(v,dg,t)=>v==null?"":t==="s"?pm(v,dg):N(v,dg);
-  const SUM=["f","p","fp","i","n","prog","sa","oi","ff"],AVG=["chg","sr","fr"];
-  const agg=(k,n)=>{const a=rows.slice(-n).map(r=>r[k]).filter(v=>v!=null);if(!a.length)return null;const s=a.reduce((z,v)=>z+v,0);return AVG.includes(k)?s/a.length:s;};
-  const sumRow=(lb,n)=>`<tr class="sv-sum"><td class="l sv-nm">${lb}</td>${C.map(([g,k,l,dg,t])=>{const v=SUM.includes(k)||AVG.includes(k)||k==="dh"?agg(k,n):null;
-    return `<td class="sv-n ${t==="s"&&v!=null?sgn(v):""}">${v==null?"":fmt(v,dg,t)}</td>`;}).join("")}</tr>`;
-  const cell=(r,[g,k,l,dg,t])=>{const v=r[k];if(v==null)return '<td class="sv-n"></td>';
-    const a=Math.round(Math.min(1,Math.abs(v)/scale[k])*55);
-    const bg=t==="s"?`background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${a}%,var(--surface))`:t==="u"?`background:color-mix(in srgb,var(--warn) ${Math.round(Math.min(1,v/scale[k])*55)}%,var(--surface))`:"";
-    return `<td class="sv-n" style="${bg}">${fmt(v,dg,t)}</td>`;};
-  const groups=[];C.forEach(([g])=>{const l=groups.at(-1);if(l&&l[0]===g)l[1]++;else groups.push([g,1]);});
-  const head=`<tr><th class="l sv-nm" rowspan="2">날짜</th>${groups.map(([g,n])=>`<th colspan="${n}" style="border-left:1px solid var(--border)">${g}</th>`).join("")}</tr><tr>${C.map(([g,k,l])=>`<th>${l}</th>`).join("")}</tr>`;
-  const body=[...rows].reverse().map(r=>`<tr><td class="l sv-nm">${r.d.slice(5).replace("-","/")}</td>${C.map(cc=>cell(r,cc)).join("")}</tr>`).join("");
-  const cov=(k,nm)=>rows.some(r=>r[k]!=null)?"":nm;
-  const miss=[cov("prog","프로그램"),cov("sr","공매도"),cov("hold","보유율"),cov("cr","신용"),cov("oi","선물 OI")].filter(Boolean).join(" · ");
-  box.innerHTML=`<div id="svDayC" class="chart"></div><div class="tl-legend" style="margin-top:2px"><span><i style="width:10px;height:8px;background:var(--s1)"></i>외국인</span><span><i style="width:10px;height:8px;background:var(--s2)"></i>연기금</span><span>일별 현물 순매수(억원)</span></div>
-    <div class="sv-sc sv-hv" style="max-height:600px;margin-top:6px"><table class="sv-t"><thead>${head}</thead><tbody>${sumRow("최근 5일",5)}${sumRow("20일 합계",20)}${body}</tbody></table></div>${miss?`<div class="note" style="color:var(--warn)">아직 값이 없는 항목: ${miss}</div>`:""}`;
-  barChart($("#svDayC"),rows.map(r=>({n:r.d.slice(8),full:r.d,g:[{v:r.f||0,c:"--s1",n:"외국인"},{v:r.p||0,c:"--s2",n:"연기금"}]})),{h:170,w:900,ft:v=>pm(v,0)+"억",fy:v=>N(v,0)});
+  $("#svDaySub").textContent=`${ds[0].slice(5)} ~ ${ds.at(-1).slice(5)}`;
+  const X=D.x,pd=D.pxDates,k0=pd.indexOf(ds[0]),p0=k0>0?(D.px[c][pd[k0-1]]||{}).c:null,pL=(D.px[c][ds.at(-1)]||{}).c;
+  const R=[
+    {k:"chg",l:"등락률",u:"%",dg:2,t:"s",v:d=>(D.px[c][d]||{}).p,s:p0&&pL?(pL/p0-1)*100:null},
+    {k:"f",l:"외국인",u:"억",dg:0,t:"s",v:d=>(D.fl[c][d]||{}).f,sum:1},
+    {k:"p",l:"연기금",u:"억",dg:0,t:"s",v:d=>(D.fl[c][d]||{}).p,sum:1},
+    {k:"sr",l:"공매도",u:"비중%",dg:2,t:"u",v:d=>X&&X.shB?((X.shB[c]||{})[d]||{}).r:null,avg:1},
+    {k:"ff",l:"선물",u:"외국인 억",dg:0,t:"s",v:d=>D.fF[d],sum:1}];
+  const nn=a=>a.filter(v=>v!=null&&!isNaN(v));
+  R.forEach(r=>{r.a=ds.map(r.v);const n=nn(r.a);
+    if(r.s==null&&n.length)r.s=r.sum?n.reduce((z,v)=>z+v,0):r.avg?n.reduce((z,v)=>z+v,0)/n.length:null;
+    const ab=n.map(Math.abs).sort((x,y)=>x-y);r.sc=(ab.length?ab[Math.floor(ab.length*.9)]||ab.at(-1):1)||1;});
+  const f=(v,r)=>v==null||isNaN(v)?'<span class="faint">–</span>':r.t==="s"?pm(v,r.dg):N(v,r.dg);
+  const bg=(v,r)=>{if(v==null||isNaN(v))return"";const a=Math.round(Math.min(1,Math.abs(v)/r.sc)*55);
+    return r.t==="s"?`background:color-mix(in srgb,var(${v>=0?"--up":"--down"}) ${a}%,var(--surface))`:`background:color-mix(in srgb,var(--warn) ${Math.round(Math.min(1,v/r.sc)*55)}%,var(--surface))`;};
+  const head=`<tr><th class="l sv-nm sv-d1"></th><th class="sv-d2">${ds.length}일</th>${ds.map(d=>`<th>${d.slice(5).replace("-","/")}</th>`).join("")}</tr>`;
+  const body=R.map(r=>`<tr><td class="l sv-nm sv-d1"><b>${r.l}</b><div class="faint" style="font-size:9px;font-weight:400">${r.u}</div></td>
+    <td class="sv-d2 ${r.t==="s"&&r.s!=null?sgn(r.s):""}"><b>${f(r.s,r)}</b></td>${r.a.map(v=>`<td style="${bg(v,r)}">${f(v,r)}</td>`).join("")}</tr>`).join("");
+  box.innerHTML=`<div class="sv-sc"><table class="sv-t sv-dt"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  const sc=box.querySelector(".sv-sc");if(sc)sc.scrollLeft=1e9;
 }
 function semiBindV(){
   const tabs=(id,fn)=>$$(`#${id} button`).forEach(b=>b.onclick=()=>{$$(`#${id} button`).forEach(x=>x.classList.toggle("on",x===b));fn(b);});
@@ -6539,8 +6510,8 @@ async function semiOpen(){
     $("#semiK").addEventListener("click",e=>{const a=e.target.closest("a.lk[data-code]");if(a)go("detail",a.dataset.code);});
     $("#semiC").addEventListener("click",e=>{const a=e.target.closest("a.lk[data-etf]");if(a)go("etf",a.dataset.etf);});
     semiBindV();}
-  if(S.semi&&Date.now()-S.semiAt<10*60*1000){semiRenderAll();semiOpenX();semiOpenV();semiOpenT();return;}
-  try{S.semi=await semiLoad();S.semiAt=Date.now();semiRenderAll();semiOpenX();semiOpenV();semiOpenT();}
+  if(S.semi&&Date.now()-S.semiAt<10*60*1000){semiRenderAll();semiOpenX();semiOpenV();return;}
+  try{S.semi=await semiLoad();S.semiAt=Date.now();semiRenderAll();semiOpenX();semiOpenV();}
   catch(e){console.error("반도체 추종",e);$("#semiA").innerHTML='<div class="load">불러오기 실패</div>';}
 }
 function updTlRange(){
