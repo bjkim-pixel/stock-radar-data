@@ -1765,7 +1765,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div class="card"><h3>삼성전자·SK하이닉스 일별 수급 <span class="r faint" id="svDaySub"></span></h3>
     <div class="tl-tabs" id="svDayTabs" style="max-width:300px"><button data-c="005930" class="on">삼성전자</button><button data-c="000660">SK하이닉스</button></div>
     <div id="svDay"><div class="load sk"></div></div>
-    <div class="note"><b>읽는 법</b> — 외국인이 현물을 사흘 이상 연속으로 팔면 파랑 "매도 N일" 구간, 그 직후 순매수로 돌아서 3일까지는 빨강 "되사기" 구간입니다(공매도 비중이 20일 평균+1σ 이상이면 ↑). 맨 왼쪽 "20일"은 합계(등락률은 누적, 공매도는 평균), 오른쪽이 최근입니다. 외국인 현물·연기금은 종목별 순매수(억원), 공매도는 종목 전체 대금 비중(공시가 다음 영업일이라 최근일은 비어 있음), 선물은 <b>코스피200 선물 시장 전체</b> 외국인 순매수(2026-04-27부터)입니다.<br><b>검증 결과(2025-09~2026-11, 삼성전자·SK하이닉스)</b> ① 외국인이 3일 연속 팔면 다음날도 파는 경우가 많았습니다(다음날 순매수 확률 23%, 평소 38%) ② 순매수로 돌아선 날은 다음날 외국인이 다시 사는 경우가 55%였고 주가는 평균 +2.9%(건수 42, 통계적 확신은 약함, 전반기엔 거의 없다가 후반기에 몰림) ③ 공매도 비중이 높았는지는 결과를 더 낫게 하지 않았습니다. 곧 "팔 때 공매도가 늘고 → 갚는다"는 모양은 이 표본에서 뚜렷하지 않았고, <b>순매수 전환 자체</b>가 더 눈여겨볼 신호였습니다. 표본이 작고 두 종목이 같이 움직여 우연일 수 있으니 참고용입니다. 대차거래와 옵션 롱·숏은 공개 자료가 없어 뺐습니다.</div></div>
+    <div class="note"><b>읽는 법</b> — 외국인이 현물을 사흘 이상 연속으로 팔면 파랑 "매도 N일" 구간, 그 직후 순매수로 돌아서 3일까지는 빨강 "되사기" 구간입니다(공매도 비중이 20일 평균+1σ 이상이면 ↑). 맨 왼쪽 "20일"은 합계(등락률은 누적, 공매도는 평균), 오른쪽이 최근입니다. 외국인 현물·연기금은 종목별 순매수(억원), 공매도는 종목 전체의 대금 비중과 금액(억원, 공시가 다음 영업일이라 최근일은 비어 있음), 선물은 <b>코스피200 선물 시장 전체</b> 외국인 순매수(2026-04-27부터)입니다.<br><b>검증 결과(2025-09~2026-11, 삼성전자·SK하이닉스)</b> ① 외국인이 3일 연속 팔면 다음날도 파는 경우가 많았습니다(다음날 순매수 확률 23%, 평소 38%) ② 순매수로 돌아선 날은 다음날 외국인이 다시 사는 경우가 55%였고 주가는 평균 +2.9%(건수 42, 통계적 확신은 약함, 전반기엔 거의 없다가 후반기에 몰림) ③ 공매도 비중이 높았는지는 결과를 더 낫게 하지 않았습니다. 곧 "팔 때 공매도가 늘고 → 갚는다"는 모양은 이 표본에서 뚜렷하지 않았고, <b>순매수 전환 자체</b>가 더 눈여겨볼 신호였습니다. 표본이 작고 두 종목이 같이 움직여 우연일 수 있으니 참고용입니다. 대차거래와 옵션 롱·숏은 공개 자료가 없어 뺐습니다.</div></div>
   <div class="card"><h3>① 시장 매크로 <span class="r faint" id="svMacSub"></span></h3>
     <div class="tl-tabs" id="svMacTabs"><button data-p="63">3개월</button><button data-p="126">6개월</button><button data-p="ytd" class="on">연초 이후</button><button data-p="252">1년</button></div>
     <div id="svMac"><div class="load sk"></div></div>
@@ -6036,7 +6036,7 @@ function semiFgnText(D,last){
     return `${SEMI_NM[c]} <b class="${sgn(m[L])}">${pm(m[L],0)}억</b>(5일 ${pm(a5,0)}${k>=2?` · ${k}일 연속 ${sg>0?"매수":"매도"}`:""})`;}).join(" · ");
   const X=D.x,shL=SEMI_BIG.map(c=>{const sh=X&&X.shB?X.shB[c]||{}:{},ds=Object.keys(sh).sort().filter(d=>d<=L);if(!ds.length)return "";
     const d=ds.at(-1),w=ds.slice(-20).map(x=>sh[x].r).filter(v=>v!=null),m=w.length?w.reduce((s,v)=>s+v,0)/w.length:null;
-    return `${SEMI_NM[c]} <b>${N(sh[d].r,2)}%</b>${m!=null?` (20일 평균 ${N(m,2)}%${sh[d].r>m*1.3?" · <b class=\"down\">평소보다 큼</b>":""})`:""}`;}).filter(Boolean);
+    return `${SEMI_NM[c]} <b>${N(sh[d].r,2)}%</b> · <b>${N(sh[d].a,0)}억</b>${m!=null?` (20일 평균 ${N(m,2)}%${sh[d].r>m*1.3?" · <b class=\"down\">평소보다 큼</b>":""})`:""}`;}).filter(Boolean);
   const shD=(()=>{const sh=X&&X.shB?X.shB[SEMI_BIG[0]]||{}:{};const ds=Object.keys(sh).sort().filter(d=>d<=L);return ds.length?svMd(ds.at(-1)):"";})();
   const pen=last.pen!=null?`연기금(참고) ${eok(last.pen)}${last.strong?" · 같이 순매도":""} · 삼성·하이닉스 5일 ${SEMI_BIG.map(c=>pm(D.flDates.filter(d=>d<=L).slice(-5).reduce((s,d)=>s+((D.fl[c][d]||{}).p||0),0),0)).join(" / ")}억`:"";
   const ln=(t,x)=>x?`<div style="font-size:12.5px;line-height:1.6;margin-top:3px"><span style="color:var(--ink-3)">${t}</span> ${x}</div>`:"";
@@ -6510,7 +6510,7 @@ function svFlowNarr(D,c,K){
   const ret=(a,b)=>{const p0=px(all[a-1]),p1=px(all[b]);return p0&&p1?(p1/p0-1)*100:null;};
   const srTx=(a,b)=>{const w=[];for(let i=a;i<=b;i++){const v=sr(all[i]);if(v!=null)w.push([all[i],v]);}
     if(!w.length)return "";const pk=w.reduce((m,x)=>x[1]>m[1]?x:m,w[0]),lt=w.at(-1);
-    return ` 공매도 비중은 ${svMd(pk[0])} ${N(pk[1],2)}%까지 올랐고${lt[0]!==pk[0]?` 최근 확인일(${svMd(lt[0])})은 ${N(lt[1],2)}%`:""}.`;};
+    return ` 공매도는 ${svMd(pk[0])} 비중 ${N(pk[1],2)}%(${sh[pk[0]].a==null?"–":N(sh[pk[0]].a,0)}억)까지 올랐고${lt[0]!==pk[0]?` 최근 확인일(${svMd(lt[0])})은 ${N(lt[1],2)}%(${sh[lt[0]].a==null?"–":N(sh[lt[0]].a,0)}억)`:""}.`;};
   const f=v=>pm(v,0)+"억",rt=v=>v==null?"":` 주가 ${pm(v,1)}%`;
   if(run[L]>=1){
     const a=L-run[L]+1,s=sumF(a,L);
@@ -6557,9 +6557,9 @@ function svFlowChart(host,ds,rows,avg){
       if(avg!=null)svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:Y(avg),y2:Y(avg),stroke:ink,"stroke-dasharray":"4 3","stroke-width":1}));
       svg.appendChild(el("polyline",{points:rows.map((r,i)=>r.sr==null?null:`${X(i)},${Y(r.sr)}`).filter(Boolean).join(" "),fill:"none",stroke:css("--warn"),"stroke-width":2}));
       rows.forEach((r,i)=>{if(r.sr!=null)svg.appendChild(el("circle",{cx:X(i),cy:Y(r.sr),r:r.hi?4:2.4,fill:css("--warn"),stroke:r.hi?css("--crit"):"none","stroke-width":1.5}));});}
-    const t=el("text",{x:W-P.r,y:pn[2][0]+4,"text-anchor":"end","font-size":10,fill:ink});t.textContent=v.length?"공매도 대금 비중(점선=평균)":"공매도 자료 없음";svg.appendChild(t); }
+    const t=el("text",{x:W-P.r,y:pn[2][0]+4,"text-anchor":"end","font-size":10,fill:ink});t.textContent=v.length?"공매도 대금 비중(점선=평균, 금액은 표)":"공매도 자료 없음";svg.appendChild(t); }
   rows.forEach((r,i)=>{const t=el("text",{x:X(i),y:H-6,"text-anchor":"middle","font-size":10,fill:ink});t.textContent=r.d.slice(8);svg.appendChild(t);
-    const tt=el("title");tt.textContent=`${r.d} · 종가 ${r.close==null?"–":N(r.close,0)} (${r.chg==null?"–":pm(r.chg,2)}%) · 외국인 ${r.f==null?"–":pm(r.f,0)+"억"} · 공매도 ${r.sr==null?"(아직 공시 전)":N(r.sr,2)+"%"}`;
+    const tt=el("title");tt.textContent=`${r.d} · 종가 ${r.close==null?"–":N(r.close,0)} (${r.chg==null?"–":pm(r.chg,2)}%) · 외국인 ${r.f==null?"–":pm(r.f,0)+"억"} · 공매도 ${r.sr==null?"(아직 공시 전)":N(r.sr,2)+"% · "+N(r.sa,0)+"억"}`;
     const hit=el("rect",{x:P.l+i*sl,y:0,width:sl,height:H,fill:"transparent"});hit.appendChild(tt);svg.appendChild(hit);});
   host.appendChild(svg);
 }
@@ -6591,11 +6591,12 @@ function semiRenderT(){
   const rows=ds.map(d=>{const i=idx[d],x=D.fl[c][d]||{},p=D.px[c][d]||{},sh=K.sh[d],hi=K.z[d]!=null&&K.z[d]>=1;
     const stage=K.tot[i]>=3?"sell":K.cov[i]?"cover":null;
     const tag=K.tot[i]>=3?`매도${K.run[i]}${hi?"↑":""}`:K.cov[i]?`되사기${K.cov[i]}`:x.f==null?"":x.f>0?"매수":x.f<0?"매도":"";
-    return {d,close:p.c,chg:p.p,f:x.f,p:x.p,sr:sh?sh.r:null,hi,stage,run:K.run[i],tag,ff:D.fF[d]??null};});
+    return {d,close:p.c,chg:p.p,f:x.f,p:x.p,sr:sh?sh.r:null,sa:sh?sh.a:null,hi,stage,run:K.run[i],tag,ff:D.fF[d]??null};});
   const R=[
     {l:"등락률",u:"%",dg:2,t:"s",k:"chg",s:p0&&pL?(pL/p0-1)*100:null},
     {l:"외국인 현물",u:"순매수 억",dg:0,t:"s",k:"f",sum:1},
-    {l:"공매도",u:"대금비중 %",dg:2,t:"u",k:"sr",avg:1},
+    {l:"공매도 비중",u:"대금비중 %",dg:2,t:"u",k:"sr",avg:1},
+    {l:"공매도 금액",u:"억원",dg:0,t:"u",k:"sa",sum:1},
     {l:"외국인 선물",u:"K200 억",dg:0,t:"s",k:"ff",sum:1},
     {l:"단계",u:"외국인 흐름",t:"tag",k:"tag"},
     {l:"연기금",u:"참고 · 억",dg:0,t:"s",k:"p",sum:1,sub:1}];
