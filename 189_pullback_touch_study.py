@@ -15,13 +15,14 @@ Q = lambda s: pd.read_sql(s, c)
 out = []
 def p(s=""): out.append(str(s)); print(s, flush=True)
 FROM = os.environ.get("FROM", "2024-10-01"); COST = 0.25
+SUP = os.environ.get("SUP", "pivot")   # 지지선 정의: pivot(전환점 가격대) | vp(매물대)
 CAP_LO, CAP_HI, AMT20 = 3000e8, 50000e8, 30e8
 S = Q("select code,name from stocks where security_type='STOCK'"); NAME = dict(zip(S.code, S.name))
 P = Q(f"""select p.trade_date d,p.code,p.open o,p.high h,p.low l,p.close c,p.volume v,p.trade_amount a,p.market_cap mc,p.change_pct chg,p.weight_per_share w
           from daily_price p join stocks s on s.code=p.code and s.security_type='STOCK' where p.trade_date>='{FROM}' order by p.code,p.trade_date""")
 F = Q(f"select trade_date d,code,foreign_net fn,inst_net inn from daily_flow where trade_date>='{FROM}'")
 D = P.merge(F, on=["d", "code"], how="left"); D["d"] = pd.to_datetime(D["d"])
-p("# 눌림목 0단계 재검증 — 최초 무게 막대 + 박스 + 스마트머니 증가 + 지지선 반복 터치\n")
+p(f"# 눌림목 0단계 재검증 — 최초 무게 막대 + 박스 + 스마트머니 증가 + 지지선 반복 터치 (지지선={'매물대' if SUP == 'vp' else '전환점 가격대'})\n")
 p(f"데이터 {D.d.min().date()} ~ {D.d.max().date()} · 종목 {D.code.nunique():,} · 행 {len(D):,}\n")
 
 VAR = {  # (WMIN, BOX, TOUCH, smart 조건 사용)
@@ -47,18 +48,36 @@ for code, g in D.groupby("code", sort=False):
     for t in range(125, n):
         if not (CAP_LO <= mc[t] <= CAP_HI) or not (a20[t] >= AMT20): continue
         base.append((code, dates[t], *(fwd[k][t] for k in (1, 3, 5, 10))))
-        # 지지선 = 최근 30일의 전환점(좌우 2일 기준 저점·고점) 가격 중 오늘 저가와 ±2.5% 안에 있는 가격대(고점이 지지로 바뀐 매물선 포함)
-        piv = [i for i in range(t - 30, t - 2) if (l[i] <= l[i - 2:i + 3].min()) or (h[i] >= h[i - 2:i + 3].max())]
-        lv = [(l[i] if l[i] <= l[i - 2:i + 3].min() else h[i]) for i in piv]
-        near = [(i, x) for i, x in zip(piv, lv) if abs(x / l[t] - 1) <= 0.025]
-        if not near: continue
-        sup = float(np.median([x for _, x in near]))
-        if not (cl[t] >= sup * 0.98 and l[t] <= sup * 1.025): continue
-        cnt, lastk = 0, -9
-        for i, _ in near:
-            if i - lastk >= 3: cnt += 1; lastk = i
+        if SUP == "vp":
+            # 지지선 = 매물대: 최근 60일 거래량을 그날 평균가((고+저+종)/3) 가격대 24칸에 쌓고, 거래량 상위 30% 칸 중 오늘 저가가 들어간(±1.5%) 칸
+            lo_, hi_ = l[t - 60:t].min(), h[t - 60:t].max()
+            if not (hi_ > lo_): continue
+            edges = np.linspace(lo_, hi_, 25); tp = (h[t - 60:t] + l[t - 60:t] + cl[t - 60:t]) / 3
+            vol = np.bincount(np.clip(np.searchsorted(edges, tp, side="right") - 1, 0, 23), weights=v[t - 60:t], minlength=24)
+            thr = np.quantile(vol, 0.7)
+            cand = [(vol[b], edges[b], edges[b + 1]) for b in range(24) if vol[b] >= thr and edges[b] * 0.985 <= l[t] <= edges[b + 1] * 1.015]
+            if code == "053800" and dates[t] >= np.datetime64("2026-11-10"):
+                top = sorted([(vol[b], edges[b]) for b in range(24)], reverse=True)[:3]
+                diag.append((dates[t], round(l[t]), " / ".join(f"{x[1]:,.0f}~" for x in top), bool(cand)))
+            if not cand: continue
+            _, blo, bhi = max(cand)
+            sup = blo
+            if not (cl[t] >= blo * 0.98): continue
+            cnt, lastk = 0, -9
+            for i in range(t - 30, t):
+                if l[i] <= bhi * 1.015 and h[i] >= blo and i - lastk >= 3: cnt += 1; lastk = i
+                elif l[i] <= bhi * 1.015 and h[i] >= blo: lastk = i
+        else:
+            piv = [i for i in range(t - 30, t - 2) if (l[i] <= l[i - 2:i + 3].min()) or (h[i] >= h[i - 2:i + 3].max())]
+            lv = [(l[i] if l[i] <= l[i - 2:i + 3].min() else h[i]) for i in piv]
+            near = [(i, x) for i, x in zip(piv, lv) if abs(x / l[t] - 1) <= 0.025]
+            if not near: continue
+            sup = float(np.median([x for _, x in near]))
+            if not (cl[t] >= sup * 0.98 and l[t] <= sup * 1.025): continue
+            cnt, lastk = 0, -9
+            for i, _ in near:
+                if i - lastk >= 3: cnt += 1; lastk = i
         box = (h[t - 20:t + 1].max() - l[t - 20:t + 1].min()) / l[t - 20:t + 1].min()
-        if code == "053800" and dates[t] >= np.datetime64("2026-11-10"): diag.append((dates[t], round(sup), cnt + 1, round(box, 3)))
         for vn, (wmin, bmax, tch, use_sm) in VAR.items():
             if box > bmax or cnt + 1 < tch: continue
             vw = np.nan; ai = None
@@ -123,7 +142,7 @@ for cd in ("053800", "192820"):
         if len(y): p(f"- {vn}: " + ", ".join(f"{pd.Timestamp(d).strftime('%y/%m/%d')}({int(tc)}회)" for d, tc in zip(y.d, y.touch)))
     for _, r in TR[(TR.code == cd) & TR["var"].str.startswith(MAIN)].tail(5).iterrows():
         p(f"  - 모의[{r['var'].split(' | ')[1]}]: {pd.Timestamp(r.d).date()} 종가 {r.ent:,.0f}원 · {r.why} · {r.ret:+.2f}% · {r.hold}일")
-p("\n안랩 11/10 이후 지지선 진단(날짜·지지선·터치 수·20일 박스폭): " + ", ".join(f"{pd.Timestamp(d).strftime('%m/%d')} {s_:,}원 {c_}회 {b_*100:.0f}%" for d, s_, c_, b_ in diag))
+p("\n안랩 11/10 이후 매물대 진단(날짜 · 저가 · 거래량 상위 3칸 시작가 · 저가가 상위 매물대에 닿았나): " + ", ".join(f"{pd.Timestamp(d).strftime('%m/%d')} {lw:,} [{tp_}] {'O' if ok else 'X'}" for d, lw, tp_, ok in diag))
 p("\n## 4. 최근 신호(기본, 최근 10거래일)\n")
 y = SG[SG["var"] == MAIN]
 if len(y):

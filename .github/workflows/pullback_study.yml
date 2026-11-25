@@ -5,6 +5,7 @@ on:
       anch: {description: "앵커일 외+기 순매수 / 거래대금 최소 %", default: "8"}
       from: {description: "데이터 시작일", default: "2024-10-01"}
       script: {description: "검증 스크립트", default: "188_pullback_study.py"}
+      sup: {description: "지지선 pivot|vp", default: "pivot"}
       ed: {description: "진입 당일 손절 판정 close|low", default: "close"}
 permissions:
   contents: write
@@ -17,6 +18,7 @@ jobs:
       ANCH: ${{ inputs.anch }}
       FROM: ${{ inputs.from }}
       ED: ${{ inputs.ed }}
+      SUP: ${{ inputs.sup }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
