@@ -1,4 +1,5 @@
 'use strict';
+process.env.KEEP_FLOW_LIMIT = '1';   // 임시 규칙(가상매매 수급 돌파 = 시장가)을 끄고 지정가 매수 로직을 검증
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');

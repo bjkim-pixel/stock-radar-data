@@ -356,7 +356,7 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     // 2026-11-26: 가상매매(execMode paper) 전략은 승인 과정은 그대로 두되 항상 알림 직후 자동 승인 — 승인 대기·누락으로 체결이 안 돼 성과를 못 보는 일을 막음(실전·드라이런은 설정 그대로)
     if (v.val && sideOfParams(v.val) === 'paper') { if ('approval' in v.val) v.val.approval = 'auto'; if ('closeBuyApproval' in v.val) v.val.closeBuyApproval = 'auto'; }
     // 2026-11-26 임시: 가상매매의 수급 돌파(flow) 장중 전략은 지정가가 안 사져 성과를 못 보므로 시장가로 매수(되돌리려면 이 줄만 지우면 됨 · 실전·드라이런은 그대로)
-    if (v.val && r.kind === 'intraday' && sideOfParams(v.val) === 'paper' && v.val.selector === 'flow') v.val.buyType = 'market';
+    if (v.val && r.kind === 'intraday' && sideOfParams(v.val) === 'paper' && v.val.selector === 'flow' && process.env.KEEP_FLOW_LIMIT !== '1') v.val.buyType = 'market';   // KEEP_FLOW_LIMIT=1 은 지정가 매수 로직을 검증하는 테스트용
     // 기본 전략의 예전 이름(저장된 행이 옛 이름 그대로면)을 새 이름으로 — 사용자가 직접 바꾼 이름은 건드리지 않음
     const rn = RENAMED[r.id]; if (rn && rn.old.includes(r.name)) r = { ...r, name: rn.name };
     const needCopy = r.kind === 'closing' && (r.params || {}).capMinEok === undefined;   // 독립 전 종가 전략(장중 조건을 아직 복사하지 않음)
