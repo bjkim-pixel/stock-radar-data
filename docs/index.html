@@ -1939,6 +1939,20 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div class="note" style="margin-top:8px">출처: 한국투자증권 KIS(구성종목·NAV·분배금, 매일 장마감 후 갱신), 일봉은 KRX 종가. 구성종목은 KIS 제공 한도인 상위 30개까지 표시합니다. 주식수는 CU(설정단위)당 수량, 보유금액은 상장좌수로 환산한 추정치입니다.</div>
   <div style="margin:16px 0 40px"><button class="btn ghost" id="eBack">← 이전 화면으로</button></div>
 </section>
+<section id="v-ovs" class="hide">
+  <div style="margin:12px 0 4px;display:flex;gap:8px;align-items:stretch"><button class="btn ghost" id="oBackTop" style="flex:none">← 이전 화면으로</button><select id="ovsSel" class="df" title="해외 종목·ETF 선택" style="flex:1;min-width:0;height:auto;margin:0"></select></div>
+  <div class="card" id="ovsHead"><div class="load sk"></div></div>
+  <div class="card" style="margin-top:10px"><h3>시세 정보 <span class="r" id="ovsQtSub"></span></h3><div id="ovsQt"></div></div>
+  <div class="qf seg" id="ovsPer" style="margin:10px 0 0"><button class="fchip" data-v="21">1개월</button><button class="fchip" data-v="63">3개월</button><button class="fchip" data-v="126" aria-pressed="true">6개월</button><button class="fchip" data-v="all">연초 이후</button></div>
+  <div class="card" style="margin-top:10px"><h3>가격 · 이동평균 <span class="r" id="ovsRange"></span></h3><div id="ovsPrice"><div class="load sk"></div></div></div>
+  <div class="card" id="ovsPfCard" style="margin-top:12px"><h3 id="ovsPfTitle">포트폴리오 <span class="r" id="ovsPfSub"></span></h3><div id="ovsPf"></div></div>
+  <div class="card" id="ovsWtCard" style="margin-top:12px"><h3>무게/주식수 <span class="r" id="ovsWtRange"></span></h3><div id="ovsWt"></div><div id="ovsWtTop"></div></div>
+  <div class="card" style="margin-top:12px"><h3>거래량 <span class="r" id="ovsVolRange"></span></h3><div id="ovsVol"></div></div>
+  <div class="card" style="margin-top:12px"><h3>전체 매물대 (거래량) <span class="r" id="ovsVpRange"></span></h3><div id="ovsVp"></div><div class="faint" id="ovsVpSum" style="font-size:12px;margin-top:6px"></div></div>
+  <div class="card" style="margin-top:12px"><h3 id="ovsDivTitle">배당 <span class="r" id="ovsDivSub"></span></h3><div id="ovsDiv"></div></div>
+  <div class="note" style="margin-top:8px" id="ovsNote">출처: 한국투자증권 KIS 해외주식(일봉·현재가 상세·배당, 매일 06:50 갱신 · 2026-01-01부터). 투자자별 수급·실적·공시는 KIS 해외 API가 제공하지 않아 표시하지 않습니다. ETF 보유종목(상위 5)은 글로벌 시황 데이터(KIS 외 출처)입니다.</div>
+  <div style="margin:16px 0 40px"><button class="btn ghost" id="oBack">← 이전 화면으로</button></div>
+</section>
 <section id="v-etfhub" class="hide">
   <div class="card" style="margin-top:16px"><h3>ETF <span class="r" id="ehAsOf"></span></h3>
     <div class="qf seg" id="ehTab"><button class="fchip" data-v="port" aria-pressed="true">ETF 포털</button><button class="fchip" data-v="srch">ETF 검색</button><button class="fchip" data-v="act">액티브</button><button class="fchip" data-v="pas">패시브</button><button class="fchip" data-v="sec">섹터</button><button class="fchip" data-v="lev">레버리지/인버스</button><button class="fchip" data-v="det">ETF 상세</button></div>
@@ -5273,9 +5287,10 @@ function go(v,detailCode){
     S.tradeMode=mode;const pn=dm[2];
     TRD.pane=pn==="plan"?"plan":pn==="hold"?"hold":pn==="auto"?"auto":pn==="hist"?(TRD.pane==="hist"?"hist":"rep"):(TRD_ORDER_P.includes(TRD.pane)&&TRD.keepPane?TRD.pane:"order");TRD.keepPane=false;v="trade";}}
   const cur=$$("#tabs button").find(x=>x.getAttribute("aria-selected")==="true")?.dataset.v;
-  let cur2=cur;if(!cur2&&!$("#v-etf").classList.contains("hide"))cur2="etf";
+  let cur2=cur;if(!cur2&&!$("#v-etf").classList.contains("hide"))cur2="etf";if(!cur2&&!$("#v-ovs").classList.contains("hide"))cur2="ovs";
   if(cur2&&cur2!==v)S.prevView=cur2;
-  if(v==="etf"&&cur2&&cur2!=="etf"&&cur2!=="detail")S.etfBack=cur2;   // ETF 페이지의 이전 화면(종목상세 왕복과 무관하게 유지)
+  if(v==="etf"&&cur2&&cur2!=="etf"&&cur2!=="detail")S.etfBack=cur2;
+  if(v==="ovs"&&cur2&&cur2!=="ovs")S.ovsBack=cur2;   // ETF 페이지의 이전 화면(종목상세 왕복과 무관하게 유지)
   if(S.curTab==='fav'&&v!=='fav'&&S.favWanted.size)setFavLiveCodes([]);
   if(S.curTab==='sw'&&v!=='sw'&&S.swLiveWanted&&S.swLiveWanted.size)setSwLiveCodes([]);
   if(S.curTab==='live'&&v!=='live')liveStop();
@@ -5287,7 +5302,7 @@ function go(v,detailCode){
   if(typeof aiBackShow==="function")aiBackShow();
   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===vOrig));
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","semi","trade","trend","allinfo","wtrec","dart","etf","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","semi","trade","trend","allinfo","wtrec","dart","etf","ovs","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   wideSet(v==="scr"||v==="trend"||v==="allinfo"||v==="wtrec"||v==="dart"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -5323,12 +5338,13 @@ function go(v,detailCode){
   if(v==="etfhub"){if(S.eh.tab==="srch")ehSrLoad();else if(S.eh.tab==="port")ehPortLoad();else if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();}
   if(v==="seclog")slLoad();
   if(v==="etf"){const c=detailCode||S.etf.code;if(c&&(c!==S.etf.code||detailCode))etfLoad(c);}
+  if(v==="ovs"){const c=detailCode||S.ovs.code||"NVDA";if(c!==S.ovs.code||detailCode||!S.ovs.d.length)ovsLoad(c);}
   if(v==="proc")procEnter();
   if(v==="gm"&&!S.gmEntered){S.gmEntered=true;loadGlobal().catch(e=>{console.error(e);S.gmEntered=false;});}
   if(v==="fav")wlPull().finally(()=>{loadFav();wlPush();});
   if(v==="sm"){if(!S.smLoaded){S.smLoaded=true;loadSm().catch(e=>{console.error(e);S.smLoaded=false;$("#smMap").innerHTML='<div class="load">불러오기 실패 — Actions의 Post Compute를 한 번 실행했는지 확인</div>';});}else renderSm();}
   renderAsOf();
-  if(!_hashNav)setHash(v==="etf"?"etf":vOrig,v==="detail"?S.chart.code:v==="etf"?(detailCode||S.etf.code):null);
+  if(!_hashNav)setHash(v==="etf"?"etf":vOrig,v==="detail"?S.chart.code:v==="etf"?(detailCode||S.etf.code):v==="ovs"?encodeURIComponent(detailCode||S.ovs.code||"NVDA"):null);
   if(v==="perf")loadPerf();
   if(v==="perf2")loadPerf2();
   if(v==="journal")jrOpen();
@@ -14662,7 +14678,156 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
 /* 자동매매 컨트롤 타워 입력(체크박스·선택은 change, 글자는 input) */
 document.addEventListener("input",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&t.type!=="checkbox"&&t.tagName!=="SELECT")auInputEv(t);});
 document.addEventListener("change",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&(t.type==="checkbox"||t.tagName==="SELECT"))auInputEv(t);});
-const VIEW_IDS=["semi","seclog","etfhub","etf","trend","allinfo","wtrec","dart","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
+/* ── 해외(미국·홍콩·일본·중국) 종목·ETF 상세 (2026-11-27) — us_master·us_daily·us_rights(KIS 해외) + 글로벌 시황 미국 탭 보유종목 */
+S.ovs={code:null,list:null,d:[],m:{},rt:[],per:"126",pack:null};
+const OVS_EX={NAS:"나스닥",NYS:"뉴욕",AMS:"아멕스",HKS:"홍콩",TSE:"도쿄",SHS:"상해",SZS:"심천"};
+const OVS_CS={USD:"$",HKD:"HK$",JPY:"¥",CNY:"CN¥"};
+function ovsDec(){return S.ovs.m.ccy==="JPY"?0:2;}
+function ovsP(v){return v==null||isNaN(v)?"–":(OVS_CS[S.ovs.m.ccy]||"")+N(+v,ovsDec());}
+function ovsBig(v){if(v==null||isNaN(v))return "–";const a=Math.abs(v),c=OVS_CS[S.ovs.m.ccy]||"";
+  return a>=1e12?c+N(v/1e12,2)+"T":a>=1e9?c+N(v/1e9,2)+"B":a>=1e6?c+N(v/1e6,1)+"M":c+N(v,0);}
+function ovsRate(){const m=S.ovs.m,r=+m.krw_rate;if(!r)return null;return m.ccy==="JPY"&&r>50?r/100:r;}   // 엔화는 100엔당 환율이면 1엔당으로
+function ovsKrw(v){const r=ovsRate();return r&&v!=null?v*r:null;}
+async function ovsList(){
+  if(!S.ovs.list){S.ovs.list=await q("us_master","select=code,name_ko,name_en,is_etf,kis_excd&order=code.asc").catch(()=>[]);ovsSelFill();}
+  return S.ovs.list;
+}
+async function ovsPack(){
+  if(!S.ovs.pack){const r=await q("global_pack","select=payload&tab=eq.US").catch(()=>[]);let P=r[0]&&r[0].payload;if(typeof P==="string")try{P=JSON.parse(P);}catch(e){P=null;}S.ovs.pack=P||{items:{}};}
+  return S.ovs.pack;
+}
+function ovsNm(x){return x.name_ko||x.name_en||x.code;}
+function ovsSelFill(){
+  const L=S.ovs.list||[],sel=$("#ovsSel");if(!sel)return;
+  const opt=x=>`<option value="${escH(x.code)}">${escH(ovsNm(x))} (${escH(x.code)} · ${OVS_EX[x.kis_excd]||x.kis_excd})</option>`;
+  const by=f=>L.filter(f).sort((a,b)=>ovsNm(a).localeCompare(ovsNm(b),"ko"));
+  sel.innerHTML=`<optgroup label="ETF">${by(x=>x.is_etf).map(opt).join("")}</optgroup><optgroup label="일반 종목">${by(x=>!x.is_etf).map(opt).join("")}</optgroup>`;
+  if(S.ovs.code)sel.value=S.ovs.code;
+}
+$("#ovsSel").addEventListener("change",e=>go("ovs",e.target.value));
+$("#ovsPer").addEventListener("seg-change",e=>{S.ovs.per=e.detail;ovsCharts();});
+$("#oBack").onclick=$("#oBackTop").onclick=()=>go(S.ovsBack||"gm");
+async function ovsLoad(code){
+  const O=S.ovs,req=(O.req=(O.req||0)+1);O.code=code;
+  ["#ovsHead","#ovsPrice"].forEach(id=>$(id).innerHTML='<div class="load sk"></div>');
+  ["#ovsQt","#ovsPf","#ovsWt","#ovsWtTop","#ovsVol","#ovsVp","#ovsVpSum","#ovsDiv"].forEach(id=>$(id).innerHTML="");
+  const enc=encodeURIComponent(code);
+  const [m,d,rt]=await Promise.all([
+    q("us_master",`select=*&code=eq.${enc}`).catch(()=>[]),
+    q("us_daily",`select=trade_date,open,high,low,close,volume,amount,change_pct,weight_per_share&code=eq.${enc}&order=trade_date.asc`).catch(()=>[]),
+    q("us_rights",`select=base_date,cash_per_share,ccy&code=eq.${enc}&order=base_date.desc`).catch(()=>[]),
+    ovsList(),ovsPack()]);
+  if(req!==O.req)return;
+  if(!m.length){$("#ovsHead").innerHTML=`<div class="load">${escH(code)} — 해외 종목 데이터가 없습니다(수집 대상이 아니거나 아직 수집 전).</div>`;$("#ovsPrice").innerHTML="";return;}
+  O.m=m[0];O.d=d;O.rt=rt;
+  const sel=$("#ovsSel");if(sel)sel.value=code;
+  const etf=!!O.m.is_etf;
+  $("#ovsWtCard").style.display=etf?"none":"";
+  $("#ovsDivTitle").firstChild.textContent=etf?"분배금 ":"배당 ";
+  try{ovsHead();}catch(e){console.error("ovs head",e);}
+  try{ovsQt();}catch(e){console.error("ovs qt",e);}
+  try{ovsPf();}catch(e){console.error("ovs pf",e);}
+  try{ovsDiv();}catch(e){console.error("ovs div",e);}
+  $$("#ovsPer .fchip").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===O.per)));
+  ovsCharts();
+}
+function ovsHead(){
+  const O=S.ovs,m=O.m,last=O.d.at(-1),px=last?+last.close:+m.last,prev=O.d.at(-2),base=prev?+prev.close:+m.base;
+  const ch=px!=null&&base?px-base:null,cp=ch!=null?ch/base*100:null,krw=ovsKrw(px);
+  const tags=[m.is_etf?"ETF":"주식",OVS_EX[m.kis_excd]||m.kis_excd,m.ccy,m.sector].filter(Boolean);
+  $("#ovsHead").innerHTML=`<div class="etf-h1">${m.is_etf?'<span class="cd" style="color:var(--accent,#2f6fed);font-weight:700;margin:0 4px 0 0">ETF</span>':""}${escH(ovsNm(m))}<span class="cd">(${escH(m.code)})</span></div>
+    ${m.name_ko&&m.name_en?`<div class="faint" style="font-size:12px">${escH(m.name_en)}</div>`:""}
+    <div class="etf-tags">${tags.map(t=>`<span>${escH(t)}</span>`).join("")}</div>
+    <div class="etf-px">${ovsP(px)}${ch!=null?`<small class="${sgn(ch)}">${ch>0?"+":""}${N(ch,ovsDec())} (${pm(cp,2)}%)</small>`:""}</div>
+    <div class="etf-meta">${krw!=null?`원화 환산 약 <b>${N(krw,0)}원</b> <span class="faint">(환율 ${N(ovsRate(),2)})</span><span class="sep">·</span>`:""}시가총액 <b>${ovsBig(+m.mkt_cap)}</b>${ovsKrw(+m.mkt_cap)!=null?` <span class="faint">(약 ${fmtEokJo(ovsKrw(+m.mkt_cap)/EOK)})</span>`:""}${last?`<span class="sep">·</span>${last.trade_date} 종가`:""}</div>`;
+}
+function ovsQt(){
+  const O=S.ovs,m=O.m,d=O.d,last=d.at(-1),prev=d.at(-2);
+  if(!last){$("#ovsQt").innerHTML='<div class="load">일봉 데이터 없음</div>';return;}
+  const md=x=>x?String(x).slice(2).replace(/-/g,"/"):"";
+  const it=[["전일",prev?ovsP(+prev.close):"–"],["시가",ovsP(+last.open)],["고가",ovsP(+last.high)],["저가",ovsP(+last.low)],
+    ["거래량",N(+last.volume,0)],["거래대금",ovsBig(+last.amount)],
+    ["52주 최고",`<span title="${md(m.h52d)}">${ovsP(+m.h52p)}</span>`],["52주 최저",`<span title="${md(m.l52d)}">${ovsP(+m.l52p)}</span>`],
+    ["시가총액",ovsBig(+m.mkt_cap)],[m.is_etf?"상장좌수":"상장주식수",m.listed_shares==null?"–":N(+m.listed_shares,0)]];
+  if(!m.is_etf)it.push(["PER",+m.per?N(+m.per,2)+"배":"–"],["PBR",+m.pbr?N(+m.pbr,2)+"배":"–"],["EPS",+m.eps?ovsP(+m.eps):"–"],["BPS",+m.bps?ovsP(+m.bps):"–"]);
+  $("#ovsQtSub").textContent=`${last.trade_date} 종가 기준 · ${m.ccy||""}`;
+  $("#ovsQt").innerHTML=`<div class="etf-qt">${it.map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join("")}</div>`;
+}
+/* 보유종목 이름 → 링크: 해외 수집 종목은 해외 상세, 한국 종목(.KS/.KQ·6자리)은 한국 종목상세 */
+function ovsLink(c,label){
+  const L=S.ovs.list||[];
+  if(L.some(x=>x.code===c))return `<a class="lk nm" data-ovs="${escH(c)}">${label}</a>`;
+  const k=(String(c).match(/^(\d{6})(\.(KS|KQ))?$/)||[])[1];
+  if(k&&(S.codes||[]).some(x=>x.code===k))return `<a class="lk nm" data-code="${k}">${label}</a>`;
+  return label;
+}
+function ovsWire(host){
+  host.querySelectorAll("a.lk[data-ovs]").forEach(a=>a.onclick=()=>go("ovs",a.dataset.ovs));
+  host.querySelectorAll("a.lk[data-code]").forEach(a=>a.onclick=()=>go("detail",a.dataset.code));
+}
+function ovsPf(){
+  const O=S.ovs,m=O.m,P=O.pack||{items:{}},host=$("#ovsPf"),items=P.items||{};
+  const etfNm=t=>{const x=(O.list||[]).find(z=>z.code===t);return x?ovsNm(x):t;};
+  if(m.is_etf){
+    $("#ovsPfTitle").firstChild.textContent="포트폴리오 ";
+    const k=Object.keys(items).find(k=>k.split(":")[1]===m.code&&(items[k].h||[]).length),h=k?items[k].h:[];
+    $("#ovsPfSub").textContent=h.length?`상위 ${h.length}종목 · ${P.as_of||""}`:"";
+    if(!h.length){host.innerHTML='<div class="load" style="text-align:left">보유종목 정보가 없습니다(글로벌 시황 미국 탭에 없는 ETF이거나 원자재·통화·채권 ETF).</div>';return;}
+    const top=h.map(x=>({nm:x.k||x.n||x.c,w:Math.max(0,+x.w||0)})),sw=top.reduce((a,p)=>a+p.w,0),rest=Math.max(0,100-sw),mx=h[0];
+    const lg=top.map((p,i)=>`<div><i style="background:${ETF_PAL[i]}"></i><span class="rk">${String(i+1).padStart(2,"0")}</span><span class="nm">${escH(p.nm)}</span><b>${N(p.w,2)}%</b></div>`).join("")+
+      `<div><i style="background:var(--surface-3)"></i><span class="rk">-</span><span class="nm">기타</span><b>${N(rest,2)}%</b></div>`;
+    const svg=`<svg width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="구성 비중">${etfDonut(top,rest)}
+      <text x="90" y="76" text-anchor="middle" font-size="10" fill="var(--ink-3)">최대 비중</text>
+      <text x="90" y="94" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)">${escH(String(mx.k||mx.c).slice(0,10))}</text>
+      <text x="90" y="114" text-anchor="middle" font-size="17" font-weight="750" fill="var(--ink)">${N(+mx.w,2)}%</text></svg>`;
+    const rows=h.map(x=>`<tr><td class="l">${ovsLink(x.c,`<b>${escH(x.k||x.c)}</b>`)} <span class="faint" style="font-size:11px">${escH(x.c)}${x.x?" · "+escH(x.x):""}</span></td><td>${N(+x.w,2)}%</td><td class="${sgn(+x.ch)}">${x.ch==null?"–":pm(+x.ch,2)+"%"}</td></tr>`).join("");
+    host.innerHTML=`<div class="etf-pf">${svg}<div class="etf-lg">${lg}</div></div>
+      <div class="tw" style="margin-top:12px"><table><thead><tr><th class="l">종목</th><th>비중</th><th>최근 등락</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }else{
+    $("#ovsPfTitle").firstChild.textContent="이 종목을 담은 ETF ";
+    const hits=[];Object.keys(items).forEach(k=>{const t=k.split(":")[1],x=(items[k].h||[]).find(z=>z.c===m.code);if(x&&!hits.some(h=>h.t===t))hits.push({t,w:+x.w,n:items[k].n});});
+    hits.sort((a,b)=>b.w-a.w);
+    $("#ovsPfSub").textContent=hits.length?`글로벌 시황 ETF 상위 5 기준 · ${hits.length}개`:"";
+    host.innerHTML=hits.length?`<div class="tw"><table><thead><tr><th class="l">ETF</th><th>비중</th></tr></thead><tbody>${hits.map(h=>`<tr><td class="l">${ovsLink(h.t,`<b>${escH(h.n||etfNm(h.t))}</b>`)} <span class="faint" style="font-size:11px">${escH(h.t)}</span></td><td>${N(h.w,2)}%</td></tr>`).join("")}</tbody></table></div>`
+      :'<div class="load" style="text-align:left">글로벌 시황 ETF의 상위 5 보유종목에 들어 있지 않습니다.</div>';
+  }
+  ovsWire(host);
+}
+function ovsDiv(){
+  const O=S.ovs,rt=O.rt,host=$("#ovsDiv"),px=O.d.length?+O.d.at(-1).close:+O.m.last;
+  if(!rt.length){$("#ovsDivSub").textContent="";host.innerHTML='<div class="load" style="text-align:left">2026년 배당·분배 기록이 없습니다.</div>';return;}
+  const cut=new Date(Date.now()-365*864e5).toISOString().slice(0,10),y=rt.filter(r=>r.base_date>=cut).reduce((a,r)=>a+(+r.cash_per_share||0),0);
+  $("#ovsDivSub").textContent=`${rt.length}회${px&&y?` · 최근 1년 ${ovsP(y)} · 수익률 ${N(y/px*100,2)}%`:""}`;
+  host.innerHTML=`<div class="tw"><table><thead><tr><th class="l">기준일</th><th>주당 금액</th><th>현재가 대비</th></tr></thead><tbody>${rt.map(r=>`<tr><td class="l">${r.base_date}</td><td>${ovsP(+r.cash_per_share)}</td><td>${px?N(+r.cash_per_share/px*100,2)+"%":"–"}</td></tr>`).join("")}</tbody></table></div>`;
+}
+function ovsCharts(){
+  const O=S.ovs,d=O.d;if(!d.length){$("#ovsPrice").innerHTML='<div class="load">일봉 데이터 없음</div>';return;}
+  const st=detPeriodStart(d,O.per),a=Math.max(0,d.findIndex(r=>r.trade_date>=st)),rp=d.slice(a),ma=maSeries(d);
+  const lb=rp.map(r=>r.trade_date.slice(2).replace(/-/g,"/")),rg=`${rp[0].trade_date}~${rp.at(-1).trade_date} (${rp.length}거래일)`;
+  ["#ovsRange","#ovsVolRange","#ovsVpRange","#ovsWtRange"].forEach(id=>$(id).textContent=rg);
+  const mx=Math.max(...rp.map(r=>+r.close)),fp=v=>ovsP(v);
+  lineChart($("#ovsPrice"),[
+    {n:"종가",v:rp.map(r=>+r.close),c:"--ink"},
+    {n:"MA5",v:ma[5].slice(a),c:"--mac1"},{n:"MA20",v:ma[20].slice(a),c:"--mac2"},{n:"MA120",v:ma[120].slice(a),c:"--mac3"}],
+    lb,{h:450,w:1180,pr:66,labelEnds:false,marks:true,monthTicks:true,fy:v=>N(v,ovsDec()),fm:fp,ft:fp,refLine:mx,refLabel:`기간 고점 ${fp(mx)}`});
+  if(!O.m.is_etf){
+    const w=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
+    const c=w.map((v,i)=>[i,v]).filter(x=>x[1]!=null&&x[1]>0).sort((x,y)=>y[1]-x[1]),flags=[];
+    if(c.length){flags.push({i:c[0][0],t:`① 1위 ${rp[c[0][0]].trade_date.slice(5).replace("-","/")}`,c:"--up"});
+      const nx=c.find(x=>x[0]>c[0][0])||c[1];if(nx)flags.push({i:nx[0],t:`② 2위 ${rp[nx[0]].trade_date.slice(5).replace("-","/")}`,c:"--warn"});}
+    volumeBars($("#ovsWt"),w,lb,{h:450,w:1180,pr:66,monthTicks:true,marks:true,flags,sub:rp.map(r=>+r.close),bg:rp.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+    $("#ovsWtTop").innerHTML=flags.length?`<div style="font-size:12.5px;margin-top:8px">${flags.map(f=>{const r=rp[f.i];return `<div><b>${f.t.slice(2)}</b> · 무게 <b>${pm(w[f.i],2)}%</b> · 종가 ${fp(+r.close)} (${pm(+r.change_pct,2)}%) · 거래대금 ${ovsBig(+r.amount)}</div>`;}).join("")}<div class="faint" style="font-size:11.5px;margin-top:4px">무게/주식수 = 등락률 × 거래량 ÷ 상장주식수. 해외 종목은 투자자별 수급이 없어 주체별 분석은 표시하지 않습니다.</div></div>`:"";
+  }
+  volumeBars($("#ovsVol"),rp.map(r=>+r.volume),lb,{bg:rp.map(r=>+r.close),bgPanel:true,h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
+  const vp=buildVolProfile(rp,30);
+  if(vp){
+    vp.buckets.forEach(b=>{b.label=`${N(b.lo,ovsDec())}~${N(b.hi,ovsDec())}`;});
+    profileChart($("#ovsVp"),vp.buckets,{h:520,w:1180,pr:130,pl:84,fx:v=>N(v,0)+"%",fv:(v,b)=>N(v,1)+"% · "+ovsBig(b.amt*EOK),subj:"거래량 비중·금액",noSum:true,
+      colorFn:b=>b.cur?"--ink-3":(b.lo>=vp.cur?"--up":"--down")});
+    $("#ovsVpSum").innerHTML=`현재가 위 ${N(vp.above,1)}% (${ovsBig(vp.aboveAmt*EOK)}) · 현재가 아래 ${N(vp.below,1)}% (${ovsBig(vp.belowAmt*EOK)}) · 현재가 구간 ${N(100-vp.above-vp.below,1)}%`;
+  }else $("#ovsVp").innerHTML='<div class="load">데이터 없음</div>';
+}
+const VIEW_IDS=["semi","seclog","etfhub","etf","ovs","trend","allinfo","wtrec","dart","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
 function setHash(v,code){
   const h="#"+(DESK_V.test(v)?v.replace("-","/"):v)+(code?"/"+code:"");   // 매매 화면: #paper/order · #real/auto
   if(location.hash!==h)history.pushState(null,"",h);
@@ -14673,7 +14838,7 @@ function navFromHash(){
   if(DESKS[v])v=v+"-"+(DESK_V.test(v+"-"+m[1])?m[1]:"order");   // #real/auto → real-auto
   if(!VIEW_IDS.includes(v)&&!DESK_V.test(v))return;
   _hashNav=true;
-  try{go(v,(v==="detail"||v==="etf")&&m[1]&&/^\w{6}$/.test(m[1])?m[1]:undefined);}finally{_hashNav=false;}
+  try{go(v,(v==="detail"||v==="etf")&&m[1]&&/^\w{6}$/.test(m[1])?m[1]:v==="ovs"&&m[1]?decodeURIComponent(m[1]):undefined);}finally{_hashNav=false;}
 }
 addEventListener("popstate",navFromHash);
 
