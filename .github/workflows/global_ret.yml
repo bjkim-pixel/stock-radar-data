@@ -1,0 +1,23 @@
+name: "[수시] 글로벌 상승률 뷰 적용·점검 | 수동 | 뷰만 생성"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary
+      - run: python 190_global_ret.py 2>&1
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: global-ret-report
+          file: global_ret_report.md
