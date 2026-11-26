@@ -486,6 +486,21 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .smck{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;margin-right:8px;cursor:pointer}
 .smhead{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0 12px}
 .smbadge{border:2px solid var(--c);background:color-mix(in srgb,var(--c) 8%,var(--surface))}
+.grk-t{width:100%;border-collapse:collapse;font-size:12.5px;white-space:nowrap}
+.grk-t td.l:nth-child(2){white-space:normal;min-width:120px}
+.grk-t th{padding:6px 4px;text-align:right;font-weight:600;color:var(--ink-3);font-size:11px;border-bottom:1px solid var(--axis)}
+.grk-t td{padding:7px 4px;text-align:right;border-bottom:1px solid var(--axis);font-variant-numeric:tabular-nums}
+.grk-t th.l,.grk-t td.l{text-align:left}
+.grk-t td.rk{color:var(--ink-3);font-size:11px;white-space:nowrap}
+.grk-t td.rk b{color:var(--ink);font-size:13px}
+.grk-t .mb{display:inline-block;font-size:9.5px;padding:0 4px;border-radius:3px;margin-left:4px;background:var(--axis);color:var(--ink-2);vertical-align:1px}
+.grk-t .mb.lv{background:color-mix(in srgb,var(--up) 22%,transparent);color:var(--up)}
+.grk-t .mb.iv{background:color-mix(in srgb,var(--down) 22%,transparent);color:var(--down)}
+.grk-t tr.mine td{background:color-mix(in srgb,#f5c518 16%,transparent)}
+.grk-t th.sel,.grk-t td.sel{background:color-mix(in srgb,var(--ink) 7%,transparent)}
+.grk-t td.sub{font-size:10.5px;color:var(--ink-3);text-align:left}
+.grk-t .rr{font-size:10.5px;color:var(--ink-3)} .grk-t .rr.top{color:var(--ink);font-weight:700}
+.grk-chip{display:inline-block;margin:0 5px 4px 0;padding:2px 8px;border-radius:12px;background:var(--axis);font-size:11.5px}
 .legend{display:flex;gap:13px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:8px}
 .legend i{display:inline-block;width:11px;height:3px;border-radius:2px;margin-right:6px;vertical-align:2px}
 .legend i.bx{width:12px;height:10px;vertical-align:-1px;box-sizing:border-box}
@@ -1297,6 +1312,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="today">오늘의 종목</button>
       <button data-v="scr">종목 후보</button>
       <button data-v="trend">종목 추세</button>
+      <button data-v="grk">글로벌 상승률</button>
       <button data-v="allinfo">전 종목 정보</button>
       <button data-v="wtrec">주식무게수 종목</button>
       <button data-v="dart">공시 동향</button>
@@ -1942,6 +1958,19 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div id="etfDivWrap"><div class="card" style="margin-top:10px"><h3>분배금 <span class="r" id="etfDivSub">예탁원 기준일 기준</span></h3><div id="etfDiv"></div></div></div>
   <div class="note" style="margin-top:8px">출처: 한국투자증권 KIS(구성종목·NAV·분배금, 매일 장마감 후 갱신), 일봉은 KRX 종가. 구성종목은 KIS 제공 한도인 상위 30개까지 표시합니다. 주식수는 CU(설정단위)당 수량, 보유금액은 상장좌수로 환산한 추정치입니다.</div>
   <div style="margin:16px 0 40px"><button class="btn ghost" id="eBack">← 이전 화면으로</button></div>
+</section>
+<section id="v-grk" class="hide">
+  <div class="card" style="margin-top:16px"><h3>글로벌 상승률 TOP <span class="r" id="grkAsOf"></span></h3>
+    <div class="note" style="margin:0 0 8px">우리 DB에 있는 <b>한국 종목·ETF</b>와 <b>수집한 해외(미국·홍콩·일본·중국) 종목·ETF</b> 안에서의 순위입니다(시장 전체 순위가 아님). 한국과 미국은 지표 점수를 합칠 수 없어 <b>상승률(현지 통화 종가 기준)</b>로만 비교합니다. 상승률은 종목마다 자기 시장의 거래일 기준(오늘=전일 대비, 1주=5거래일, 1개월=21거래일, 3개월=63거래일)이고, 거래량이 없는 날은 빠집니다.</div>
+    <div class="dfrow" style="gap:6px;flex-wrap:wrap;margin-bottom:6px"><span class="faint" style="font-size:11px;width:34px">기간</span><span class="qf seg" id="grkPer" style="display:inline-flex"><button class="fchip" data-v="r1" aria-pressed="true">오늘</button><button class="fchip" data-v="r5">1주일</button><button class="fchip" data-v="r21">1개월</button><button class="fchip" data-v="r63">3개월</button></span></div>
+    <div class="dfrow" style="gap:6px;flex-wrap:wrap;margin-bottom:6px"><span class="faint" style="font-size:11px;width:34px">시장</span><span class="qf seg" id="grkMkt" style="display:inline-flex"><button class="fchip" data-v="all" aria-pressed="true">전체</button><button class="fchip" data-v="KR">한국</button><button class="fchip" data-v="US">미국</button><button class="fchip" data-v="OT">기타(홍콩·일본·중국)</button></span></div>
+    <div class="dfrow" style="gap:6px;flex-wrap:wrap;margin-bottom:6px"><span class="faint" style="font-size:11px;width:34px">종류</span><span class="qf seg" id="grkKind" style="display:inline-flex"><button class="fchip" data-v="all" aria-pressed="true">전체</button><button class="fchip" data-v="STOCK">일반 종목</button><button class="fchip" data-v="ETF">ETF</button></span>
+      <select id="grkLev" class="df" style="flex:0 0 auto;width:auto;max-width:none;height:30px;font-size:11.5px;padding:0 6px"><option value="show">레버리지·인버스 포함</option><option value="hide">레버리지·인버스 제외</option><option value="only">레버리지·인버스만</option></select>
+      <select id="grkAmt" class="df" style="flex:0 0 auto;width:auto;max-width:none;height:30px;font-size:11.5px;padding:0 6px"><option value="0">거래대금 제한 없음</option><option value="10">거래대금 10억↑</option><option value="50">거래대금 50억↑</option><option value="100">거래대금 100억↑</option></select>
+      <span class="qf seg" id="grkN" style="display:inline-flex"><button class="fchip" data-v="50" aria-pressed="true">TOP 50</button><button class="fchip" data-v="100">TOP 100</button></span></div>
+    <div id="grkSum" style="margin:8px 0 4px"></div>
+    <div class="tw tw-scroll"><table class="grk-t"><thead><tr><th class="l">#</th><th class="l">종목</th><th data-p="r1">오늘</th><th data-p="r5">1주</th><th data-p="r21">1개월</th><th data-p="r63">3개월</th></tr></thead><tbody id="grkBody"><tr><td colspan="6" class="load sk"></td></tr></tbody></table></div>
+    <div class="note" style="margin-top:8px" id="grkNote"></div></div>
 </section>
 <section id="v-ovs" class="hide">
   <div class="dfrow" style="margin:12px 0 4px;gap:6px"><button class="btn ghost dnext" id="oBackTop">← 이전</button><span style="flex:1"></span><select id="ovsSel" class="df" title="해외 종목·ETF 선택 (ETF → 일반 종목, 가나다순)" style="flex:0 1 150px;max-width:150px"></select><button class="btn ghost dnext" id="ovsNext" title="목록 순서대로 다음 종목으로 이동">다음 →</button></div>
@@ -5352,6 +5381,7 @@ function go(v,detailCode){
   if(v==="etfhub"){if(S.eh.tab==="srch")ehSrLoad();else if(S.eh.tab==="port")ehPortLoad();else if(S.eh.tab==="lev")ehLvLoad();else if(S.eh.tab==="sec")ehSecLoad();else ehLoad();}
   if(v==="seclog")slLoad();
   if(v==="etf"){const c=detailCode||S.etf.code;if(c&&(c!==S.etf.code||detailCode))etfLoad(c);}
+  if(v==="grk")grkLoad();
   if(v==="ovs"){const c=detailCode||S.ovs.code||"NVDA";if(c!==S.ovs.code||detailCode||!S.ovs.d.length)ovsLoad(c);}
   if(v==="proc")procEnter();
   if(v==="gm"&&!S.gmEntered){S.gmEntered=true;loadGlobal().catch(e=>{console.error(e);S.gmEntered=false;});}
@@ -14696,6 +14726,50 @@ document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest
 document.addEventListener("input",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&t.type!=="checkbox"&&t.tagName!=="SELECT")auInputEv(t);});
 document.addEventListener("change",e=>{const t=e.target;if(t&&t.closest&&t.closest("#trdPaneAuto")&&(t.type==="checkbox"||t.tagName==="SELECT"))auInputEv(t);});
 /* ── 해외(미국·홍콩·일본·중국) 종목·ETF 상세 (2026-11-27) — us_master·us_daily·us_rights(KIS 해외) + 글로벌 시황 미국 탭 보유종목 */
+/* ══ 글로벌 상승률 TOP — v_global_ret(190_global_ret.sql): 우리 DB 한국 종목·ETF + 수집한 해외 종목·ETF를 상승률로만 비교 ══ */
+S.grk={rows:null,per:"r1",mkt:"all",kind:"all",lev:"show",amt:0,n:50,loading:false};
+const GRK_PL={r1:"오늘",r5:"1주일",r21:"1개월",r63:"3개월"},GRK_P={r1:"p1",r5:"p5",r21:"p21",r63:"p63"};
+async function grkLoad(){
+  const G=S.grk;if(G.rows||G.loading){if(G.rows)grkRender();return;}
+  G.loading=true;
+  try{G.rows=await q("v_global_ret","select=*&limit=2000");}
+  catch(e){console.error("글로벌 상승률",e);$("#grkBody").innerHTML='<tr><td colspan="6" class="load">불러오지 못했습니다 — 잠시 후 다시 열어 주세요</td></tr>';G.loading=false;return;}
+  G.loading=false;grkRender();
+}
+function grkRender(){
+  const G=S.grk,all=G.rows||[],per=G.per,pp=GRK_P[per];
+  const mk=r=>r.mkt==="KR"?"KR":r.mkt==="US"?"US":"OT";
+  let U=all.filter(r=>(G.mkt==="all"||mk(r)===G.mkt)&&(G.kind==="all"||r.kind===G.kind)
+    &&(G.lev==="show"||(G.lev==="hide"?!r.lev:!!r.lev))&&(!G.amt||(+r.amt||0)>=G.amt*1e8));
+  const rankMap=(k)=>{const m={},a=U.filter(r=>r[k]!=null).sort((x,y)=>y[k]-x[k]);a.forEach((r,i)=>m[r.mkt+":"+r.code]=i+1);return m;};
+  const R={r1:rankMap("r1"),r5:rankMap("r5"),r21:rankMap("r21"),r63:rankMap("r63")},PR=rankMap(pp);
+  const top=U.filter(r=>r[per]!=null).sort((x,y)=>y[per]-x[per]).slice(0,G.n);
+  const fav=new Set(favList()),key=r=>r.mkt+":"+r.code;
+  const mb=r=>`<span class="mb">${{KR:"한",US:"미",HK:"홍",JP:"일",CN:"중"}[r.mkt]}${r.kind==="ETF"?"·ETF":""}</span>${r.lev==="L"?'<span class="mb lv">레버리지</span>':r.lev==="I"?'<span class="mb iv">인버스</span>':""}`;
+  const cell=(r,k)=>{const v=r[k],rk=R[k][key(r)],c=k===per?' class="sel"':"";return v==null?`<td${c}><span class="rr">–</span></td>`:`<td${c}><span class="${sgn(v)}">${pm(v,1)}%</span><br><span class="rr${rk&&rk<=10?" top":""}">${rk}위</span></td>`;};
+  $("#grkBody").innerHTML=top.length?top.map((r,i)=>{
+    const rk=i+1,pr=PR[key(r)],ch=pr==null?'<span class="up">신규</span>':pr-rk>0?`<span class="up">▲${pr-rk}</span>`:pr-rk<0?`<span class="down">▼${rk-pr}</span>`:"–";
+    const fc=fav.has(r.code)?"★ ":"";
+    return `<tr class="${fav.has(r.code)?"mine":""}"><td class="l rk"><b>${rk}</b><br>${ch}</td>
+      <td class="l"><a class="lk" data-grk="${escH(r.code)}" data-m="${r.mkt}">${fc}${escH(r.name)}</a>${mb(r)}<br><span class="rr">${escH(r.code)}${r.sub?" · "+escH(r.sub):""}${r.amt?" · "+fmtEokJo(+r.amt/EOK):""}</span></td>${["r1","r5","r21","r63"].map(k=>cell(r,k)).join("")}</tr>`;}).join(""):'<tr><td colspan="6" class="load">조건에 맞는 종목이 없습니다</td></tr>';
+  $$("#v-grk thead th[data-p]").forEach(th=>th.classList.toggle("sel",th.dataset.p===per));
+  $$("#grkBody a.lk").forEach(a=>a.onclick=()=>{if(a.dataset.m==="KR")go("detail",a.dataset.grk);else go("ovs",a.dataset.grk);});
+  // 상위에 많이 든 업종·분류
+  const cnt={};top.forEach(r=>{const k=r.sub||(r.kind==="ETF"?"ETF(분류 없음)":"기타");cnt[k]=(cnt[k]||0)+1;});
+  const cs=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const ups=top.filter(r=>r[per]>0).length,lvN=top.filter(r=>r.lev).length;
+  $("#grkSum").innerHTML=`<div class="faint" style="font-size:11.5px;margin-bottom:4px">대상 ${N(U.length)}종목 중 TOP ${top.length} · 상승 ${ups} · 레버리지·인버스 ${lvN} · ★ = 내 종목</div>`+cs.map(([k,n])=>`<span class="grk-chip">${escH(k)} <b>${n}</b></span>`).join("");
+  const dm={};all.forEach(r=>{if(!dm[r.mkt]||r.last_date>dm[r.mkt])dm[r.mkt]=r.last_date;});
+  const dl=Object.entries(dm).map(([m,d])=>`${{KR:"한국",US:"미국",HK:"홍콩",JP:"일본",CN:"중국"}[m]} ${String(d).slice(5)}`).join(" · ");
+  $("#grkAsOf").textContent="기준 "+dl;
+  $("#grkNote").innerHTML=`순위 변화 = 하루 전 기준 같은 기간 상승률 순위와 비교(▲ 올라감 · ▼ 내려감 · 신규 = 전일 값 없음). 표 속 각 기간 숫자는 현재 필터 대상 안에서의 순위입니다. 해외 상승률은 현지 통화 기준이며 환율 영향은 뺍니다. 레버리지·인버스는 이름과 KIS 배수로 자동 판정합니다. 기준일 ${dl}.`;
+}
+$("#grkPer").addEventListener("seg-change",e=>{S.grk.per=e.detail;grkRender();});
+$("#grkMkt").addEventListener("seg-change",e=>{S.grk.mkt=e.detail;grkRender();});
+$("#grkKind").addEventListener("seg-change",e=>{S.grk.kind=e.detail;grkRender();});
+$("#grkN").addEventListener("seg-change",e=>{S.grk.n=+e.detail;grkRender();});
+$("#grkLev").onchange=e=>{S.grk.lev=e.target.value;grkRender();};
+$("#grkAmt").onchange=e=>{S.grk.amt=+e.target.value;grkRender();};
 S.ovs={code:null,list:null,d:[],m:{},rt:[],per:"126",pack:null};
 const OVS_EX={NAS:"나스닥",NYS:"뉴욕",AMS:"아멕스",HKS:"홍콩",TSE:"도쿄",SHS:"상해",SZS:"심천"};
 const OVS_CS={USD:"$",HKD:"HK$",JPY:"¥",CNY:"CN¥"};
@@ -14876,7 +14950,7 @@ function ovsCharts(){
     $("#ovsVpSum").innerHTML=`현재가 위 ${N(vp.above,1)}% (${ovsBig(vp.aboveAmt*EOK)}) · 현재가 아래 ${N(vp.below,1)}% (${ovsBig(vp.belowAmt*EOK)}) · 현재가 구간 ${N(100-vp.above-vp.below,1)}%`;
   }else $("#ovsVp").innerHTML='<div class="load">데이터 없음</div>';
 }
-const VIEW_IDS=["semi","seclog","etfhub","etf","ovs","trend","allinfo","wtrec","dart","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
+const VIEW_IDS=["semi","seclog","etfhub","etf","ovs","grk","trend","allinfo","wtrec","dart","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
 function setHash(v,code){
   const h="#"+(DESK_V.test(v)?v.replace("-","/"):v)+(code?"/"+code:"");   // 매매 화면: #paper/order · #real/auto
   if(location.hash!==h)history.pushState(null,"",h);
