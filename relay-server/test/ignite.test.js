@@ -13,11 +13,11 @@ function series(from, to, px, amt) {
 }
 const row = (price, amt, over = {}) => ({ code: 'A', name: 'A', price, open: 10000, high: price, changePct: (price / 10000 - 1) * 100 + 0.0, vol: amt / 10100, amt, ...over });
 
-test('프리셋 검증: 시총 3천억~4조 미만 · 09:15 · 10분 · 100만원 · 5종목 · 15:14 청산', () => {
+test('프리셋 검증: 시총 3천억~4조 미만 · 09:15 · 10분 · 100만원 · 5종목 · 당일 청산 끔', () => {
   assert.ok(PP, '프리셋이 검증을 통과해야 함');
   assert.strictEqual(PP.selector, 'ignite'); assert.strictEqual(PP.capMaxEok, 40000); assert.strictEqual(PP.selectAt, '09:15');
   assert.strictEqual(PP.roundMin, 10); assert.strictEqual(PP.roundEnd, '14:30'); assert.strictEqual(PP.perStockKrw, 1000000);
-  assert.strictEqual(PP.maxBuys, 5); assert.strictEqual(PP.flatOn, true); assert.strictEqual(PP.flatAt, '15:14'); assert.strictEqual(PP.execMode, 'paper');
+  assert.strictEqual(PP.maxBuys, 5); assert.strictEqual(PP.flatOn, false); assert.strictEqual(PP.flatAt, '15:14'); assert.strictEqual(PP.execMode, 'paper');
 });
 test('기본 전략 목록: 시동은 꺼진 채 들어 있고 기존 전략은 그대로 켜짐', async () => {
   const st = ST.createStore({ sbGet: async () => { throw new Error('404 PGRST205'); }, sbWrite: async () => {} });

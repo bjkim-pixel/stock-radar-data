@@ -316,7 +316,7 @@ const BUILTIN0 = [
 /* 장초 상승 포착("시동", 2026-11-25) 기본값: 중소형(시총 3천억~4조 미만)을 09:15부터 10분 간격으로 훑어 종목당 100만원·하루 5종목, 15:14 전량 청산(가상) */
 const IGNITE_PRESET = { selector: 'ignite', capMinEok: 3000, capMaxEok: 40000, amtMinEok: 30, maTrend: false, smx: 'off', flowForeign: 'ignore', flowInst: 'ignore', flowProgram: 'ignore', altFlowOn: false, kwOn: false,
   selectAt: '09:15', noticeAfter: 0, approveWindow: 5, roundMin: 10, roundEnd: '14:30', openRiseMax: 6, cttrMin: 120, poolTop: 5, notifyTop: 5, sectorMax: 2, maxBuys: 5, maxTries: 1, retryUnfilled: false, perStockKrw: 1000000, approval: 'auto',
-  buyType: 'market', stopPct: 3, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 6, tp2Pct: 9, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: true, flatAt: '15:14', execMode: 'paper' };
+  buyType: 'market', stopPct: 3, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 6, tp2Pct: 9, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: false, flatAt: '15:14', execMode: 'paper' };
 const BUILTIN = BUILTIN0.concat([{ id: 'ignite-default', name: '장초 상승 포착(시동)', kind: 'intraday', builtin: true, off: true, preset: IGNITE_PRESET, desc: '시총 3천억~4조 미만 중소형주 중 처음부터 많이 뜬 종목은 빼고, 09시 이후 거래가 붙으며 오르기 시작하는 종목을 09:15부터 10분마다 포착해 가상 매수(종목당 100만원·하루 5종목) · 15:14 전량 청산' }]);
 /* 눌림목("기준봉 시가 회복", 2026-11-26 규칙 교체 · 198 백테스트) 기본값: 15:10 에 후보를 골라 시장가로 매수(가상), 매수가 −5% 아래 종가 마감 손절 · +10/+15% 2분할(손절 5% 기준 손익비 1:2·1:3, 최대 목표 15%) · 시간 청산 없음.
    하루 최대 3종목(종목당 100만원). 시총 상한 같은 조건은 처음엔 모두 끄고 신호를 모은다(스마트머니 점검만 켜짐) */
@@ -355,6 +355,8 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     }
     // 2026-11-26: 수급 돌파 장중 기본 전략은 실시간 종목과 같은 기준(종가>120일선 · 스마트머니 3개월)으로 한 번 옮김 — 이후 저장하면 maAbove120 가 기록돼 편집값 유지
     if (r.id === 'intraday-default' && pr.maAbove120 === undefined) pr = { ...pr, maAbove120: true, maTrend: false, smxWin: '63' };
+    // 2026-11-26: 장초 상승 포착은 손절·익절 매도 계획만으로 거래 — 예전 기본(15:14 당일 청산)을 쓰던 저장본은 한 번 끔(다시 켜려면 청산 시각을 15:14 이외로 저장)
+    if (pr.selector === 'ignite' && pr.flatOn === true && pr.flatAt === '15:14') pr = { ...pr, flatOn: false };
     const v = validate(r.kind, pr);
     // 2026-11-26: 가상매매(execMode paper) 전략은 승인 과정은 그대로 두되 항상 알림 직후 자동 승인 — 승인 대기·누락으로 체결이 안 돼 성과를 못 보는 일을 막음(실전·드라이런은 설정 그대로)
     if (v.val && sideOfParams(v.val) === 'paper') { if ('approval' in v.val) v.val.approval = 'auto'; if ('closeBuyApproval' in v.val) v.val.closeBuyApproval = 'auto'; }

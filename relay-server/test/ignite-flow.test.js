@@ -44,7 +44,7 @@ async function rig(iExtra = {}) {
 }
 
 test('09:15 포착 → 자동 가상 매수(종목당 100만원) → 15:14 남은 보유분 전량 시장가 청산', async () => {
-  const { c, A, runs, sent, date, at } = await rig({ cttrMin: 100 });
+  const { c, A, runs, sent, date, at } = await rig({ cttrMin: 100, flatOn: true });
   try {
   at(9, 15); c.st.price = 10000;
   await A.tick();
