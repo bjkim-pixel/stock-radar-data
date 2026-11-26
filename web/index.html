@@ -1943,7 +1943,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div style="margin:16px 0 40px"><button class="btn ghost" id="eBack">← 이전 화면으로</button></div>
 </section>
 <section id="v-ovs" class="hide">
-  <div style="margin:12px 0 4px;display:flex;gap:8px;align-items:stretch"><button class="btn ghost" id="oBackTop" style="flex:none">← 이전 화면으로</button><select id="ovsSel" class="df" title="해외 종목·ETF 선택" style="flex:1;min-width:0;height:auto;margin:0"></select></div>
+  <div class="dfrow" style="margin:12px 0 4px;gap:6px"><button class="btn ghost dnext" id="oBackTop">← 이전</button><span style="flex:1"></span><select id="ovsSel" class="df" title="해외 종목·ETF 선택 (ETF → 일반 종목, 가나다순)" style="flex:0 1 150px;max-width:150px"></select><button class="btn ghost dnext" id="ovsNext" title="목록 순서대로 다음 종목으로 이동">다음 →</button></div>
   <div class="card" id="ovsHead"><div class="load sk"></div></div>
   <div class="card" id="ovsInfoCard" style="margin-top:10px;display:none"><h3>종목 정보 <span class="r faint" style="font-weight:400">한국투자증권 KIS</span></h3><div id="ovsInfo"></div></div>
   <div class="card" style="margin-top:10px"><h3>시세 정보 <span class="r" id="ovsQtSub"></span></h3><div id="ovsQt"></div></div>
@@ -14721,6 +14721,7 @@ function ovsSelFill(){
   if(S.ovs.code)sel.value=S.ovs.code;
 }
 $("#ovsSel").addEventListener("change",e=>go("ovs",e.target.value));
+$("#ovsNext").onclick=()=>{const o=[...$("#ovsSel").options];if(!o.length)return;const i=o.findIndex(x=>x.value===S.ovs.code);go("ovs",o[(i+1)%o.length].value);};
 $("#ovsPer").addEventListener("seg-change",e=>{S.ovs.per=e.detail;ovsCharts();});
 $("#oBack").onclick=$("#oBackTop").onclick=()=>go(S.ovsBack||"gm");
 async function ovsLoad(code){
