@@ -23,5 +23,17 @@ for r in [r for r in R if r["lev"]][:40]: log(f"- {r['mkt']} {r['lev']} {r['name
 log("\n## 해외 ETF 중 이름에 2X·3X·BULL·BEAR 등이 있는데 판정 없음")
 for r in R:
     if r["mkt"] != "KR" and r["kind"] == "ETF" and not r["lev"]: log(f"- {r['code']} {r['name']}")
+log("\n## 진단")
+cur.execute("select trade_date,count(*),sum((coalesce(amount,0)=0)::int),sum((volume is null or volume=0)::int) from etf_daily where trade_date>=current_date-5 group by 1 order by 1")
+for r in cur.fetchall(): log(f"- etf_daily {r[0]}: {r[1]}행 · 거래대금0 {r[2]} · 거래량0 {r[3]}")
+cur.execute("select trade_date,count(*) from daily_price where trade_date>=current_date-5 group by 1 order by 1")
+for r in cur.fetchall(): log(f"- daily_price {r[0]}: {r[1]}행")
+cur.execute("select code,trade_date,close,volume,amount from etf_daily where code in ('252670','0197X0','122630') and trade_date>=current_date-4 order by code,trade_date")
+for r in cur.fetchall(): log(f"- {r}")
+cur.execute("explain (analyze, buffers off, timing off, summary on) select * from v_global_ret")
+for r in cur.fetchall():
+    if any(k in r[0] for k in ("Seq Scan", "Execution Time", "Planning Time", "Index", "Hash Join", "WindowAgg")): log("    " + r[0][:200])
+for t in ("daily_price", "etf_daily", "us_daily"):
+    cur.execute(f"select indexdef from pg_indexes where tablename='{t}'"); log(f"- {t} 인덱스: " + " | ".join(x[0].split(' USING ')[1] for x in cur.fetchall()))
 cur.execute("select pg_size_pretty(pg_database_size(current_database()))"); log(f"\n- DB 용량 {cur.fetchone()[0]}")
 open("global_ret_report.md", "w", encoding="utf-8").write("\n".join(L))
