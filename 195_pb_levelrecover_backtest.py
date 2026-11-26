@@ -106,6 +106,7 @@ VARS = {"A 기본(눌림 깊이 무관 · 수급 점검)": (0.0, True), "B 눌�
         "D 눌림 −2% 이상 · 수급 점검 없음": (2.0, False), "E 눌림 −5% 이상 · 수급 점검": (5.0, True)}
 MAIN = list(VARS)[0]
 base_y, sigs, trades = [], [], []
+CODES = [cd for cd, nm in NAME.items() if nm in ('안랩', '코스맥스', '에스엠', 'SM')]; DIAG = {}
 
 def simulate(t, n, o, h, l, c, v, sp=STOP):
     ent = c[t]; stop = ent * (1 - sp / 100); left, pnl, k, why = 1.0, 0.0, t + 1, ""
@@ -158,6 +159,16 @@ for code, g0 in P.groupby("code", sort=False):
         if w[t] > w1: d1, w1, d2, w2 = t, w[t], -1, 0.0
         elif d1 >= 0 and t > d1 and w[t] > w2: d2, w2 = t, w[t]
 
+    if code in CODES:   # 오늘 기준 상태(내일 아침에 보는 관찰 상태)
+        info = []
+        for idx, rk in ((d1, 1), (d2, 2)):
+            if idx < 0: continue
+            vw = a[idx] / v[idx] if v[idx] > 0 else float('nan'); age = n - idx
+            row = dict(rk=rk, d=str(dates[idx])[:10], w=w[idx], age=age, vw=vw, gap=(c[-1] / vw - 1) * 100 if vw == vw else None, cap_ok=bool(mc[-1] >= CAPMIN))
+            for dip in (0.0, 2.0): row[f"arm{int(dip)}"] = armed_state(c, idx, n, vw, dip)[0] if vw == vw else None
+            row["lo"] = (min(c[idx + 1:]) / vw - 1) * 100 if vw == vw and idx + 1 < n else None
+            info.append(row)
+        DIAG[code] = dict(last=str(dates[-1])[:10], close=c[-1], rows=info, gate=gate(arr, n), n=n)
 B = pd.DataFrame(base_y, columns=["d", "y10"]).dropna()
 SG = pd.DataFrame(sigs, columns=["var", "code", "d", "rk", "age", "gap", "depth", "reg", "y1", "y3", "y5", "y10"])
 TR = pd.DataFrame(trades, columns=["var", "code", "d", "ent", "ret", "why", "hold", "rk", "age", "gap", "depth", "reg"])
@@ -211,5 +222,30 @@ if len(y):
     last = sorted(y.d.unique())[-10:]
     for _, r in y[y.d.isin(last)].sort_values("d").tail(25).iterrows():
         p(f"- {pd.Timestamp(r.d).strftime('%m/%d')} {NAME.get(r.code, r.code)}({r.code}) · 무게 {int(r.rk)}위일 · 기준가 +{r.gap:.1f}% · 경과 {int(r.age)}일 · 최저 종가 {r.depth:.1f}%")
+
+p("\n## 7. 사례 — 안랩 · 코스맥스 · 에스엠(오늘 기준 상태와 과거 신호) + 기본안 예시 3건\n")
+for cd in CODES:
+    nm = NAME.get(cd, cd); dg = DIAG.get(cd)
+    p(f"**{nm}({cd})**")
+    if not dg: p("- 자료 부족(거래일 수 모자람)"); continue
+    p(f"- 마지막 일봉 {dg['last']} 종가 {dg['close']:,.0f}원 · 수급 점검(1·3개월) {'통과' if dg['gate'] else '탈락'}")
+    if not dg["rows"]: p("- 무게/주식수 양수인 날이 없음")
+    for r in dg["rows"]:
+        why = []
+        if not r["cap_ok"]: why.append("시총 1천억 미만")
+        if r["w"] < WMIN: why.append(f"무게 {r['w']:.2f} < {WMIN}")
+        if not (2 <= r["age"] <= MAXAGE): why.append(f"경과 {r['age']}일(2~{MAXAGE} 밖)")
+        if not r["arm0"]: why.append("기준가 아래로 빠진 적 없음/이미 되찾음")
+        p(f"- {r['rk']}위일 {r['d']} · 무게 {r['w']:.2f} · 기준가 {r['vw']:,.0f}원 · 경과 {r['age']}일 · 현재가 기준가 대비 {r['gap']:+.1f}% · 최저 종가 {r['lo'] if r['lo'] is not None else 0:+.1f}% · 무장(깊이 무관) {'O' if r['arm0'] else 'X'} · 후보 제외 사유: {', '.join(why) if why else '없음(관찰 중)'}")
+    for vn in list(VARS)[:2]:
+        sg = SG[(SG.code == cd) & (SG["var"] == vn)]
+        p(f"- 과거 신호[{vn.split(' ')[0]}] {len(sg)}건: " + (", ".join(f"{pd.Timestamp(r.d).strftime('%y/%m/%d')}({int(r.rk)}위일·+{r.gap:.1f}%)" for r in sg.itertuples()) if len(sg) else "없음"))
+        for r in TR[(TR.code == cd) & (TR["var"] == vn)].itertuples():
+            p(f"  - 모의매매[{vn.split(' ')[0]}] {pd.Timestamp(r.d).strftime('%y/%m/%d')} 종가 {r.ent:,.0f}원 매수 → {r.why} {r.ret:+.1f}% · {r.hold}일")
+M2 = TR[TR["var"] == MAIN].sort_values("ret")
+if len(M2):
+    p("\n기본안 예시(대표 3건 — 최고 / 중간 / 최저)")
+    for lab, r in (("최고", M2.iloc[-1]), ("중간", M2.iloc[len(M2) // 2]), ("최저", M2.iloc[0])):
+        p(f"- {lab}: {NAME.get(r.code, r.code)}({r.code}) {pd.Timestamp(r.d).strftime('%y/%m/%d')} 종가 {r.ent:,.0f}원 매수 · 무게 {int(r.rk)}위일 · 기준가 +{r.gap:.1f}% · 경과 {int(r.age)}일 · 최저 종가 {r.depth:.1f}% → {r.why} {r.ret:+.1f}% ({r.hold}일)")
 p(f"\n총 {time.time()-T0:.0f}초 · 일봉이라 15:10 시세 대신 종가를 썼음(종가 부근 매수 근사) · 데이터 약 14개월 · 신호 겹침(같은 종목 연속일)은 거래 모의에서만 제거.")
 open("pullback_study.md", "w", encoding="utf-8").write("\n".join(out) + "\n")
