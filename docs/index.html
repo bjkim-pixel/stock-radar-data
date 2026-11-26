@@ -1282,7 +1282,6 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="ng" data-g="sum"><div class="ngh" role="button" tabindex="0" aria-expanded="true">요약</div><div class="ngi">
       <button data-v="ai">AI 브리핑</button>
       <button data-v="fav">★ 내 종목</button>
-      <button data-v="detail">종목 상세</button>
       <button data-v="journal">투자일지</button></div></div>
     <div class="ng" data-g="mkt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">시황</div><div class="ngi">
       <button aria-selected="true" data-v="proc">시장</button>
@@ -1303,7 +1302,11 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="dart">공시 동향</button>
       <button data-v="etfhub">ETF</button>
       <button data-v="pair">짝꿍매매</button>
-      <button data-v="sw">국면 전략</button></div></div>
+      <button data-v="sw">국면 전략</button>
+      <button data-v="detail">한국 종목 상세</button>
+      <button data-v="etf">한국 ETF 상세</button>
+      <button data-v="ovs">미국 종목 상세</button>
+      <button data-v="ovse">미국 ETF 상세</button></div></div>
     <div class="ng" data-g="mgmt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">관리</div><div class="ngi">
       <button data-v="perf">전략 성과</button>
       <button data-v="perf2">전략 성과2</button>
@@ -5275,7 +5278,15 @@ function procEnter(){
   loadMarketInvestor().catch(e=>{$("#mktInvBody").innerHTML='<tr><td colspan="4" class="load">데이터 없음</td></tr>';});
   lazyNear($("#tdKWrap"),()=>loadTdKospi().catch(e=>console.error("KOSPI 카드",e)));
 }
+function ovsDefault(etf){   // 메뉴에서 코드 없이 들어올 때: 마지막으로 본 같은 종류, 없으면 대표 종목
+  const O=S.ovs,cur=O.code,isE=c=>!!(O.list||[]).find(x=>x.code===c&&x.is_etf);
+  if(cur&&(O.list?isE(cur)===etf:false))return cur;
+  return (etf?O.lastEtf:O.lastStk)||(etf?"SPY":"NVDA");
+}
 function go(v,detailCode){
+  if(v==="ovse"){v="ovs";detailCode=detailCode||ovsDefault(true);}
+  else if(v==="ovs"&&!detailCode)detailCode=ovsDefault(false);
+  if(v==="etf"&&!detailCode&&!S.etf.code)detailCode=(S.etfMap&&S.etfMap["069500"])?"069500":Object.keys(S.etfMap||{})[0];
   if(v==="detail"&&detailCode&&S.etfMap&&S.etfMap[detailCode])v="etf";   // 2026-11-14: ETF는 ETF 상세 페이지로
   /* 2026-11-19 화면 분리: 매매는 메뉴에서 「가상매매」·「실전매매」로 들어가고(주소 #paper/… · #real/…), 들어간 쪽은 화면 안에서 바꿀 수 없음.
      예전 주소(#trade·#trauto 등)는 실수로 실전에 들어가지 않게 항상 가상매매로. 쪽이 바뀌면 입력 중이던 값을 모두 비움 */
@@ -5300,7 +5311,8 @@ function go(v,detailCode){
   S.curTab=v;
   if(!S._keepBack)S.backAI=false;
   if(typeof aiBackShow==="function")aiBackShow();
-  $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===vOrig));
+  {let sel=vOrig;if(v==="ovs"){const c=detailCode||S.ovs.code;sel=((S.ovs.list||[]).find(x=>x.code===c)||{}).is_etf||(!S.ovs.list&&vOrig==="ovse")?"ovse":"ovs";}
+   $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===sel));}
   if(typeof navSync==="function")navSync();
   ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","semi","trade","trend","allinfo","wtrec","dart","etf","ovs","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   wideSet(v==="scr"||v==="trend"||v==="allinfo"||v==="wtrec"||v==="dart"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
@@ -14723,6 +14735,9 @@ async function ovsLoad(code){
   if(req!==O.req)return;
   if(!m.length){$("#ovsHead").innerHTML=`<div class="load">${escH(code)} — 해외 종목 데이터가 없습니다(수집 대상이 아니거나 아직 수집 전).</div>`;$("#ovsPrice").innerHTML="";return;}
   O.m=m[0];O.d=d;O.rt=rt;
+  if(O.m.is_etf)O.lastEtf=code;else O.lastStk=code;
+  $$("#tabs button").forEach(x=>{if(x.dataset.v==="ovs"||x.dataset.v==="ovse")x.setAttribute("aria-selected",x.dataset.v===(O.m.is_etf?"ovse":"ovs"));});navSync();
+  {const t=document.querySelector("#v-ovs>.pg-title");if(t)t.textContent=O.m.is_etf?"미국 ETF 상세":"미국 종목 상세";}
   const sel=$("#ovsSel");if(sel)sel.value=code;
   const etf=!!O.m.is_etf;
   $("#ovsWtCard").style.display=etf?"none":"";
