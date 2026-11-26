@@ -90,3 +90,11 @@ test('일별 거래 요약(daily)·체결 목록(fills): 기간 안만, 최신�
   assert.deepEqual(r.fills.map(x => x.code), ['B', 'B', 'A', 'A']);                              // 최신순, 기간 밖 제외
   assert.equal(r.fills[0].name, '비'); assert.equal(r.fills[0].reason, 'stop');
 });
+
+test('거래내역: 자동매매 매수 체결은 출처 전략, 매도는 마지막으로 산 전략으로 이어 표시(직접 매수가 끼면 끊김)', () => {
+  const d = new Date('2026-11-20T01:00:00Z').getTime(), o = (id, side, origin) => ({ id, code: '005930', name: 'S', side, type: 'market', qty: 10, filled: 10, avg: 100, status: 'filled', createdAt: d, origin });
+  const f = (id, orderId, side, ts) => ({ id, orderId, ts, code: '005930', side, price: 100, qty: 10, amount: 1000, fee: 0, realized: side === 'sell' ? 50 : null, reason: side === 'sell' ? 'stop' : 'manual' });
+  const R = computeReport({ fills: [f('a', 'o1', 'buy', d), f('b', 'o2', 'sell', d + 1), f('c', 'o3', 'buy', d + 2), f('e', 'o4', 'sell', d + 3)], orders: [o('o1', 'buy', 'auto:pullback-default'), o('o2', 'sell', null), o('o3', 'buy', null), o('o4', 'sell', null)], from: '2026-11-20', to: '2026-11-20' });
+  const by = Object.fromEntries(R.fills.map(x => [x.ts - d, x.sid]));
+  assert.deepEqual(by, { 0: 'pullback-default', 1: 'pullback-default', 2: null, 3: null });
+});

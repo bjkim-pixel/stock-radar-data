@@ -78,12 +78,15 @@ test('15:10 선정 → 시장가 매수 · 손절 = 매수가−5% · 익절 +10
     assert.equal(b1.type, 'market');
     const pos = S1.positions.find(p => p.code === '035420');
     assert.ok(pos && pos.qty > 0 && pos.plan.closeStop === true && pos.plan.stop === 10110);
+    assert.equal(pos.sid, 'pullback-default', '보유 종목에 어느 전략이 샀는지 표시'); assert.equal(b1.sid, 'pullback-default');
     // 15:12 손절가 아래로 잠깐 내려가도(장중 흔들림) 손절하지 않음
     at(0, 15, 12); quote(10000); await c.t.paper.tick();
     assert.ok((await c.t.paper.state()).positions.some(p => p.code === '035420' && p.qty > 0), '15:15 전에는 손절 안 함');
     // 15:16 에도 손절가 아래면 종가 마감 손절
     at(0, 15, 16); quote(10000); await c.t.paper.tick();
     assert.ok(!(await c.t.paper.state()).positions.some(p => p.code === '035420' && p.qty > 0), '15:15 이후 손절가 아래면 전량 매도');
+    const S3 = await c.t.paper.state(), sl = S3.orders.find(x => x.code === '035420' && x.side === 'sell' && x.reason === 'stop');
+    assert.equal(sl && sl.sid, 'pullback-default', '엔진이 낸 손절 주문도 전략 표시'); assert.ok(S3.fills.filter(f => f.code === '035420').every(f => f.sid === 'pullback-default'), '체결도 전략 표시');
   } finally { await c.close(); }
 });
 

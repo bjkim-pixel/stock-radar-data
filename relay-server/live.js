@@ -16,7 +16,7 @@
      프리·애프터마켓 손절은 시장가 대신 매수 1호가 n호가 아래 지정가 — 정해진 시간 안에 다 안 팔리면 취소 확인 후 다시 냄.
      19:58 에 남은 미체결을 모두 취소 요청, 20:05 까지 체결조회로 정리한 뒤 남은 주문은 소멸 처리
    ════════════════════════════════════════════════════════════════════════ */
-const { createOptCol, cleanOrigin } = require('./opt-col');
+const { createOptCol, cleanOrigin, sidOfOrigin } = require('./opt-col');
 const E = require('./paper-engine');
 const SES = require('./session');
 const { allocSteps } = require('./paper');
@@ -168,13 +168,13 @@ function createLive(deps) {
   }
 
   /* ── 주문 내기(잠금 안). DB 먼저 → KIS → 결과 기록 ── */
-  async function send({ code, name, side, type, price, qty, reason, plan, q, ref, note, venue, origin }) {
+  async function send({ code, name, side, type, price, qty, reason, plan, q, ref, note, venue, origin, sid }) {
     const sim = E.submit({ side, type, price, qty }, q), s = E.summarize(sim.fills || []);
     const t = now();
     const o = { id: `L${t.toString(36)}${rnd()}`, createdAt: t, updatedAt: t, code, name: name || null, side, type, price: type === 'limit' ? price : null, qty, filled: 0, amt: 0, avg: 0, status: 'pending',
       reason: reason || 'manual', plan: plan || null, note: note || null, odno: null, orgno: null,
       refPrice: ref || (type === 'limit' ? price : ((side === 'buy' ? q.asks : q.bids).find(l => l.p > 0) || {}).p || q.price),
-      simAvg: s.qty ? s.avg : null, simQty: s.qty, sentAt: t, msg: null, cancelReq: false, excg: venue || 'KRX', origin: origin || null };   // sentAt 을 DB 기록 전에(검토 #3: 기록 직후 죽어도 재시작 뒤 체결조회로 대조됨) · origin: 자동매매 주문이면 'auto:<전략ID>'
+      simAvg: s.qty ? s.avg : null, simQty: s.qty, sentAt: t, msg: null, cancelReq: false, excg: venue || 'KRX', origin: origin || null, sid: sid || null };   // sentAt 을 DB 기록 전에(검토 #3: 기록 직후 죽어도 재시작 뒤 체결조회로 대조됨) · origin: 자동매매 주문이면 'auto:<전략ID>'
     try { await W('live_orders', 'POST', [orderRow(o)]); } catch (e) { console.warn('[live] 주문 기록 실패 — 주문 안 냄:', e.message); return bad(503, '주문 기록을 저장하지 못해 주문을 내지 않았습니다'); }
     orders.set(o.id, o);
     o.sentAt = now(); lastSendAt = o.sentAt; inflight++;
@@ -215,6 +215,7 @@ function createLive(deps) {
       if (autoKeep && o.plan && !o.keepNoted) { o.keepNoted = true; notify(`[실전] ${o.name || o.code}: 자동매매가 관리 중인 종목이라 직접 매수분의 매도 계획은 적용하지 않았습니다(자동매매 몫 ${pl.plan.own}주만 자동 손절·익절).`); }
       if (o.side === 'buy' && o.plan && !autoKeep && !(pl && pl.plan && pl.plan.orderId === o.id)) {
         const np = { name: o.name, plan: { ...JSON.parse(JSON.stringify(o.plan)), orderId: o.id, stopped: false, steps: (o.plan.steps || []).map(s => ({ ...s, sold: 0 })) } };
+        if (sidOfOrigin(o.origin)) np.plan.sid = sidOfOrigin(o.origin);   // 어느 전략이 산 포지션인지(화면 표시용)
         if (o.origin) np.plan.ownBase = pl && pl.plan && pl.plan.own > 0 ? pl.plan.own : 0;   // 자동매매 매수(2단계): 같은 종목 앞선 자동매매 몫에 이어서 셈
         plans.set(o.code, np); dirty.plans.set(o.code, np);
       }
@@ -328,7 +329,7 @@ function createLive(deps) {
     if (sellable <= 0) { if (failed) notify(`[실전] 손절: 취소 실패한 매도 주문이 남아 추가 매도하지 않았습니다: ${p.name || code}`, 'stopblocked|' + code); return true; }
     const type = ses.market ? 'market' : 'limit', price = ses.market ? null : SES.stopLimitPrice(q, STOP_TICKS, E.tickOf, E.floorTick);
     const first = !pl.plan.stopped;
-    const r = await send({ code, name: p.name, side: 'sell', type, price, qty: sellable, reason: 'stop', q, ref: sp || q.price, venue: route(ses), note: first ? null : 'retry' });
+    const r = await send({ code, name: p.name, side: 'sell', type, price, qty: sellable, reason: 'stop', sid: planSidOf(pl), q, ref: sp || q.price, venue: route(ses), note: first ? null : 'retry' });
     if (!r.ok) notify(`[실전] 손절 매도 실패(${r.error}) — 다음 주기에 다시 시도: ${p.name || code}`, 'stopfail|' + code);
     else {
       pl.plan.stopped = true; dirty.plans.set(code, pl);
@@ -369,7 +370,7 @@ function createLive(deps) {
       }
       if (q.vi) { notify(`[실전] 익절 조건이지만 VI 발동 중이라 대기: ${p.name || code}`, 'vi|' + code); continue; }
       const type = ses.market ? 'market' : 'limit', price = ses.market ? null : SES.stopLimitPrice(q, STOP_TICKS, E.tickOf, E.floorTick);
-      const r = await send({ code, name: p.name, side: 'sell', type, price, qty: w, reason: 'tp' + st.n, q, ref: st.p, venue: route(ses), note: 'trail' });
+      const r = await send({ code, name: p.name, side: 'sell', type, price, qty: w, reason: 'tp' + st.n, q, ref: st.p, venue: route(ses), note: 'trail', sid: planSidOf(pl) });
       if (!r.ok) notify(`[실전] 익절 ${st.n}단계 매도 실패(${r.error}) — 다음 주기에 다시 시도: ${p.name || code}`, `tpfail|${code}|${st.n}`);
       else { notify(`[실전] 익절 ${st.n}단계(트레일링) 주문: ${p.name || code} ${w}주 ${type === 'market' ? '시장가' : `${price.toLocaleString('ko-KR')}원 지정가(${ses.label})`} · 고점 ${Math.round(st.peak).toLocaleString('ko-KR')}원`); event('tp_fire', code, { step: st.n, qty: w, peak: st.peak, trail, type, limit: price }); }
     }
@@ -513,10 +514,13 @@ function createLive(deps) {
   }
 
   /* ── 조회 ── */
+  /* 전략 표시용: 포지션 계획에 적힌 전략 → 없으면 그 계획을 만든 매수 주문의 출처 */
+  const planSidOf = pl => (pl && pl.plan && (pl.plan.sid || sidOfOrigin((orders.get(pl.plan.orderId) || {}).origin))) || null;
+  const orderSid = o => (o && (sidOfOrigin(o.origin) || o.sid || (o.side === 'sell' && (o.reason === 'stop' || isTp(o)) ? planSidOf(plans.get(o.code)) : null))) || null;
   const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null,
-    status: o.status, queueAhead: null, reason: o.reason, note: o.note, msg: o.msg, cancelReq: o.cancelReq, simAvg: o.simAvg, venue: o.excg || null, origin: o.origin || null });
-  const pubFill = f => ({ id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee || 0, realized: f.realized, reason: f.reason });
-  const pubPos = p => { const pl = plans.get(p.code); return { code: p.code, name: p.name, qty: p.qty, avg: p.avg, plan: pl ? pl.plan : null, stop: stopOf(p, pl && pl.plan),
+    status: o.status, queueAhead: null, reason: o.reason, note: o.note, msg: o.msg, cancelReq: o.cancelReq, simAvg: o.simAvg, venue: o.excg || null, origin: o.origin || null, sid: orderSid(o) });
+  const pubFill = f => ({ sid: orderSid(orders.get(f.orderId)), id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee || 0, realized: f.realized, reason: f.reason });
+  const pubPos = p => { const pl = plans.get(p.code); return { sid: planSidOf(pl), code: p.code, name: p.name, qty: p.qty, avg: p.avg, plan: pl ? pl.plan : null, stop: stopOf(p, pl && pl.plan),
     last: (lastPx.get(p.code) || {}).price || p.price || null, avail: p.qty - remain(mine(p.code, o => o.side === 'sell' && !isTp(o))), sellable: p.sellable, ownFree: ownFree(p.code, o => !isTp(o)) }; };
   async function state() {
     const nr = await ready();

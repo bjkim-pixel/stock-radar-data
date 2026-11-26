@@ -12,7 +12,7 @@
      손절은 시장가 대신 매수 1호가 n호가 아래 지정가로 내고, 일정 시간 안에 다 안 팔리면 취소 후 다시 냄.
      주문마다 거래소(venue)를 기록: KRX 정규장 주문은 15:30 소멸(애프터마켓 16:00 에 익절 재접수), NXT·SOR 는 20:00 소멸
    ════════════════════════════════════════════════════════════════════════ */
-const { createOptCol, cleanOrigin } = require('./opt-col');
+const { createOptCol, cleanOrigin, sidOfOrigin } = require('./opt-col');
 const E = require('./paper-engine');
 const SES = require('./session');
 const { computeReport } = require('./paper-report');
@@ -221,6 +221,7 @@ function createPaper(deps) {
         if (o.side === 'buy' && o.plan && !(plan && plan.orderId === o.id)) {   // 새 매수 주문의 계획으로 교체(같은 주문의 부분 체결이면 진행 상황 유지)
           plan = { ...JSON.parse(JSON.stringify(o.plan)), orderId: o.id, stopped: false };
           plan.steps = (plan.steps || []).map(s => ({ ...s, sold: 0 }));
+          if (sidOfOrigin(o.origin)) plan.sid = sidOfOrigin(o.origin);   // 어느 전략이 산 포지션인지(화면 표시용)
         }
         if (plan && o.side === 'sell' && isTp(o)) { const st = (plan.steps || []).find(s => 'tp' + s.n === o.reason); if (st) st.sold = (st.sold || 0) + f.q; }
         const np = { code: o.code, name: o.name || (pos && pos.name), qty: r.pos.qty, avg: r.pos.avg, openedAt: pos ? pos.openedAt : now(), updatedAt: now(), plan, lowSeen: pos ? pos.lowSeen : null, highSeen: pos ? pos.highSeen : null };
@@ -236,13 +237,13 @@ function createPaper(deps) {
 
   const bad = (status, error) => ({ ok: false, status, error });
   /* 주문 1건 생성(잠금 안에서만 호출). 즉시 체결분까지 반영 */
-  async function createOrder({ code, name, side, type, price, qty, reason, plan, q, ref, note, venue, origin }) {
+  async function createOrder({ code, name, side, type, price, qty, reason, plan, q, ref, note, venue, origin, sid }) {
     const sub = E.submit({ side, type, price, qty }, q);
     if (sub.reject) return bad(409, sub.reject);
     const t = now();
     const o = { id: `${IDP}o${t.toString(36)}${rnd()}`, createdAt: t, updatedAt: t, code, name: name || null, side, type, price: type === 'limit' ? price : null, qty, filled: 0, avg: 0, status: 'open',
       queueAhead: sub.state.queueAhead, lastVol: sub.state.lastVol, lowSeen: sub.state.lowSeen, highSeen: sub.state.highSeen, reason: reason || 'manual', plan: plan || null, note: note || null,
-      venue: venue || 'KRX', src: q.mkt || null, origin: origin || null,   // origin: 자동매매가 낸 주문이면 'auto:<전략ID>'
+      venue: venue || 'KRX', src: q.mkt || null, origin: origin || null, sid: sid || null,   // origin: 자동매매가 낸 주문이면 'auto:<전략ID>'
       // 슬리피지 기준가: 손절은 손절가, 시장가는 주문 순간 상대 1호가, 지정가는 지정가
       refPrice: ref || (type === 'limit' ? price : ((side === 'buy' ? q.asks : q.bids).find(l => l.p > 0) || {}).p || q.price) };
     try { await W(TB.orders, 'POST', [orderRow(o)]); } catch (e) { console.warn('[paper] 주문 저장 실패:', e.message); return bad(503, '주문을 저장하지 못했습니다'); }
@@ -401,7 +402,7 @@ function createPaper(deps) {
     if (qty <= 0) return true;
     const first = !pos.plan.stopped;
     const type = ses.market ? 'market' : 'limit', price = ses.market ? null : SES.stopLimitPrice(q, STOP_TICKS, E.tickOf, E.floorTick);
-    const r = await createOrder({ code, name: pos.name, side: 'sell', type, price, qty, reason: 'stop', q, ref: sp || q.price, venue: route(ses), note: stops.length ? 'retry' : null });
+    const r = await createOrder({ code, name: pos.name, side: 'sell', type, price, qty, reason: 'stop', q, ref: sp || q.price, venue: route(ses), note: stops.length ? 'retry' : null, sid: planSid(pos) });
     if (!r.ok) { notify(`손절 매도 실패(${r.error}) — 다음 주기에 다시 시도: ${pos.name || code}`, 'stopfail|' + code); return true; }   // 손절 조건이면 익절 주문은 다시 걸지 않음
     const s = E.summarize(r.fills.map(f => ({ p: f.price, q: f.qty })));
     const realized = r.fills.reduce((a, f) => a + (f.realized || 0), 0);
@@ -437,7 +438,7 @@ function createPaper(deps) {
       if (my.length) { if (my.some(o => now() - o.createdAt < STOP_RETRY_MS)) continue; for (const o of my) cancelOrder(o, 'tp_retry'); }
       if (q.vi) { notify(`익절 조건이지만 VI 발동 중이라 대기합니다: ${pos.name || code}`, 'vi|' + code); continue; }
       const type = ses.market ? 'market' : 'limit', price = ses.market ? null : SES.stopLimitPrice(q, STOP_TICKS, E.tickOf, E.floorTick);
-      const r = await createOrder({ code, name: pos.name, side: 'sell', type, price, qty: w, reason: 'tp' + st.n, q, ref: st.p, venue: route(ses), note: 'trail' });
+      const r = await createOrder({ code, name: pos.name, side: 'sell', type, price, qty: w, reason: 'tp' + st.n, q, ref: st.p, venue: route(ses), note: 'trail', sid: planSid(pos) });
       if (!r.ok) { notify(`익절 ${st.n}단계 매도 실패(${r.error}) — 다음 주기에 다시 시도: ${pos.name || code}`, `tpfail|${code}|${st.n}`); continue; }
       const s = E.summarize(r.fills.map(f => ({ p: f.price, q: f.qty }))), pl = r.fills.reduce((a, f) => a + (f.realized || 0), 0);
       if (!my.length) event('tp', code, { step: st.n, qty: s.qty, price: s.avg || price, peak: st.peak, trail, type });
@@ -461,9 +462,12 @@ function createPaper(deps) {
   }
 
   /* ── 조회 ── */
-  const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, queueAhead: o.queueAhead, reason: o.reason, note: o.note, venue: o.venue || null, origin: o.origin || null });
-  const pubFill = f => ({ id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee, realized: f.realized, reason: f.reason });
-  const pubPos = p => ({ code: p.code, name: p.name, qty: p.qty, avg: p.avg, openedAt: p.openedAt || null, plan: p.plan, stop: stopOf(p), last: (lastPx.get(p.code) || {}).price || null, dayHigh: p.highSeen || null, dayLow: p.lowSeen || null,
+  /* 전략 표시용: 포지션 계획에 적힌 전략 → 없으면 그 계획을 만든 매수 주문의 출처 */
+  const planSid = p => (p && p.plan && (p.plan.sid || sidOfOrigin((orders.get(p.plan.orderId) || {}).origin))) || null;
+  const orderSid = o => (o && (sidOfOrigin(o.origin) || o.sid || (o.side === 'sell' && (o.reason === 'stop' || isTp(o)) ? planSid(positions.get(o.code)) : null))) || null;
+  const pubOrder = o => ({ id: o.id, ts: o.createdAt, code: o.code, name: o.name, side: o.side, type: o.type, price: o.price, qty: o.qty, filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, queueAhead: o.queueAhead, reason: o.reason, note: o.note, venue: o.venue || null, origin: o.origin || null, sid: orderSid(o) });
+  const pubFill = f => ({ sid: orderSid(orders.get(f.orderId)), id: f.id, ts: f.ts, orderId: f.orderId, code: f.code, side: f.side, price: f.price, qty: f.qty, amount: f.amount, fee: f.fee, realized: f.realized, reason: f.reason });
+  const pubPos = p => ({ sid: planSid(p), code: p.code, name: p.name, qty: p.qty, avg: p.avg, openedAt: p.openedAt || null, plan: p.plan, stop: stopOf(p), last: (lastPx.get(p.code) || {}).price || null, dayHigh: p.highSeen || null, dayLow: p.lowSeen || null,
     avail: p.qty - remainOf(openFor(p.code, o => o.side === 'sell' && !isTp(o))) });
   async function state() {
     if (!(await init())) return bad(503, missing ? `${PFX} tables missing` : `${PFX} store unavailable`);

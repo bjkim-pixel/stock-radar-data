@@ -1,4 +1,5 @@
 'use strict';
+const { sidOfOrigin } = require('./opt-col');
 /* ════════════════════════════════════════════════════════════════════════
    가상매매 성과 리포트 (매매 5단계) — 순수 계산(네트워크·DB 없음)
    · 기간 요약: 실현손익·평가손익·합계·실현 수익률(실현손익 ÷ 판 주식의 매수원가)·같은 기간 코스피 등락률
@@ -46,6 +47,13 @@ function computeReport({ fills = [], orders = [], positions = [], kospi = [], re
   const oById = new Map(orders.map(o => [o.id, o]));
   const F = fills.filter(f => inR(f.ts));
   const nameOf = c => names[c] || (positions.find(p => p.code === c) || {}).name || (orders.find(o => o.code === c && o.name) || {}).name || c;
+  // 전략 표시: 자동매매 매수 주문은 출처(origin)에서, 매도는 그 종목을 마지막으로 산 자동매매 전략으로 이어서 추정(직접 매수가 끼면 끊김)
+  const fsid = new Map(), lastBuy = new Map();
+  for (const f of [...fills].sort((a, b) => a.ts - b.ts)) {
+    const o = oById.get(f.orderId), own = sidOfOrigin(o && o.origin);
+    if (f.side === 'buy') { lastBuy.set(f.code, own || null); fsid.set(f.id, own || null); } else fsid.set(f.id, own || lastBuy.get(f.code) || null);
+  }
+  const osid = new Map(); for (const f of fills) if (!osid.get(f.orderId) && fsid.get(f.id)) osid.set(f.orderId, fsid.get(f.id));
 
   // 기간 요약
   const sells = F.filter(f => f.side === 'sell'), buys = F.filter(f => f.side === 'buy');
@@ -121,7 +129,7 @@ function computeReport({ fills = [], orders = [], positions = [], kospi = [], re
   // 주문 내역(기간, 최신순)
   const list = orders.filter(o => inR(o.createdAt)).sort((a, b) => b.createdAt - a.createdAt).slice(0, 300).map(o => ({
     id: o.id, ts: o.createdAt, code: o.code, name: o.name || nameOf(o.code), side: o.side, type: o.type, price: o.price, qty: o.qty,
-    filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, source: sourceOf(o), note: o.note || null,
+    filled: o.filled, avg: o.filled ? o.avg : null, status: o.status, source: sourceOf(o), note: o.note || null, sid: sidOfOrigin(o.origin) || osid.get(o.id) || null,
   }));
 
   // 일별 거래 요약(기간 안) + 체결 목록(최신순, 기간 안) — 화면에서 주별·월별로 묶어 보여 줌
@@ -133,7 +141,7 @@ function computeReport({ fills = [], orders = [], positions = [], kospi = [], re
   }
   for (const t of trips) { const r = dayRow(kstDay(t.closeTs)); r.trades++; if (t.realized > 0) r.wins++; }
   const daily = [...dm.values()].sort((a, b) => (a.day < b.day ? 1 : -1)).map(r => ({ ...r, buyAmt: Math.round(r.buyAmt), sellAmt: Math.round(r.sellAmt), realized: Math.round(r.realized), costSold: Math.round(r.costSold), fee: Math.round(r.fee) }));
-  const fillList = F.slice().sort((a, b) => b.ts - a.ts).slice(0, 1500).map(f => ({ ts: f.ts, day: kstDay(f.ts), code: f.code, name: nameOf(f.code), side: f.side, price: f.price, qty: f.qty, amount: Math.round(f.amount), fee: Math.round(f.fee || 0), realized: f.realized == null ? null : Math.round(f.realized), reason: f.reason || null }));
+  const fillList = F.slice().sort((a, b) => b.ts - a.ts).slice(0, 1500).map(f => ({ ts: f.ts, day: kstDay(f.ts), code: f.code, name: nameOf(f.code), side: f.side, price: f.price, qty: f.qty, amount: Math.round(f.amount), fee: Math.round(f.fee || 0), realized: f.realized == null ? null : Math.round(f.realized), reason: f.reason || null, sid: fsid.get(f.id) || null }));
 
   return { ok: true, from, to, summary, stats, codes, monthly, daily, fills: fillList, slippage, orders: list, rejects: rejects.slice(0, 200) };
 }

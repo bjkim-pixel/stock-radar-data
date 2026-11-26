@@ -22,4 +22,7 @@ function createOptCol(col, { onMissing } = {}) {
 /* 주문 출처 표기: 'auto'(전략 지정 없음) 또는 'auto:<전략ID>'. 그 밖의 값은 버림(사람이 낸 주문 = null) */
 const cleanOrigin = v => (typeof v === 'string' && /^auto(:[A-Za-z0-9_-]{1,40})?$/.test(v) ? v : null);
 
-module.exports = { createOptCol, cleanOrigin };
+/* 주문 출처('auto:<전략ID>')에서 전략 ID 만 꺼냄 — 화면에서 "어느 전략이 낸 주문·보유인지" 글자로 표시하는 데 씀 */
+const sidOfOrigin = v => { const m = /^auto:([A-Za-z0-9_-]{1,40})$/.exec(typeof v === 'string' ? v : ''); return m ? m[1] : null; };
+
+module.exports = { createOptCol, cleanOrigin, sidOfOrigin };
