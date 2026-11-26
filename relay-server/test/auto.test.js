@@ -384,23 +384,18 @@ test('개인 계좌수: 상한을 150%로 올리면 250%만 승인 필요', asyn
   const P = h.db.auto_runs['2026-11-16'].payload;
   assert.ok(!P.picks.find(p => p.code === 'A').kwHigh); assert.equal(P.picks.find(p => p.code === 'D').kwHigh, true);
 });
-test('개인 계좌수: 자동 승인 설정이어도 상한 이상 후보는 자동 승인 제외, 알림에 안내, 직접 승인하면 매수', async () => {
+test('개인 계좌수: 가상매매는 상한 이상 후보도 알림 직후 즉시 자동 승인(알림엔 안내만)', async () => {
   const h = harness({ params: { approval: 'auto' }, kw: { A: SN(1000, 700), D: SN(1000, 2500) } });
   await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick();
   assert.match(h.sent[0], /개인 계좌수가 8월 기준 100% 이상인 종목\(종목D 250%\)/);
   await h.A.tick(); await h.A.tick();
-  let P = h.db.auto_runs['2026-11-16'].payload;
-  assert.deepEqual((P.approved || []).slice().sort(), ['A']);        // D 는 제외
-  const msg = JSON.stringify(await h.A.siteApprove('buy', [P.picks.findIndex(p => p.code === 'D') + 1], null));
-  P = h.db.auto_runs['2026-11-16'].payload;
-  assert.deepEqual((P.approved || []).slice().sort(), ['A', 'D'], String(msg));   // 자동 승인 뒤에도 직접 승인은 통과
-  assert.deepEqual(P.decision.nums.slice().sort(), [1, 2]);
+  const P = h.db.auto_runs['2026-11-16'].payload;
+  assert.deepEqual((P.approved || []).slice().sort(), ['A', 'D']);
 });
-test('개인 계좌수: 후보가 전부 상한 이상이면 자동 승인 없음', async () => {
+test('개인 계좌수: 가상매매는 후보가 전부 상한 이상이어도 자동 승인', async () => {
   const h = harness({ params: { approval: 'auto' }, kw: { A: SN(1000, 1500), D: SN(1000, 2500) } });
   await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick(); await h.A.tick();
-  assert.ok(!(h.db.auto_runs['2026-11-16'].payload.approved || []).length);
-  assert.equal(h.db.auto_runs['2026-11-16'].status, 'noticed');
+  assert.deepEqual((h.db.auto_runs['2026-11-16'].payload.approved || []).slice().sort(), ['A', 'D']);
 });
 
 test('전략의 스마트머니 진단 기간: 기본 6개월(126), 1개월·3개월·전체 선택, 후보 사유에 기간 표시', async () => {
