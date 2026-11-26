@@ -19,8 +19,10 @@ function kst(ms) {
 }
 const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
 
-function createGhCron({ token, repo = 'bjkim-pixel/stock-radar-data', ref = 'main', fetch: F = globalThis.fetch, now = Date.now, log = console.log, slots = SLOTS } = {}) {
+function createGhCron({ token, repo = 'bjkim-pixel/stock-radar-data', ref = 'main', fetch: F = globalThis.fetch, now = Date.now, log = console.log, slots = SLOTS, notify = null } = {}) {
   const fired = new Set();
+  const alerted = new Set();   // 같은 날 같은 사유 알림은 1번만
+  const alert = async (key, msg) => { if (!notify || alerted.has(key)) return; alerted.add(key); try { await notify(msg); } catch (_) {} };
   let warned = false;
   const H = { Accept: 'application/vnd.github+json', 'User-Agent': 'stock-radar-relay', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 
@@ -40,8 +42,13 @@ function createGhCron({ token, repo = 'bjkim-pixel/stock-radar-data', ref = 'mai
   }
 
   async function tick() {
-    if (!token) { if (!warned) { warned = true; log('[gh-cron] GH_DISPATCH_TOKEN 없음 — GitHub 정시 실행기 꺼짐(예약 지연 문제 그대로)'); } return []; }
     const t = now(), k = kst(t), out = [];
+    if (!token) {
+      if (!warned) { warned = true; log('[gh-cron] GH_DISPATCH_TOKEN 없음 — GitHub 정시 실행기 꺼짐(예약 지연 문제 그대로)'); }
+      const due = slots.some(s => s.days.includes(k.dow) && k.min >= toMin(s.at) && k.min <= toMin(s.at) + 30);
+      if (due) await alert(`${k.date}|notoken`, '⚠️ GitHub 정시 실행기 꺼짐: Render 환경변수 GH_DISPATCH_TOKEN이 없어 상시1(16:05·18:05) 정시 실행을 못 합니다. 토큰을 설정해 주세요.');
+      return [];
+    }
     for (const s of slots) {
       if (!s.days.includes(k.dow)) continue;
       const at = toMin(s.at), key = `${k.date}|${s.wf}|${s.at}`;
@@ -50,7 +57,7 @@ function createGhCron({ token, repo = 'bjkim-pixel/stock-radar-data', ref = 'mai
       const slotMs = t - (k.min - at) * 60e3;
       if (await alreadyRan(s.wf, slotMs - 120e3)) { log(`[gh-cron] ${s.label} ${s.at} 이미 실행됨 — 건너뜀`); continue; }
       try { await dispatch(s.wf); out.push(key); log(`[gh-cron] ${s.label} ${s.wf} ${s.at} 실행 요청${k.min - at > 3 ? ` (${k.min - at}분 늦게)` : ''}`); }
-      catch (e) { fired.delete(key); log(`[gh-cron] ${s.label} ${s.wf} 실행 요청 실패: ${e.message}`); }
+      catch (e) { fired.delete(key); log(`[gh-cron] ${s.label} ${s.wf} 실행 요청 실패: ${e.message}`); await alert(`${key}|fail`, `⚠️ GitHub 정시 실행 요청 실패(${s.label} ${s.at}): ${e.message} — 토큰 만료·권한(Actions: Read and write)을 확인하세요.`); }
     }
     return out;
   }

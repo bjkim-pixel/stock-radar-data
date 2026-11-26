@@ -4004,7 +4004,7 @@ trade.attachAuto(autoTrade);   // 사이트 자동매매 카드(/trade/auto/stat
 setInterval(() => { if (!trade.sweepReady()) return; autoTrade.tick().catch(e => console.error('[자동매매] tick 실패:', e.message)); }, 30000);
 
 // GitHub 예약(cron)이 수시간 늦거나 빠지는 문제 → 이 서버가 KST 정시에 [상시1·3·5] 워크플로를 직접 실행 요청(gh-cron.js, 토큰 GH_DISPATCH_TOKEN)
-const ghCron = require('./gh-cron').createGhCron({ token: process.env.GH_DISPATCH_TOKEN || '' });
+const ghCron = require('./gh-cron').createGhCron({ token: process.env.GH_DISPATCH_TOKEN || '', notify: (m) => sendTelegram(m) });
 setInterval(() => { ghCron.tick().catch(e => console.error('[gh-cron] tick 실패:', e.message)); }, 30000);
 
 
