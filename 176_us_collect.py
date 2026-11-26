@@ -95,6 +95,7 @@ def main():
     cur.execute("select code,kis_excd,kis_sym,name_ko from us_master"); known = {r[0]: r[1:] for r in cur.fetchall()}
     log(f"# 해외 종목 수집 {datetime.datetime.utcnow():%Y-%m-%d %H:%M} UTC · {'백필' if BACKFILL else '일일'} · 대상 {len(targets)}개")
     ok, skipped, failed, nrows, nrights = 0, [], [], 0, 0
+    infolog = []
     for code in targets:
         try:
             cands = [(known[code][0], known[code][1])] if code in known else candidates(code)
@@ -106,24 +107,29 @@ def main():
             if not o: failed.append(code); continue
             is_etf = (o.get("etyp_nm") or "") == "ETF" or code in etf
             name_ko = (known.get(code) or (0, 0, None))[2]; name_en = None
+            d, _ = kget("/uapi/overseas-price/v1/quotations/search-info", "CTPF1702R", {"PRDT_TYPE_CD": PRDT[ex], "PDNO": sym})
+            i = d.get("output") or {}
             if not name_ko:
-                d, _ = kget("/uapi/overseas-price/v1/quotations/search-info", "CTPF1702R", {"PRDT_TYPE_CD": PRDT[ex], "PDNO": sym})
-                i = d.get("output") or {}
                 name_ko, name_en = i.get("prdt_name") or None, i.get("prdt_eng_name") or None
-                if i.get("ovrs_stck_etf_risk_drtp_cd"): is_etf = True
+            if i.get("ovrs_stck_etf_risk_drtp_cd"): is_etf = True
+            # 종목 소개용: KIS 상품기본정보(CTPF1702R) + 현재가상세 중 값이 있는 항목을 그대로 저장
+            info = {"si": {k: v for k, v in i.items() if str(v).strip() not in ("", "0", "00000000")},
+                    "pd": {k: v for k, v in o.items() if k in ("e_icod", "etyp_nm", "e_parp", "e_hogau", "vnit", "e_ordyn", "curr", "shar") and str(v).strip()}}
+            if len(infolog) < 4 or code in ("SPY", "NVDA", "SOXX", "0700.HK"):
+                log(f"[info] {code} {json.dumps(info, ensure_ascii=False)[:1800]}"); infolog.append(code)
             shares = int(num(o.get("shar")) or 0) or None
             rate = num(o.get("t_rate"))
             cur.execute("""insert into us_master(code,kis_excd,kis_sym,name_en,name_ko,is_etf,ccy,sector,listed_shares,last,base,
-                h52p,h52d,l52p,l52d,per,pbr,eps,bps,mkt_cap,krw_rate,updated_at)
-              values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())
+                h52p,h52d,l52p,l52d,per,pbr,eps,bps,mkt_cap,krw_rate,info,updated_at)
+              values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())
               on conflict(code) do update set kis_excd=excluded.kis_excd,kis_sym=excluded.kis_sym,
                 name_en=coalesce(excluded.name_en,us_master.name_en),name_ko=coalesce(excluded.name_ko,us_master.name_ko),
                 is_etf=excluded.is_etf,ccy=excluded.ccy,sector=excluded.sector,listed_shares=excluded.listed_shares,last=excluded.last,
                 base=excluded.base,h52p=excluded.h52p,h52d=excluded.h52d,l52p=excluded.l52p,l52d=excluded.l52d,per=excluded.per,
-                pbr=excluded.pbr,eps=excluded.eps,bps=excluded.bps,mkt_cap=excluded.mkt_cap,krw_rate=excluded.krw_rate,updated_at=now()""",
+                pbr=excluded.pbr,eps=excluded.eps,bps=excluded.bps,mkt_cap=excluded.mkt_cap,krw_rate=excluded.krw_rate,info=excluded.info,updated_at=now()""",
               (code, ex, sym, name_en, name_ko, is_etf, o.get("curr"), (o.get("e_icod") or None), shares, num(o.get("last")), num(o.get("base")),
                num(o.get("h52p")), dt(o.get("h52d")), num(o.get("l52p")), dt(o.get("l52d")), num(o.get("perx")), num(o.get("pbrx")),
-               num(o.get("epsx")), num(o.get("bpsx")), num(o.get("tomv")), rate))
+               num(o.get("epsx")), num(o.get("bpsx")), num(o.get("tomv")), rate, json.dumps(info, ensure_ascii=False)))
             rows = daily(ex, sym, BACKFILL)
             vals = [(code, dt(x), num(r["open"]), num(r["high"]), num(r["low"]), num(r["clos"]), int(num(r.get("tvol")) or 0),
                      num(r.get("tamt")), num(r.get("rate")), shares) for x, r in rows.items()]

@@ -1945,9 +1945,10 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 <section id="v-ovs" class="hide">
   <div style="margin:12px 0 4px;display:flex;gap:8px;align-items:stretch"><button class="btn ghost" id="oBackTop" style="flex:none">← 이전 화면으로</button><select id="ovsSel" class="df" title="해외 종목·ETF 선택" style="flex:1;min-width:0;height:auto;margin:0"></select></div>
   <div class="card" id="ovsHead"><div class="load sk"></div></div>
+  <div class="card" id="ovsInfoCard" style="margin-top:10px;display:none"><h3>종목 정보 <span class="r faint" style="font-weight:400">한국투자증권 KIS</span></h3><div id="ovsInfo"></div></div>
   <div class="card" style="margin-top:10px"><h3>시세 정보 <span class="r" id="ovsQtSub"></span></h3><div id="ovsQt"></div></div>
   <div class="qf seg" id="ovsPer" style="margin:10px 0 0"><button class="fchip" data-v="21">1개월</button><button class="fchip" data-v="63">3개월</button><button class="fchip" data-v="126" aria-pressed="true">6개월</button><button class="fchip" data-v="all">연초 이후</button></div>
-  <div class="card" style="margin-top:10px"><h3>가격 · 이동평균 <span class="r" id="ovsRange"></span></h3><div id="ovsPrice"><div class="load sk"></div></div></div>
+  <div class="card" style="margin-top:10px"><h3>가격 · 이동평균 <span class="r" id="ovsRange"></span></h3><div class="legend" id="ovsPriceLg"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--mac1)"></i>MA5 (5일)</span><span><i style="background:var(--mac2)"></i>MA20 (20일)</span><span><i style="background:var(--mac3)"></i>MA120 (120일)</span><span><i style="background:none;border-top:1px dashed var(--ink-3);height:0;vertical-align:4px"></i>기간 고점</span></div><div id="ovsPrice"><div class="load sk"></div></div></div>
   <div class="card" id="ovsPfCard" style="margin-top:12px"><h3 id="ovsPfTitle">포트폴리오 <span class="r" id="ovsPfSub"></span></h3><div id="ovsPf"></div></div>
   <div class="card" id="ovsWtCard" style="margin-top:12px"><h3>무게/주식수 <span class="r" id="ovsWtRange"></span></h3><div id="ovsWt"></div><div id="ovsWtTop"></div></div>
   <div class="card" style="margin-top:12px"><h3>거래량 <span class="r" id="ovsVolRange"></span></h3><div id="ovsVol"></div></div>
@@ -14744,6 +14745,7 @@ async function ovsLoad(code){
   $("#ovsDivTitle").firstChild.textContent=etf?"분배금 ":"배당 ";
   try{ovsHead();}catch(e){console.error("ovs head",e);}
   try{ovsQt();}catch(e){console.error("ovs qt",e);}
+  try{ovsInfo();}catch(e){console.error("ovs info",e);}
   try{ovsPf();}catch(e){console.error("ovs pf",e);}
   try{ovsDiv();}catch(e){console.error("ovs div",e);}
   $$("#ovsPer .fchip").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===O.per)));
@@ -14758,6 +14760,32 @@ function ovsHead(){
     <div class="etf-tags">${tags.map(t=>`<span>${escH(t)}</span>`).join("")}</div>
     <div class="etf-px">${ovsP(px)}${ch!=null?`<small class="${sgn(ch)}">${ch>0?"+":""}${N(ch,ovsDec())} (${pm(cp,2)}%)</small>`:""}</div>
     <div class="etf-meta">${krw!=null?`원화 환산 약 <b>${N(krw,0)}원</b> <span class="faint">(환율 ${N(ovsRate(),2)})</span><span class="sep">·</span>`:""}시가총액 <b>${ovsBig(+m.mkt_cap)}</b>${ovsKrw(+m.mkt_cap)!=null?` <span class="faint">(약 ${fmtEokJo(ovsKrw(+m.mkt_cap)/EOK)})</span>`:""}${last?`<span class="sep">·</span>${last.trade_date} 종가`:""}</div>`;
+}
+/* 종목 정보 카드 — KIS 상품기본정보(CTPF1702R)·현재가상세에서 수집해 us_master.info 에 저장한 값. 값이 있는 항목만 표시 */
+function ovsInfo(){
+  const m=S.ovs.m,card=$("#ovsInfoCard"),host=$("#ovsInfo");
+  let I=m.info;if(typeof I==="string")try{I=JSON.parse(I);}catch(e){I=null;}
+  const si=(I&&I.si)||{},pd=(I&&I.pd)||{},v=k=>{const x=si[k]!=null?si[k]:pd[k];return x==null?"":String(x).trim();};
+  const dt8=x=>/^\d{8}$/.test(x)?`${x.slice(0,4)}-${x.slice(4,6)}-${x.slice(6,8)}`:x;
+  const rows=[];
+  const add=(k,val)=>{if(val)rows.push([k,escH(val)]);};
+  add("종류",m.is_etf?"ETF (상장지수펀드)":"주식");
+  add("영문명",v("prdt_eng_name")||m.name_en||"");
+  add("정식 상품명",v("prdt_name120")||v("prdt_name"));
+  add("상장 거래소",v("ovrs_excg_name")||v("tr_mket_name")||OVS_EX[m.kis_excd]||"");
+  add("국가",v("natn_name"));
+  add("거래 통화",v("crcy_name")||v("tr_crcy_cd")||m.ccy||"");
+  add("상품 분류",v("prdt_clsf_name"));
+  add(m.is_etf?"ETF 유형":"유형",v("etyp_nm"));
+  add("업종",v("e_icod")||m.sector||"");
+  add("상장일",dt8(v("lstg_dt")));
+  const lev=+v("etp_chas_erng_rt_dbnb");if(lev&&lev!==1)add("추적 배수",N(lev,2)+"배");
+  add("액면(주당)",+v("ovrs_papr")?v("ovrs_papr"):"");
+  if(v("mint_svc_yn")==="Y")add("소수점 매매","가능");
+  if(v("dtm_tr_psbl_yn")==="Y")add("주간거래","가능");
+  if(!rows.length){card.style.display="none";return;}
+  card.style.display="";
+  host.innerHTML=`<div class="etf-qt">${rows.map(([k,x])=>`<div><span>${k}</span><b style="font-weight:600">${x}</b></div>`).join("")}</div>`;
 }
 function ovsQt(){
   const O=S.ovs,m=O.m,d=O.d,last=d.at(-1),prev=d.at(-2);

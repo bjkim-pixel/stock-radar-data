@@ -18,6 +18,7 @@ create table if not exists public.us_master (
   krw_rate       numeric,                    -- 원화 환율(거래통화 1단위당 원)
   updated_at     timestamptz not null default now()
 );
+alter table public.us_master add column if not exists info jsonb;   -- KIS 상품기본정보·현재가상세 원본(종목 소개용)
 create table if not exists public.us_daily (
   code        text not null,
   trade_date  date not null,
