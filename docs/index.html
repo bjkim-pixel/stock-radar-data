@@ -899,7 +899,7 @@ a.gm-tl{cursor:pointer;color:var(--ink);font-weight:650;text-decoration:underlin
 .trkm{font-size:11px;color:var(--ink-2);margin-top:3px;display:flex;flex-wrap:wrap;gap:2px 10px}.trkm .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}
 .trkl{font-size:11px;margin-top:2px;line-height:1.5}.trkl .lvl{color:var(--ink-3);font-size:10px;margin-right:2px}.trkl .lvs{margin-right:8px;white-space:nowrap}.trkl .kwc{padding:0 3px;border-radius:3px}
 .trk .trkc{margin-top:4px;min-height:150px}
-.ldl{display:block;font-size:10px;line-height:1.35;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin-top:1px}.ldl .lvl{color:var(--ink-3);font-size:9.5px;margin-right:2px}.ldl .lvs{margin-right:7px}.ldl .kwc{padding:0 3px;border-radius:3px}
+.au-ldl{font-size:11px!important;margin-top:3px!important}.ldl{display:block;font-size:10px;line-height:1.35;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin-top:1px}.ldl .lvl{color:var(--ink-3);font-size:9.5px;margin-right:2px}.ldl .lvs{margin-right:7px}.ldl .kwc{padding:0 3px;border-radius:3px}
 
 /* 로그인 창 */
 #authBack{position:fixed;inset:0;z-index:9999;background:var(--page);display:flex;align-items:center;justify-content:center;padding:16px}
@@ -13717,6 +13717,7 @@ function auFlowHtml(){
       const ex=sells.length?[pos?"now":"ok",`${pos?"일부 ":""}청산 ${rz?won(rz):""}`.trim()]:["idle","청산 –"];
       const p=it.p;
       return `<div class="au-fl"><div class="t"><b>${auNm(it.name,it.code)}</b><span class="faint" style="font-size:11px">${trdEsc(it.code)}${p&&p.sector?` · ${trdEsc(p.sector)}`:""}</span>${p?`<span class="r">${N(p.score,1)}점 · 선정가 ${N(p.price)} <span class="${trdCls(p.changePct)}">${auPct(p.changePct)}</span></span>`:""}</div>
+        ${/^\d{6}$/.test(it.code||"")?`<div class="ldl au-ldl"><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${it.code}">–</span> <span data-smx="ltr" data-code="${it.code}">–</span></span><span class="lvs"><span class="lvl">매집 8월</span><span class="kwc" data-kw="r8" data-kwc="${it.code}">–</span></span></div>`:""}
         <div class="au-chips" style="margin-top:4px">${chip("ok","선정")}${chip(...it.ap)}${chip(...it.od)}${chip(...hd)}${chip(...ex)}</div>
         ${it.why?`<div class="why"><b>선정 이유</b> ${trdEsc(it.why)}</div>`:it.old?'<div class="why faint">이전에 산 종목이 아직 보유 중이에요 — 손절·익절 감시 중</div>':""}</div>`;
     }).join("");
