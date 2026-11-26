@@ -12,6 +12,8 @@ T0 = time.time(); EOK = 1e8; COST = 0.25
 NOLIM = 'nolimit' in sys.argv[1:]   # 시간 청산 없음: 손절·익절로만 나감(자료 끝까지 안 나가면 마지막 종가로 평가)
 WMIN, MAXAGE, BRK, CHASE, CAPMIN, HOLD, STOP = 0.1, 63, 1.0, 6.0, 1000 * EOK, (10 ** 6 if NOLIM else 10), 5.0
 STOPS = (5.0, 8.0, 10.0) if NOLIM else (5.0,)
+TP15 = 'tp15' in sys.argv[1:]   # 익절 손익비 1:2·1:3 — +10%(50%) / +15%(50%, 최대 목표)
+TP1, TP2 = (1.10, 1.15) if TP15 else (1.08, 1.12)
 T_MIN = int(os.environ.get("TMIN", "100"))
 out = []
 def p(s=""): out.append(str(s)); print(s, flush=True)
@@ -108,8 +110,8 @@ base_y, sigs, trades = [], [], []
 def simulate(t, n, o, h, l, c, v, sp=STOP):
     ent = c[t]; stop = ent * (1 - sp / 100); left, pnl, k, why = 1.0, 0.0, t + 1, ""
     while True:
-        if left == 1.0 and h[k] >= ent * 1.08: pnl += 0.04; left = 0.5; stop = max(stop, ent * 1.0035)
-        if left == 0.5 and h[k] >= ent * 1.12: pnl += 0.06; left = 0; why = "익절2"; break
+        if left == 1.0 and h[k] >= ent * TP1: pnl += 0.5 * (TP1 - 1); left = 0.5; stop = max(stop, ent * 1.0035)
+        if left == 0.5 and h[k] >= ent * TP2: pnl += 0.5 * (TP2 - 1); left = 0; why = "익절2"; break
         if c[k] < stop: pnl += left * (c[k] / ent - 1); why = "손절" if stop < ent else "본전손절"; break
         if k - t >= HOLD or k + 1 >= n: pnl += left * (c[k] / ent - 1); why = "시간청산" if k - t >= HOLD else "자료끝"; break
         k += 1
@@ -176,10 +178,10 @@ def tline(lab, x):
     wn, ls = x[x.ret > 0].ret.sum(), -x[x.ret <= 0].ret.sum()
     p(f"| {lab} | {len(x)} | {(x.ret>0).mean()*100:.0f}% | {x.ret.mean():+.2f} | {x.ret.median():+.2f} | {wn/ls if ls>0 else float('inf'):.2f} | {x.hold.mean():.1f} | " + " · ".join(f"{k} {v_}" for k, v_ in x.why.value_counts().items()) + " |")
 HDR = "| 구분 | 거래 | 승률 | 평균% | 중앙값% | PF | 평균 보유일 | 청산 사유 |\n|---|---:|---:|---:|---:|---:|---:|---|"
-p(f"\n## 2. 매매 모의(종가 매수 · 매수가 −5% 종가 손절 · +8/+12% 익절 · {'시간 청산 없음' if NOLIM else '10거래일'} · 비용 0.25% · 같은 종목 보유 중 재매수 없음)\n"); p(HDR)
+p(f"\n## 2. 매매 모의(종가 매수 · 매수가 −5% 종가 손절 · {'+10/+15%(손익비 1:2·1:3)' if TP15 else '+8/+12%'} 익절 · {'시간 청산 없음' if NOLIM else '10거래일'} · 비용 0.25% · 같은 종목 보유 중 재매수 없음)\n"); p(HDR)
 for vn in VARS: tline(vn, TR[TR["var"] == vn])
 if NOLIM:
-    p("\n### 손절 폭 비교(익절 +8/+12% · 시간 청산 없음)\n"); p(HDR)
+    p(f"\n### 손절 폭 비교(익절 {'+10/+15%' if TP15 else '+8/+12%'} · 시간 청산 없음)\n"); p(HDR)
     for vn in list(VARS)[:2]:
         for sp in (5, 8, 10): tline(f"{vn.split(' ')[0]} 손절 −{sp}%", TR[TR["var"] == (vn if sp == 5 else f"{vn} | 손절 −{sp}%")])
     X = TR[TR["var"] == MAIN]
