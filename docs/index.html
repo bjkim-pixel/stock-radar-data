@@ -14772,17 +14772,18 @@ function ovsInfo(){
   const rows=[];
   const add=(k,val)=>{if(val)rows.push([k,escH(val)]);};
   add("종류",m.is_etf?"ETF (상장지수펀드)":"주식");
-  add("영문명",v("prdt_eng_name")||m.name_en||"");
-  add("정식 상품명",v("prdt_name120")||v("prdt_name"));
   add("상장 거래소",v("ovrs_excg_name")||v("tr_mket_name")||OVS_EX[m.kis_excd]||"");
   add("국가",v("natn_name"));
   add("거래 통화",v("crcy_name")||v("tr_crcy_cd")||m.ccy||"");
-  add("상품 분류",v("prdt_clsf_name"));
   add(m.is_etf?"ETF 유형":"유형",v("etyp_nm"));
   add("업종",v("e_icod")||m.sector||"");
   add("상장일",dt8(v("lstg_dt")));
   const lev=+v("etp_chas_erng_rt_dbnb");if(lev&&lev!==1)add("추적 배수",N(lev,2)+"배");
-  add("액면(주당)",+v("ovrs_papr")?v("ovrs_papr"):"");
+  if(+v("sll_unit_qty")>1)add("거래 단위",N(+v("sll_unit_qty"),0)+"주");
+  if(+v("e_hogau"))add("호가 단위",v("e_hogau")+" "+(m.ccy||""));
+  if(v("sgle_item_lvrg_etp_yn")==="Y")add("특성","단일종목 레버리지 ETP");
+  add("ISIN",v("std_pdno"));
+  add("블룸버그",v("blbg_tckr_text"));
   if(v("mint_svc_yn")==="Y")add("소수점 매매","가능");
   if(v("dtm_tr_psbl_yn")==="Y")add("주간거래","가능");
   if(!rows.length){card.style.display="none";return;}
