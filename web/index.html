@@ -1057,7 +1057,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .trd-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 .trd-sum>div{background:var(--surface-2);border-radius:8px;padding:8px 10px}.trd-sum .k{font-size:11.5px;color:var(--ink-3)}.trd-sum .v{font-size:17px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
 .trd-tb{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}.trd-tb th{font-size:11px;color:var(--ink-3);font-weight:600;text-align:right;padding:5px 6px;border-bottom:1px solid var(--border)}
-.trd-tb td{text-align:right;padding:6px;border-bottom:1px solid var(--grid)}.trd-tb th:first-child,.trd-tb td:first-child{text-align:left}
+.trd-fl{min-width:430px}.trd-fl th,.trd-fl td{white-space:nowrap}.trd-fl th.nm,.trd-fl td.nm,.trd-fl th.g,.trd-fl td.g{text-align:left}.trd-tb td{text-align:right;padding:6px;border-bottom:1px solid var(--grid)}.trd-tb th:first-child,.trd-tb td:first-child{text-align:left}
 .trd-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 #trdPaneAuto th{position:static}
 #trdPaneAuto .trd-tb th,#trdPaneAuto .trd-tb td{text-align:left}#trdPaneAuto .trd-tb td.n,#trdPaneAuto .trd-tb th.n{text-align:right}
@@ -14296,6 +14296,13 @@ function trdPeriodLabel(k,mode){
   if(mode==="month")return k.replace("-","년 ")+"월";
   const w=["일","월","화","수","목","금","토"][new Date(k+"T00:00:00Z").getUTCDay()];return `${k.slice(5)} (${w})`;
 }
+/* 같은 분·같은 종목·같은 구분의 체결은 한 줄로 합쳐 평균단가로 보여줌(증권사 MTS 체결내역처럼) */
+function trdFlGroup(fl){const g=new Map(),out=[];
+  for(const f of fl){const k=[f.day,Math.floor((f.ts||0)/60000),f.code,f.sid,f.side,f.reason||""].join("|"),a=g.get(k);
+    if(a){a.qty+=f.qty||0;a.amount+=f.amount||0;if(f.realized!=null)a.realized=(a.realized||0)+f.realized;}
+    else{const x={...f,qty:f.qty||0,amount:f.amount||0};g.set(k,x);out.push(x);}}
+  for(const x of out)x.avg=x.qty?x.amount/x.qty:(x.price||0);
+  return out;}
 function trdPerHtml(R){
   TRD.per=TRD.per||{mode:"day",open:null};
   const m=TRD.per.mode,D=R.daily||[],F=R.fills||[];
@@ -14307,7 +14314,7 @@ function trdPerHtml(R){
   const body=rows.length?`<div class="trd-scroll"><table class="trd-tb"><thead><tr><th>${m==="day"?"일":m==="week"?"주":"월"}</th><th>매수</th><th>매도</th><th>실현손익</th><th>수익률</th><th>매매(승)</th><th>체결</th></tr></thead><tbody>${rows.map(r=>{
     const pct=r.costSold>0?r.realized/r.costSold*100:null,open=TRD.per.open===r.k;
     const fl=open?F.filter(f=>trdPeriodKey(f.day,m)===r.k).sort((a,b)=>a.ts-b.ts):[];
-    return `<tr class="au-row" data-perk="${trdEsc(r.k)}"><td>${open?"▾":"▸"} ${trdEsc(trdPeriodLabel(r.k,m))}</td><td class="n">${r.buyAmt?trdFmtAmt(r.buyAmt):"–"}</td><td class="n">${r.sellAmt?trdFmtAmt(r.sellAmt):"–"}</td><td class="n ${trdCls(r.realized)}">${r.sells?trdWon(r.realized):"–"}</td><td class="n ${trdCls(pct)}">${pct==null?"–":trdPct(pct)}</td><td class="n">${r.trades?`${N(r.trades)}(${N(r.wins)})`:"–"}</td><td class="n">${N(r.buys+r.sells)}</td></tr>${open?`<tr><td colspan="7" class="au-det"><table class="trd-tb"><thead><tr><th>시각</th><th>종목</th><th>구분</th><th>수량·가격</th><th>금액</th><th>실현손익</th></tr></thead><tbody>${fl.map(f=>`<tr><td>${m==="day"?"":trdEsc(f.day.slice(5))+" "}${auHMs(f.ts)}</td><td>${auSidTag(f.sid)}${auNm(f.name,f.code)}</td><td><span class="au-sd ${f.side==="buy"?"sdbuy":"sdsell"}">${trdEsc(trdFillWhy(f))}</span></td><td class="n">${N(f.qty)}주 @${N(f.price)}</td><td class="n">${trdFmtAmt(f.amount)}</td><td class="n ${trdCls(f.realized)}">${f.side==="sell"&&f.realized!=null?trdWon(f.realized):"–"}</td></tr>`).join("")||'<tr><td colspan="6" class="faint">체결 내역이 없습니다</td></tr>'}</tbody></table></td></tr>`:""}`;}).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">이 기간에 체결된 거래가 없습니다.</div>';
+    return `<tr class="au-row" data-perk="${trdEsc(r.k)}"><td>${open?"▾":"▸"} ${trdEsc(trdPeriodLabel(r.k,m))}</td><td class="n">${r.buyAmt?trdFmtAmt(r.buyAmt):"–"}</td><td class="n">${r.sellAmt?trdFmtAmt(r.sellAmt):"–"}</td><td class="n ${trdCls(r.realized)}">${r.sells?trdWon(r.realized):"–"}</td><td class="n ${trdCls(pct)}">${pct==null?"–":trdPct(pct)}</td><td class="n">${r.trades?`${N(r.trades)}(${N(r.wins)})`:"–"}</td><td class="n">${N(r.buys+r.sells)}</td></tr>${open?`<tr><td colspan="7" class="au-det"><div class="trd-scroll"><table class="trd-tb trd-fl"><thead><tr><th>시각</th><th class="nm">종목</th><th class="g">구분</th><th>체결수량</th><th>평균단가</th><th>체결금액</th><th>실현손익</th></tr></thead><tbody>${trdFlGroup(fl).map(f=>`<tr><td>${m==="day"?"":trdEsc(f.day.slice(5))+" "}${auHMs(f.ts)}</td><td class="nm">${auSidTag(f.sid)}${auNm(f.name,f.code)}</td><td class="g"><span class="au-sd ${f.side==="buy"?"sdbuy":"sdsell"}">${trdEsc(trdFillWhy(f))}</span></td><td class="n">${N(f.qty)}주</td><td class="n">${N(Math.round(f.avg))}</td><td class="n">${trdFmtAmt(f.amount)}</td><td class="n ${trdCls(f.realized)}">${f.side==="sell"&&f.realized!=null?trdWon(f.realized):"–"}</td></tr>`).join("")||'<tr><td colspan="7" class="faint">체결 내역이 없습니다</td></tr>'}</tbody></table></div></td></tr>`:""}`;}).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12.5px">이 기간에 체결된 거래가 없습니다.</div>';
   const note=F.length>=1500?'<div class="faint" style="font-size:11px;margin-top:6px">체결은 최근 1,500건까지만 펼쳐 볼 수 있어요. 기간을 좁혀 보세요.</div>':"";
   return `<div class="card"><h3>기간별 거래내역 <span class="r" style="display:flex;gap:6px">${b("day","일별")}${b("week","주별")}${b("month","월별")}</span></h3>${body}<div class="faint" style="font-size:11px;margin-top:6px">위 기간 선택 안의 거래를 묶어 보여요 · 줄을 누르면 그 기간 체결이 펼쳐져요 · 수익률 = 실현손익 ÷ 판 주식의 매수원가</div>${note}</div>`;
 }
