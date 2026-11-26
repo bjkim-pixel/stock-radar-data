@@ -7972,6 +7972,7 @@ function gmCompare(p){
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3,#888);padding:0 4px"><span>${ds[0]||""}</span><span>${ds.at(-1)||""}</span></div>
       <div style="margin-top:6px">${leg}</div></div>`;
 }
+function gmOvsHas(c){return !!(c&&S.ovs&&S.ovs.list&&S.ovs.list.some(x=>x.code===c));}   // 해외 수집 종목·ETF 여부(US 탭 링크용)
 function gmCard(p,key,it,period,hot){
   const big=S.gm.big===key, n=big?gmWin(p,S.gm.bigN):gmWin(p,S.gm.allN||period);
   if(p.tab==="GL"){   /* 글로벌 주식: 선택 기간 시작=100 으로 환산한 지수 형태 */
@@ -7980,7 +7981,7 @@ function gmCard(p,key,it,period,hot){
   }
   const sub=it.etf?`<div class="gm-sub">${it.etf}</div>`:(it.s&&!/^\d/.test(it.s)&&p.tab==="US"?`<div class="gm-sub">${it.s}</div>`:"");
   const hold=(it.h&&it.h.length)?`<div class="gm-hold">${it.hn?`<div class="faint" style="font-size:10px">${it.hn}</div>`:""}${it.h.map(h=>`<div class="gm-hl"><span class="nm">${
-      S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:(h.f?`<span title="${h.f.replace(/"/g,"&quot;")}"><b>${h.n}</b> <span class="ko">${h.k||""}</span></span>${h.x?`<span class="mk">${h.x}</span>`:""}`:h.n)}</span><span class="${gmC(h.ch)}">${big&&h.w!=null?`<span class="faint">${N(h.w,1)}% </span>`:""}${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
+      S.codes&&S.codes.find(c=>c.code===h.c)?`<a class="lk" data-code="${h.c}">${h.n}</a>`:(p.tab==="US"&&gmOvsHas(h.c))?`<a class="lk" data-ovs="${escH(h.c)}">${h.n}</a>`:(h.f?`<span title="${h.f.replace(/"/g,"&quot;")}"><b>${h.n}</b> <span class="ko">${h.k||""}</span></span>${h.x?`<span class="mk">${h.x}</span>`:""}`:h.n)}</span><span class="${gmC(h.ch)}">${big&&h.w!=null?`<span class="faint">${N(h.w,1)}% </span>`:""}${gmF(h.ch)}</span></div>`).join("")}</div>`:"";
   let extra="";
   if(big){
     const ds=p.dates.slice(-n);
@@ -7988,7 +7989,7 @@ function gmCard(p,key,it,period,hot){
       <div class="gm-per">${[[21,"1M"],[63,"3M"],[126,"6M"],[252,"1Y"]].map(([v,l])=>`<button class="fchip" data-gmn="${v}" aria-pressed="${S.gm.bigN==v}">${l}</button>`).join("")}</div>${gmHist(p,it)}`;
   }
   return `<div class="gm-c${hot?" "+hot:""}${big?" big":""}" data-gmk="${key}">
-    <div class="gm-h"><span class="gm-n">${it.n}${it.cap!=null?` <span class="gm-cap">${N(it.cap,0)}억</span>`:""}</span>${gmCardVal(it)}</div>${sub}${it.d_?`<div class="gm-desc">${it.d_}</div>`:""}
+    <div class="gm-h"><span class="gm-n">${p.tab==="US"&&gmOvsHas(key.split(":")[1])?`<a class="lk" data-ovs="${escH(key.split(":")[1])}">${it.n}</a>`:it.n}${it.cap!=null?` <span class="gm-cap">${N(it.cap,0)}억</span>`:""}</span>${gmCardVal(it)}</div>${sub}${it.d_?`<div class="gm-desc">${it.d_}</div>`:""}
     <div class="gm-sv">${gmSpark(it.c,n,big,it)}</div>${gmAxis(p,n,big)}${extra}${hold}</div>`;
 }
 function gmGrid(p,g){
@@ -8223,6 +8224,7 @@ function wkCorrHtml(items){
 }
 function renderGlobal(row){
   const p=row.payload; if(!p)return;
+  if(p.tab==="US"&&S.ovs&&!S.ovs.list&&!S.ovs._ld){S.ovs._ld=1;ovsList().then(()=>{S.ovs._ld=0;if(S.ovs.list&&S.ovs.list.length)renderGlobal(row);}).catch(()=>{S.ovs._ld=0;});}
   $("#gmPerSel").style.display=p.tab==="WK"?"none":"";   /* 주봉 추세는 기간 버튼이 따로 있음 */
   if(p.tab==="WK")return renderWeekly(row);
   $("#gmAsOf").textContent=`기준 ${p.as_of}${p.tab==="US"?" (미국 종가)":""} · 수집 ${row.updated_at?fmtUpdTime(row.updated_at):"–"} · 기준지수 ${p.bench}`;
@@ -8253,7 +8255,8 @@ function renderGlobal(row){
     t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash");
   });
   $$("#gmBody .gm-c").forEach(el=>el.onclick=e=>{
-    if(e.target.closest("a.lk")){go("detail",e.target.closest("a.lk").dataset.code);return;}
+    const al=e.target.closest("a.lk");
+    if(al){if(al.dataset.ovs)go("ovs",al.dataset.ovs);else if(al.dataset.code)go("detail",al.dataset.code);return;}
     const nb=e.target.closest("[data-gmn]");
     if(nb){S.gm.bigN=+nb.dataset.gmn;renderGlobal(row);return;}
     const k=el.dataset.gmk;
