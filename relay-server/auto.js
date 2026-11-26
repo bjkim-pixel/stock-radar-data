@@ -140,7 +140,7 @@ function formatMessage(date, picks, ctx = {}) {
     lines.push(`${c.num || (i + 1 + (ctx.startNum || 0))}. ${c.name}(${c.code}) ${s.total}점${c.retry ? ' 🔁 재시도' : ''}`);
     if (c.retry && c.retryWhy) lines.push(`   지난번: ${c.retryWhy}`);
     if (c.inv) lines.push(`   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${(+c.changePct || 0).toFixed(2)}% · ${c.inv.modeKo} · 손절 −${c.inv.stopPct}%${c.inv.tag === 'A' ? ' 종가 마감' : ''}`);
-    else if (c.pb) lines.push(`   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${(+c.changePct || 0).toFixed(2)}% · ${c.pb.barDate.slice(5)} 무게 ${c.pb.rk || 1}위일 평균가 ${fmtN(Math.round(c.pb.vw))}원 대비 ${c.pb.gapPct >= 0 ? '+' : ''}${c.pb.gapPct.toFixed(1)}% 돌파 · 손절 ${fmtN(Math.floor(c.pb.stopPx))}원 아래 종가 마감`);
+    else if (c.pb) lines.push(`   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${(+c.changePct || 0).toFixed(2)}% · ${c.pb.barDate.slice(5)} 기준봉 ${c.pb.refKind === 'vwap' ? '평균가' : '시가'} ${fmtN(Math.round(c.pb.ref || c.pb.vw))}원 대비 ${c.pb.gapPct >= 0 ? '+' : ''}${c.pb.gapPct.toFixed(1)}% 돌파 · 손절 ${fmtN(Math.floor(c.pb.stopPx))}원 아래 종가 마감`);
     else lines.push(ctx.cb ? `   종가 ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${c.changePct.toFixed(2)}% · 고가 대비 ${c.dd != null ? c.dd.toFixed(1) + '%' : '–'}${s.penalty ? ` (감점 −${s.penalty})` : ''}` : `   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${c.changePct.toFixed(2)}% (시가대비 ${c.open > 0 ? ((c.price / c.open - 1) * 100).toFixed(1) : '–'}%) · 체결강도 ${m.cttr.toFixed(0)}%`);
     if (!c.pb && !c.inv) lines.push(`   순매수 외 ${won(m.fAmt)} · 기 ${won(m.oAmt)} · 프 ${won(m.pAmt)} (거래대금 대비 ${(s.ratio * 100).toFixed(1)}%)`);
     lines.push(`   ${c.sector} · ${(c.reasons || []).join(' · ')}`);
@@ -439,8 +439,8 @@ function createAuto(deps) {
     return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed, rejected: rejected.slice(0, 20).map(({ amt, ...x }) => x), alt: [] };
   }
 
-  /* 눌림목(2026-11-26 규칙 교체): "무게/주식수 1·2위일(record_wt)이 3개월 안에 있는 종목 → 주가가 그날 평균가 아래로 빠진 뒤 → 스마트머니 1·3개월 수급이 아직 안 빠졌으면 → 평균가를 완전히 되돌파할 때 매수".
-     일봉(daily_price)·record_wt·smx_state 로 관찰 목록(무장 상태)을 만들어 30분 캐시 → 관찰 종목의 현재가로 오늘 돌파 여부를 판정 */
+  /* 눌림목(2026-11-26 규칙 교체 2): "최근 3개월 기준봉(양봉·종가 상단·큰 거래대금·큰 무게) 중 무게 큰 2개 → 기준봉 시가 아래로 빠진 뒤 → 스마트머니 1·3개월이 안 빠졌으면 → 기준가를 +1% 이상 돌파할 때 매수".
+     일봉(daily_price)·smx_state 로 관찰 목록(무장 상태)을 만들어 30분 캐시 → 관찰 종목의 현재가로 오늘 돌파 여부를 판정 */
   const pb = { at: 0, key: '', data: null };
   async function pbPages(path, max = 40) {
     const out = [];
@@ -451,45 +451,55 @@ function createAuto(deps) {
     }
     return out;
   }
+  const pbOpts = P => ({ wMin: +P.pbWMin || 0.5, capMinEok: +P.capMinEok || 1000, maxAge: +P.pbMaxAge || 63, dipPct: P.pbDipPct == null ? 0 : +P.pbDipPct, breakPct: P.pbBreakPct == null ? 1 : +P.pbBreakPct, chasePct: +P.pbChasePct || 6,
+    bodyPct: P.pbBodyPct == null ? 10 : +P.pbBodyPct, closePos: P.pbClosePos == null ? 70 : +P.pbClosePos, barAmtEok: +P.pbBarAmtEok || 500, barAmtX: +P.pbBarAmtX || 4, ref: P.pbRef === 'vwap' ? 'vwap' : 'open' });
   async function loadPbWatch(P, date) {
-    const key = `${date}|${P.pbWMin}|${P.capMinEok}|${P.pbMaxAge}|${P.pbDipPct}|${P.pbBreakPct}`;
+    const o = pbOpts(P), key = `${date}|${JSON.stringify(o)}`;
     if (pb.data && pb.key === key && Date.now() - pb.at < 30 * 60e3) return pb.data;
-    const o = { wMin: +P.pbWMin || 0.1, capMinEok: +P.capMinEok || 1000, maxAge: +P.pbMaxAge || 63, dipPct: P.pbDipPct == null ? 2 : +P.pbDipPct, breakPct: P.pbBreakPct == null ? 1 : +P.pbBreakPct };
     const last = await D.sbGet('daily_price?select=trade_date&order=trade_date.desc&limit=1');
     const lastD = last && last[0] && last[0].trade_date;
     const prevD = D.prevTradingDay ? D.prevTradingDay(date) : null;
     const res = { lastD, prevD, stale: !!(prevD && lastD && lastD < prevD), watch: [], bars: 0 };
     if (res.stale) { pb.data = res; pb.key = key; pb.at = Date.now(); return res; }
-    const cut = new Date(`${date}T00:00:00Z`); cut.setUTCDate(cut.getUTCDate() - Math.ceil(o.maxAge * 7 / 5) - 4);
-    const cutD = cut.toISOString().slice(0, 10), endD = prevD || lastD;
-    const rec = PB.levels(await pbPages(`record_wt?select=code,rk,trade_date,w,change_pct,trade_amount,volume&trade_date=gte.${cutD}&trade_date=lte.${endD}&w=gte.${o.wMin}&order=code.asc,rk.asc`, 10), o);
-    res.bars = rec.length;
-    const codes = [...new Set(rec.map(b => b.code))], minD = rec.reduce((m, b) => (b.d < m ? b.d : m), '9999');
-    const px = new Map(), mc = new Map(), sm = new Map(), names = new Map();
-    for (let i = 0; i < codes.length; i += 60) {
-      const cs = codes.slice(i, i + 60).join(',');
-      for (const r of await pbPages(`daily_price?select=code,trade_date,close,market_cap&code=in.(${cs})&trade_date=gte.${minD}&trade_date=lte.${endD}&order=code.asc,trade_date.asc`, 10)) {
+    const cutAt = days => { const x = new Date(`${date}T00:00:00Z`); x.setUTCDate(x.getUTCDate() - days); return x.toISOString().slice(0, 10); };
+    const endD = prevD || lastD, cutD = cutAt(Math.ceil(o.maxAge * 7 / 5) + 4), histD = cutAt(Math.ceil((o.maxAge + 25) * 7 / 5) + 6);
+    // 1) 후보 종목: 최근 3개월 안에 무게·거래대금이 큰 날이 있는 종목  2) 그 종목들의 일봉 이력으로 기준봉 모양·20일 평균 거래대금 배수를 판정
+    const heavy = await pbPages(`daily_price?select=code&weight_per_share=gte.${o.wMin}&trade_amount=gte.${o.barAmtEok * 1e8}&market_cap=gte.${o.capMinEok * 1e8}&trade_date=gte.${cutD}&trade_date=lte.${endD}&order=code.asc`, 10);
+    const codes = [...new Set(heavy.map(r => r.code))];
+    res.bars = codes.length;
+    const px = new Map(), sm = new Map(), names = new Map();
+    const dow = d => new Date(`${d}T00:00:00Z`).getUTCDay();
+    for (let i = 0; i < codes.length; i += 40) {
+      const cs = codes.slice(i, i + 40).join(',');
+      for (const r of await pbPages(`daily_price?select=code,trade_date,open,high,low,close,volume,trade_amount,weight_per_share,market_cap&code=in.(${cs})&trade_date=gte.${histD}&trade_date=lte.${endD}&order=code.asc,trade_date.asc`, 12)) {
+        const d = String(r.trade_date).slice(0, 10); if (dow(d) === 0 || dow(d) === 6) continue;   // 일요일 같은 휴장일 중복 행은 버린다
         let a = px.get(r.code); if (!a) px.set(r.code, a = []);
-        a.push({ d: String(r.trade_date).slice(0, 10), c: +r.close }); if (+r.market_cap > 0) mc.set(r.code, +r.market_cap);
+        if (a.length && a[a.length - 1].d === d) a.pop();
+        a.push({ d, o: +r.open, h: +r.high, l: +r.low, c: +r.close, v: +r.volume, a: +r.trade_amount, w: +r.weight_per_share || 0, mc: +r.market_cap || 0 });
       }
       for (const r of await D.sbGet(`smx_state?select=code,win,st,lead_nm,lead_trend&code=in.(${cs})&win=in.(21,63)&limit=500`).catch(() => []) || []) { let a = sm.get(r.code); if (!a) sm.set(r.code, a = []); a.push(r); }
     }
-    if (codes.length) for (let i = 0; i < codes.length; i += 100) for (const r of await D.sbGet(`stocks?select=code,name,security_type&code=in.(${codes.slice(i, i + 100).join(',')})&limit=200`).catch(() => []) || []) names.set(r.code, r);
-    const best = new Map();
-    for (const b of rec) {
-      const nm = names.get(b.code); if (!nm || nm.security_type !== 'STOCK') continue;
-      if (!((mc.get(b.code) || 0) >= o.capMinEok * 1e8)) continue;
-      // 일요일 같은 휴장일 중복 행이 있어도 날짜별 한 줄만 쓴다
-      const seen = new Set(), hist = (px.get(b.code) || []).filter(x => x.d >= b.d && !seen.has(x.d) && seen.add(x.d));
-      if (!hist.length || hist[0].d !== b.d) continue;
-      const st = PB.levelState(hist, b.vw, o);
-      if (!st || !st.ok) continue;
-      const prev = best.get(b.code);
-      if (!prev || b.vw < prev.vw) best.set(b.code, { code: b.code, name: nm.name || b.code, barDate: b.d, rk: b.rk, w: b.w, chg: b.chg, mcEok: mc.get(b.code) / 1e8, vw: b.vw, age: st.age, dipDate: st.dipDate, minGapPct: st.minGapPct, sm: PB.smGate(sm.get(b.code)) });
+    for (let i = 0; i < codes.length; i += 100) for (const r of await D.sbGet(`stocks?select=code,name,security_type&code=in.(${codes.slice(i, i + 100).join(',')})&limit=200`).catch(() => []) || []) names.set(r.code, r);
+    for (const code of codes) {
+      const nm = names.get(code); if (!nm || nm.security_type !== 'STOCK') continue;
+      const hist = px.get(code) || [];
+      if (!hist.length || hist[hist.length - 1].mc < o.capMinEok * 1e8) continue;
+      const gate = PB.smGate(sm.get(code));
+      for (const L of PB.levelsOf(hist, o)) {
+        const st = PB.levelState(hist.slice(L.i).map(x => ({ d: x.d, c: x.c })), L.ref, o);
+        if (!st || !st.ok) continue;
+        res.watch.push({ code, name: nm.name || code, barDate: L.d, rk: L.rk, w: L.w, chg: L.chg, body: L.body, pos: L.pos, amtEok: L.a / 1e8, mcEok: hist[hist.length - 1].mc / 1e8, ref: L.ref, refKind: o.ref, age: st.age, dipDate: st.dipDate, minGapPct: st.minGapPct, sm: gate });
+      }
     }
-    res.watch = [...best.values()];
     pb.data = res; pb.key = key; pb.at = Date.now();
     return res;
+  }
+  /* 한 종목에 기준봉이 둘 다 눌림 상태면, 오늘 돌파 구간에 든 것 중 기준가에 가장 가까운 것 하나(없으면 기준가에 가장 가까운 것) */
+  function pbPickPerCode(rows, gapOf, inBand) {
+    const by = new Map();
+    for (const w of rows) { const g = gapOf(w); if (g == null) { if (!by.has(w.code)) by.set(w.code, w); continue; } const cur = by.get(w.code), cg = cur && gapOf(cur);
+      const rank = x => (inBand(x) ? 0 : 1) * 1e6 + Math.abs(gapOf(x)); if (!cur || cg == null || rank(w) < rank(cur)) by.set(w.code, w); }
+    return [...by.values()];
   }
   async function selectPullback(P, sid) {
     const { date } = kstParts();
@@ -498,24 +508,26 @@ function createAuto(deps) {
     const W = await loadPbWatch(P, date);
     stat.pool = W.bars; stat.base = W.watch.length; stat.hist = W.watch.length;
     if (W.stale) { stat.scanErr = `일봉이 ${W.lastD}까지만 있어요(어제 ${W.prevD} 자료가 아직 없음) — 오늘 눌림목 선정은 건너뜁니다`; return { picks: [], dropped: [], stat, scrDate: scr.date, passedAll: [], rejected: [], alt: [] }; }
-    const qs = W.watch.length ? await D.pbQuotes(W.watch.map(w => w.code)).catch(e => { stat.scanErr = e.message; return []; }) : [];
+    const codes = [...new Set(W.watch.map(w => w.code))];
+    const qs = codes.length ? await D.pbQuotes(codes).catch(e => { stat.scanErr = e.message; return []; }) : [];
     stat.scanAt = new Date().toISOString();
     const qm = new Map(qs.map(q => [q.code, q])), o = { breakPct: P.pbBreakPct == null ? 1 : +P.pbBreakPct, chasePct: +P.pbChasePct || 6 };
     const passed = [], rejected = [];
-    for (const w of W.watch) {
+    const watch = pbPickPerCode(W.watch, w => { const q = qm.get(w.code); return q ? (q.price / w.ref - 1) * 100 : null; }, w => PB.todayBreak(w.ref, qm.get(w.code), o));
+    for (const w of watch) {
       const q = qm.get(w.code);
       if (!q) { stat.errs++; continue; }
       if (EXCL_NAME.test(q.name || w.name || '') || (held && held.has(w.code))) continue;
-      const gapPct = (q.price / w.vw - 1) * 100, fails = [];
-      if (!PB.todayBreak(w.vw, q, o)) { if (Math.abs(gapPct) < 12) rejected.push({ code: w.code, name: w.name, changePct: q.changePct, fails: [`${w.barDate.slice(5)} ${w.rk}위일 평균가 ${Math.round(w.vw).toLocaleString('ko-KR')}원 대비 ${gapPct >= 0 ? '+' : ''}${gapPct.toFixed(1)}% (${gapPct < o.breakPct ? '아직 못 되찾음' : '이미 많이 올라 쫓지 않음'}: +${o.breakPct}%~+${o.chasePct}% 돌파 구간만)`] }); continue; }
+      const gapPct = (q.price / w.ref - 1) * 100, fails = [], kind = w.refKind === 'vwap' ? '평균가' : '시가';
+      if (!PB.todayBreak(w.ref, q, o)) { if (Math.abs(gapPct) < 12) rejected.push({ code: w.code, name: w.name, changePct: q.changePct, fails: [`${w.barDate.slice(5)} 기준봉 ${kind} ${Math.round(w.ref).toLocaleString('ko-KR')}원 대비 ${gapPct >= 0 ? '+' : ''}${gapPct.toFixed(1)}% (${gapPct < o.breakPct ? '아직 못 되찾음' : '이미 많이 올라 쫓지 않음'}: +${o.breakPct}%~+${o.chasePct}% 돌파 구간만)`] }); continue; }
       if (P.pbSmGate !== false && !w.sm.ok) fails.push(...w.sm.fails);
       if ((+P.capMaxEok || 0) > 0 && w.mcEok >= P.capMaxEok) fails.push(`시총 ${Math.round(w.mcEok).toLocaleString('ko-KR')}억 (상한 ${P.capMaxEok}억)`);
       if ((+P.amtMinEok || 0) > 0 && !(q.amt >= P.amtMinEok * 1e8)) fails.push(`거래대금 ${Math.round(q.amt / 1e8)}억 (하한 ${P.amtMinEok}억)`);
       if (fails.length) { rejected.push({ code: w.code, name: w.name, changePct: q.changePct, fails }); continue; }
-      const sig = { barDate: w.barDate, rk: w.rk, w: w.w, chg: w.chg, vw: w.vw, gapPct, dipDate: w.dipDate, sm: w.sm.info, mcEok: w.mcEok, age: w.age };
+      const sig = { barDate: w.barDate, rk: w.rk, w: w.w, chg: w.chg, body: w.body, pos: w.pos, amtEok: w.amtEok, ref: w.ref, refKind: w.refKind, gapPct, dipDate: w.dipDate, sm: w.sm.info, mcEok: w.mcEok, age: w.age };
       const s0 = scr.map[w.code], c = { code: w.code, name: q.name || w.name, price: q.price, open: q.open, high: q.high, low: q.low, changePct: q.changePct, vol: q.vol, amt: q.amt,
         sector: (s0 && s0.sector) || `미분류-${w.code}`, rs20: s0 ? num(s0.rs20_pctl) : null, smx: null, m: { fq: null, oq: null, pq: null, cttr: null, fAmt: null, oAmt: null, pAmt: null, w52: null },
-        pb: { vw: w.vw, stopPx: q.price * (1 - (+P.pbStopBelowPct || 5) / 100), barDate: w.barDate, rk: w.rk, age: w.age, gapPct } };
+        pb: { ref: w.ref, vw: w.ref, refKind: w.refKind, stopPx: q.price * (1 - (+P.pbStopBelowPct || 5) / 100), barDate: w.barDate, rk: w.rk, age: w.age, gapPct } };
       c.score = PB.score(sig); c.reasons = PB.reasons(sig);
       passed.push(c); stat.flowPass++;
     }
@@ -609,7 +621,7 @@ function createAuto(deps) {
     }
     return { ok: true, res, done: f.done };
   }
-  /* 눌림목 시간 청산(pbHoldDays): 매수 후 N거래일째 15:05 이후 이 전략이 들고 있는 종목의 남은 수량 전량 시장가 매도 — 못 판 종목은 30초 뒤 다시, 하루 최대 6번 */
+  /* 눌림목 시간 청산(pbHoldDays): 매수 후 N거래일째(0 = 끔) 15:05 이후 이 전략이 들고 있는 종목의 남은 수량 전량 시장가 매도 — 못 판 종목은 30초 뒤 다시, 하루 최대 6번 */
   async function holdExitFor(I, date) {
     state.hexit = state.hexit || {};
     const k = `${date}|${I.id}`, f = state.hexit[k] = state.hexit[k] || { done: false, tries: 0 };
@@ -617,7 +629,8 @@ function createAuto(deps) {
     f.at = Date.now(); f.tries++;
     const b = BR.of(I.id), S = await b.state();
     if (!S || !S.ok) return { ok: false, err: '매매 상태를 읽지 못했어요' };
-    const n = +I.params.pbHoldDays || 10, res = [];
+    const n = +I.params.pbHoldDays || 0, res = [];
+    if (!(n > 0)) return { ok: true, skipped: true };
     for (const p of S.positions || []) {
       if (!(p.qty > 0) || !p.openedAt || !(p.plan && p.plan.closeStop) || p.plan.tag) continue;   // 엔진은 전략이 공유하므로 눌림목이 산 종목(종가 마감 손절 계획)만
       const od = new Date(p.openedAt + 9 * 3600e3).toISOString().slice(0, 10);
@@ -1245,7 +1258,7 @@ function createAuto(deps) {
       (out.flat = out.flat || {})[I.id] = await flattenFor(I, date).catch(err);
     }
     for (const I of A.Is) {   // 눌림목: 매수 후 pbHoldDays 거래일째 15:05 이후 시간 청산 — 선정 창 밖에서도 돈다
-      if (I.params.selector !== 'pullback' || min < 15 * 60 + 5 || min >= 15 * 60 + 20) continue;
+      if (I.params.selector !== 'pullback' || !(+I.params.pbHoldDays > 0) || min < 15 * 60 + 5 || min >= 15 * 60 + 20) continue;   // pbHoldDays 0 = 시간 청산 없음
       if (!(await onFor(sideOfSid(I.id)))) continue;
       (out.hold = out.hold || {})[I.id] = await holdExitFor(I, date).catch(err);
     }
@@ -1978,17 +1991,18 @@ function createAuto(deps) {
     const b = ST.BUILTIN.find(x => x.id === 'pullback-default'), P = on ? on.params : ST.validate('intraday', { ...ST.defaults('intraday'), ...b.preset }).val;
     const { date } = kstParts(), W = await loadPbWatch(P, date);
     if (W.stale) return { ok: true, on: !!on, stale: true, lastD: W.lastD, prevD: W.prevD, rows: [] };
-    const codes = W.watch.map(w => w.code), key = codes.join(',');
+    const codes = [...new Set(W.watch.map(w => w.code))], key = codes.join(',');
     if (codes.length && (pwq.key !== key || Date.now() - pwq.at > 20000)) { pwq.rows = await D.pbQuotes(codes).catch(() => []); pwq.key = key; pwq.at = Date.now(); }
     const qm = new Map(pwq.rows.map(q => [q.code, q])), o = { breakPct: P.pbBreakPct == null ? 1 : +P.pbBreakPct, chasePct: +P.pbChasePct || 6 }, rows = [];
-    for (const w of W.watch) {
-      const q = qm.get(w.code), gap = q ? (q.price / w.vw - 1) * 100 : null;
-      const hit = q ? PB.todayBreak(w.vw, q, o) : false;
-      rows.push({ code: w.code, name: w.name, barDate: w.barDate, rk: w.rk, w: w.w, chg: w.chg, mcEok: Math.round(w.mcEok), vw: Math.round(w.vw), age: w.age, dipDate: w.dipDate, minGap: w.minGapPct == null ? null : Math.round(w.minGapPct * 10) / 10,
+    const gapOf = w => { const q = qm.get(w.code); return q ? (q.price / w.ref - 1) * 100 : null; };
+    for (const w of pbPickPerCode(W.watch, gapOf, w => PB.todayBreak(w.ref, qm.get(w.code), o))) {
+      const q = qm.get(w.code), gap = gapOf(w);
+      const hit = q ? PB.todayBreak(w.ref, q, o) : false;
+      rows.push({ code: w.code, name: w.name, barDate: w.barDate, rk: w.rk, w: w.w, chg: w.chg, body: Math.round(w.body * 10) / 10, amtEok: Math.round(w.amtEok), mcEok: Math.round(w.mcEok), ref: Math.round(w.ref), refKind: w.refKind, vw: Math.round(w.ref), age: w.age, dipDate: w.dipDate, minGap: w.minGapPct == null ? null : Math.round(w.minGapPct * 10) / 10,
         smOk: w.sm.ok, smFails: w.sm.fails, sm: w.sm.info, price: q ? q.price : null, dayChg: q ? q.changePct : null, gap: gap == null ? null : Math.round(gap * 10) / 10, hit: hit && (w.sm.ok || P.pbSmGate === false) });
     }
     rows.sort((a, b) => (b.hit - a.hit) || (b.smOk - a.smOk) || (Math.abs(a.gap == null ? 999 : a.gap) - Math.abs(b.gap == null ? 999 : b.gap)));
-    return { ok: true, on: !!on, stale: false, lastD: W.lastD, breakPct: o.breakPct, chasePct: o.chasePct, maxAge: +P.pbMaxAge || 63, smGate: P.pbSmGate !== false, rows, at: new Date().toISOString() };
+    return { ok: true, on: !!on, stale: false, lastD: W.lastD, breakPct: o.breakPct, chasePct: o.chasePct, maxAge: +P.pbMaxAge || 63, refKind: P.pbRef === 'vwap' ? 'vwap' : 'open', smGate: P.pbSmGate !== false, rows, at: new Date().toISOString() };
   }
   async function igniteParams() { const A = await store.actives().catch(() => null); const I = A && A.Is.find(x => x.params && x.params.selector === 'ignite'); return I ? I.params : null; }
   return { pullbackWatch, igniteParams, tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, setHalt, haltLevel, modeOf: sid => BR.execOf(sid), siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode, deskOk,

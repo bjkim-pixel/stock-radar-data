@@ -10,7 +10,7 @@ cur.execute("""select p.code,p.trade_date,coalesce(f.foreign_net,0)+coalesce(f.i
     coalesce(f.foreign_net,0),coalesce(f.fin_inv_net,0),coalesce(f.inv_trust_net,0),coalesce(f.pension_net,0),coalesce(f.pe_net,0),coalesce(f.inst_net,0)
   from daily_price p join stocks s on s.code=p.code and s.security_type='STOCK'
   left join daily_flow f on f.trade_date=p.trade_date and f.code=p.code
-  where p.close>0 order by p.code,p.trade_date""")
+  where p.close>0 and extract(dow from p.trade_date) between 1 and 5 order by p.code,p.trade_date""")
 by=collections.defaultdict(list)
 for c,d,n,fo,fi,it,pn,pe,ins in cur: by[c].append((d,float(n),float(fo),float(fi),float(it),float(pn),float(pe),float(ins)))
 def model(rows):

@@ -1,5 +1,5 @@
 'use strict';
-/* 눌림목 전략 흐름(2026-11-26 새 규칙): 3개월 내 무게 1·2위일 평균가 아래로 빠짐 + 스마트머니 유지 → 15:10 평균가 +1% 돌파 시 시장가 가상 매수 → 매수가 −5% 종가 마감 손절 · +8/+12% 익절 계획 · N거래일 시간 청산 */
+/* 눌림목 전략 흐름(2026-11-26 기준봉 시가 회복 규칙): 3개월 내 기준봉(양봉·종가 상단·큰 거래대금·큰 무게) 시가 아래로 빠진 적 + 스마트머니 유지 → 15:10 시가 +1% 돌파 시 시장가 가상 매수 → 매수가 −5% 종가 마감 손절 · +10/+15% 익절 계획 · 시간 청산 없음(기본) */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const ST = require('../auto-strategy');
@@ -17,15 +17,19 @@ async function rig({ pExtra = {}, smx = [{ win: '21', st: 'CONT', lead_nm: '외�
   const C = { id: 'closing-default', version: 1, enabled: false, params: ST.defaults('closing') };
   I.T = ST.timesOf(I.params, C.params);
   const strategies = { pair: async () => ({ I, C, T: I.T }), actives: async () => ({ Is: [I], C }), list: async () => [I, C], byId: async id => (id === I.id ? I : null), isMissing: () => false };
-  const date0 = kst().date, dd = k => new Date(Date.parse(date0 + 'T00:00:00Z') + k * DAY).toISOString().slice(0, 10);
-  const prevD = dd(-1), barD = dd(-4), lastD = dd(-lastDelta);
-  // 무게 1위일(상한가 +29.9%): 거래대금÷거래량 = 10,500(평균가). 이후 종가가 평균가 −2%(10,290) 아래로 빠진 상태 → 눌림(무장). noDip 이면 계속 위에 머묾
-  const H = [
-    { code: '035420', trade_date: barD, close: 12000, market_cap: 3000e8 },
-    { code: '035420', trade_date: dd(-3), close: noDip ? 12200 : 11000, market_cap: 3000e8 },
-    { code: '035420', trade_date: dd(-2), close: noDip ? 11800 : 10200, market_cap: 3000e8 },
-    { code: '035420', trade_date: prevD, close: noDip ? 11300 : 10100, market_cap: 3000e8 },
-  ];
+  const date0 = kst().date;
+  // 주말은 일봉이 없으므로 평일만 거꾸로 센다(wd(1) = 직전 거래일)
+  const wd = k => { let x = Date.parse(date0 + 'T00:00:00Z'), n = 0; while (n < k) { x -= DAY; const w = new Date(x).getUTCDay(); if (w !== 0 && w !== 6) n++; } return new Date(x).toISOString().slice(0, 10); };
+  const prevD = wd(1), lastD = wd(lastDelta), isWk = d => { const w = new Date(`${d}T00:00:00Z`).getUTCDay(); return w !== 0 && w !== 6; };
+  // 일봉 20개(어제까지): 평범한 14일(종가 9,000 · 거래대금 100억) → 기준봉(시가 10,500 · 종가 13,650 = +30% · 고가 = 종가 · 거래대금 600억·평균의 6배 · 무게 0.6) → 이후 5일. 종가가 시가(10,500) 아래로 빠진 상태 = 눌림(무장). noDip 이면 계속 위에 머묾
+  const post = noDip ? [13000, 12500, 12000, 11800, 11500] : [12000, 11000, 10200, 10100, 10300];
+  const H = Array.from({ length: 20 }, (_, k) => {
+    const d = wd(20 - k), base = { code: '035420', trade_date: d, market_cap: 3000e8 };
+    if (k < 14) return { ...base, open: 9000, high: 9100, low: 8900, close: 9000, volume: 1.1e6, trade_amount: 1e10, weight_per_share: 0.01 };
+    if (k === 14) return { ...base, open: 10500, high: 13650, low: 10400, close: 13650, volume: 4.5e6, trade_amount: 6e10, weight_per_share: 0.6 };
+    const c = post[k - 15]; return { ...base, open: c, high: c, low: c, close: c, volume: 1e6, trade_amount: 1e10, weight_per_share: 0.01 };
+  });
+  H.splice(10, 0, { code: '035420', trade_date: wd(10).replace(/.*/, x => { const t = new Date(`${x}T00:00:00Z`); while (t.getUTCDay() !== 0) t.setUTCDate(t.getUTCDate() + 1); return t.toISOString().slice(0, 10); }), open: 1, high: 1, low: 1, close: 20000, volume: 1, trade_amount: 1e10, weight_per_share: 5, market_cap: 3000e8 });   // 일요일 중복 행(무시돼야 함)
   const A = createAuto({
     strategies,
     sbGet: async p => {
@@ -34,16 +38,16 @@ async function rig({ pExtra = {}, smx = [{ win: '21', st: 'CONT', lead_nm: '외�
       if (p.startsWith('v_screener?select=trade_date')) return [{ trade_date: '2027-01-12' }];
       if (p.startsWith('v_screener')) return p.includes('offset=0') ? [{ code: '035420', close: 11300, ma60: 9500, ma120: 9000, sector: 'IT', rs20_pctl: 70 }] : [];
       if (p.startsWith('daily_price?select=trade_date')) return [{ trade_date: lastD }];
-      if (p.startsWith('record_wt')) return p.includes('offset=0') ? [{ code: '035420', rk: 1, trade_date: barD, w: 0.5, change_pct: 29.9, trade_amount: 1.05e10, volume: 1e6 }] : [];
-      if (p.startsWith('daily_price?select=code,trade_date,close')) return p.includes('offset=0') ? H : [];
+      if (p.startsWith('daily_price?select=code&weight_per_share')) return p.includes('offset=0') ? [{ code: '035420' }, { code: '035420' }] : [];
+      if (p.startsWith('daily_price?select=code,trade_date,open')) return p.includes('offset=0') ? H : [];
       if (p.startsWith('smx_state')) return smx.map(r => ({ code: '035420', ...r }));
       if (p.startsWith('stocks?select=code,name,security_type')) return [{ code: '035420', name: 'NAVER', security_type: 'STOCK' }];
       return [];
     },
     sbWrite: async (p, m, b) => { b.forEach(x => { if (p.startsWith('auto_runs')) runs.r = JSON.parse(JSON.stringify(x)); else if (x && x.key) cfg[x.key] = JSON.parse(JSON.stringify(x.value)); }); },
     sendTelegram: async t => sent.push(t), kstNow: kst, isTradingDay: () => true, now: () => c.st.clock,
-    prevTradingDay: d => new Date(Date.parse(d + 'T00:00:00Z') - DAY).toISOString().slice(0, 10),
-    paper: c.t.paper, getQuote: code => c.t.getQuote(code, true), loadChart: async () => Array.from({ length: 30 }, (_, i) => ({ close: 9000 + i * 30, high: 9100 + i * 30, low: 8900 + i * 30, trade_amount: 5e10, individual_net: 0, trade_date: dd(-40 + i) })),
+    prevTradingDay: d => { let x = Date.parse(d + 'T00:00:00Z') - DAY; while (!isWk(new Date(x).toISOString().slice(0, 10))) x -= DAY; return new Date(x).toISOString().slice(0, 10); },
+    paper: c.t.paper, getQuote: code => c.t.getQuote(code, true), loadChart: async () => Array.from({ length: 30 }, (_, i) => ({ close: 9000 + i * 30, high: 9100 + i * 30, low: 8900 + i * 30, trade_amount: 5e10, individual_net: 0, trade_date: wd(30 - i) })),
     pbQuotes: async codes => codes.map(code => ({ code, name: 'NAVER', price: priceToday, open: 10200, high: 10700, low: 10100, changePct: -6, vol: 4e5, amt: 4.3e9 })),
     livePool: async () => [], fetchFlow: async () => ({ err: 'x' }), fetchPower: async () => ({ pgQty: 100 }), fetchCttr: async () => ({ cttr: 60 }), marketState: async () => null, marketIdx: async () => ({ 코스피: 0.2, 코스닥: 0.1 }),
   });
@@ -60,8 +64,8 @@ test('15:10 선정 → 시장가 매수 · 손절 = 매수가−5% · 익절 +10
     const P = runs.r && runs.r.payload;
     assert.ok(P, '오늘 기록이 만들어져야 함');
     assert.deepEqual(P.picks.map(p => p.code), ['035420'], JSON.stringify(P.stat || P));
-    assert.ok(P.picks[0].reasons.some(r => /무게\/주식수 1위일/.test(r)) && P.picks[0].reasons.some(r => /평균가를 돌파/.test(r)) && P.picks[0].reasons.some(r => /스마트머니 1개월/.test(r)));
-    assert.equal(P.picks[0].pb.rk, 1); assert.equal(P.picks[0].pb.vw, 10500);
+    assert.ok(P.picks[0].reasons.some(r => /기준봉\(양봉 \+30\.0%/.test(r) && /기준가\(시가\) 10,500/.test(r)) && P.picks[0].reasons.some(r => /기준가를 돌파/.test(r)) && P.picks[0].reasons.some(r => /스마트머니 1개월/.test(r)));
+    assert.equal(P.picks[0].pb.rk, 1); assert.equal(P.picks[0].pb.ref, 10500); assert.equal(P.picks[0].pb.refKind, 'open');
     const o = P.orders && P.orders['035420'];
     assert.ok(o && o.plan, '자동 승인으로 주문 + 매도계획: ' + JSON.stringify(P.decision || P.stat));
     // 체결강도 60%(기준 100% 미만)·시가 대비 −6% 인데도 재확인에서 막지 않음(종가 매수 전략은 호가 강도를 안 봄)
@@ -108,6 +112,14 @@ test('시간 청산: 매수 후 pbHoldDays 거래일째 15:05 에 전량 시장�
   } finally { await c.close(); }
 });
 
+test('시간 청산 없음(기본 pbHoldDays 0): 며칠이 지나도 손절·익절 조건 전에는 계속 보유', async () => {
+  const { c, A, at, quote } = await rig();
+  try {
+    at(0, 15, 10); quote(10650); await A.tick();
+    for (const k of [1, 2, 5]) { at(k, 15, 6); quote(10650); await A.tick(); assert.ok((await c.t.paper.state()).positions.some(p => p.code === '035420' && p.qty > 0), `${k}일 뒤에도 보유`); }
+  } finally { await c.close(); }
+});
+
 test('조건: 스마트머니 이탈·돌파 구간 밖·눌림 아님·일봉 갱신 지연은 후보 없음, 점검을 끄면 통과', async () => {
   const sm = (a, b, t = 'UP') => [{ win: '21', st: a, lead_nm: '외국인', lead_trend: t }, { win: '63', st: b, lead_nm: '외국인', lead_trend: 'UP' }];
   const none = async (o, price = 10650) => { const r = await rig(o); try { r.at(0, 15, 10); r.quote(price); await r.A.tick(); const P = r.runs.r && r.runs.r.payload; assert.deepEqual((P && P.picks) || [], []); return JSON.stringify(P); } finally { await r.c.close(); } };
@@ -116,7 +128,7 @@ test('조건: 스마트머니 이탈·돌파 구간 밖·눌림 아님·일봉 �
   assert.match(await none({ smx: [] }), /스마트머니 1개월 자료 없음/);
   let r = await rig({ smx: sm('LEAVE', 'OUT'), pExtra: { pbSmGate: false } });
   try { r.at(0, 15, 10); r.quote(10650); await r.A.tick(); assert.equal(r.runs.r.payload.picks.length, 1, '점검을 끄면 통과'); } finally { await r.c.close(); }
-  assert.match(await none({ priceToday: 10600 }, 10600), /아직 못 되찾음/);                        // +0.95% < +1%
+  assert.match(await none({ priceToday: 10600 }, 10600), /아직/);                        // +0.95% < +1%
   assert.match(await none({ priceToday: 11300 }, 11300), /쫓지 않음/);                            // +7.6% > +6%
   await none({ noDip: true });                                                                    // 계속 평균가 위 → 눌림 아님
   r = await rig({ lastDelta: 3 });   // 일봉이 어제까지 안 들어옴
@@ -130,7 +142,7 @@ test('관찰 목록 API: 평균가 아래로 빠진 종목을 기준가 대비 �
     const r = await A.pullbackWatch();
     assert.equal(r.ok, true); assert.equal(r.stale, false); assert.equal(r.rows.length, 1);
     const x = r.rows[0];
-    assert.equal(x.code, '035420'); assert.equal(x.vw, 10500); assert.equal(x.rk, 1); assert.equal(x.gap, 1.4); assert.equal(x.hit, true); assert.equal(x.smOk, true);
+    assert.equal(x.code, '035420'); assert.equal(x.ref, 10500); assert.equal(x.refKind, 'open'); assert.equal(x.rk, 1); assert.equal(x.gap, 1.4); assert.equal(x.hit, true); assert.equal(x.smOk, true); assert.equal(Math.round(x.body), 30);
     assert.equal(x.sm['21'].st, 'CONT'); assert.equal(x.minGap, -3.8); assert.ok(x.dipDate);
     assert.equal(r.breakPct, 1); assert.equal(r.maxAge, 63); assert.equal(r.smGate, true);
   } finally { await c.close(); }

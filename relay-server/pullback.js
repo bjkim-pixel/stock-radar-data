@@ -1,25 +1,38 @@
 'use strict';
-/* 눌림목 매매("무게 1·2위일 가격 회복", 2026-11-26 규칙 교체) — 순수 계산(네트워크·DB 없음)
-   관찰   = 최근 maxAge 거래일(≈3개월) 안에 "무게/주식수 역대 1위일·2위일"(record_wt)이 있는 종목 · 시총 ≥ capMin
-   기준가 = 그 1·2위일의 평균가(거래대금 ÷ 거래량)
-   무장   = 그 뒤 종가가 기준가 −dipPct% 밑으로 내려간 적이 있고, 그 뒤 기준가 +breakPct% 위로 종가 마감한 적은 없음(= 아직 기준가를 못 되찾은 눌림 상태)
-   수급   = 종목상세 스마트머니 매집·이탈(smx_state) 1개월·3개월 모두 "매집 지속/정체"이고 주도 세력 추세가 팔고 있지 않을 것(주도세력 미이탈)
-   매수   = 무장 상태에서 오늘 현재가가 기준가 +breakPct% 이상으로 완전히 돌파(단 +chasePct% 까지 — 이미 너무 튄 건 쫓지 않음) → 15:10 시장가
-   손절 −stopBelow%(종가 마감) · 익절 +8/+12 2분할 · holdDays 거래일 시간 청산은 전략 공통 설정 */
+/* 눌림목 매매("기준봉 시가 회복", 2026-11-26 규칙 교체 · 198 백테스트 근거) — 순수 계산(네트워크·DB 없음)
+   기준봉 = 양봉(시가 대비 +bodyPct% 이상) · 종가가 그날 고저폭 상단 closePos% 이상 · 무게/주식수 ≥ wMin · 거래대금 ≥ barAmtEok억 이면서 직전 20일 평균의 barAmtX배 이상
+   관찰   = 최근 maxAge 거래일(≈3개월) 안 기준봉 중 무게 큰 2개(1위·2위) · 시총 ≥ capMin
+   기준가 = 기준봉의 시가(ref='open', 기본) 또는 평균가(거래대금÷거래량, ref='vwap')
+   무장   = 그 뒤 종가가 기준가 아래(dipPct 만큼 이상)로 내려간 적이 있고, 그 뒤 기준가 +breakPct% 위로 종가 마감한 적은 없음(= 아직 못 되찾은 눌림 상태)
+   수급   = 종목상세 스마트머니(smx_state) 1개월·3개월 모두 매집 지속/정체 · 주도 세력이 팔고 있지 않을 것
+   매수   = 무장 상태에서 오늘 현재가가 기준가 +breakPct% 이상 돌파(단 +chasePct% 까지) → 15:10 시장가. 기준봉이 둘이면 오늘 돌파한 것 중 기준가에 가까운 쪽
+   손절 −stopBelow%(종가 마감) · 익절·시간 청산은 전략 공통 설정 */
 
-const DEF = Object.freeze({ wMin: 0.1, capMinEok: 1000, maxAge: 63, dipPct: 2, breakPct: 1, chasePct: 6, stopBelowPct: 5, holdDays: 10, smGate: true, capMaxEok: 0, minAmtEok: 0 });
+const DEF = Object.freeze({ wMin: 0.5, capMinEok: 1000, maxAge: 63, dipPct: 0, breakPct: 1, chasePct: 6, bodyPct: 10, closePos: 70, barAmtEok: 500, barAmtX: 4, ref: 'open', stopBelowPct: 5, holdDays: 0, smGate: true, capMaxEok: 0, minAmtEok: 0 });
 const EOK = 1e8;
 
-/* record_wt 행 → 관찰 후보 수준. rows = [{code, rk, trade_date, w, trade_amount, volume, change_pct}] . 평균가 없는 행·무게 하한 미만은 버린다 */
-function levels(rows, P = {}) {
+/* 기준봉 찾기. hist = 한 종목의 일봉 오름차순(주말 행 제외) [{d,o,h,l,c,v,a,w}] — 직전 20일 평균 거래대금이 필요하므로 기준봉 날보다 앞선 일봉도 함께 */
+function candleDays(hist, P = {}) {
   const o = { ...DEF, ...P }, out = [];
-  for (const r of rows || []) {
-    if (!r || !r.code) continue;
-    const w = +r.w, a = +r.trade_amount, v = +r.volume, d = String(r.trade_date || '').slice(0, 10);
-    if (!(w >= o.wMin) || !(a > 0) || !(v > 0) || !d) continue;
-    out.push({ code: r.code, rk: +r.rk || 0, d, w, chg: +r.change_pct || 0, vw: a / v });
+  for (let i = 0; i < (hist || []).length; i++) {
+    const x = hist[i];
+    if (!(x.o > 0 && x.c > x.o && x.h > x.l && x.w >= o.wMin && x.a >= o.barAmtEok * EOK)) continue;
+    const body = (x.c - x.o) / x.o * 100, pos = (x.c - x.l) / (x.h - x.l) * 100;
+    if (body < o.bodyPct || pos < o.closePos) continue;
+    const prev = hist.slice(Math.max(0, i - 20), i);
+    if (prev.length < 10) continue;
+    const avg = prev.reduce((s, y) => s + (+y.a || 0), 0) / prev.length;
+    if (!(x.a >= o.barAmtX * avg)) continue;
+    out.push({ i, d: x.d, w: x.w, o: x.o, c: x.c, a: x.a, body, pos, chg: x.o > 0 && hist[i - 1] && hist[i - 1].c > 0 ? (x.c / hist[i - 1].c - 1) * 100 : body, vw: x.v > 0 ? x.a / x.v : 0 });
   }
   return out;
+}
+
+/* 오늘(= hist 마지막 다음 날)의 관찰 후보 수준: 기준봉 중 경과 2~maxAge거래일 · 무게 큰 2개. 반환 [{rk, ...candle, ref, age}] */
+function levelsOf(hist, P = {}) {
+  const o = { ...DEF, ...P }, m = (hist || []).length;
+  const c = candleDays(hist, o).filter(x => m - x.i >= 2 && m - x.i <= o.maxAge).sort((x, y) => y.w - x.w).slice(0, 2);
+  return c.map((x, k) => ({ ...x, rk: k + 1, age: m - x.i, ref: o.ref === 'vwap' ? x.vw : x.o })).filter(x => x.ref > 0);
 }
 
 /* 한 수준의 상태. hist = 그 종목의 1·2위일 이후(그날 포함, 오늘 제외) 일봉 오름차순 [{d,c}] — hist[0] 이 1·2위일.
@@ -64,7 +77,7 @@ function smGate(rows) {
   return { ok: !fails.length, fails, info };
 }
 
-/* 점수(100): 1위일 · 3개월 주도세력 추세 · 작은 시총 · 기준가에 가까운 정도 */
+/* 점수(100): 무게 1위 기준봉 · 3개월 주도세력 추세 · 작은 시총 · 기준가에 가까운 정도 */
 function score(sig) {
   const parts = {};
   parts.rk = sig.rk === 1 ? 10 : 5;
@@ -76,10 +89,11 @@ function score(sig) {
 }
 
 function reasons(sig) {
-  const r = [`${sig.barDate.slice(5)} 무게/주식수 ${sig.rk}위일(무게 ${(sig.w * 100).toFixed(1)}% · ${sig.chg >= 29 ? '상한가' : `${sig.chg >= 0 ? '+' : ''}${sig.chg.toFixed(1)}%`}) — 그날 평균가 ${Math.round(sig.vw).toLocaleString('ko-KR')}원`];
-  r.push(`${sig.dipDate ? sig.dipDate.slice(5) + ' 종가가 평균가 아래로 빠진 뒤 ' : ''}현재가 ${sig.gapPct >= 0 ? '+' : ''}${sig.gapPct.toFixed(1)}%로 평균가를 돌파`);
+  const kind = sig.refKind === 'vwap' ? '평균가' : '시가';
+  const r = [`${sig.barDate.slice(5)} 기준봉(양봉 +${(+sig.body || 0).toFixed(1)}% · 종가 상단 ${Math.round(sig.pos || 0)}% · 무게 ${(sig.w * 100).toFixed(0)}% · 거래대금 ${Math.round(sig.amtEok || 0).toLocaleString('ko-KR')}억) — 기준가(${kind}) ${Math.round(sig.ref).toLocaleString('ko-KR')}원`];
+  r.push(`${sig.dipDate ? sig.dipDate.slice(5) + ' 종가가 기준가 아래로 빠진 뒤 ' : ''}현재가 ${sig.gapPct >= 0 ? '+' : ''}${sig.gapPct.toFixed(1)}%로 기준가를 돌파`);
   if (sig.sm) { const a = sig.sm['21'], b = sig.sm['63']; const f = x => (x ? `${SM_ST_KO[x.st] || x.st}${x.lead ? '·' + x.lead : ''}${x.trend ? ' ' + (SM_TR_KO[x.trend] || x.trend) : ''}` : '자료 없음'); r.push(`스마트머니 1개월 ${f(a)} / 3개월 ${f(b)}`); }
-  r.push(`시총 ${Math.round(sig.mcEok).toLocaleString('ko-KR')}억 · ${sig.age}거래일째`);
+  r.push(`시총 ${Math.round(sig.mcEok).toLocaleString('ko-KR')}억 · 기준봉 후 ${sig.age}거래일째`);
   return r;
 }
 
@@ -91,4 +105,4 @@ function tradingDaysBetween(from, to, isTradingDay) {
   return n;
 }
 
-module.exports = { DEF, levels, levelState, todayBreak, smGate, SM_ST_KO, SM_TR_KO, score, reasons, tradingDaysBetween };
+module.exports = { DEF, candleDays, levelsOf, levelState, todayBreak, smGate, SM_ST_KO, SM_TR_KO, score, reasons, tradingDaysBetween };
