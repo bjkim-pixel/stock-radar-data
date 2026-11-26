@@ -97,7 +97,7 @@ const SCHEMA = {
     F('maxTries', '매수 주문', '종목당 하루 최대 주문 시도', 'num', 3, { min: 1, max: 6, step: 1, unit: '번' }),
     F('perStockKrw', '매수 주문', '종목당 금액', 'num', 1000000, { min: 100000, max: 50000000, step: 10000, unit: '원' }),
     F('totalCapKrw', '매수 주문', '총액 상한(0=없음)', 'num', 0, { min: 0, max: 500000000, step: 1000000, unit: '원' }),
-    F('buyType', '매수 주문', '주문 방식(시장가는 기다리지 않고 바로 삼 — 아래 매수가·미체결 설정은 지정가일 때만)', 'enum', 'limit', { opts: ENUM.buyType }),
+    F('buyType', '매수 주문', '주문 방식(시장가는 기다리지 않고 바로 삼 — 아래 매수가·미체결 설정은 지정가일 때만 · 임시: 가상매매의 수급 돌파 전략은 시장가로 고정)', 'enum', 'limit', { opts: ENUM.buyType }),
     F('buyPick', '매수 주문', '매수가', 'enum', 'q1', { opts: ENUM.buyPick }),
     F('smartBuy', '매수 주문', '강세 종목은 최우선 매수 호가부터(끄면 항상 위 매수가 기준) — 체결강도·시가 대비 상승이 크거나 잔량 최다 호가가 현재가보다 멀 때', 'bool', true),
     F('smartCttr', '매수 주문', '강세 기준: 체결강도 이상', 'num', 120, { min: 100, max: 300, step: 5, unit: '%' }),
@@ -355,6 +355,8 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     const v = validate(r.kind, pr);
     // 2026-11-26: 가상매매(execMode paper) 전략은 승인 과정은 그대로 두되 항상 알림 직후 자동 승인 — 승인 대기·누락으로 체결이 안 돼 성과를 못 보는 일을 막음(실전·드라이런은 설정 그대로)
     if (v.val && sideOfParams(v.val) === 'paper') { if ('approval' in v.val) v.val.approval = 'auto'; if ('closeBuyApproval' in v.val) v.val.closeBuyApproval = 'auto'; }
+    // 2026-11-26 임시: 가상매매의 수급 돌파(flow) 장중 전략은 지정가가 안 사져 성과를 못 보므로 시장가로 매수(되돌리려면 이 줄만 지우면 됨 · 실전·드라이런은 그대로)
+    if (v.val && r.kind === 'intraday' && sideOfParams(v.val) === 'paper' && v.val.selector === 'flow') v.val.buyType = 'market';
     // 기본 전략의 예전 이름(저장된 행이 옛 이름 그대로면)을 새 이름으로 — 사용자가 직접 바꾼 이름은 건드리지 않음
     const rn = RENAMED[r.id]; if (rn && rn.old.includes(r.name)) r = { ...r, name: rn.name };
     const needCopy = r.kind === 'closing' && (r.params || {}).capMinEok === undefined;   // 독립 전 종가 전략(장중 조건을 아직 복사하지 않음)

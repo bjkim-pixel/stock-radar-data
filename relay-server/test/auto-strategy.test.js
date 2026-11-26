@@ -319,3 +319,11 @@ test('가상매매 전략은 승인 방식을 무엇으로 저장했든 항상 �
   assert.notEqual(by('x-real').params.approval, 'auto', '실전·드라이런은 설정 그대로');
   assert.equal(by('pullback-default').name, '눌림목(기준봉 시가 회복)');
 });
+
+test('임시: 가상매매 수급 돌파(flow) 장중 전략은 시장가 매수로 고정 · 실전은 그대로', async () => {
+  const row = (id, params) => ({ id, name: id, kind: 'intraday', enabled: true, builtin: true, version: 1, params });
+  const st = S.createStore({ sbGet: async () => [row('intraday-default', { buyType: 'limit', execMode: 'paper' }), row('x-real', { buyType: 'limit', execMode: 'live', liveAutoOk: true })], sbWrite: async () => {} });
+  const L = await st.list(true);
+  assert.equal(L.find(r => r.id === 'intraday-default').params.buyType, 'market');
+  assert.equal(L.find(r => r.id === 'x-real').params.buyType, 'limit');
+});
