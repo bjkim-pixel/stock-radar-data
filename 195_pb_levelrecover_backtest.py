@@ -5,11 +5,13 @@
        눌림(무장) = 그 뒤 종가가 기준가×(1−DIP%) 아래로 내려간 적이 있고, 그 뒤 기준가×(1+1%) 위로 마감해 되찾은 적은 없음(DIP=0 이면 "얼마나 내려갔는지 상관없이 기준가 아래였던 적")
        수급 점검 = 종목상세 스마트머니(135_smx_state.py 와 같은 계산) 1개월·3개월 둘 다 CONT/STALL · 주도 세력 추세 DOWN/TURN 아님
        매수 = t 일 종가(15:10 근사)가 기준가 +1%~+6% → 종가 매수
- 매도(전략 기본값): 매수가 −5% 아래 종가 마감 손절 · +8%(50%)/+12%(50%) 익절(장중 고가) · 1단계 뒤 손절 본전+0.35% · 10거래일째 종가 청산 · 왕복 비용 0.25%
+ 매도(전략 기본값): 매수가 −5% 아래 종가 마감 손절 · +8%(50%)/+12%(50%) 익절(장중 고가) · 1단계 뒤 손절 본전+0.35% · 10거래일째 종가 청산(인자 nolimit 이면 시간 청산 없음 — 손절 −5/−8/−10% 비교) · 왕복 비용 0.25%
  일봉 모의: 같은 날 익절(고가)을 먼저 보고, 종가 손절은 그날 마감 때 판정."""
-import os, time, collections, numpy as np, pandas as pd
+import os, sys, time, collections, numpy as np, pandas as pd
 T0 = time.time(); EOK = 1e8; COST = 0.25
-WMIN, MAXAGE, BRK, CHASE, CAPMIN, HOLD, STOP = 0.1, 63, 1.0, 6.0, 1000 * EOK, 10, 5.0
+NOLIM = 'nolimit' in sys.argv[1:]   # 시간 청산 없음: 손절·익절로만 나감(자료 끝까지 안 나가면 마지막 종가로 평가)
+WMIN, MAXAGE, BRK, CHASE, CAPMIN, HOLD, STOP = 0.1, 63, 1.0, 6.0, 1000 * EOK, (10 ** 6 if NOLIM else 10), 5.0
+STOPS = (5.0, 8.0, 10.0) if NOLIM else (5.0,)
 T_MIN = int(os.environ.get("TMIN", "100"))
 out = []
 def p(s=""): out.append(str(s)); print(s, flush=True)
@@ -103,8 +105,8 @@ VARS = {"A 기본(눌림 깊이 무관 · 수급 점검)": (0.0, True), "B 눌�
 MAIN = list(VARS)[0]
 base_y, sigs, trades = [], [], []
 
-def simulate(t, n, o, h, l, c, v):
-    ent = c[t]; stop = ent * (1 - STOP / 100); left, pnl, k, why = 1.0, 0.0, t + 1, ""
+def simulate(t, n, o, h, l, c, v, sp=STOP):
+    ent = c[t]; stop = ent * (1 - sp / 100); left, pnl, k, why = 1.0, 0.0, t + 1, ""
     while True:
         if left == 1.0 and h[k] >= ent * 1.08: pnl += 0.04; left = 0.5; stop = max(stop, ent * 1.0035)
         if left == 0.5 and h[k] >= ent * 1.12: pnl += 0.06; left = 0; why = "익절2"; break
@@ -120,7 +122,7 @@ for code, g0 in P.groupby("code", sort=False):
     w = np.nan_to_num(g0.w.astype(float).values); dates = g0.d.values
     o, h, l, c, v, a, mc = (arr[k] for k in ("o", "h", "l", "c", "v", "a", "mc"))
     fwd = {k: np.r_[c[k:] / c[:-k] - 1, [np.nan] * k] * 100 for k in (1, 3, 5, 10)}
-    d1 = d2 = -1; w1 = w2 = 0.0; last_exit = {vn: -1 for vn in VARS}
+    d1 = d2 = -1; w1 = w2 = 0.0; last_exit = {(vn, sp): -1 for vn in VARS for sp in STOPS}
     for t in range(n):
         if t >= T_MIN and t + 1 < n and mc[t - 1] >= CAPMIN:
             base_y.append((dates[t], fwd[10][t]))
@@ -145,10 +147,11 @@ for code, g0 in P.groupby("code", sort=False):
                         if not gate_ok: continue
                     reg = REG.get(dates[t - 1]); reg = None if reg is None or reg != reg else bool(reg)
                     sigs.append((vn, code, dates[t], rk, age, gp, dep, reg, *(fwd[k][t] for k in (1, 3, 5, 10))))
-                    if t <= last_exit[vn]: continue
-                    r, why, hold, k = simulate(t, n, o, h, l, c, v)
-                    last_exit[vn] = k
-                    trades.append((vn, code, dates[t], c[t], r, why, hold, rk, age, gp, dep, reg))
+                    for sp in STOPS:
+                        if t <= last_exit[(vn, sp)]: continue
+                        r, why, hold, k = simulate(t, n, o, h, l, c, v, sp)
+                        last_exit[(vn, sp)] = k
+                        trades.append((vn + ("" if sp == STOP else f" | 손절 −{sp:g}%"), code, dates[t], c[t], r, why, hold, rk, age, gp, dep, reg))
         # t 일을 1·2위일 후보 이력에 넣는다(다음 날부터 보임)
         if w[t] > w1: d1, w1, d2, w2 = t, w[t], -1, 0.0
         elif d1 >= 0 and t > d1 and w[t] > w2: d2, w2 = t, w[t]
@@ -173,8 +176,14 @@ def tline(lab, x):
     wn, ls = x[x.ret > 0].ret.sum(), -x[x.ret <= 0].ret.sum()
     p(f"| {lab} | {len(x)} | {(x.ret>0).mean()*100:.0f}% | {x.ret.mean():+.2f} | {x.ret.median():+.2f} | {wn/ls if ls>0 else float('inf'):.2f} | {x.hold.mean():.1f} | " + " · ".join(f"{k} {v_}" for k, v_ in x.why.value_counts().items()) + " |")
 HDR = "| 구분 | 거래 | 승률 | 평균% | 중앙값% | PF | 평균 보유일 | 청산 사유 |\n|---|---:|---:|---:|---:|---:|---:|---|"
-p("\n## 2. 매매 모의(종가 매수 · 매수가 −5% 종가 손절 · +8/+12% 익절 · 10거래일 · 비용 0.25% · 같은 종목 보유 중 재매수 없음)\n"); p(HDR)
+p(f"\n## 2. 매매 모의(종가 매수 · 매수가 −5% 종가 손절 · +8/+12% 익절 · {'시간 청산 없음' if NOLIM else '10거래일'} · 비용 0.25% · 같은 종목 보유 중 재매수 없음)\n"); p(HDR)
 for vn in VARS: tline(vn, TR[TR["var"] == vn])
+if NOLIM:
+    p("\n### 손절 폭 비교(익절 +8/+12% · 시간 청산 없음)\n"); p(HDR)
+    for vn in list(VARS)[:2]:
+        for sp in (5, 8, 10): tline(f"{vn.split(' ')[0]} 손절 −{sp}%", TR[TR["var"] == (vn if sp == 5 else f"{vn} | 손절 −{sp}%")])
+    X = TR[TR["var"] == MAIN]
+    if len(X): p(f"\n기본안 보유일: 평균 {X.hold.mean():.1f} · 중앙값 {X.hold.median():.0f} · 최장 {X.hold.max()} · 20일 넘게 보유 {(X.hold>20).mean()*100:.0f}% · 60일 넘게 {(X.hold>60).mean()*100:.0f}% · 자료 끝까지 미청산 {(X.why=='자료끝').sum()}건")
 M = TR[TR["var"] == MAIN].copy()
 if len(M):
     M["m"] = pd.to_datetime(M.d).dt.to_period("M")
