@@ -5345,7 +5345,7 @@ function go(v,detailCode){
   {let sel=vOrig;if(v==="ovs"){const c=detailCode||S.ovs.code;sel=((S.ovs.list||[]).find(x=>x.code===c)||{}).is_etf||(!S.ovs.list&&vOrig==="ovse")?"ovse":"ovs";}
    $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===sel));}
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","semi","trade","trend","allinfo","wtrec","dart","etf","ovs","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","semi","trade","trend","allinfo","wtrec","dart","etf","ovs","grk","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   wideSet(v==="scr"||v==="trend"||v==="allinfo"||v==="wtrec"||v==="dart"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
