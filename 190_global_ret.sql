@@ -2,6 +2,7 @@
 --   한국 종목 = daily_price+stocks(ETF 마스터에 있는 코드는 제외) · 한국 ETF = etf_daily+etf_master · 해외 = us_daily+us_master
 --   상승률은 종목마다 "자기 거래일" 기준 N거래일 전 종가 대비(%). r1=오늘 r5=1주 r21=1개월 r63=3개월
 --   p* = 하루 전 기준 같은 값(순위 변화 표시용). 거래대금은 원화 환산(해외는 us_master.krw_rate, 엔화 100엔당이면 /100)
+--   거래량 0인 행(장 시작 전 미리 채운 행·거래정지일)은 계산에서 뺍니다.
 --   security_invoker: 원 테이블의 읽기 권한(로그인 주인 잠금)을 그대로 따릅니다. 여러 번 실행해도 안전.
 create or replace view public.v_global_ret with (security_invoker = true) as
 with kr as (
@@ -10,7 +11,7 @@ with kr as (
          d.trade_date, d.close::numeric close, d.trade_amount::numeric amt_krw
   from public.daily_price d join public.stocks s on s.code = d.code
   where d.trade_date >= (select max(trade_date) from public.daily_price) - 130
-    and coalesce(s.is_active, true) and d.close > 0
+    and coalesce(s.is_active, true) and d.close > 0 and coalesce(d.volume, 0) > 0
     and not exists (select 1 from public.etf_master e where e.code = d.code)
 ), ke as (
   select 'KR', 'ETF', d.code, m.name, coalesce(m.subfield, m.field) sub,
@@ -18,7 +19,7 @@ with kr as (
               when m.flags ~ '레버리지' or m.name ~ '레버리지|2X|3X' then 'L' end,
          'KRW', d.trade_date, d.close::numeric, d.amount::numeric
   from public.etf_daily d join public.etf_master m on m.code = d.code
-  where d.trade_date >= (select max(trade_date) from public.etf_daily) - 130 and d.close > 0
+  where d.trade_date >= (select max(trade_date) from public.etf_daily where volume > 0) - 130 and d.close > 0 and coalesce(d.volume, 0) > 0
 ), us as (
   select case when m.kis_excd in ('NAS','NYS','AMS') then 'US' when m.kis_excd = 'HKS' then 'HK'
               when m.kis_excd = 'TSE' then 'JP' else 'CN' end,
@@ -31,7 +32,7 @@ with kr as (
          m.ccy, d.trade_date, d.close::numeric,
          d.amount * case when m.ccy = 'JPY' and m.krw_rate > 50 then m.krw_rate / 100 else m.krw_rate end
   from public.us_daily d join public.us_master m on m.code = d.code
-  where d.trade_date >= (select max(trade_date) from public.us_daily) - 130 and d.close > 0
+  where d.trade_date >= (select max(trade_date) from public.us_daily) - 130 and d.close > 0 and coalesce(d.volume, 0) > 0
 ), u as (select * from kr union all select * from ke union all select * from us),
 w as (select u.*, row_number() over (partition by mkt, code order by trade_date desc) rn from u),
 g as (
