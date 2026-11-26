@@ -46,6 +46,7 @@ const SCHEMA = {
     F('capMinEok', '대상', '시가총액 하한', 'num', 10000, { min: 1000, max: 100000, step: 1000, unit: '억원' }),
     F('amtMinEok', '대상', '거래대금 하한(실시간 종목의 거래대금 조건 · 0=끔)', 'num', 100, { min: 0, max: 5000, step: 10, unit: '억원' }),
     F('maTrend', '대상', '종가 > 60일선 > 120일선', 'bool', true),
+    F('maAbove120', '대상', '종가 > 120일선(켜면 위 60·120일선 조건 대신 적용 — 실시간 종목의 "종가>120일선"과 같음)', 'bool', false),
     F('smx', '대상', '스마트머니 상태', 'enum', 'cont_stall', { opts: ENUM.smx }),
     F('smxWin', '대상', '스마트머니 진단 기간(위 상태를 볼 기간)', 'enum', '126', { opts: ENUM.smxWin }),
     F('flowForeign', '매수 조건', '외국인 순매수', 'enum', 'req', { opts: ENUM.flow }),
@@ -352,6 +353,8 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       if (pr.judgeAt === '15:00' && +pr.replyMin === 20) pr = { ...pr, judgeAt: '14:45', replyMin: 15 };
       if (pr.nxtJudgeAt === '19:00' && +pr.nxtReplyMin === 40) pr = { ...pr, nxtJudgeAt: '18:30', nxtReplyMin: 30 };
     }
+    // 2026-11-26: 수급 돌파 장중 기본 전략은 실시간 종목과 같은 기준(종가>120일선 · 스마트머니 3개월)으로 한 번 옮김 — 이후 저장하면 maAbove120 가 기록돼 편집값 유지
+    if (r.id === 'intraday-default' && pr.maAbove120 === undefined) pr = { ...pr, maAbove120: true, maTrend: false, smxWin: '63' };
     const v = validate(r.kind, pr);
     // 2026-11-26: 가상매매(execMode paper) 전략은 승인 과정은 그대로 두되 항상 알림 직후 자동 승인 — 승인 대기·누락으로 체결이 안 돼 성과를 못 보는 일을 막음(실전·드라이런은 설정 그대로)
     if (v.val && sideOfParams(v.val) === 'paper') { if ('approval' in v.val) v.val.approval = 'auto'; if ('closeBuyApproval' in v.val) v.val.closeBuyApproval = 'auto'; }

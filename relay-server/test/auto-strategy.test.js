@@ -12,7 +12,7 @@ test('기본값은 검증을 통과하고, 165 SQL 에 심은 값과 같다', ()
   for (const k of ['intraday', 'closing']) assert.deepEqual(S.validate(k, S.defaults(k)).val, S.defaults(k));
   const sql = fs.readFileSync(path.join(__dirname, '..', '..', '165_auto_strategy.sql'), 'utf8');
   const js = [...sql.matchAll(/'(\{"[^']+\})'::jsonb/g)].map(m => JSON.parse(m[1]));
-  const LATER = ['invMode', 'invCode', 'invMaDays', 'invDropPct', 'invHoldDays', 'pbWMin', 'pbBodyPct', 'pbClosePos', 'pbBarAmtEok', 'pbBarAmtX', 'pbRef', 'pbMaxAge', 'pbDipPct', 'pbBreakPct', 'pbChasePct', 'pbStopBelowPct', 'pbHoldDays', 'pbSmGate', 'buyType', 'tp1Pct', 'tp2Pct', 'tp1Share', 'selector', 'capMaxEok', 'gapMaxPct', 'chgMaxPct', 'openRiseMin', 'riseWinMin', 'riseMinPct', 'amtSurge', 'minMinAmtKrw', 'pullbackMaxPct', 'optMin', 'flatOn', 'flatAt', 'chaseWaitMin', 'rrSlack', 'intentLostSec', 'smartBuy', 'smartCttr', 'smartRise', 'q1GapPct', 'chaseAsk', 'chasePct', 'regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries', 'minRr', 'tpStyle', 'runnerPct', 'ratchet', 'kwOn', 'kwMax', 'execMode', 'liveAutoOk', 'dryDays', 'amtMinEok', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'smxWin'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
+  const LATER = ['maAbove120', 'invMode', 'invCode', 'invMaDays', 'invDropPct', 'invHoldDays', 'pbWMin', 'pbBodyPct', 'pbClosePos', 'pbBarAmtEok', 'pbBarAmtX', 'pbRef', 'pbMaxAge', 'pbDipPct', 'pbBreakPct', 'pbChasePct', 'pbStopBelowPct', 'pbHoldDays', 'pbSmGate', 'buyType', 'tp1Pct', 'tp2Pct', 'tp1Share', 'selector', 'capMaxEok', 'gapMaxPct', 'chgMaxPct', 'openRiseMin', 'riseWinMin', 'riseMinPct', 'amtSurge', 'minMinAmtKrw', 'pullbackMaxPct', 'optMin', 'flatOn', 'flatAt', 'chaseWaitMin', 'rrSlack', 'intentLostSec', 'smartBuy', 'smartCttr', 'smartRise', 'q1GapPct', 'chaseAsk', 'chasePct', 'regimeMode', 'regimeCaution', 'regimeDefense', 'totalCapKrw', 'repriceTo', 'cancelWaitMin', 'unfilledEnd', 'roundMin', 'roundEnd', 'maxBuys', 'retryUnfilled', 'maxTries', 'minRr', 'tpStyle', 'runnerPct', 'ratchet', 'kwOn', 'kwMax', 'execMode', 'liveAutoOk', 'dryDays', 'amtMinEok', 'sizeMode', 'sizePct', 'paperCapitalKrw', 'minOrderKrw', 'maxOrdersDay', 'rejectStop', 'unsureStop', 'smxWin'];   // 165 이후 추가(E1·F1) — 저장된 전략에 없으면 검증에서 기본값으로 채움
   const I0 = Object.fromEntries(Object.entries(S.defaults('intraday')).filter(([k]) => !LATER.includes(k)));
   I0.weights = { flow: 40, cttr: 15, rise: 15, amt: 15, trend: 15 };               // 165 의 예전 기본 배점 → 검증에서 새 기본 배점(개인 물량 항목 포함)으로 올라감
   I0.eodTimeout = 'keep';                                                           // 165 에는 있었지만 지금은 없는 설정(무응답이면 항상 유지) — 저장돼 있어도 검증이 버림
@@ -326,4 +326,14 @@ test('임시: 가상매매 수급 돌파(flow) 장중 전략은 시장가 매수
   const L = await st.list(true);
   assert.equal(L.find(r => r.id === 'intraday-default').params.buyType, 'market');
   assert.equal(L.find(r => r.id === 'x-real').params.buyType, 'limit');
+});
+
+test('수급 돌파 기본 전략: 저장값이 옛 값이면 종가>120일선 · 스마트머니 3개월로 옮김, 저장된 새 값은 유지', async () => {
+  const row = params => ({ id: 'intraday-default', name: 'x', kind: 'intraday', enabled: true, builtin: true, version: 1, params });
+  let L = await S.createStore({ sbGet: async () => [row({ maTrend: true, smxWin: '126' })], sbWrite: async () => {} }).list(true);
+  let P = L.find(r => r.id === 'intraday-default').params;
+  assert.equal(P.maAbove120, true); assert.equal(P.maTrend, false); assert.equal(P.smxWin, '63');
+  L = await S.createStore({ sbGet: async () => [row({ maAbove120: false, maTrend: true, smxWin: '126' })], sbWrite: async () => {} }).list(true);
+  P = L.find(r => r.id === 'intraday-default').params;
+  assert.equal(P.maAbove120, false); assert.equal(P.smxWin, '126');
 });

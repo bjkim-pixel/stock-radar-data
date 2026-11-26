@@ -35,7 +35,8 @@ function baseFilter(pool, scr, smx, held, P = DEFP) {
     if (!s) continue;
     const close = num(s.close), m60 = num(s.ma60), m120 = num(s.ma120);
     if (!(close > 0)) continue;
-    if (P.maTrend && !(m60 > 0 && m120 > 0 && close > m60 && m60 > m120)) continue;
+    if (P.maAbove120) { if (!(m120 > 0 && close > m120)) continue; }
+    else if (P.maTrend && !(m60 > 0 && m120 > 0 && close > m60 && m60 > m120)) continue;
     const st = (smx && smx[r.code]) || null;
     if (P.smx !== 'off' && !(st === 'CONT' || (P.smx === 'cont_stall' && st === 'STALL'))) continue;
     if (!(r.price > 0) || !(r.changePct > 0)) continue;

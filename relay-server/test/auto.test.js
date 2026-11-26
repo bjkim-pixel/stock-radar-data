@@ -431,3 +431,8 @@ test('거래대금 하한: 실시간 종목 후보 중 하한 미만(100억 기�
   assert.deepEqual(A.baseFilter(pool, scr, {}, new Set(), { ...P, amtMinEok: 50 }).map(c => c.code), ['A', 'B']);
   assert.deepEqual(A.baseFilter(pool, scr, {}, new Set(), { ...P, amtMinEok: 0 }).map(c => c.code), ['A', 'B']);
 });
+test('1차 필터: maAbove120 이면 종가>120일선만 보면 됨(60일선 정배열 불필요)', () => {
+  const sc = { X: { close: 100, ma60: 120, ma120: 90, sector: 'a' }, Y: { close: 80, ma60: 70, ma120: 90, sector: 'a' } }, sm = { X: 'CONT', Y: 'CONT' };
+  const P = { ...require('../auto-strategy').defaults('intraday'), maAbove120: true };
+  assert.deepEqual(A.baseFilter([row('X'), row('Y')], sc, sm, new Set(), P).map(x => x.code), ['X']);
+});
