@@ -2349,6 +2349,13 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   </div>
 
   <div class="card" id="dWeightCard"><h3>무게/주식수 <span class="r" style="font-weight:400;font-size:11px">외+기관 순매수 ÷ 주식수 · 양수=자금유입</span></h3>
+    <div class="qf seg" id="dWtWin" style="margin:6px 0 4px">
+      <button class="fchip" data-v="21" aria-pressed="false">1개월</button>
+      <button class="fchip" data-v="63" aria-pressed="false">3개월</button>
+      <button class="fchip" data-v="126" aria-pressed="false">6개월</button>
+      <button class="fchip" data-v="all" aria-pressed="false">전체</button>
+    </div>
+    <div class="faint" id="dWtRange" style="font-size:11.5px;margin-bottom:4px"></div>
     <div class="chart" id="dWeight"></div>
     <div id="dWtTop"></div>
   </div>
@@ -9035,10 +9042,9 @@ function renderRangeCharts(){
       $("#dVolProfSum").innerHTML=`현재가 위 ${N(vp.above,1)}% (${fmtEokJo(vp.aboveAmt)}) · 현재가 아래 ${N(vp.below,1)}% (${fmtEokJo(vp.belowAmt)}) · 현재가 구간 ${N(100-vp.above-vp.below,1)}%`;
     }else{$("#dVolProf").innerHTML='<div class="load">데이터 없음</div>';$("#dVolProfSum").textContent="";}
   }catch(e){console.error("volprof",e);}
-  const wps=rp.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
-  const wOff=rows.indexOf(rp[0]),wFlags=detWtTop(rows,rp[0].trade_date,rp.at(-1).trade_date,2).map(x=>({i:x.i-wOff,t:`${x.rank===1?"①":"②"} ${x.rank}위 ${x.d.slice(5).replace("-","/")}`,c:x.rank===1?"--up":"--warn"}));
-  volumeBars($("#dWeight"),wps,rlb,
-    {h:450,w:1180,pr:66,monthTicks:true,marks:true,flags:wFlags,sub:rp.map(r=>+r.close),bg:rp.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+  {const k=`${S.chart.code||""}|${rp[0].trade_date}|${rp.at(-1).trade_date}`;if(S.wtKey!==k){S.wtKey=k;S.wtWin=null;}   // 종목·전체 기간이 바뀌면 무게/주식수 자체 기간 선택은 풀고 위 기간을 따름
+  S.rangeRp=rp;}
+  renderWeight(rp);
   volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
     {bg:rp.map(r=>+r.close),bgPanel:true,h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
   const rb=rp[0];
@@ -9057,7 +9063,6 @@ function renderRangeCharts(){
     {n:"기타법인",v:rcum("corp_other_cum"),c:"--s4"}],rlb,
     {h:450,w:1180,pr:66,zero:true,marks:"each",monthTicks:true,fy:v=>N(v,0),ft:v=>pm(v,0)+"억",fm:v=>pm(v,0)+"억"});
   try{renderMinis(rp);}catch(e){console.error("주체별 누적 미니",e);}
-  try{renderWtTop(S.chart.rows,rp[0].trade_date,rp.at(-1).trade_date);}catch(e){console.error("무게 1·2위일",e);}
   try{renderSmCard();}catch(e){console.error("smart money card",e);}
   try{renderMaCard();}catch(e){console.error("ma card",e);}
   try{renderEarnCard();}catch(e){console.error("earn card",e);}
@@ -9076,6 +9081,20 @@ $("#dPerSeg").addEventListener("seg-change",e=>{
   $("#dStart").value=detPeriodStart(rows,S.dPeriod);$("#dEnd").value=rows.at(-1).trade_date;
   detPerSync();renderRangeCharts();
 });
+/* 무게/주식수 카드: 자체 기간(1개월·3개월·6개월·전체, 스마트머니처럼)을 고르면 그 기간으로 막대·1·2위일·분석을 다시 판별 — 고르지 않으면 위 기간 입력(rp)을 따름 */
+function renderWeight(rp){
+  const rows=S.chart&&S.chart.rows;if(!rows||!rows.length||!rp||!rp.length)return;
+  let wr=rp;
+  if(S.wtWin){const st=detPeriodStart(rows,S.wtWin);wr=rows.filter(r=>r.trade_date>=st);if(!wr.length)wr=rp;}
+  const lb=wr.map(r=>r.trade_date.slice(2).replace(/-/g,"/")),wps=wr.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
+  const off=rows.indexOf(wr[0]),flags=detWtTop(rows,wr[0].trade_date,wr.at(-1).trade_date,2).map(x=>({i:x.i-off,t:`${x.rank===1?"①":"②"} ${x.rank}위 ${x.d.slice(5).replace("-","/")}`,c:x.rank===1?"--up":"--warn"}));
+  volumeBars($("#dWeight"),wps,lb,{h:450,w:1180,pr:66,monthTicks:true,marks:true,flags,sub:wr.map(r=>+r.close),bg:wr.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
+  const cur=S.wtWin||S.dPeriod||"";
+  $$("#dWtWin .fchip").forEach(b=>b.setAttribute("aria-pressed",String(!!cur&&b.dataset.v===cur)));
+  const rg=$("#dWtRange");if(rg)rg.textContent=`${wr[0].trade_date}~${wr.at(-1).trade_date} · ${N(wr.length)}거래일${S.wtWin?"":" (위 기간 입력 구간)"}`;
+  try{renderWtTop(rows,wr[0].trade_date,wr.at(-1).trade_date);}catch(e){console.error("무게 1·2위일",e);}
+}
+$("#dWtWin").addEventListener("seg-change",e=>{S.wtWin=e.detail;try{renderWeight(S.rangeRp);}catch(err){console.error(err);}});
 /* 무게/주식수 1·2위일 분석: 그날 거래대금, 주체별 순매수대금·추정 순매수주식수·평균 매수단가 */
 function renderWtTop(rows,start,end){
   const host=$("#dWtTop");if(!host)return;
