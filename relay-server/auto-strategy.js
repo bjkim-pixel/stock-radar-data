@@ -177,8 +177,8 @@ SCHEMA.closing = SCHEMA.closing.concat(SCHEMA.intraday.filter(f => CLOSE_COPY.in
   ...(f.key === 'execMode' ? { label: '실행 모드(어느 장부로 살지 · 실전으로 바꿀 때 PIN · 진행 중 주문·보유·이월이 없을 때만)' } : {}) })));
 const OLD_W = [['flow', 40], ['cttr', 15], ['rise', 15], ['amt', 15], ['trend', 15]];   // 개인 계좌수 항목이 생기기 전 기본 배점
 const KINDS = { intraday: '장중매매', closing: '종가베팅' };
-const MAX_ACTIVE = { intraday: 3, closing: 1 };   // 동시에 켤 수 있는 수(종가베팅은 장중 보유분을 넘겨받는 방식이라 하나만). 장중은 쪽(가상매매·실전매매)마다 3개
-const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];   // 켜진 장중 전략 글자(텔레그램 답장 A1·D2). 가상·실전 합쳐 최대 6
+const MAX_ACTIVE = { intraday: 12, closing: 1 };   // 동시에 켤 수 있는 수(종가베팅은 장중 보유분을 넘겨받는 방식이라 하나만). 장중은 쪽(가상매매·실전매매)마다 3개
+const LETTERS = 'ABCDEFGHIJKLMOPQRSTUVWXYZ'.split('');   // N 은 종가베팅 글자라 건너뜀   // 켜진 장중 전략 글자(텔레그램 답장 A1·D2). 가상·실전 합쳐 최대 6
 /* 쪽: 가상매매(실행 모드 가상) · 실전매매(드라이런·실전) — 2026-11-19 */
 /* 드라이런 점검 진행(2026-11-19): 드라이런으로 돈 거래일 수. dates = 시작일 이후 이 전략의 기록이 있는 거래일들.
    끝난 날 수(n) = 오늘 이전 기록일 + (오늘 기록이 있고 15:30 이후면 1). 진행 중인 오늘은 day 에 +1 로 보여줌 */

@@ -188,14 +188,14 @@ function parseCmdMulti(text, verb) {
   /* 글자를 붙이면 그 전략만: "/패스 B" · "/유지 B" · "/매수 B 전체" (실전매매 전략은 글자가 있어야 처리 — 2026-11-19 섞임 방지) */
   const L = x => (x ? { letter: x.toUpperCase() } : {});
   let k;
-  if (verb === 'buy' && (k = /^\/?(?:패스|pass|skip)(?:\s+([A-FNa-fn]))?\s*$/i.exec(t))) return { kind: 'pass', ...L(k[1]) };
-  if (verb === 'eod' && (k = /^\/?유지(?:\s+([A-FNa-fn]))?\s*$/.exec(t))) return { kind: 'keep', ...L(k[1]) };
-  if ((k = new RegExp(`^\\/?${V}\\s+(?:([A-FNa-fn])\\s*)?(?:전체|all)\\s*$`, 'i').exec(t))) return { kind: 'all', ...L(k[1]) };
+  if (verb === 'buy' && (k = /^\/?(?:패스|pass|skip)(?:\s+([A-Za-z]))?\s*$/i.exec(t))) return { kind: 'pass', ...L(k[1]) };
+  if (verb === 'eod' && (k = /^\/?유지(?:\s+([A-Za-z]))?\s*$/.exec(t))) return { kind: 'keep', ...L(k[1]) };
+  if ((k = new RegExp(`^\\/?${V}\\s+(?:([A-Za-z])\\s*)?(?:전체|all)\\s*$`, 'i').exec(t))) return { kind: 'all', ...L(k[1]) };
   const m = t.match(new RegExp(`^\\/?${V}\\s+([A-Za-z\\d\\s,]+)$`, 'i'));
   if (m) {
     const items = [];
     for (const tok of m[1].split(/[\s,]+/).filter(Boolean)) {
-      const x = /^([A-FNa-fn])?(\d{1,2})$/.exec(tok);
+      const x = /^([A-Za-z])?(\d{1,2})$/.exec(tok);
       if (!x) return { kind: 'bad' };
       items.push({ letter: x[1] ? x[1].toUpperCase() : null, n: +x[2] });
     }

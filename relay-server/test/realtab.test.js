@@ -298,7 +298,7 @@ test('broker: 드라이런 = dry 장부(주문) + 실제 계좌(보유 확인) �
   assert.equal(B2.of('x').kind, 'paper');
 });
 
-test('전략 켜기 상한은 쪽마다 3개(가상매매 3 + 실전매매 3) · 글자 A~F', async () => {
+test('전략 켜기: 쪽마다 4개를 켜도 되고(상한 12) 글자 A~H', async () => {
   const db = { auto_strategies: [], versions: [] };
   let t = 1_800_000_000_000;
   const io = {
@@ -310,11 +310,9 @@ test('전략 켜기 상한은 쪽마다 3개(가상매매 3 + 실전매매 3) ·
   const st = ST.createStore(io), P = [], R = [];
   for (let i = 0; i < 4; i++) P.push((await st.create({ kind: 'intraday', name: `가상${i}` })).strategy.id);
   for (let i = 0; i < 4; i++) { const id = (await st.create({ kind: 'intraday', name: `실전${i}` })).strategy.id; await st.save(id, { params: { execMode: 'dryrun' } }, 'test', { allowSide: true }); R.push(id); }   // 새 복제본만 쪽을 정할 수 있음(「실전에 적용」과 같은 경로)
-  for (let i = 0; i < 3; i++) { assert.equal((await st.save(P[i], { enabled: true })).ok, true); assert.equal((await st.save(R[i], { enabled: true })).ok, true); }
-  assert.match((await st.save(P[3], { enabled: true })).error, /가상매매 장중 전략은 최대 3개/);
-  assert.match((await st.save(R[3], { enabled: true })).error, /실전매매 장중 전략은 최대 3개/);
+  for (let i = 0; i < 4; i++) { assert.equal((await st.save(P[i], { enabled: true })).ok, true); assert.equal((await st.save(R[i], { enabled: true })).ok, true); }
   const A2 = await st.actives();
-  assert.equal(A2.Is.length, 6); assert.deepEqual(A2.Is.map(i => i.letter), ['A', 'B', 'C', 'D', 'E', 'F']);
+  assert.equal(A2.Is.length, 8); assert.deepEqual(A2.Is.map(i => i.letter), ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
   /* 쪽 이동 자체가 금지(2026-11-19 섞임 방지): 실전매매 전략을 가상으로 바꾸면 거부 */
   assert.match((await st.save(R[0], { params: { execMode: 'paper' } })).error, /가상으로 바꿀 수 없어요/);
 });
@@ -493,7 +491,7 @@ test('섞임 방지 #2: 명령 파싱 — 글자 붙인 전체·패스·유지',
   assert.deepEqual(parseCmdMulti('/매수 all', 'buy'), { kind: 'all' });
   assert.deepEqual(parseCmdMulti('/유지 D', 'eod'), { kind: 'keep', letter: 'D' });
   assert.deepEqual(parseCmdMulti('/정리 D 전체', 'eod'), { kind: 'all', letter: 'D' });
-  assert.deepEqual(parseCmdMulti('/패스 G', 'buy'), null, '없는 글자는 명령 아님');
+  assert.deepEqual(parseCmdMulti('/패스 가', 'buy'), null, '없는 글자는 명령 아님');
 });
 
 test('섞임 방지 #3: 화면이 보낸 쪽(desk)과 주소·전략의 쪽이 다르면 서버가 거부(409) — KIS 로 나가지 않음', async () => {

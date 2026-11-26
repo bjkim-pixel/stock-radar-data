@@ -9,7 +9,7 @@ test('명령 파싱: 글자+번호 · 글자 없음 · 전체 · 패스/유지 �
   assert.deepEqual(A.parseCmdMulti('/매수 A1 b2,3', 'buy'), { kind: 'pick', items: [{ letter: 'A', n: 1 }, { letter: 'B', n: 2 }, { letter: null, n: 3 }] });
   assert.deepEqual(A.parseCmdMulti('/매수 전체', 'buy'), { kind: 'all' });
   assert.deepEqual(A.parseCmdMulti('/패스', 'buy'), { kind: 'pass' });
-  assert.deepEqual(A.parseCmdMulti('/매수 G1', 'buy'), { kind: 'bad' });
+  assert.deepEqual(A.parseCmdMulti('/매수 A123', 'buy'), { kind: 'bad' });
   assert.deepEqual(A.parseCmdMulti('/매수 D1 f2', 'buy'), { kind: 'pick', items: [{ letter: 'D', n: 1 }, { letter: 'F', n: 2 }] });   // 실전매매 전략까지 글자 A~F
   assert.deepEqual(A.parseCmdMulti('/매수', 'buy'), { kind: 'bad' });
   assert.equal(A.parseCmdMulti('/정리 1', 'buy'), null);
@@ -30,16 +30,15 @@ function fakeStoreDb() {
   for (const b of S.BUILTIN.filter(x => !x.off)) db.auto_strategies.push({ ...b, enabled: true, archived: false, version: 1, params: S.defaults(b.kind) });
   return { db, io };
 }
-test('장중 전략은 최대 3개까지 켜지고 글자 A·B·C 가 붙는다', async () => {
+test('장중 전략은 여러 개 켜지고(쪽마다 최대 12) 글자 A·B·C·D 가 붙는다', async () => {
   const { io } = fakeStoreDb(), st = S.createStore(io);
   const ids = [];
   for (let i = 0; i < 3; i++) { const r = await st.create({ kind: 'intraday', name: `장중${i}` }, 'site'); assert.equal(r.ok, true); assert.equal(r.strategy.enabled, false); ids.push(r.strategy.id); }
   assert.equal((await st.save(ids[0], { enabled: true })).ok, true);
   assert.equal((await st.save(ids[1], { enabled: true })).ok, true);
-  const bad = await st.save(ids[2], { enabled: true });
-  assert.equal(bad.ok, false); assert.match(bad.error, /최대 3개/);
+  assert.equal((await st.save(ids[2], { enabled: true })).ok, true);
   const A2 = await st.actives();
-  assert.deepEqual(A2.Is.map(i => i.letter), ['A', 'B', 'C']);
+  assert.deepEqual(A2.Is.map(i => i.letter), ['A', 'B', 'C', 'D']);
   assert.equal(A2.Is[0].id, 'intraday-default');
   assert.equal(A2.Is[0].T.sel, 605);
 });
