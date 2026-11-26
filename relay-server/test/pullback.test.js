@@ -3,61 +3,53 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const PB = require('../pullback'), ST = require('../auto-strategy');
 
-const EOK = 1e8;
-const day = (d, o, h, l, c, v = 1e6) => ({ d, o, h, l, c, v, a: v * (o + c) / 2 });
+const rec = (code, rk, d, w, a = 1.05e9, v = 1e6, chg = 10) => ({ code, rk, trade_date: d, w, trade_amount: a, volume: v, change_pct: chg });
+const H = (vw, ...cs) => [{ d: '2026-10-01', c: vw * 1.1 }, ...cs.map((c, i) => ({ d: `2026-10-0${i + 2}`, c }))];
 
-test('막대: 그때까지의 신고 무게 · 상승 · 시총 하한만', () => {
-  const rows = [
-    { code: 'A', d: '2026-10-01', w: 0.35, chg: 5, mc: 2000 * EOK },    // 첫 막대
-    { code: 'A', d: '2026-10-05', w: 0.31, chg: 4, mc: 2000 * EOK },    // 이전 최대(0.35)보다 작음 → 아님
-    { code: 'A', d: '2026-10-09', w: 0.50, chg: 29.9, mc: 2000 * EOK }, // 새 신고 → 막대
-    { code: 'B', d: '2026-10-02', w: 0.40, chg: -3, mc: 3000 * EOK },   // 하락 → 아님
-    { code: 'B', d: '2026-10-08', w: 0.38, chg: 6, mc: 3000 * EOK },    // 이미 0.40 이 있어 신고 아님
-    { code: 'C', d: '2026-10-03', w: 0.60, chg: 8, mc: 500 * EOK },     // 시총 1천억 미만
-    { code: 'D', d: '2026-10-03', w: 0.20, chg: 8, mc: 5000 * EOK },    // 무게 미달
-  ];
-  const b = PB.findBars(rows);
-  assert.deepEqual(b.map(x => x.code + x.d), ['A2026-10-01', 'A2026-10-09']);
+test('수준 추출: 무게 하한·평균가 없는 행은 버리고 평균가 = 거래대금÷거래량', () => {
+  const L = PB.levels([rec('A', 1, '2026-10-01', 0.5), rec('A', 2, '2026-09-20', 0.05), rec('B', 1, '2026-10-02', 0.3, 0, 1e6), rec('C', 2, '2026-10-03', 0.2, 2e9, 1e6)]);
+  assert.deepEqual(L.map(x => x.code + x.rk), ['A1', 'C2']);
+  assert.equal(L[0].vw, 1050); assert.equal(L[1].vw, 2000);
 });
 
-test('barState: 막대 +2일부터 첫 재터치 · 이미 터치했으면 제외 · 범위 밖이면 제외', () => {
-  // 막대일 평균가 = (1000+1100)/2 = 1050
-  const bar = day('2026-11-02', 1000, 1100, 990, 1100);
-  const up = [day('2026-11-03', 1100, 1200, 1090, 1180), day('2026-11-04', 1180, 1250, 1150, 1200)];
-  let st = PB.barState([bar, ...up]);
-  assert.ok(Math.abs(st.vw - 1050) < 1e-9);
-  assert.equal(st.age, 3);
-  assert.equal(st.touched, null);
-  assert.equal(st.ok, true);
-  assert.ok(Math.abs(st.stop - 1050 * 0.95) < 1e-9);
-  // 3일째 저가가 1050×1.03=1081.5 이하 + 종가 ≥ 1050×0.97=1018.5 → 이미 터치한 날이 있음
-  st = PB.barState([bar, up[0], day('2026-11-04', 1150, 1160, 1070, 1090)]);
-  assert.equal(st.touched, '2026-11-04'); assert.equal(st.ok, false);
-  // 다음 날(막대+1)은 터치로 세지 않음
-  st = PB.barState([bar, day('2026-11-03', 1100, 1100, 1040, 1060), day('2026-11-04', 1180, 1250, 1150, 1200)]);
-  assert.equal(st.touched, null, '막대 다음 날은 제외'); assert.equal(st.ok, true);
-  // 터치했지만 종가가 평균가 −3% 아래면 터치로 세지 않음
-  st = PB.barState([bar, up[0], day('2026-11-04', 1100, 1100, 1000, 1010)]);
-  assert.equal(st.touched, null); assert.equal(st.broken, null, '종가 1010 > 손절선 997.5');
-  st = PB.barState([bar, up[0], day('2026-11-04', 1100, 1100, 960, 990)]);
-  assert.equal(st.broken, '2026-11-04');
-  // 막대 바로 다음 날까지만(age 2 = 오늘이 막대+2일째)
-  assert.equal(PB.barState([bar, up[0]]).ok, true);
-  assert.equal(PB.barState([bar]).ok, false, '오늘이 막대 다음 날이면 후보 아님');
-  // 너무 오래됨
-  const long = [bar]; for (let i = 0; i < 30; i++) long.push(day(`2026-12-${String(i + 1).padStart(2, '0')}`, 1300, 1320, 1280, 1300));
-  assert.equal(PB.barState(long, { maxAge: 30 }).ok, false);
-  assert.equal(PB.barState(long.slice(0, 30), { maxAge: 30 }).ok, true);
+test('무장 상태: 기준가 −2% 아래 종가가 나와야 눌림, 되찾은 뒤엔 해제, 다시 빠지면 재무장', () => {
+  const vw = 1000;
+  assert.equal(PB.levelState(H(vw, 1100, 1050), vw).armed, false, '계속 위에 있으면 눌림 아님');
+  assert.equal(PB.levelState(H(vw, 1100, 990), vw).armed, false, '−1% 는 얕아서 눌림 아님(−2% 필요)');
+  let st = PB.levelState(H(vw, 1100, 970), vw);
+  assert.equal(st.armed, true); assert.equal(st.dipDate, '2026-10-03'); assert.equal(st.ok, true); assert.equal(st.age, 3);
+  assert.ok(Math.abs(st.minGapPct + 3) < 1e-9);
+  st = PB.levelState(H(vw, 1100, 970, 1015), vw);
+  assert.equal(st.armed, false, '기준가 +1% 위로 마감해 되찾음 → 해제'); assert.equal(st.crossedDate, '2026-10-04');
+  st = PB.levelState(H(vw, 1100, 970, 1005), vw);
+  assert.equal(st.armed, true, '+0.5% 는 아직 완전 돌파 아님');
+  st = PB.levelState(H(vw, 1100, 970, 1015, 960), vw);
+  assert.equal(st.armed, true, '되찾은 뒤 다시 빠지면 재무장');
+  assert.equal(PB.levelState([{ d: '2026-10-01', c: 1100 }], vw).ok, false, '오늘이 그날 다음 날이면 후보 아님');
+  const long = [{ d: '2026-10-01', c: 1100 }, { d: '2026-10-02', c: 950 }]; for (let i = 0; i < 70; i++) long.push({ d: `x${i}`, c: 960 });
+  assert.equal(PB.levelState(long, vw, { maxAge: 63 }).ok, false); assert.equal(PB.levelState(long.slice(0, 40), vw, { maxAge: 63 }).ok, true);
 });
 
-test('오늘 봉 판정: 저가가 평균가+3% 이하까지 내려오고 현재가는 평균가−3% 위', () => {
-  const st = PB.barState([day('2026-11-02', 1000, 1100, 990, 1100), day('2026-11-03', 1100, 1200, 1090, 1180)]);   // vw 1050 → hi 1081.5, lo 1018.5
-  assert.equal(PB.todayTouch(st, { price: 1060, low: 1050 }), true);
-  assert.equal(PB.todayTouch(st, { price: 1100, low: 1075 }), true, '저가가 범위 안');
-  assert.equal(PB.todayTouch(st, { price: 1100, low: 1090 }), false, '저가가 아직 위');
-  assert.equal(PB.todayTouch(st, { price: 1010, low: 1000 }), false, '종가가 평균가 −3% 아래');
-  assert.equal(PB.todayTouch(st, { price: 1060, low: 0 }), true, '저가 정보가 없으면 현재가로 판단');
-  assert.equal(PB.todayTouch(st, null), false);
+test('오늘 돌파 판정: +1% 이상 +6% 이하만', () => {
+  assert.equal(PB.todayBreak(1000, { price: 1009 }), false);
+  assert.equal(PB.todayBreak(1000, { price: 1010 }), true);
+  assert.equal(PB.todayBreak(1000, { price: 1060 }), true);
+  assert.equal(PB.todayBreak(1000, { price: 1061 }), false, '이미 많이 올라 쫓지 않음');
+  assert.equal(PB.todayBreak(1000, null), false);
+  assert.equal(PB.todayBreak(1000, { price: 1030 }, { breakPct: 3, chasePct: 5 }), true);
+});
+
+test('스마트머니 점검: 1개월·3개월 모두 매집 지속/정체이고 주도 세력이 팔고 있지 않아야', () => {
+  const r = (win, st, lead_trend = 'UP') => ({ win, st, lead_nm: '외국인', lead_trend });
+  assert.equal(PB.smGate([r('21', 'CONT'), r('63', 'STALL', 'FLAT')]).ok, true);
+  let g = PB.smGate([r('21', 'LEAVE'), r('63', 'CONT')]);
+  assert.equal(g.ok, false); assert.match(g.fails.join(), /1개월.*이탈 진행/);
+  g = PB.smGate([r('21', 'CONT'), r('63', 'CONT', 'DOWN')]);
+  assert.equal(g.ok, false); assert.match(g.fails.join(), /3개월.*외국인 매도 중/);
+  assert.equal(PB.smGate([r('21', 'CONT', 'TURN'), r('63', 'CONT')]).ok, false);
+  g = PB.smGate([r('63', 'CONT')]); assert.equal(g.ok, false); assert.match(g.fails.join(), /1개월 자료 없음/);
+  assert.equal(PB.smGate(null).ok, false);
+  assert.equal(PB.smGate([r('21', 'CONT'), r('63', 'CONT')]).info['21'].lead, '외국인');
 });
 
 test('거래일 수 계산 · 점수 · 사유', () => {
@@ -65,11 +57,12 @@ test('거래일 수 계산 · 점수 · 사유', () => {
   assert.equal(PB.tradingDaysBetween('2026-11-02', '2026-11-09', wk), 5);   // 월→다음 월
   assert.equal(PB.tradingDaysBetween('2026-11-06', '2026-11-09', wk), 1);   // 금→월
   assert.equal(PB.tradingDaysBetween('2026-11-09', '2026-11-09', wk), 0);
-  const sig = { barDate: '2026-11-02', w: 0.52, chg: 29.9, up30: true, vw: 1050, gapPct: 0.8, smEok: 40, smBuy: true, mcEok: 3000, age: 4 };
+  const sig = { barDate: '2026-11-02', rk: 1, w: 0.52, chg: 29.9, vw: 1050, gapPct: 1.2, sm: { 21: { st: 'CONT', trend: 'UP' }, 63: { st: 'CONT', trend: 'UP' } }, mcEok: 3000, dipDate: '2026-11-05', age: 12 };
   const s = PB.score(sig);
   assert.ok(s.total > 80 && s.total <= 100, JSON.stringify(s));
-  assert.ok(PB.score({ ...sig, up30: false, smBuy: false, mcEok: 30000 }).total < s.total);
-  assert.ok(PB.reasons(sig).join(' ').includes('상한가'));
+  assert.ok(PB.score({ ...sig, rk: 2, mcEok: 30000, sm: { 63: { trend: 'FLAT' } } }).total < s.total);
+  const r = PB.reasons(sig).join(' ');
+  assert.ok(r.includes('1위일') && r.includes('상한가') && r.includes('돌파') && r.includes('스마트머니'));
 });
 
 test('기본 전략: 눌림목은 꺼진 가상 전략으로 등록되고 검증을 통과한다', () => {
@@ -84,4 +77,5 @@ test('기본 전략: 눌림목은 꺼진 가상 전략으로 등록되고 검증
   const row = ST.BUILTIN.find(x => x.id === 'pullback-default');
   assert.equal(ST.validate('intraday', { ...r.val, pbWMin: 2 }).errs[0].key, 'pbWMin');
   assert.equal(row.kind, 'intraday');
+  assert.equal(r.val.pbSmGate, true); assert.equal(r.val.pbMaxAge, 63); assert.equal(r.val.pbBreakPct, 1);
 });

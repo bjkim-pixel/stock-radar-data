@@ -25,7 +25,7 @@ const ENUM = {
   fixed: '고정 % 단계(예: +6%·+9%에서 나눠 팔기)', even: '예전 방식(목표까지 균등 분할)' },
   unfilledEnd: { cancel: '취소', keep: '장 마감까지 유지' },
   execMode: { paper: '가상(가상 엔진으로 주문)', dryrun: '드라이런(실제 계좌로 금액·점검만, 주문은 가상)', live: '실전(실제 계좌로 주문)' },
-  selector: { flow: '수급 돌파(외국인·기관·프로그램 + 체결강도)', ignite: '장초 상승 포착(거래 붙으며 오르기 시작하는 종목)', pullback: '눌림목(무게 신고 막대 → 그날 평균가 첫 재터치 종가 매수)', inverse: '인버스·사이드카(지수 ETF 매매: 하락 국면 보유 · 외국인 동반 순매도 · 매도 사이드카 반등)' },
+  selector: { flow: '수급 돌파(외국인·기관·프로그램 + 체결강도)', ignite: '장초 상승 포착(거래 붙으며 오르기 시작하는 종목)', pullback: '눌림목(3개월 내 무게 1·2위일 평균가 아래로 빠진 뒤 스마트머니 유지 확인 → 평균가 돌파 매수)', inverse: '인버스·사이드카(지수 ETF 매매: 하락 국면 보유 · 외국인 동반 순매도 · 매도 사이드카 반등)' },
   invMode: { regime: 'A 하락 국면 보유(코스피200 < 60일선이면 보유)', flow: 'B 외국인 현물·선물 동반 순매도 다음날 장중 매수', sidecar: 'C 매도 사이드카 반등 매수(이틀째 정리)' },
   invCode: { '114800': 'KODEX 인버스(1X)', '252670': 'KODEX 200선물인버스2X', '251340': 'KODEX 코스닥150선물인버스', '0197X0': 'SOL SK하이닉스단일종목인버스2X', '069500': 'KODEX 200(1X)', '122630': 'KODEX 레버리지(2X)', '494310': 'KODEX 반도체레버리지(2X)' },
   sizeMode: { fixed: '고정(종목당 금액)', balance: '계좌 잔고 기준 자동' },
@@ -71,13 +71,14 @@ const SCHEMA = {
     F('optMin', '장초 상승 포착', '보조 조건(VWAP 위·고가 근처·체결강도·프로그램) 최소 충족 수', 'num', 2, { min: 0, max: 4, step: 1, unit: '개' }),
     F('flatOn', '장초 상승 포착', '당일 청산(지정 시각에 남은 보유분 전량 시장가 매도)', 'bool', false),
     F('flatAt', '장초 상승 포착', '당일 청산 시각', 'time', '15:14', { min: '14:30', max: '15:19' }),
-    F('pbWMin', '눌림목', '막대 기준: 무게/주식수 하한(0.3 = 30%) — 그때까지의 신고 무게여야 막대', 'num', 0.3, { min: 0.1, max: 1, step: 0.05, unit: '' }),
-    F('pbTouchPct', '눌림목', '평균가 재터치 범위(저가 ≤ 평균가+이 % · 종가 ≥ 평균가−이 %)', 'num', 3, { min: 1, max: 6, step: 0.5, unit: '%' }),
-    F('pbMaxAge', '눌림목', '막대 후 기다리는 최대 거래일(넘으면 관찰 종료)', 'num', 30, { min: 5, max: 40, step: 1, unit: '일' }),
-    F('pbStopBelowPct', '눌림목', '손절: 평균가 아래 이 % 밑에서 종가 마감(15:15 이후 판단)', 'num', 5, { min: 2, max: 10, step: 0.5, unit: '%' }),
+    F('pbWMin', '눌림목', '관찰 대상: 무게/주식수 1·2위일의 무게 하한(0.1 = 10%) — 이보다 약한 날은 제외', 'num', 0.1, { min: 0.05, max: 1, step: 0.05, unit: '' }),
+    F('pbMaxAge', '눌림목', '1·2위일 이후 기다리는 최대 거래일(63 ≈ 3개월, 넘으면 관찰 종료)', 'num', 63, { min: 10, max: 90, step: 1, unit: '일' }),
+    F('pbDipPct', '눌림목', '눌림 인정: 종가가 1·2위일 평균가 아래로 이 % 이상 내려간 적이 있어야 함', 'num', 2, { min: 0, max: 10, step: 0.5, unit: '%' }),
+    F('pbBreakPct', '눌림목', '매수: 현재가가 평균가를 이 % 이상 완전히 돌파했을 때(15:10)', 'num', 1, { min: 0, max: 5, step: 0.5, unit: '%' }),
+    F('pbChasePct', '눌림목', '쫓지 않기: 평균가 위로 이 % 넘게 이미 올랐으면 제외', 'num', 6, { min: 2, max: 15, step: 0.5, unit: '%' }),
+    F('pbSmGate', '눌림목', '스마트머니 점검: 1개월·3개월 모두 매집 지속/정체이고 주도 세력이 팔고 있지 않을 때만(끄면 상관없음)', 'bool', true),
+    F('pbStopBelowPct', '눌림목', '손절: 매수가 아래 이 % 밑에서 종가 마감(15:15 이후 판단)', 'num', 5, { min: 2, max: 10, step: 0.5, unit: '%' }),
     F('pbHoldDays', '눌림목', '시간 청산: 매수 후 이 거래일째 15:05 에 남은 수량 전량 매도', 'num', 10, { min: 2, max: 30, step: 1, unit: '일' }),
-    F('pbSmBuy', '눌림목', '막대일 외국인+기관 순매수일 때만(끄면 상관없음)', 'bool', false),
-    F('pbUpOnly', '눌림목', '상한가 막대만(등락률 29% 이상)', 'bool', false),
     F('invMode', '인버스·사이드카', '전략 종류(A·B·C)', 'enum', 'regime', { opts: ENUM.invMode }),
     F('invCode', '인버스·사이드카', '매매할 ETF', 'enum', '114800', { opts: ENUM.invCode }),
     F('invMaDays', '인버스·사이드카', '하락 국면 기준: 코스피200이 이 일수 이동평균선 아래(A·C)', 'num', 60, { min: 20, max: 120, step: 5, unit: '일' }),
@@ -309,13 +310,13 @@ const IGNITE_PRESET = { selector: 'ignite', capMinEok: 3000, capMaxEok: 40000, a
   selectAt: '09:15', noticeAfter: 0, approveWindow: 5, roundMin: 10, roundEnd: '14:30', openRiseMax: 6, cttrMin: 120, poolTop: 5, notifyTop: 5, sectorMax: 2, maxBuys: 5, maxTries: 1, retryUnfilled: false, perStockKrw: 1000000, approval: 'auto',
   buyType: 'market', stopPct: 3, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 6, tp2Pct: 9, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: true, flatAt: '15:14', execMode: 'paper' };
 const BUILTIN = BUILTIN0.concat([{ id: 'ignite-default', name: '장초 상승 포착(시동)', kind: 'intraday', builtin: true, off: true, preset: IGNITE_PRESET, desc: '시총 3천억~4조 미만 중소형주 중 처음부터 많이 뜬 종목은 빼고, 09시 이후 거래가 붙으며 오르기 시작하는 종목을 09:15부터 10분마다 포착해 가상 매수(종목당 100만원·하루 5종목) · 15:14 전량 청산' }]);
-/* 눌림목("무게 신고 막대 → 평균가 첫 재터치", 2026-11-26) 기본값: 15:10 에 후보를 골라 시장가로 종가 부근 매수(가상), 평균가 −5% 아래 종가 마감 손절 · +8/+12% 2분할 · 10거래일 시간 청산.
-   하루 최대 3종목(종목당 100만원). 막대일 외+기·시총 상한 같은 조건은 처음엔 모두 끄고 신호를 모은다 */
+/* 눌림목("무게 1·2위일 가격 회복", 2026-11-26 규칙 교체) 기본값: 15:10 에 후보를 골라 시장가로 매수(가상), 매수가 −5% 아래 종가 마감 손절 · +8/+12% 2분할 · 10거래일 시간 청산.
+   하루 최대 3종목(종목당 100만원). 시총 상한 같은 조건은 처음엔 모두 끄고 신호를 모은다(스마트머니 점검만 켜짐) */
 const PULLBACK_PRESET = { selector: 'pullback', capMinEok: 1000, capMaxEok: 0, amtMinEok: 0, maTrend: false, smx: 'off', flowForeign: 'ignore', flowInst: 'ignore', flowProgram: 'ignore', altFlowOn: false, kwOn: false,
   selectAt: '15:10', noticeAfter: 0, approveWindow: 5, roundMin: 0, poolTop: 5, notifyTop: 5, sectorMax: 2, maxBuys: 3, maxTries: 1, retryUnfilled: false, perStockKrw: 1000000, approval: 'auto',
   buyType: 'market', stopPct: 5, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 8, tp2Pct: 12, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: false, execMode: 'paper',
-  pbWMin: 0.3, pbTouchPct: 3, pbMaxAge: 30, pbStopBelowPct: 5, pbHoldDays: 10, pbSmBuy: false, pbUpOnly: false };
-BUILTIN.push({ id: 'pullback-default', name: '눌림목(무게 신고 막대 평균가 재터치)', kind: 'intraday', builtin: true, off: true, preset: PULLBACK_PRESET, desc: '무게/주식수 신고 막대가 나온 뒤 처음으로 그날 평균가 부근을 다시 밟은 종목을 15:10 에 가상 매수(종목당 100만원·하루 3종목) · 평균가 −5% 아래 종가 마감 시 손절, +8/+12% 2분할 익절, 10거래일 시간 청산(과거 14개월 검증: 승률 57%·평균 +0.9%·손익비 1.25, 아직 검증 중)' });
+  pbWMin: 0.1, pbMaxAge: 63, pbDipPct: 2, pbBreakPct: 1, pbChasePct: 6, pbStopBelowPct: 5, pbHoldDays: 10, pbSmGate: true };
+BUILTIN.push({ id: 'pullback-default', name: '눌림목(무게 1·2위일 가격 회복)', kind: 'intraday', builtin: true, off: true, preset: PULLBACK_PRESET, desc: '3개월 안에 무게/주식수 1·2위일이 있던 종목 중, 주가가 그날 평균가 아래로 빠졌고 스마트머니 1개월·3개월 수급에서 주도 세력이 아직 안 빠졌으면, 현재가가 그 평균가를 완전히 돌파(+1%)하는 15:10 에 가상 매수(종목당 100만원·하루 3종목) · 매수가 −5% 아래 종가 마감 시 손절, +8/+12% 2분할 익절, 10거래일 시간 청산(새 규칙 — 과거 검증 전)' });
 /* 인버스·사이드카(2026-11-26): 191·192·193 연구. 지수 ETF 를 시장가로(승인 자동·종목 1개 100만원). 익절 없이 정리 규칙으로만 나온다(A 60일선 회복 · B 15:15 · C 보유일) — 모두 꺼진 가상 전략 */
 const INV_BASE = { selector: 'inverse', capMinEok: 1000, capMaxEok: 0, amtMinEok: 0, maTrend: false, smx: 'off', flowForeign: 'ignore', flowInst: 'ignore', flowProgram: 'ignore', altFlowOn: false, kwOn: false,
   selectAt: '15:10', noticeAfter: 0, approveWindow: 5, roundMin: 0, poolTop: 1, notifyTop: 1, sectorMax: 1, maxBuys: 1, maxTries: 1, retryUnfilled: false, perStockKrw: 1000000, approval: 'auto',

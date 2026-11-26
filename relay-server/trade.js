@@ -692,7 +692,7 @@ function createTrade(deps = {}) {
       try { const sp = new URL(req.url, 'http://x').searchParams; return json(res, 200, await autoRef.uiState(null, sp.get('side') === 'real' ? 'real' : 'paper')); }
       catch (e) { console.warn('[trade] 자동매매 상태 조회 실패', e && e.message); return json(res, 502, { ok: false, error: 'auto state failed' }); }
     }
-    if (path === '/trade/auto/pullback-watch' && req.method === 'GET') {   // 눌림목 관찰 목록: 막대 신고 후 아직 평균가를 다시 안 밟은 종목 + 현재가 위치
+    if (path === '/trade/auto/pullback-watch' && req.method === 'GET') {   // 눌림목 관찰 목록: 3개월 내 무게 1·2위일 평균가 아래로 빠진(아직 못 되찾은) 종목 + 현재가 위치·스마트머니 점검
       if (!autoRef || !autoRef.pullbackWatch) return json(res, 503, { ok: false, error: 'auto unavailable' });
       try { return json(res, 200, await autoRef.pullbackWatch()); }
       catch (e) { console.warn('[trade] 눌림목 관찰 목록 실패', e && e.message); return json(res, 502, { ok: false, error: 'pullback watch failed' }); }

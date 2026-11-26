@@ -140,7 +140,7 @@ function formatMessage(date, picks, ctx = {}) {
     lines.push(`${c.num || (i + 1 + (ctx.startNum || 0))}. ${c.name}(${c.code}) ${s.total}점${c.retry ? ' 🔁 재시도' : ''}`);
     if (c.retry && c.retryWhy) lines.push(`   지난번: ${c.retryWhy}`);
     if (c.inv) lines.push(`   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${(+c.changePct || 0).toFixed(2)}% · ${c.inv.modeKo} · 손절 −${c.inv.stopPct}%${c.inv.tag === 'A' ? ' 종가 마감' : ''}`);
-    else if (c.pb) lines.push(`   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${(+c.changePct || 0).toFixed(2)}% · ${c.pb.barDate.slice(5)} 막대 평균가 ${fmtN(Math.round(c.pb.vw))}원 대비 ${c.pb.gapPct >= 0 ? '+' : ''}${c.pb.gapPct.toFixed(1)}% · 손절 ${fmtN(Math.floor(c.pb.stopPx))}원 아래 종가 마감`);
+    else if (c.pb) lines.push(`   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${(+c.changePct || 0).toFixed(2)}% · ${c.pb.barDate.slice(5)} 무게 ${c.pb.rk || 1}위일 평균가 ${fmtN(Math.round(c.pb.vw))}원 대비 ${c.pb.gapPct >= 0 ? '+' : ''}${c.pb.gapPct.toFixed(1)}% 돌파 · 손절 ${fmtN(Math.floor(c.pb.stopPx))}원 아래 종가 마감`);
     else lines.push(ctx.cb ? `   종가 ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${c.changePct.toFixed(2)}% · 고가 대비 ${c.dd != null ? c.dd.toFixed(1) + '%' : '–'}${s.penalty ? ` (감점 −${s.penalty})` : ''}` : `   ${fmtN(c.price)}원 ${c.changePct >= 0 ? '+' : ''}${c.changePct.toFixed(2)}% (시가대비 ${c.open > 0 ? ((c.price / c.open - 1) * 100).toFixed(1) : '–'}%) · 체결강도 ${m.cttr.toFixed(0)}%`);
     if (!c.pb && !c.inv) lines.push(`   순매수 외 ${won(m.fAmt)} · 기 ${won(m.oAmt)} · 프 ${won(m.pAmt)} (거래대금 대비 ${(s.ratio * 100).toFixed(1)}%)`);
     lines.push(`   ${c.sector} · ${(c.reasons || []).join(' · ')}`);
@@ -346,7 +346,7 @@ function createAuto(deps) {
   /* X(종가베팅 저녁 선정 전용): { nxtOnly, skip:Set(이미 후보·주문한 종목), closeHigh:{maxPct, from, max} } — 종가가 당일 고가에서 maxPct 이내만, from% 넘게 내렸으면 점수 감점 */
   async function select(P = DEFP, X = null, sid = null) {
     if (P.selector === 'inverse' && !X) return selectInverse(P, sid);   // 인버스·사이드카(A·B·C)
-    if (P.selector === 'pullback' && !X) return selectPullback(P, sid);   // 눌림목(무게 신고 막대 → 평균가 첫 재터치)
+    if (P.selector === 'pullback' && !X) return selectPullback(P, sid);   // 눌림목(무게 1·2위일 평균가 회복)
     if (P.selector === 'ignite' && !X) return selectIgnite(P, sid);   // 장초 상승 포착(시동) 전략은 자기 방식으로 고름
     const useKw = !X && P.kwOn !== false && P.weights !== undefined;   // 장중 전략만(종가베팅 저녁 선정은 해당 없음)
     const [scr, smx, held, pool, kwMap] = await Promise.all([loadScreener(P), loadSmx(smxWinOf(P)), loadHeld(sid || (X && X.sid) || null), D.livePool(P.capMinEok), useKw ? loadKw().catch(() => ({})) : {}]);
@@ -439,8 +439,8 @@ function createAuto(deps) {
     return { picks: pick, dropped, stat, scrDate: scr.date, passedAll: passed, rejected: rejected.slice(0, 20).map(({ amt, ...x }) => x), alt: [] };
   }
 
-  /* 눌림목(2026-11-26): "무게 신고 막대 → 그날 평균가(거래대금÷거래량) 첫 재터치" 후보.
-     일봉(daily_price·daily_flow)에서 관찰 목록(막대 +2~maxAge 거래일, 아직 재터치 안 함)을 만들어 30분 캐시 → 관찰 종목의 현재 시세(현재가·저가)로 오늘 봉을 붙여 같은 규칙으로 판정 */
+  /* 눌림목(2026-11-26 규칙 교체): "무게/주식수 1·2위일(record_wt)이 3개월 안에 있는 종목 → 주가가 그날 평균가 아래로 빠진 뒤 → 스마트머니 1·3개월 수급이 아직 안 빠졌으면 → 평균가를 완전히 되돌파할 때 매수".
+     일봉(daily_price)·record_wt·smx_state 로 관찰 목록(무장 상태)을 만들어 30분 캐시 → 관찰 종목의 현재가로 오늘 돌파 여부를 판정 */
   const pb = { at: 0, key: '', data: null };
   async function pbPages(path, max = 40) {
     const out = [];
@@ -452,37 +452,42 @@ function createAuto(deps) {
     return out;
   }
   async function loadPbWatch(P, date) {
-    const key = `${date}|${P.pbWMin}|${P.capMinEok}|${P.pbMaxAge}|${P.pbTouchPct}|${P.pbStopBelowPct}`;
+    const key = `${date}|${P.pbWMin}|${P.capMinEok}|${P.pbMaxAge}|${P.pbDipPct}|${P.pbBreakPct}`;
     if (pb.data && pb.key === key && Date.now() - pb.at < 30 * 60e3) return pb.data;
-    const o = { wMin: +P.pbWMin || 0.3, capMinEok: +P.capMinEok || 1000, touchPct: +P.pbTouchPct || 3, maxAge: +P.pbMaxAge || 30, stopBelowPct: +P.pbStopBelowPct || 5 };
+    const o = { wMin: +P.pbWMin || 0.1, capMinEok: +P.capMinEok || 1000, maxAge: +P.pbMaxAge || 63, dipPct: P.pbDipPct == null ? 2 : +P.pbDipPct, breakPct: P.pbBreakPct == null ? 1 : +P.pbBreakPct };
     const last = await D.sbGet('daily_price?select=trade_date&order=trade_date.desc&limit=1');
     const lastD = last && last[0] && last[0].trade_date;
     const prevD = D.prevTradingDay ? D.prevTradingDay(date) : null;
     const res = { lastD, prevD, stale: !!(prevD && lastD && lastD < prevD), watch: [], bars: 0 };
     if (res.stale) { pb.data = res; pb.key = key; pb.at = Date.now(); return res; }
-    const heavy = await pbPages(`daily_price?select=code,trade_date,weight_per_share,change_pct,market_cap&weight_per_share=gte.${o.wMin}&trade_date=gte.2025-09-01&trade_date=lte.${prevD || lastD}&order=trade_date.asc,code.asc`);
-    const bars = PB.findBars(heavy.map(r => ({ code: r.code, d: String(r.trade_date), w: +r.weight_per_share, chg: +r.change_pct, mc: +r.market_cap })), o);
-    const cut = new Date(`${date}T00:00:00Z`); cut.setUTCDate(cut.getUTCDate() - Math.ceil(o.maxAge * 7 / 5) - 8);
-    const cutD = cut.toISOString().slice(0, 10), recent = bars.filter(b => b.d >= cutD);
-    res.bars = recent.length;
-    const codes = [...new Set(recent.map(b => b.code))], minD = recent.reduce((m, b) => (b.d < m ? b.d : m), '9999');
-    const px = new Map(), fl = new Map();
+    const cut = new Date(`${date}T00:00:00Z`); cut.setUTCDate(cut.getUTCDate() - Math.ceil(o.maxAge * 7 / 5) - 4);
+    const cutD = cut.toISOString().slice(0, 10), endD = prevD || lastD;
+    const rec = PB.levels(await pbPages(`record_wt?select=code,rk,trade_date,w,change_pct,trade_amount,volume&trade_date=gte.${cutD}&trade_date=lte.${endD}&w=gte.${o.wMin}&order=code.asc,rk.asc`, 10), o);
+    res.bars = rec.length;
+    const codes = [...new Set(rec.map(b => b.code))], minD = rec.reduce((m, b) => (b.d < m ? b.d : m), '9999');
+    const px = new Map(), mc = new Map(), sm = new Map(), names = new Map();
     for (let i = 0; i < codes.length; i += 60) {
       const cs = codes.slice(i, i + 60).join(',');
-      for (const r of await pbPages(`daily_price?select=code,trade_date,open,high,low,close,volume,trade_amount&code=in.(${cs})&trade_date=gte.${minD}&trade_date=lte.${prevD || lastD}&order=code.asc,trade_date.asc`, 10)) { let a = px.get(r.code); if (!a) px.set(r.code, a = []); a.push({ d: String(r.trade_date), o: +r.open, h: +r.high, l: +r.low, c: +r.close, v: +r.volume, a: +r.trade_amount }); }
-      for (const r of await pbPages(`daily_flow?select=code,trade_date,foreign_net,inst_net&code=in.(${cs})&trade_date=gte.${minD}&trade_date=lte.${prevD || lastD}&order=code.asc,trade_date.asc`, 10)) fl.set(r.code + '|' + r.trade_date, (+r.foreign_net || 0) + (+r.inst_net || 0));
+      for (const r of await pbPages(`daily_price?select=code,trade_date,close,market_cap&code=in.(${cs})&trade_date=gte.${minD}&trade_date=lte.${endD}&order=code.asc,trade_date.asc`, 10)) {
+        let a = px.get(r.code); if (!a) px.set(r.code, a = []);
+        a.push({ d: String(r.trade_date).slice(0, 10), c: +r.close }); if (+r.market_cap > 0) mc.set(r.code, +r.market_cap);
+      }
+      for (const r of await D.sbGet(`smx_state?select=code,win,st,lead_nm,lead_trend&code=in.(${cs})&win=in.(21,63)&limit=500`).catch(() => []) || []) { let a = sm.get(r.code); if (!a) sm.set(r.code, a = []); a.push(r); }
     }
-    const names = new Map();
-    if (codes.length) for (let i = 0; i < codes.length; i += 100) for (const r of await D.sbGet(`stocks?select=code,name,security_type&code=in.(${codes.slice(i, i + 100).join(',')})&limit=200`).catch(() => [])) names.set(r.code, r);
-    for (const b of recent) {
+    if (codes.length) for (let i = 0; i < codes.length; i += 100) for (const r of await D.sbGet(`stocks?select=code,name,security_type&code=in.(${codes.slice(i, i + 100).join(',')})&limit=200`).catch(() => []) || []) names.set(r.code, r);
+    const best = new Map();
+    for (const b of rec) {
       const nm = names.get(b.code); if (!nm || nm.security_type !== 'STOCK') continue;
-      const hist = (px.get(b.code) || []).filter(x => x.d >= b.d);
+      if (!((mc.get(b.code) || 0) >= o.capMinEok * 1e8)) continue;
+      // 일요일 같은 휴장일 중복 행이 있어도 날짜별 한 줄만 쓴다
+      const seen = new Set(), hist = (px.get(b.code) || []).filter(x => x.d >= b.d && !seen.has(x.d) && seen.add(x.d));
       if (!hist.length || hist[0].d !== b.d) continue;
-      const st = PB.barState(hist, o);
+      const st = PB.levelState(hist, b.vw, o);
       if (!st || !st.ok) continue;
-      const sm = fl.has(b.code + '|' + b.d) ? fl.get(b.code + '|' + b.d) : null;
-      res.watch.push({ code: b.code, name: nm.name || b.code, barDate: b.d, w: b.w, chg: b.chg, mcEok: b.mc / 1e8, vw: st.vw, stop: st.stop, age: st.age, broken: st.broken, smEok: sm == null ? null : sm / 1e8 });
+      const prev = best.get(b.code);
+      if (!prev || b.vw < prev.vw) best.set(b.code, { code: b.code, name: nm.name || b.code, barDate: b.d, rk: b.rk, w: b.w, chg: b.chg, mcEok: mc.get(b.code) / 1e8, vw: b.vw, age: st.age, dipDate: st.dipDate, minGapPct: st.minGapPct, sm: PB.smGate(sm.get(b.code)) });
     }
+    res.watch = [...best.values()];
     pb.data = res; pb.key = key; pb.at = Date.now();
     return res;
   }
@@ -495,26 +500,23 @@ function createAuto(deps) {
     if (W.stale) { stat.scanErr = `일봉이 ${W.lastD}까지만 있어요(어제 ${W.prevD} 자료가 아직 없음) — 오늘 눌림목 선정은 건너뜁니다`; return { picks: [], dropped: [], stat, scrDate: scr.date, passedAll: [], rejected: [], alt: [] }; }
     const qs = W.watch.length ? await D.pbQuotes(W.watch.map(w => w.code)).catch(e => { stat.scanErr = e.message; return []; }) : [];
     stat.scanAt = new Date().toISOString();
-    const qm = new Map(qs.map(q => [q.code, q])), o = { touchPct: +P.pbTouchPct || 3 };
+    const qm = new Map(qs.map(q => [q.code, q])), o = { breakPct: P.pbBreakPct == null ? 1 : +P.pbBreakPct, chasePct: +P.pbChasePct || 6 };
     const passed = [], rejected = [];
     for (const w of W.watch) {
       const q = qm.get(w.code);
       if (!q) { stat.errs++; continue; }
       if (EXCL_NAME.test(q.name || w.name || '') || (held && held.has(w.code))) continue;
-      const st = { hi: w.vw * (1 + o.touchPct / 100), lo: w.vw * (1 - o.touchPct / 100), vw: w.vw };
       const gapPct = (q.price / w.vw - 1) * 100, fails = [];
-      if (!PB.todayTouch(st, q, o)) { if (Math.abs(gapPct) < 12) rejected.push({ code: w.code, name: w.name, changePct: q.changePct, fails: [`평균가 ${Math.round(w.vw).toLocaleString('ko-KR')}원 대비 ${gapPct >= 0 ? '+' : ''}${gapPct.toFixed(1)}% (재터치 아님)`] }); continue; }
-      if (P.pbSmBuy && !(w.smEok > 0)) fails.push(`막대일 외+기 ${w.smEok == null ? '자료 없음' : Math.round(w.smEok) + '억'} (순매수 아님)`);
-      if (P.pbUpOnly && !(w.chg >= 29)) fails.push(`막대일 +${w.chg.toFixed(1)}% (상한가 아님)`);
+      if (!PB.todayBreak(w.vw, q, o)) { if (Math.abs(gapPct) < 12) rejected.push({ code: w.code, name: w.name, changePct: q.changePct, fails: [`${w.barDate.slice(5)} ${w.rk}위일 평균가 ${Math.round(w.vw).toLocaleString('ko-KR')}원 대비 ${gapPct >= 0 ? '+' : ''}${gapPct.toFixed(1)}% (${gapPct < o.breakPct ? '아직 못 되찾음' : '이미 많이 올라 쫓지 않음'}: +${o.breakPct}%~+${o.chasePct}% 돌파 구간만)`] }); continue; }
+      if (P.pbSmGate !== false && !w.sm.ok) fails.push(...w.sm.fails);
       if ((+P.capMaxEok || 0) > 0 && w.mcEok >= P.capMaxEok) fails.push(`시총 ${Math.round(w.mcEok).toLocaleString('ko-KR')}억 (상한 ${P.capMaxEok}억)`);
       if ((+P.amtMinEok || 0) > 0 && !(q.amt >= P.amtMinEok * 1e8)) fails.push(`거래대금 ${Math.round(q.amt / 1e8)}억 (하한 ${P.amtMinEok}억)`);
       if (fails.length) { rejected.push({ code: w.code, name: w.name, changePct: q.changePct, fails }); continue; }
-      const sig = { barDate: w.barDate, w: w.w, chg: w.chg, up30: w.chg >= 29, vw: w.vw, gapPct, smEok: w.smEok, smBuy: w.smEok == null ? null : w.smEok > 0, mcEok: w.mcEok, age: w.age };
+      const sig = { barDate: w.barDate, rk: w.rk, w: w.w, chg: w.chg, vw: w.vw, gapPct, dipDate: w.dipDate, sm: w.sm.info, mcEok: w.mcEok, age: w.age };
       const s0 = scr.map[w.code], c = { code: w.code, name: q.name || w.name, price: q.price, open: q.open, high: q.high, low: q.low, changePct: q.changePct, vol: q.vol, amt: q.amt,
         sector: (s0 && s0.sector) || `미분류-${w.code}`, rs20: s0 ? num(s0.rs20_pctl) : null, smx: null, m: { fq: null, oq: null, pq: null, cttr: null, fAmt: null, oAmt: null, pAmt: null, w52: null },
-        pb: { vw: w.vw, stopPx: w.vw * (1 - (+P.pbStopBelowPct || 5) / 100), barDate: w.barDate, age: w.age, gapPct } };
+        pb: { vw: w.vw, stopPx: q.price * (1 - (+P.pbStopBelowPct || 5) / 100), barDate: w.barDate, rk: w.rk, age: w.age, gapPct } };
       c.score = PB.score(sig); c.reasons = PB.reasons(sig);
-      if (w.broken) c.warns = [`막대 뒤 ${w.broken.slice(5)}에 종가가 평균가 −${P.pbStopBelowPct}% 아래로 마감한 적 있어요(연구 규칙은 이를 막지 않음)`];
       passed.push(c); stat.flowPass++;
     }
     const { pick, dropped } = rankAndPick(passed, P.poolTop, P.sectorMax);
@@ -1978,14 +1980,15 @@ function createAuto(deps) {
     if (W.stale) return { ok: true, on: !!on, stale: true, lastD: W.lastD, prevD: W.prevD, rows: [] };
     const codes = W.watch.map(w => w.code), key = codes.join(',');
     if (codes.length && (pwq.key !== key || Date.now() - pwq.at > 20000)) { pwq.rows = await D.pbQuotes(codes).catch(() => []); pwq.key = key; pwq.at = Date.now(); }
-    const qm = new Map(pwq.rows.map(q => [q.code, q])), tp = +P.pbTouchPct || 3, rows = [];
+    const qm = new Map(pwq.rows.map(q => [q.code, q])), o = { breakPct: P.pbBreakPct == null ? 1 : +P.pbBreakPct, chasePct: +P.pbChasePct || 6 }, rows = [];
     for (const w of W.watch) {
       const q = qm.get(w.code), gap = q ? (q.price / w.vw - 1) * 100 : null;
-      const touch = q ? PB.todayTouch({ hi: w.vw * (1 + tp / 100), lo: w.vw * (1 - tp / 100) }, q) : false;
-      rows.push({ code: w.code, name: w.name, barDate: w.barDate, w: w.w, chg: w.chg, mcEok: Math.round(w.mcEok), vw: Math.round(w.vw), stop: Math.round(w.stop), age: w.age, broken: w.broken, smEok: w.smEok == null ? null : Math.round(w.smEok), price: q ? q.price : null, dayChg: q ? q.changePct : null, gap: gap == null ? null : Math.round(gap * 10) / 10, touch });
+      const hit = q ? PB.todayBreak(w.vw, q, o) : false;
+      rows.push({ code: w.code, name: w.name, barDate: w.barDate, rk: w.rk, w: w.w, chg: w.chg, mcEok: Math.round(w.mcEok), vw: Math.round(w.vw), age: w.age, dipDate: w.dipDate, minGap: w.minGapPct == null ? null : Math.round(w.minGapPct * 10) / 10,
+        smOk: w.sm.ok, smFails: w.sm.fails, sm: w.sm.info, price: q ? q.price : null, dayChg: q ? q.changePct : null, gap: gap == null ? null : Math.round(gap * 10) / 10, hit: hit && (w.sm.ok || P.pbSmGate === false) });
     }
-    rows.sort((a, b) => (b.touch - a.touch) || (Math.abs(a.gap == null ? 999 : a.gap) - Math.abs(b.gap == null ? 999 : b.gap)));
-    return { ok: true, on: !!on, stale: false, lastD: W.lastD, touchPct: tp, maxAge: +P.pbMaxAge || 30, rows, at: new Date().toISOString() };
+    rows.sort((a, b) => (b.hit - a.hit) || (b.smOk - a.smOk) || (Math.abs(a.gap == null ? 999 : a.gap) - Math.abs(b.gap == null ? 999 : b.gap)));
+    return { ok: true, on: !!on, stale: false, lastD: W.lastD, breakPct: o.breakPct, chasePct: o.chasePct, maxAge: +P.pbMaxAge || 63, smGate: P.pbSmGate !== false, rows, at: new Date().toISOString() };
   }
   async function igniteParams() { const A = await store.actives().catch(() => null); const I = A && A.Is.find(x => x.params && x.params.selector === 'ignite'); return I ? I.params : null; }
   return { pullbackWatch, igniteParams, tick, runSelection, sendNotice, handleApproval, handleEod, status, uiState, setConfig, strategies, saveStrategy, strategyVersions, createStrategy, deleteStrategy, setHalt, haltLevel, modeOf: sid => BR.execOf(sid), siteApprove, siteEod, siteOrderEdit, pendingAutoBuy, autoOrderCode, deskOk,
