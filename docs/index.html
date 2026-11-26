@@ -14733,8 +14733,10 @@ async function grkLoad(){
   const G=S.grk;if(G.rows||G.loading){if(G.rows)grkRender();return;}
   G.loading=true;
   try{G.rows=await q("v_global_ret","select=*&limit=2000");}
-  catch(e){console.error("글로벌 상승률",e);$("#grkBody").innerHTML='<tr><td colspan="6" class="load">불러오지 못했습니다 — 잠시 후 다시 열어 주세요</td></tr>';G.loading=false;return;}
-  G.loading=false;grkRender();
+  catch(e){console.error("글로벌 상승률",e);$("#grkBody").innerHTML=`<tr><td colspan="6" class="load">불러오지 못했습니다 — ${escH(String(e&&e.message||e).slice(0,220))}</td></tr>`;G.loading=false;return;}
+  G.loading=false;
+  if(!G.rows.length){$("#grkBody").innerHTML='<tr><td colspan="6" class="load">데이터가 비어 있습니다 — 로그인 상태이거나 v_global_ret 뷰가 아직 적용되지 않았을 수 있습니다</td></tr>';G.rows=null;return;}
+  grkRender();
 }
 function grkRender(){
   const G=S.grk,all=G.rows||[],per=G.per,pp=GRK_P[per];
