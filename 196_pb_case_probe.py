@@ -30,4 +30,9 @@ for ds in ["2026-10-13", "2026-10-14", "2026-10-15", "2026-10-20", "2026-10-29",
     p(f"| {ds} | {cl:,.0f} | {a1} | {b1} | {c1} | {a2} | {b2} | {c2} |")
 p("\n## 10/01~11/05 종가·무게\n\n| 날짜 | 종가 | 등락% | 무게 |\n|---|---:|---:|---:|")
 for r in g[(g.d >= pd.Timestamp('2026-10-01').date()) & (g.d <= pd.Timestamp('2026-11-05').date())].itertuples(): p(f"| {r.d} | {r.c:,.0f} | {r.chg:+.1f} | {r.w:.2f} |")
+p("\n## 일봉(시가·고가·저가·종가, 거래대금, 20일 평균 거래대금 대비)\n\n| 날짜 | 시가 | 고가 | 저가 | 종가 | 등락% | 종가 위치(저~고) | 거래대금(억) | 20일평균 대비 | 무게 |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+g["a20"] = g.a.shift(1).rolling(20, min_periods=10).mean()
+for r in g[(g.d >= pd.Timestamp(os.environ.get("D0", "2026-10-05")).date()) & (g.d <= pd.Timestamp(os.environ.get("D1", "2026-11-26")).date())].itertuples():
+    pos = (r.c - r.l) / (r.h - r.l) * 100 if r.h > r.l else float("nan")
+    p(f"| {r.d} | {r.o:,.0f} | {r.h:,.0f} | {r.l:,.0f} | {r.c:,.0f} | {r.chg:+.1f} | {pos:.0f}% | {r.a/1e8:,.0f} | {r.a/r.a20:.1f}배 | {r.w:.2f} |")
 open("pullback_study.md", "w", encoding="utf-8").write("\n".join(out) + "\n")
