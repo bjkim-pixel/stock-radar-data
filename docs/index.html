@@ -13107,7 +13107,9 @@ async function trdLoadAuto(silent){
   if(silent){const f=document.activeElement;if(TRD.auEdit||(f&&box.contains(f)&&/INPUT|SELECT|TEXTAREA/.test(f.tagName)))return;}   // 편집·입력 중에는 화면을 바꾸지 않음
   trdAutoRender();
 }
-function trdAutoRender(){const b=$("#trdPaneAuto");if(b&&TRD.au&&TRD.aus){b.innerHTML=trdAutoHtml();if(TRD.auRunK)b.querySelectorAll(".au-spin").forEach(x=>{const bt=x.closest("button");if(bt){bt.disabled=true;bt.classList.add("au-run");}});}}
+/* 전략 탭 줄은 가로로 스크롤되므로 다시 그릴 때마다 맨 앞으로 돌아가지 않게: 이전 스크롤 위치를 되살리고, 고른 탭이 화면 밖이면 줄 안에서만 가운데로 옮김 */
+function auStbFix(b,x0,center){const bar=b.querySelector(".au-stb");if(!bar)return;bar.scrollLeft=x0||0;if(!center)return;const on=bar.querySelector("button.on");if(on){const r=on.getBoundingClientRect(),q=bar.getBoundingClientRect();if(r.left<q.left||r.right>q.right)bar.scrollLeft+=(r.left+r.width/2)-(q.left+q.width/2);}}
+function trdAutoRender(center){const b=$("#trdPaneAuto");if(b&&TRD.au&&TRD.aus){const x0=(b.querySelector(".au-stb")||{}).scrollLeft||0;b.innerHTML=trdAutoHtml();auStbFix(b,x0,center===true);if(TRD.auRunK)b.querySelectorAll(".au-spin").forEach(x=>{const bt=x.closest("button");if(bt){bt.disabled=true;bt.classList.add("au-run");}});}}
 const auStrat=id=>((TRD.aus&&TRD.aus.strategies)||[]).find(s=>s.id===id);
 const auFields=kind=>((TRD.aus&&TRD.aus.schema&&TRD.aus.schema.fields)||{})[kind]||[];
 async function auPost(path,body,okText){
@@ -13434,7 +13436,7 @@ function auSecStep(sid,key){
 }
 const auSec=(sid,key,title,sub,body,open)=>{const z=auSecStep(sid,key);return `<div class="card au-sec${z.s?" au-s-"+z.s:""}" id="au-sec-${trdEsc(sid)}-${key}"><h3>${z.no?`<span class="au-no ${z.s}">${z.no}</span>`:""}${auTag(sid)} · ${title} <span class="r faint" style="font-size:11px">${sub||""}</span></h3>${body}</div>`;};
 function auGo(sid,key){
-  if(sid&&TRD.auStab!==sid&&auTabKeys().includes(sid)){TRD.auStab=sid;trdAutoRender();setTimeout(()=>auGo(sid,key),60);return;}
+  if(sid&&TRD.auStab!==sid&&auTabKeys().includes(sid)){TRD.auStab=sid;trdAutoRender(true);setTimeout(()=>auGo(sid,key),60);return;}
   const el=document.getElementById(`au-sec-${sid}-${key}`)||document.getElementById("au-sec-hold");
   if(!el)return;
   el.scrollIntoView({behavior:"smooth",block:"start"});el.classList.remove("au-flash");void el.offsetWidth;el.classList.add("au-flash");
@@ -14054,7 +14056,7 @@ function trdAutoHtml(){
 function auClick(t){
   let el;
   if((el=t.closest("a.au-nm"))){go("detail",el.dataset.code);return true;}
-  if((el=t.closest("[data-austab]"))){TRD.auStab=el.dataset.austab||"all";TRD.auPick=null;trdAutoRender();const b=document.querySelector(".au-stb");if(b)b.scrollIntoView({block:"nearest"});return true;}
+  if((el=t.closest("[data-austab]"))){TRD.auStab=el.dataset.austab||"all";TRD.auPick=null;trdAutoRender(true);const b=document.querySelector(".au-stb");if(b)b.scrollIntoView({block:"nearest"});return true;}
   if((el=t.closest("[data-austg]"))){TRD.auStg=TRD.auStg===el.dataset.austg?null:el.dataset.austg;trdAutoRender();return true;}
   if((el=t.closest("[data-aupw]"))){TRD.auPW=TRD.auPW||{rows:null};auPWLoad();trdAutoRender();return true;}
   if((el=t.closest("[data-aut]"))){TRD.auTab=el.dataset.aut;TRD.auMsg=null;trdAutoRender();if(TRD.auTab==="journal"&&TRD.auL.rows===null)auLLoad();if(TRD.auTab==="perf"&&TRD.auJ.rows===null)auJLoad();return true;}
