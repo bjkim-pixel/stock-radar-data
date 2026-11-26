@@ -3286,12 +3286,12 @@ function liveStart(){
   $("#liveBody").innerHTML='<tr><td colspan="20" class="load sk"></td></tr>';$("#liveLog").textContent="아직 변동이 없습니다";
   liveDefaults().then(()=>{if(!L.on||L.timer)return;liveFetch();L.timer=setInterval(liveFetch,8000);});
 }
-/* 처음 열 때 기본 조건: 시총 1조 이상 · 정배열 60일 이상 · 매집 전체(지속+고점 후 정체). 이후 바꾼 값은 그대로 유지 */
+/* 처음 열 때 기본 조건: 시총 1조 이상 · 종가 120일선 위 · 매집 전체(지속+고점 후 정체) 3개월 기준. 이후 바꾼 값은 그대로 유지 */
 async function liveDefaults(){
   const L=S.live;if(L.defaulted)return;L.defaulted=true;
   L.min=10000;$$("#liveCap .fchip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v==="10000"?"true":"false"));
-  S.lf.ma="a60";S.lf.smx="CONT,STALL";
-  const a=$("#lf_dMaF"),b=$("#lf_dSmxF");if(a)a.value="a60";if(b)b.value="CONT,STALL";
+  S.lf.ma="p120";S.lf.smx="CONT,STALL";S.lf.smxW="63";   // 2026-11-26: 120일선 위 · 매집 3개월 기준
+  const a=$("#lf_dMaF"),b=$("#lf_dSmxF"),w=$("#lf_dSmxW");if(a)a.value="p120";if(b)b.value="CONT,STALL";if(w)w.value="63";
   const c=$("#lfCnt");if(c)c.textContent="· 2개 적용 중";liveSelRender();
   try{await Promise.all([loadDetailMa(),smxLoadMap()]);}catch(e){console.error("기본 조건 데이터",e);}
 }
