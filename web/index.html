@@ -4797,7 +4797,10 @@ function lineChart(host,series,labels,opt={}){
         rows.push([hi,"최고",own||css("--up")],[lo,"최저",own||css("--down")]);
       }
       if(si===0||opt.marks==="each"||todayOnly)rows.push([vals.length-1,"오늘",own||css("--ink")]);
-      rows.forEach(([i,lb,c])=>{
+      /* 최고·최저가 오늘과 같은 점이면 글자가 겹치므로 '오늘' 하나로 합침(2026-11-26) */
+      const lastI=vals.length-1,hasToday=rows.some(r=>r[1]==="오늘");
+      const rows2=hasToday?rows.filter(r=>r[1]==="오늘"||r[0]!==lastI):rows;
+      rows2.forEach(([i,lb,c])=>{
         if(i<0||vals[i]==null)return;
         svg.appendChild(el("circle",{cx:X(i),cy:Y(vals[i]),r:4.5,fill:c,
           stroke:css("--surface"),"stroke-width":2}));
@@ -8843,9 +8846,9 @@ function detWtTop(rows,start,end,n=2){
     c.push([w,i]);
   });
   c.sort((a,b)=>b[0]-a[0]);
-  /* 2026-11-19: 2위는 1위일 '이후' 날짜 중 가장 큰 날(1위일 앞쪽은 제외). 이후 날짜에 양수가 없으면 2위 없음 */
+  /* 2026-11-19: 2위는 1위일 '이후' 날짜 중 가장 큰 날. 2026-11-26: 1위일 이후에 양수인 날이 없으면(1위가 마지막 거래일 등) 기간 안에서 1위 다음으로 큰 날을 2위로 */
   const pick=[];
-  if(c.length){pick.push(c[0]);if(n>1){const nx=c.find(x=>x[1]>c[0][1]);if(nx)pick.push(nx);}}
+  if(c.length){pick.push(c[0]);if(n>1){const nx=c.find(x=>x[1]>c[0][1])||c[1];if(nx)pick.push(nx);}}
   return pick.slice(0,n).map(([w,i],k)=>{
     const r=rows[i],ta=+r.trade_amount,vol=+r.volume,ok=ta>0&&vol>0,net=detDayNet(rows,i);
     const subj=net?Object.keys(net).map(nm=>{

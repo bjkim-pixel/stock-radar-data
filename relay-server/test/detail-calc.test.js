@@ -35,11 +35,11 @@ t('무게 1·2위일: 구간 안 양수만, 큰 순서',()=>{
   // 기간을 좁히면 구간 밖 날짜는 빠진다(2번째 날 제외 → 1위가 5번 날)
   const t2=m.detWtTop(r,r[3].trade_date,r[6].trade_date,2);
   assert.deepEqual(t2.map(x=>x.i),[5,6]);
-  // 2위는 1위일 '이후' 날짜 중 가장 큰 날 — 1위가 앞쪽이면 뒤쪽 최대, 1위가 마지막이면 2위 없음
+  // 2위는 1위일 '이후' 날짜 중 가장 큰 날 — 1위가 앞쪽이면 뒤쪽 최대, 1위가 마지막이면 기간 안 다음으로 큰 날
   const w2=[0.04,0.09,0.01,0.03,0.02];const r2=mk(5,i=>({weight_per_share:w2[i],foreign_cum:i*1e8,inst_cum:i*5e7}));
   assert.deepEqual(m.detWtTop(r2,r2[0].trade_date,r2[4].trade_date,2).map(x=>x.i),[1,3]);
   const w3=[0.04,0.01,0.09];const r3=mk(3,i=>({weight_per_share:w3[i],foreign_cum:i*1e8,inst_cum:i*5e7}));
-  assert.deepEqual(m.detWtTop(r3,r3[0].trade_date,r3[2].trade_date,2).map(x=>x.i),[2]);
+  assert.deepEqual(m.detWtTop(r3,r3[0].trade_date,r3[2].trade_date,2).map(x=>x.i),[2,0]);   // 1위가 마지막 날이면 2위는 기간 안 다음으로 큰 날
   assert.equal(m.detWtTop(r,'2099-01-01','2099-12-31',2).length,0);
 });
 t('주체별 평균 단가 = 순매수대금 ÷ (순매수대금×거래량÷거래대금) = 거래대금÷거래량',()=>{
