@@ -121,7 +121,7 @@ def simulate(t, n, o, h, l, c, v, sp=STOP):
 CFG = []
 for W in (0.5, 1.0, 2.0):
     for AMT in (500, 1000):
-        for ref in ("평균가", "시가", "몸통중간"): CFG.append((f"무게≥{W:g}·거래대금≥{AMT}억·기준가={ref}", W, AMT, ref))
+        for ref in ("평균가", "시가"): CFG.append((f"무게≥{W:g}·거래대금≥{AMT}억·기준가={ref}", W, AMT, ref))
 base_y, sigs, trades = [], [], []; QD = collections.defaultdict(list)
 CODES = [cd for cd, nm in NAME.items() if nm in ('안랩', '코스맥스', '에스엠', 'SM')]
 for code, g0 in P.groupby("code", sort=False):
@@ -150,13 +150,12 @@ for code, g0 in P.groupby("code", sort=False):
                 refp = (a[idx] / v[idx] if v[idx] > 0 else 0) if ref == "평균가" else o[idx] if ref == "시가" else (o[idx] + c[idx]) / 2
                 if refp > 0: rr.append((idx, r_ + 1, t - idx, refp))
             if not rr or not any(BRK <= (c[t] / x[3] - 1) * 100 <= CHASE for x in rr): continue
-            arm = []
+            arm = []   # 눌림(무장) 상태인 기준봉 중 오늘 +1~6% 돌파 구간에 든 것 — 여러 개면 기준가에 가장 가까운 것(예전엔 기준가가 가장 낮은 것 하나만 봐서 다른 기준봉의 돌파를 놓쳤음)
             for idx, rk, age, refp in rr:
-                ok, dep = armed_state(c, idx, t, refp, 0.0)
-                if ok: arm.append((refp, idx, rk, age, dep))
+                ok, dep = armed_state(c, idx, t, refp, 0.0); g_ = (c[t] / refp - 1) * 100
+                if ok and BRK <= g_ <= CHASE: arm.append((g_, refp, idx, rk, age, dep))
             if not arm: continue
-            refp, idx, rk, age, dep = min(arm); gp = (c[t] / refp - 1) * 100
-            if not (BRK <= gp <= CHASE): continue
+            gp, refp, idx, rk, age, dep = min(arm)
             gk = gate(arr, t); reg = REG.get(dates[t - 1]); reg = None if reg is None or reg != reg else bool(reg)
             for gv, use in (("수급 점검", True), ("점검 없음", False)):
                 if use and not gk: continue
@@ -170,7 +169,7 @@ SG = pd.DataFrame(sigs, columns=["cfg", "gate", "code", "d", "rk", "age", "gap",
 TR = pd.DataFrame(trades, columns=["cfg", "gate", "code", "d", "ent", "ret", "why", "hold", "rk", "age", "gap", "reg"])
 mid = TR.d.sort_values().iloc[len(TR) // 2] if len(TR) else None
 p("# 기준봉 정의 비교 — 양봉(+10%↑) · 종가 위치 상단 70%↑ · 무게 · 거래대금(절대·20일 평균 4배↑)\n")
-p("후보 = 최근 63거래일 안 기준봉 중 무게 큰 2개 · 눌림 깊이 무관(기준가 아래로 내려간 적) · 기준가 +1~6% 돌파 종가 매수 · 손절 −5% 종가 · 익절 +10/+15% · 시간 청산 없음 · 비용 0.25% · 일요일 중복 행 제거\n")
+p("후보 = 최근 63거래일 안 기준봉 중 무게 큰 2개(둘 다 감시, 오늘 돌파한 것 중 기준가에 가까운 쪽) · 눌림 깊이 무관(기준가 아래로 내려간 적) · 기준가 +1~6% 돌파 종가 매수 · 손절 −5% 종가 · 익절 +10/+15% · 시간 청산 없음 · 비용 0.25% · 일요일 중복 행 제거\n")
 p("| 기준봉 정의 | 수급 | 거래 | 종목 | 승률 | 평균% | 중앙값% | PF | 전반 평균(거래) | 후반 평균(거래) |\n|---|---|---:|---:|---:|---:|---:|---:|---|---|")
 for cn, *_ in CFG:
     for gv in ("수급 점검", "점검 없음"):
@@ -193,5 +192,5 @@ for cd in CODES:
             sg = SG[(SG.cfg == cn) & (SG.gate == gv) & (SG.code == cd)]
             row.append(f"{gv} {len(sg)}건" + (": " + ", ".join(pd.Timestamp(d).strftime('%m/%d') for d in sg.d) if 0 < len(sg) <= 8 else ""))
         p(f"- {cn} → " + " / ".join(row))
-p(f"\n총 {time.time()-T0:.0f}초 · 일봉(종가 매수 근사) · 데이터 약 14개월 · 설정 18개를 비교하므로 우연히 좋아 보이는 결과 주의(전반/후반 열 확인).")
+p(f"\n총 {time.time()-T0:.0f}초 · 일봉(종가 매수 근사) · 데이터 약 14개월 · 설정 12개를 비교하므로 우연히 좋아 보이는 결과 주의(전반/후반 열 확인).")
 open("pullback_study.md", "w", encoding="utf-8").write("\n".join(out) + "\n")
