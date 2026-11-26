@@ -10315,6 +10315,45 @@ function kwAccGet(code){
     if(S.chart&&S.chart.code===code&&r&&r.length){try{renderSmx();}catch(e){}}}).catch(e=>{S.kwAcc[code]={rows:[]};console.error("통장수",e);});
   return null;
 }
+/* 주도 세력 1·2위 한눈에(2026-11-26): 누가 쥐고 있고 · 오늘 더 사는지 파는지 · 보유 물량이 아직 많은지 · 파는 중이면 개미털기(거래량 없이 소폭 매도)인지 실제 이탈인지 */
+function smxLeadBox(m,rows,pvRow,f0,md,D){
+  const L=m.L;if(L<6)return "";
+  const ser=m.subj.filter(z=>!z.flat).map(z=>{const i=m.subj.indexOf(z),f=SMX_SUBJ[i][2],cur=rows.map(r=>(f(r)-f(pvRow))/EOK),peak=Math.max(...cur);return {...z,hold:cur[L],peak,pkI:cur.indexOf(peak)};});
+  const lead=ser.filter(z=>z.hold>0).sort((a,b)=>b.hold-a.hold).slice(0,2);
+  if(!lead.length)return `<div class="note" style="margin:0 0 8px"><b>주도 세력</b> — 이 기간 순매수 누적이 플러스인 주체가 없습니다(외국인·기관이 순매도 우위).</div>`;
+  const vol=rows.map(r=>+r.volume||0),avg=(a,b)=>{const x=vol.slice(Math.max(0,a),b+1).filter(v=>v>0);return x.length?x.reduce((s,v)=>s+v,0)/x.length:null;};
+  const v5=avg(L-4,L),v20=avg(L-24,L-5),vr=v5&&v20?v5/v20*100:null,vt=avg(L,L),vtr=vt&&v20?vt/v20*100:null;
+  const cl=rows.map(r=>+r.close),p5=cl[L-5]>0?(cl[L]/cl[L-5]-1)*100:null;
+  const a5=rows.slice(L-4,L+1).reduce((s,r)=>s+(+r.trade_amount||0),0)/EOK;
+  const card=(z,k)=>{
+    const rem=z.peak>0?z.hold/z.peak*100:null,dn=Math.abs(z.day)>=0.5,pos=z.day>=0.5,neg=z.day<=-0.5;
+    let act,ac;
+    if(pos&&z.r5>0){act="오늘도 매집 중";ac="up";}
+    else if(neg&&z.r5<0){act="오늘도 매도(이탈 중)";ac="down";}
+    else if(pos){act="오늘 매수 · 최근 5일은 순매도";ac="warn";}
+    else if(neg){act="오늘 매도 · 최근 5일은 순매수";ac="warn";}
+    else if(z.r5>0){act="오늘 변동 없음 · 최근 5일 매수 우위";ac="up";}
+    else if(z.r5<0){act="오늘 변동 없음 · 최근 5일 매도 우위";ac="down";}
+    else{act="변동 없음";ac="dim";}
+    const hv=rem==null?"–":rem>=85?"대부분 보유 중":rem>=60?"절반 이상 보유":rem>=35?"절반 가까이 이탈":"대부분 이탈";
+    const selling=z.r5<0;
+    let ant="";
+    if(selling&&vr!=null){
+      const calm=vr<85&&(p5==null||p5>-6)&&(rem==null||rem>=60),real=vr>=110||(rem!=null&&rem<50)||(p5!=null&&p5<=-8);
+      ant=calm?`<div style="margin-top:6px"><b class="warn">개미털기 가능성</b> — 팔고 있지만 최근 5일 거래량이 평소(직전 20일 평균)의 ${N(vr,0)}%로 적고, 주가 낙폭도 작고(${p5==null?"–":pm(p5,1)+"%"}), 보유 물량도 ${N(rem,0)}%가 남아 있습니다.</div>`
+        :real?`<div style="margin-top:6px"><b class="down">실제 이탈 가능성</b> — ${[vr>=110?`거래량이 평소의 ${N(vr,0)}%로 실리며 매도`:"",rem!=null&&rem<50?`보유 물량이 최고점의 ${N(rem,0)}%로 줄었음`:"",p5!=null&&p5<=-8?`주가가 5일간 ${pm(p5,1)}%`:""].filter(Boolean).join(" · ")}.</div>`
+        :`<div style="margin-top:6px"><b>판단 보류</b> — 매도 중이지만 거래량은 평소 수준(${N(vr,0)}%)이고 보유 물량이 ${rem==null?"–":N(rem,0)+"%"} 남아 있습니다.</div>`;
+    }
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:9px 11px;font-size:12.5px;line-height:1.5;background:var(--surface-2)">
+      <div style="font-size:13.5px"><b>${k}위 ${z.nm}</b> <span class="tag-d" style="font-size:11.5px;padding:1px 7px">${act}</span></div>
+      <div class="num" style="margin-top:4px">보유(기간 순매수 누적) <b class="${sgn(z.hold)}">${f0(z.hold)}억</b> · 최고점 ${md(D(z.pkI))} ${f0(z.peak)}억 대비 <b>${rem==null?"–":N(rem,0)+"%"}</b> → <b>${hv}</b></div>
+      <div class="num faint">오늘 <span class="${sgn(z.day)}">${f0(z.day)}</span> · 5일 <span class="${sgn(z.r5)}">${f0(z.r5)}</span> · 20일 <span class="${sgn(z.r20)}">${f0(z.r20)}</span> (억)</div>${ant}</div>`;
+  };
+  const ctx=`거래량: 오늘 ${vtr==null?"–":N(vtr,0)+"%"} · 최근 5일 ${vr==null?"–":N(vr,0)+"%"}(직전 20일 평균 대비) · 5일 주가 ${p5==null?"–":pm(p5,1)+"%"}${a5>0&&lead[0].r5<0?` · 1위 5일 순매도는 거래대금의 ${N(-lead[0].r5/a5*100,1)}%`:""}`;
+  return `<div style="margin:0 0 10px"><div style="font-size:13px;font-weight:700;margin-bottom:6px">주도 세력 1·2위 — 오늘 기준 점검</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px">${lead.map((z,i)=>card(z,i+1)).join("")}</div>
+    <div class="faint" style="font-size:11px;margin-top:5px">${ctx}. 개미털기는 일봉 수급으로 본 추정(매도 중 + 거래량 평소 85% 미만 + 낙폭 −6% 이내 + 보유 60% 이상)이며 확정이 아닙니다. 보유는 실제 잔고가 아니라 기간 순매수 누적입니다.</div></div>`;
+}
 function smxDraw(all,win,E){
   const cp=E.compact,CW=cp?{w:700,pr:40,pl:8}:{};
   const w=win==="all"?all.length:Math.min(all.length,+win);
@@ -10339,6 +10378,7 @@ function smxDraw(all,win,E){
   const wl=win==="all"?"전체":({21:"1개월",63:"3개월",126:"6개월"})[+win]||`${w}거래일`;
   E.status.innerHTML+=`<div style="font-size:12.5px;margin-top:6px;line-height:1.55">주도 세력 · 기간 내 순매수 누적 최다(가장 많은 물량) ${lead("hold")} · 매집 구간 최다 ${lead("acc")} · 최근 20일 최다 매수 ${lead("r20")} · 최근 5일 ${lead("r5")}</div>
     <div class="faint" style="font-size:11px;margin-top:2px">주도 세력은 외국인·금융투자·투신·연기금·사모·기타기관 중에서 고릅니다. 보유 물량은 실제 잔고가 아니라 이 기간 외+기 수급의 누적 순매수 기준입니다.</div>`;
+  try{if(!cp)E.status.innerHTML=smxLeadBox(m,rows,pv,f0,md,D)+E.status.innerHTML;}catch(e){console.error("주도 세력 점검",e);}
   const recov=x=>x.acc>0&&x.after<0?N(-x.after/x.acc*100,0)+"%":x.after>0?'<span class="up">매수중</span>':"–";
   const td=v=>`<td class="num ${sgn(v)}">${f0(v)}</td>`;
   const row=x=>`<tr><td class="l"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(${x.c});margin-right:4px"></i>${x.nm}</td>${td(x.day)}<td class="num ${sgn(x.hold)}" style="font-weight:700">${f0(x.hold)}</td>${td(x.acc)}${td(x.after)}<td>${recov(x)}</td></tr>`;
