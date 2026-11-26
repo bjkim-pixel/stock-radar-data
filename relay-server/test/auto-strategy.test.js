@@ -304,3 +304,18 @@ test('거래대금 하한(amtMinEok): 기본 100억원, 0=끔, 장중·종가베
   assert.equal(S.validate('intraday', { amtMinEok: 0 }).val.amtMinEok, 0);
   assert.equal(S.validate('intraday', { amtMinEok: 9999 }).errs.length > 0, true);
 });
+
+test('가상매매 전략은 승인 방식을 무엇으로 저장했든 항상 자동 승인 · 실전은 그대로 · 눌림목 옛 이름은 새 이름으로', async () => {
+  const row = (id, kind, params, name) => ({ id, name: name || id, kind, enabled: true, builtin: true, version: 1, params });
+  const st = S.createStore({ sbGet: async () => [
+    row('intraday-default', 'intraday', { approval: 'manual', execMode: 'paper' }),
+    row('x-real', 'intraday', { approval: 'manual', execMode: 'live', liveAutoOk: true }),
+    row('closing-default', 'closing', { closeBuyApproval: 'manual', execMode: 'paper' }),
+    row('pullback-default', 'intraday', { selector: 'pullback' }, '눌림목(무게 신고 막대 평균가 재터치)'),
+  ], sbWrite: async () => {} });
+  const L = await st.list(true), by = id => L.find(r => r.id === id);
+  assert.equal(by('intraday-default').params.approval, 'auto');
+  assert.equal(by('closing-default').params.closeBuyApproval, 'auto');
+  assert.notEqual(by('x-real').params.approval, 'auto', '실전·드라이런은 설정 그대로');
+  assert.equal(by('pullback-default').name, '눌림목(기준봉 시가 회복)');
+});

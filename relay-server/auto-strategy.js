@@ -113,7 +113,7 @@ const SCHEMA = {
     F('repriceTo', '매수 주문', '정정 가격', 'enum', 'bid1', { opts: ENUM.repriceTo }),
     F('cancelWaitMin', '매수 주문', '정정 후 → 끝낼 때까지 대기', 'num', 3, { min: 1, max: 60, step: 1, unit: '분' }),
     F('unfilledEnd', '매수 주문', '그래도 미체결이면', 'enum', 'cancel', { opts: ENUM.unfilledEnd }),
-    F('approval', '매수 주문', '승인 방식', 'enum', 'manual', { opts: ENUM.approval }),
+    F('approval', '매수 주문', '승인 방식(가상매매는 어떻게 설정해도 알림 직후 자동 승인 — 성과 검증을 위해 체결이 승인 대기로 막히지 않게 함)', 'enum', 'manual', { opts: ENUM.approval }),
     F('regimeMode', '시장 상태', '시장 상태 점수 반영', 'enum', 'info', { opts: ENUM.regimeMode }),
     F('regimeCaution', '시장 상태', '보수 단계(30~49점) 금액', 'num', 50, { min: 10, max: 100, step: 5, unit: '%' }),
     F('regimeDefense', '시장 상태', '방어 단계(30점 미만) 금액', 'num', 25, { min: 10, max: 100, step: 5, unit: '%' }),
@@ -337,6 +337,7 @@ const builtinRow = b => ({ ...b, enabled: !b.off, archived: false, version: 1, p
 
 /* 저장소: auto_strategies · auto_strategy_versions. 30초 캐시, 테이블이 없으면 기본 전략으로 동작 */
 function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
+  const RENAMED = { 'pullback-default': { name: (BUILTIN.find(b => b.id === 'pullback-default') || {}).name, old: ['눌림목(무게 신고 막대 평균가 재터치)', '눌림목(무게 1·2위일 가격 회복)', '눌림목(무게 1·2위일 평균가 회복)'] } };
   let cache = null, at = 0, missing = false;
   /* 원본 연결 컬럼(source)은 DB 설정(dryrun_ledger) 전에는 없을 수 있음 → 빼고 저장(원본 연결만 기록되지 않음) */
   const SRC = require('./opt-col').createOptCol('source', { onMissing: () => console.warn('[전략] auto_strategies.source 컬럼 없음 — 원본 연결 없이 저장([수시] DB 테이블·뷰 생성 → dryrun_ledger)') });
@@ -352,6 +353,10 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
       if (pr.nxtJudgeAt === '19:00' && +pr.nxtReplyMin === 40) pr = { ...pr, nxtJudgeAt: '18:30', nxtReplyMin: 30 };
     }
     const v = validate(r.kind, pr);
+    // 2026-11-26: 가상매매(execMode paper) 전략은 승인 과정은 그대로 두되 항상 알림 직후 자동 승인 — 승인 대기·누락으로 체결이 안 돼 성과를 못 보는 일을 막음(실전·드라이런은 설정 그대로)
+    if (v.val && sideOfParams(v.val) === 'paper') { if ('approval' in v.val) v.val.approval = 'auto'; if ('closeBuyApproval' in v.val) v.val.closeBuyApproval = 'auto'; }
+    // 기본 전략의 예전 이름(저장된 행이 옛 이름 그대로면)을 새 이름으로 — 사용자가 직접 바꾼 이름은 건드리지 않음
+    const rn = RENAMED[r.id]; if (rn && rn.old.includes(r.name)) r = { ...r, name: rn.name };
     const needCopy = r.kind === 'closing' && (r.params || {}).capMinEok === undefined;   // 독립 전 종가 전략(장중 조건을 아직 복사하지 않음)
     return { id: r.id, name: r.name, kind: r.kind, desc: r.desc || '', enabled: !!r.enabled, archived: !!r.archived, builtin: !!r.builtin, version: +r.version || 1,
       params: v.val || defaults(r.kind), invalid: v.errs ? v.errs.map(e => e.msg) : null, updatedAt: r.updated_at || null, source: r.source || null, ...(needCopy ? { needCopy: true } : {}) };

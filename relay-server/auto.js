@@ -1086,7 +1086,7 @@ function createAuto(deps) {
       const cbCodes = new Set((run.payload.picks || []).filter(p => p.cb).map(p => p.code));
       const pk = n => run.payload.picks[n - 1];
       if (a.kind === 'buy' && (a.nums || []).some(n => pk(n) && pk(n).closed)) return { closedNum: (a.nums || []).filter(n => pk(n) && pk(n).closed) };
-      let nums = a.kind === 'all' ? Array.from({ length: max }, (_, i) => i + 1).filter(n => !isOrdered(ords[pk(n).code]) && !pk(n).closed && !(opts.via === 'auto' && (pk(n).kwHigh || pk(n).alt))) : a.nums || [];   // 전체 = 아직 주문하지 않은 이번 회차 후보 전부
+      let nums = a.kind === 'all' ? Array.from({ length: max }, (_, i) => i + 1).filter(n => !isOrdered(ords[pk(n).code]) && !pk(n).closed && !(opts.via === 'auto' && !opts.paper && (pk(n).kwHigh || pk(n).alt))) : a.nums || [];   // 전체 = 아직 주문하지 않은 이번 회차 후보 전부
       if (a.kind === 'all' && !nums.length) return { nothing: true };
       if (a.kind !== 'pass' && (!nums.length || nums.some(n => n < 1 || n > max))) return { bad: max };
       if (a.kind !== 'pass') {   // 하루 최대 매수 종목 수
@@ -1499,8 +1499,9 @@ function createAuto(deps) {
   async function autoApprove(sid) {
     const { date, min } = kstParts();
     const cur = await readRun(date, sid).catch(() => null), open = ((cur && cur.payload && cur.payload.picks) || []).filter(p => !p.closed);
-    if (open.length && open.every(p => p.alt || p.kwHigh)) return { ok: true, skipped: '대체 후보·개인 계좌수 초과 후보는 승인 필요' };   // 대체 조건·개인 계좌수 상한 이상 후보는 자동 승인하지 않음
-    const msg = await approveRun(date, sid, { kind: 'all' }, min, { via: 'auto' });
+    const paper = sideOfSid(sid) === 'paper';   // 가상매매는 대체 후보·개인 계좌수 초과 후보도 즉시 자동 승인(성과 검증용)
+    if (!paper && open.length && open.every(p => p.alt || p.kwHigh)) return { ok: true, skipped: '대체 후보·개인 계좌수 초과 후보는 승인 필요' };   // 대체 조건·개인 계좌수 상한 이상 후보는 자동 승인하지 않음
+    const msg = await approveRun(date, sid, { kind: 'all' }, min, { via: 'auto', paper });
     if (msg) await tgFor(sid)('🤖 자동 승인\n' + msg);
     return { ok: true };
   }

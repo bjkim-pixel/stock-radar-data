@@ -60,7 +60,7 @@ test('메시지: 후보 없음·쉬는 날·후보 목록', () => {
 });
 
 /* ── 흐름 테스트(가짜 DB·시세·텔레그램) ── */
-function harness({ min = 10 * 60 + 5, on = true, trading = true, params = null, kw = {} } = {}) {
+function harness({ min = 10 * 60 + 5, on = true, trading = true, params = {}, kw = {} } = {}) {   // params 기본 {} = 전략 저장소(가상매매 자동 승인 강제)를 거치지 않고 기본값(수동 승인)으로 — 수동 승인 흐름을 검증
   const db = { auto_runs: {}, auto_config: { main: { on, perStockKrw: 1000000 } } };
   const sent = [], smxQ = [];
   let pool = ['A', 'B', 'C', 'D'];
@@ -327,13 +327,11 @@ test('대체 후보: 원래 조건 통과 종목이 하나라도 있으면 대�
   const P = h.db.auto_runs['2026-11-16'].payload;
   assert.deepEqual(P.picks.map(p => p.code), ['A']); assert.ok(!P.picks[0].alt);
 });
-test('대체 후보: 자동 승인 설정이어도 승인 대기, 알림에 안내', async () => {
+test('대체 후보: 가상매매는 대체 후보도 알림 직후 즉시 자동 승인(성과 검증용)', async () => {
   const h = harness({ params: { approval: 'auto' } });
   h.setFlow(() => ({ fq: -1000, oq: 30000 }));
   await h.A.tick(); h.setMin(10 * 60 + 15); await h.A.tick(); await h.A.tick();
-  assert.equal(h.db.auto_runs['2026-11-16'].status, 'noticed');
-  assert.match(h.sent[0], /대체 조건 후보/);
-  assert.ok(!(h.db.auto_runs['2026-11-16'].payload.approved || []).length);
+  assert.ok((h.db.auto_runs['2026-11-16'].payload.approved || []).length > 0, JSON.stringify(h.db.auto_runs['2026-11-16'].payload.decision));
 });
 test('대체 후보: 승인이 없어도 다음 검토에도 후보면 자동 매수, 패스한 건 존중', async () => {
   const h = harness();
