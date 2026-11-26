@@ -52,7 +52,7 @@ async function rig({ pExtra = {}, smx = [{ win: '21', st: 'CONT', lead_nm: '외�
   return { c, A, runs, sent, date0, at, quote };
 }
 
-test('15:10 선정 → 시장가 매수 · 손절 = 매수가−5% · 익절 +8/+12% · 종가 마감 손절은 15:15 이후에만', async () => {
+test('15:10 선정 → 시장가 매수 · 손절 = 매수가−5% · 익절 +10/+15% · 종가 마감 손절은 15:15 이후에만', async () => {
   const { c, A, runs, at, quote } = await rig();
   try {
     at(0, 15, 10); quote(10650);
@@ -68,7 +68,7 @@ test('15:10 선정 → 시장가 매수 · 손절 = 매수가−5% · 익절 +8/
     assert.notEqual(o.st, 'skipped', o.why);
     assert.equal(o.plan.stop, 10110, '현재가 10,650 × 0.95 = 10,117.5 → 호가 내림');
     assert.equal(o.plan.closeStop, true);
-    assert.deepEqual(o.plan.steps.map(s => s.p), [11520, 11940], '매수가 10,660 → +8% · +12%');
+    assert.deepEqual(o.plan.steps.map(s => s.p), [11730, 12260], '매수가 10,660 → +10% · +15%');
     const S1 = await c.t.paper.state();
     const b1 = S1.orders.find(x => x.code === '035420' && x.side === 'buy');
     assert.equal(b1.type, 'market');

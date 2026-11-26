@@ -70,7 +70,7 @@ test('기본 전략: 눌림목은 꺼진 가상 전략으로 등록되고 검증
   assert.ok(b && b.off && b.preset.selector === 'pullback');
   const r = ST.validate('intraday', { ...ST.defaults('intraday'), ...b.preset });
   assert.ok(r.val, JSON.stringify(r.errs));
-  assert.equal(r.val.selectAt, '15:10'); assert.equal(r.val.tp1Pct, 8); assert.equal(r.val.tp2Pct, 12); assert.equal(r.val.execMode, 'paper');
+  assert.equal(r.val.selectAt, '15:10'); assert.equal(r.val.tp1Pct, 10); assert.equal(r.val.tp2Pct, 15); assert.equal(r.val.execMode, 'paper');
   // 눌림목이 아닌 전략은 승인 마감이 14:30 을 넘으면 여전히 거부
   const bad = ST.validate('intraday', { ...ST.defaults('intraday'), selectAt: '15:10', approveWindow: 5 });
   assert.ok(bad.errs && bad.errs.some(e => e.key === 'approveWindow'));
