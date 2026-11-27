@@ -1,0 +1,34 @@
+name: "[수시] DART 재무 보정 | 수동 | 분기 실적 점검·채우기"
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'check(점검만) 또는 apply(저장)'
+        default: 'check'
+      step:
+        description: 'check 표본 간격(6=약 1/6 종목)'
+        default: '6'
+permissions:
+  contents: write
+concurrency:
+  group: dart-fin
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      DART_API_KEY: ${{ secrets.DART_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - run: python 206_dart_fin.py "${{ github.event.inputs.mode }}" "${{ github.event.inputs.step }}"
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: dart-fin-report
+          file: dart_fin.md
