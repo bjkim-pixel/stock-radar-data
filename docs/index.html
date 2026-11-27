@@ -2351,21 +2351,16 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div id="dMajorBody"></div>
   </div>
 
-  <div class="card" id="dPrice2Card"><h3>가격 · 이동평균<span class="r" id="dRange2">전 기간</span></h3>
-    <div class="legend">
-      <span><i style="background:var(--ink)"></i>종가</span>
-      <span><i style="background:var(--mac1)"></i>MA5</span>
-      <span><i style="background:var(--mac2)"></i>MA20</span>
-      <span><i style="background:var(--mac3)"></i>MA120</span></div>
-    <div class="legend" id="dDartMkLg" style="margin-top:-2px"></div>
+  <div class="card" id="dPrice2Card"><h3>가격 · 공시 · 분기 영업이익<span class="r" id="dRange2">전 기간</span></h3>
+    <div class="legend" id="dDartMkLg"></div>
     <div class="chart" id="dPrice2"></div>
-    <div class="note">위 "가격 · 이동평균"과 같은 차트입니다(공시 DART 바로 위에 두고 보기 위한 복사본). 종가선 위의 도형은 DART 공시 접수일이며, <b>▲ 수주(단일판매·공급계약) · ◆ 자사주 취득 결정 · ■ 증설·시설투자·지분 투자</b>입니다. 도형을 길게 누르거나 마우스를 올리면 내용이 나옵니다. 공시는 DART 수집을 시작한 2026-10-22 이후 접수분만 표시됩니다(과거 백필 없음).</div>
-  </div>
-
-  <div class="card" id="dOpgCard" style="display:none"><h3>분기 영업이익 증가율<span class="r" id="dOpgSub"></span></h3>
-    <div class="legend"><span><i style="background:var(--up)"></i>증가(확정)</span><span><i style="background:var(--down)"></i>감소(확정)</span><span><i style="background:var(--ink-3);opacity:.45"></i>점선·연한 막대 = 예상(E)</span></div>
-    <div class="chart" id="dOpg"></div>
-    <div class="note">전년 동기 대비 영업이익 증가율(%)이며, 막대 아래 숫자는 해당 분기 영업이익입니다. 확정 실적과 네이버 증권 컨센서스 예상(E)을 함께 그렸습니다. 전년 동기가 적자(또는 0)라 비율을 낼 수 없으면 <b>흑전·적지</b>, 흑자에서 적자로 바뀌면 <b>적전</b>으로 표시합니다.</div>
+    <div class="note">검은 선은 종가이고, 종가선 위의 도형은 DART 공시 접수일입니다 — <b>▲ 수주(단일판매·공급계약) · ◆ 자사주 취득 결정 · ■ 증설·시설투자·지분 투자</b>. 도형을 길게 누르거나 마우스를 올리면 내용이 나옵니다. 공시는 DART 수집을 시작한 2026-10-22 이후 접수분만 표시됩니다(과거 백필 없음).</div>
+    <div id="dOpgWrap" style="display:none;margin-top:14px;padding-top:10px;border-top:1px solid var(--border)">
+      <div style="font-size:12.5px;font-weight:650;margin-bottom:4px">분기 영업이익 증가율 <span class="faint" style="font-weight:400">· 전분기 대비 · </span><span class="faint" id="dOpgSub" style="font-weight:400"></span></div>
+      <div class="legend"><span><i style="background:var(--up)"></i>증가(확정)</span><span><i style="background:var(--down)"></i>감소(확정)</span><span><i style="background:var(--ink-3);opacity:.45"></i>점선·연한 막대 = 예상(E)</span></div>
+      <div class="chart" id="dOpg"></div>
+      <div class="note">직전 분기 대비 영업이익 증가율(%)이며 막대 아래 숫자는 해당 분기 영업이익입니다. 확정 실적과 네이버 증권 컨센서스 예상(E)을 함께 그렸고, 위 가격 기간 선택과 무관하게 최근 분기를 보여줍니다. 직전 분기가 적자(또는 0)라 비율을 낼 수 없으면 <b>흑전·적지</b>, 흑자에서 적자로 바뀌면 <b>적전</b>으로 표시합니다.</div>
+    </div>
   </div>
 
   <details class="card" id="dDartCard" style="display:none"><summary style="cursor:pointer;list-style:none"><h3 style="margin:0">공시 <span class="r" id="dDartSub">DART · 최근 1개월</span></h3></summary><div style="margin-top:8px"></div>
@@ -2407,6 +2402,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <span><i style="background:var(--mac1)"></i>MA5</span>
       <span><i style="background:var(--mac2)"></i>MA20</span>
       <span><i style="background:var(--mac3)"></i>MA120</span></div>
+    <div class="legend" id="dDartMkLg0" style="margin-top:-2px"></div>
     <div class="chart" id="dPrice"></div>
     <div class="note">● 표시는 <span id="dPriceRange">2025-09-01~오늘</span> 구간 <b>최고가 · 최저가 · 오늘 종가</b>입니다. 색 띠는 <b>현재가 위에서 개인 순매수가 가장 많이 쌓인 가격대 1·2위</b>(개인 매물대 차트와 같은 24구간), 큰 점은 <b>외국인+기관 매집 시작(저점)·고점</b> 날짜입니다.</div>
   </div>
@@ -9142,7 +9138,7 @@ function renderRangeCharts(){
       fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원",
       refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`,bands:ovl.bands,pts:ovl.pts.concat(mk.pts)});
     lineChart($("#dPrice"),SER,rlb,O());
-    if(!S.chart.etf){lineChart($("#dPrice2"),SER,rlb,O());$("#dRange2").textContent=rangeTxt;$("#dDartMkLg").innerHTML=mk.lg;}
+    if(!S.chart.etf){lineChart($("#dPrice2"),[SER[0]],rlb,O());$("#dRange2").textContent=rangeTxt;$("#dDartMkLg").innerHTML=mk.lg;$("#dDartMkLg0").innerHTML=mk.lg;}
   };
   S._drawPrice=drawPrice;drawPrice();
   if(S.chart.etf){
@@ -9150,7 +9146,7 @@ function renderRangeCharts(){
     volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
       {bg:rp.map(r=>+r.close),bgPanel:true,h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
     try{renderMaCard();}catch(e){console.error("ma card",e);}
-    $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";$("#dDartCard").style.display="none";$("#dOpgCard").style.display="none";
+    $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";$("#dDartCard").style.display="none";$("#dOpgWrap").style.display="none";
     return;
   }
   const fullTxt=`${rows[0].trade_date}~${rows.at(-1).trade_date}`;   // 매물대 3종은 기간 버튼과 무관하게 전체 누적
@@ -10213,15 +10209,16 @@ async function loadDartMarks(code){
   S._dMk[code]=rows;S._dMkL=null;
   if(S.chart&&S.chart.code===code&&S._drawPrice)try{S._drawPrice();}catch(e){console.error("공시 마커",e);}
 }
-/* 분기 영업이익 증가율(전년 동기 대비) — 확정 + 컨센서스 예상 */
+/* 분기 영업이익 증가율(전분기 대비) — 확정 + 컨센서스 예상 */
 async function renderOpgCard(){
-  const card=$("#dOpgCard"),code=S.chart&&S.chart.code;
+  const card=$("#dOpgWrap"),code=S.chart&&S.chart.code;
   if(!code||S.chart.etf){card.style.display="none";return;}
   const rows=await earnRows(code);
   if(S.chart.code!==code)return;
   const by={};(rows||[]).filter(r=>r.freq==="Q"&&r.op_profit!=null).forEach(r=>by[r.period]=r);
   const out=[];Object.keys(by).sort().forEach(p=>{
-    const pv=by[(+p.slice(0,4)-1)+p.slice(4)];if(!pv)return;
+    const mm=+p.slice(4),pp=mm>3?p.slice(0,4)+String(mm-3).padStart(2,"0"):(+p.slice(0,4)-1)+"12";
+    const pv=by[pp];if(!pv)return;
     const c=+by[p].op_profit,b=+pv.op_profit,est=!!by[p].is_est;
     let g=null,tag="";
     if(b>0){g=(c-b)/b*100;if(c<0)tag="적전";}else tag=c>0?"흑전":"적지";
@@ -10230,13 +10227,13 @@ async function renderOpgCard(){
   const L=out.slice(-10);
   if(L.length<2){card.style.display="none";return;}
   card.style.display="";
-  $("#dOpgSub").textContent=`확정 ${L.filter(x=>!x.est).length}개 · 예상 ${L.filter(x=>x.est).length}개 분기 · 전년 동기 대비`;
+  $("#dOpgSub").textContent=`확정 ${L.filter(x=>!x.est).length}개 · 예상 ${L.filter(x=>x.est).length}개 분기`;
   const W=560,H=250,P={t:24,r:12,b:46,l:46},host=$("#dOpg");host.innerHTML="";
   const gv=L.map(x=>x.g).filter(v=>v!=null),cap=v=>Math.max(-300,Math.min(600,v));
   let mn=Math.min(0,...gv.map(cap)),mx=Math.max(0,...gv.map(cap));if(mx-mn<20){mx+=10;mn-=10;}
   const pad=(mx-mn)*.12;mx+=pad;if(mn<0)mn-=pad*.6;
   const Y=v=>P.t+(mx-v)/(mx-mn)*(H-P.t-P.b),bw=(W-P.l-P.r)/L.length,X=i=>P.l+bw*i+bw/2;
-  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":"분기 영업이익 전년 동기 대비 증가율"});
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":"분기 영업이익 전분기 대비 증가율"});
   niceTicks(mn,mx,4).forEach(v=>{if(v<mn||v>mx)return;svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:Y(v),y2:Y(v),stroke:v===0?css("--axis"):css("--grid"),"stroke-width":1}));
     const t=el("text",{x:P.l-6,y:Y(v)+3.5,"text-anchor":"end","font-size":10,fill:css("--ink-3")});t.textContent=N(v,0)+"%";svg.appendChild(t);});
   L.forEach((x,i)=>{
