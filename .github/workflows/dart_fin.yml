@@ -3,11 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'check(점검만) 또는 apply(저장)'
+        description: "check(점검만) 또는 apply(교체)"
         default: 'check'
       step:
-        description: 'check 표본 간격(6=약 1/6 종목)'
-        default: '6'
+        description: "종목코드(쉼표, 비우면 전체)"
+        default: ""
 permissions:
   contents: write
 concurrency:
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 170
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       DART_API_KEY: ${{ secrets.DART_API_KEY }}

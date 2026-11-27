@@ -1,108 +1,137 @@
 # -*- coding: utf-8 -*-
-"""DART 단일회사 주요계정(fnlttSinglAcnt)으로 분기 실적(매출액·영업이익·순이익)을 보정.
-사용법: python 206_dart_fin.py check [표본간격=6]   → DB 변경 없이 네이버 값과 비교 리포트
-        python 206_dart_fin.py apply               → 누락 행·예상(E) 행을 DART 확정값으로 채움(src='dart'). 이미 확정된 행은 건드리지 않음
-대상 분기: 2024Q4 ~ 2026Q3(12월 결산 종목). 분기 값 = 분기·반기·3분기 보고서의 '당기 3개월', 4분기 = 사업보고서 연간 − 3분기 누적. 단위 원 → 억원."""
+"""DART 전체 재무제표(fnlttSinglAcntAll)로 분기·연간 실적을 확정 값으로 교체 (src='dart').
+사용법: python 206_dart_fin.py check [종목코드,쉼표]   → DB 변경 없이 DART 계산값과 현재 DB 값을 나란히 출력
+        python 206_dart_fin.py apply [종목코드,쉼표]   → 백업 테이블 생성 후 DB 교체(코드 없으면 전체)
+대상: 12월 결산 종목, 분기 2024Q4~2026Q3(분기 = 분기·반기·3분기 보고서의 '당기 3개월', 4분기 = 사업보고서 − 3분기 누적), 연간 2024·2025.
+값(단위): 매출액·영업이익·순이익(당기순이익) 억원 · EPS 원 = 기본주당이익 · BPS 원 = 지배주주지분 ÷ 추정 주식수(지배순이익÷EPS) · ROE % = 지배순이익 ÷ 지배주주지분(분기는 ×4 연환산, 연간은 평균자본).
+기준 = 종목별로 연결(CFS)이 전 보고서에 있으면 연결, 아니면 별도(OFS) — 한 종목 안에서 기준을 섞지 않음."""
 import os, io, sys, time, zipfile, requests, psycopg2, xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from psycopg2.extras import execute_values
-MODE = sys.argv[1] if len(sys.argv) > 1 else "check"; ARG = sys.argv[2] if len(sys.argv) > 2 else "6"; CODES = [c for c in ARG.replace(" ", "").split(",") if not c.isdigit() or len(c) == 6]; STEP = int(ARG) if ARG.isdigit() and len(ARG) < 4 else 6
+MODE = sys.argv[1] if len(sys.argv) > 1 else "check"; ONLY = [c for c in (sys.argv[2] if len(sys.argv) > 2 else "").replace(" ", "").split(",") if c]
 KEY = os.environ["DART_API_KEY"].strip(); B = "https://opendart.fss.or.kr/api/"; L = []
 def log(m=""): print(m, flush=True); L.append(str(m))
 def api(ep, **p):
-    for _ in range(3):
-        time.sleep(0.1)
-        try: return requests.get(B + ep, params={"crtfc_key": KEY, **p}, timeout=40)
-        except Exception: time.sleep(1.5)
-    return None
-z = zipfile.ZipFile(io.BytesIO(api("corpCode.xml").content)); x = ET.fromstring(z.read(z.namelist()[0]))
+    for k in range(4):
+        time.sleep(0.12)
+        try: return requests.get(B + ep, params={"crtfc_key": KEY, **p}, timeout=60).json()
+        except Exception: time.sleep(1.5 * (k + 1))
+    return {}
+z = zipfile.ZipFile(io.BytesIO(requests.get(B + "corpCode.xml", params={"crtfc_key": KEY}, timeout=90).content)); x = ET.fromstring(z.read(z.namelist()[0]))
 CC = {i.findtext("stock_code").strip(): i.findtext("corp_code") for i in x.iter("list") if (i.findtext("stock_code") or "").strip()}
 conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"]); conn.autocommit = True; cur = conn.cursor()
 cur.execute("select code,name from stocks where is_active and security_type='STOCK' order by code"); ST = cur.fetchall()
-if CODES and not (ARG.isdigit() and len(ARG) < 4): ST = [s for s in ST if s[0] in CODES]
-elif MODE == "check": ST = [s for i, s in enumerate(ST) if i % STEP == 0 or s[0] in ("420770", "290550", "005930", "000660")]
-cur.execute("select code,period,is_est,sales,op_profit,net_income from stock_earnings where freq='Q' and period>='202412'")
-DB = {(r[0], r[1]): r[2:] for r in cur.fetchall()}
-SALES = ("매출액", "수익(매출액)", "영업수익"); OP = ("영업이익", "영업이익(손실)"); NI = ("당기순이익", "분기순이익", "반기순이익")
+if ONLY: ST = [s for s in ST if s[0] in ONLY]
+REP = [(2024, "11014"), (2024, "11011"), (2025, "11013"), (2025, "11012"), (2025, "11014"), (2025, "11011"), (2026, "11013"), (2026, "11012"), (2026, "11014")]
 def num(v):
     try: return float(str(v).replace(",", "").strip())
     except Exception: return None
-def report(corp, year, rc):
-    r = api("fnlttSinglAcnt.json", corp_code=corp, bsns_year=str(year), reprt_code=rc)
-    try: j = r.json()
-    except Exception: return None
-    if j.get("status") != "000": return None
-    out = {}
-    for fs in ("CFS", "OFS"):
-        rows = [x for x in j["list"] if x.get("fs_div") == fs and x.get("sj_div") in ("IS", "CIS")]
-        if not rows: continue
-        d = {}
-        for k, names in (("sales", SALES), ("op", OP), ("ni", NI)):
-            for x in rows:
-                a = (x.get("account_nm") or "").strip()
-                if any(a == n or a.startswith(n) for n in names):
-                    d[k] = (num(x.get("thstrm_amount")), num(x.get("thstrm_add_amount"))); break
-        out[fs] = d
-    return out
-def quarters(corp):
-    """period → {sales,op,ni}(억원), 기준(fs)"""
-    R = {}
-    for y, rc in ((2024, "11014"), (2024, "11011"), (2025, "11013"), (2025, "11012"), (2025, "11014"), (2025, "11011"), (2026, "11013"), (2026, "11012"), (2026, "11014")):
-        R[(y, rc)] = report(corp, y, rc)
-    res = {}
-    def q3(fsd, k, ann=None):
-        return fsd[k]
-    for (y, rc), per in (((2025, "11013"), "202503"), ((2025, "11012"), "202506"), ((2025, "11014"), "202509"), ((2026, "11013"), "202603"), ((2026, "11012"), "202606"), ((2026, "11014"), "202609")):
-        rp = R.get((y, rc))
-        if not rp: continue
-        fs = "CFS" if "CFS" in rp else "OFS"; d = rp[fs]
-        res[per] = ({k: (d[k][0] / 1e8 if d[k][0] is not None else None) for k in d}, fs)
-    for y in (2024, 2025):
-        a, q = R.get((y, "11011")), R.get((y, "11014"))
-        if not a or not q: continue
-        for fs in ("CFS", "OFS"):
-            if fs in a and fs in q:
-                d = {}
-                for k in a[fs]:
-                    if k in q[fs] and a[fs][k][0] is not None and q[fs][k][1] is not None: d[k] = (a[fs][k][0] - q[fs][k][1]) / 1e8
-                res[f"{y}12"] = (d, fs); break
-    return res
-DETAIL = {}
-FIELD = {"sales": 0, "op": 1, "ni": 2}; stat = {k: [0, 0] for k in FIELD}; bad = []; fill = []; conv = []; skipped = []; nofy = 0
-for n, (code, nm) in enumerate(ST, 1):
+IDS = {"sales": (["ifrs-full_Revenue", "ifrs_Revenue"], ["매출액", "수익(매출액)", "영업수익", "매출"]),
+       "op": (["dart_OperatingIncomeLoss"], ["영업이익", "영업이익(손실)"]),
+       "ni": (["ifrs-full_ProfitLoss"], ["당기순이익", "분기순이익", "반기순이익", "당기순이익(손실)", "분기순이익(손실)", "반기순이익(손실)"]),
+       "nip": (["ifrs-full_ProfitLossAttributableToOwnersOfParent"], []),
+       "eps": (["ifrs-full_BasicEarningsLossPerShare"], ["기본주당이익", "기본주당순이익", "기본주당이익(손실)", "기본주당순이익(손실)", "보통주 기본주당이익", "보통주기본주당이익"]),
+       "eqp": (["ifrs-full_EquityAttributableToOwnersOfParent"], []), "eq": (["ifrs-full_Equity"], ["자본총계"])}
+def pick(rows, key, sj):
+    ids, names = IDS[key]
+    for r in rows:
+        if r.get("sj_div") in sj and (r.get("account_id") in ids or (r.get("account_nm") or "").strip() in names): return r
+    return None
+def fetch(corp, year, rc, fs):
+    j = api("fnlttSinglAcntAll.json", corp_code=corp, bsns_year=str(year), reprt_code=rc, fs_div=fs)
+    if j.get("status") == "020": raise SystemExit("DART 호출 한도 초과(020)")
+    return j.get("list") if j.get("status") == "000" else None
+def extract(rows):
+    """한 보고서에서 3개월(amt)·누적(cum) 손익 값과 기말 자본"""
+    d = {}
+    for k in ("sales", "op", "ni", "nip", "eps"):
+        r = pick(rows, k, ("IS", "CIS"))
+        d[k] = (num(r.get("thstrm_amount")), num(r.get("thstrm_add_amount"))) if r else (None, None)
+    for k in ("eqp", "eq"):
+        r = pick(rows, k, ("BS",)); d[k] = (num(r.get("thstrm_amount")), num(r.get("frmtrm_amount"))) if r else (None, None)
+    return d
+def build(code):
     corp = CC.get(code)
-    if not corp: skipped.append((code, nm, "corp_code 없음")); continue
-    cj = api("company.json", corp_code=corp).json()
-    if (cj.get("acc_mt") or "").strip() != "12": nofy += 1; skipped.append((code, nm, f"결산월 {cj.get('acc_mt')}")); continue
-    qs = quarters(corp)
-    for per_, (d_, fs_) in qs.items(): DETAIL[(code, per_)] = {k: round(v, 1) for k, v in d_.items() if v is not None}
-    for per, (d, fs) in qs.items():
-        ex = DB.get((code, per))
-        if ex is None or ex[0]:      # 행 없음 또는 예상(E) → 채우기 후보
-            if d: (fill if ex is None else conv).append((code, nm, per, fs, d))
-            continue
-        for k, idx in FIELD.items():       # 확정 행: 네이버 값과 비교
-            dv, nv = d.get(k), ex[1 + idx]
-            if dv is None or nv is None: continue
-            stat[k][0] += 1
-            if abs(dv - float(nv)) <= 1.0 or abs(dv - float(nv)) <= 0.005 * abs(float(nv)): stat[k][1] += 1
-            else: bad.append((code, nm, per, k, float(nv), round(dv, 1), fs))
-    if n % 25 == 0: print(n, len(ST), flush=True)
-log(f"# DART 재무 점검 ({MODE}) · 대상 {len(ST)}종목 · 12월 결산 아님/코드없음 {len(skipped)}")
-log("## 기존 확정 행 vs DART (허용오차 ±1억 또는 ±0.5%)")
-for k, (t, m) in stat.items(): log(f"- {k}: 비교 {t}건 · 일치 {m}건 ({(m/t*100 if t else 0):.1f}%)")
-log(f"## 불일치 {len(bad)}건 (앞 40)"); [log("  " + str(b)) for b in bad[:40]]
-log(f"## 새로 채울 행 {len(fill)}개 · 예상(E)→확정 전환 {len(conv)}개"); [log("  " + str(f[:4]) + " " + str({k: round(v, 1) for k, v in f[4].items() if v is not None})) for f in (conv[:15] + fill[:15])]
-log("## 건너뜀: " + str(skipped[:15]))
-if MODE == "check" and len(ST) <= 5:
-    for code, nm in ST:
-        log(f"## {nm} {code}: DART 산출 vs DB")
-        for per in ("202412","202503","202506","202509","202512","202603","202606","202609"):
-            dd = DETAIL.get((code, per)); ex = DB.get((code, per))
-            log(f"  {per} DART={dd} | DB(예상여부,매출,영업이익,순이익)={ex}")
+    if not corp: return None, "corp_code 없음"
+    cj = api("company.json", corp_code=corp)
+    if (cj.get("acc_mt") or "").strip() != "12": return None, f"결산월 {cj.get('acc_mt')}"
+    for fs in ("CFS", "OFS"):
+        R = {}
+        for y, rc in REP:
+            rows = fetch(corp, y, rc, fs)
+            if rows is None: break
+            R[(y, rc)] = extract(rows)
+        if len(R) == len(REP): break
+    else: return None, "재무제표 없음(연결·별도 모두 일부 보고서 누락)"
+    out = {}
+    def cumq(y, rc, k, cum):      # 분기 보고서의 3개월 값(없으면 누적 차이로 보정)
+        a, c = R[(y, rc)][k]; return a if a is not None else None
+    for y in (2025, 2026):
+        q1, q2, q3 = R[(y, "11013")], R[(y, "11012")], R[(y, "11014")]
+        for k in ("sales", "op", "ni", "nip", "eps"):
+            v1 = q1[k][0] if q1[k][0] is not None else q1[k][1]
+            v2 = q2[k][0] if q2[k][0] is not None else ((q2[k][1] - v1) if q2[k][1] is not None and v1 is not None else None)
+            v3 = q3[k][0] if q3[k][0] is not None else ((q3[k][1] - q2[k][1]) if q3[k][1] is not None and q2[k][1] is not None else None)
+            for per, v in ((f"{y}03", v1), (f"{y}06", v2), (f"{y}09", v3)): out.setdefault(per, {})[k] = v
+        for per, rr in ((f"{y}03", q1), (f"{y}06", q2), (f"{y}09", q3)): out[per]["eqp"] = rr["eqp"][0] if rr["eqp"][0] is not None else rr["eq"][0]; out[per]["eq_prev"] = rr["eqp"][1] if rr["eqp"][1] is not None else rr["eq"][1]
+        # 누적(EPS·순이익) 기반 주식수 추정
+        for per, rr in ((f"{y}03", q1), (f"{y}06", q2), (f"{y}09", q3)):
+            nipc = rr["nip"][1] if rr["nip"][1] is not None else rr["nip"][0]; epsc = rr["eps"][1] if rr["eps"][1] is not None else rr["eps"][0]
+            if nipc is None: nipc = rr["ni"][1] if rr["ni"][1] is not None else rr["ni"][0]
+            out[per]["sh"] = (nipc / epsc) if (nipc is not None and epsc) else None
+    ann = {}
+    for y in (2024, 2025):
+        a, q = R[(y, "11011")], R[(y, "11014")]; per = f"{y}12"; out[per] = {}; ann[per] = {}
+        for k in ("sales", "op", "ni", "nip", "eps"):
+            av = a[k][0]; q9 = q[k][1] if q[k][1] is not None else None
+            out[per][k] = (av - q9) if (av is not None and q9 is not None) else None
+            ann[per][k] = av
+        out[per]["eqp"] = a["eqp"][0] if a["eqp"][0] is not None else a["eq"][0]; out[per]["eq_prev"] = a["eqp"][1] if a["eqp"][1] is not None else a["eq"][1]
+        nipa = a["nip"][0] if a["nip"][0] is not None else a["ni"][0]; out[per]["sh"] = (nipa / a["eps"][0]) if (nipa is not None and a["eps"][0]) else None
+        ann[per]["eqp"] = out[per]["eqp"]; ann[per]["eq_prev"] = out[per]["eq_prev"]; ann[per]["sh"] = out[per]["sh"]
+    def fin(d, annual):
+        nip = d.get("nip") if d.get("nip") is not None else d.get("ni")
+        bps = (d["eqp"] / d["sh"]) if (d.get("eqp") is not None and d.get("sh")) else None
+        if d.get("eqp") and nip is not None:
+            if annual: eqa = (d["eqp"] + d["eq_prev"]) / 2 if d.get("eq_prev") else d["eqp"]; roe = nip / eqa * 100
+            else: roe = nip * 4 / d["eqp"] * 100
+        else: roe = None
+        e = lambda v: None if v is None else round(v / 1e8, 1)
+        return {"sales": e(d.get("sales")), "op": e(d.get("op")), "ni": e(d.get("ni")), "eps": None if d.get("eps") is None else round(d["eps"], 0),
+                "bps": None if bps is None else round(bps, 0), "roe": None if roe is None else round(roe, 2)}
+    res = {("Q", per): fin(out[per], False) for per in ("202412", "202503", "202506", "202509", "202512", "202603", "202606", "202609")}
+    for per in ("202412", "202512"): res[("A", per)] = fin({**ann[per], "ni": ann[per]["ni"]}, True)
+    return (res, fs), None
+cur.execute("select code,freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,src from stock_earnings where period>='202412'")
+DB = {(r[0], r[1], r[2]): r[3:] for r in cur.fetchall()}
+results = {}; skipped = []; done = 0
+with ThreadPoolExecutor(4) as ex:
+    fut = {ex.submit(build, c): (c, n) for c, n in ST}
+    for f in as_completed(fut):
+        c, n = fut[f]; done += 1
+        try: r, why = f.result()
+        except SystemExit as e: raise
+        except Exception as e: r, why = None, f"오류 {type(e).__name__} {e}"
+        if r: results[c] = r
+        else: skipped.append((c, n, why))
+        if done % 25 == 0: print(done, len(ST), flush=True)
+names = dict(ST)
+log(f"# DART 재무 교체 ({MODE}) · 대상 {len(ST)}종목 · 계산 성공 {len(results)} · 제외 {len(skipped)}")
+from collections import Counter
+log("기준: " + str(Counter(fs for _, fs in results.values())))
+log("제외 사유: " + str(Counter(w.split(' ')[0] if w.startswith('결산월') else w for _, _, w in skipped)))
+if len(ST) <= 6:
+    for c, (res, fs) in results.items():
+        log(f"\n## {names[c]} {c} ({fs})")
+        for (fq, per), v in sorted(res.items()):
+            ex_ = DB.get((c, fq, per)); log(f"  {fq} {per} DART {v} | DB(E,매출,영업,순익,EPS,BPS,ROE,src)={ex_}")
 if MODE == "apply":
-    rows = [(c, "Q", per, False, d.get("sales"), d.get("op"), d.get("ni"), "dart") for c, nm, per, fs, d in fill + conv]
-    execute_values(cur, """insert into stock_earnings(code,freq,period,is_est,sales,op_profit,net_income,src) values %s
+    cur.execute("create table if not exists stock_earnings_bak_20261127 as select * from stock_earnings")
+    rows = [(c, fq, per, False, v["sales"], v["op"], v["ni"], v["eps"], v["bps"], v["roe"], "dart") for c, (res, fs) in results.items() for (fq, per), v in res.items()]
+    cur.execute("alter table stock_earnings add column if not exists fs_div text")
+    execute_values(cur, """insert into stock_earnings(code,freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,src) values %s
       on conflict(code,freq,period) do update set is_est=false,sales=excluded.sales,op_profit=excluded.op_profit,net_income=excluded.net_income,
-        eps=null,bps=null,roe=null,src='dart',updated_at=now() where stock_earnings.is_est""", rows)
-    log(f"저장 {len(rows)}행")
+        eps=coalesce(excluded.eps,stock_earnings.eps),bps=coalesce(excluded.bps,stock_earnings.bps),roe=coalesce(excluded.roe,stock_earnings.roe),src='dart',updated_at=now()""", rows)
+    for c, (res, fs) in results.items(): cur.execute("update stock_earnings set fs_div=%s where code=%s and src='dart'", (fs, c))
+    log(f"저장 {len(rows)}행 (백업 테이블 stock_earnings_bak_20261127)")
 open("dart_fin.md", "w", encoding="utf-8").write("\n".join(L))
