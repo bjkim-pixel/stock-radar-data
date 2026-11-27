@@ -1077,6 +1077,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 #trdPaneAuto th{position:static}
 #trdPaneAuto .trd-tb th,#trdPaneAuto .trd-tb td{text-align:left}#trdPaneAuto .trd-tb td.n,#trdPaneAuto .trd-tb th.n{text-align:right}
 .au-err{color:var(--crit);font-size:11.5px;margin-top:2px}
+.au-btr{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.au-rf{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 12px;font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;min-height:32px}.au-rf:disabled{opacity:.6;cursor:default}
 .au-band .au-bt{display:flex;flex-direction:column;align-items:flex-start;gap:10px}.au-band .au-bt>.au-sw{align-self:flex-start}.au-band .au-bi{width:100%;min-width:0;font-size:13px;line-height:1.6}
 .au-bsr{display:flex;align-items:baseline;gap:6px;padding:2px 0}.au-bsr .au-letter{flex:none;margin:0;align-self:center}.au-bsr>span:last-child{flex:1;min-width:0}
 .au-band.off{border-color:var(--border)}
@@ -14277,7 +14278,7 @@ function trdAutoHtml(){
   const pos=A.positions||[],pv=pos.reduce((a,p)=>a+(p.last||p.avg)*p.qty,0),pc=pos.reduce((a,p)=>a+p.avg*p.qty,0);
   const nP=runs.reduce((a,r)=>a+r.picks.length,0),nB=runs.reduce((a,r)=>a+r.orders.filter(o=>o.filled>0).length,0);
   const sum=[runs.length?`후보 ${nP}`:"후보 선정 전",nB?`매수 ${nB}종목`:"",pos.length?`보유 ${pos.length}종목 ${auPct(pc?(pv/pc-1)*100:null)}`:"",(A.carry||[]).length?`이월 ${A.carry.length}종목`:""].filter(Boolean).join(" · ");
-  const band=`<div class="card au-band${on?"":" off"}"><div class="au-bt"><button type="button" class="au-sw${on?" on":""}${R?" real":""}" data-auon="${on?0:1}" aria-pressed="${on}"${TRD.auBusy?" disabled":""} title="${R?"실전매매(드라이런·실전 전략) 켜기/끄기 — 켤 때 거래 PIN":"가상매매(가상 전략) 켜기/끄기"}"><span></span>${R?"실전":"가상"} ${on?"켜짐":"꺼짐"}</button>
+  const band=`<div class="card au-band${on?"":" off"}"><div class="au-bt"><div class="au-btr"><button type="button" class="au-sw${on?" on":""}${R?" real":""}" data-auon="${on?0:1}" aria-pressed="${on}"${TRD.auBusy?" disabled":""} title="${R?"실전매매(드라이런·실전 전략) 켜기/끄기 — 켤 때 거래 PIN":"가상매매(가상 전략) 켜기/끄기"}"><span></span>${R?"실전":"가상"} ${on?"켜짐":"꺼짐"}</button><button type="button" class="au-rf" data-aurf="1" title="자동매매 현황 새로고침"${TRD.auBusy?" disabled":""}><span class="${TRD.auBusy?"au-spin":""}" aria-hidden="true">${TRD.auBusy?"":"↻"}</span> 새로고침</button></div>
       <div class="au-bi">${Is.length?Is.map(I=>`<div class="au-bsr"><span class="au-letter">${trdEsc(auLetter(I.id))}</span><span>${trdEsc(I.name)} <span class="faint">${trdFmtAmt(I.params.perStockKrw)}원</span></span></div>`).join(""):'<div class="au-bsr"><span class="faint">켜진 장중 전략 없음</span></div>'}<div class="au-bsr"><span class="au-letter">${trdEsc((C.id&&auLetter(C.id))||"N")}</span><span>종가베팅 · ${trdEsc(C.name||"–")} ${auModeB(auModeOf(C),auDryOf(C.id))} <span class="${C.enabled?"au-on":"faint"}">${C.enabled?"켜짐":"꺼짐"}</span>${C.id&&auSideOfS(C)!==auSide()?` <span class="faint">(${auSideOfS(C)==="real"?"실전매매":"가상매매"}에서 사용)</span>`:""}</span></div>
       <div class="faint">${A.tradingDay?trdEsc(auNext()):"휴장일"}${sum?" · "+trdEsc(sum):""}</div>${A.regime?`<div><button type="button" class="au-mr ${(MR_ST[A.regime.stage]||[])[1]||""}" data-aumkt="1" title="시황 › 시장에서 자세히">시장 ${trdEsc((MR_ST[A.regime.stage]||[A.regime.stage])[0])} ${N(A.regime.score,0)}점</button> <span class="faint" style="font-size:11.5px">${trdEsc(String(A.regime.date).slice(5))} 종가 기준 · ${Is.some(I=>I.params.regimeMode==="scale")?`금액 조절 중(${Is.filter(I=>I.params.regimeMode==="scale").map(I=>auLetter(I.id)).join("·")})`:"표시만"}</span></div>`:""}${auExposureHtml(A)}</div>
       <button type="button" class="chip" data-aur="1">새로고침</button></div>
@@ -14300,6 +14301,7 @@ function auClick(t){
   if((el=t.closest("[data-austg]"))){TRD.auStg=TRD.auStg===el.dataset.austg?null:el.dataset.austg;trdAutoRender();return true;}
   if((el=t.closest("[data-aupw]"))){TRD.auPW=TRD.auPW||{rows:null};auPWLoad();trdAutoRender();return true;}
   if((el=t.closest("[data-aut]"))){TRD.auTab=el.dataset.aut;TRD.auMsg=null;trdAutoRender();if(TRD.auTab==="journal"&&TRD.auL.rows===null)auLLoad();if(TRD.auTab==="perf"&&TRD.auJ.rows===null)auJLoad();return true;}
+  if((el=t.closest("[data-aurf]"))){if(!TRD.auBusy){TRD.auMsg=null;const pr=trdLoadAuto(true);trdAutoRender();pr.catch(()=>{});}return true;}
   if((el=t.closest("[data-auon]"))){auSetOn(el.dataset.auon==="1");return true;}
   if((el=t.closest("[data-augoside]"))){TRD.auTab="strat";go(el.dataset.augoside==="real"?"real-auto":"paper-auto");return true;}
   if((el=t.closest("[data-ausrcgo]"))){const id=el.dataset.ausrcgo;if(!auArmed("src-"+id))return true;auSrcApply(id,false);return true;}
