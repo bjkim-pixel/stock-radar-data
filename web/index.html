@@ -1120,6 +1120,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-chip{display:inline-block;padding:1px 8px;border-radius:999px;border:1px solid var(--border);font-size:11.5px;background:var(--surface-2);white-space:nowrap}
 .au-chip.ok{border-color:var(--good);color:var(--good)}.au-chip.bad{border-color:var(--crit);color:var(--crit)}.au-chip.now{border-color:var(--warn);color:var(--warn);font-weight:700}.au-chip.idle{opacity:.5}
 .au-fl{border-top:1px solid var(--border);padding:8px 0}.au-fl:first-of-type{border-top:0}.au-fl .t{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}.au-fl .t .r{margin-left:auto;font-variant-numeric:tabular-nums;font-size:12px}.au-fl .why{font-size:11.5px;color:var(--ink-2);margin-top:4px;line-height:1.5;word-break:keep-all}
+.au-q{margin-top:4px;font-size:12px;line-height:1.7;font-variant-numeric:tabular-nums}.au-q b{color:var(--ink-2);margin-right:4px}
 .au-chips{display:flex;flex-wrap:wrap;gap:4px}
 .au-tm{font-variant-numeric:tabular-nums;color:var(--warn)}.au-tmr{margin-top:4px;font-size:12.5px}
 .au-no{display:inline-block;min-width:17px;height:17px;line-height:17px;margin-right:5px;padding:0 4px;box-sizing:border-box;border-radius:9px;background:var(--ink-3);color:#fff;font-size:10.5px;font-weight:700;text-align:center;vertical-align:1px;font-variant-numeric:tabular-nums}
@@ -13806,6 +13807,23 @@ function auAllHtml(){
   return auNowBar()+tbl+auFlowHtml()+(auCHere()?"":auCAway())+auStatusHtml();
 }
 /* 전략별 종목·진행·선정이유 한눈에(오늘 › 전체 탭, 전략별 오늘 표 아래): 종목마다 선정 → 승인 → 체결 → 보유 → 청산 단계와 선정 이유 */
+/* 선정 근거 숫자: 저장된 후보 값(수급 금액·체결강도·상승률·52주 고가 대비·점수 구성)을 그대로 풀어 보여줌 */
+function auQuantHtml(p){
+  const m=p.m||{},ok=v=>v!=null&&isFinite(v),eok=v=>{const a=Math.abs(v);return (v<0?"-":"")+(a>=1e8?N(a/1e8,a>=1e10?0:1)+"억":N(a/1e4,0)+"만")+"원";};
+  const L=[],amt=+p.amt||0,pct=v=>amt>0?` (거래대금의 ${N(v/amt*100,1)}%)`:"";
+  const fl=[["외국인",m.fAmt],["기관",m.oAmt],["프로그램",m.pAmt]].filter(x=>ok(x[1]));
+  if(fl.length)L.push(`<b>수급</b> `+fl.map(([k,v])=>`${k} <span class="${v>0?"up":v<0?"down":""}">${v>0?"+":""}${eok(v)}</span>`).join(" · ")+(amt>0?` <span class="faint">/ 거래대금 ${eok(amt)}</span>`:""));
+  const sum=fl.reduce((a,x)=>a+Math.max(0,x[1]),0);if(fl.length&&amt>0&&sum>0)L.push(`<b>순매수 합</b> ${eok(sum)}${pct(sum)}`);
+  const px=[];
+  if(ok(m.cttr))px.push(`체결강도 ${N(m.cttr,0)}%`);
+  if(ok(p.changePct))px.push(`당일 ${p.changePct>0?"+":""}${N(p.changePct,2)}%`);
+  if(ok(m.w52)&&m.w52>0&&p.price>0)px.push(`52주 고가의 ${N(p.price/m.w52*100,0)}%`);
+  if(px.length)L.push(`<b>가격</b> ${px.join(" · ")}`);
+  if(ok(p.kw8))L.push(`<b>개인 계좌수</b> 8월의 ${N(p.kw8*100,0)}%${p.kwHigh?" (상한 이상)":""}`);
+  const nm={flow:"수급",cttr:"체결강도",rise:"상승률",amt:"거래대금",trend:"추세",kw:"개인계좌"},pt=p.parts&&Object.keys(p.parts).length?Object.entries(nm).filter(([k])=>p.parts[k]!=null).map(([k,t])=>`${t} ${N(p.parts[k],1)}`):[];
+  if(pt.length)L.push(`<b>점수 ${N(p.score,1)}</b> = ${pt.join(" + ")}`);
+  return L.length?`<div class="why au-q">${L.map(x=>`<div>${x}</div>`).join("")}</div>`:"";
+}
 function auFlowHtml(){
   const A=TRD.au;if(!A)return "";
   const groups=[];
@@ -13845,7 +13863,7 @@ function auFlowHtml(){
       return `<div class="au-fl"><div class="t"><b>${auNm(it.name,it.code)}</b><span class="faint" style="font-size:11px">${trdEsc(it.code)}${p&&p.sector?` · ${trdEsc(p.sector)}`:""}</span>${p?`<span class="r">${N(p.score,1)}점 · 선정가 ${N(p.price)} <span class="${trdCls(p.changePct)}">${auPct(p.changePct)}</span></span>`:""}</div>
         ${/^\d{6}$/.test(it.code||"")?`<div class="ldl au-ldl"><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${it.code}">–</span> <span data-smx="ltr" data-code="${it.code}">–</span></span><span class="lvs"><span class="lvl">매집 8월</span><span class="kwc" data-kw="r8" data-kwc="${it.code}">–</span></span></div>`:""}
         <div class="au-chips" style="margin-top:4px">${chip("ok","선정")}${chip(...it.ap)}${chip(...it.od)}${chip(...hd)}${chip(...ex)}</div>
-        ${it.why?`<div class="why"><b>선정 이유</b> ${trdEsc(it.why)}</div>`:it.old?'<div class="why faint">이전에 산 종목이 아직 보유 중이에요 — 손절·익절 감시 중</div>':""}</div>`;
+        ${it.p?auQuantHtml(it.p):""}${it.why?`<div class="why"><b>선정 이유</b> ${trdEsc(it.why)}</div>`:it.old?'<div class="why faint">이전에 산 종목이 아직 보유 중이에요 — 손절·익절 감시 중</div>':""}</div>`;
     }).join("");
     out.push(`<div style="margin-top:10px" id="au-fl-${trdEsc(g.key)}"><div class="au-h4" style="margin:0 0 2px">${g.tag} <span class="faint" style="font-weight:400;font-size:11.5px">${items.length}종목</span></div>${rows||'<div class="faint" style="font-size:12px;padding:2px 0 4px">오늘 선정된 종목이 아직 없어요</div>'}</div>`);
   }
