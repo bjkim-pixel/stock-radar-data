@@ -43,7 +43,7 @@ for code, ex in ST:
         cur.execute("update us_master set profile=%s where code=%s", (json.dumps({"summary": txt, "industry": ind, "owners": [], "src": "manual", "src_label": "FnGuide", "fetched": time.strftime("%Y-%m-%d")}, ensure_ascii=False), code)); ok += 1; continue
     if not j: fail.append(code); continue
     summ = re.sub(r"<br\s*/?>", "\n", (j.get("summary") or "")).strip(); summ = re.sub(r"\n{3,}", "\n\n", summ)
-    owners = [{"n": o.get("investorName"), "sh": o.get("position"), "p": o.get("outstanding")} for o in (j.get("ownerInfoList") or []) if o.get("investorName")]
+    owners = [{"n": o.get("investorName"), "p": o.get("outstanding")} for o in (j.get("ownerInfoList") or []) if o.get("investorName")]
     li = j.get("stockItemListedInfo") or {}
     prof = {"summary": summ, "industry": (j.get("industry") or {}).get("industryGroupKor"), "name_ko": j.get("companyName"), "owners": owners,
             "listed_at": (li.get("listedAt") or "")[:10], "acct_date": li.get("accountDate"), "src": "naver", "fetched": time.strftime("%Y-%m-%d")}

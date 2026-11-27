@@ -15139,8 +15139,8 @@ function ovsProfile(){
   }
   const ow=(P.owners||[]).filter(o=>o&&o.n);
   if(ow.length){
-    const pc=o=>parseFloat(String(o.p||"").replace("%",""))||0,mx=Math.max(...ow.map(pc),1),sum=ow.reduce((a,o)=>a+pc(o),0);
-    $("#ovsHolder").innerHTML=`<div class="tw"><table><thead><tr><th class="l">주주</th><th>지분율</th><th>보유 주식수</th></tr></thead><tbody>${ow.map(o=>`<tr><td class="l">${escH(o.n)}</td><td style="min-width:150px"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><div style="flex:1;max-width:90px;height:8px;background:var(--surface-3);border-radius:4px;overflow:hidden"><div style="width:${(pc(o)/mx*100).toFixed(1)}%;height:100%;background:var(--accent,#2f6fed)"></div></div><b>${escH(o.p||"–")}</b></div></td><td>${o.sh==null?"–":N(+o.sh,0)}</td></tr>`).join("")}</tbody></table></div>
+    const pc=o=>parseFloat(String(o.p||"").replace("%",""))||0,sum=ow.reduce((a,o)=>a+pc(o),0);
+    $("#ovsHolder").innerHTML=`<table style="width:100%;table-layout:fixed;border-collapse:collapse"><thead><tr><th class="l" style="text-align:left">주주</th><th style="width:84px;text-align:right">지분율</th></tr></thead><tbody>${ow.map(o=>`<tr><td class="l" style="text-align:left;white-space:normal;word-break:break-word;padding:6px 4px">${escH(o.n)}</td><td style="text-align:right;padding:6px 4px"><b>${escH(o.p||"–")}</b></td></tr>`).join("")}</tbody></table>
       <div class="note" style="margin-top:6px">상위 ${ow.length}개 주주 합계 ${N(sum,2)}% · 기관·펀드 보유 포함 · 네이버 증권(해외 데이터 제공사) 기준이라 갱신 시차가 있을 수 있습니다.</div>`;
     $("#ovsHolderSub").textContent=P.acct_date?`결산 ${P.acct_date} 기준 종목정보`:"네이버 증권";hc.style.display="";
   }
