@@ -10663,6 +10663,7 @@ function smxDraw(all,win,E){
 // 최종 순서: 주요주주(5% 대량보유자 포함) → 공시 → 스마트머니 매집·이탈 진단 → 수급 주체별 누적 → 개인 매물대 → 외국인+기관 매물대
 {const oc=$("#dOwnCard"),dc=$("#dDartCard"),sc=$("#dSmxCard"),mc=$("#dMinisCard"),p1=$("#dProfile")&&$("#dProfile").closest(".card"),p2=$("#dProfileInst")&&$("#dProfileInst").closest(".card");
  if(oc&&dc&&sc&&mc&&p1&&p2){oc.after(dc);const mjc=$("#dMajorCard");if(mjc)oc.after(mjc);dc.after(sc);sc.after(mc);mc.after(p1);p1.after(p2);const vpc=$("#dVolProfCard");if(vpc)p2.after(vpc);}}
+{const pc2=$("#dPrice2Card"),dc2=$("#dDartCard");if(pc2&&dc2)dc2.before(pc2);}   /* 공시(DART) 카드 바로 위: 위 블록이 공시 카드를 옮기므로 그 뒤에 맞춘다 */
 // 무게/주식수 차트를 수급 주체별 누적 카드 안, 외국인+기관합계 미니차트 위로(카드 테두리 없이 블록으로)
 {const pc=$("#dPgtrCard"),mg=$("#dMinis");if(pc&&mg){pc.style.cssText="border:none;box-shadow:none;padding:0;margin:12px 0 0;background:none";mg.after(pc);}}
 {const vc=$("#dVolCard"),ec=$("#dEarnCard");if(vc&&ec)ec.before(vc);}
