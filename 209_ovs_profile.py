@@ -16,12 +16,13 @@ def cands(code, ex):
         return [x + s for x in dict.fromkeys(b) for s in SUF[ex]]
     return [code]
 def get(path):
-    for k in range(3):
-        time.sleep(0.25)
+    for k in range(5):
+        time.sleep(0.5)
         try:
             r = requests.get(f"https://api.stock.naver.com/stock/{path}/overview", headers=H, timeout=20)
             if r.status_code == 200: return r.json()
             if r.status_code in (400, 404, 409): return None
+            time.sleep(3 * (k + 1))   # 429 등 일시 제한 → 늦춰 재시도
         except Exception: time.sleep(1.5)
     return None
 ok = 0; fail = []; nos = 0
