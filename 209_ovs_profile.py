@@ -15,7 +15,9 @@ def cands(code, ex):
         b = [code]
         if "." in code: x = code.replace(".", ""); b += [x[:-1] + x[-1].lower(), code.replace(".", "-")]   # BRK.B → BRKb
         return [x + s for x in dict.fromkeys(b) for s in SUF[ex]]
-    return [code]
+    sfx = {"SHS": ".SS", "SZS": ".SZ", "TSE": ".T", "HKS": ".HK"}.get(ex)
+    base = code.split(".")[0]
+    return list(dict.fromkeys([code] + ([base + sfx] if sfx else [])))   # 표시코드가 .C1·.JP 같은 비표준이면 거래소 기준 접미사로
 def get(path):
     for k in range(5):
         time.sleep(0.5)
