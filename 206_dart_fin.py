@@ -47,6 +47,7 @@ def extract(rows):
     for k in ("sales", "op", "ni", "nip", "eps"):
         r = pick(rows, k, ("IS", "CIS"))
         d[k] = (num(r.get("thstrm_amount")), num(r.get("thstrm_add_amount"))) if r else (None, None)
+        d[k + "_pv"] = (num(r.get("frmtrm_amount")), num(r.get("frmtrm_add_amount"))) if r else (None, None)   # 전기 같은 기간(3개월, 누적)
     for k in ("eqp", "eq"):
         r = pick(rows, k, ("BS",)); d[k] = (num(r.get("thstrm_amount")), num(r.get("frmtrm_amount"))) if r else (None, None)
     return d
@@ -75,6 +76,12 @@ def build(code):
             for per, v in ((f"{y}03", v1), (f"{y}06", v2), (f"{y}09", v3)): out.setdefault(per, {})[k] = v
         for per, rr in ((f"{y}03", q1), (f"{y}06", q2), (f"{y}09", q3)): out[per]["eqp"] = rr["eqp"][0] if rr["eqp"][0] is not None else rr["eq"][0]; out[per]["eq_prev"] = rr["eqp"][1] if rr["eqp"][1] is not None else rr["eq"][1]
         # 누적(EPS·순이익) 기반 주식수 추정
+        for per, rr, kind in ((f"{y}03", q1, 1), (f"{y}06", q2, 2), (f"{y}09", q3, 2)):
+            ak = "nip" if rr["nip"][0] is not None or rr["nip"][1] is not None else "ni"
+            cur_c = (rr[ak][1] if rr[ak][1] is not None else rr[ak][0]) if kind == 2 else rr[ak][0]
+            prv_c = (rr[ak + "_pv"][1] if rr[ak + "_pv"][1] is not None else None) if kind == 2 else rr[ak + "_pv"][0]
+            pa = R[(y - 1, "11011")][("nip" if R[(y - 1, "11011")]["nip"][0] is not None else "ni")][0]
+            out[per]["ttm"] = (pa - prv_c + cur_c) if (pa is not None and prv_c is not None and cur_c is not None) else None
         for per, rr in ((f"{y}03", q1), (f"{y}06", q2), (f"{y}09", q3)):
             nipc = rr["nip"][1] if rr["nip"][1] is not None else rr["nip"][0]; epsc = rr["eps"][1] if rr["eps"][1] is not None else rr["eps"][0]
             if nipc is None: nipc = rr["ni"][1] if rr["ni"][1] is not None else rr["ni"][0]
@@ -88,13 +95,13 @@ def build(code):
             ann[per][k] = av
         out[per]["eqp"] = a["eqp"][0] if a["eqp"][0] is not None else a["eq"][0]; out[per]["eq_prev"] = a["eqp"][1] if a["eqp"][1] is not None else a["eq"][1]
         nipa = a["nip"][0] if a["nip"][0] is not None else a["ni"][0]; out[per]["sh"] = (nipa / a["eps"][0]) if (nipa is not None and a["eps"][0]) else None
-        ann[per]["eqp"] = out[per]["eqp"]; ann[per]["eq_prev"] = out[per]["eq_prev"]; ann[per]["sh"] = out[per]["sh"]
+        out[per]["ttm"] = nipa; ann[per]["eqp"] = out[per]["eqp"]; ann[per]["eq_prev"] = out[per]["eq_prev"]; ann[per]["sh"] = out[per]["sh"]
     def fin(d, annual):
         nip = d.get("nip") if d.get("nip") is not None else d.get("ni")
         bps = (d["eqp"] / d["sh"]) if (d.get("eqp") is not None and d.get("sh")) else None
-        if d.get("eqp") and nip is not None:
-            if annual: eqa = (d["eqp"] + d["eq_prev"]) / 2 if d.get("eq_prev") else d["eqp"]; roe = nip / eqa * 100
-            else: roe = nip * 4 / d["eqp"] * 100
+        base = d.get("ttm") if d.get("ttm") is not None else (nip if annual else None)   # 최근 4분기(TTM) 지배순이익
+        if d.get("eqp") and base is not None:
+            eqa = (d["eqp"] + d["eq_prev"]) / 2 if d.get("eq_prev") else d["eqp"]; roe = base / eqa * 100   # 평균 자본(기말·전기말)
         else: roe = None
         e = lambda v: None if v is None else round(v / 1e8, 1)
         return {"sales": e(d.get("sales")), "op": e(d.get("op")), "ni": e(d.get("ni")), "eps": None if d.get("eps") is None else round(d["eps"], 0),
@@ -120,6 +127,19 @@ log(f"# DART 재무 교체 ({MODE}) · 대상 {len(ST)}종목 · 계산 성공 {
 from collections import Counter
 log("기준: " + str(Counter(fs for _, fs in results.values())))
 log("제외 사유: " + str(Counter(w.split(' ')[0] if w.startswith('결산월') else w for _, _, w in skipped)))
+chg = {k: 0 for k in ("sales", "op", "ni")}; tot = 0; ex = []
+for c, (res, fs) in results.items():
+    for (fq, per), v in res.items():
+        o = DB.get((c, fq, per))
+        if not o or o[0]: continue
+        tot += 1
+        for k, i in (("sales", 1), ("op", 2), ("ni", 3)):
+            if v[k] is not None and o[i] is not None and abs(v[k] - float(o[i])) > max(1.0, 0.005 * abs(float(o[i]))):
+                chg[k] += 1
+                if len(ex) < 25: ex.append((c, names[c], fq, per, k, float(o[i]), v[k]))
+log(f"기존 확정 행 {tot}개 중 DART와 다른 값(±1억·0.5% 초과): {chg}")
+log("다른 값 예시: " + str(ex))
+cnt_new = sum(1 for c, (res, fs) in results.items() for key in res if (c, key[0], key[1]) not in DB); log(f"새로 생기는 행 {cnt_new}개 · 예상→확정 전환 {sum(1 for c, (res, fs) in results.items() for key in res if DB.get((c, key[0], key[1])) and DB[(c, key[0], key[1])][0])}개")
 if len(ST) <= 6:
     for c, (res, fs) in results.items():
         log(f"\n## {names[c]} {c} ({fs})")
