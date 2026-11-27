@@ -1110,6 +1110,10 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-bd{font-style:normal;font-size:10px;font-weight:700;margin-left:4px;padding:1px 5px;border-radius:8px;background:var(--bg-2,rgba(128,128,128,.15));color:var(--ink-2)}.au-bd.warn{background:var(--warn);color:#fff}
 .au-sumt tr.au-go{cursor:pointer}.au-sumt tr.au-go:hover{background:var(--bg-2,rgba(128,128,128,.08))}
 .au-now{border-left:4px solid var(--warn)}.au-nowh{font-weight:800;margin-bottom:4px}
+.au-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;flex:0 0 auto;background:var(--ink-3);opacity:.5}.au-dot.now{background:var(--warn);opacity:1}.au-dot.ok{background:var(--good);opacity:1}
+.au-sumt{width:100%;table-layout:auto}.au-sumt th,.au-sumt td{padding:6px 5px}.au-sumt td.l{white-space:normal;min-width:130px}.au-sumt td:not(.l),.au-sumt th:not(.l){white-space:nowrap;text-align:right}
+.au-nowidle{opacity:.85}
+#auTopBtn{position:fixed;right:14px;bottom:78px;z-index:30;width:42px;height:42px;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.25);font-size:18px;cursor:pointer;display:none}
 .au-nmgo{display:inline-flex;align-items:center;gap:6px;cursor:pointer;border-radius:6px}.au-nmgo b{border-bottom:1px dashed var(--ink-3,#999)}.au-nmgo:hover{background:var(--bg-2,rgba(128,128,128,.1))}
 .au-nowr{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:4px 0;font-size:13px}.au-nowt{flex:1 1 220px}
 .au-chip{display:inline-block;padding:1px 8px;border-radius:999px;border:1px solid var(--border);font-size:11.5px;background:var(--surface-2);white-space:nowrap}
@@ -13393,6 +13397,9 @@ function auLane(name,L,sid){
   const lab={done:"완료",idle:"무응답·유지",now:"진행 중",wait:"대기",miss:"지남",skip:"없음"};
   return `<div class="au-lane"><div class="au-lname">${name}</div><div class="au-tl">${L.map((x,xi)=>`<div class="au-st ${x.s}${x.key?" au-go":""}"${x.key?` data-austep="${trdEsc(x.sid||sid||"")}|${x.key}" role="button" tabindex="0" title="누르면 아래 자세한 진행으로 이동"`:""}><div class="au-sh"><span class="au-t"><span class="au-no ${x.s}">${xi+1}</span>${x.next?"내일 ":""}${x.t!=null?auHM(x.t):"–"}${x.range?" "+x.range:""}</span><span class="au-b">${lab[x.s]}</span></div><div class="au-sl">${trdEsc(x.label)}</div>${x.note?`<div class="au-sn">${trdEsc(x.note)}</div>`:""}</div>`).join("")}</div></div>`;
 }
+/* 상태 → 우선순위(0 승인대기·1 체결대기·2 보유·3 기타·4 대기/꺼짐) · 색 점 */
+const auPri=t=>/승인 (대기|처리)/.test(t)?0:/체결 대기/.test(t)?1:/보유/.test(t)?2:/후보를 고릅니다|후보 선정 대기|꺼짐|부터 저녁 후보 관찰|남은 단계 없음|전략 꺼짐/.test(t)?4:3;
+const auDot=pri=>`<i class="au-dot ${pri<=1?"now":pri===2?"ok":"idle"}"></i>`;
 /* 상단 '지금' 바: 전략마다 한 줄 — 지금 하는 일 · 남은 시간 · 오늘 매수 수 · 다음 검토 */
 function auNowLine(sid){
   const D=auRun(sid),T=auT(sid),I=auStrat(sid)||{},P=I.params||{},min=auMinNow(),R=auRoundInfo(sid),ords=D?D.orders.filter(o=>o.st!=="retry"):[];
@@ -13412,7 +13419,8 @@ function auNowLine(sid){
   else txt=D.decision?"주문할 종목 없음":"승인 대기";
   const chips=[];
   if(R.on)chips.push(`<span class="au-chip">오늘 매수 ${auPlaced(D)}/${R.cap}종목</span>`,R.next?`<span class="au-chip">${R.next.due?"검토 곧 시작":"다음 검토 "+auHM(R.next.t)} (${R.next.n}회차)</span>`:`<span class="au-chip faint">검토 종료</span>`);
-  return `<div class="au-nowr"><span class="au-nmgo au-go" data-auscr="${trdEsc(sid)}" role="button" tabindex="0" title="아래 '전략별 종목·진행·선정 이유'의 이 전략으로 이동"><span class="au-letter">${trdEsc(auLetter(sid)||"·")}</span><b>${trdEsc(auName(sid))}</b></span><span class="au-nowt">${trdEsc(txt)} ${tm}</span>${chips.join("")}</div>`;
+  const pri=auPri(txt);
+  return {sid,pri,l:auLetter(sid)||"·",html:`<div class="au-nowr">${auDot(pri)}<span class="au-nmgo au-go" data-auscr="${trdEsc(sid)}" role="button" tabindex="0" title="아래 '전략별 종목·진행·선정 이유'의 이 전략으로 이동"><span class="au-letter">${trdEsc(auLetter(sid)||"·")}</span><b>${trdEsc(auName(sid))}</b></span><span class="au-nowt">${trdEsc(txt)} ${tm}</span>${chips.join("")}</div>`};
 }
 /* 종가베팅 한 줄: 아침 이월 매도 · 저녁 관찰·선정 · 승인 · 체결 대기 · 보유(20:00 이월 예정) */
 function auNowLineC(){
@@ -13430,13 +13438,18 @@ function auNowLineC(){
   else if(intra.length)txt=`장중 전환 ${intra.length}종목 — 장중 계획으로 손절·익절 감시`;
   else if(min<(T.cbWatch&&T.cbWatch.length?T.cbWatch[0]:T.cbAt))txt=P.closeBuyOn===false?"저녁 매수 꺼짐":`${auHM(T.cbWatch&&T.cbWatch.length?T.cbWatch[0]:T.cbAt)}부터 저녁 후보 관찰`;
   else txt=D&&D.carry!=null?`이월 전환 완료(${D.carry.length}종목)`:"오늘 남은 단계 없음";
-  return `<div class="au-nowr"><span class="au-nmgo au-go" data-auscr="closing" role="button" tabindex="0" title="아래 '전략별 종목·진행·선정 이유'의 이 전략으로 이동"><span class="au-letter">${trdEsc(auLetter(G.active.closing)||"N")}</span><b>${trdEsc(C.name||"종가베팅")}</b></span> ${auModeB(auModeOf(C),auDryOf(C.id))}<span class="au-nowt">${trdEsc(txt)} ${tm}</span></div>`;
+  const pri=auPri(txt);
+  return {sid:"closing",pri,l:auLetter(G.active.closing)||"N",html:`<div class="au-nowr">${auDot(pri)}<span class="au-nmgo au-go" data-auscr="closing" role="button" tabindex="0" title="아래 '전략별 종목·진행·선정 이유'의 이 전략으로 이동"><span class="au-letter">${trdEsc(auLetter(G.active.closing)||"N")}</span><b>${trdEsc(C.name||"종가베팅")}</b></span> ${auModeB(auModeOf(C),auDryOf(C.id))}<span class="au-nowt">${trdEsc(txt)} ${tm}</span></div>`};
 }
 const auUpdTx=()=>{const t=(TRD.au&&TRD.au.now)||trdNow(),d=new Date(t+9*3600e3),z=n=>String(n).padStart(2,"0");return `${z(d.getUTCMonth()+1)}/${z(d.getUTCDate())} ${z(d.getUTCHours())}:${z(d.getUTCMinutes())}`;};
 function auNowBar(){
   if(!TRD.au.tradingDay)return "";
-  const ids=auIds(),cl=auCHere()?auNowLineC():"";if(!ids.length&&!cl)return "";
-  return `<div class="card au-now"><div class="au-nowh">지금 <span class="faint" style="font-size:11px">${trdEsc(auHMs(trdNow()))} · 전략명을 누르면 아래 해당 전략으로 이동해요</span></div>${ids.map(auNowLine).join("")}${cl}</div>`;
+  const ids=auIds(),cl=auCHere()?auNowLineC():null;if(!ids.length&&!cl)return "";
+  const all=ids.map(auNowLine).concat(cl?[cl]:[]).map((x,i)=>({...x,i}));
+  const act=all.filter(x=>x.pri<4).sort((a,b)=>a.pri-b.pri||a.i-b.i),idle=all.filter(x=>x.pri>=4);
+  /* 해야 할 일이 있는 전략(승인·체결 대기 → 보유 → 기타)만 한 줄씩, 대기·꺼짐 전략은 한 줄로 접음 */
+  const idl=idle.length?`<div class="au-nowr au-nowidle">${auDot(4)}<span class="faint">대기·꺼짐</span>${idle.map(x=>`<span class="au-nmgo au-go" data-auscr="${trdEsc(x.sid)}" role="button" tabindex="0"><span class="au-letter">${trdEsc(x.l)}</span></span>`).join("")}<span class="faint" style="font-size:11.5px">— 알림·후보 선정 시각이 되면 위로 올라와요</span></div>`:"";
+  return `<div class="card au-now"><div class="au-nowh">지금 <span class="faint" style="font-size:11px">${trdEsc(auHMs(trdNow()))} · 전략명을 누르면 아래 해당 전략으로 이동해요</span></div>${act.map(x=>x.html).join("")||'<div class="faint" style="font-size:12.5px;padding:4px 0">지금 진행 중인 전략이 없어요</div>'}${idl}</div>`;
 }
 /* ── 호가 막대(F3): 위 매도 3단계 + 아래 매수 10단계 — 두 패널(주문 시점/지금)이 같은 줄 수·같은 안내문 ── */
 function auBook(b,buy,title){
@@ -13785,9 +13798,12 @@ function auAllHtml(){
     let o;
     if(k==="closing"){const rs=auCRuns(),F=(A.trades||[]).filter(f=>auIsCSid(f.sid));o={pk:rs.reduce((a,r)=>a+(r.picks||[]).length,0),buy:rs.reduce((a,r)=>a+(r.orders||[]).filter(x=>x.filled>0).length,0),hold:(A.positions||[]).filter(p=>p.skind==="closing"||auIsCSid(p.sid)).length,rz:F.reduce((a,f)=>a+(f.realized||0),0),tx:"저녁 매수·판정·이월"};}
     else o=sumOf(k);
-    rows.push(`<tr class="au-go" data-austab="${trdEsc(k)}" role="button" tabindex="0"><td class="l">${k==="closing"?`${auCTag()}종가베팅`:auTag(k)}<div class="faint" style="font-size:10.5px;font-weight:400">${trdEsc(o.tx)}</div></td><td>${N(o.pk)}</td><td>${N(o.buy)}</td><td>${N(o.hold)}</td><td class="n ${trdCls(o.rz)}">${o.rz?(o.rz>0?"+":"-")+N(Math.abs(Math.round(o.rz)),0):"–"}</td></tr>`);
+    let nx="";if(k!=="closing"){try{const R=auRoundInfo(k);if(R&&R.on&&R.next)nx=` · ${R.next.due?"검토 곧":"다음 "+auHM(R.next.t)}`;}catch(e){}}
+    const pri=k==="closing"?3:auPri(o.tx);
+    rows.push({pri,h:`<tr class="au-go" data-austab="${trdEsc(k)}" role="button" tabindex="0"><td class="l">${auDot(pri)}${k==="closing"?`${auCTag()}종가베팅`:auTag(k)}<div class="faint" style="font-size:10.5px;font-weight:400">${trdEsc(o.tx+nx)}</div></td><td>${N(o.pk)}</td><td>${N(o.buy)}</td><td>${N(o.hold)}</td><td class="n ${trdCls(o.rz)}">${o.rz?(o.rz>0?"+":"-")+N(Math.abs(Math.round(o.rz)),0):"–"}</td></tr>`});
   }
-  const tbl=rows.length?`<div class="card"><h3>전략별 오늘 <span class="r faint" style="font-size:11px">줄을 누르면 그 전략 탭</span></h3><div class="trd-scroll"><table class="trd-tb au-sumt"><thead><tr><th class="l">전략 · 상태</th><th>후보</th><th>매수</th><th>보유</th><th>실현(원)</th></tr></thead><tbody>${rows.join("")}</tbody></table></div></div>`:`<div class="card"><div class="faint" style="font-size:12.5px">${auReal()?"실전매매에 켜진 장중 전략이 없습니다. 가상매매 › 자동매매 › 전략에서 전략 카드의 <b>실전에 적용</b>을 누르면 이 탭에 드라이런으로 생깁니다(꺼진 상태 · 직접 승인).":"켜진 장중 전략이 없습니다. 전략 탭에서 켜세요."}</div></div>`;
+  rows.sort((a,b)=>a.pri-b.pri);   // 승인·체결 대기 → 보유 → 기타 → 대기·꺼짐 순(같으면 원래 순서)
+  const tbl=rows.length?`<div class="card"><h3>전략별 오늘 <span class="r faint" style="font-size:11px">줄을 누르면 그 전략 탭</span></h3><div class="trd-scroll"><table class="trd-tb au-sumt"><thead><tr><th class="l">전략 · 상태</th><th>후보</th><th>매수</th><th>보유</th><th>실현(원)</th></tr></thead><tbody>${rows.map(x=>x.h).join("")}</tbody></table></div></div>`:`<div class="card"><div class="faint" style="font-size:12.5px">${auReal()?"실전매매에 켜진 장중 전략이 없습니다. 가상매매 › 자동매매 › 전략에서 전략 카드의 <b>실전에 적용</b>을 누르면 이 탭에 드라이런으로 생깁니다(꺼진 상태 · 직접 승인).":"켜진 장중 전략이 없습니다. 전략 탭에서 켜세요."}</div></div>`;
   return auNowBar()+tbl+auFlowHtml()+(auCHere()?"":auCAway())+auStatusHtml();
 }
 /* 전략별 종목·진행·선정이유 한눈에(오늘 › 전체 탭, 전략별 오늘 표 아래): 종목마다 선정 → 승인 → 체결 → 보유 → 청산 단계와 선정 이유 */
@@ -14273,6 +14289,10 @@ function trdAutoHtml(){
   const tab=(k,t)=>`<button type="button" data-aut="${k}"${TRD.auTab===k?' class="on"':""}>${t}</button>`;
   return band+`<div class="trd-tabs" role="tablist">${tab("today","오늘")}${tab("strat","전략")}${tab("journal","일지")}${tab("perf","성과")}</div>`+(TRD.auTab==="strat"?auStratHtml():TRD.auTab==="journal"?auDayLogHtml():TRD.auTab==="perf"?auPerfHtml():auTodayHtml());
 }
+/* 맨 위로 떠 있는 버튼: 자동매매 화면에서 스크롤이 내려가 있을 때만 */
+(function(){let b=null;const upd=()=>{if(!b){b=document.createElement("button");b.id="auTopBtn";b.type="button";b.title="맨 위(지금)로";b.textContent="↑";b.onclick=()=>window.scrollTo({top:0,behavior:"smooth"});document.body.appendChild(b);}
+  const p=document.getElementById("trdPaneAuto");b.style.display=p&&p.offsetParent&&window.scrollY>600?"block":"none";};
+  window.addEventListener("scroll",upd,{passive:true});})();
 /* 클릭 처리(공통 클릭 위임에서 호출). 처리했으면 true */
 function auClick(t){
   let el;
