@@ -13446,10 +13446,8 @@ function auNowBar(){
   if(!TRD.au.tradingDay)return "";
   const ids=auIds(),cl=auCHere()?auNowLineC():null;if(!ids.length&&!cl)return "";
   const all=ids.map(auNowLine).concat(cl?[cl]:[]).map((x,i)=>({...x,i}));
-  const act=all.filter(x=>x.pri<4).sort((a,b)=>a.pri-b.pri||a.i-b.i),idle=all.filter(x=>x.pri>=4);
-  /* 해야 할 일이 있는 전략(승인·체결 대기 → 보유 → 기타)만 한 줄씩, 대기·꺼짐 전략은 한 줄로 접음 */
-  const idl=idle.length?`<div class="au-nowr au-nowidle">${auDot(4)}<span class="faint">대기·꺼짐</span>${idle.map(x=>`<span class="au-nmgo au-go" data-auscr="${trdEsc(x.sid)}" role="button" tabindex="0"><span class="au-letter">${trdEsc(x.l)}</span></span>`).join("")}<span class="faint" style="font-size:11.5px">— 알림·후보 선정 시각이 되면 위로 올라와요</span></div>`:"";
-  return `<div class="card au-now"><div class="au-nowh">지금 <span class="faint" style="font-size:11px">${trdEsc(auHMs(trdNow()))} · 전략명을 누르면 아래 해당 전략으로 이동해요</span></div>${act.map(x=>x.html).join("")||'<div class="faint" style="font-size:12.5px;padding:4px 0">지금 진행 중인 전략이 없어요</div>'}${idl}</div>`;
+  const act=all.slice().sort((a,b)=>a.pri-b.pri||a.i-b.i);   // 모든 전략을 펼쳐 보이되, 승인·체결 대기 → 보유 → 기타 → 대기·꺼짐 순
+  return `<div class="card au-now"><div class="au-nowh">지금 <span class="faint" style="font-size:11px">${trdEsc(auHMs(trdNow()))} · 전략명을 누르면 아래 해당 전략으로 이동해요</span></div>${act.map(x=>x.html).join("")}</div>`;
 }
 /* ── 호가 막대(F3): 위 매도 3단계 + 아래 매수 10단계 — 두 패널(주문 시점/지금)이 같은 줄 수·같은 안내문 ── */
 function auBook(b,buy,title){
