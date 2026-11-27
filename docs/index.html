@@ -1986,7 +1986,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="note" style="margin-top:8px" id="grkNote"></div></div>
 </section>
 <section id="v-ovs" class="hide">
-  <div class="dfrow" style="margin:12px 0 4px;gap:6px"><button class="btn ghost dnext" id="oBackTop">← 이전</button><select id="ovsMkt" class="df" title="주식시장 선택(전체 포함)" style="flex:0 0 100px;width:100px;max-width:none"><option value="all">전체</option><option value="US">미국</option><option value="HK">홍콩</option><option value="JP">일본</option><option value="SH">상해</option><option value="SZ">심천</option></select><select id="ovsSel" class="df" title="해외 종목·ETF 선택 (ETF → 일반 종목, 가나다순)" style="flex:1 1 0;max-width:none"></select><button class="btn ghost dnext" id="ovsNext" title="목록 순서대로 다음 종목으로 이동">다음 →</button></div>
+  <div class="dfrow" style="margin:12px 0 4px;gap:6px"><button class="btn ghost dnext" id="oBackTop">← 이전</button><select id="ovsMkt" class="df" title="주식시장 선택(전체 포함)" style="flex:0 0 70px;width:70px;max-width:none"><option value="all">전체</option><option value="US">미국</option><option value="HK">홍콩</option><option value="JP">일본</option><option value="SH">상해</option><option value="SZ">심천</option></select><select id="ovsTyp" class="df" title="종목 구분(전체·일반 종목·ETF)" style="flex:0 0 78px;width:78px;max-width:none"><option value="all">전체</option><option value="stk">일반 종목</option><option value="etf">ETF</option></select><select id="ovsSel" class="df" title="해외 종목·ETF 선택 (ETF → 일반 종목, 가나다순)" style="flex:1 1 0;max-width:none"></select><button class="btn ghost dnext" id="ovsNext" title="목록 순서대로 다음 종목으로 이동">다음 →</button></div>
   <div class="card" id="ovsHead"><div class="load sk"></div></div>
   <div class="card" id="ovsIntroCard" style="margin-top:10px;display:none"><h3>회사 소개 <span class="r faint" style="font-weight:400" id="ovsIntroSub">네이버 증권</span></h3><div id="ovsIntro" style="white-space:pre-line;line-height:1.65;font-size:14px"></div></div>
   <div class="card" id="ovsHolderCard" style="margin-top:10px;display:none"><h3>주주 구성 <span class="r faint" style="font-weight:400" id="ovsHolderSub">네이버 증권</span></h3><div id="ovsHolder"></div></div>
@@ -15075,7 +15075,7 @@ function ovsNm(x){return x.name_ko||x.name_en||x.code;}
 const OVS_MK={US:["NAS","NYS","AMS"],HK:["HKS"],JP:["TSE"],SH:["SHS"],SZ:["SZS"]};
 function ovsMkOf(ex){return Object.keys(OVS_MK).find(k=>OVS_MK[k].includes(ex))||"all";}
 function ovsSelFill(){
-  const mk=S.ovs.mkt||"all",L=(S.ovs.list||[]).filter(x=>mk==="all"||ovsMkOf(x.kis_excd)===mk),sel=$("#ovsSel");if(!sel)return;
+  const mk=S.ovs.mkt||"all",ty=S.ovs.typ||"all",L=(S.ovs.list||[]).filter(x=>(mk==="all"||ovsMkOf(x.kis_excd)===mk)&&(ty==="all"||(ty==="etf")===!!x.is_etf)),sel=$("#ovsSel");if(!sel)return;
   const ms=$("#ovsMkt");if(ms&&ms.value!==mk)ms.value=mk;
   const opt=x=>`<option value="${escH(x.code)}">${escH(ovsNm(x))} (${escH(x.code)} · ${OVS_EX[x.kis_excd]||x.kis_excd})</option>`;
   const by=f=>L.filter(f).sort((a,b)=>ovsNm(a).localeCompare(ovsNm(b),"ko"));
@@ -15083,6 +15083,7 @@ function ovsSelFill(){
   if(S.ovs.code)sel.value=S.ovs.code;
 }
 $("#ovsSel").addEventListener("change",e=>go("ovs",e.target.value));
+$("#ovsTyp").addEventListener("change",e=>{S.ovs.typ=e.target.value;ovsSelFill();const sel=$("#ovsSel");if(sel&&sel.options.length&&sel.value!==S.ovs.code)go("ovs",sel.options[0].value);});
 $("#ovsMkt").addEventListener("change",e=>{S.ovs.mkt=e.target.value;ovsSelFill();const sel=$("#ovsSel");if(sel&&sel.options.length&&sel.value!==S.ovs.code)go("ovs",sel.options[0].value);});
 $("#ovsNext").onclick=()=>{const o=[...$("#ovsSel").options];if(!o.length)return;const i=o.findIndex(x=>x.value===S.ovs.code);go("ovs",o[(i+1)%o.length].value);};
 $("#ovsPer").addEventListener("seg-change",e=>{S.ovs.per=e.detail;ovsCharts();});
@@ -15137,7 +15138,7 @@ function ovsProfile(){
     $("#ovsIntro").innerHTML=(P.industry?`<div class="etf-tags" style="margin:0 0 8px"><span>${escH(P.industry)}</span></div>`:"")+escH(P.summary);
     $("#ovsIntroSub").textContent=(P.src_label||"네이버 증권")+(P.fetched?` · ${P.fetched} 수집`:"");ic.style.display="";
   }
-  const ow=(P.owners||[]).filter(o=>o&&o.n);
+  const ow=(P.owners||[]).filter(o=>o&&o.n).sort((a,b)=>(parseFloat(String(b.p||"").replace("%",""))||0)-(parseFloat(String(a.p||"").replace("%",""))||0));
   if(ow.length){
     const pc=o=>parseFloat(String(o.p||"").replace("%",""))||0,sum=ow.reduce((a,o)=>a+pc(o),0);
     $("#ovsHolder").innerHTML=`<table style="width:100%;table-layout:fixed;border-collapse:collapse"><thead><tr><th class="l" style="text-align:left">주주</th><th style="width:84px;text-align:right">지분율</th></tr></thead><tbody>${ow.map(o=>`<tr><td class="l" style="text-align:left;white-space:normal;word-break:break-word;padding:6px 4px">${escH(o.n)}</td><td style="text-align:right;padding:6px 4px"><b>${escH(o.p||"–")}</b></td></tr>`).join("")}</tbody></table>
