@@ -2351,6 +2351,23 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div id="dMajorBody"></div>
   </div>
 
+  <div class="card" id="dPrice2Card"><h3>가격 · 이동평균<span class="r" id="dRange2">전 기간</span></h3>
+    <div class="legend">
+      <span><i style="background:var(--ink)"></i>종가</span>
+      <span><i style="background:var(--mac1)"></i>MA5</span>
+      <span><i style="background:var(--mac2)"></i>MA20</span>
+      <span><i style="background:var(--mac3)"></i>MA120</span></div>
+    <div class="legend" id="dDartMkLg" style="margin-top:-2px"></div>
+    <div class="chart" id="dPrice2"></div>
+    <div class="note">위 "가격 · 이동평균"과 같은 차트입니다(공시 DART 바로 위에 두고 보기 위한 복사본). 종가선 위의 도형은 DART 공시 접수일이며, <b>▲ 수주(단일판매·공급계약) · ◆ 자사주 취득 결정 · ■ 증설·시설투자·지분 투자</b>입니다. 도형을 길게 누르거나 마우스를 올리면 내용이 나옵니다. 공시는 DART 수집을 시작한 2026-10-22 이후 접수분만 표시됩니다(과거 백필 없음).</div>
+  </div>
+
+  <div class="card" id="dOpgCard" style="display:none"><h3>분기 영업이익 증가율<span class="r" id="dOpgSub"></span></h3>
+    <div class="legend"><span><i style="background:var(--up)"></i>증가(확정)</span><span><i style="background:var(--down)"></i>감소(확정)</span><span><i style="background:var(--ink-3);opacity:.45"></i>점선·연한 막대 = 예상(E)</span></div>
+    <div class="chart" id="dOpg"></div>
+    <div class="note">전년 동기 대비 영업이익 증가율(%)이며, 막대 아래 숫자는 해당 분기 영업이익입니다. 확정 실적과 네이버 증권 컨센서스 예상(E)을 함께 그렸습니다. 전년 동기가 적자(또는 0)라 비율을 낼 수 없으면 <b>흑전·적지</b>, 흑자에서 적자로 바뀌면 <b>적전</b>으로 표시합니다.</div>
+  </div>
+
   <details class="card" id="dDartCard" style="display:none"><summary style="cursor:pointer;list-style:none"><h3 style="margin:0">공시 <span class="r" id="dDartSub">DART · 최근 1개월</span></h3></summary><div style="margin-top:8px"></div>
     <div id="dDartSum" class="faint" style="font-size:12px;margin-bottom:6px"></div>
     <div class="qf seg" id="dDartKindSel" style="margin-bottom:6px">
@@ -4711,6 +4728,13 @@ function monthTicks(labels){
   });
   return idx;
 }
+/* 공시 마커용 도형(삼각형·마름모·사각형) */
+function markShape(shape,cx,cy,r,c){
+  const at={fill:c,stroke:css("--surface"),"stroke-width":1.5,"stroke-linejoin":"round"};
+  if(shape==="tri")return el("polygon",{...at,points:`${cx},${cy-r} ${cx+r},${cy+r*.8} ${cx-r},${cy+r*.8}`});
+  if(shape==="dia")return el("polygon",{...at,points:`${cx},${cy-r} ${cx+r},${cy} ${cx},${cy+r} ${cx-r},${cy}`});
+  return el("rect",{...at,x:cx-r*.85,y:cy-r*.85,width:r*1.7,height:r*1.7});
+}
 function lineChart(host,series,labels,opt={}){
   host.innerHTML="";
   if(!labels.length){host.innerHTML='<div class="load">데이터 없음</div>';return;}
@@ -4880,6 +4904,7 @@ function lineChart(host,series,labels,opt={}){
     const v=pt.v!=null?pt.v:(series[pt.s||0]||{v:[]}).v[pt.i];
     if(v==null||isNaN(v)||pt.i==null)return;
     const c=css(pt.c||"--ink");
+    if(pt.shape){const m=markShape(pt.shape,X(pt.i),Y(v)+(pt.dy||0),pt.r||5,c);if(pt.tip){const tt=el("title",{});tt.textContent=pt.tip;m.appendChild(tt);}svg.appendChild(m);return;}
     svg.appendChild(el("circle",{cx:X(pt.i),cy:Y(v),r:pt.r||4.5,fill:c,stroke:css("--surface"),"stroke-width":2}));
     if(pt.t){const left=pt.i>labels.length*0.75;
       const t=el("text",{x:X(pt.i)+(left?-7:7),y:Y(v)+(pt.below?15:-9),"text-anchor":left?"end":"start","font-size":10.5,"font-weight":700,fill:c,
@@ -9106,20 +9131,26 @@ function renderRangeCharts(){
         ovl.pts.push({i:m.tr,v:+rp[m.tr].close,t:"매집 시작 "+md(m.tr),c:"--s1",below:true});
         ovl.pts.push({i:m.pk,v:+rp[m.pk].close,t:"외+기 고점 "+md(m.pk),c:"--up"});}}
   }catch(e){console.error("가격차트 덧그림",e);}}
-  lineChart($("#dPrice"),[
-    {n:"종가",v:rp.map(r=>+r.close),c:"--ink"},
-    {n:"MA5",v:rp.map(r=>r.ma5?+r.ma5:null),c:"--mac1"},
-    {n:"MA20",v:rp.map(r=>r.ma20?+r.ma20:null),c:"--mac2"},
-    {n:"MA120",v:rp.map(r=>r.ma120?+r.ma120:null),c:"--mac3"}],
-    rlb,{h:450,w:1180,pr:66,labelEnds:false,marks:true,monthTicks:true,
+  const drawPrice=()=>{
+    const SER=[
+      {n:"종가",v:rp.map(r=>+r.close),c:"--ink"},
+      {n:"MA5",v:rp.map(r=>r.ma5?+r.ma5:null),c:"--mac1"},
+      {n:"MA20",v:rp.map(r=>r.ma20?+r.ma20:null),c:"--mac2"},
+      {n:"MA120",v:rp.map(r=>r.ma120?+r.ma120:null),c:"--mac3"}];
+    const mk=S.chart.etf?{pts:[],lg:""}:dartMarkPts(rp);
+    const O=()=>({h:450,w:1180,pr:66,labelEnds:false,marks:true,monthTicks:true,
       fy:v=>N(v,0),fm:v=>N(v)+"원",ft:v=>N(v)+"원",
-      refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`,bands:ovl.bands,pts:ovl.pts});
+      refLine:maxClose,refLabel:`전고점 ${N(maxClose)}`,bands:ovl.bands,pts:ovl.pts.concat(mk.pts)});
+    lineChart($("#dPrice"),SER,rlb,O());
+    if(!S.chart.etf){lineChart($("#dPrice2"),SER,rlb,O());$("#dRange2").textContent=rangeTxt;$("#dDartMkLg").innerHTML=mk.lg;}
+  };
+  S._drawPrice=drawPrice;drawPrice();
   if(S.chart.etf){
     {const vc_=$("#dVolProfCard");if(vc_)vc_.style.display="none";}
     volumeBars($("#dVolume"),rp.map(r=>+r.volume),rlb,
       {bg:rp.map(r=>+r.close),bgPanel:true,h:450,w:1180,pr:66,monthTicks:true,marks:true,c:"--ma3",fy:v=>N(v/10000,0)+"만",ft:v=>N(v)+"주"});
     try{renderMaCard();}catch(e){console.error("ma card",e);}
-    $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";$("#dDartCard").style.display="none";
+    $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";$("#dDartCard").style.display="none";$("#dOpgCard").style.display="none";
     return;
   }
   const fullTxt=`${rows[0].trade_date}~${rows.at(-1).trade_date}`;   // 매물대 3종은 기간 버튼과 무관하게 전체 누적
@@ -9165,6 +9196,7 @@ function renderRangeCharts(){
   try{renderSmCard();}catch(e){console.error("smart money card",e);}
   try{renderMaCard();}catch(e){console.error("ma card",e);}
   try{renderEarnCard();}catch(e){console.error("earn card",e);}
+  try{renderOpgCard();}catch(e){console.error("opg card",e);}
   try{renderDivCard();}catch(e){console.error("div card",e);}
   try{renderGovCards();}catch(e){console.error("gov card",e);}
   try{renderDartCard();}catch(e){console.error("dart card",e);}
@@ -10156,6 +10188,71 @@ async function renderGovCards(){
   if(mj.length)hm+=`<div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">보유자</th><th>지분율</th><th>변동</th><th>주식수</th><th>보고일</th><th class="l">사유</th></tr></thead><tbody>`+
     mj.map(r=>`<tr><td class="l">${escH(r.repror)}</td><td class="num">${N(r.rate,2)}%</td><td class="num ${sgn(r.rate_chg)}">${r.rate_chg==null?"–":pm(r.rate_chg,2)+"%p"}</td><td class="num">${N(r.shares,0)}</td><td>${escH(r.rcept_dt||"")}</td><td class="l" style="white-space:normal;min-width:120px">${escH((r.reason||"").slice(0,40))}</td></tr>`).join("")+`</tbody></table></div>`;
   $("#dOwnBody").innerHTML=h;$("#dMajorBody").innerHTML=hm;
+}
+/* 가격 차트 공시 마커: 수주(▲)·자사주 취득(◆)·증설/투자(■) — 종가선 위, 같은 날 여러 건이면 위로 쌓음 */
+const DMK={ORDER:["수주","tri","--up"],BUYBACK:["자사주 취득","dia","--down"],CAPEX:["증설·투자","sq","--s4"],STAKE:["증설·투자","sq","--s4"]};
+function dartMarkPts(rp){
+  const code=S.chart&&S.chart.code,rows=S._dMk&&S._dMk[code];
+  if(rows===undefined){loadDartMarks(code);return {pts:[],lg:'<span class="faint">공시 표시 불러오는 중…</span>'};}
+  const first=rp[0].trade_date,last=rp.at(-1).trade_date,cnt={},stack={},pts=[];
+  rows.forEach(r=>{
+    const d=String(r.rcept_dt).slice(0,10),m=DMK[r.kind];if(!m||d<first||d>last)return;
+    let i=rp.findIndex(x=>x.trade_date>=d);if(i<0)return;
+    const k=stack[i]=(stack[i]||0)+1;cnt[m[0]]=(cnt[m[0]]||0)+1;
+    const dd=r.detail||{},amt=r.amount?" · "+fmtEokJo(+r.amount/EOK):"";
+    pts.push({i,v:+rp[i].close,shape:m[1],c:m[2],dy:-(20+(k-1)*21),r:9.5,tip:`${d.slice(2).replace(/-/g,".")} ${m[0]}${amt}${dd["계약상대"]?" · "+dd["계약상대"]:""} — ${r.report_nm||""}`});
+  });
+  const glyph=(shape,c)=>{const sh=shape==="tri"?`<polygon points="0,-5 5,4 -5,4"/>`:shape==="dia"?`<polygon points="0,-5.5 5.5,0 0,5.5 -5.5,0"/>`:`<rect x="-4.5" y="-4.5" width="9" height="9"/>`;return `<svg width="12" height="12" viewBox="-6 -6 12 12" style="vertical-align:-2px;margin-right:4px" fill="var(${c})">${sh}</svg>`;};
+  const lg=[["수주","tri","--up"],["자사주 취득","dia","--down"],["증설·투자","sq","--s4"]].map(([n,sh,c])=>`<span>${glyph(sh,c)}${n} <b>${cnt[n]||0}</b>건</span>`).join("")+`<span class="faint">(표시 구간 · DART 접수일)</span>`;
+  return {pts,lg};
+}
+async function loadDartMarks(code){
+  S._dMk=S._dMk||{};if(!code||S._dMk[code]!==undefined||S._dMkL===code)return;
+  S._dMkL=code;let rows=[];
+  try{rows=await q("dart_filings",`select=rcept_no,rcept_dt,kind,report_nm,amount,detail&code=eq.${code}&kind=in.(ORDER,BUYBACK,CAPEX,STAKE)&rcept_dt=gte.2025-01-01&order=rcept_dt.asc&limit=600`)||[];}catch(e){rows=[];}
+  S._dMk[code]=rows;S._dMkL=null;
+  if(S.chart&&S.chart.code===code&&S._drawPrice)try{S._drawPrice();}catch(e){console.error("공시 마커",e);}
+}
+/* 분기 영업이익 증가율(전년 동기 대비) — 확정 + 컨센서스 예상 */
+async function renderOpgCard(){
+  const card=$("#dOpgCard"),code=S.chart&&S.chart.code;
+  if(!code||S.chart.etf){card.style.display="none";return;}
+  const rows=await earnRows(code);
+  if(S.chart.code!==code)return;
+  const by={};(rows||[]).filter(r=>r.freq==="Q"&&r.op_profit!=null).forEach(r=>by[r.period]=r);
+  const out=[];Object.keys(by).sort().forEach(p=>{
+    const pv=by[(+p.slice(0,4)-1)+p.slice(4)];if(!pv)return;
+    const c=+by[p].op_profit,b=+pv.op_profit,est=!!by[p].is_est;
+    let g=null,tag="";
+    if(b>0){g=(c-b)/b*100;if(c<0)tag="적전";}else tag=c>0?"흑전":"적지";
+    out.push({p,c,g,tag,est});
+  });
+  const L=out.slice(-10);
+  if(L.length<2){card.style.display="none";return;}
+  card.style.display="";
+  $("#dOpgSub").textContent=`확정 ${L.filter(x=>!x.est).length}개 · 예상 ${L.filter(x=>x.est).length}개 분기 · 전년 동기 대비`;
+  const W=560,H=250,P={t:24,r:12,b:46,l:46},host=$("#dOpg");host.innerHTML="";
+  const gv=L.map(x=>x.g).filter(v=>v!=null),cap=v=>Math.max(-300,Math.min(600,v));
+  let mn=Math.min(0,...gv.map(cap)),mx=Math.max(0,...gv.map(cap));if(mx-mn<20){mx+=10;mn-=10;}
+  const pad=(mx-mn)*.12;mx+=pad;if(mn<0)mn-=pad*.6;
+  const Y=v=>P.t+(mx-v)/(mx-mn)*(H-P.t-P.b),bw=(W-P.l-P.r)/L.length,X=i=>P.l+bw*i+bw/2;
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":"분기 영업이익 전년 동기 대비 증가율"});
+  niceTicks(mn,mx,4).forEach(v=>{if(v<mn||v>mx)return;svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:Y(v),y2:Y(v),stroke:v===0?css("--axis"):css("--grid"),"stroke-width":1}));
+    const t=el("text",{x:P.l-6,y:Y(v)+3.5,"text-anchor":"end","font-size":10,fill:css("--ink-3")});t.textContent=N(v,0)+"%";svg.appendChild(t);});
+  L.forEach((x,i)=>{
+    const cx=X(i),w=Math.min(34,bw*.62),col=css(x.g!=null&&x.g<0?"--down":"--up"),y0=Y(0);
+    if(x.g!=null){const yv=Y(cap(x.g)),top=Math.min(y0,yv),h=Math.max(1.5,Math.abs(yv-y0));
+      const r=el("rect",{x:cx-w/2,y:top,width:w,height:h,fill:col,"fill-opacity":x.est?.28:.9,rx:2});
+      if(x.est){r.setAttribute("stroke",col);r.setAttribute("stroke-dasharray","3 2");r.setAttribute("stroke-width","1.4");}
+      svg.appendChild(r);
+      const up=x.g>=0,t=el("text",{x:cx,y:up?top-4:top+h+11,"text-anchor":"middle","font-size":10.5,"font-weight":700,fill:col});
+      t.textContent=(x.g>=0?"+":"")+N(x.g,0)+"%"+(x.tag?" "+x.tag:"");svg.appendChild(t);
+    }else{const t=el("text",{x:cx,y:y0-5,"text-anchor":"middle","font-size":11,"font-weight":700,fill:css(x.tag==="흑전"?"--up":"--down")});t.textContent=x.tag;svg.appendChild(t);}
+    const lb=el("text",{x:cx,y:H-P.b+14,"text-anchor":"middle","font-size":10.5,"font-weight":x.est?700:500,fill:css(x.est?"--ink":"--ink-2")});
+    lb.textContent=x.p.slice(2,4)+"."+x.p.slice(4)+(x.est?" E":"");svg.appendChild(lb);
+    const am=el("text",{x:cx,y:H-P.b+27,"text-anchor":"middle","font-size":9.5,fill:css("--ink-3")});am.textContent=fmtEokJo(x.c);svg.appendChild(am);
+  });
+  host.appendChild(svg);
 }
 async function renderDartCard(){
   const card=$("#dDartCard"),code=S.chart&&S.chart.code;
