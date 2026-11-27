@@ -8897,6 +8897,24 @@ function detDayNet(rows,i){
   return {"외+기 합계":fo+inst,"외국인":fo,"기관합계":inst,"금융투자":fi,"투신":it,"연기금":pn,"사모":pe,
     "기타기관":inst-fi-it-pn-pe,"기타법인":dv("corp_other_cum"),"개인":dv("individual_cum")};
 }
+/* i0 다음 날 ~ i1 까지 주체별 순매수(누적 차이 rows[i1]−rows[i0]). i0<0 이면 0으로 봄 */
+function detSpanNet(rows,i0,i1){
+  if(!rows[i1])return null;
+  const dv=c=>(+rows[i1][c]||0)-(i0>=0&&rows[i0]?(+rows[i0][c]||0):0);
+  const fo=dv("foreign_cum"),inst=dv("inst_cum"),fi=dv("fin_inv_cum"),it=dv("inv_trust_cum"),pn=dv("pension_cum"),pe=dv("pe_cum");
+  return {"외+기 합계":fo+inst,"외국인":fo,"기관합계":inst,"금융투자":fi,"투신":it,"연기금":pn,"사모":pe,
+    "기타기관":inst-fi-it-pn-pe,"기타법인":dv("corp_other_cum"),"개인":dv("individual_cum")};
+}
+/* 주도 세력 매집·이탈 판정: entry=진입일들 순매수 합(+), after=마지막 진입일 다음 날~최근 순매수 */
+function detLeadState(entry,after){
+  if(!(entry>0))return {k:"none",t:"판단 불가"};
+  const r=after/entry;
+  if(r>0.1)return {k:"add",t:"추가 매집 중",r};
+  if(r>=-0.1)return {k:"hold",t:"보유 유지(큰 변화 없음)",r};
+  if(r>-0.5)return {k:"part",t:`일부 이탈(매집분의 ${Math.round(-r*100)}%)`,r};
+  if(r>-1)return {k:"most",t:`대부분 이탈(매집분의 ${Math.round(-r*100)}%)`,r};
+  return {k:"out",t:"전량 이탈 이상",r};
+}
 /* start~end 안에서 무게/주식수(양수)가 큰 날 n개: 거래대금, 주체별 순매수대금·추정 순매수주식수·평균 매수단가
    순매수 주식수 = 순매수대금 × 거래량 ÷ 거래대금 (투자자별 실제 수량은 수집하지 않아 일봉 추정)
    → 평균 단가 = 순매수대금 ÷ 순매수 주식수 = 그날 거래대금 ÷ 거래량(일 평균가)이 되어 주체와 무관하게 같은 값이 나온다. */
@@ -8910,9 +8928,8 @@ function detWtTop(rows,start,end,n=2){
   });
   c.sort((a,b)=>b[0]-a[0]);
   /* 2026-11-19: 2위는 1위일 '이후' 날짜 중 가장 큰 날. 2026-11-26: 1위일 이후에 양수인 날이 없으면(1위가 마지막 거래일 등) 기간 안에서 1위 다음으로 큰 날을 2위로 */
-  /* 2026-11-27: 1~3위로 확장 — k위는 (k-1)위일 '이후' 날짜 중 가장 큰 날, 없으면 아직 안 뽑은 날 중 가장 큰 날 */
-  const pick=[];
-  if(c.length){pick.push(c[0]);for(let k=1;k<n;k++){const last=pick[k-1],nx=c.find(x=>!pick.includes(x)&&x[1]>last[1])||c.find(x=>!pick.includes(x));if(!nx)break;pick.push(nx);}}
+  /* 2026-11-27: 순위 = 기간 안 무게/주식수 크기순(1·2·3위). 예전 "1위일 이후 가장 큰 날" 연쇄 규칙은 큰 날을 빠뜨려 폐기 */
+  const pick=c.slice(0,n);
   return pick.slice(0,n).map(([w,i],k)=>{
     const r=rows[i],ta=+r.trade_amount,vol=+r.volume,ok=ta>0&&vol>0,net=detDayNet(rows,i);
     const subj=net?Object.keys(net).map(nm=>{
@@ -9166,24 +9183,46 @@ $("#dWtWin").addEventListener("seg-change",e=>{S.wtWin=e.detail;try{renderWeight
 function renderWtTop(rows,start,end){
   const host=$("#dWtTop");if(!host)return;
   if(S.chart&&S.chart.etf){host.innerHTML="";return;}
-  const top=detWtTop(rows,start,end,3).sort((a,b)=>a.i-b.i);   // 순위(rank)는 그대로 두고, 아래 설명·표는 시계열(오래된 날 → 최근) 순으로
+  const top=detWtTop(rows,start,end,3).sort((a,b)=>a.i-b.i);   // 순위(rank)=무게 크기순 그대로, 설명·표는 날짜순
   if(!top.length){host.innerHTML='<div class="faint" style="font-size:12px;margin-top:8px">이 기간에는 외+기 순매수 우위(무게/주식수 양수)인 날이 없습니다.</div>';return;}
   const eok=v=>v==null?"–":pm(v/EOK,0)+"억",px=v=>v==null?"–":N(v,0)+"원";
-  const cur=+rows.at(-1).close;
-  /* 1위·2위를 순서대로 요약(날짜·무게·거래대금·세력 평단·주도 세력)하고, 아래 표 하나에 두 날의 주체별 순매수를 나란히 정리 */
+  const L=rows.length-1,cur=+rows[L].close,lastI=top.at(-1).i;
+  const LEAD=["외국인","금융투자","투신","연기금","사모","기타기관"];
+  const ST_CLS={add:"up",hold:"",part:"down",most:"down",out:"down",none:"faint"};
+  /* ── 종합: 3일 합계로 주도 세력을 정하고, 마지막 진입일 이후 지금까지 더 샀는지·팔았는지 ── */
+  const ent={},wpx={};
+  top.forEach(x=>x.subj.forEach(z=>{if(!LEAD.includes(z.nm)||!(z.net>0))return;ent[z.nm]=(ent[z.nm]||0)+z.net;if(x.vwap)wpx[z.nm]=(wpx[z.nm]||0)+z.net*x.vwap;}));
+  const after=detSpanNet(rows,lastI,L)||{},rec5=detSpanNet(rows,Math.max(0,L-5),L)||{};
+  const leads=Object.keys(ent).sort((a,b)=>ent[b]-ent[a]).slice(0,3);
+  const fiEnt=top.reduce((a,x)=>a+Math.max(0,(x.subj[0]||{}).net||0),0),fiSt=detLeadState(fiEnt,after["외+기 합계"]||0);
+  let verdict="";
+  if(leads.length){
+    const line=(nm,main)=>{const e=ent[nm],ap=wpx[nm]?wpx[nm]/e:null,st=detLeadState(e,after[nm]||0),r5=rec5[nm]||0;
+      return `<div style="font-size:${main?13:12}px;margin-top:${main?0:4}px">${main?"주도 세력 ":""}<b>${nm}</b> — 진입 ${top.length}일 합계 <b class="up">${eok(e)}</b>${ap?` (평균 가격대 ${px(ap)}, 현재가 <span class="${sgn(cur/ap-1)}">${pm((cur/ap-1)*100,1)}%</span>)`:""} · 마지막 진입일 이후 <span class="${sgn(after[nm]||0)}">${eok(after[nm]||0)}</span> → <b class="${ST_CLS[st.k]}">${st.t}</b> · 최근 5일 <span class="${sgn(r5)}">${eok(r5)}</span></div>`;};
+    verdict=`<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--axis);border-radius:10px;background:color-mix(in srgb,var(--ink) 3%,transparent)">
+      <div class="faint" style="font-size:11px;margin-bottom:4px">종합 판단 · 마지막 진입일 ${top.at(-1).d} 이후 ~ ${rows[L].trade_date}</div>
+      ${leads.map((nm,k)=>line(nm,k===0)).join("")}
+      <div style="font-size:12px;margin-top:6px">외+기 전체 — 진입 합계 ${eok(fiEnt)} · 이후 <span class="${sgn(after["외+기 합계"]||0)}">${eok(after["외+기 합계"]||0)}</span> → <b class="${ST_CLS[fiSt.k]}">${fiSt.t}</b> · 개인 이후 <span class="${sgn(after["개인"]||0)}">${eok(after["개인"]||0)}</span></div></div>`;
+  }else verdict='<div class="faint" style="font-size:12px;margin-top:10px">세 날 모두 6개 주체(외국인·금융투자·투신·연기금·사모·기타기관) 중 순매수 우위 세력이 없어 주도 세력을 정할 수 없습니다.</div>';
+  /* ── 날짜순 요약: 그날 무게·가격·주도 세력, 그리고 그 세력이 그날 이후 지금까지 더 샀는지·팔았는지 ── */
   const sum=x=>{
     const gap=(x.vwap&&cur>0)?`현재가 <span class="${sgn(cur/x.vwap-1)}">${pm((cur/x.vwap-1)*100,1)}%</span>`:"";
-    const fi=x.subj[0];
-    const LEAD=["외국인","금융투자","투신","연기금","사모","기타기관"],ld=x.subj.filter(z=>LEAD.includes(z.nm)&&z.net>0).sort((a,b)=>b.net-a.net),l1=ld[0];
-    const leadTx=l1?`<div style="font-size:12.5px;margin-top:3px">주도 세력 <b>${l1.nm}</b> ${eok(l1.net)}${l1.pct==null?"":` (거래대금의 ${pm(l1.pct,1)}%)`}${ld[1]?` · 다음 ${ld[1].nm} ${eok(ld[1].net)}`:""}</div>`:`<div class="faint" style="font-size:12px;margin-top:3px">그날은 6개 주체(외국인·금융투자·투신·연기금·사모·기타기관) 중 순매수 우위 세력이 없습니다</div>`;
-    return `<div style="margin-top:10px"><div style="font-size:13px"><b>${x.rank}위 ${x.d}</b> · 무게 <b>${pm(x.w,2)}%</b> · 종가 ${px(x.close)} · 당일 거래대금 <b>${x.amt==null?"–":N(x.amt/EOK,0)+"억"}</b>${fi&&fi.net>0&&x.vwap?` · 세력(외+기) 평단 <b>${px(x.vwap)}</b> ${gap}`:""}</div>${leadTx}</div>`;
+    const fi=x.subj[0],aft=detSpanNet(rows,x.i,L)||{};
+    const ld=x.subj.filter(z=>LEAD.includes(z.nm)&&z.net>0).sort((a,b)=>b.net-a.net),l1=ld[0];
+    let leadTx;
+    if(l1){const a=aft[l1.nm]||0,st=detLeadState(l1.net,a);
+      leadTx=`<div style="font-size:12.5px;margin-top:3px">주도 세력 <b>${l1.nm}</b> ${eok(l1.net)}${l1.pct==null?"":` (거래대금의 ${pm(l1.pct,1)}%)`}${ld[1]?` · 다음 ${ld[1].nm} ${eok(ld[1].net)}`:""}</div>
+        <div style="font-size:12px;margin-top:2px">└ 그날 이후 ${l1.nm} <span class="${sgn(a)}">${eok(a)}</span> → <b class="${ST_CLS[st.k]}">${st.t}</b></div>`;}
+    else leadTx=`<div class="faint" style="font-size:12px;margin-top:3px">그날은 6개 주체 중 순매수 우위 세력이 없습니다</div>`;
+    return `<div style="margin-top:10px"><div style="font-size:13px"><b>${["①","②","③"][x.rank-1]} ${x.rank}위 ${x.d}</b> · 무게 <b>${pm(x.w,2)}%</b> · 종가 ${px(x.close)} · 거래대금 <b>${x.amt==null?"–":N(x.amt/EOK,0)+"억"}</b>${fi&&fi.net>0&&x.vwap?` · 그날 평균가 <b>${px(x.vwap)}</b> ${gap}`:""}</div>${leadTx}</div>`;
   };
   const mdd=d=>`${+d.slice(5,7)}/${+d.slice(8,10)}`,CN=["①","②","③"];
-  const cell=(s)=>s?`<td class="num ${sgn(s.net)}">${eok(s.net)}<div class="faint" style="font-size:10.5px">${s.pct==null?"":pm(s.pct,1)+"%"}${s.sh==null?"":(s.pct==null?"":" · ")+N(s.sh,0)+"주"}</div></td>`:'<td class="num faint">–</td>';
-  const rowsT=top[0].subj.map((s0,k)=>`<tr${k===0?' style="font-weight:700"':""}><td class="l">${s0.nm}</td>${top.map(x=>cell(x.subj.find(z=>z.nm===s0.nm))).join("")}</tr>`).join("");
-  const tbl=`<div class="tw tw-scroll" style="margin-top:8px"><table class="earn-t smx-t"><thead><tr><th class="l">주체</th>${top.map(x=>`<th title="${x.rank}위 ${x.d} — 순매수대금 · 거래대금 비중 · 순매수 주식수(추정)">${CN[x.rank-1]||x.rank+"위"} ${mdd(x.d)}<br><span class="faint" style="font-weight:400">순매수</span></th>`).join("")}</tr></thead><tbody>${rowsT}</tbody></table></div>`;
-  host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>무게/주식수 1~3위일 분석</b> — 선택 기간(${start}~${end}) 안에서 무게/주식수가 가장 큰 날(1위), 그 날 이후 가장 큰 날(2위), 2위일 이후 가장 큰 날(3위). 순위는 그대로 표시하고 설명·표는 <b>날짜순(오래된 날 → 최근)</b>으로 나열합니다. 각 날짜마다 <b>그날 가장 많이 사들인 주도 세력</b>을 함께 보여줍니다</div>`+top.map(sum).join("")+tbl
-    +`<div class="note">표의 칸 = 순매수대금, 그 아래 작은 글씨 = 그날 거래대금 비중 · 순매수 주식수(추정). 주식수는 일봉으로만 추정합니다(순매수대금 × 거래량 ÷ 거래대금). 투자자별 실제 체결 수량은 수집하지 않아 <b>평균 매수단가는 모든 주체가 그날의 일 평균가(거래대금 ÷ 거래량)로 같게</b> 나오므로 주체별 칸에서는 뺐고, 위 "세력(외+기) 평단"으로만 보여줍니다. 주체마다 다른 진짜 평단이 아니라 "그 큰 순매수가 들어온 날의 평균 가격대"로 보세요.</div>`;
+  const aftAll=top.map(x=>detSpanNet(rows,x.i,L)||{});
+  const cell=(s,a)=>s?`<td class="num ${sgn(s.net)}">${eok(s.net)}<div class="faint" style="font-size:10.5px">${s.pct==null?"":pm(s.pct,1)+"%"}${s.sh==null?"":(s.pct==null?"":" · ")+N(s.sh,0)+"주"}</div><div style="font-size:10.5px">이후 <span class="${sgn(a)}">${eok(a)}</span></div></td>`:'<td class="num faint">–</td>';
+  const rowsT=top[0].subj.map((s0,k)=>`<tr${k===0?' style="font-weight:700"':""}><td class="l">${s0.nm}</td>${top.map((x,j)=>cell(x.subj.find(z=>z.nm===s0.nm),aftAll[j][s0.nm]||0)).join("")}</tr>`).join("");
+  const tbl=`<div class="tw tw-scroll" style="margin-top:8px"><table class="earn-t smx-t"><thead><tr><th class="l">주체</th>${top.map(x=>`<th title="${x.rank}위 ${x.d}">${CN[x.rank-1]} ${mdd(x.d)}<br><span class="faint" style="font-weight:400">그날 / 이후</span></th>`).join("")}</tr></thead><tbody>${rowsT}</tbody></table></div>`;
+  host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>주도 세력 진입 TOP 3일 분석</b> — 선택 기간(${start}~${end}) 안에서 외+기 순매수 무게(무게/주식수)가 <b>가장 큰 3일</b>(①②③ = 크기 순위)을 <b>날짜순</b>으로 보여줍니다. 누가 얼마나 샀고, 그 뒤 지금까지 <b>더 샀는지(매집 지속) · 팔았는지(이탈)</b>를 봅니다.</div>`+verdict+top.map(sum).join("")+tbl
+    +`<div class="note">표 칸 = 그날 순매수대금 / 작은 글씨 = 거래대금 비중 · 순매수 주식수(추정) / "이후" = 그날 다음 거래일부터 ${rows[L].trade_date}까지 같은 주체의 누적 순매수. 판정 기준: 이후 순매수가 진입 매수액의 +10% 넘으면 추가 매집, ±10% 안이면 보유 유지, −10~−50% 일부 이탈, −50~−100% 대부분 이탈, −100% 이하 전량 이탈 이상. 평균 가격대는 그날 일 평균가(거래대금 ÷ 거래량)를 주도 세력 순매수액으로 가중한 값이라 주체별 실제 평단이 아닌 <b>추정 가격대</b>입니다. 투자자별 실제 체결 수량은 수집하지 않습니다.</div>`;
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
 // 2026-10-29: 종목상세 업종 필터 — 기본 "업종 전체". 업종을 고르면 종목 선택 목록과 "다음 종목"이 그 업종 안에서만 움직임.

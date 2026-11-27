@@ -1,7 +1,7 @@
 const fs=require('fs'),assert=require('assert');
 const html=fs.readFileSync(require('path').join(__dirname,'../../web/index.html'),'utf8');
 const src=html.slice(html.indexOf('/*DET-CALC-START*/'),html.indexOf('/*DET-CALC-END*/'));assert.ok(src.length>400,'calc block');
-const m=new Function(src+';return {DET_PER,DET_PER_DEF,detPeriodStart,detDayNet,detWtTop};')();
+const m=new Function(src+';return {DET_PER,DET_PER_DEF,detPeriodStart,detDayNet,detWtTop,detSpanNet,detLeadState};')();
 const t=(n,f)=>{try{f();console.log('PASS',n);}catch(e){console.log('FAIL',n,e.message);process.exitCode=1;}};
 // 거래일 N개짜리 가짜 이력: 날짜는 2026-01-01부터 1일씩(주말 무관), 종가 100씩 증가
 const mk=(n,fn)=>Array.from({length:n},(_,i)=>{const d=new Date(Date.UTC(2026,0,1+i)).toISOString().slice(0,10);
@@ -34,19 +34,26 @@ t('무게 1·2위일: 구간 안 양수만, 큰 순서',()=>{
   assert.equal(top[0].rank,1);assert.ok(Math.abs(top[0].w-5)<1e-9);
   // 기간을 좁히면 구간 밖 날짜는 빠진다(2번째 날 제외 → 1위가 5번 날)
   const t2=m.detWtTop(r,r[3].trade_date,r[6].trade_date,2);
-  assert.deepEqual(t2.map(x=>x.i),[5,6]);
-  // 2위는 1위일 '이후' 날짜 중 가장 큰 날 — 1위가 앞쪽이면 뒤쪽 최대, 1위가 마지막이면 기간 안 다음으로 큰 날
+  assert.deepEqual(t2.map(x=>x.i),[5,4]);
+  // 순위 = 기간 안 크기순(날짜 무관)
   const w2=[0.04,0.09,0.01,0.03,0.02];const r2=mk(5,i=>({weight_per_share:w2[i],foreign_cum:i*1e8,inst_cum:i*5e7}));
-  assert.deepEqual(m.detWtTop(r2,r2[0].trade_date,r2[4].trade_date,2).map(x=>x.i),[1,3]);
+  assert.deepEqual(m.detWtTop(r2,r2[0].trade_date,r2[4].trade_date,2).map(x=>x.i),[1,0]);
   const w3=[0.04,0.01,0.09];const r3=mk(3,i=>({weight_per_share:w3[i],foreign_cum:i*1e8,inst_cum:i*5e7}));
   assert.deepEqual(m.detWtTop(r3,r3[0].trade_date,r3[2].trade_date,2).map(x=>x.i),[2,0]);   // 1위가 마지막 날이면 2위는 기간 안 다음으로 큰 날
   assert.equal(m.detWtTop(r,'2099-01-01','2099-12-31',2).length,0);
-  // 1~3위: 3위는 2위일 '이후'의 가장 큰 날, 없으면 남은 날 중 가장 큰 날 — 순위(rank)는 1·2·3 그대로
+  // 1~3위 = 크기순
   const w4=[0.02,0.09,0.01,0.05,0.03];const r4=mk(5,i=>({weight_per_share:w4[i],foreign_cum:i*1e8,inst_cum:i*5e7}));
   const t4=m.detWtTop(r4,r4[0].trade_date,r4[4].trade_date,3);
   assert.deepEqual(t4.map(x=>[x.rank,x.i]),[[1,1],[2,3],[3,4]]);
   const w5=[0.02,0.05,0.09];const r5=mk(3,i=>({weight_per_share:w5[i],foreign_cum:i*1e8,inst_cum:i*5e7}));
   assert.deepEqual(m.detWtTop(r5,r5[0].trade_date,r5[2].trade_date,3).map(x=>[x.rank,x.i]),[[1,2],[2,1],[3,0]]);
+});
+t('구간 순매수·매집/이탈 판정',()=>{
+  const r=mk(5,i=>({foreign_cum:[0,10,30,25,20][i]*1e8,inst_cum:0,pension_cum:[0,5,5,5,8][i]*1e8}));
+  const sp=m.detSpanNet(r,2,4);assert.equal(sp['외국인'],-10e8);assert.equal(sp['연기금'],3e8);
+  assert.equal(m.detLeadState(100,20).k,'add');assert.equal(m.detLeadState(100,-5).k,'hold');
+  assert.equal(m.detLeadState(100,-30).k,'part');assert.equal(m.detLeadState(100,-80).k,'most');
+  assert.equal(m.detLeadState(100,-150).k,'out');assert.equal(m.detLeadState(0,5).k,'none');
 });
 t('주체별 평균 단가 = 순매수대금 ÷ (순매수대금×거래량÷거래대금) = 거래대금÷거래량',()=>{
   const r=mk(4,i=>({weight_per_share:i===2?0.05:0,volume:2000,trade_amount:2000*1234,foreign_cum:i*6e9,inst_cum:i*4e9,individual_cum:-i*1e10}));
