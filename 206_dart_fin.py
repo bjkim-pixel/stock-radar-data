@@ -81,6 +81,7 @@ def build(code):
             cur_c = (rr[ak][1] if rr[ak][1] is not None else rr[ak][0]) if kind == 2 else rr[ak][0]
             prv_c = (rr[ak + "_pv"][1] if rr[ak + "_pv"][1] is not None else None) if kind == 2 else rr[ak + "_pv"][0]
             pa = R[(y - 1, "11011")][("nip" if R[(y - 1, "11011")]["nip"][0] is not None else "ni")][0]
+            if kind == 1 and prv_c is None and out.get(f"{y-1}03", {}).get("nip" if ak == "nip" else "ni") is not None: prv_c = out[f"{y-1}03"]["nip" if ak == "nip" else "ni"]   # 전년 1분기(앞서 계산)
             out[per]["ttm"] = (pa - prv_c + cur_c) if (pa is not None and prv_c is not None and cur_c is not None) else None
         for per, rr in ((f"{y}03", q1), (f"{y}06", q2), (f"{y}09", q3)):
             nipc = rr["nip"][1] if rr["nip"][1] is not None else rr["nip"][0]; epsc = rr["eps"][1] if rr["eps"][1] is not None else rr["eps"][0]
