@@ -367,7 +367,7 @@ test('개인 계좌수: 8월 대비 100% 미만은 정상 후보, 이상은 ⚠ 
   const P = h.db.auto_runs['2026-11-16'].payload, a = P.picks.find(p => p.code === 'A'), d = P.picks.find(p => p.code === 'D');
   assert.equal(P.picks.length, 2);
   assert.equal(a.kw8, 0.7); assert.ok(!a.kwHigh); assert.equal(d.kw8, 2.5); assert.equal(d.kwHigh, true);
-  assert.match(d.reasons.join(' '), /개인 계좌 250% \(8월 대비\) — 승인해야 매수/);
+  assert.match(d.reasons.join(' '), /개인 계좌 250% \(8월 대비\)/); assert.ok(!/승인해야 매수/.test(d.reasons.join(' ')), '가상매매는 자동 승인이라 문구 없음');
   assert.equal(a.parts.kw, 10); assert.equal(d.parts.kw, 0);
 });
 test('개인 계좌수: 켜기를 끄면 조건·배점 모두 무시, 8월 자료가 없으면 정상 후보', async () => {

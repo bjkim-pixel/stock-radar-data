@@ -13833,7 +13833,7 @@ function auFlowHtml(){
       else if(o.st==="filled")od=["ok",`체결 ${N(o.filled||o.qty||0)}주${o.avg?` @${N(o.avg)}`:""}`];
       else if(["intent","open","modified","retry"].includes(o.st))od=["now",`${AU_ORD[o.st]||o.st}${o.filled>0?` ${N(o.filled)}/${N(o.qty||0)}`:""}`];
       else od=[o.filled>0?"ok":"bad",`${AU_ORD[o.st]||o.st}${o.filled>0?` ${N(o.filled)}주`:""}`,o.why||""];
-      items.push({code:p.code,name:p.name||p.code,p,ap,od,why:(p.reasons||[]).join(" · "),old:false});
+      items.push({code:p.code,name:p.name||p.code,p,ap,od,why:(p.reasons||[]).join(" · ").replace(auReal()?/$^/:/ — 승인해야 매수/g,""),old:false});
     });
     for(const x of (A.positions||[]).filter(g.pos))if(!seen.has(x.code)){seen.add(x.code);items.push({code:x.code,name:x.name||x.code,p:null,ap:["idle","이전 매수분"],od:["idle","–"],why:"",old:true});}
     const rows=items.map(it=>{

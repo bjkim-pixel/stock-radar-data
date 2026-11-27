@@ -163,7 +163,7 @@ function reasonsFor(c, P = DEFP) {
   const r = [allReq ? `수급 외·기·프 동시` : pos.length ? `순매수 ${pos.join('·')}` : '수급 조건 없음'];
   if (c.smx) r.push(`매집 ${c.smx === 'CONT' ? '지속' : '고점 후 정체'}(${(ST.ENUM.smxWin[P.smxWin] || ST.ENUM.smxWin['126'])})`);
   if (c.m.cttr >= 120) r.push(`체결강도 강함`);
-  if (c.kw8 != null) r.push(c.kwHigh ? `⚠ 개인 계좌 ${Math.round(c.kw8 * 100)}% (8월 대비) — 승인해야 매수` : `개인 계좌 ${Math.round(c.kw8 * 100)}% (8월 대비)`);
+  if (c.kw8 != null) r.push(c.kwHigh ? `⚠ 개인 계좌 ${Math.round(c.kw8 * 100)}% (8월 대비)${ST.sideOfParams(P) === 'paper' ? '' : ' — 승인해야 매수'}` : `개인 계좌 ${Math.round(c.kw8 * 100)}% (8월 대비)`);
   return r;
 }
 
