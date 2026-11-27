@@ -1,5 +1,5 @@
 import os, psycopg2
-CODES = ["4338.HK", "4333.HK", "4335.HK", "4336.HK", "4332.HK", "6288.HK", "2916.HK"]   # 해풍국제(1308.HK)는 원래 있던 종목이라 유지
+CODES = ["1308.HK"]   # 해풍국제 삭제(사용자 요청)
 c = psycopg2.connect(os.environ["SUPABASE_DB_URL"]); c.autocommit = True; c = c.cursor()
 out = []
 for t in ("us_daily", "us_rights", "us_top_asia", "us_master"):
