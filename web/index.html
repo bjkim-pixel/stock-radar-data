@@ -1992,7 +1992,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
   <div class="card" id="ovsHolderCard" style="margin-top:10px;display:none"><h3>주주 구성 <span class="r faint" style="font-weight:400" id="ovsHolderSub">네이버 증권</span></h3><div id="ovsHolder"></div></div>
   <div class="card" id="ovsInfoCard" style="margin-top:10px;display:none"><h3>종목 정보 <span class="r faint" style="font-weight:400">한국투자증권 KIS</span></h3><div id="ovsInfo"></div></div>
   <div class="card" style="margin-top:10px"><h3>시세 정보 <span class="r" id="ovsQtSub"></span></h3><div id="ovsQt"></div></div>
-  <div class="qf seg" id="ovsPer" style="margin:10px 0 0"><button class="fchip" data-v="21">1개월</button><button class="fchip" data-v="63">3개월</button><button class="fchip" data-v="126" aria-pressed="true">6개월</button><button class="fchip" data-v="all">연초 이후</button></div>
+  <div class="qf seg" id="ovsPer" style="margin:10px 0 0"><button class="fchip" data-v="21">1개월</button><button class="fchip" data-v="63">3개월</button><button class="fchip" data-v="126">6개월</button><button class="fchip" data-v="all" aria-pressed="true">연초 이후</button></div>
   <div class="card" style="margin-top:10px"><h3>가격 · 이동평균 <span class="r" id="ovsRange"></span></h3><div class="legend" id="ovsPriceLg"><span><i style="background:var(--ink)"></i>종가</span><span><i style="background:var(--mac1)"></i>MA5 (5일)</span><span><i style="background:var(--mac2)"></i>MA20 (20일)</span><span><i style="background:var(--mac3)"></i>MA120 (120일)</span><span><i style="background:none;border-top:1px dashed var(--ink-3);height:0;vertical-align:4px"></i>기간 고점</span></div><div id="ovsPrice"><div class="load sk"></div></div></div>
   <div class="card" id="ovsPfCard" style="margin-top:12px"><h3 id="ovsPfTitle">포트폴리오 <span class="r" id="ovsPfSub"></span></h3><div id="ovsPf"></div></div>
   <div class="card" id="ovsWtCard" style="margin-top:12px"><h3>무게/주식수 <span class="r" id="ovsWtRange"></span></h3><div id="ovsWt"></div><div id="ovsWtTop"></div></div>
@@ -15054,7 +15054,7 @@ $("#grkKind").addEventListener("seg-change",e=>{S.grk.kind=e.detail;grkRender();
 $("#grkN").addEventListener("seg-change",e=>{S.grk.n=+e.detail;grkRender();});
 $("#grkLev").onchange=e=>{S.grk.lev=e.target.value;grkRender();};
 $("#grkAmt").onchange=e=>{S.grk.amt=+e.target.value;grkRender();};
-S.ovs={code:null,list:null,d:[],m:{},rt:[],per:"126",pack:null,mkt:"all"};
+S.ovs={code:null,list:null,d:[],m:{},rt:[],per:"all",pack:null,mkt:"all"};
 const OVS_EX={NAS:"나스닥",NYS:"뉴욕",AMS:"아멕스",HKS:"홍콩",TSE:"도쿄",SHS:"상해",SZS:"심천"};
 const OVS_CS={USD:"$",HKD:"HK$",JPY:"¥",CNY:"CN¥"};
 function ovsDec(){return S.ovs.m.ccy==="JPY"?0:2;}
