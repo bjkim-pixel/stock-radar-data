@@ -1,39 +1,27 @@
 # -*- coding: utf-8 -*-
-"""운용사별 ETF 구성종목(PDF) 출처 샘플 점검(읽기 전용)."""
-import re, requests
+"""2차: 네이버·SOL·KODEX 구성종목 호출 경로 확인(읽기 전용)."""
+import re, json, requests
 L = []
 def log(m=""): print(m, flush=True); L.append(str(m))
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36", "Accept-Language": "ko-KR,ko;q=0.9"}
 def get(u, **k):
-    try: r = requests.get(u, headers=UA, timeout=25, **k); return r
+    try: return requests.get(u, headers=UA, timeout=20, **k)
     except Exception as e: return e
-S = [
- ("RISE 중국본토대형주CSI100", "https://www.riseetf.co.kr/prod/finderDetail/4437"),
- ("RISE 중국본토대형주CSI100(영문)", "https://eng.riseetf.co.kr/prod/finderDetail/4437"),
- ("SOL 차이나육성산업액티브 tab3", "https://www.soletf.com/ko/fund/etf/210897?tabIndex=3"),
- ("SOL 차이나육성산업액티브 summary", "https://www.soletf.com/ko/fund/etf/summary/210897"),
- ("PLUS 일본반도체소부장 pdf", "https://www.plusetf.co.kr/upload/fund/PLUS_일본반도체소부장_20260831.pdf"),
- ("PLUS 상세", "https://www.plusetf.co.kr/product/detail?n=006366"),
- ("KODEX 신탁 pdf(샘플)", "https://m.samsungfund.com/sheet/20250805/2ETFE9_20250731.pdf"),
- ("KODEX 사이트", "https://www.samsungfund.com/etf/product/view.do?id=2ETFE9"),
- ("funetf 0162L0", "https://www.funetf.co.kr/product/etf/view/KR70162L0003"),
- ("etfshopping 174360", "https://etfshopping.com/etf/174360"),
- ("네이버 모바일 ETF", "https://m.stock.naver.com/api/stock/0162L0/integration"),
- ("네이버 ETF 구성", "https://finance.naver.com/item/main.naver?code=0162L0"),
-]
-for nm, u in S:
+r = get("https://m.stock.naver.com/api/stock/0162L0/integration")
+if not isinstance(r, Exception):
+    j = r.json(); log("## 네이버 integration 최상위 키: " + ", ".join(j.keys()))
+    s = json.dumps(j, ensure_ascii=False)
+    log("- etf 관련: " + str([k for k in j.keys() if re.search("etf|pdf|hold|compos", k, re.I)]))
+    log("- 앞 700자: " + s[:700])
+for u in ["https://m.stock.naver.com/api/etf/0162L0/basic", "https://m.stock.naver.com/api/stock/0162L0/etfAnalysis", "https://m.stock.naver.com/api/etf/0162L0/portfolio", "https://m.stock.naver.com/api/stock/0162L0/basic"]:
+    r = get(u); log(f"\n## {u} → " + (str(r) if isinstance(r, Exception) else f"{r.status_code} {len(r.content)}B {r.text[:300]}"))
+r = get("https://finance.naver.com/item/main.naver?code=0162L0")
+if not isinstance(r, Exception):
+    t = r.text; i = t.find("holdings"); log("\n## 네이버 main holdings 주변\n" + re.sub(r"\s+", " ", t[max(0, i-300):i+500]))
+for nm, u in [("SOL", "https://www.soletf.com/ko/fund/etf/210897?tabIndex=3"), ("KODEX", "https://www.samsungfund.com/etf/product/view.do?id=2ETFE9")]:
     r = get(u)
-    if isinstance(r, Exception): log(f"\n## {nm}\n- 오류 {r}"); continue
-    t = r.text if "pdf" not in r.headers.get("content-type", "") else "(pdf %d bytes)" % len(r.content)
-    log(f"\n## {nm}\n- {u}\n- HTTP {r.status_code}, {len(r.content)} bytes, {r.headers.get('content-type','')}")
-    hits = {k: len(re.findall(k, t)) for k in ["구성종목", "PDF", "비중", "EQUITY", "Tencent", "텐센트", "다운로드", "xlsx", "excel"]}
-    log("- 키워드: " + str({k: v for k, v in hits.items() if v}))
-    m = re.findall(r"""["']([^"']*(?:pdf|excel|xls|portfolio|holding|download)[^"']*)["']""", t, re.I)
-    if m: log("- 후보 링크: " + " | ".join(sorted(set(m))[:8]))
-    if r.status_code == 200 and "pdf" in r.headers.get("content-type", ""):
-        open("/tmp/x.pdf", "wb").write(r.content)
-        try:
-            import subprocess; o = subprocess.run(["pdftotext", "-layout", "/tmp/x.pdf", "-"], capture_output=True, text=True).stdout
-            log("- PDF 텍스트 앞부분:\n```\n" + o[:1500] + "\n```")
-        except Exception as e: log(f"- pdftotext 실패 {e}")
+    if isinstance(r, Exception): continue
+    t = r.text; log(f"\n## {nm} 스크립트 내 호출 경로")
+    log(" | ".join(sorted(set(re.findall(r"""["']((?:/ko)?/[A-Za-z0-9_/\-\.]*(?:pdf|Pdf|PDF|portfolio|download|Download|list)[A-Za-z0-9_/\-\.]*)["']""", t)))[:15]))
+    i = t.find("pdf-list-more") if nm == "SOL" else t.find("구성종목"); log("- 주변: " + re.sub(r"\s+", " ", t[max(0, i-300):i+700]))
 open("etf_brand_probe.md", "w", encoding="utf-8").write("\n".join(L))
