@@ -93,11 +93,11 @@ def main():
             for x in (P["items"].get(k) or {}).get("h") or []:
                 if x["c"] not in hold: hold.append(x["c"])
     targets = etf + [c for c in hold if c not in etf]
-    try:   # 홍콩·도쿄·상해·심천 시총 상위 50(199_asia_top50.py 가 선별) — 매일 수집 대상에 합류
+    try:   # 홍콩·도쿄·상해·심천 시총 상위 50(199_asia_top50.py 가 선별) — --asia-only 로만 처리
         cur.execute("select code from us_top_asia order by excd, rnk"); asia = [r[0] for r in cur.fetchall()]
     except Exception:
         asia = []
-    targets = asia if ASIA_ONLY else targets + [c for c in asia if c not in targets]
+    targets = asia if ASIA_ONLY else targets   # 아시아 종목은 월~금 장마감 뒤 별도 일정(asia_collect.yml, --asia-only)
     cur.execute("select code,kis_excd,kis_sym,name_ko from us_master"); known = {r[0]: r[1:] for r in cur.fetchall()}
     log(f"# 해외 종목 수집 {datetime.datetime.utcnow():%Y-%m-%d %H:%M} UTC · {'백필' if BACKFILL else '일일'} · 대상 {len(targets)}개")
     ok, skipped, failed, nrows, nrights = 0, [], [], 0, 0

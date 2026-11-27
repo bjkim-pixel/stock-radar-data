@@ -1,0 +1,28 @@
+name: "[상시8] 아시아(홍콩·도쿄·상해·심천) 시총 상위 50 일봉 수집 | 월~금 18:30 | KIS 해외"
+# 홍콩(16:00 현지=17:00 KST)·도쿄(15:30 KST)·상해·심천(16:00 KST) 마감 뒤. 대상은 us_top_asia(199_asia_top50.py가 분기별로 선별·추가).
+on:
+  schedule:
+    - cron: "30 9 * * 1-5"    # 월~금 18:30 KST
+    - cron: "30 10 * * 1-5"   # 지연 대비 보조(같은 값 덮어씀)
+  workflow_dispatch:
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - name: Collect
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 176_us_collect.py --asia-only 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: asia_collect_report, path: us_collect_report.md}
