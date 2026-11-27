@@ -2355,7 +2355,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="legend" id="dDartMkLg"></div>
     <div class="legend" id="dOpgLg" style="margin-top:-2px"></div>
     <div class="chart" id="dPrice2"></div>
-    <div class="note">검은 선은 종가이고, 종가선 위의 도형은 DART 공시 접수일입니다 — <b>▲ 수주(단일판매·공급계약) · ◆ 자사주 취득 결정 · ■ 증설·시설투자·지분 투자</b>. 도형을 길게 누르거나 마우스를 올리면 내용이 나옵니다. 공시는 DART 수집을 시작한 2026-10-22 이후 접수분만 표시됩니다(과거 백필 없음).<br>차트 아래쪽의 <b>막대는 분기 영업이익의 전분기 대비 증가율</b>이며 막대의 오른쪽 끝이 분기 말일(3·6·9·12월 말)입니다. 증가는 가로축 위로(가장 큰 막대 = 종가선 최고점 높이), <b>감소는 파란 막대로 가로축 아래</b>로 내려 그립니다. 확정 실적과 네이버 증권 컨센서스 예상(E, 점선·연한 막대 — 아직 오지 않은 분기 말일은 오른쪽 빈 구간에 표시)을 함께 그렸고, 막대 위에 올리면 영업이익 금액이 나옵니다. 직전 분기가 적자(또는 0)라 비율을 낼 수 없으면 <b>흑전·적지</b>, 흑자에서 적자로 바뀌면 <b>적전</b>입니다.</div>
+    <div class="note">검은 선은 종가이고, 종가선 위의 도형은 DART 공시 접수일입니다 — <b>▲ 수주(단일판매·공급계약) · ◆ 자사주 취득 결정 · ■ 증설·시설투자·지분 투자</b>. 도형을 길게 누르거나 마우스를 올리면 내용이 나옵니다. 공시는 DART 수집을 시작한 2026-10-22 이후 접수분만 표시됩니다(과거 백필 없음).<br>차트 아래쪽의 <b>막대는 분기 영업이익의 전분기 대비 증가율</b>이며, 실적이 발표되는 시점(분기 마감 약 45일 뒤 — 예: 1분기는 5월 중순)에 놓습니다. 막대 아래 이름이 해당 분기입니다. 증가는 가로축 위로(가장 큰 막대 = 종가선 최고점 높이), <b>감소는 파란 막대로 가로축 아래</b>로 내려 그립니다. 확정 실적과 네이버 증권 컨센서스 예상(E, 점선·연한 막대 — 아직 오지 않은 발표 시점은 오른쪽 빈 구간에 표시)을 함께 그렸고, 막대 위에 올리면 영업이익 금액이 나옵니다. 직전 분기가 적자(또는 0)라 비율을 낼 수 없으면 <b>흑전·적지</b>, 흑자에서 적자로 바뀌면 <b>적전</b>입니다.</div>
   </div>
 
   <details class="card" id="dDartCard" style="display:none"><summary style="cursor:pointer;list-style:none"><h3 style="margin:0">공시 <span class="r" id="dDartSub">DART · 최근 1개월</span></h3></summary><div style="margin-top:8px"></div>
@@ -10223,7 +10223,7 @@ function opgSeries(rows){
 function opgBars(rp){
   const code=S.chart&&S.chart.code,rows=S.earnCache&&S.earnCache[code];
   if(!rows||!rp.length)return {bars:[],pad:[]};
-  const first=rp[0].trade_date,last=rp.at(-1).trade_date,lastDay=p=>new Date(Date.UTC(+p.slice(0,4),+p.slice(4),0)).toISOString().slice(0,10);
+  const first=rp[0].trade_date,last=rp.at(-1).trade_date,lastDay=p=>new Date(Date.UTC(+p.slice(0,4),+p.slice(4),0)+45*864e5).toISOString().slice(0,10);   /* 실적 발표 시점 ≈ 분기 말일 + 45일 */
   const items=[];let maxE=last;
   opgSeries(rows).forEach(x=>{const e=lastDay(x.p);if(e<first)return;
     if(e>last){if((new Date(e)-new Date(last))/864e5>100)return;if(e>maxE)maxE=e;}
@@ -10238,12 +10238,12 @@ function opgBars(rp){
   return {bars,pad};
 }
 function opgDraw(svg,bars,P,W,H,X,yTop){
-  /* 막대는 가로축(차트 바닥)에서 시작: 증가는 위로, 감소는 아래로(가로축 아래 여백). 막대의 오른쪽 끝 = 분기 말일.
+  /* 막대는 가로축(차트 바닥)에서 시작: 증가는 위로, 감소는 아래로(가로축 아래 여백). 막대 중심 = 실적 발표 시점(분기 말일 + 45일).
      |증가율|이 가장 큰 막대의 위쪽 높이 = 종가선 최고점 높이(yTop). 증가·감소는 같은 비율로 그림 */
   const y0=H-P.b,full=Math.max(20,y0-yTop),cap=300,mx=Math.max(20,...bars.filter(b=>b.g!=null).map(b=>Math.min(cap,Math.abs(b.g)))),w=46,negMax=P.b-22-34;
   svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:y0,y2:y0,stroke:css("--axis"),"stroke-width":1.2}));
   bars.forEach(b=>{
-    const cx=X(b.i)-w/2,col=css(b.g!=null&&b.g<0?"--down":"--up"),tip=`${b.p.slice(0,4)}.${b.p.slice(4)}${b.est?" 예상(E)":""} 영업이익 ${fmtEokJo(b.c)}`;
+    const cx=X(b.i),col=css(b.g!=null&&b.g<0?"--down":"--up"),tip=`${b.p.slice(0,4)}.${b.p.slice(4)}${b.est?" 예상(E)":""} 영업이익 ${fmtEokJo(b.c)}`;
     const txt=(x,y,str,c,sz,wt)=>{const t=el("text",{x,y,"text-anchor":"middle","font-size":sz,"font-weight":wt,fill:c,stroke:css("--surface"),"stroke-width":4,"paint-order":"stroke"});t.textContent=str;svg.appendChild(t);return t;};
     if(b.g!=null){
       const neg=b.g<0,len=Math.max(3,Math.min(cap,Math.abs(b.g))/mx*full),h=neg?Math.min(len,Math.max(12,negMax)):len,y=neg?y0:y0-h;
