@@ -9,10 +9,11 @@ cur.execute("alter table us_master add column if not exists profile jsonb")
 ONLY = [x for x in (sys.argv[1] if len(sys.argv) > 1 else "").replace(" ", "").split(",") if x]
 cur.execute("select code,kis_excd from us_master where not is_etf order by code")
 ST = [r for r in cur.fetchall() if not ONLY or r[0] in ONLY]
-SUF = {"NAS": [".O", ".N", ".A"], "NYS": [".N", ".A", ".O"], "AMS": [".A", ".N", ".O"]}
+SUF = {"NAS": [".O", "", ".K", ".N"], "NYS": ["", ".K", ".N", ".O"], "AMS": ["", ".K", ".A", ".N"]}   # 네이버: 나스닥 .O, 뉴욕은 대부분 접미사 없음(일부 .K)
 def cands(code, ex):
     if ex in SUF:
-        b = [code] + ([code.replace(".", "-"), code.replace(".", "").replace("B", "b")] if "." in code else [])
+        b = [code]
+        if "." in code: x = code.replace(".", ""); b += [x[:-1] + x[-1].lower(), code.replace(".", "-")]   # BRK.B → BRKb
         return [x + s for x in dict.fromkeys(b) for s in SUF[ex]]
     return [code]
 def get(path):
