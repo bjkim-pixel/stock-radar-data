@@ -8910,8 +8910,9 @@ function detWtTop(rows,start,end,n=2){
   });
   c.sort((a,b)=>b[0]-a[0]);
   /* 2026-11-19: 2위는 1위일 '이후' 날짜 중 가장 큰 날. 2026-11-26: 1위일 이후에 양수인 날이 없으면(1위가 마지막 거래일 등) 기간 안에서 1위 다음으로 큰 날을 2위로 */
+  /* 2026-11-27: 1~3위로 확장 — k위는 (k-1)위일 '이후' 날짜 중 가장 큰 날, 없으면 아직 안 뽑은 날 중 가장 큰 날 */
   const pick=[];
-  if(c.length){pick.push(c[0]);if(n>1){const nx=c.find(x=>x[1]>c[0][1])||c[1];if(nx)pick.push(nx);}}
+  if(c.length){pick.push(c[0]);for(let k=1;k<n;k++){const last=pick[k-1],nx=c.find(x=>!pick.includes(x)&&x[1]>last[1])||c.find(x=>!pick.includes(x));if(!nx)break;pick.push(nx);}}
   return pick.slice(0,n).map(([w,i],k)=>{
     const r=rows[i],ta=+r.trade_amount,vol=+r.volume,ok=ta>0&&vol>0,net=detDayNet(rows,i);
     const subj=net?Object.keys(net).map(nm=>{
@@ -9153,7 +9154,7 @@ function renderWeight(rp){
   let wr=rp;
   if(S.wtWin){const st=detPeriodStart(rows,S.wtWin);wr=rows.filter(r=>r.trade_date>=st);if(!wr.length)wr=rp;}
   const lb=wr.map(r=>r.trade_date.slice(2).replace(/-/g,"/")),wps=wr.map(r=>r.weight_per_share!=null?+r.weight_per_share*100:null);
-  const off=rows.indexOf(wr[0]),flags=detWtTop(rows,wr[0].trade_date,wr.at(-1).trade_date,2).map(x=>({i:x.i-off,t:`${x.rank===1?"①":"②"} ${x.rank}위 ${x.d.slice(5).replace("-","/")}`,c:x.rank===1?"--up":"--warn"}));
+  const off=rows.indexOf(wr[0]),flags=detWtTop(rows,wr[0].trade_date,wr.at(-1).trade_date,3).map(x=>({i:x.i-off,t:`${["①","②","③"][x.rank-1]} ${x.rank}위 ${x.d.slice(5).replace("-","/")}`,c:["--up","--warn","--s1"][x.rank-1]}));
   volumeBars($("#dWeight"),wps,lb,{h:450,w:1180,pr:66,monthTicks:true,marks:true,flags,sub:wr.map(r=>+r.close),bg:wr.map(r=>+r.close),fy:v=>pm(v,1)+"%",ft:v=>pm(v,1)+"%"});
   const cur=S.wtWin||S.dPeriod||"";
   $$("#dWtWin .fchip").forEach(b=>b.setAttribute("aria-pressed",String(!!cur&&b.dataset.v===cur)));
@@ -9161,11 +9162,11 @@ function renderWeight(rp){
   try{renderWtTop(rows,wr[0].trade_date,wr.at(-1).trade_date);}catch(e){console.error("무게 1·2위일",e);}
 }
 $("#dWtWin").addEventListener("seg-change",e=>{S.wtWin=e.detail;try{renderWeight(S.rangeRp);}catch(err){console.error(err);}});
-/* 무게/주식수 1·2위일 분석: 그날 거래대금, 주체별 순매수대금·추정 순매수주식수·평균 매수단가 */
+/* 무게/주식수 1~3위일 분석: 그날 거래대금, 주체별 순매수대금·추정 순매수주식수·평균 매수단가 */
 function renderWtTop(rows,start,end){
   const host=$("#dWtTop");if(!host)return;
   if(S.chart&&S.chart.etf){host.innerHTML="";return;}
-  const top=detWtTop(rows,start,end,2);
+  const top=detWtTop(rows,start,end,3).sort((a,b)=>a.i-b.i);   // 순위(rank)는 그대로 두고, 아래 설명·표는 시계열(오래된 날 → 최근) 순으로
   if(!top.length){host.innerHTML='<div class="faint" style="font-size:12px;margin-top:8px">이 기간에는 외+기 순매수 우위(무게/주식수 양수)인 날이 없습니다.</div>';return;}
   const eok=v=>v==null?"–":pm(v/EOK,0)+"억",px=v=>v==null?"–":N(v,0)+"원";
   const cur=+rows.at(-1).close;
@@ -9177,11 +9178,11 @@ function renderWtTop(rows,start,end){
     const leadTx=l1?`<div style="font-size:12.5px;margin-top:3px">주도 세력 <b>${l1.nm}</b> ${eok(l1.net)}${l1.pct==null?"":` (거래대금의 ${pm(l1.pct,1)}%)`}${ld[1]?` · 다음 ${ld[1].nm} ${eok(ld[1].net)}`:""}</div>`:`<div class="faint" style="font-size:12px;margin-top:3px">그날은 6개 주체(외국인·금융투자·투신·연기금·사모·기타기관) 중 순매수 우위 세력이 없습니다</div>`;
     return `<div style="margin-top:10px"><div style="font-size:13px"><b>${x.rank}위 ${x.d}</b> · 무게 <b>${pm(x.w,2)}%</b> · 종가 ${px(x.close)} · 당일 거래대금 <b>${x.amt==null?"–":N(x.amt/EOK,0)+"억"}</b>${fi&&fi.net>0&&x.vwap?` · 세력(외+기) 평단 <b>${px(x.vwap)}</b> ${gap}`:""}</div>${leadTx}</div>`;
   };
-  const mdd=d=>`${+d.slice(5,7)}/${+d.slice(8,10)}`,CN=["①","②"];
+  const mdd=d=>`${+d.slice(5,7)}/${+d.slice(8,10)}`,CN=["①","②","③"];
   const cell=(s)=>s?`<td class="num ${sgn(s.net)}">${eok(s.net)}<div class="faint" style="font-size:10.5px">${s.pct==null?"":pm(s.pct,1)+"%"}${s.sh==null?"":(s.pct==null?"":" · ")+N(s.sh,0)+"주"}</div></td>`:'<td class="num faint">–</td>';
   const rowsT=top[0].subj.map((s0,k)=>`<tr${k===0?' style="font-weight:700"':""}><td class="l">${s0.nm}</td>${top.map(x=>cell(x.subj.find(z=>z.nm===s0.nm))).join("")}</tr>`).join("");
   const tbl=`<div class="tw tw-scroll" style="margin-top:8px"><table class="earn-t smx-t"><thead><tr><th class="l">주체</th>${top.map(x=>`<th title="${x.rank}위 ${x.d} — 순매수대금 · 거래대금 비중 · 순매수 주식수(추정)">${CN[x.rank-1]||x.rank+"위"} ${mdd(x.d)}<br><span class="faint" style="font-weight:400">순매수</span></th>`).join("")}</tr></thead><tbody>${rowsT}</tbody></table></div>`;
-  host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>무게/주식수 1·2위일 분석</b> — 선택 기간(${start}~${end}) 안에서 무게/주식수가 가장 큰 날(1위)과, 그 날 이후 가장 큰 날(2위). 각 날짜마다 <b>그날 가장 많이 사들인 주도 세력</b>을 함께 보여줍니다</div>`+top.map(sum).join("")+tbl
+  host.innerHTML=`<div class="faint" style="font-size:11.5px;margin-top:10px"><b>무게/주식수 1~3위일 분석</b> — 선택 기간(${start}~${end}) 안에서 무게/주식수가 가장 큰 날(1위), 그 날 이후 가장 큰 날(2위), 2위일 이후 가장 큰 날(3위). 순위는 그대로 표시하고 설명·표는 <b>날짜순(오래된 날 → 최근)</b>으로 나열합니다. 각 날짜마다 <b>그날 가장 많이 사들인 주도 세력</b>을 함께 보여줍니다</div>`+top.map(sum).join("")+tbl
     +`<div class="note">표의 칸 = 순매수대금, 그 아래 작은 글씨 = 그날 거래대금 비중 · 순매수 주식수(추정). 주식수는 일봉으로만 추정합니다(순매수대금 × 거래량 ÷ 거래대금). 투자자별 실제 체결 수량은 수집하지 않아 <b>평균 매수단가는 모든 주체가 그날의 일 평균가(거래대금 ÷ 거래량)로 같게</b> 나오므로 주체별 칸에서는 뺐고, 위 "세력(외+기) 평단"으로만 보여줍니다. 주체마다 다른 진짜 평단이 아니라 "그 큰 순매수가 들어온 날의 평균 가격대"로 보세요.</div>`;
 }
 $("#dSel").onchange=e=>{S.dRangeTouched=false;loadDetail(e.target.value);};
