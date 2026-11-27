@@ -1,5 +1,9 @@
 import os, psycopg2
+CODES = ["4338.HK", "4333.HK", "4335.HK", "4336.HK", "4332.HK", "6288.HK", "2916.HK"]   # 해풍국제(1308.HK)는 원래 있던 종목이라 유지
 c = psycopg2.connect(os.environ["SUPABASE_DB_URL"]); c.autocommit = True; c = c.cursor()
-c.execute("delete from us_top_asia where excd='HKS'"); print("deleted", c.rowcount)
-c.execute("select excd,count(*) from us_top_asia group by 1"); print(c.fetchall())
-open("asia_list.md", "w").write("deleted HKS from us_top_asia; remaining " + str(c.fetchall() if False else ""))
+out = []
+for t in ("us_daily", "us_rights", "us_top_asia", "us_master"):
+    c.execute(f"delete from {t} where code = any(%s)", (CODES,)); out.append(f"{t}: {c.rowcount}행 삭제")
+c.execute("select code from us_master where kis_excd='HKS' and code not in (select code from us_top_asia)"); out.append("목록 외 홍콩 종목 남은 것: " + str(c.fetchall()))
+c.execute("select count(*) from us_master where kis_excd='HKS'"); out.append("홍콩 종목 수: " + str(c.fetchone()[0]))
+print("\n".join(out)); open("asia_list.md", "w", encoding="utf-8").write("\n".join(out))
