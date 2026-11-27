@@ -2338,7 +2338,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div id="dMajorBody"></div>
   </div>
 
-  <div class="card" id="dDartCard" style="display:none"><h3>공시 <span class="r" id="dDartSub">DART · 최근 1개월</span></h3>
+  <details class="card" id="dDartCard" style="display:none"><summary style="cursor:pointer;list-style:none"><h3 style="margin:0">공시 <span class="r" id="dDartSub">DART · 최근 1개월</span></h3></summary><div style="margin-top:8px"></div>
     <div id="dDartSum" class="faint" style="font-size:12px;margin-bottom:6px"></div>
     <div class="qf seg" id="dDartKindSel" style="margin-bottom:6px">
       <button class="fchip" data-v="all" aria-pressed="true">전체</button>
@@ -2352,7 +2352,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     </div>
     <div id="dDartBody"></div>
     <div class="note">출처: 금융감독원 DART(접수일 기준). 정정 공시는 원본과 중복되어 제외합니다. 종류별 의미는 오늘의 종목 탭의 "공시 동향"과 같습니다.</div>
-  </div>
+  </details>
 
   <div class="card" id="dSmCard"><h3>스마트머니 국면<span class="r" id="dSmRange"></span></h3>
     <div id="dSmCtl" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px"></div>
@@ -10111,12 +10111,14 @@ async function renderDartCard(){
   if(S.chart.code!==code)return;
   S._dDart=rows;
   if(!rows.length){card.style.display="none";return;}
-  card.style.display="";
+  card.style.display="";card.open=false;   // 기본은 접힘
   S.dDartKind="all";[...$("#dDartKindSel").querySelectorAll(".fchip")].forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v==="all")));
   const d90=dartDay(30),r90=rows.filter(r=>r.rcept_dt>=d90),h=r90.filter(r=>r.kind==="HOLD5"),hi=h.filter(r=>dartHoldInfo(r).dir>0).length,hd=h.filter(r=>dartHoldInfo(r).dir<0).length;
   const ins=r90.filter(r=>r.kind==="INSIDER"),buy=ins.filter(r=>+r.shares_delta>0).reduce((a,r)=>a+ +r.shares_delta,0),sell=ins.filter(r=>+r.shares_delta<0).reduce((a,r)=>a-+r.shares_delta,0);
   const bb=r90.filter(r=>r.kind==="BUYBACK").length,sp=r90.filter(r=>r.kind==="SUPPLY").length;
   $("#dDartSum").innerHTML=`최근 30일 — 5% 보고 ${h.length}건 (<span class="up">증가·신규 ${hi}</span> · <span class="down">감소 ${hd}</span>) · 내부자 <span class="up">매수 ${N(buy,0)}주</span> / <span class="down">매도 ${N(sell,0)}주</span> · 자사주 취득 ${bb}건 · 공급 부담 ${sp}건${(()=>{const o=r90.filter(r=>r.kind==="ORDER").length,rk=r90.filter(r=>r.kind==="RISK").length,ps=r90.filter(r=>DART_POS.includes(r.kind)&&r.kind!=="ORDER").length;return (o?` · <span class="up">수주 ${o}건</span>`:"")+(ps?` · <span class="up">기타 호재 ${ps}건</span>`:"")+(rk?` · <span class="down">악재 경고 ${rk}건</span>`:"");})()}`;
+  {const od=r90.filter(r=>r.kind==="ORDER").length,iv=r90.filter(r=>r.kind==="CAPEX"||r.kind==="STAKE").length,rk=r90.filter(r=>r.kind==="RISK").length;
+   $("#dDartSub").innerHTML=`DART · 최근 1개월 · 5% 보고 ${h.length} · 수주 ${od} · 증설·투자 ${iv} · 악재 ${rk} · <span class="faint">눌러서 펼치기</span>`;}
   dartDetailRender();
 }
 function dartDetailRender(){
