@@ -1710,7 +1710,7 @@ function createAuto(deps) {
           fee: Math.round(trades.reduce((a, f) => a + (f.fee || 0), 0)), holds: positions.length, accountRealized };
       }
     } catch (_) {}
-    // 화면용 실시간 시세: 아직 체결 전인 주문·손절/익절 감시 중인 종목·주문 전 후보(최대 8개). 장중에 화면을 열었을 때만 호출됨
+    // 화면용 실시간 시세: 아직 체결 전인 주문·손절/익절 감시 중인 종목·후보 전체(최대 14개). 장중에 화면을 열었을 때만 호출됨
     const quotes = {};
     const { min: nowMin } = kstParts();
     if (D.getQuoteUi && nowMin >= 540 && nowMin < 935) {
@@ -1718,9 +1718,9 @@ function createAuto(deps) {
       todays.forEach(t => {
         t.orders.forEach(o => { if (['intent', 'open', 'modified', 'skipped'].includes(o.st) || o.filled > 0) want.push(o.code); });
         const have = new Set(t.orders.map(o => o.code));
-        t.picks.filter(p => !p.closed && !have.has(p.code)).forEach(p => want.push(p.code));
+        t.picks.filter(p => !have.has(p.code) || p.closed).forEach(p => want.push(p.code));   // 2026-11-27: 마감·건너뛴 후보도 현재가를 보여주려고 포함
       });
-      const codes = [...new Set(want)].slice(0, 8);
+      const codes = [...new Set(want)].slice(0, 14);
       await Promise.all(codes.map(c => Promise.race([D.getQuoteUi(c), new Promise((_, rej) => setTimeout(() => rej(new Error('t')), 3500))]).then(q => {
         if (q && q.price > 0) quotes[c] = { price: q.price, open: q.open || null, high: q.high || null, low: q.low || null, upper: q.upper || null, lower: q.lower || null, prevClose: q.prevClose || null, strength: q.strength == null ? null : q.strength, vi: !!q.vi,
           bids: (q.bids || []).filter(x => x && x.p > 0).slice(0, 10).map(x => ({ p: x.p, q: x.q })), asks: (q.asks || []).filter(x => x && x.p > 0).slice(0, 10).map(x => ({ p: x.p, q: x.q })), at: Date.now() };

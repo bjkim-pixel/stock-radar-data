@@ -1120,6 +1120,9 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-chip{display:inline-block;padding:1px 8px;border-radius:999px;border:1px solid var(--border);font-size:11.5px;background:var(--surface-2);white-space:nowrap}
 .au-chip.ok{border-color:var(--good);color:var(--good)}.au-chip.bad{border-color:var(--crit);color:var(--crit)}.au-chip.now{border-color:var(--warn);color:var(--warn);font-weight:700}.au-chip.idle{opacity:.5}
 .au-fl{border-top:1px solid var(--border);padding:8px 0}.au-fl:first-of-type{border-top:0}.au-fl .t{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}.au-fl .t .r{margin-left:auto;font-variant-numeric:tabular-nums;font-size:12px}.au-fl .why{font-size:11.5px;color:var(--ink-2);margin-top:4px;line-height:1.5;word-break:keep-all}
+.au-cur{margin-top:4px;font-size:12.5px;font-variant-numeric:tabular-nums}.au-cur b{font-size:14px}
+.au-skip{margin-top:6px;padding:6px 9px;border-left:3px solid var(--crit,#d93b3b);background:var(--bg-2,rgba(217,59,59,.06));border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.6}
+.au-chk{margin-top:6px}.au-chkh{font-size:12px;cursor:pointer;color:var(--ink-2)}.au-ckt td{padding:3px 6px;font-size:12px}.au-ck{font-style:normal;font-weight:800;color:var(--ink-3)}.au-ck.ok{color:var(--good)}.au-ck.bad{color:var(--crit,#d93b3b)}
 .au-q{margin-top:4px;font-size:12px;line-height:1.7;font-variant-numeric:tabular-nums}.au-q b{color:var(--ink-2);margin-right:4px}
 .au-chips{display:flex;flex-wrap:wrap;gap:4px}
 .au-tm{font-variant-numeric:tabular-nums;color:var(--warn)}.au-tmr{margin-top:4px;font-size:12.5px}
@@ -13824,6 +13827,67 @@ function auQuantHtml(p){
   if(pt.length)L.push(`<b>점수 ${N(p.score,1)}</b> = ${pt.join(" + ")}`);
   return L.length?`<div class="why au-q">${L.map(x=>`<div>${x}</div>`).join("")}</div>`:"";
 }
+/* 금액 → 억/만원 */
+const auEok=v=>{if(v==null||!isFinite(v))return "–";const a=Math.abs(v);return (v<0?"-":"")+(a>=1e8?N(a/1e8,a>=1e10?0:1)+"억":N(a/1e4,0)+"만")+"원";};
+/* 현재가 한 줄: 선정가(없으면 평균가) 대비 · 전일 대비 */
+function auCurHtml(code,pos,p){
+  const q=auQ(code),px=q&&q.price>0?q.price:(pos&&pos.last>0?pos.last:null);if(!px)return "";
+  const base=p&&p.price>0?p.price:(pos&&pos.avg>0?pos.avg:null),lab=p&&p.price>0?"선정가":"평균가";
+  const d=base?(px/base-1)*100:null,dd=q&&q.prevClose>0?(px/q.prevClose-1)*100:null;
+  return `<div class="au-cur">현재가 <b class="${trdCls(d!=null?d:dd)}">${N(px)}원</b>${d!=null?` <span class="${trdCls(d)}">${lab} 대비 ${auPct(d)}</span>`:""}${dd!=null?` <span class="faint">· 전일 대비 ${auPct(dd)}</span>`:""}${q&&q.at?"":' <span class="faint">· 마지막 확인값</span>'}</div>`;
+}
+/* 안 산 이유: 주문 직전 재확인 탈락·주문 실패·미체결 취소·패스·승인 만료·승인 때 미선택 */
+function auSkipHtml(it,D){
+  if(it.od[0]==="ok"||it.old)return "";
+  const o=it.o,p=it.p||{},dec=D&&D.decision,L=[];
+  if(o&&["skipped","failed","cancelled","partial_done","lost"].includes(o.st))L.push(`<b>${trdEsc(AU_ORD[o.st]||o.st)}</b> — ${trdEsc(o.why||"사유가 기록되지 않았어요")}`);
+  else if(o&&o.st==="retry")L.push(`<b>다시 시도 대기</b> — ${trdEsc(o.why||"지난 시도가 조건에 못 미쳤어요")}`);
+  else if(!o){
+    if(dec&&dec.kind==="pass")L.push("<b>패스</b> — 패스를 눌러서 사지 않았어요");
+    else if(dec&&dec.kind==="expired")L.push("<b>시간 만료</b> — 승인 시간이 지나 사지 않았어요");
+    else if(dec&&dec.kind==="buy")L.push(`<b>미선택</b> — 승인할 때 이 종목을 고르지 않았어요(선택 번호 ${trdEsc((dec.nums||[]).join(", ")||"없음")})`);
+    else if(p.closed)L.push("<b>후보에서 빠짐</b> — 이 회차가 마감돼 주문 없이 닫혔어요");
+  }
+  if(!L.length)return "";
+  const sc=o&&o.snap&&o.snap.checks;
+  if(sc){const f=[];
+    if(sc.cttr&&sc.cttr.v!=null)f.push(`체결강도 ${N(sc.cttr.v,0)}% (기준 ${N(sc.cttr.min,0)}% 이상)`);
+    if(sc.move&&sc.move.v!=null)f.push(`알림 후 ${auPct(sc.move.v)} (허용 ±${N(sc.move.max,1)}%)`);
+    if(sc.openRise&&sc.openRise.v!=null)f.push(`시가 대비 ${auPct(sc.openRise.v)} (한도 +${N(sc.openRise.max,1)}%)`);
+    if(sc.vi)f.push("VI 발동 중");
+    if(f.length)L.push(`<span class="faint">주문 직전 수치 · ${f.join(" · ")}</span>`);}
+  if(p.kwHigh&&auReal())L.push('<span class="faint">개인 계좌수가 상한 이상이라 직접 승인이 필요했어요</span>');
+  return `<div class="why au-skip">${L.map(x=>`<div>${x}</div>`).join("")}</div>`;
+}
+/* 매수 조건 체크표: 조건마다 ✓/✗ · 실제값 · 기준값 (수급 돌파 방식 전략) */
+function auCheckHtml(it,P,key){
+  const p=it.p;if(!p||!p.m||(P.selector&&P.selector!=="flow"))return "";
+  const m=p.m,R=[],yn=(ok,lab,val,rule)=>R.push({ok,lab,val,rule});
+  const px=+p.price,mode=k=>P[k];
+  if(+P.amtMinEok>0)yn(p.amt>=P.amtMinEok*1e8,"거래대금",auEok(p.amt),`${N(P.amtMinEok,0)}억원 이상`);
+  if(p.open>0&&px>0){const v=(px/p.open-1)*100;yn(v<=+P.openRiseMax,"시가 대비 상승",auPct(v),`+${N(P.openRiseMax,1)}% 이하`);}
+  if(!P.noCttr&&m.cttr!=null)yn(m.cttr>=P.cttrMin,"체결강도",N(m.cttr,0)+"%",`${N(P.cttrMin,0)}% 이상`);
+  [["flowForeign","외국인","fAmt"],["flowInst","기관","oAmt"],["flowProgram","프로그램","pAmt"]].forEach(([k,t,f])=>{
+    if(mode(k)==="req"&&m[f]!=null)yn(m[f]>0,`${t} 순매수`,auEok(m[f]),"0원 초과(필수)");
+    else if(mode(k)==="bonus"&&m[f]!=null)R.push({ok:null,lab:`${t} 순매수`,val:auEok(m[f]),rule:"가점만(탈락 없음)"});});
+  if(P.smx&&P.smx!=="off")yn(p.smx==="CONT"||(P.smx==="cont_stall"&&p.smx==="STALL"),"스마트머니 매집",p.smx==="CONT"?"지속":p.smx==="STALL"?"고점 후 정체":"없음",P.smx==="cont"?"지속만":"지속·정체");
+  if(P.maAbove120)yn(true,"종가 > 120일선","통과","필수");
+  else if(P.maTrend)yn(true,"종가>60일선>120일선","통과","필수");
+  if(P.kwOn!==false&&p.kw8!=null)yn(p.kw8*100<(+P.kwMax||100),"개인 계좌수(8월 대비)",N(p.kw8*100,0)+"%",`${N(P.kwMax||100,0)}% 미만(이상이면 승인 필요)`);
+  const sc=it.o&&it.o.snap&&it.o.snap.checks,R2=[];
+  if(sc){
+    if(sc.cttr&&sc.cttr.v!=null)R2.push({ok:sc.cttr.v>=sc.cttr.min,lab:"체결강도(주문 직전)",val:N(sc.cttr.v,0)+"%",rule:`${N(sc.cttr.min,0)}% 이상`});
+    if(sc.move&&sc.move.v!=null)R2.push({ok:Math.abs(sc.move.v)<=sc.move.max,lab:"알림 후 가격 변동",val:auPct(sc.move.v),rule:`±${N(sc.move.max,1)}% 이내`});
+    if(sc.openRise&&sc.openRise.v!=null)R2.push({ok:sc.openRise.v<=sc.openRise.max,lab:"시가 대비(주문 직전)",val:auPct(sc.openRise.v),rule:`+${N(sc.openRise.max,1)}% 이하`});
+    R2.push({ok:!sc.vi,lab:"VI(변동성 완화)",val:sc.vi?"발동 중":"없음",rule:"발동 중이면 보류"});
+  }
+  const rr=it.o&&it.o.why&&String(it.o.why).match(/손익비 1:([\d.]+)[^\d]*기준\(?1:([\d.]+)/);
+  if(rr)R2.push({ok:false,lab:"손익비(목표가÷손절폭)",val:"1:"+rr[1],rule:"1:"+rr[2]+" 이상"});
+  const all=R.concat(R2),jd=all.filter(x=>x.ok!=null),np=jd.filter(x=>x.ok).length,nf=jd.length-np;
+  if(!all.length)return "";
+  const open=!!(TRD.auChk||{})[key],mk=x=>`<tr><td class="l">${x.ok===true?'<i class="au-ck ok">✓</i>':x.ok===false?'<i class="au-ck bad">✗</i>':'<i class="au-ck">·</i>'} ${trdEsc(x.lab)}</td><td class="n">${trdEsc(x.val)}</td><td class="faint">${trdEsc(x.rule)}</td></tr>`;
+  return `<div class="au-chk"><div class="au-chkh au-go" data-auchk="${trdEsc(key)}" role="button" tabindex="0">${open?"▾":"▸"} 매수 조건 체크 <b>${np}/${jd.length} 충족</b>${nf?` <span class="down">· 미충족 ${nf}</span>`:""}</div>${open?`<div class="trd-scroll"><table class="trd-tb au-ckt"><tbody>${R.map(mk).join("")}${R2.length?`<tr><td colspan="3" class="faint" style="font-size:11px;padding-top:6px">주문 직전 재확인</td></tr>`+R2.map(mk).join(""):""}</tbody></table></div>`:""}</div>`;
+}
 function auFlowHtml(){
   const A=TRD.au;if(!A)return "";
   const groups=[];
@@ -13851,7 +13915,7 @@ function auFlowHtml(){
       else if(o.st==="filled")od=["ok",`체결 ${N(o.filled||o.qty||0)}주${o.avg?` @${N(o.avg)}`:""}`];
       else if(["intent","open","modified","retry"].includes(o.st))od=["now",`${AU_ORD[o.st]||o.st}${o.filled>0?` ${N(o.filled)}/${N(o.qty||0)}`:""}`];
       else od=[o.filled>0?"ok":"bad",`${AU_ORD[o.st]||o.st}${o.filled>0?` ${N(o.filled)}주`:""}`,o.why||""];
-      items.push({code:p.code,name:p.name||p.code,p,ap,od,why:(p.reasons||[]).join(" · ").replace(auReal()?/$^/:/ — 승인해야 매수/g,""),old:false});
+      items.push({code:p.code,name:p.name||p.code,p,ap,od,o,D,P,why:(p.reasons||[]).join(" · ").replace(auReal()?/$^/:/ — 승인해야 매수/g,""),old:false});
     });
     for(const x of (A.positions||[]).filter(g.pos))if(!seen.has(x.code)){seen.add(x.code);items.push({code:x.code,name:x.name||x.code,p:null,ap:["idle","이전 매수분"],od:["idle","–"],why:"",old:true});}
     const rows=items.map(it=>{
@@ -13863,7 +13927,7 @@ function auFlowHtml(){
       return `<div class="au-fl"><div class="t"><b>${auNm(it.name,it.code)}</b><span class="faint" style="font-size:11px">${trdEsc(it.code)}${p&&p.sector?` · ${trdEsc(p.sector)}`:""}</span>${p?`<span class="r">${N(p.score,1)}점 · 선정가 ${N(p.price)} <span class="${trdCls(p.changePct)}">${auPct(p.changePct)}</span></span>`:""}</div>
         ${/^\d{6}$/.test(it.code||"")?`<div class="ldl au-ldl"><span class="lvs"><span class="lvl">주도</span><span data-smx="lead" data-code="${it.code}">–</span> <span data-smx="ltr" data-code="${it.code}">–</span></span><span class="lvs"><span class="lvl">매집 8월</span><span class="kwc" data-kw="r8" data-kwc="${it.code}">–</span></span></div>`:""}
         <div class="au-chips" style="margin-top:4px">${chip("ok","선정")}${chip(...it.ap)}${chip(...it.od)}${chip(...hd)}${chip(...ex)}</div>
-        ${it.p?auQuantHtml(it.p):""}${it.why?`<div class="why"><b>선정 이유</b> ${trdEsc(it.why)}</div>`:it.old?'<div class="why faint">이전에 산 종목이 아직 보유 중이에요 — 손절·익절 감시 중</div>':""}</div>`;
+        ${auCurHtml(it.code,pos,p)}${auSkipHtml(it,it.D)}${it.p?auQuantHtml(it.p):""}${auCheckHtml(it,it.P||{},g.key+"|"+it.code)}${it.why?`<div class="why"><b>선정 이유</b> ${trdEsc(it.why)}</div>`:it.old?'<div class="why faint">이전에 산 종목이 아직 보유 중이에요 — 손절·익절 감시 중</div>':""}</div>`;
     }).join("");
     out.push(`<div style="margin-top:10px" id="au-fl-${trdEsc(g.key)}"><div class="au-h4" style="margin:0 0 2px">${g.tag} <span class="faint" style="font-weight:400;font-size:11.5px">${items.length}종목</span></div>${rows||'<div class="faint" style="font-size:12px;padding:2px 0 4px">오늘 선정된 종목이 아직 없어요</div>'}</div>`);
   }
@@ -14314,6 +14378,7 @@ function trdAutoHtml(){
 function auClick(t){
   let el;
   if((el=t.closest("a.au-nm"))){go("detail",el.dataset.code);return true;}
+  if((el=t.closest("[data-auchk]"))){TRD.auChk=TRD.auChk||{};const k=el.dataset.auchk;TRD.auChk[k]=!TRD.auChk[k];trdAutoRender();return true;}
   if((el=t.closest("[data-auscr]"))){const x=document.getElementById("au-fl-"+el.dataset.auscr);if(x){x.scrollIntoView({behavior:"smooth",block:"start"});x.classList.remove("au-flash");void x.offsetWidth;x.classList.add("au-flash");setTimeout(()=>x.classList.remove("au-flash"),1800);}return true;}
   if((el=t.closest("[data-austab]"))){TRD.auStab=el.dataset.austab||"all";TRD.auPick=null;trdAutoRender(true);const b=document.querySelector(".au-stb");if(b)b.scrollIntoView({block:"nearest"});return true;}
   if((el=t.closest("[data-austg]"))){TRD.auStg=TRD.auStg===el.dataset.austg?null:el.dataset.austg;trdAutoRender();return true;}
