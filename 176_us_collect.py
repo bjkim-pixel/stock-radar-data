@@ -10,6 +10,7 @@ KEY, SECRET = os.environ.get("KIS_APP_KEY", ""), os.environ.get("KIS_APP_SECRET"
 BASE = "https://openapi.koreainvestment.com:9443"
 START = "20260101"
 BACKFILL = "--backfill" in sys.argv
+US_EXTRA = "--us-extra-only" in sys.argv   # 사용자 추가 미국 종목(us_top_asia 의 NAS/NYS/AMS)만 처리
 ASIA_ONLY = "--asia-only" in sys.argv   # 시총 상위(us_top_asia) 종목만 처리
 PRDT = {"NAS": "512", "NYS": "513", "AMS": "529", "HKS": "501", "TSE": "515", "SHS": "551", "SZS": "552"}
 L = []
@@ -94,10 +95,11 @@ def main():
                 if x["c"] not in hold: hold.append(x["c"])
     targets = etf + [c for c in hold if c not in etf]
     try:   # 홍콩·도쿄·상해·심천 시총 상위 50(199_asia_top50.py 가 선별) — --asia-only 로만 처리
-        cur.execute("select code from us_top_asia order by excd, rnk"); asia = [r[0] for r in cur.fetchall()]
+        cur.execute("select code,excd from us_top_asia order by excd, rnk"); allx = cur.fetchall()
+        asia = [c for c, e in allx if e not in ("NAS", "NYS", "AMS")]; usx = [c for c, e in allx if e in ("NAS", "NYS", "AMS")]
     except Exception:
-        asia = []
-    targets = asia if ASIA_ONLY else targets   # 아시아 종목은 월~금 장마감 뒤 별도 일정(asia_collect.yml, --asia-only)
+        asia = []; usx = []
+    targets = asia if ASIA_ONLY else (usx if US_EXTRA else targets + [c for c in usx if c not in targets])   # 아시아 종목은 월~금 장마감 뒤 별도 일정(asia_collect.yml, --asia-only)
     cur.execute("select code,kis_excd,kis_sym,name_ko from us_master"); known = {r[0]: r[1:] for r in cur.fetchall()}
     log(f"# 해외 종목 수집 {datetime.datetime.utcnow():%Y-%m-%d %H:%M} UTC · {'백필' if BACKFILL else '일일'} · 대상 {len(targets)}개")
     ok, skipped, failed, nrows, nrights = 0, [], [], 0, 0
