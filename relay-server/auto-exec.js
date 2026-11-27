@@ -22,6 +22,10 @@ const ceilTick = p => { const t = tickOf(p); return Math.ceil(p / t - 1e-9) * t;
 const below = p => { let f = floorTick(p); if (f >= p - 1e-9) f -= tickOf(f - 1); return f; };
 
 const PROFILE_DOWN = 0.30, PROFILE_UP = 0.70;
+/* 2026-11-27: 매물대·전고점은 최근 6개월(126거래일)만 본다 — 종목상세 기본 기간과 같게. 전체 이력(최대 1000일)을 쓰면 1년 전 가격대(예: SK바이오팜 100~144k)의
+   개인 순매수가 위쪽 매물대로 잡혀, 화면에서 위가 비어 보이는 종목도 목표가가 낮아져 손익비 미달로 건너뛰었다 */
+const PROFILE_DAYS = 126;
+const profWin = rows => (rows || []).slice(-PROFILE_DAYS);
 const DEF = Object.freeze({ noTape: false, closeStop: false, noTp: false, tag: '', stopAbs: 0, stopPct: 5, rr: 3, minRr: 0, tpStyle: 'even', buyType: 'limit', runnerPct: 20, tp1Pct: 6, tp2Pct: 9, tp1Share: 50, ratchet: false, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', smartBuy: false, smartCttr: 120, smartRise: 2, q1GapPct: 0.8, chaseAsk: false, chasePct: 1, chaseWaitMs: 180e3, rrSlack: 10, unfilledEnd: 'cancel', intentLostMs: 60e3 });
 const REPRICE_KO = { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' };
 
@@ -123,8 +127,8 @@ function planFromAvg({ q, rows, avg, qty, opt = {} }) {
   const o = { ...DEF, ...opt };
   const last5 = (rows || []).slice(-5), avg5 = last5.length ? last5.reduce((a, r) => a + (+r.trade_amount || 0), 0) / last5.length : 0;
   const capEok = Math.max(avg5, (q && q.amt) || 0) / EOK;
-  const prevHigh = rows && rows.length ? Math.max(...rows.map(r => (+r.high > 0 ? +r.high : +r.close))) : 0;
-  const tgt = calcTarget({ cur: avg, prof: buildProfile(rows || []), capEok, coef: o.coef, prevHigh, upper: q && q.upper, stopPct: o.stopPct, rr: o.rr });
+  const prevHigh = rows && rows.length ? Math.max(...profWin(rows).map(r => (+r.high > 0 ? +r.high : +r.close))) : 0;
+  const tgt = calcTarget({ cur: avg, prof: buildProfile(profWin(rows)), capEok, coef: o.coef, prevHigh, upper: q && q.upper, stopPct: o.stopPct, rr: o.rr });
   const fx = o.tpStyle === 'fixed' ? fixedPlan(avg, qty, o) : null;
   if (fx) return { stopPct: o.stopPct, target: fx.target, steps: fx.steps, ratchet: { floorPct: 0.35 } };
   const steps = tgt.target ? (o.tpStyle === 'r' ? splitPlanR(avg, tgt.target, qty, { stopPct: o.stopPct, runnerPct: o.runnerPct }) : splitPlan(avg, tgt.target, qty, o.split, o.minPct)).steps.filter(s => s.q > 0) : [];
@@ -154,8 +158,8 @@ function makeOrder({ q, rows, perStockKrw, opt = {}, force = null }) {   // forc
   if (qty < 1) return { skip: `금액 ${perStockKrw.toLocaleString('ko-KR')}원으로 1주도 못 삼(${buy.toLocaleString('ko-KR')}원)` };
   const last5 = rows.slice(-5), avg5 = last5.length ? last5.reduce((a, r) => a + (+r.trade_amount || 0), 0) / last5.length : 0;
   const capEok = Math.max(avg5, q.amt || 0) / EOK;
-  const prevHigh = rows.length ? Math.max(...rows.map(r => (+r.high > 0 ? +r.high : +r.close))) : 0;
-  const prof = buildProfile(rows);
+  const prevHigh = rows.length ? Math.max(...profWin(rows).map(r => (+r.high > 0 ? +r.high : +r.close))) : 0;
+  const prof = buildProfile(profWin(rows));
   /* 정정·직접 수정으로 매수가가 현재가보다 높아지면 목표(손익비 기준 목표 포함)도 그 매수가 기준으로 잡음 — 현재가 기준으로 두면 손절은 새 매수가, 목표는 옛 현재가라 손익비가 1:3 아래로 어긋남 */
   const base = force && force.buy > cur ? force.buy : cur;
   const tgt = calcTarget({ cur: base, prof, capEok, coef: o.coef, prevHigh, upper: q.upper, stopPct: o.stopPct, rr: o.rr });
@@ -498,4 +502,4 @@ function createExec(deps) {
   return { approve, follow, userEdit };
 }
 
-module.exports = { fixedPlan, planFromAvg, tryNo, keepTries, retryable, foldTry, DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, calcTarget, splitPlan, stopPrice, makeOrder, recheck, rrOf, splitPlanR, createExec };
+module.exports = { fixedPlan, planFromAvg, tryNo, keepTries, retryable, foldTry, DEF, REPRICE_KO, snapOf, unfilledText, tickOf, floorTick, recBids, buildProfile, profWin, PROFILE_DAYS, calcTarget, splitPlan, stopPrice, makeOrder, recheck, rrOf, splitPlanR, createExec };

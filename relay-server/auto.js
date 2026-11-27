@@ -1662,7 +1662,7 @@ function createAuto(deps) {
       for (const t of todays) for (const o of t.orders || []) {
         if (!o.tinfo || o.tinfo.prof || !/^\d{6}$/.test(o.code)) continue;
         let m = profMemo.get(o.code);
-        if (!m || Date.now() - m.at > 600e3) { const rows2 = await D.loadChart(o.code).catch(() => []); m = { at: Date.now(), prof: (rows2 && rows2.length ? XE.buildProfile(rows2) : []).map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) }; profMemo.set(o.code, m); }
+        if (!m || Date.now() - m.at > 600e3) { const rows2 = await D.loadChart(o.code).catch(() => []); m = { at: Date.now(), prof: (rows2 && rows2.length ? XE.buildProfile(XE.profWin(rows2)) : []).map(b => [Math.round(b.lo), Math.round(b.hi), Math.round(b.v * 10) / 10]) }; profMemo.set(o.code, m); }
         if (m.prof.length) o.tinfo = { ...o.tinfo, prof: m.prof };
       }
     } catch (_) {}

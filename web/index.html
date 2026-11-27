@@ -12662,12 +12662,12 @@ async function trdPollOnce(){
 function trdCalcRec(){
   const D=TRD.data,Q=TRD.quote;if(!D||!Q)return;
   const rows=D.rows,cur=Q.price||+rows.at(-1).close;
-  const rp=rows;   // 종목상세와 같은 방식: 전체 이력 기준 매물대
+  const rp=rows.slice(-126);   // 2026-11-27: 매물대·전고점은 최근 6개월(126거래일) — 종목상세 기본 기간·자동매매 엔진과 같게
   D.profIndiv=buildPriceProfile(rp,24,r=>+r.individual_net||0);
   D.profInst=buildPriceProfile(rp,24,r=>(+r.foreign_net||0)+(+r.inst_net||0));
   const last5=rows.slice(-5),avg5=last5.length?last5.reduce((a,r)=>a+(+r.trade_amount||0),0)/last5.length:0;
   D.avg5=avg5;D.today=Q.amt||0;D.capEok=Math.max(avg5,D.today)/EOK;
-  D.prevHigh=Math.max(...rows.map(r=>+r.high>0?+r.high:+r.close));
+  D.prevHigh=Math.max(...rp.map(r=>+r.high>0?+r.high:+r.close));
   {const L=rows.slice(-15);let sum=0,n=0;for(let i=1;i<L.length;i++){const h=+L[i].high>0?+L[i].high:+L[i].close,l=+L[i].low>0?+L[i].low:+L[i].close,pc=+L[i-1].close;if(!(pc>0))continue;sum+=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));n++;}D.atr=n?sum/n:0;}
   D.rec=trdRecBids(Q.bids,cur);
   D.tgt=trdTarget({cur,prof:D.profIndiv,capEok:D.capEok,coef:TRD.coef,prevHigh:D.prevHigh,upper:Q.upper,stopPct:TRD.stopPct});
