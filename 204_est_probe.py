@@ -5,9 +5,13 @@ KEY, SEC = os.environ["KIS_APP_KEY"], os.environ["KIS_APP_SECRET"]; tok = import
 B = "https://openapi.koreainvestment.com:9443"; L = []
 def log(m=""): print(m, flush=True); L.append(str(m))
 def kis(path, tr, p):
-    time.sleep(0.15)
-    r = requests.get(B + path, params=p, timeout=20, headers={"Content-Type": "application/json; charset=utf-8", "authorization": f"Bearer {tok}", "appkey": KEY, "appsecret": SEC, "tr_id": tr, "custtype": "P"})
-    return r.json()
+    for _ in range(4):
+        time.sleep(0.6)
+        try:
+            r = requests.get(B + path, params=p, timeout=20, headers={"Content-Type": "application/json; charset=utf-8", "authorization": f"Bearer {tok}", "appkey": KEY, "appsecret": SEC, "tr_id": tr, "custtype": "P"})
+            return r.json()
+        except Exception: time.sleep(2)
+    return {"rt_cd": "x", "msg1": "응답 없음/JSON 아님"}
 NH = {"User-Agent": "Mozilla/5.0", "Referer": "https://m.stock.naver.com/"}
 S = [("005930", "삼성전자"), ("000660", "SK하이닉스"), ("035420", "NAVER"), ("068270", "셀트리온"), ("192820", "코스맥스")]
 for code, nm in S:
