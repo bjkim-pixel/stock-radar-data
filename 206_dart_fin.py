@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """DART 전체 재무제표(fnlttSinglAcntAll)로 분기·연간 실적을 확정 값으로 교체 (src='dart').
+새 분기가 공시 기한(분기말+45일, 사업보고서 3/31)을 넘기면 자동으로 해당 분기를 포함하고, 이미 DART로 확정된 종목은 건너뜀(FORCE=1이면 전체 재계산).
 사용법: python 206_dart_fin.py check [종목코드,쉼표]   → DB 변경 없이 DART 계산값과 현재 DB 값을 나란히 출력
         python 206_dart_fin.py apply [종목코드,쉼표]   → 백업 테이블 생성 후 DB 교체(코드 없으면 전체)
 대상: 12월 결산 종목, 분기 2024Q4~2026Q3(분기 = 분기·반기·3분기 보고서의 '당기 3개월', 4분기 = 사업보고서 − 3분기 누적), 연간 2024·2025.
@@ -22,7 +23,14 @@ CC = {i.findtext("stock_code").strip(): i.findtext("corp_code") for i in x.iter(
 conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"]); conn.autocommit = True; cur = conn.cursor()
 cur.execute("select code,name from stocks where is_active and security_type='STOCK' order by code"); ST = cur.fetchall()
 if ONLY: ST = [s for s in ST if s[0] in ONLY]
-REP = [(2024, "11014"), (2024, "11011"), (2025, "11013"), (2025, "11012"), (2025, "11014"), (2025, "11011"), (2026, "11013"), (2026, "11012"), (2026, "11014")]
+import datetime
+TODAY = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).date()
+def due(y, rc): return {"11013": datetime.date(y, 5, 16), "11012": datetime.date(y, 8, 15), "11014": datetime.date(y, 11, 15), "11011": datetime.date(y + 1, 3, 31)}[rc]
+REP = [(2024, "11014"), (2024, "11011")] + [(y, rc) for y in range(2025, TODAY.year + 1) for rc in ("11013", "11012", "11014", "11011") if due(y, rc) <= TODAY]   # 공시 기한이 지난 보고서만
+QY = range(2025, TODAY.year + 1); AY = [y for y in range(2024, TODAY.year + 1) if (y, "11011") in REP and (y, "11014") in REP]
+EXP_Q = [f"{y}{m}" for y in QY for m, rc in (("03", "11013"), ("06", "11012"), ("09", "11014"), ("12", "11011")) if (y, rc) in REP] + ["202412"]
+EXP_A = [f"{y}12" for y in AY]
+FORCE = os.environ.get("FORCE") == "1"
 def num(v):
     try: return float(str(v).replace(",", "").strip())
     except Exception: return None
@@ -51,9 +59,12 @@ def extract(rows):
     for k in ("eqp", "eq"):
         r = pick(rows, k, ("BS",)); d[k] = (num(r.get("thstrm_amount")), num(r.get("frmtrm_amount"))) if r else (None, None)
     return d
+cur.execute("select code,freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,src from stock_earnings where period>='202412'")
+DB = {(r[0], r[1], r[2]): r[3:] for r in cur.fetchall()}
 def build(code):
     corp = CC.get(code)
     if not corp: return None, "corp_code 없음"
+    if not FORCE and all(DB.get((code, "Q", p)) and not DB[(code, "Q", p)][0] and DB[(code, "Q", p)][7] == "dart" for p in EXP_Q) and all(DB.get((code, "A", p)) and DB[(code, "A", p)][7] == "dart" for p in EXP_A): return None, "이미 DART 확정"
     cj = api("company.json", corp_code=corp)
     if (cj.get("acc_mt") or "").strip() != "12": return None, f"결산월 {cj.get('acc_mt')}"
     for fs in ("CFS", "OFS"):
@@ -67,8 +78,9 @@ def build(code):
     out = {}
     def cumq(y, rc, k, cum):      # 분기 보고서의 3개월 값(없으면 누적 차이로 보정)
         a, c = R[(y, rc)][k]; return a if a is not None else None
-    for y in (2025, 2026):
-        q1, q2, q3 = R[(y, "11013")], R[(y, "11012")], R[(y, "11014")]
+    EMPTY = {k + sfx: (None, None) for k in ("sales", "op", "ni", "nip", "eps", "eqp", "eq") for sfx in ("", "_pv")}
+    for y in QY:
+        q1, q2, q3 = R.get((y, "11013"), EMPTY), R.get((y, "11012"), EMPTY), R.get((y, "11014"), EMPTY)
         for k in ("sales", "op", "ni", "nip", "eps"):
             v1 = q1[k][0] if q1[k][0] is not None else q1[k][1]
             v2 = q2[k][0] if q2[k][0] is not None else ((q2[k][1] - v1) if q2[k][1] is not None and v1 is not None else None)
@@ -80,7 +92,7 @@ def build(code):
             ak = "nip" if rr["nip"][0] is not None or rr["nip"][1] is not None else "ni"
             cur_c = (rr[ak][1] if rr[ak][1] is not None else rr[ak][0]) if kind == 2 else rr[ak][0]
             prv_c = (rr[ak + "_pv"][1] if rr[ak + "_pv"][1] is not None else None) if kind == 2 else rr[ak + "_pv"][0]
-            pa = R[(y - 1, "11011")][("nip" if R[(y - 1, "11011")]["nip"][0] is not None else "ni")][0]
+            pr = R.get((y - 1, "11011"), EMPTY); pa = pr[("nip" if pr["nip"][0] is not None else "ni")][0]
             if kind == 1 and prv_c is None and out.get(f"{y-1}03", {}).get("nip" if ak == "nip" else "ni") is not None: prv_c = out[f"{y-1}03"]["nip" if ak == "nip" else "ni"]   # 전년 1분기(앞서 계산)
             out[per]["ttm"] = (pa - prv_c + cur_c) if (pa is not None and prv_c is not None and cur_c is not None) else None
         for per, rr in ((f"{y}03", q1), (f"{y}06", q2), (f"{y}09", q3)):
@@ -88,7 +100,7 @@ def build(code):
             if nipc is None: nipc = rr["ni"][1] if rr["ni"][1] is not None else rr["ni"][0]
             out[per]["sh"] = (nipc / epsc) if (nipc is not None and epsc) else None
     ann = {}
-    for y in (2024, 2025):
+    for y in AY:
         a, q = R[(y, "11011")], R[(y, "11014")]; per = f"{y}12"; out[per] = {}; ann[per] = {}
         for k in ("sales", "op", "ni", "nip", "eps"):
             av = a[k][0]; q9 = q[k][1] if q[k][1] is not None else None
@@ -107,11 +119,10 @@ def build(code):
         e = lambda v: None if v is None else round(v / 1e8, 1)
         return {"sales": e(d.get("sales")), "op": e(d.get("op")), "ni": e(d.get("ni")), "eps": None if d.get("eps") is None else round(d["eps"], 0),
                 "bps": None if bps is None else round(bps, 0), "roe": None if roe is None else round(roe, 2)}
-    res = {("Q", per): fin(out[per], False) for per in ("202412", "202503", "202506", "202509", "202512", "202603", "202606", "202609")}
-    for per in ("202412", "202512"): res[("A", per)] = fin({**ann[per], "ni": ann[per]["ni"]}, True)
+    res = {("Q", per): fin(out[per], False) for per in EXP_Q if per in out}
+    res = {k: v for k, v in res.items() if v["sales"] is not None or v["op"] is not None or v["ni"] is not None}
+    for per in EXP_A: res[("A", per)] = fin({**ann[per], "ni": ann[per]["ni"]}, True)
     return (res, fs), None
-cur.execute("select code,freq,period,is_est,sales,op_profit,net_income,eps,bps,roe,src from stock_earnings where period>='202412'")
-DB = {(r[0], r[1], r[2]): r[3:] for r in cur.fetchall()}
 results = {}; skipped = []; done = 0
 with ThreadPoolExecutor(4) as ex:
     fut = {ex.submit(build, c): (c, n) for c, n in ST}
@@ -127,6 +138,7 @@ names = dict(ST)
 log(f"# DART 재무 교체 ({MODE}) · 대상 {len(ST)}종목 · 계산 성공 {len(results)} · 제외 {len(skipped)}")
 from collections import Counter
 log("기준: " + str(Counter(fs for _, fs in results.values())))
+log("제외 종목: " + str([(c, n, w) for c, n, w in skipped if not w.startswith("이미")]))
 log("제외 사유: " + str(Counter(w.split(' ')[0] if w.startswith('결산월') else w for _, _, w in skipped)))
 chg = {k: 0 for k in ("sales", "op", "ni")}; tot = 0; ex = []
 for c, (res, fs) in results.items():

@@ -1,5 +1,9 @@
-name: "[수시] DART 재무 보정 | 수동 | 분기 실적 점검·채우기"
+name: "[시즌] DART 재무 확정 | 분기 공시 후 자동 | 실적 확정"
 on:
+  schedule:
+    - cron: "0 3 16-31 5,8,11 *"     # 1·2·3분기 보고서 공시 후 (KST 12시)
+    - cron: "0 3 31 3 *"
+    - cron: "0 3 1-15 4 *"            # 사업보고서(연간)
   workflow_dispatch:
     inputs:
       mode:
@@ -7,6 +11,9 @@ on:
         default: 'check'
       step:
         description: "종목코드(쉼표, 비우면 전체)"
+        default: ""
+      force:
+        description: "1이면 이미 확정된 종목도 재계산"
         default: ""
 permissions:
   contents: write
@@ -20,12 +27,13 @@ jobs:
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       DART_API_KEY: ${{ secrets.DART_API_KEY }}
+      FORCE: ${{ github.event.inputs.force }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.11"}
       - run: pip install psycopg2-binary requests
-      - run: python 206_dart_fin.py "${{ github.event.inputs.mode }}" "${{ github.event.inputs.step }}"
+      - run: python 206_dart_fin.py "${{ github.event.inputs.mode || 'apply' }}" "${{ github.event.inputs.step }}"
       - name: Publish report
         if: always()
         uses: ./.github/actions/publish-report
