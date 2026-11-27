@@ -24,8 +24,9 @@ const below = p => { let f = floorTick(p); if (f >= p - 1e-9) f -= tickOf(f - 1)
 const PROFILE_DOWN = 0.30, PROFILE_UP = 0.70;
 /* 2026-11-27: 매물대·전고점은 최근 6개월(126거래일)만 본다 — 종목상세 기본 기간과 같게. 전체 이력(최대 1000일)을 쓰면 1년 전 가격대(예: SK바이오팜 100~144k)의
    개인 순매수가 위쪽 매물대로 잡혀, 화면에서 위가 비어 보이는 종목도 목표가가 낮아져 손익비 미달로 건너뛰었다 */
-const PROFILE_DAYS = 126;
-const profWin = rows => (rows || []).slice(-PROFILE_DAYS);
+// 2026-11-27: 매물대·전고점은 보유 전체 기간 누적(종목상세 매물대 차트와 동일). 창 제한 없음.
+const PROFILE_DAYS = Infinity;
+const profWin = rows => rows || [];
 const DEF = Object.freeze({ noTape: false, closeStop: false, noTp: false, tag: '', stopAbs: 0, stopPct: 5, rr: 3, minRr: 0, tpStyle: 'even', buyType: 'limit', runnerPct: 20, tp1Pct: 6, tp2Pct: 9, tp1Share: 50, ratchet: false, trail: 2, split: 5, minPct: 3, coef: 1, recheckPct: 1.5, openRiseMax: 8, cttrMin: 100, fillWaitMs: 180e3, cancelWaitMs: 180e3, repriceTo: 'bid1', smartBuy: false, smartCttr: 120, smartRise: 2, q1GapPct: 0.8, chaseAsk: false, chasePct: 1, chaseWaitMs: 180e3, rrSlack: 10, unfilledEnd: 'cancel', intentLostMs: 60e3 });
 const REPRICE_KO = { bid1: '최우선 매수 호가', ask1: '최우선 매도 호가(바로 체결)', none: '정정하지 않음' };
 

@@ -2300,7 +2300,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button class="btn ghost dnext" id="dNext" title="이름(가나다)순 리스트 기준 다음 종목으로 이동">다음 →</button>
       <button class="btn ghost" id="dRangeApply" style="display:none">적용</button>
     </div>
-    <div class="qf seg" id="dPerSeg" style="margin-top:6px" title="아래 가격·수급·거래량·매물대 차트가 모두 이 기간으로 바뀝니다 (최근 N거래일)">
+    <div class="qf seg" id="dPerSeg" style="margin-top:6px" title="아래 가격·수급·거래량 차트가 이 기간으로 바뀝니다 (매물대 차트는 항상 전체 누적) (최근 N거래일)">
       <button class="fchip" data-v="21" aria-pressed="false">1개월</button>
       <button class="fchip" data-v="63" aria-pressed="false">3개월</button>
       <button class="fchip" data-v="126" aria-pressed="true">6개월</button>
@@ -9086,7 +9086,7 @@ function renderRangeCharts(){
   /* 가격 차트 덧그림: 현재가 위 개인 순매수 매물대 상위 2곳(띠) + 외+기 매집 저점·고점(점) */
   const ovl={bands:[],pts:[]};
   if(!S.chart.etf){try{
-    const cur=+rp.at(-1).close,pb=buildPriceProfile(rp,24,r=>+r.individual_net||0);
+    const cur=+rows.at(-1).close,pb=buildPriceProfile(rows,24,r=>+r.individual_net||0);   // 매물대는 기간 버튼과 무관하게 보유 전체 기간 누적
     pb.filter(b=>b.lo>=cur&&b.v>0).sort((a,b)=>b.v-a.v).slice(0,2).forEach((b,k)=>ovl.bands.push({lo:b.lo,hi:b.hi,c:k?"--warn":"--down",label:`개인 매물대 ${k+1}위 ${N(b.lo,0)}~${N(b.hi,0)}원 · ${N(b.v,0)}억`}));
     if(rp.length>=10&&rp[0].foreign_cum!=null){const m=smxModel(rp);
       if(m.build>0){const md=i=>String(rp[i].trade_date).slice(5).replace("-","/");
@@ -9109,17 +9109,19 @@ function renderRangeCharts(){
     $("#dEarnCard").style.display="none";$("#dDivCard").style.display="none";$("#dDartCard").style.display="none";
     return;
   }
-  const profIndiv=buildPriceProfile(rp,24,r=>+r.individual_net||0);
+  const fullTxt=`${rows[0].trade_date}~${rows.at(-1).trade_date}`;   // 매물대 3종은 기간 버튼과 무관하게 전체 누적
+  $("#dProfileRange").textContent=`${fullTxt} · 전체 누적 · 억원`;$("#dProfileInstRange").textContent=`${fullTxt} · 전체 누적 · 억원`;
+  const profIndiv=buildPriceProfile(rows,24,r=>+r.individual_net||0);
   profileChart($("#dProfile"),profIndiv,
     {h:480,w:1180,pr:150,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"개인 순매수",aboveSum:aboveSupply(rows,r=>+r.individual_net||0)});
   $("#dProfileTop").innerHTML=topBucketsHtml(profIndiv,5,"개인");
-  const profInst=buildPriceProfile(rp,24,r=>(+r.foreign_net||0)+(+r.inst_net||0));
+  const profInst=buildPriceProfile(rows,24,r=>(+r.foreign_net||0)+(+r.inst_net||0));
   profileChart($("#dProfileInst"),profInst,
     {h:480,w:1180,pr:150,pl:84,fx:v=>N(v,0)+"억",hideNeg:true,subj:"외국인+기관 순매수",aboveSum:aboveSupply(rows,r=>(+r.foreign_net||0)+(+r.inst_net||0))});
   $("#dProfileInstTop").innerHTML=topBucketsHtml(profInst,5,"외국인+기관");
   try{
-    const vp=buildVolProfile(rp,30),vr=$("#dVolProfRange");
-    if(vr)vr.textContent=`${rangeTxt} · 거래량 비중`;
+    const vp=buildVolProfile(rows,30),vr=$("#dVolProfRange");
+    if(vr)vr.textContent=`${fullTxt} · 전체 누적 · 거래량 비중`;
     if(vp){
       profileChart($("#dVolProf"),vp.buckets,{h:520,w:1180,pr:130,pl:84,fx:v=>N(v,0)+"%",fv:(v,b)=>N(v,1)+"% · "+fmtEokJo(b.amt),subj:"거래량 비중·금액",noSum:true,
         colorFn:b=>b.cur?"--ink-3":(b.lo>=vp.cur?"--up":"--down")});
@@ -12662,7 +12664,7 @@ async function trdPollOnce(){
 function trdCalcRec(){
   const D=TRD.data,Q=TRD.quote;if(!D||!Q)return;
   const rows=D.rows,cur=Q.price||+rows.at(-1).close;
-  const rp=rows.slice(-126);   // 2026-11-27: 매물대·전고점은 최근 6개월(126거래일) — 종목상세 기본 기간·자동매매 엔진과 같게
+  const rp=rows;   // 2026-11-27: 매물대·전고점은 보유 전체 기간 누적 — 종목상세·자동매매 엔진과 같게
   D.profIndiv=buildPriceProfile(rp,24,r=>+r.individual_net||0);
   D.profInst=buildPriceProfile(rp,24,r=>(+r.foreign_net||0)+(+r.inst_net||0));
   const last5=rows.slice(-5),avg5=last5.length?last5.reduce((a,r)=>a+(+r.trade_amount||0),0)/last5.length:0;
