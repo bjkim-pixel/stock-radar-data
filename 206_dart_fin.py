@@ -5,7 +5,7 @@
 대상 분기: 2024Q4 ~ 2026Q3(12월 결산 종목). 분기 값 = 분기·반기·3분기 보고서의 '당기 3개월', 4분기 = 사업보고서 연간 − 3분기 누적. 단위 원 → 억원."""
 import os, io, sys, time, zipfile, requests, psycopg2, xml.etree.ElementTree as ET
 from psycopg2.extras import execute_values
-MODE = sys.argv[1] if len(sys.argv) > 1 else "check"; STEP = int(sys.argv[2]) if len(sys.argv) > 2 else 6
+MODE = sys.argv[1] if len(sys.argv) > 1 else "check"; ARG = sys.argv[2] if len(sys.argv) > 2 else "6"; CODES = [c for c in ARG.replace(" ", "").split(",") if not c.isdigit() or len(c) == 6]; STEP = int(ARG) if ARG.isdigit() and len(ARG) < 4 else 6
 KEY = os.environ["DART_API_KEY"].strip(); B = "https://opendart.fss.or.kr/api/"; L = []
 def log(m=""): print(m, flush=True); L.append(str(m))
 def api(ep, **p):
@@ -18,7 +18,8 @@ z = zipfile.ZipFile(io.BytesIO(api("corpCode.xml").content)); x = ET.fromstring(
 CC = {i.findtext("stock_code").strip(): i.findtext("corp_code") for i in x.iter("list") if (i.findtext("stock_code") or "").strip()}
 conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"]); conn.autocommit = True; cur = conn.cursor()
 cur.execute("select code,name from stocks where is_active and security_type='STOCK' order by code"); ST = cur.fetchall()
-if MODE == "check": ST = [s for i, s in enumerate(ST) if i % STEP == 0 or s[0] in ("420770", "290550", "005930", "000660")]
+if CODES and not (ARG.isdigit() and len(ARG) < 4): ST = [s for s in ST if s[0] in CODES]
+elif MODE == "check": ST = [s for i, s in enumerate(ST) if i % STEP == 0 or s[0] in ("420770", "290550", "005930", "000660")]
 cur.execute("select code,period,is_est,sales,op_profit,net_income from stock_earnings where freq='Q' and period>='202412'")
 DB = {(r[0], r[1]): r[2:] for r in cur.fetchall()}
 SALES = ("매출액", "수익(매출액)", "영업수익"); OP = ("영업이익", "영업이익(손실)"); NI = ("당기순이익", "분기순이익", "반기순이익")
@@ -65,6 +66,7 @@ def quarters(corp):
                     if k in q[fs] and a[fs][k][0] is not None and q[fs][k][1] is not None: d[k] = (a[fs][k][0] - q[fs][k][1]) / 1e8
                 res[f"{y}12"] = (d, fs); break
     return res
+DETAIL = {}
 FIELD = {"sales": 0, "op": 1, "ni": 2}; stat = {k: [0, 0] for k in FIELD}; bad = []; fill = []; conv = []; skipped = []; nofy = 0
 for n, (code, nm) in enumerate(ST, 1):
     corp = CC.get(code)
@@ -72,6 +74,7 @@ for n, (code, nm) in enumerate(ST, 1):
     cj = api("company.json", corp_code=corp).json()
     if (cj.get("acc_mt") or "").strip() != "12": nofy += 1; skipped.append((code, nm, f"결산월 {cj.get('acc_mt')}")); continue
     qs = quarters(corp)
+    for per_, (d_, fs_) in qs.items(): DETAIL[(code, per_)] = {k: round(v, 1) for k, v in d_.items() if v is not None}
     for per, (d, fs) in qs.items():
         ex = DB.get((code, per))
         if ex is None or ex[0]:      # 행 없음 또는 예상(E) → 채우기 후보
@@ -89,7 +92,13 @@ log("## 기존 확정 행 vs DART (허용오차 ±1억 또는 ±0.5%)")
 for k, (t, m) in stat.items(): log(f"- {k}: 비교 {t}건 · 일치 {m}건 ({(m/t*100 if t else 0):.1f}%)")
 log(f"## 불일치 {len(bad)}건 (앞 40)"); [log("  " + str(b)) for b in bad[:40]]
 log(f"## 새로 채울 행 {len(fill)}개 · 예상(E)→확정 전환 {len(conv)}개"); [log("  " + str(f[:4]) + " " + str({k: round(v, 1) for k, v in f[4].items() if v is not None})) for f in (conv[:15] + fill[:15])]
-log("## 건너뜀 샘플: " + str(skipped[:15]))
+log("## 건너뜀: " + str(skipped[:15]))
+if MODE == "check" and len(ST) <= 5:
+    for code, nm in ST:
+        log(f"## {nm} {code}: DART 산출 vs DB")
+        for per in ("202412","202503","202506","202509","202512","202603","202606","202609"):
+            dd = DETAIL.get((code, per)); ex = DB.get((code, per))
+            log(f"  {per} DART={dd} | DB(예상여부,매출,영업이익,순이익)={ex}")
 if MODE == "apply":
     rows = [(c, "Q", per, False, d.get("sales"), d.get("op"), d.get("ni"), "dart") for c, nm, per, fs, d in fill + conv]
     execute_values(cur, """insert into stock_earnings(code,freq,period,is_est,sales,op_profit,net_income,src) values %s
