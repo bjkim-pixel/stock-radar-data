@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       market:
-        description: '시장 (jp=도쿄 / hk=홍콩 / sh=상해 / sz=심천)'
+        description: '시장 (jp=도쿄 / hk=홍콩 / cn=상해+심천)'
         default: 'jp'
 permissions:
   contents: write
