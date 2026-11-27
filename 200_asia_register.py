@@ -15,7 +15,7 @@ for line in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "asia_
     if not line or line.startswith("#"): continue
     sym, name = line.split(None, 1)
     key = sym.lstrip("0") if ex == "HKS" else sym
-    code = have.get(key) or (f"{sym.zfill(4)}{SFX[ex]}" if ex == "HKS" else f"{sym}{SFX[ex]}")
+    code = have.get(key) or (f"{str(int(sym)).zfill(4)}{SFX[ex]}" if ex == "HKS" else f"{sym}{SFX[ex]}")
     n += 1
     cur.execute("insert into us_top_asia(code,excd,sym,rnk,name_ko) values(%s,%s,%s,%s,%s) on conflict(code) do nothing", (code, ex, sym, n, name))
 cur.execute("select excd,count(*) from us_top_asia group by 1 order by 1"); print("us_top_asia:", cur.fetchall())
