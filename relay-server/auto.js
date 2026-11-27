@@ -414,9 +414,11 @@ function createAuto(deps) {
     const [held, scr, pool] = await Promise.all([loadHeld(sid), loadScreener(P).catch(() => ({ date: null, map: {} })), D.ignitePool ? D.ignitePool(P) : Promise.resolve({ rows: [], get: () => [] })]);
     const stat = { pool: pool.rows.length, base: 0, flowPass: 0, errs: 0, ignite: true, scanAt: pool.scanAt || null, scanErr: pool.scanErr || null, hist: pool.size || 0 };
     const rejected = [], cand = [];
+    /* 거래대금 하한: 오전은 amtMinEok, amtPmFrom(기본 12:00) 이후는 amtMinEokPm(0이면 오전과 같음) */
+    const amtFloor = (+P.amtMinEokPm > 0 && min >= ST.tmin(P.amtPmFrom || '12:00')) ? +P.amtMinEokPm : (+P.amtMinEok || 0);
     for (const r of pool.rows) {
       if (!r || !r.code || EXCL_NAME.test(r.name || '') || (held && held.has(r.code)) || !(r.price > 0)) continue;
-      if ((+P.amtMinEok || 0) > 0 && !(r.amt >= P.amtMinEok * 1e8)) continue;
+      if (amtFloor > 0 && !(r.amt >= amtFloor * 1e8)) continue;
       const ev = IG.evaluate(r, pool.get(r.code), { ...P, optMin: 0 }, min);
       if (ev.pass) cand.push({ r, ev }); else if (ev.fails.length && rejected.length < 400) rejected.push({ code: r.code, name: r.name, changePct: r.changePct, fails: ev.fails, amt: r.amt });
     }

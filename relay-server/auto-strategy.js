@@ -69,6 +69,8 @@ const SCHEMA = {
     F('riseMinPct', '장초 상승 포착', '그 구간 최소 상승', 'num', 0.8, { min: 0.2, max: 5, step: 0.1, unit: '%' }),
     F('amtSurge', '장초 상승 포착', '분당 거래대금: 그 전(09:00~) 평균 대비 배수', 'num', 2, { min: 1, max: 10, step: 0.5, unit: '배' }),
     F('minMinAmtKrw', '장초 상승 포착', '최근 분당 거래대금 하한', 'num', 30000000, { min: 5000000, max: 1000000000, step: 5000000, unit: '원' }),
+    F('amtMinEokPm', '장초 상승 포착', '오후 거래대금 하한(아래 시각부터 적용 · 0=오전 하한과 같음 · 오전은 위 "대상"의 거래대금 하한)', 'num', 100, { min: 0, max: 5000, step: 10, unit: '억원' }),
+    F('amtPmFrom', '장초 상승 포착', '오후 거래대금 하한을 적용하는 시각', 'time', '12:00', { min: '09:30', max: '15:00' }),
     F('pullbackMaxPct', '장초 상승 포착', '보조: 당일 고가 대비 눌림 허용', 'num', 1.5, { min: 0.5, max: 5, step: 0.5, unit: '%' }),
     F('optMin', '장초 상승 포착', '보조 조건(VWAP 위·고가 근처·체결강도·프로그램) 최소 충족 수', 'num', 2, { min: 0, max: 4, step: 1, unit: '개' }),
     F('flatOn', '장초 상승 포착', '당일 청산(지정 시각에 남은 보유분 전량 시장가 매도)', 'bool', false),
@@ -314,7 +316,7 @@ const BUILTIN0 = [
   { id: 'closing-default', name: '장중 강세 이월', kind: 'closing', builtin: true, desc: CLOSE_DESC },
 ];
 /* 장초 상승 포착("시동", 2026-11-25) 기본값: 중소형(시총 3천억~4조 미만)을 09:15부터 10분 간격으로 훑어 종목당 100만원·하루 5종목, 15:14 전량 청산(가상) */
-const IGNITE_PRESET = { selector: 'ignite', capMinEok: 3000, capMaxEok: 40000, amtMinEok: 30, maTrend: false, smx: 'off', flowForeign: 'ignore', flowInst: 'ignore', flowProgram: 'ignore', altFlowOn: false, kwOn: false,
+const IGNITE_PRESET = { selector: 'ignite', capMinEok: 3000, capMaxEok: 40000, amtMinEok: 50, amtMinEokPm: 100, amtPmFrom: '12:00', maTrend: false, smx: 'off', flowForeign: 'ignore', flowInst: 'ignore', flowProgram: 'ignore', altFlowOn: false, kwOn: false,
   selectAt: '09:15', noticeAfter: 0, approveWindow: 5, roundMin: 10, roundEnd: '14:30', openRiseMax: 6, cttrMin: 120, poolTop: 5, notifyTop: 5, sectorMax: 2, maxBuys: 5, maxTries: 1, retryUnfilled: false, perStockKrw: 1000000, approval: 'auto',
   buyType: 'market', stopPct: 3, rr: 2, minRr: 0, tpStyle: 'fixed', tp1Pct: 6, tp2Pct: 9, tp1Share: 50, runnerPct: 30, ratchet: true, trail: 2, flatOn: false, flatAt: '15:14', execMode: 'paper' };
 const BUILTIN = BUILTIN0.concat([{ id: 'ignite-default', name: '장초 상승 포착(시동)', kind: 'intraday', builtin: true, off: true, preset: IGNITE_PRESET, desc: '시총 3천억~4조 미만 중소형주 중 처음부터 많이 뜬 종목은 빼고, 09시 이후 거래가 붙으며 오르기 시작하는 종목을 09:15부터 10분마다 포착해 가상 매수(종목당 100만원·하루 5종목) · 15:14 전량 청산' }]);
@@ -357,6 +359,8 @@ function createStore({ sbGet, sbWrite, now = Date.now, cacheMs = 30000 }) {
     if (r.id === 'intraday-default' && pr.maAbove120 === undefined) pr = { ...pr, maAbove120: true, maTrend: false, smxWin: '63' };
     // 2026-11-26: 장초 상승 포착은 손절·익절 매도 계획만으로 거래 — 예전 기본(15:14 당일 청산)을 쓰던 저장본은 한 번 끔(다시 켜려면 청산 시각을 15:14 이외로 저장)
     if (pr.selector === 'ignite' && pr.flatOn === true && pr.flatAt === '15:14') pr = { ...pr, flatOn: false };
+    // 2026-11-27: 장초 상승 포착 거래대금 하한을 오전 50억·12시 이후 100억으로 — 예전 기본값(30억) 그대로인 저장본만 50억으로 올림(직접 바꾼 값은 유지)
+    if (pr.selector === 'ignite' && +pr.amtMinEok === 30) pr = { ...pr, amtMinEok: 50 };
     const v = validate(r.kind, pr);
     // 2026-11-26: 가상매매(execMode paper) 전략은 승인 과정은 그대로 두되 항상 알림 직후 자동 승인 — 승인 대기·누락으로 체결이 안 돼 성과를 못 보는 일을 막음(실전·드라이런은 설정 그대로)
     if (v.val && sideOfParams(v.val) === 'paper') { if ('approval' in v.val) v.val.approval = 'auto'; if ('closeBuyApproval' in v.val) v.val.closeBuyApproval = 'auto'; }

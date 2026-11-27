@@ -44,7 +44,7 @@ async function rig(iExtra = {}) {
 }
 
 test('09:15 포착 → 자동 가상 매수(종목당 100만원) → 15:14 남은 보유분 전량 시장가 청산', async () => {
-  const { c, A, runs, sent, date, at } = await rig({ cttrMin: 100, flatOn: true });
+  const { c, A, runs, sent, date, at } = await rig({ cttrMin: 100, flatOn: true, amtMinEok: 30 });
   try {
   at(9, 15); c.st.price = 10000;
   await A.tick();
@@ -69,4 +69,13 @@ test('09:15 포착 → 자동 가상 매수(종목당 100만원) → 15:14 남�
   assert.ok(!S2.positions.some(p => p.code === '035420' && p.qty > 0), '15:14 이후 전량 청산: ' + JSON.stringify(S2.positions));
   assert.ok(sent.some(t => /당일 청산/.test(t)));
   } finally { await c.close(); }
+});
+
+test('거래대금 하한: 오전(09~12시) 50억 · 12시부터 100억 — 기본값과 선정 시각별 적용', async () => {
+  const S = require('../auto-strategy'), b = S.BUILTIN.find(x => x.id === 'ignite-default'), P = S.validate(b.kind, b.preset).val;
+  assert.equal(P.amtMinEok, 50); assert.equal(P.amtMinEokPm, 100); assert.equal(P.amtPmFrom, '12:00');
+  // 예전 기본값(30억)이 그대로 저장된 시동 전략은 50억으로 올라가고, 직접 바꾼 값(70억)은 유지
+  const mk = amt => S.createStore({ sbGet: async p => p.startsWith('auto_strategies?') ? [{ id: 'x', name: 'x', kind: 'intraday', enabled: true, archived: false, version: 1, params: { ...b.preset, amtMinEok: amt } }] : [], sbWrite: async () => {} });
+  assert.equal((await mk(30).list()).find(s => s.id === 'x').params.amtMinEok, 50);
+  assert.equal((await mk(70).list()).find(s => s.id === 'x').params.amtMinEok, 70);
 });
