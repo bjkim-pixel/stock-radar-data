@@ -2355,7 +2355,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="legend" id="dDartMkLg"></div>
     <div class="legend" id="dOpgLg" style="margin-top:-2px"></div>
     <div class="chart" id="dPrice2"></div>
-    <div class="note">검은 선은 종가이고, 종가선 위의 도형은 DART 공시 접수일입니다 — <b>▲ 수주(단일판매·공급계약) · ◆ 자사주 취득 결정 · ■ 증설·시설투자·지분 투자</b>. 도형을 길게 누르거나 마우스를 올리면 내용이 나옵니다. 공시는 DART 수집을 시작한 2026-10-22 이후 접수분만 표시됩니다(과거 백필 없음).<br>차트 아래쪽의 <b>막대는 분기 영업이익의 전분기 대비 증가율</b>이며 분기 말일(3·6·9·12월 말)에 놓습니다. 확정 실적과 네이버 증권 컨센서스 예상(E, 점선·연한 막대 — 아직 오지 않은 분기 말일은 오른쪽 빈 구간에 표시)을 함께 그렸고, 막대 위에 올리면 영업이익 금액이 나옵니다. 직전 분기가 적자(또는 0)라 비율을 낼 수 없으면 <b>흑전·적지</b>, 흑자에서 적자로 바뀌면 <b>적전</b>입니다.</div>
+    <div class="note">검은 선은 종가이고, 종가선 위의 도형은 DART 공시 접수일입니다 — <b>▲ 수주(단일판매·공급계약) · ◆ 자사주 취득 결정 · ■ 증설·시설투자·지분 투자</b>. 도형을 길게 누르거나 마우스를 올리면 내용이 나옵니다. 공시는 DART 수집을 시작한 2026-10-22 이후 접수분만 표시됩니다(과거 백필 없음).<br>차트 아래쪽의 <b>막대는 분기 영업이익의 전분기 대비 증가율(크기 기준, 가장 큰 막대 = 종가선 최고점 높이)</b>이며 분기 말일(3·6·9·12월 말)에 놓습니다. 감소는 파란 막대에 −% 로 표시합니다. 확정 실적과 네이버 증권 컨센서스 예상(E, 점선·연한 막대 — 아직 오지 않은 분기 말일은 오른쪽 빈 구간에 표시)을 함께 그렸고, 막대 위에 올리면 영업이익 금액이 나옵니다. 직전 분기가 적자(또는 0)라 비율을 낼 수 없으면 <b>흑전·적지</b>, 흑자에서 적자로 바뀌면 <b>적전</b>입니다.</div>
   </div>
 
   <details class="card" id="dDartCard" style="display:none"><summary style="cursor:pointer;list-style:none"><h3 style="margin:0">공시 <span class="r" id="dDartSub">DART · 최근 1개월</span></h3></summary><div style="margin-top:8px"></div>
@@ -4748,7 +4748,7 @@ function lineChart(host,series,labels,opt={}){
     if(opt.tickGap&&(X(i)-lastX<opt.tickGap||(i!==0&&i!==labels.length-1&&X(labels.length-1)-X(i)<opt.tickGap*0.7)))return;lastX=X(i);
     const t=el("text",{x:X(i),y:H-6,"text-anchor":i===0?"start":i===labels.length-1?"end":"middle",
       "font-size":8.5,fill:css("--ink-3")});t.textContent=monthLabel(labels[i]);svg.appendChild(t);});}
-  if(opt.opBars&&opt.opBars.length)opgDraw(svg,opt.opBars,P,W,H,X);   /* 분기 영업이익 막대(분기 말일) — 선 뒤에 깔림 */
+  if(opt.opBars&&opt.opBars.length)opgDraw(svg,opt.opBars,P,W,H,X,Y(Math.max(...all)));   /* 분기 영업이익 막대(분기 말일) — 선 뒤에 깔림 */
   /* opt.shadeFrom = 인덱스: 그 이후 구간을 옅게 칠함(예: 고점 이후) */
   if(opt.shadeFrom!=null&&opt.shadeFrom<labels.length-1){
     svg.appendChild(el("rect",{x:X(opt.shadeFrom),y:P.t,width:X(labels.length-1)-X(opt.shadeFrom),height:H-P.t-P.b,
@@ -10236,21 +10236,21 @@ function opgBars(rp){
     bars.push({...x,i});});
   return {bars,pad};
 }
-function opgDraw(svg,bars,P,W,H,X){
-  const ph=H-P.t-P.b,bt=P.t+ph*.50,bb=H-P.b-30,mid=(bt+bb)/2,amp=(bb-bt)/2-24,cap=100;
-  svg.appendChild(el("line",{x1:P.l,x2:W-P.r,y1:mid,y2:mid,stroke:css("--axis"),"stroke-width":1,"stroke-dasharray":"3 5",opacity:.7}));
-  const z=el("text",{x:W-P.r+4,y:mid+5,"font-size":15,fill:css("--ink-3")});z.textContent="0%";svg.appendChild(z);
+function opgDraw(svg,bars,P,W,H,X,yTop){
+  /* 막대는 차트 바닥(가로축)에서 시작, |증가율|이 가장 큰 막대 높이 = 종가선 최고점 높이(yTop). 감소는 파란색·음수 표기 */
+  const y0=H-P.b,full=Math.max(20,y0-yTop),cap=300,mx=Math.max(20,...bars.filter(b=>b.g!=null).map(b=>Math.min(cap,Math.abs(b.g))));
   bars.forEach(b=>{
     const cx=X(b.i),w=46,col=css(b.g!=null&&b.g<0?"--down":"--up"),tip=`${b.p.slice(0,4)}.${b.p.slice(4)}${b.est?" 예상(E)":""} 영업이익 ${fmtEokJo(b.c)}`;
     const txt=(x,y,str,c,sz,wt)=>{const t=el("text",{x,y,"text-anchor":"middle","font-size":sz,"font-weight":wt,fill:c,stroke:css("--surface"),"stroke-width":4,"paint-order":"stroke"});t.textContent=str;svg.appendChild(t);return t;};
+    let top=y0;
     if(b.g!=null){
-      const gv=Math.max(-cap,Math.min(cap,b.g)),h=Math.max(3,Math.abs(gv)/cap*amp),y=gv>=0?mid-h:mid;
-      const r=el("rect",{x:cx-w/2,y,width:w,height:h,fill:col,"fill-opacity":b.est?.18:.55,rx:2});
+      const h=Math.max(3,Math.min(cap,Math.abs(b.g))/mx*full);top=y0-h;
+      const r=el("rect",{x:cx-w/2,y:top,width:w,height:h,fill:col,"fill-opacity":b.est?.18:.5,rx:2});
       if(b.est){r.setAttribute("stroke",col);r.setAttribute("stroke-dasharray","5 3");r.setAttribute("stroke-width","1.8");}
       const tt=el("title",{});tt.textContent=tip;r.appendChild(tt);svg.appendChild(r);
-      txt(cx,gv>=0?y-6:y+h+17,(b.g>=0?"+":"")+N(b.g,0)+"%"+(b.tag?" "+b.tag:""),col,17,700);
-    }else{const t=txt(cx,mid-8,b.tag,css(b.tag==="흑전"?"--up":"--down"),18,700);const tt=el("title",{});tt.textContent=tip;t.appendChild(tt);}
-    txt(cx,H-P.b-8,b.p.slice(2,4)+"."+b.p.slice(4)+(b.est?" E":""),css(b.est?"--ink":"--ink-2"),16,b.est?700:500);
+      txt(cx,top-6,(b.g>=0?"+":"")+N(b.g,0)+"%"+(b.tag?" "+b.tag:""),col,17,700);
+    }else{const t=txt(cx,y0-34,b.tag,css(b.tag==="흑전"?"--up":"--down"),18,700);const tt=el("title",{});tt.textContent=tip;t.appendChild(tt);}
+    txt(cx,y0-8,b.p.slice(2,4)+"."+b.p.slice(4)+(b.est?" E":""),css(b.est?"--ink":"--ink-2"),16,b.est?700:500);
   });
 }
 async function renderOpgCard(){
