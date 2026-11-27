@@ -13832,8 +13832,8 @@ function auQuantHtml(p){
   const m=p.m||{},ok=v=>v!=null&&isFinite(v),eok=v=>{const a=Math.abs(v);return (v<0?"-":"")+(a>=1e8?N(a/1e8,a>=1e10?0:1)+"억":N(a/1e4,0)+"만")+"원";};
   const L=[],amt=+p.amt||0,pct=v=>amt>0?` (거래대금의 ${N(v/amt*100,1)}%)`:"";
   const fl=[["외국인",m.fAmt],["기관",m.oAmt],["프로그램",m.pAmt]].filter(x=>ok(x[1]));
-  if(fl.length)L.push(`<b>수급</b> `+fl.map(([k,v])=>`${k} <span class="${v>0?"up":v<0?"down":""}">${v>0?"+":""}${eok(v)}</span>`).join(" · ")+(amt>0?` <span class="faint">/ 거래대금 ${eok(amt)}</span>`:""));
-  const sum=fl.reduce((a,x)=>a+Math.max(0,x[1]),0);if(fl.length&&amt>0&&sum>0)L.push(`<b>순매수 합</b> ${eok(sum)}${pct(sum)}`);
+  if(fl.length){const tot=fl.reduce((a,x)=>a+x[1],0);
+    L.push(`<b>수급</b> `+fl.map(([k,v])=>`${k} <span class="${v>0?"up":v<0?"down":""}">${v>0?"+":""}${eok(v)}</span>`).join(" · ")+(fl.length>1?` · <b>합계 <span class="${tot>0?"up":tot<0?"down":""}">${tot>0?"+":""}${eok(tot)}</span></b>`:"")+(amt>0?` <span class="faint">/ 거래대금 ${eok(amt)}${tot>0?` 중 ${N(tot/amt*100,1)}%`:""}</span>`:""));}
   const px=[];
   if(ok(m.cttr))px.push(`체결강도 ${N(m.cttr,0)}%`);
   if(ok(p.changePct))px.push(`당일 ${p.changePct>0?"+":""}${N(p.changePct,2)}%`);
