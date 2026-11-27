@@ -1316,6 +1316,11 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="gm">글로벌 시황</button>
       <button data-v="grk">글로벌 상승률</button>
       <button data-v="sector">업종·테마</button></div></div>
+    <div class="ng" data-g="info"><div class="ngh" role="button" tabindex="0" aria-expanded="true">종목 정보</div><div class="ngi">
+      <button data-v="detail">한국 종목 상세</button>
+      <button data-v="etf">한국 ETF 상세</button>
+      <button data-v="ovs">해외 종목 상세</button>
+      <button data-v="ovse">해외 ETF 상세</button></div></div>
     <div class="ng" data-g="flow"><div class="ngh" role="button" tabindex="0" aria-expanded="true">수급</div><div class="ngi">
       <button data-v="sm">스마트머니</button>
       <button data-v="fw">외국인 추종</button>
@@ -1332,11 +1337,6 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="etfhub">ETF</button>
       <button data-v="pair">짝꿍매매</button>
       <button data-v="sw">국면 전략</button></div></div>
-    <div class="ng" data-g="info"><div class="ngh" role="button" tabindex="0" aria-expanded="true">종목 정보</div><div class="ngi">
-      <button data-v="detail">한국 종목 상세</button>
-      <button data-v="etf">한국 ETF 상세</button>
-      <button data-v="ovs">미국 종목 상세</button>
-      <button data-v="ovse">미국 ETF 상세</button></div></div>
     <div class="ng" data-g="mgmt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">관리</div><div class="ngi">
       <button data-v="perf">전략 성과</button>
       <button data-v="perf2">전략 성과2</button>
@@ -1986,7 +1986,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="note" style="margin-top:8px" id="grkNote"></div></div>
 </section>
 <section id="v-ovs" class="hide">
-  <div class="dfrow" style="margin:12px 0 4px;gap:6px"><button class="btn ghost dnext" id="oBackTop">← 이전</button><span style="flex:1"></span><select id="ovsSel" class="df" title="해외 종목·ETF 선택 (ETF → 일반 종목, 가나다순)" style="flex:0 1 150px;max-width:150px"></select><button class="btn ghost dnext" id="ovsNext" title="목록 순서대로 다음 종목으로 이동">다음 →</button></div>
+  <div class="dfrow" style="margin:12px 0 4px;gap:6px"><button class="btn ghost dnext" id="oBackTop">← 이전</button><select id="ovsMkt" class="df" title="주식시장 선택(전체 포함)" style="flex:0 0 auto;width:auto;max-width:92px"><option value="all">전체</option><option value="US">미국</option><option value="HK">홍콩</option><option value="JP">일본</option><option value="SH">상해</option><option value="SZ">심천</option></select><span style="flex:1"></span><select id="ovsSel" class="df" title="해외 종목·ETF 선택 (ETF → 일반 종목, 가나다순)" style="flex:0 1 150px;max-width:150px"></select><button class="btn ghost dnext" id="ovsNext" title="목록 순서대로 다음 종목으로 이동">다음 →</button></div>
   <div class="card" id="ovsHead"><div class="load sk"></div></div>
   <div class="card" id="ovsInfoCard" style="margin-top:10px;display:none"><h3>종목 정보 <span class="r faint" style="font-weight:400">한국투자증권 KIS</span></h3><div id="ovsInfo"></div></div>
   <div class="card" style="margin-top:10px"><h3>시세 정보 <span class="r" id="ovsQtSub"></span></h3><div id="ovsQt"></div></div>
@@ -14943,7 +14943,7 @@ $("#grkKind").addEventListener("seg-change",e=>{S.grk.kind=e.detail;grkRender();
 $("#grkN").addEventListener("seg-change",e=>{S.grk.n=+e.detail;grkRender();});
 $("#grkLev").onchange=e=>{S.grk.lev=e.target.value;grkRender();};
 $("#grkAmt").onchange=e=>{S.grk.amt=+e.target.value;grkRender();};
-S.ovs={code:null,list:null,d:[],m:{},rt:[],per:"126",pack:null};
+S.ovs={code:null,list:null,d:[],m:{},rt:[],per:"126",pack:null,mkt:"all"};
 const OVS_EX={NAS:"나스닥",NYS:"뉴욕",AMS:"아멕스",HKS:"홍콩",TSE:"도쿄",SHS:"상해",SZS:"심천"};
 const OVS_CS={USD:"$",HKD:"HK$",JPY:"¥",CNY:"CN¥"};
 function ovsDec(){return S.ovs.m.ccy==="JPY"?0:2;}
@@ -14961,14 +14961,18 @@ async function ovsPack(){
   return S.ovs.pack;
 }
 function ovsNm(x){return x.name_ko||x.name_en||x.code;}
+const OVS_MK={US:["NAS","NYS","AMS"],HK:["HKS"],JP:["TSE"],SH:["SHS"],SZ:["SZS"]};
+function ovsMkOf(ex){return Object.keys(OVS_MK).find(k=>OVS_MK[k].includes(ex))||"all";}
 function ovsSelFill(){
-  const L=S.ovs.list||[],sel=$("#ovsSel");if(!sel)return;
+  const mk=S.ovs.mkt||"all",L=(S.ovs.list||[]).filter(x=>mk==="all"||ovsMkOf(x.kis_excd)===mk),sel=$("#ovsSel");if(!sel)return;
+  const ms=$("#ovsMkt");if(ms&&ms.value!==mk)ms.value=mk;
   const opt=x=>`<option value="${escH(x.code)}">${escH(ovsNm(x))} (${escH(x.code)} · ${OVS_EX[x.kis_excd]||x.kis_excd})</option>`;
   const by=f=>L.filter(f).sort((a,b)=>ovsNm(a).localeCompare(ovsNm(b),"ko"));
   sel.innerHTML=`<optgroup label="ETF">${by(x=>x.is_etf).map(opt).join("")}</optgroup><optgroup label="일반 종목">${by(x=>!x.is_etf).map(opt).join("")}</optgroup>`;
   if(S.ovs.code)sel.value=S.ovs.code;
 }
 $("#ovsSel").addEventListener("change",e=>go("ovs",e.target.value));
+$("#ovsMkt").addEventListener("change",e=>{S.ovs.mkt=e.target.value;ovsSelFill();const sel=$("#ovsSel");if(sel&&sel.options.length&&sel.value!==S.ovs.code)go("ovs",sel.options[0].value);});
 $("#ovsNext").onclick=()=>{const o=[...$("#ovsSel").options];if(!o.length)return;const i=o.findIndex(x=>x.value===S.ovs.code);go("ovs",o[(i+1)%o.length].value);};
 $("#ovsPer").addEventListener("seg-change",e=>{S.ovs.per=e.detail;ovsCharts();});
 $("#oBack").onclick=$("#oBackTop").onclick=()=>go(S.ovsBack||"gm");
@@ -14987,7 +14991,8 @@ async function ovsLoad(code){
   O.m=m[0];O.d=d;O.rt=rt;
   if(O.m.is_etf)O.lastEtf=code;else O.lastStk=code;
   $$("#tabs button").forEach(x=>{if(x.dataset.v==="ovs"||x.dataset.v==="ovse")x.setAttribute("aria-selected",x.dataset.v===(O.m.is_etf?"ovse":"ovs"));});navSync();
-  {const t=document.querySelector("#v-ovs>.pg-title");if(t)t.textContent=O.m.is_etf?"미국 ETF 상세":"미국 종목 상세";}
+  {const t=document.querySelector("#v-ovs>.pg-title");if(t)t.textContent=O.m.is_etf?"해외 ETF 상세":"해외 종목 상세";}
+  if((O.mkt||"all")!=="all"&&ovsMkOf(O.m.kis_excd)!==O.mkt){O.mkt="all";ovsSelFill();}
   const sel=$("#ovsSel");if(sel)sel.value=code;
   const etf=!!O.m.is_etf;
   $("#ovsWtCard").style.display=etf?"none":"";
