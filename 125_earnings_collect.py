@@ -109,7 +109,7 @@ cur.execute("select distinct code from stock_earnings where (freq='Q' and period
 have=set(r[0] for r in cur.fetchall())
 ok=fail=nrows=est=0; failed=[]; newc=0
 # 덮어쓰기 규칙: est 모드=기존 예상(E) 행만 / actual 모드=예상(E) 행이거나 확정 구간 밖(2026Q3~, 2026 연간~) 행
-COND="(stock_earnings.is_est or (stock_earnings.freq='Q' and stock_earnings.period>'%s') or (stock_earnings.freq='A' and stock_earnings.period>'%s'))"%(FROZEN_Q,FROZEN_A)
+COND="(stock_earnings.src is distinct from 'dart') and (stock_earnings.is_est or (stock_earnings.freq='Q' and stock_earnings.period>'%s') or (stock_earnings.freq='A' and stock_earnings.period>'%s'))"%(FROZEN_Q,FROZEN_A)
 for i,code in enumerate(codes,1):
     try:
         full=(MODE=="actual" and code not in have)
