@@ -1,11 +1,14 @@
-name: "[수집] 종목 예상실적(컨센서스) | 평일 20:10 KST | 네이버"
-# 네이버 컨센서스(isConsensus=Y)만 갱신. 확정(is_est=false) 행은 건드리지 않습니다.
+name: "[수집] 종목 실적·예상실적(확정+컨센서스, BPS 포함) | 평일 20:10 KST | 네이버"
+# 네이버 기준 일원화: 확정 고정선(분기 2026Q2·연간 2025) 이후 열만 갱신(예상 E → 네이버가 확정 처리하면 확정으로 전환). 고정선 이전 행은 건드리지 않습니다.
 on:
   workflow_dispatch:
     inputs:
       limit:
         description: '테스트용 종목 수 제한(0=전체)'
         default: '0'
+      only:
+        description: '점검용: 쉼표로 지정한 종목코드만(비우면 전체)'
+        default: ''
   schedule:
     - cron: '10 11 * * 1-5'   # 20:10 KST 평일(장 마감 후 다른 수집·계산 액션이 끝난 뒤)
 permissions:
@@ -25,6 +28,8 @@ jobs:
         with: {python-version: "3.11"}
       - run: pip install psycopg2-binary requests
       - name: Collect (est)
+        env:
+          ONLY_CODES: ${{ github.event.inputs.only }}
         run: python 125_earnings_collect.py est "${{ github.event.inputs.limit || '0' }}"
       - name: Publish report
         if: always()

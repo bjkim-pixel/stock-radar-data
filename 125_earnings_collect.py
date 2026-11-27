@@ -3,7 +3,7 @@
   actual : KIS 확정 실적(손익계산서·재무비율, 분기는 누적→단일 분기 환산). 실적 시즌(5·8·11월 1~20일, 2~3월, 4월 초)에만 실행.
            ★ 확정 구간(분기 2026Q2 이하, 연간 2025 이하)은 DB 값을 더 이상 API로 갱신하지 않음 — 이미 저장된 확정 행은 절대 덮어쓰지 않고,
              그 구간 행이 하나도 없는 신규 종목만 한 번 채움(예상(E)로 남은 행은 확정값으로 교체).
-  est    : 네이버 컨센서스(isConsensus=Y) 예상치만 평일 매일. 확정(is_est=false) 행은 건드리지 않음.
+  est    : 네이버(예상+확정) 평일 매일. 확정 고정선(분기 2026Q2·연간 2025) 이후 열만 갱신 — 컨센서스는 E, 네이버가 확정으로 바꾼 열은 확정(is_est=false)으로 전환, BPS 포함. 고정선 이전 행은 건드리지 않음.
 대상: stocks 중 is_active & security_type='STOCK'. 환경변수: KIS_APP_KEY/SECRET(actual), SUPABASE_DB_URL
 """
 import os,sys,time,importlib,requests,psycopg2
@@ -61,9 +61,11 @@ def build(code,full):
         for c in cols:
             k=c["key"]
             if int(k[:4])<FROM_YEAR: continue
-            if MODE=="est" and c.get("isConsensus")!="Y": continue
+            if MODE=="est" and c.get("isConsensus")!="Y" and frozen(fq,k): continue   # 확정 고정선 이전 확정 열은 건드리지 않음(고정선 이후는 확정 열도 갱신)
             g=lambda t:num((rows.get(t,{}).get(k) or {}).get("value"))
-            merge(out,(fq,k),{"sales":g("매출액"),"op_profit":g("영업이익"),"net_income":g("당기순이익"),"eps":g("EPS"),"roe":g("ROE"),"dps":g("주당배당금")},c.get("isConsensus")=="Y","naver")
+            vals={"sales":g("매출액"),"op_profit":g("영업이익"),"net_income":g("당기순이익"),"eps":g("EPS"),"bps":g("BPS"),"roe":g("ROE"),"dps":g("주당배당금")}
+            if all(v is None for v in vals.values()): continue
+            merge(out,(fq,k),vals,c.get("isConsensus")=="Y","naver")
     if MODE=="est": return out
     # 2) KIS 확정 실적 (네이버보다 우선: 매출·영업이익·순이익·EPS·BPS·ROE)
     ia=kis("/uapi/domestic-stock/v1/finance/income-statement","FHKST66430200",code,"0")
@@ -100,13 +102,14 @@ cur.execute(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),"125_ea
 cur.execute("select code from stocks where is_active and security_type='STOCK' order by code")
 codes=[r[0] for r in cur.fetchall()]
 if LIMIT: codes=codes[:LIMIT]
+if os.environ.get("ONLY_CODES"): codes=[c for c in os.environ["ONLY_CODES"].replace(" ","").split(",") if c]   # 점검용: 지정 종목만
 print("대상",len(codes),"종목",flush=True)
 # 확정 구간 행이 하나도 없는 종목 = 신규 종목 → actual 모드에서 한 번만 전 구간 적재
 cur.execute("select distinct code from stock_earnings where (freq='Q' and period<=%s) or (freq='A' and period<=%s)",(FROZEN_Q,FROZEN_A))
 have=set(r[0] for r in cur.fetchall())
 ok=fail=nrows=est=0; failed=[]; newc=0
 # 덮어쓰기 규칙: est 모드=기존 예상(E) 행만 / actual 모드=예상(E) 행이거나 확정 구간 밖(2026Q3~, 2026 연간~) 행
-COND="stock_earnings.is_est" if MODE=="est" else "(stock_earnings.is_est or (stock_earnings.freq='Q' and stock_earnings.period>'%s') or (stock_earnings.freq='A' and stock_earnings.period>'%s'))"%(FROZEN_Q,FROZEN_A)
+COND="(stock_earnings.is_est or (stock_earnings.freq='Q' and stock_earnings.period>'%s') or (stock_earnings.freq='A' and stock_earnings.period>'%s'))"%(FROZEN_Q,FROZEN_A)
 for i,code in enumerate(codes,1):
     try:
         full=(MODE=="actual" and code not in have)

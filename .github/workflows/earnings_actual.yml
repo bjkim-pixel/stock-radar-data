@@ -7,10 +7,11 @@ on:
       limit:
         description: '테스트용 종목 수 제한(0=전체)'
         default: '0'
-  schedule:
-    - cron: '30 11 1-20 5,8,11 *'   # 20:30 KST — 1·2·3분기 보고서(분기말+45일)
-    - cron: '30 11 * 2,3 *'        # 20:30 KST  4분기 잠정실적(2월)·사업보고서(3월 말)
-    - cron: '30 11 1-10 4 *'       # 20:30 KST  사업보고서 지연분
+  # schedule 중지: KIS 재무 API가 막혀(2026-11 확인) 확정 실적도 네이버 일원화(earnings_est.yml)로 이관
+  #schedule:
+  #  - cron: '30 11 1-20 5,8,11 *'   # 20:30 KST — 1·2·3분기 보고서(분기말+45일)
+  #  - cron: '30 11 * 2,3 *'        # 20:30 KST  4분기 잠정실적(2월)·사업보고서(3월 말)
+  #  - cron: '30 11 1-10 4 *'       # 20:30 KST  사업보고서 지연분
 permissions:
   contents: write
 concurrency:
