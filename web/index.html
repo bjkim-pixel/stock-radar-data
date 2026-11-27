@@ -1110,6 +1110,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-bd{font-style:normal;font-size:10px;font-weight:700;margin-left:4px;padding:1px 5px;border-radius:8px;background:var(--bg-2,rgba(128,128,128,.15));color:var(--ink-2)}.au-bd.warn{background:var(--warn);color:#fff}
 .au-sumt tr.au-go{cursor:pointer}.au-sumt tr.au-go:hover{background:var(--bg-2,rgba(128,128,128,.08))}
 .au-now{border-left:4px solid var(--warn)}.au-nowh{font-weight:800;margin-bottom:4px}
+.au-nmgo{display:inline-flex;align-items:center;gap:6px;cursor:pointer;border-radius:6px}.au-nmgo b{border-bottom:1px dashed var(--ink-3,#999)}.au-nmgo:hover{background:var(--bg-2,rgba(128,128,128,.1))}
 .au-nowr{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:4px 0;font-size:13px}.au-nowt{flex:1 1 220px}
 .au-chip{display:inline-block;padding:1px 8px;border-radius:999px;border:1px solid var(--border);font-size:11.5px;background:var(--surface-2);white-space:nowrap}
 .au-chip.ok{border-color:var(--good);color:var(--good)}.au-chip.bad{border-color:var(--crit);color:var(--crit)}.au-chip.now{border-color:var(--warn);color:var(--warn);font-weight:700}.au-chip.idle{opacity:.5}
@@ -1119,7 +1120,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 .au-no{display:inline-block;min-width:17px;height:17px;line-height:17px;margin-right:5px;padding:0 4px;box-sizing:border-box;border-radius:9px;background:var(--ink-3);color:#fff;font-size:10.5px;font-weight:700;text-align:center;vertical-align:1px;font-variant-numeric:tabular-nums}
 .au-no.done{background:var(--good)}.au-no.now{background:var(--warn)}.au-no.idle,.au-no.wait,.au-no.skip{background:var(--ink-3)}.au-no.miss{background:var(--ink-3);opacity:.7}
 .au-sec.au-s-done{border-left:4px solid var(--good)}.au-sec.au-s-now{border-left:4px solid var(--warn)}.au-sec.au-s-wait,.au-sec.au-s-idle,.au-sec.au-s-miss{border-left:4px solid var(--ink-3)}
-.au-sec{scroll-margin-top:70px}.au-flash{animation:auFlash 1.8s ease-out}
+.au-sec,[id^=au-fl-]{scroll-margin-top:70px}.au-flash{animation:auFlash 1.8s ease-out}
 @keyframes auFlash{0%{box-shadow:0 0 0 3px var(--warn)}100%{box-shadow:0 0 0 0 transparent}}
 .au-flow{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin-bottom:6px;font-size:12px}.au-flow span{padding:2px 8px;border-radius:6px;border:1px solid var(--border);color:var(--ink-3)}.au-flow span.on{border-color:var(--good);color:var(--ink);font-weight:600}.au-flow i{color:var(--ink-3);font-style:normal}
 .au-oc{border:1px solid var(--border);border-left:4px solid var(--ink-3);border-radius:8px;padding:8px 10px;margin-bottom:10px;background:var(--surface)}
@@ -13411,7 +13412,7 @@ function auNowLine(sid){
   else txt=D.decision?"주문할 종목 없음":"승인 대기";
   const chips=[];
   if(R.on)chips.push(`<span class="au-chip">오늘 매수 ${auPlaced(D)}/${R.cap}종목</span>`,R.next?`<span class="au-chip">${R.next.due?"검토 곧 시작":"다음 검토 "+auHM(R.next.t)} (${R.next.n}회차)</span>`:`<span class="au-chip faint">검토 종료</span>`);
-  return `<div class="au-nowr"><span class="au-letter">${trdEsc(auLetter(sid)||"·")}</span><b>${trdEsc(auName(sid))}</b><span class="au-nowt">${trdEsc(txt)} ${tm}</span>${chips.join("")}</div>`;
+  return `<div class="au-nowr"><span class="au-nmgo au-go" data-auscr="${trdEsc(sid)}" role="button" tabindex="0" title="아래 '전략별 종목·진행·선정 이유'의 이 전략으로 이동"><span class="au-letter">${trdEsc(auLetter(sid)||"·")}</span><b>${trdEsc(auName(sid))}</b></span><span class="au-nowt">${trdEsc(txt)} ${tm}</span>${chips.join("")}</div>`;
 }
 /* 종가베팅 한 줄: 아침 이월 매도 · 저녁 관찰·선정 · 승인 · 체결 대기 · 보유(20:00 이월 예정) */
 function auNowLineC(){
@@ -13429,13 +13430,13 @@ function auNowLineC(){
   else if(intra.length)txt=`장중 전환 ${intra.length}종목 — 장중 계획으로 손절·익절 감시`;
   else if(min<(T.cbWatch&&T.cbWatch.length?T.cbWatch[0]:T.cbAt))txt=P.closeBuyOn===false?"저녁 매수 꺼짐":`${auHM(T.cbWatch&&T.cbWatch.length?T.cbWatch[0]:T.cbAt)}부터 저녁 후보 관찰`;
   else txt=D&&D.carry!=null?`이월 전환 완료(${D.carry.length}종목)`:"오늘 남은 단계 없음";
-  return `<div class="au-nowr"><span class="au-letter">${trdEsc(auLetter(G.active.closing)||"N")}</span><b>${trdEsc(C.name||"종가베팅")}</b> ${auModeB(auModeOf(C),auDryOf(C.id))}<span class="au-nowt">${trdEsc(txt)} ${tm}</span></div>`;
+  return `<div class="au-nowr"><span class="au-nmgo au-go" data-auscr="closing" role="button" tabindex="0" title="아래 '전략별 종목·진행·선정 이유'의 이 전략으로 이동"><span class="au-letter">${trdEsc(auLetter(G.active.closing)||"N")}</span><b>${trdEsc(C.name||"종가베팅")}</b></span> ${auModeB(auModeOf(C),auDryOf(C.id))}<span class="au-nowt">${trdEsc(txt)} ${tm}</span></div>`;
 }
 const auUpdTx=()=>{const t=(TRD.au&&TRD.au.now)||trdNow(),d=new Date(t+9*3600e3),z=n=>String(n).padStart(2,"0");return `${z(d.getUTCMonth()+1)}/${z(d.getUTCDate())} ${z(d.getUTCHours())}:${z(d.getUTCMinutes())}`;};
 function auNowBar(){
   if(!TRD.au.tradingDay)return "";
   const ids=auIds(),cl=auCHere()?auNowLineC():"";if(!ids.length&&!cl)return "";
-  return `<div class="card au-now"><div class="au-nowh">지금 <span class="faint" style="font-size:11px">${trdEsc(auHMs(trdNow()))} · 단계 블록을 누르면 아래 자세한 진행으로 이동해요</span></div>${ids.map(auNowLine).join("")}${cl}</div>`;
+  return `<div class="card au-now"><div class="au-nowh">지금 <span class="faint" style="font-size:11px">${trdEsc(auHMs(trdNow()))} · 전략명을 누르면 아래 해당 전략으로 이동해요</span></div>${ids.map(auNowLine).join("")}${cl}</div>`;
 }
 /* ── 호가 막대(F3): 위 매도 3단계 + 아래 매수 10단계 — 두 패널(주문 시점/지금)이 같은 줄 수·같은 안내문 ── */
 function auBook(b,buy,title){
@@ -13794,8 +13795,8 @@ function auFlowHtml(){
   const A=TRD.au;if(!A)return "";
   const groups=[];
   for(const k of auTabKeys().filter(x=>x!=="all")){
-    if(k==="closing"){const rs=auCRuns();groups.push({tag:`${auCTag()}종가베팅`,runs:rs.map(r=>({D:r,P:((auStrat(r.sid)||{}).params)||{}})),pos:x=>x.skind==="closing"||auIsCSid(x.sid),tr:f=>auIsCSid(f.sid)});}
-    else{const D=auRun(k);groups.push({tag:auTag(k),runs:D?[{D,P:((auStrat(k)||{}).params)||{}}]:[],pos:x=>x.sid===k,tr:f=>f.sid===k});}
+    if(k==="closing"){const rs=auCRuns();groups.push({key:"closing",tag:`${auCTag()}종가베팅`,runs:rs.map(r=>({D:r,P:((auStrat(r.sid)||{}).params)||{}})),pos:x=>x.skind==="closing"||auIsCSid(x.sid),tr:f=>auIsCSid(f.sid)});}
+    else{const D=auRun(k);groups.push({key:k,tag:auTag(k),runs:D?[{D,P:((auStrat(k)||{}).params)||{}}]:[],pos:x=>x.sid===k,tr:f=>f.sid===k});}
   }
   const chip=(st,t,tt)=>`<span class="au-chip ${st}"${tt?` title="${trdEsc(tt)}"`:""}>${trdEsc(t)}</span>`;
   const won=v=>(v>0?"+":v<0?"-":"")+N(Math.abs(Math.round(v)),0)+"원";
@@ -13831,7 +13832,7 @@ function auFlowHtml(){
         <div class="au-chips" style="margin-top:4px">${chip("ok","선정")}${chip(...it.ap)}${chip(...it.od)}${chip(...hd)}${chip(...ex)}</div>
         ${it.why?`<div class="why"><b>선정 이유</b> ${trdEsc(it.why)}</div>`:it.old?'<div class="why faint">이전에 산 종목이 아직 보유 중이에요 — 손절·익절 감시 중</div>':""}</div>`;
     }).join("");
-    if(rows)out.push(`<div style="margin-top:10px"><div class="au-h4" style="margin:0 0 2px">${g.tag} <span class="faint" style="font-weight:400;font-size:11.5px">${items.length}종목</span></div>${rows}</div>`);
+    out.push(`<div style="margin-top:10px" id="au-fl-${trdEsc(g.key)}"><div class="au-h4" style="margin:0 0 2px">${g.tag} <span class="faint" style="font-weight:400;font-size:11.5px">${items.length}종목</span></div>${rows||'<div class="faint" style="font-size:12px;padding:2px 0 4px">오늘 선정된 종목이 아직 없어요</div>'}</div>`);
   }
   return `<div class="card"><h3>전략별 종목 · 진행 · 선정 이유 <span class="r faint" style="font-size:11px">선정 → 승인 → 체결 → 보유 → 청산</span></h3>${out.join("")||'<div class="faint" style="font-size:12.5px">오늘 선정되거나 보유 중인 종목이 아직 없어요. 후보가 뽑히면 여기에 단계별로 나타나요.</div>'}</div>`;
 }
@@ -14276,6 +14277,7 @@ function trdAutoHtml(){
 function auClick(t){
   let el;
   if((el=t.closest("a.au-nm"))){go("detail",el.dataset.code);return true;}
+  if((el=t.closest("[data-auscr]"))){const x=document.getElementById("au-fl-"+el.dataset.auscr);if(x){x.scrollIntoView({behavior:"smooth",block:"start"});x.classList.remove("au-flash");void x.offsetWidth;x.classList.add("au-flash");setTimeout(()=>x.classList.remove("au-flash"),1800);}return true;}
   if((el=t.closest("[data-austab]"))){TRD.auStab=el.dataset.austab||"all";TRD.auPick=null;trdAutoRender(true);const b=document.querySelector(".au-stb");if(b)b.scrollIntoView({block:"nearest"});return true;}
   if((el=t.closest("[data-austg]"))){TRD.auStg=TRD.auStg===el.dataset.austg?null:el.dataset.austg;trdAutoRender();return true;}
   if((el=t.closest("[data-aupw]"))){TRD.auPW=TRD.auPW||{rows:null};auPWLoad();trdAutoRender();return true;}
