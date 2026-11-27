@@ -28,12 +28,18 @@ def get(path):
             time.sleep(3 * (k + 1))   # 429 등 일시 제한 → 늦춰 재시도
         except Exception: time.sleep(1.5)
     return None
+# 네이버에 없는 종목은 직접 확인한 소개문(FnGuide)을 넣는다. 네이버에 생기면 아래 수집이 우선 덮어쓴다.
+MANUAL = {"688836.SS": ("로봇", "Yushu Technology Co.는 중국에 본사를 둔 기업으로, 주로 로봇 및 관련 부품의 연구, 개발, 생산 및 판매를 영위하고 있습니다. 이 회사의 주요 제품으로는 휴머노이드 로봇, 사족 보행 로봇, 그리고 관절 모듈, 정교한 손, 협동 로봇 팔, 센서 등의 로봇 부품이 있습니다. 이 회사의 제품은 주로 검사 및 측량, 소방 구조, 공공 서비스 등의 분야에서 사용됩니다. 이 회사는 주로 국내외 시장에서 사업을 영위하고 있습니다."),
+          "688820.SS": ("반도체 패키징·테스트", "SJ Semiconductor Corp는 주로 웨이퍼 레벨 패키징 및 집적 회로 테스트에 종사하는 회사입니다. 회사는 미드 세그먼트 실리콘 웨이퍼 처리, 웨이퍼 레벨 패키징, 멀티칩 통합 패키징 등의 서비스를 제공합니다. 회사의 서비스는 주로 고성능 컴퓨팅, 인공 지능, 데이터 센터, 자율 주행, 스마트폰 및 소비자 가전과 같은 최종 사용자 분야를 대상으로 합니다. 회사는 국내 및 해외 시장에서 사업을 운영하고 있습니다.")}
 ok = 0; fail = []; nos = 0
 for code, ex in ST:
     j = None
     for nc in cands(code, ex):
         j = get(nc)
         if j and (j.get("summary") or j.get("ownerInfoList")): break
+    if not j and code in MANUAL:
+        ind, txt = MANUAL[code]
+        cur.execute("update us_master set profile=%s where code=%s", (json.dumps({"summary": txt, "industry": ind, "owners": [], "src": "manual", "src_label": "FnGuide", "fetched": time.strftime("%Y-%m-%d")}, ensure_ascii=False), code)); ok += 1; continue
     if not j: fail.append(code); continue
     summ = re.sub(r"<br\s*/?>", "\n", (j.get("summary") or "")).strip(); summ = re.sub(r"\n{3,}", "\n\n", summ)
     owners = [{"n": o.get("investorName"), "sh": o.get("position"), "p": o.get("outstanding")} for o in (j.get("ownerInfoList") or []) if o.get("investorName")]

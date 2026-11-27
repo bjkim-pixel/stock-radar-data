@@ -15135,7 +15135,7 @@ function ovsProfile(){
   if(m.is_etf||!P)return;
   if(P.summary){
     $("#ovsIntro").innerHTML=(P.industry?`<div class="etf-tags" style="margin:0 0 8px"><span>${escH(P.industry)}</span></div>`:"")+escH(P.summary);
-    $("#ovsIntroSub").textContent="네이버 증권"+(P.fetched?` · ${P.fetched} 수집`:"");ic.style.display="";
+    $("#ovsIntroSub").textContent=(P.src_label||"네이버 증권")+(P.fetched?` · ${P.fetched} 수집`:"");ic.style.display="";
   }
   const ow=(P.owners||[]).filter(o=>o&&o.n);
   if(ow.length){
