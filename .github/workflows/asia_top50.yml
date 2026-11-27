@@ -1,0 +1,37 @@
+name: "[수시] 아시아 시총 상위 50 선별+백필 | 수동 | 홍콩·도쿄·상해·심천"
+# 199_asia_top50.py 로 거래소별 시총 상위 50을 고른 뒤, 그 종목만 2026-01-01부터 백필합니다(대만은 KIS 미지원이라 제외).
+on:
+  workflow_dispatch:
+    inputs:
+      select:
+        description: '상위 50 다시 선별 (true/false)'
+        default: 'true'
+permissions:
+  contents: write
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    env:
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - if: ${{ inputs.select == 'true' }}
+        run: python 199_asia_top50.py 2>&1 | tail -3
+      - run: python 176_us_collect.py --backfill --asia-only 2>&1 | tail -5
+      - run: cat asia_top50_report.md us_collect_report.md > asia_report.md || true
+        if: always()
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: asia-top50-report
+          file: asia_report.md
