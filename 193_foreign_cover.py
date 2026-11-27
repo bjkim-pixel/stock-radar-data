@@ -42,3 +42,11 @@ cur.execute("select stock_code, stock_name from etf_holdings_now where etf_code 
 log("- 일본·중국 ETF 보유종목 샘플(코드 | 이름):")
 for r in cur.fetchall(): log(f"  - {r[0]} | {r[1]}")
 open("foreign_cover.md", "w", encoding="utf-8").write("\n".join(L))
+cur.execute("""select coalesce(m.country,'(없음)'), count(*) filter (where h.c is null) no_h, count(*) filter (where h.c is not null) has_h
+ from etf_master m left join (select etf_code c from etf_holdings_now group by 1) h on h.c=m.code group by 1 order by 2 desc""")
+log("\n## C. etf_master 160개 중 보유종목이 저장된 ETF (국가별)")
+for r in cur.fetchall(): log(f"- {r[0]}: 보유종목 없음 {r[1]} / 있음 {r[2]}")
+cur.execute("select m.code,m.name from etf_master m where not exists(select 1 from etf_holdings_now h where h.etf_code=m.code) and m.country in ('일본','중국','미국') order by m.country,m.code")
+log("- 보유종목 없는 일본·중국·미국 ETF:"); 
+for r in cur.fetchall(): log(f"  - {r[0]} {r[1]}")
+open("foreign_cover.md", "w", encoding="utf-8").write("\n".join(L))
