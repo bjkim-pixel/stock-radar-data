@@ -26,6 +26,7 @@ jobs:
       - run: pip install psycopg2-binary requests
       - run: python 200_asia_register.py ${{ inputs.market }}
       - run: python 176_us_collect.py --backfill --asia-only 2>&1 | tail -5
+      - run: python 203_asia_names.py
       - name: Publish report
         if: always()
         uses: ./.github/actions/publish-report

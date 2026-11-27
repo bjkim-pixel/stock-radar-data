@@ -26,3 +26,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: asia_collect_report, path: us_collect_report.md}
+      - name: Names
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python 203_asia_names.py

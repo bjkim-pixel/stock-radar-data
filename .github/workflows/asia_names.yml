@@ -1,0 +1,25 @@
+name: "[수시] 아시아 종목명 채우기 | 수동 | KIS 마스터 한글명"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: kis-rest-batch
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - run: python 203_asia_names.py
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: asia-names-report
+          file: asia_names.md
