@@ -15493,11 +15493,11 @@ async function ovsF13(code){
   if(!code)return;
   let rows;
   try{
-    if(!F13.funds)F13.funds=await q("f13_fund","select=*&order=sort_no.asc&limit=200");
+    if(!F13.fm)F13.fm=await q("f13_fund","select=*&order=sort_no.asc&limit=200");
     rows=await q("v_f13_change",`select=cik,period,pct,act,shares,value,sh_prev,val_prev&ticker=eq.${encodeURIComponent(code)}&order=period.desc&limit=400`);
   }catch(e){return;}
   if(S.ovs.code!==code||!rows.length)return;
-  const fm={};F13.funds.forEach(f=>fm[f.cik]=f);
+  const fm={};F13.fm.forEach(f=>fm[f.cik]=f);
   const best={};rows.forEach(r=>{const f=fm[r.cik];if(f&&r.period===f.last_period&&!(best[r.cik]&&best[r.cik].act!=="exit"&&r.act==="exit"))best[r.cik]=r;});
   const L=Object.values(best).sort((a,b)=>(b.value||0)-(a.value||0)||(b.val_prev||0)-(a.val_prev||0));
   if(!L.length)return;
