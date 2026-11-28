@@ -129,6 +129,8 @@ def fix_unit(agg):
 def main():
     conn = psycopg2.connect(os.environ["SUPABASE_DB_URL"]); conn.autocommit = True; cur = conn.cursor()
     cur.execute(open(os.path.join(HERE, "231_f13.sql"), encoding="utf-8").read())
+    cur.execute("delete from f13_holding h using f13_filing f where h.cik=f.cik and h.period=f.period and f.n_pos<=2 and f.total_value<5e6")   # 빈 공시 정리
+    cur.execute("delete from f13_filing where n_pos<=2 and total_value<5e6")
     cur.execute("select cik, period, acc from f13_filing"); have = {(c, p): a for c, p, a in cur.fetchall()}
     win = window_periods(); log(f"# 13F 수집 {datetime.datetime.utcnow():%Y-%m-%d %H:%M} UTC · 대상 분기 {', '.join(map(str, win))} · 펀드 {len(FUNDS)}곳\n")
     new_filings = 0; skipped = []
