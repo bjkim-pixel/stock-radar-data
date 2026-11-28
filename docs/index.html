@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <!-- 2026-11-12 보안: 페이지가 통신할 수 있는 곳을 우리 서버(Supabase·relay)로 제한 — 혹시 악성 스크립트가 끼어들어도 로그인 토큰을 외부로 보내지 못하게 -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://frurnmrwuopvttoqdvgj.supabase.co https://kis-relay-server.onrender.com wss://kis-relay-server.onrender.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=0.79, viewport-fit=cover">
 <title>STOCK RADAR</title>
 <!-- PWA: 홈화면 설치 + 웹푸시 지원 -->
 <link rel="manifest" href="manifest.json">
@@ -579,6 +579,7 @@ select,input[type=date],input[type=number],input[type=text]{width:100%;backgroun
 .note{font-size:11.5px;color:var(--ink-3);margin-top:9px;line-height:1.6}
 .bar-top{font-size:11.5px;padding:7px 20px;text-align:center;color:var(--ink-2);
   border-bottom:1px solid var(--border)}
+#statusBar{box-sizing:border-box;min-width:var(--pw,100%)}   /* 2026-11-28: 화면이 넓어져도 상단 연결 바를 오른쪽 끝까지 */
 .bar-top.demo{background:color-mix(in srgb,var(--warn) 16%,var(--page))}
 .bar-top.live{background:color-mix(in srgb,var(--good) 12%,var(--page))}
 .bar-top.err{background:color-mix(in srgb,var(--crit) 14%,var(--page));color:var(--crit)}
