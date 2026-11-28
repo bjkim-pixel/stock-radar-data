@@ -46,6 +46,9 @@ jobs:
           python 21_sector_kis_refresh.py 2>&1 | tail -n 8 || true
           python 157_map_sectors.py >> div_universe.md || true
           python 132_dividend_collect.py 2>&1 | tail -n 12
+      - name: DB 용량 기록
+        if: always()
+        run: python -c "import os,psycopg2;c=psycopg2.connect(os.environ['SUPABASE_DB_URL']).cursor();c.execute(\"select pg_size_pretty(pg_database_size(current_database())),(select count(*) from stocks where security_type='STOCK'),(select count(distinct code) from stock_dividends)\");print('\n- DB 총 용량 · 운영 종목 · 배당 이력 종목:',c.fetchone())" >> div_universe.md
       - name: Publish report
         if: always()
         uses: ./.github/actions/publish-report
