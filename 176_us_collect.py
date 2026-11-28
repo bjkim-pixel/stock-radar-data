@@ -8,7 +8,7 @@ from psycopg2.extras import execute_values
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 KEY, SECRET = os.environ.get("KIS_APP_KEY", ""), os.environ.get("KIS_APP_SECRET", "")
 BASE = "https://openapi.koreainvestment.com:9443"
-START = "20260101"
+START = os.environ.get("US_START") or "20260101"   # US_START=20230101 처럼 지정하면 그 날짜부터 백필
 BACKFILL = "--backfill" in sys.argv
 US_EXTRA = "--us-extra-only" in sys.argv   # 사용자 추가 미국 종목(us_top_asia 의 NAS/NYS/AMS)만 처리
 ASIA_ONLY = "--asia-only" in sys.argv   # 시총 상위(us_top_asia) 종목만 처리
@@ -100,6 +100,7 @@ def main():
     except Exception:
         asia = []; usx = []
     targets = asia if ASIA_ONLY else (usx if US_EXTRA else targets + [c for c in usx if c not in targets])   # 아시아 종목은 월~금 장마감 뒤 별도 일정(asia_collect.yml, --asia-only)
+    if os.environ.get("US_ONLY"): targets = [c for c in targets if c in os.environ["US_ONLY"].split(",")]   # US_ONLY=SCHD,VYM 처럼 지정한 종목만
     cur.execute("select code,kis_excd,kis_sym,name_ko from us_master"); known = {r[0]: r[1:] for r in cur.fetchall()}
     log(f"# 해외 종목 수집 {datetime.datetime.utcnow():%Y-%m-%d %H:%M} UTC · {'백필' if BACKFILL else '일일'} · 대상 {len(targets)}개")
     ok, skipped, failed, nrows, nrights = 0, [], [], 0, 0

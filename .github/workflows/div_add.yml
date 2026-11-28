@@ -1,0 +1,43 @@
+name: "[수시] 고배당 페이지 준비2 | 국내 5종목 등록 + 미국 배당 ETF 4개 등록·2023년 백필"
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - name: 국내 5종목 등록(한국 고배당 ETF 구성종목)
+        run: |
+          python add_single_stock.py 122900 아이마켓코리아 KOSPI --start 20250901
+          python add_single_stock.py 123890 한국자산신탁 KOSPI --start 20250901
+          python add_single_stock.py 002460 HS화성 KOSPI --start 20250901
+          python add_single_stock.py 090350 노루페인트 KOSPI --start 20250901
+          python add_single_stock.py 060980 HL홀딩스 KOSPI --start 20250901
+      - name: 미국 배당 ETF 4개 등록
+        run: python 200_asia_register.py us
+      - name: 미국 배당 ETF 4개 수집(2023-01-01부터)
+        env:
+          US_START: "20230101"
+          US_ONLY: "SCHD,VYM,HDV,SPYD"
+        run: python 176_us_collect.py --backfill --us-extra-only 2>&1 | tail -15
+      - run: python 203_asia_names.py 2>&1 | tail -3
+      - run: python 239_div_analysis.py
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: div-report
+          file: div_analysis.md

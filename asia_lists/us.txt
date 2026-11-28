@@ -121,3 +121,7 @@ NAS WDC 웨스턴 디지털
 NAS INSM 인스메드
 NAS ECHO 에코스타
 AMS SLV ISHARES SILVER TRUST
+AMS SCHD 슈왑 미국 배당주 ETF
+AMS VYM 뱅가드 고배당수익률 ETF
+AMS HDV 아이쉐어즈 코어 고배당 ETF
+AMS SPYD SPDR 포트폴리오 S&P500 고배당 ETF
