@@ -1,0 +1,57 @@
+name: "[상시8] 미국 13F 공시 수집 | 공시철 매일·평소 주 1회 | SEC EDGAR"
+# 거장 펀드의 분기 보유종목(13F)을 SEC EDGAR에서 받아 f13_* 테이블에 저장합니다. 새 공시가 없으면 거의 바로 끝납니다.
+#   collect        — 새 공시 수집 + CUSIP→티커 매핑 (기본·예약 실행)
+#   register_dry   — 우리 DB에 없는 보유종목 후보 개수·목록 미리보기(저장 안 함)
+#   register_apply — 후보를 해외종목으로 등록 + KIS 조회·일봉 백필 + 이름 채우기
+#   force          — 이미 저장된 분기도 다시 받기
+on:
+  schedule:
+    - cron: "40 22 1-20 2,5,8,11 *"   # 공시철(2·5·8·11월 1~20일) 매일 07:40 KST
+    - cron: "40 22 * * 5"             # 평소 매주 토 07:40 KST
+  workflow_dispatch:
+    inputs:
+      step:
+        description: 'collect / register_dry / register_apply / force'
+        default: 'collect'
+permissions:
+  contents: write
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SEC_UA: ${{ secrets.SEC_UA }}
+      OPENFIGI_KEY: ${{ secrets.OPENFIGI_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - name: 수집 + 티커 매핑
+        if: ${{ github.event_name == 'schedule' || inputs.step == 'collect' || inputs.step == 'force' }}
+        run: |
+          python 231_13f_collect.py ${{ inputs.step == 'force' && '--force' || '' }} 2>&1 | tee run.log
+          python 232_13f_cusip.py 2>&1 | tee -a run.log
+          cat f13_report.md f13_cusip_report.md > report.md
+      - name: 등록 후보 미리보기
+        if: ${{ inputs.step == 'register_dry' }}
+        run: python 233_13f_register.py && cp f13_register_report.md report.md
+      - name: 해외종목 등록 + 백필
+        if: ${{ inputs.step == 'register_apply' }}
+        run: |
+          python 233_13f_register.py --apply && cp f13_register_report.md report.md
+          python 176_us_collect.py --backfill --us-extra-only 2>&1 | tail -8 > us_tail.txt
+          python 203_asia_names.py 2>&1 | tail -3 >> us_tail.txt || true
+          { echo; echo '## 수집 로그(끝부분)'; echo '```'; cat us_tail.txt; echo '```'; } >> report.md
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: f13-report
+          file: report.md
