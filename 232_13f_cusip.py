@@ -17,6 +17,7 @@ def figi(cs):
         except Exception as e:
             time.sleep(5); continue
         if r.status_code == 429: time.sleep(30 + i * 15); continue
+        if r.status_code >= 500: time.sleep(15 + i * 15); continue
         if r.status_code != 200: log(f"  OpenFIGI HTTP {r.status_code} {r.text[:80]}"); return None
         return r.json()
     return None
@@ -30,7 +31,10 @@ def main():
     for i in range(0, len(todo), BATCH):
         chunk = todo[i:i + BATCH]; res = figi([c for c, _, _ in chunk])
         if res is None:
-            log("- OpenFIGI 응답 없음 — 중단(다음 실행에서 이어서)"); break
+            fails = globals().get("_fails", 0) + 1; globals()["_fails"] = fails
+            if fails >= 5: log("- OpenFIGI 응답 없음 5회 연속 — 중단(다음 실행에서 이어서)"); break
+            continue
+        globals()["_fails"] = 0
         rows = []
         for (c, nm, _), r in zip(chunk, res):
             d = (r.get("data") or [None])[0] if isinstance(r, dict) else None

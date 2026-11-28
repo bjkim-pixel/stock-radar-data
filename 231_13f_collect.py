@@ -25,10 +25,8 @@ FUNDS = [
  (1350694, "브리지워터 어소시에이츠", "레이 달리오(설립)", "세계 최대급 헤지펀드. 글로벌 매크로. 13F는 ETF·대형주 위주", "BRIDGEWATER"),
  (1037389, "르네상스 테크놀로지스", "짐 사이먼스(설립, 2024 별세)", "수학자가 만든 퀀트 펀드. 알고리즘 매매로 수천 종목 보유", "RENAISSANCE"),
  (1608046, "국민연금공단(NPS)", "기금운용본부", "한국 국민연금. 미국 주식에도 대규모 분산 투자", "PENSION"),
- (1374170, "노르웨이 중앙은행(NBIM)", "니콜라이 탕겐(CEO)", "세계 최대 국부펀드(노르웨이 정부연기금). 전 세계 주식 분산", "NORGES"),
+ (1374170, "노르웨이 중앙은행(NBIM)", "니콜라이 탕겐(CEO)", "세계 최대 국부펀드(노르웨이 정부연기금). 전 세계 주식 분산. 6·12월 말 기준만 실제 공시", "NORGES"),
  (1549575, "달랄 스트리트(파브라이)", "모니시 파브라이", "버핏을 따르는 집중 가치투자자. 달랄 스트리트 LLC", "DALAL"),
- (1006438, "아팔루사 매니지먼트", "데이비드 테퍼", "부실채권·가치주 역발상 투자로 유명한 헤지펀드", "APPALOOSA"),
- (1079114, "그린라이트 캐피털", "데이비드 아인혼", "가치투자 + 공매도로 유명한 헤지펀드", "GREENLIGHT"),
  (949509, "오크트리 캐피털", "하워드 막스(공동회장)", "부실채권·대체투자 전문. 메모 『The Most Important Thing』 저자", "OAKTREE"),
  (921669, "칼 아이칸", "칼 아이칸", "기업사냥꾼 원조. 행동주의 투자의 대부", "ICAHN"),
  (1697748, "ARK 인베스트", "캐시 우드", "파괴적 혁신 ETF 운용사. 테슬라·코인베이스 등 혁신주 중심", "ARK"),
@@ -37,12 +35,10 @@ FUNDS = [
  (1423053, "시타델 어드바이저스", "켄 그리핀", "멀티 전략 헤지펀드·마켓메이커. 회전율이 매우 높음", "CITADEL"),
  (1179392, "투시그마 인베스트먼츠", "존 오버덱·데이비드 시겔", "데이터·AI 기반 퀀트 운용사", "TWO SIGMA"),
  (1009207, "D.E. 쇼", "데이비드 쇼", "컴퓨터공학자가 만든 퀀트·멀티전략 운용사", "SHAW"),
- (1698051, "포인트72", "스티브 코언", "SAC 캐피털 후신. 멀티 매니저 헤지펀드", "POINT72"),
+ (1603466, "포인트72", "스티브 코언", "SAC 캐피털 후신. 멀티 매니저 헤지펀드", "POINT72"),
  (1273087, "밀레니엄 매니지먼트", "이즈리얼 잉글랜더", "수백 개 팀이 운용하는 멀티 매니저 헤지펀드", "MILLENNIUM"),
  (1061165, "론 파인 캐피털", "스티븐 만델", "타이거 출신 롱숏 펀드. 소비·테크 중심", "LONE PINE"),
- (928617, "매버릭 캐피털", "리 에인슬리", "타이거 출신 롱숏 펀드", "MAVERICK"),
  (1138995, "글렌뷰 캐피털", "래리 로빈스", "헬스케어 중심 헤지펀드", "GLENVIEW"),
- (1034180, "마켈 그룹", "톰 가이너", "보험사 + 투자 지주사. ‘미니 버크셔’로 불림", "MARKEL"),
  (915191, "페어팩스 파이낸셜", "프렘 와트사", "‘캐나다의 버핏’ 와트사가 이끄는 보험·투자 지주사", "FAIRFAX"),
  (783412, "데일리 저널", "찰리 멍거(전 회장, 2023 별세)", "멍거가 운용하던 상장사의 투자 포트폴리오. 소수 종목 집중", "DAILY JOURNAL"),
  (1510387, "고담 에셋 매니지먼트", "조엘 그린블라트", "『주식시장을 이기는 작은 책』 저자. 마법공식 투자", "GOTHAM"),
@@ -55,8 +51,6 @@ FUNDS = [
  (1517137, "스타보드 밸류", "제프 스미스", "행동주의 헤지펀드. 저평가 기업 경영 개선", "STARBOARD"),
  (1365341, "세비안 캐피털", "크리스티안 가델·라르스 푀르베리", "유럽 대표 행동주의 펀드", "CEVIAN"),
  (1418814, "밸류액트", "마이크 롤링스·마이슨 모핏", "경영 참여형 집중투자. 이사회 진출로 유명", "VALUEACT"),
- (1352269, "캔틸런 캐피털", "윌리엄 폰 뮤플링", "글로벌 롱숏 펀드. 성장주 중심", "CANTILLON"),
- (1083657, "에저턴 캐피털", "존 아미티지", "영국계 롱숏 펀드. 글로벌 우량 성장주", "EGERTON"),
  (1998597, "자나 파트너스", "배리 로젠스타인", "행동주의 헤지펀드. 기업 분할·매각 요구", "JANA"),
 ]
 def get(url, tries=3):
@@ -97,13 +91,18 @@ def find_infotable(cik, acc):
     items = [i for i in r.json().get("directory", {}).get("item", []) if i["name"].lower().endswith(".xml")]
     items = [i for i in items if "primary_doc" not in i["name"].lower()]
     items.sort(key=lambda i: (0 if "info" in i["name"].lower() or "table" in i["name"].lower() else 1, -int(i.get("size") or 0)))
+    out = []
     for i in items:
         x = get(f"https://www.sec.gov/Archives/edgar/data/{cik}/{a}/{i['name']}")
-        if x is not None and x.status_code == 200 and b"nfoTable" in x.content: return x.content
-    return None
+        if x is not None and x.status_code == 200 and b"nfoTable" in x.content: out.append(x.content)
+    return out or None
 
-def parse(xml):
-    root = ET.fromstring(xml); agg = {}
+def parse(xmls):
+    agg = {}
+    for xml in xmls: _parse1(xml, agg)
+    return agg
+def _parse1(xml, agg):
+    root = ET.fromstring(xml)
     for it in root.iter():
         if tag(it) != "infoTable": continue
         cusip = ctext(it, "cusip").upper(); name = ctext(it, "nameOfIssuer")
@@ -118,7 +117,6 @@ def parse(xml):
         if not cusip or ty == "PRN": continue          # 채권(PRN) 제외 — 주식·ETF·옵션만
         d = agg.setdefault((cusip, pc), {"name": name, "val": 0.0, "sh": 0.0})
         d["val"] += val; d["sh"] += n
-    return agg
 
 def fix_unit(agg):
     """일부 제출자는 천 달러 단위로 제출 — 주당가격(value/shares) 중앙값이 1달러 미만이면 ×1000"""
@@ -155,13 +153,18 @@ def main():
                 agg = parse(xml); fixed = fix_unit(agg)
                 eq = {k: d for k, d in agg.items() if k[1] == ""}
                 total = sum(d["val"] for d in eq.values()) or 1
+                if len(eq) <= 2 and total < 5e6:
+                    skipped.append(f"{ko} {per}: 사실상 빈 공시({len(eq)}종목, ${total:,.0f}) — 건너뜀"); continue
+                n_full = len(eq); items = list(agg.items())
+                if n_full > 400:   # 분산·퀀트형: 종목 수천 개 → 평가액 상위 500개만 저장(DB 용량)
+                    items = sorted([kv for kv in items if kv[0][1] == ""], key=lambda kv: -kv[1]["val"])[:500]
                 cur.execute("delete from f13_holding where cik=%s and period=%s", (cik, per))
-                rows = [(cik, per, c, pc, d["name"], d["val"], d["sh"], round(d["val"] / total * 100, 4) if pc == "" else None) for (c, pc), d in agg.items()]
+                rows = [(cik, per, c, pc, d["name"], d["val"], d["sh"], round(d["val"] / total * 100, 4) if pc == "" else None) for (c, pc), d in items]
                 execute_values(cur, "insert into f13_holding(cik,period,cusip,put_call,name,value,shares,pct) values %s", rows, page_size=2000)
                 cur.execute("""insert into f13_filing(cik,period,filed,acc,total_value,n_pos,unit_fixed) values (%s,%s,%s,%s,%s,%s,%s)
                   on conflict(cik,period) do update set filed=excluded.filed,acc=excluded.acc,total_value=excluded.total_value,n_pos=excluded.n_pos,unit_fixed=excluded.unit_fixed""",
-                  (cik, per, filed, acc, total, len(eq), fixed))
-                got.append(f"{per}({len(eq)}종목, ${total/1e9:,.2f}B{', 단위보정' if fixed else ''})"); new_filings += 1
+                  (cik, per, filed, acc, total, n_full, fixed))
+                got.append(f"{per}({n_full}종목, ${total/1e9:,.2f}B{', 단위보정' if fixed else ''})"); new_filings += 1
             cur.execute("select period, filed, n_pos from f13_filing where cik=%s order by period desc limit 1", (cik,))
             last = cur.fetchone()
             if not last: skipped.append(f"{ko}: 저장된 공시 없음"); continue
@@ -177,6 +180,8 @@ def main():
     if skipped: log("\n## 제외·실패\n" + "\n".join("- " + s for s in skipped))
     cur.execute("select count(*) from f13_fund"); log(f"\nf13_fund {cur.fetchone()[0]}곳")
     cur.execute("select count(*) from f13_holding"); log(f"f13_holding {cur.fetchone()[0]}행")
-    cur.execute("select pg_size_pretty(pg_database_size(current_database()))"); log(f"DB 용량: {cur.fetchone()[0]}")
+    if FORCE:
+        cur.execute("vacuum full f13_holding")
+    cur.execute("select pg_size_pretty(pg_total_relation_size('f13_holding')), pg_size_pretty(pg_database_size(current_database()))"); a = cur.fetchone(); log(f"f13_holding 크기 {a[0]} · DB 전체 {a[1]}")
     open("f13_report.md", "w", encoding="utf-8").write("\n".join(L))
 if __name__ == "__main__": main()
