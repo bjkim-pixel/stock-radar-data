@@ -839,6 +839,18 @@ html.hg-g1 .g-g1,html.hg-g2 .g-g2,html.hg-g3 .g-g3,html.hg-g4 .g-g4,html.hg-g5 .
   .chip{font-size:10.5px;padding:3px 7px}
 }
 /* ══ 글로벌 시황 (업종동향 맨 위) ══ */
+.gms{margin:6px 0 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:6px 10px 10px}
+.gms>summary{cursor:pointer;font-size:13.5px;font-weight:700;list-style:none;display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:4px 0}
+.gms>summary::-webkit-details-marker{display:none}.gms>summary .r{font-size:10.5px;font-weight:400;color:var(--ink-3)}
+.gms-hd,.gms-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gms-hd{margin:4px 0 0;font-size:12px;font-weight:800;text-align:center}.gms-hd span{padding:3px 0;border-radius:6px;background:var(--surface)}
+.gms-t{margin:10px 0 4px;font-size:12px;font-weight:700;color:var(--ink-2)}.gms-t small{font-weight:400;color:var(--ink-3);font-size:10.5px}
+.gms-col{min-width:0;display:flex;flex-direction:column;gap:6px}
+.gms-c{border:1px solid var(--border);border-radius:8px;padding:6px 8px 4px;background:var(--surface);min-width:0}
+.gms-c .gm-sub{font-size:10px;color:var(--ink-3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gms-col .tiles{display:grid;grid-template-columns:1fr;gap:6px;margin:0!important}
+.gms-col .tile{min-width:0}
+.gms-n0{font-size:11px;color:var(--ink-3);padding:8px 2px}
 .gm-sec{margin:16px 0 6px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .gm-sec .r{font-size:10.5px;font-weight:400;color:var(--ink-3)}
 .gm-th{margin:14px 0 6px;font-size:12.5px;font-weight:700;display:flex;justify-content:space-between;align-items:baseline;gap:8px;
@@ -2178,6 +2190,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
 <section id="v-gm" class="hide">
   <div class="card" id="gmCard" style="margin-top:16px"><h3>글로벌 시황
     <span class="r" id="gmAsOf">추세가 오르는 시장·업종·테마 찾기</span></h3>
+    <div id="gmSum"></div>
     <div style="display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center;margin:4px 0 10px">
     <div class="qf seg" id="gmTabSel" style="margin:0">
       <button class="fchip" data-v="US" aria-pressed="false">미국 주식</button>
@@ -7917,6 +7930,77 @@ async function loadGlobal(tab){
   }
   if(tab==="KR"){await gmRsKR();await gmVk(S.gm.packs.KR);}
   if(S.gm.tab===tab)renderGlobal(S.gm.packs[tab]);
+  gmSummary();
+}
+
+/* ── 글로벌시황 상단 요약: 미국(왼쪽) | 한국(오른쪽) 같은 꼭지로 비교 (2026-11-28). 새 수집 없이 global_pack(US·KR) + v_sector_rank/sector_daily 재사용 ── */
+const GMS_ROWS=[
+  {t:"① 지수",tiles:1},
+  {t:"② 인덱스",US:["index:QQQ","macro:^TNX","macro:USO"],KR:["index:KOSPI","index:VKOSPI","index:KOSPI_TOP5"]},
+  {t:"③ 오늘의 테마 TOP3",sub:"당일(D) 상승률 큰 순",theme:1},
+  {t:"④ 변동성·환율·위험선호",US:["macro:^VIX","index:UUP","index:RATIO:IWM/SPY"],KR:["index:KRW","index:KQKS","index:KOSPI_DD"]},
+  {t:"⑤ 주도 업종 TOP3",sub:"미국 = 섹터 ETF 3개월 SPY 초과수익 · 한국 = 업종 RS(20일) 순위",sector:1}
+];
+function gmsCard(p,it,label,sub){
+  if(!it)return `<div class="gms-c"><div class="gms-n0">${escH(label||"–")} · 데이터 없음</div></div>`;
+  const n=gmWin(p,S.gm.allN||63);
+  return `<div class="gms-c"><div class="gm-h"><span class="gm-n">${escH(label||it.n)}</span>${gmCardVal(it)}</div>${sub?`<div class="gm-sub">${escH(sub)}</div>`:""}<div class="gm-sv">${gmSpark(it.c,n,false,it)}</div>${gmAxis(p,n,false)}</div>`;
+}
+function gmsTiles(p,nm){
+  const t=(p.tiles||[]).filter(x=>x.n===nm||x.n===nm+" 10일 박스");
+  return t.length?gmTiles({tiles:t}):`<div class="gms-n0">타일 데이터 없음</div>`;
+}
+function gmsThemes(p){
+  const g=(p.groups||[]).find(x=>x.id==="theme"); if(!g)return [];
+  let a=g.keys.map(k=>p.items[k]).filter(i=>i&&i.m&&i.m.d!=null&&!i.nosum).sort((x,y)=>y.m.d-x.m.d);
+  const seen=new Set(),out=[];
+  for(const i of a){const nm=i.th||i.n;if(seen.has(nm))continue;seen.add(nm);out.push(i);if(out.length>=3)break;}
+  return out;
+}
+function gmsUsSectors(p){
+  const g=(p.groups||[]).find(x=>x.id==="sector"); if(!g)return [];
+  return g.keys.map(k=>p.items[k]).filter(i=>i&&i.m&&i.m.rs3!=null).sort((x,y)=>y.m.rs3-x.m.rs3).slice(0,3);
+}
+async function gmsKrSectors(p){
+  if(S.gm.sumSec&&S.gm.sumSec.asof===p.as_of)return S.gm.sumSec.v;
+  const rows=(await getSectorRank()).filter(r=>r.rs_rank!=null).sort((a,b)=>a.rs_rank-b.rs_rank).slice(0,3);
+  const v=await Promise.all(rows.map(async r=>{
+    const h=await q("sector_daily",`select=trade_date,avg_change_pct&sector=eq.${encodeURIComponent(r.sector)}&market=eq.ALL&order=trade_date.desc&limit=260`).catch(()=>[]);
+    const mp={};h.forEach(x=>{if(x.avg_change_pct!=null)mp[String(x.trade_date).slice(0,10)]=+x.avg_change_pct;});
+    let cum=100,st=false;const c=p.dates.map(d=>{if(mp[d]!=null){cum*=1+mp[d]/100;st=true;return cum;}return st?cum:null;});
+    return {n:r.sector,k:"px",c,m:{d:r.avg_change_pct==null?null:+r.avg_change_pct},rk:r.rs_rank,tot:null};
+  }));
+  S.gm.sumSec={asof:p.as_of,v};return v;
+}
+async function gmSummary(){
+  const host=$("#gmSum"); if(!host||S.gm._sumBusy)return; S.gm._sumBusy=1;
+  try{
+    for(const t of ["US","KR"])if(!S.gm.packs[t]){const r=await q("global_pack",`select=as_of,updated_at,payload&tab=eq.${t}`).catch(()=>[]);if(r.length)S.gm.packs[t]=r[0];}
+    const ru=S.gm.packs.US,rk=S.gm.packs.KR; if(!ru||!rk||!ru.payload||!rk.payload){host.innerHTML="";return;}
+    const U=ru.payload,K=rk.payload;
+    await gmVk(rk).catch(()=>{});
+    const key=[S.gm.allN||63,U.as_of,K.as_of].join("|"); if(host.dataset.k===key&&host.firstChild)return;
+    let ks=[];try{ks=await gmsKrSectors(K);}catch(e){console.warn("한국 업종 요약",e);}
+    const old=host.querySelector("details"),open=old?old.open:true;
+    const cardsOf=(p,keys)=>keys.map(k=>gmsCard(p,p.items[k])).join("");
+    const rows=GMS_ROWS.map(r=>{
+      let L="",R="";
+      if(r.tiles){L=gmsTiles(U,"나스닥");R=gmsTiles(K,"KOSPI");}
+      else if(r.theme){
+        const f=(p,arr)=>arr.length?arr.map(i=>gmsCard(p,i,i.th||i.n,i.th?i.n:(i.s||""))).join(""):'<div class="gms-n0">테마 데이터 없음</div>';
+        L=f(U,gmsThemes(U));R=f(K,gmsThemes(K));
+      }else if(r.sector){
+        const us=gmsUsSectors(U);
+        L=us.length?us.map(i=>gmsCard(U,i,i.n,`${i.s||""} · 3M 초과 ${gmF(i.m.rs3)}%p`)).join(""):'<div class="gms-n0">섹터 데이터 없음</div>';
+        R=ks.length?ks.map(i=>gmsCard(K,i,i.n,`RS 순위 ${i.rk}위`)).join(""):'<div class="gms-n0">업종 데이터 없음</div>';
+      }else{L=cardsOf(U,r.US);R=cardsOf(K,r.KR);}
+      return `<div class="gms-t">${r.t}${r.sub?` <small>· ${r.sub}</small>`:""}</div><div class="gms-pair"><div class="gms-col">${L}</div><div class="gms-col">${R}</div></div>`;
+    }).join("");
+    host.innerHTML=`<details class="gms"${open?" open":""}><summary>미국 vs 한국 한눈에 보기<span class="r">미국 ${U.as_of} · 한국 ${K.as_of} · 차트 기간은 아래 1M·3M… 선택과 연동</span></summary>
+      <div class="gms-hd"><span>미국</span><span>한국</span></div>${rows}</details>`;
+    host.dataset.k=key;
+  }catch(e){console.error("글로벌시황 요약",e);}
+  finally{S.gm._sumBusy=0;}
 }
 $("#gmTabSel").addEventListener("seg-change",e=>{S.gm.big=null;loadGlobal(e.detail).catch(console.error);});
 /* 모든 차트 기간 일괄 변경 (미국·한국 공통, "기본"은 묶음별 기본 기간) */
@@ -7924,6 +8008,7 @@ $("#gmPerSel").addEventListener("seg-change",e=>{
   S.gm.allN=e.detail==="def"?null:+e.detail;
   if(S.gm.allN)S.gm.bigN=S.gm.allN;
   const pk=S.gm.packs[S.gm.tab]; if(pk)renderGlobal(pk);
+  gmSummary();
 });
 function gmWin(p,period){
   if(period==="ytd"){const y=p.as_of.slice(0,4);const i=p.dates.findIndex(d=>d.slice(0,4)===y);return i<0?p.dates.length:p.dates.length-i;}
