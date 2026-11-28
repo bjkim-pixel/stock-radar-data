@@ -1352,6 +1352,7 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="allinfo">전 종목 정보</button>
       <button data-v="wtrec">주식무게수 종목</button>
       <button data-v="etfhub">ETF</button>
+      <button data-v="divinv">배당 투자</button>
       <button data-v="pair">짝꿍매매</button>
       <button data-v="sw">국면 전략</button></div></div>
     <div class="ng" data-g="mgmt"><div class="ngh" role="button" tabindex="0" aria-expanded="true">관리</div><div class="ngi">
@@ -2008,6 +2009,19 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="qf seg" id="f13Tab" style="margin-bottom:8px"><button class="fchip" data-v="fund" aria-pressed="true">펀드별</button><button class="fchip" data-v="net">거장 동시 매수·매도</button></div>
     <div id="f13Body"><div class="load sk"></div></div>
     <div class="note" style="margin-top:8px" id="f13Note"></div></div>
+</section>
+<section id="v-divinv" class="hide">
+  <div class="card" style="margin-top:16px"><h3>배당 투자 <span class="r" id="dvSub"></span></h3>
+    <div class="note" style="margin:0 0 8px">국내 종목의 <b>최근 12개월 배당수익률</b>로 고르고, <b>기준일에 사서 지급일까지 기다릴 때 주가가 얼마나 빠져야 손해인지</b>를 봅니다. 배당수익률이 높아도 안정성(연속 배당·배당성향·특별배당 여부·주가 하락)은 <b>걸러내지 않고 전부 보여주므로</b> 판단은 직접 하세요. 한국 고배당 ETF 3개(PLUS 고배당주·KODEX 고배당·TIGER 코스피고배당) 구성종목에는 <span class="tag-d b">ETF</span> 표시를 붙입니다. 투자 권유가 아닌 참고 자료입니다.</div>
+    <div class="qf seg" id="dvY" style="margin-bottom:6px"><button class="fchip" data-y="0" aria-pressed="false">전체</button><button class="fchip" data-y="3" aria-pressed="false">3%↑</button><button class="fchip" data-y="4" aria-pressed="true">4%↑</button><button class="fchip" data-y="5" aria-pressed="false">5%↑</button><button class="fchip" data-y="6" aria-pressed="false">6%↑</button><button class="fchip" data-y="7" aria-pressed="false">7%↑</button></div>
+    <div class="dfrow" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">
+      <input id="dvQ" class="df" placeholder="종목명 검색" style="flex:1 1 120px;max-width:none">
+      <select id="dvSort" class="df" style="flex:0 1 150px;max-width:none"><option value="y">배당률 높은 순</option><option value="be">손익분기 하락률 큰 순</option><option value="next">다음 기준일 빠른 순</option><option value="chg">기간 수익률 낮은 순</option><option value="hi">고점 대비 낙폭 큰 순</option><option value="nm">이름순</option></select>
+      <select id="dvTax" class="df" style="flex:0 1 110px;max-width:none"><option value="0.154">세금 15.4%</option><option value="0">세전</option></select>
+      <label class="faint" style="font-size:12px;white-space:nowrap"><input type="checkbox" id="dvEtf"> ETF 구성종목만</label>
+      <label class="faint" style="font-size:12px;white-space:nowrap"><input type="checkbox" id="dvNext"> 예정 기준일만</label></div>
+    <div id="dvBody"><div class="load sk"></div></div>
+    <div class="note" style="margin-top:8px" id="dvNote"></div></div>
 </section>
 <section id="v-ovs" class="hide">
   <div class="dfrow" style="margin:12px 0 4px;gap:6px"><button class="btn ghost dnext" id="oBackTop">← 이전</button><select id="ovsMkt" class="df" title="주식시장 선택(전체 포함)" style="flex:0 0 70px;width:70px;max-width:none"><option value="all">전체</option><option value="US">미국</option><option value="HK">홍콩</option><option value="JP">일본</option><option value="SH">상해</option><option value="SZ">심천</option></select><select id="ovsTyp" class="df" title="종목 구분(전체·일반 종목·ETF)" style="flex:0 0 78px;width:78px;max-width:none"><option value="all">전체</option><option value="stk">일반 종목</option><option value="etf">ETF</option></select><select id="ovsSel" class="df" title="해외 종목·ETF 선택 (ETF → 일반 종목, 가나다순)" style="flex:1 1 0;max-width:none"></select><button class="btn ghost dnext" id="ovsNext" title="목록 순서대로 다음 종목으로 이동">다음 →</button></div>
@@ -5404,7 +5418,7 @@ function go(v,detailCode){
   {let sel=vOrig;if(v==="ovs"){const c=detailCode||S.ovs.code;sel=((S.ovs.list||[]).find(x=>x.code===c)||{}).is_etf||(!S.ovs.list&&vOrig==="ovse")?"ovse":"ovs";}
    $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===sel));}
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","semi","trade","trend","allinfo","wtrec","dart","etf","ovs","grk","f13","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","semi","trade","trend","allinfo","wtrec","dart","etf","ovs","grk","f13","divinv","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   wideSet(v==="scr"||v==="trend"||v==="allinfo"||v==="wtrec"||v==="dart"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -5442,6 +5456,7 @@ function go(v,detailCode){
   if(v==="etf"){const c=detailCode||S.etf.code;if(c&&(c!==S.etf.code||detailCode))etfLoad(c);}
   if(v==="grk")grkLoad();
   if(v==="f13")f13Load();
+  if(v==="divinv")divInvLoad();
   if(v==="ovs"){const c=detailCode||S.ovs.code||"NVDA";if(c!==S.ovs.code||detailCode||!S.ovs.d.length)ovsLoad(c);}
   if(v==="proc")procEnter();
   if(v==="gm"&&!S.gmEntered){S.gmEntered=true;loadGlobal().catch(e=>{console.error(e);S.gmEntered=false;});}
@@ -15521,7 +15536,113 @@ async function ovsF13(code){
     return `<tr><td class="l" style="text-align:left;white-space:normal;padding:6px 4px">${escH(f.name_ko)}<br><span class="rr">${escH(f.manager||"")}</span></td><td style="text-align:right">${ex?"–":N(r.pct,2)+"%"}</td><td style="text-align:right">${ex?"–":usd(+r.value)}</td><td style="text-align:right"><span class="${a[1]}">${a[0]}</span></td></tr>`;}).join("")}</tbody></table>`;
   card.style.display="";
 }
-const VIEW_IDS=["semi","seclog","etfhub","etf","ovs","grk","f13","trend","allinfo","wtrec","dart","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
+/* ══ 배당 투자(국내): 배당수익률 필터 + 기준일 매수 후 손익분기 하락률 + 과거 기준일별 실제 손익 ══ */
+const DV={rows:null,y:4,sort:"y",tax:0.154,q:"",etf:false,nextOnly:false,open:null,first:null,det:{}};
+function dvBizBack(ds,n){const d=new Date(ds+"T00:00:00Z");let k=0;while(k<n){d.setUTCDate(d.getUTCDate()-1);const w=d.getUTCDay();if(w!==0&&w!==6)k++;}return d.toISOString().slice(0,10);}
+function dvDays(a,b){return Math.round((new Date(b+"T00:00:00Z")-new Date(a+"T00:00:00Z"))/864e5);}
+function dvMedian(a){if(!a.length)return null;a=a.slice().sort((x,y)=>x-y);const m=a.length>>1;return a.length%2?a[m]:(a[m-1]+a[m])/2;}
+async function dvPages(view,params,key){const out=[];for(let off=0;off<20000;off+=1000){const p=await q(view,`${params}&limit=1000&offset=${off}`);out.push(...p);if(p.length<1000)break;}return out;}
+async function divInvLoad(){
+  if(DV.rows){dvRender();return;}
+  $("#dvBody").innerHTML='<div class="load sk"></div>';
+  try{
+    const date=S.date||new Date().toISOString().slice(0,10);
+    const fd=await q("daily_price","select=trade_date&order=trade_date.asc&limit=1");DV.first=fd[0]?fd[0].trade_date:null;
+    const [all,cur,base,sec,eh]=await Promise.all([
+      divLoadAll(),
+      dvPages("v_screener",`select=code,close,pct_from_high&trade_date=eq.${S.date}&order=code.asc`),
+      DV.first?dvPages("daily_price",`select=code,close&trade_date=eq.${DV.first}&order=code.asc`):[],
+      q("v_stock_sector","select=code,sector&limit=3000").catch(()=>[]),
+      q("etf_holdings_now","select=etf_code,stock_code&etf_code=in.(161510,279530,210780)&limit=500").catch(()=>[])]);
+    const cm={},bm={},sm={},em=new Set(eh.map(r=>r.stock_code));
+    cur.forEach(r=>cm[r.code]=r);base.forEach(r=>bm[r.code]=+r.close);sec.forEach(r=>sm[r.code]=r.sector);
+    const nm={};(S.codes||[]).forEach(s=>nm[s.code]=s.name);
+    const rows=[];
+    Object.keys(all.divs).forEach(code=>{
+      const c=cm[code];if(!c||!nm[code]||!(+c.close>0))return;
+      const close=+c.close,m=divModel(all.divs[code],all.est[code]||[],close,date);
+      if(!(m.ttm>0))return;
+      const lag=dvMedian(m.past.filter(r=>r.pay).map(r=>dvDays(r.rd,r.pay)));
+      const ref=m.next||m.last,yrs=new Set(m.D.map(r=>r.rd.slice(0,4))).size;
+      rows.push({code,name:nm[code],sector:sm[code]||"",close,m,y:m.yld,lag,ref,isNext:!!m.next,yrs,
+        nextRd:m.next?m.next.rd:null,buyBy:m.next?dvBizBack(m.next.rd,2):null,
+        pay:m.next?(m.next.pay||(lag!=null?new Date(new Date(m.next.rd+"T00:00:00Z").getTime()+lag*864e5).toISOString().slice(0,10):null)):null,
+        chg:bm[code]>0?(close/bm[code]-1)*100:null,hi:c.pct_from_high!=null?+c.pct_from_high:null,etf:em.has(code)});
+    });
+    DV.rows=rows;
+  }catch(e){console.error("배당 투자",e);$("#dvBody").innerHTML='<div class="empty">배당 데이터를 불러오지 못했습니다.</div>';return;}
+  dvRender();
+}
+function dvBe(r){const d=r.ref;return d?d.dps*(1-DV.tax)/r.close*100:null;}
+function dvRender(){
+  const tx=DV.tax;let L=DV.rows.filter(r=>r.y>=DV.y&&(!DV.etf||r.etf)&&(!DV.nextOnly||r.nextRd)&&(!DV.q||r.name.includes(DV.q)||r.code.includes(DV.q)));
+  const K={y:(a,b)=>b.y-a.y,be:(a,b)=>dvBe(b)-dvBe(a),next:(a,b)=>(a.nextRd||"9")<(b.nextRd||"9")?-1:1,chg:(a,b)=>(a.chg??1e9)-(b.chg??1e9),hi:(a,b)=>(a.hi??1e9)-(b.hi??1e9),nm:(a,b)=>a.name.localeCompare(b.name,"ko")};
+  L.sort(K[DV.sort]);
+  const ey=DV.rows.filter(r=>r.etf).map(r=>r.y),med=dvMedian(ey);
+  $("#dvSub").textContent=`${L.length}종목 (배당 이력 ${DV.rows.length}종목 중)`;
+  const f1=v=>v==null?"–":N(v,1);
+  const cls=v=>v==null?"":v>=0?"up":"down";
+  const body=L.map(r=>{
+    const be=dvBe(r),lagM=r.lag!=null?N(r.lag/30.4,1)+"개월":"–",open=DV.open===r.code;
+    return `<tr class="dvr" data-c="${r.code}" style="cursor:pointer${open?";background:var(--surface-2)":""}"><td class="l">${escH(r.name)}${r.etf?' <span class="tag-d b">ETF</span>':""}<div class="faint" style="font-size:10.5px">${r.code}${r.sector?" · "+escH(r.sector):""}</div></td>
+      <td class="num">${N(r.close,0)}</td><td class="num"><b>${f1(r.y)}%</b></td><td>${r.m.cycle||"–"}</td>
+      <td class="num">${r.ref?N(r.ref.dps,0)+"원":"–"}${r.isNext?"":'<div class="faint" style="font-size:10px">직전</div>'}</td>
+      <td class="num"><b>${f1(be)}%</b></td><td>${r.nextRd?`${divDate(r.nextRd)}<div class="faint" style="font-size:10px">매수 ~${divDate(r.buyBy)}</div>`:'<span class="faint">미정</span>'}</td>
+      <td>${r.pay?divDate(r.pay):"–"}<div class="faint" style="font-size:10px">대기 ${lagM}</div></td>
+      <td class="num ${cls(r.chg)}">${r.chg==null?"–":pm(r.chg,1)+"%"}</td><td class="num ${cls(r.hi)}">${r.hi==null?"–":N(r.hi,1)+"%"}</td><td class="num">${r.yrs}년</td></tr>`
+      +(open?`<tr><td colspan="11" class="l" id="dvDet" style="background:var(--surface-2)"><div class="load sk"></div></td></tr>`:"");
+  }).join("");
+  $("#dvBody").innerHTML=L.length?`<div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">종목</th><th>현재가</th><th>배당률<br><span class="faint" style="font-weight:400">12개월</span></th><th>주기</th><th>1회 배당금</th><th>손익분기<br>하락률</th><th>다음 기준일</th><th>지급일</th><th>기간<br>수익률</th><th>고점<br>대비</th><th>배당<br>이력</th></tr></thead><tbody>${body}</tbody></table></div>`:'<div class="empty">조건에 맞는 종목이 없습니다.</div>';
+  $("#dvNote").innerHTML=`<b>손익분기 하락률</b> = (다음 확정 배당금 ${tx?"× (1−15.4%)":""} ÷ 현재가). 기준일에 산 뒤 <b>지급일까지 주가가 이 % 넘게 떨어지면</b> 배당을 받아도 손실입니다(확정 일정이 없으면 직전 배당금을 가정, “직전” 표시). <b>매수 마감</b>은 기준일 2영업일 전(공휴일 미반영). <b>기간 수익률</b>은 우리 DB 시세 시작일(${DV.first||"–"}) 대비, 고점 대비는 기존 화면과 같은 기준입니다. 배당 이력 연수는 우리 DB에 수집된 기간 기준이라 실제 연속 배당 연수와 다를 수 있습니다.${med!=null?` 참고: ETF 구성종목 배당률 중앙값 ${N(med,1)}%.`:""}`;
+  if(DV.open)dvDetail(DV.open);
+}
+async function dvDetail(code){
+  const r=DV.rows.find(x=>x.code===code),box=$("#dvDet");if(!r||!box)return;
+  try{
+    if(!DV.det[code]){
+      const [px,er]=await Promise.all([dvPages("daily_price",`select=trade_date,close&code=eq.${code}&order=trade_date.asc`),
+        q("stock_earnings",`select=freq,period,is_est,eps,dps&code=eq.${code}&order=period.asc&limit=80`).catch(()=>[])]);
+      DV.det[code]={px,er};
+    }
+    const {px,er}=DV.det[code],tx=DV.tax,m=divModel(r.m.D.map(d=>({record_date:d.rd,divi_kind:d.kind,dps:d.dps,pay_date:d.pay})),er,r.close,S.date);
+    const dates=px.map(p=>p.trade_date),idxLE=d=>{let lo=0,hi=dates.length-1,a=-1;while(lo<=hi){const mid=(lo+hi)>>1;if(dates[mid]<=d){a=mid;lo=mid+1;}else hi=mid-1;}return a;};
+    const ev=[];
+    r.m.past.slice().sort((a,b)=>a.rd<b.rd?-1:1).forEach(d=>{
+      if(!px.length||d.rd<dates[0])return;
+      const ri=idxLE(d.rd),bi=ri-2;if(bi<0)return;
+      const buy=+px[bi].close,pi=d.pay?idxLE(d.pay):-1,done=d.pay&&d.pay<=dates[dates.length-1]&&pi>bi;
+      const pp=done?+px[pi].close:null,seg=px.slice(bi,(done?pi:px.length-1)+1).map(p=>+p.close),mn=Math.min(...seg),net=d.dps*(1-tx)/buy*100;
+      ev.push({rd:d.rd,buyD:dates[bi],buy,pay:d.pay,pp,mn,dd:(mn/buy-1)*100,chg:pp?(pp/buy-1)*100:null,net,res:pp?(pp/buy-1)*100+net:null,dps:d.dps,kind:d.kind});
+    });
+    const done=ev.filter(e=>e.res!=null),loss=done.filter(e=>e.res<0);
+    const f1=v=>v==null?"–":N(v,1)+"%",cl=v=>v==null?"":v>=0?"up":"down";
+    const evHtml=ev.length?`<div class="tw tw-scroll"><table class="earn-t"><thead><tr><th class="l">기준일</th><th>구분</th><th>매수일<br>(2영업일 전)</th><th>매수가</th><th>지급일</th><th>기간 중<br>최저 낙폭</th><th>지급일<br>주가 변동</th><th>세후<br>배당률</th><th>합계 손익</th></tr></thead><tbody>${ev.slice().reverse().map(e=>`<tr><td class="l">${divDate(e.rd)}</td><td>${e.kind||"–"}</td><td>${divDate(e.buyD)}</td><td class="num">${N(e.buy,0)}</td><td>${e.pay?divDate(e.pay):"–"}</td><td class="num down">${f1(e.dd)}</td><td class="num ${cl(e.chg)}">${e.chg==null?"대기중":pm(e.chg,1)+"%"}</td><td class="num">${f1(e.net)}</td><td class="num ${cl(e.res)}"><b>${e.res==null?"–":pm(e.res,1)+"%"}</b></td></tr>`).join("")}</tbody></table></div>`:'<div class="faint" style="font-size:12px">우리 DB 시세 기간(시작일 이후) 안의 배당 기준일이 없습니다.</div>';
+    const A={};er.filter(x=>x.freq==="A"&&!x.is_est&&x.eps!=null).forEach(x=>A[x.period.slice(0,4)]=+x.eps);
+    const by={};r.m.D.forEach(d=>{const y=d.rd.slice(0,4);by[y]=(by[y]||0)+d.dps;});
+    const ys=[...new Set([...Object.keys(by),...Object.keys(A)])].sort().slice(-6);
+    const poHtml=`<div class="tw tw-scroll" style="margin-top:8px"><table class="earn-t"><thead><tr><th class="l">연도</th>${ys.map(y=>`<th>${y}</th>`).join("")}</tr></thead><tbody><tr><td class="l">주당배당금(원)</td>${ys.map(y=>`<td class="num">${by[y]?N(by[y],0):"–"}</td>`).join("")}</tr><tr><td class="l">주당순이익(원)</td>${ys.map(y=>`<td class="num">${A[y]!=null?N(A[y],0):"–"}</td>`).join("")}</tr><tr><td class="l">배당성향</td>${ys.map(y=>`<td class="num">${by[y]&&A[y]>0?N(by[y]/A[y]*100,0)+"%":"–"}</td>`).join("")}</tr></tbody></table></div>`;
+    box.innerHTML=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><b>${escH(r.name)}</b><a class="lk" data-dvgo="${code}" style="font-size:12px">종목 상세 →</a></div>`+divSummaryHtml(m)+divSchedHtml(m)
+      +`<div style="margin:8px 0 4px;font-weight:600;font-size:13px">과거 기준일에 샀다면 (매수 후 지급일까지)</div>`
+      +(done.length?`<div class="faint" style="font-size:12px;margin-bottom:6px">지급 완료 ${done.length}회 중 <b class="${loss.length?"down":"up"}">${loss.length}회 손실</b> · 평균 손익 ${pm(done.reduce((a,e)=>a+e.res,0)/done.length,1)}% · 평균 대기 ${N(done.filter(e=>e.pay).reduce((a,e)=>a+dvDays(e.rd,e.pay),0)/Math.max(1,done.filter(e=>e.pay).length)/30.4,1)}개월</div>`:"")
+      +evHtml+`<div style="margin:10px 0 4px;font-weight:600;font-size:13px">연도별 배당·배당성향</div>`+divYearHtml(m)+poHtml
+      +`<div class="faint" style="font-size:11px;margin-top:6px">시세는 ${dates[0]||"–"}부터라 그 이전 기준일은 계산하지 못합니다. 매수가는 기준일 2영업일 전 종가, 지급 후 손익은 지급일(또는 직전 거래일) 종가 기준이며 거래비용은 제외했습니다.</div>`;
+  }catch(e){console.error("배당 상세",e);box.innerHTML='<span class="faint">상세를 불러오지 못했습니다.</span>';}
+}
+document.addEventListener("click",e=>{
+  const t=e.target;if(!t.closest||!t.closest("#v-divinv"))return;
+  const chip=t.closest("#dvY .fchip");
+  if(chip){DV.y=+chip.dataset.y;$$("#dvY .fchip").forEach(b=>b.setAttribute("aria-pressed",b===chip?"true":"false"));DV.open=null;if(DV.rows)dvRender();return;}
+  const go1=t.closest("a[data-dvgo]");if(go1){e.preventDefault();go("detail",go1.dataset.dvgo);return;}
+  if(t.closest("#dvDet"))return;
+  const tr=t.closest("tr.dvr");if(tr){const c=tr.dataset.c;DV.open=DV.open===c?null:c;dvRender();}
+});
+document.addEventListener("input",e=>{if(e.target.id==="dvQ"){DV.q=e.target.value.trim();DV.open=null;if(DV.rows)dvRender();}});
+document.addEventListener("change",e=>{
+  const i=e.target.id;if(!i||i.indexOf("dv")!==0)return;
+  if(i==="dvSort")DV.sort=e.target.value;else if(i==="dvTax")DV.tax=+e.target.value;else if(i==="dvEtf")DV.etf=e.target.checked;else if(i==="dvNext")DV.nextOnly=e.target.checked;else return;
+  if(DV.rows)dvRender();
+});
+const VIEW_IDS=["semi","seclog","etfhub","etf","ovs","grk","f13","divinv","trend","allinfo","wtrec","dart","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
 function setHash(v,code){
   const h="#"+(DESK_V.test(v)?v.replace("-","/"):v)+(code?"/"+code:"");   // 매매 화면: #paper/order · #real/auto
   if(location.hash!==h)history.pushState(null,"",h);
