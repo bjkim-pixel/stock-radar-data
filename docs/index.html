@@ -15457,7 +15457,8 @@ async function f13Toggle(cik,box){
     F13.det[cik]=html;d.innerHTML=html;wireF13(d);
   }catch(e){console.error("13F 상세",e);d.innerHTML=`<div class="load">불러오지 못했습니다 — ${escH(String(e&&e.message||e).slice(0,160))}</div>`;}
 }
-function wireF13(root){$$("a[data-f13o]",root).forEach(a=>a.onclick=ev=>{ev.stopPropagation();go("ovs",a.dataset.f13o);});}
+function wireF13(){}   // 종목 링크는 아래 위임 핸들러가 처리(펼침 캐시를 다시 그려도 동작)
+document.addEventListener("click",e=>{const a=e.target.closest("a[data-f13o]");if(!a)return;e.preventDefault();e.stopPropagation();go("ovs",a.dataset.f13o);},true);
 async function f13Net(){
   const box=$("#f13Body");
   if(F13.net){box.innerHTML=F13.net;wireF13(box);return;}
