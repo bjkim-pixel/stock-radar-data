@@ -53,9 +53,10 @@ for i, r in enumerate(cand, 1):
     if i % 300 == 0: print(f"{i}/{len(cand)}", flush=True)
 res.sort(key=lambda r: -r["y"])
 O.append(f"- 최근 12개월 배당이 있는 종목 {len(res)}개")
+PRF = re.compile(r"우[A-C]?$|우\(전환\)$")
 O.append("\n| 배당수익률 | 종목 수(우선주 포함) | 그중 우선주 |\n|---|---|---|")
 for t in (3, 4, 5, 6, 7, 8, 10, 15):
-    s = [r for r in res if r["y"] >= t]; O.append(f"| {t}% 이상 | {len(s)} | {sum(1 for r in s if re.search(r'우[A-C]?$|우\\(전환\\)', r['name']))} |")
+    s = [r for r in res if r["y"] >= t]; O.append(f"| {t}% 이상 | {len(s)} | {sum(1 for r in s if PRF.search(r['name']))} |")
 O.append(f"\n## 배당수익률 상위 (DIV_MIN {DIV_MIN}% 이상 {sum(1 for r in res if r['y']>=DIV_MIN)}개)\n\n| 종목 | 코드 | 시장 | 현재가 | 12개월 배당 | 횟수 | 수익률 | DB 분류 |\n|---|---|---|---|---|---|---|---|")
 for r in res:
     if r["y"] >= DIV_MIN: O.append(f"| {r['name']} | {r['code']} | {r['mk']} | {r['px']:,.0f} | {r['ttm']:,.0f} | {r['n']} | {r['y']:.1f}% | {have.get(r['code'],'없음')} |")
