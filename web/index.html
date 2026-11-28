@@ -15121,7 +15121,7 @@ async function ovsLoad(code){
 function ovsHead(){
   const O=S.ovs,m=O.m,last=O.d.at(-1),px=last?+last.close:+m.last,prev=O.d.at(-2),base=prev?+prev.close:+m.base;
   const ch=px!=null&&base?px-base:null,cp=ch!=null?ch/base*100:null,krw=ovsKrw(px);
-  const tags=[m.is_etf?"ETF":"주식",OVS_EX[m.kis_excd]||m.kis_excd,m.ccy,m.sector].filter(Boolean);
+  const tags=[m.is_etf?"ETF":"주식",OVS_EX[m.kis_excd]||m.kis_excd,m.ccy,m.is_etf?null:(m.sector_std||m.sector)].filter(Boolean);
   $("#ovsHead").innerHTML=`<div class="etf-h1">${m.is_etf?'<span class="cd" style="color:var(--accent,#2f6fed);font-weight:700;margin:0 4px 0 0">ETF</span>':""}${escH(ovsNm(m))}<span class="cd">(${escH(m.code)})</span></div>
     ${m.name_ko&&m.name_en?`<div class="faint" style="font-size:12px">${escH(m.name_en)}</div>`:""}
     <div class="etf-tags">${tags.map(t=>`<span>${escH(t)}</span>`).join("")}</div>

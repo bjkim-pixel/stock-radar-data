@@ -7,9 +7,9 @@
 create or replace view public.v_global_ret with (security_invoker = true) as
 with kr as (
   select 'KR'::text mkt, case when s.security_type = 'STOCK' then 'STOCK' else s.security_type end kind,
-         d.code, s.name, coalesce(s.sector_kis, s.sector_krx) sub, null::text lev, 'KRW'::text ccy,
+         d.code, s.name, coalesce(vs.sector, s.sector_kis, s.sector_krx) sub, null::text lev, 'KRW'::text ccy,
          d.trade_date, d.close::numeric close, d.trade_amount::numeric amt_krw
-  from public.daily_price d join public.stocks s on s.code = d.code
+  from public.daily_price d join public.stocks s on s.code = d.code left join public.v_stock_sector vs on vs.code = d.code
   where d.trade_date >= (select max(trade_date) from public.daily_price) - 130
     and coalesce(s.is_active, true) and d.close > 0 and coalesce(d.volume, 0) > 0
     and not exists (select 1 from public.etf_master e where e.code = d.code)
@@ -24,7 +24,7 @@ with kr as (
   select case when m.kis_excd in ('NAS','NYS','AMS') then 'US' when m.kis_excd = 'HKS' then 'HK'
               when m.kis_excd = 'TSE' then 'JP' else 'CN' end,
          case when m.is_etf then 'ETF' else 'STOCK' end, d.code, coalesce(m.name_ko, m.name_en, d.code),
-         case when m.is_etf then null else m.sector end,
+         case when m.is_etf then null else coalesce(m.sector_std, m.sector) end,
          case when (m.info->'si'->>'etp_chas_erng_rt_dbnb') ~ '^-?[0-9.]+$' and (m.info->'si'->>'etp_chas_erng_rt_dbnb')::numeric < 0 then 'I'
               when coalesce(m.name_en, '') ~* '(BEAR|INVERSE|SHORT)' then 'I'
               when (m.info->'si'->>'etp_chas_erng_rt_dbnb') ~ '^-?[0-9.]+$' and (m.info->'si'->>'etp_chas_erng_rt_dbnb')::numeric > 1 then 'L'
