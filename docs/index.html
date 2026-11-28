@@ -5391,7 +5391,7 @@ function go(v,detailCode){
   let cur2=cur;if(!cur2&&!$("#v-etf").classList.contains("hide"))cur2="etf";if(!cur2&&!$("#v-ovs").classList.contains("hide"))cur2="ovs";
   if(cur2&&cur2!==v)S.prevView=cur2;
   if(v==="etf"&&cur2&&cur2!=="etf"&&cur2!=="detail")S.etfBack=cur2;
-  if(v==="ovs"&&cur2&&cur2!=="ovs")S.ovsBack=cur2;   // ETF 페이지의 이전 화면(종목상세 왕복과 무관하게 유지)
+  if(v==="ovs"&&cur2&&cur2!=="ovs"){S.ovsBack=cur2;S.ovsBackY=scrollY;}   // ETF 페이지의 이전 화면(종목상세 왕복과 무관하게 유지)
   if(S.curTab==='fav'&&v!=='fav'&&S.favWanted.size)setFavLiveCodes([]);
   if(S.curTab==='sw'&&v!=='sw'&&S.swLiveWanted&&S.swLiveWanted.size)setSwLiveCodes([]);
   if(S.curTab==='live'&&v!=='live')liveStop();
@@ -15218,7 +15218,7 @@ $("#ovsTyp").addEventListener("change",e=>{S.ovs.typ=e.target.value;ovsSelFill()
 $("#ovsMkt").addEventListener("change",e=>{S.ovs.mkt=e.target.value;ovsSelFill();const sel=$("#ovsSel");if(sel&&sel.options.length&&sel.value!==S.ovs.code)go("ovs",sel.options[0].value);});
 $("#ovsNext").onclick=()=>{const o=[...$("#ovsSel").options];if(!o.length)return;const i=o.findIndex(x=>x.value===S.ovs.code);go("ovs",o[(i+1)%o.length].value);};
 $("#ovsPer").addEventListener("seg-change",e=>{S.ovs.per=e.detail;ovsCharts();});
-$("#oBack").onclick=$("#oBackTop").onclick=()=>go(S.ovsBack||"gm");
+$("#oBack").onclick=$("#oBackTop").onclick=()=>{const y=S.ovsBackY||0;go(S.ovsBack||"gm");if(y)[80,400,1000].forEach(t=>setTimeout(()=>scrollTo(0,y),t));};   // 원래 보던 스크롤 위치로 복귀
 async function ovsLoad(code){
   const O=S.ovs,req=(O.req=(O.req||0)+1);O.code=code;
   ["#ovsHead","#ovsPrice"].forEach(id=>$(id).innerHTML='<div class="load sk"></div>');
@@ -15428,6 +15428,7 @@ function f13Funds(){
       <div class="f13d" style="display:none"></div></div>`;}).join("");
   $$("#f13Body .f13h, #f13Body .f13t").forEach(el=>el.onclick=()=>f13Toggle(+el.closest(".f13c").dataset.cik,el.closest(".f13c")));
   f13LoadTop();
+  $$("#f13Body .f13c").forEach(b=>{const c=+b.dataset.cik;if(F13.opened&&F13.opened[c]&&F13.det[c]){b.querySelector(".f13d").style.display="";b.querySelector(".f13d").innerHTML=F13.det[c];const ar=b.querySelector(".f13ar");if(ar)ar.textContent="▴ 접기";}});   // 상세에서 돌아와도 펼침 유지
   $("#f13Note").innerHTML=`출처: SEC EDGAR 13F-HR(최근 4개 분기). 분산·퀀트형은 종목이 수천 개라 상위 종목 위주로 보세요. 평가액 단위는 달러이며, 일부 제출자의 천 달러 단위 값은 자동 보정했습니다.`;
 }
 function f13Top5(rows){
@@ -15441,10 +15442,11 @@ async function f13LoadTop(){
     catch(e){return;}
     const el=document.querySelector(`#f13Body .f13c[data-cik="${f.cik}"] .f13t`);if(el)el.innerHTML=f13Top5(F13.top[f.cik]);}));
 }
+F13.opened=F13.opened||{};
 async function f13Toggle(cik,box){
   const d=box.querySelector(".f13d"),ar=box.querySelector(".f13ar");
-  if(d.style.display!=="none"){d.style.display="none";if(ar)ar.textContent="▾ 펼치기";return;}
-  d.style.display="";if(ar)ar.textContent="▴ 접기";
+  if(d.style.display!=="none"){d.style.display="none";F13.opened[cik]=false;if(ar)ar.textContent="▾ 펼치기";return;}
+  F13.opened[cik]=true;d.style.display="";if(ar)ar.textContent="▴ 접기";
   if(F13.det[cik]){d.innerHTML=F13.det[cik];return;}
   d.innerHTML='<div class="load sk"></div>';
   const f=F13.funds.find(x=>x.cik==cik),per=f.last_period;
