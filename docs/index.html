@@ -15442,12 +15442,14 @@ async function f13Toggle(cik,box){
     const cnt=a=>cur.filter(r=>r.act===a).length;
     const rowsC=cur.filter(r=>r.act==="new"||r.act==="add"||r.act==="cut");
     const chg=sh=>sh==null?"":'';
-    const tr=r=>{const a=F13_ACT[r.act]||F13_ACT.hold;
+    const quant=f.style==="분산·퀀트";
+    const tr=r=>{const a=F13_ACT[r.act]||F13_ACT.hold;if(quant&&(r.act==="new"||r.act==="hold"))return `<tr><td class="l">${f13Name(0,r.name,r.ticker,F13.known)}${r.ticker?`<br><span class="rr">${escH(r.ticker)}</span>`:""}</td><td>${N(r.pct,2)}%</td><td>${usd(+r.value)}</td><td><span class="rr">–</span></td></tr>`;
       const dv=r.sh_prev>0?(r.shares/r.sh_prev-1)*100:null;
       return `<tr><td class="l">${f13Name(0,r.name,r.ticker,F13.known)}${r.ticker?`<br><span class="rr">${escH(r.ticker)}</span>`:""}</td><td>${N(r.pct,2)}%</td><td>${usd(+r.value)}</td><td><span class="${a[1]}">${a[0]}</span>${dv!=null&&r.act!=="hold"?`<br><span class="rr">${pm(dv,0)}%</span>`:""}</td></tr>`;};
     const top=cur.slice(0,25);
     const hs=hist.map(h=>`${h.period.slice(2,7)} ${usd(+h.total_value)}·${h.n_pos}종목`).join(" → ");
-    const html=`<div style="margin:8px 0 6px;font-size:12px" class="faint">신규 <b class="up">${cnt("new")}</b> · 비중↑(20%↑) <b class="up">${cnt("add")}</b> · 비중↓(20%↓) <b class="down">${cnt("cut")}</b> · 청산 <b class="down">${ex.length>=15?"15+":ex.length}</b> <span style="margin-left:6px">분기별: ${hs.split(" → ").reverse().join(" → ")}</span></div>
+    const html=quant?`<div style="margin:8px 0 6px;font-size:12px" class="faint">종목이 ${N(hist[0]&&hist[0].n_pos)}개라 평가액 상위 500개만 저장합니다 — 신규·청산 집계는 제공하지 않고, 상위 종목의 비중 변화만 표시합니다. <span style="margin-left:6px">분기별: ${hist.map(h=>`${h.period.slice(2,7)} ${usd(+h.total_value)}`).reverse().join(" → ")}</span></div>
+      <div class="tw tw-scroll"><table><thead><tr><th class="l">보유 상위 25</th><th>비중</th><th>평가액</th><th>직전 대비</th></tr></thead><tbody>${top.map(tr).join("")}</tbody></table></div>`:`<div style="margin:8px 0 6px;font-size:12px" class="faint">신규 <b class="up">${cnt("new")}</b> · 비중↑(20%↑) <b class="up">${cnt("add")}</b> · 비중↓(20%↓) <b class="down">${cnt("cut")}</b> · 청산 <b class="down">${ex.length>=15?"15+":ex.length}</b> <span style="margin-left:6px">분기별: ${hs.split(" → ").reverse().join(" → ")}</span></div>
       <div class="tw tw-scroll"><table><thead><tr><th class="l">보유 상위 25</th><th>비중</th><th>평가액</th><th>직전 대비</th></tr></thead><tbody>${top.map(tr).join("")}</tbody></table></div>
       ${rowsC.length>top.length||rowsC.some(r=>!top.includes(r))?`<div class="tw tw-scroll" style="margin-top:8px"><table><thead><tr><th class="l">신규 편입·큰 변동(상위 15)</th><th>비중</th><th>평가액</th><th>직전 대비</th></tr></thead><tbody>${rowsC.filter(r=>r.act==="new"||r.act==="add"||r.act==="cut").sort((a,b)=>(b.value||0)-(a.value||0)).slice(0,15).map(tr).join("")}</tbody></table></div>`:""}
       ${ex.length?`<div class="tw tw-scroll" style="margin-top:8px"><table><thead><tr><th class="l">청산(직전 분기 평가액 상위)</th><th>직전 비중</th><th>직전 평가액</th></tr></thead><tbody>${ex.map(r=>`<tr><td class="l">${f13Name(0,r.name,r.ticker,F13.known)}${r.ticker?`<br><span class="rr">${escH(r.ticker)}</span>`:""}</td><td>${N(r.pct_prev,2)}%</td><td>${usd(+r.val_prev)}</td></tr>`).join("")}</tbody></table></div>`:""}`;
