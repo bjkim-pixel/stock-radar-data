@@ -1330,6 +1330,8 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
       <button data-v="gm">글로벌 시황</button>
       <button data-v="grk">글로벌 상승률</button>
       <button data-v="sector">업종·테마</button></div></div>
+    <div class="ng" data-g="disc"><div class="ngh" role="button" tabindex="0" aria-expanded="true">공시</div><div class="ngi">
+      <button data-v="f13">미국 13F 공시</button></div></div>
     <div class="ng" data-g="info"><div class="ngh" role="button" tabindex="0" aria-expanded="true">종목 정보</div><div class="ngi">
       <button data-v="detail">한국 종목 상세</button>
       <button data-v="etf">한국 ETF 상세</button>
@@ -1999,11 +2001,19 @@ html.wide #trdPanePlan .card{overflow:visible;min-width:498px;box-sizing:border-
     <div class="tw tw-scroll"><table class="grk-t"><thead><tr><th class="l">#</th><th class="l">종목</th><th data-p="r1">오늘</th><th data-p="r5">1주</th><th data-p="r21">1개월</th><th data-p="r63">3개월</th></tr></thead><tbody id="grkBody"><tr><td colspan="6" class="load sk"></td></tr></tbody></table></div>
     <div class="note" style="margin-top:8px" id="grkNote"></div></div>
 </section>
+<section id="v-f13" class="hide">
+  <div class="card" style="margin-top:16px"><h3>미국 13F 공시 <span class="r" id="f13Sub"></span></h3>
+    <div class="note" style="margin:0 0 8px">미국 SEC에 제출된 <b>13F(분기 보유종목 보고서)</b> 기준 거장 펀드의 포트폴리오입니다. 분기말 기준이며 <b>분기 종료 후 최대 45일 뒤</b>에 공시되므로 “지금”이 아니라 “그 분기 말”의 보유입니다. 미국 상장 롱 포지션만 포함하고(공매도·해외주식 제외), 투자 참고 자료일 뿐 매매 신호가 아닙니다.</div>
+    <div class="qf seg" id="f13Tab" style="margin-bottom:8px"><button class="fchip" data-v="fund" aria-pressed="true">펀드별</button><button class="fchip" data-v="net">거장 동시 매수·매도</button></div>
+    <div id="f13Body"><div class="load sk"></div></div>
+    <div class="note" style="margin-top:8px" id="f13Note"></div></div>
+</section>
 <section id="v-ovs" class="hide">
   <div class="dfrow" style="margin:12px 0 4px;gap:6px"><button class="btn ghost dnext" id="oBackTop">← 이전</button><select id="ovsMkt" class="df" title="주식시장 선택(전체 포함)" style="flex:0 0 70px;width:70px;max-width:none"><option value="all">전체</option><option value="US">미국</option><option value="HK">홍콩</option><option value="JP">일본</option><option value="SH">상해</option><option value="SZ">심천</option></select><select id="ovsTyp" class="df" title="종목 구분(전체·일반 종목·ETF)" style="flex:0 0 78px;width:78px;max-width:none"><option value="all">전체</option><option value="stk">일반 종목</option><option value="etf">ETF</option></select><select id="ovsSel" class="df" title="해외 종목·ETF 선택 (ETF → 일반 종목, 가나다순)" style="flex:1 1 0;max-width:none"></select><button class="btn ghost dnext" id="ovsNext" title="목록 순서대로 다음 종목으로 이동">다음 →</button></div>
   <div class="card" id="ovsHead"><div class="load sk"></div></div>
   <div class="card" id="ovsIntroCard" style="margin-top:10px;display:none"><h3>회사 소개 <span class="r faint" style="font-weight:400" id="ovsIntroSub">네이버 증권</span></h3><div id="ovsIntro" style="white-space:pre-line;line-height:1.65;font-size:14px"></div></div>
   <div class="card" id="ovsHolderCard" style="margin-top:10px;display:none"><h3>주주 구성 <span class="r faint" style="font-weight:400" id="ovsHolderSub">네이버 증권</span></h3><div id="ovsHolder"></div></div>
+  <div class="card" id="ovsF13Card" style="margin-top:10px;display:none"><h3>보유 거장 <span class="r faint" style="font-weight:400" id="ovsF13Sub">미국 13F 공시</span></h3><div id="ovsF13"></div></div>
   <div class="card" id="ovsInfoCard" style="margin-top:10px;display:none"><h3>종목 정보 <span class="r faint" style="font-weight:400">한국투자증권 KIS</span></h3><div id="ovsInfo"></div></div>
   <div class="card" style="margin-top:10px"><h3>시세 정보 <span class="r" id="ovsQtSub"></span></h3><div id="ovsQt"></div></div>
   <div class="qf seg" id="ovsPer" style="margin:10px 0 0"><button class="fchip" data-v="21">1개월</button><button class="fchip" data-v="63">3개월</button><button class="fchip" data-v="126">6개월</button><button class="fchip" data-v="all" aria-pressed="true">연초 이후</button></div>
@@ -5393,7 +5403,7 @@ function go(v,detailCode){
   {let sel=vOrig;if(v==="ovs"){const c=detailCode||S.ovs.code;sel=((S.ovs.list||[]).find(x=>x.code===c)||{}).is_etf||(!S.ovs.list&&vOrig==="ovse")?"ovse":"ovs";}
    $$("#tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.v===sel));}
   if(typeof navSync==="function")navSync();
-  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","semi","trade","trend","allinfo","wtrec","dart","etf","ovs","grk","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
+  ["proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","sw","live","fw","semi","trade","trend","allinfo","wtrec","dart","etf","ovs","grk","f13","etfhub","seclog"].forEach(k=>$("#v-"+k).classList.toggle("hide",k!==v));
   wideSet(v==="scr"||v==="trend"||v==="allinfo"||v==="wtrec"||v==="dart"||v==="today"||v==="fav"||v==="sm"||v==="pe"||v==="acc"||(v==="trade"&&(TRD.pane==="plan"||TRD_ORDER_P.includes(TRD.pane))));setPageW();setTimeout(setPageW,400);   // 폭 넓은 표 화면에서만 가로 숨김 해제
   scrollTo(0,0);
   // 2026-09-19: 다른 메뉴에서 종목명을 클릭하면 예전엔 go("detail") 안에서
@@ -5430,6 +5440,7 @@ function go(v,detailCode){
   if(v==="seclog")slLoad();
   if(v==="etf"){const c=detailCode||S.etf.code;if(c&&(c!==S.etf.code||detailCode))etfLoad(c);}
   if(v==="grk")grkLoad();
+  if(v==="f13")f13Load();
   if(v==="ovs"){const c=detailCode||S.ovs.code||"NVDA";if(c!==S.ovs.code||detailCode||!S.ovs.d.length)ovsLoad(c);}
   if(v==="proc")procEnter();
   if(v==="gm"&&!S.gmEntered){S.gmEntered=true;loadGlobal().catch(e=>{console.error(e);S.gmEntered=false;});}
@@ -15231,6 +15242,7 @@ async function ovsLoad(code){
   try{ovsHead();}catch(e){console.error("ovs head",e);}
   try{ovsQt();}catch(e){console.error("ovs qt",e);}
   try{ovsProfile();}catch(e){console.error("ovs profile",e);}
+  try{ovsF13(code);}catch(e){console.error("ovs f13",e);}
   try{ovsInfo();}catch(e){console.error("ovs info",e);}
   try{ovsPf();}catch(e){console.error("ovs pf",e);}
   try{ovsDiv();}catch(e){console.error("ovs div",e);}
@@ -15378,7 +15390,119 @@ function ovsCharts(){
     $("#ovsVpSum").innerHTML=`현재가 위 ${N(vp.above,1)}% (${ovsBig(vp.aboveAmt*EOK)}) · 현재가 아래 ${N(vp.below,1)}% (${ovsBig(vp.belowAmt*EOK)}) · 현재가 구간 ${N(100-vp.above-vp.below,1)}%`;
   }else $("#ovsVp").innerHTML='<div class="load">데이터 없음</div>';
 }
-const VIEW_IDS=["semi","seclog","etfhub","etf","ovs","grk","trend","allinfo","wtrec","dart","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
+
+// ── 미국 13F 공시(2026-11-28): f13_fund / f13_filing / f13_holding / v_f13_change
+const F13=S.f13={tab:"fund",funds:null,filings:null,open:null,det:{},net:null,loading:false};
+const F13_ACT={new:["신규","up"],add:["비중↑","up"],cut:["비중↓","down"],exit:["청산","down"],hold:["유지","dim"],base:["기준","dim"]};
+const usd=v=>v==null||isNaN(v)?"–":Math.abs(v)>=1e9?"$"+N(v/1e9,2)+"B":Math.abs(v)>=1e6?"$"+N(v/1e6,0)+"M":"$"+N(v/1e3,0)+"K";
+function f13Name(c,nm,tk,known){return known&&tk&&known.has(tk)?`<a class="lk" data-f13o="${escH(tk)}">${escH(nm||tk)}</a>`:escH(nm||"–");}
+async function f13Load(){
+  if(F13.funds){f13Render();return;}
+  if(F13.loading)return;F13.loading=true;
+  try{
+    const [fu,fi]=await Promise.all([q("f13_fund","select=*&order=sort_no.asc&limit=200"),q("f13_filing","select=cik,period,filed,total_value,n_pos,unit_fixed&order=period.desc&limit=1000"),ovsList()]);
+    F13.funds=fu;F13.filings=fi;F13.known=new Set((S.ovs.list||[]).map(x=>x.code));
+  }catch(e){console.error("13F",e);$("#f13Body").innerHTML=`<div class="load">불러오지 못했습니다 — ${escH(String(e&&e.message||e).slice(0,200))}</div>`;F13.loading=false;return;}
+  F13.loading=false;
+  if(!F13.funds.length){$("#f13Body").innerHTML='<div class="load">데이터가 비어 있습니다 — 13F 수집 액션을 실행했는지 확인하세요.</div>';F13.funds=null;return;}
+  f13Render();
+}
+function f13Render(){
+  const mx=F13.funds.reduce((a,f)=>f.last_period>a?f.last_period:a,"");
+  $("#f13Sub").textContent="최신 분기 "+mx+" · 펀드 "+F13.funds.length+"곳";
+  $$("#f13Tab button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===F13.tab));
+  if(F13.tab==="fund")f13Funds();else f13Net();
+}
+function f13Funds(){
+  const fl=F13.filings,by={};fl.forEach(r=>{(by[r.cik]=by[r.cik]||[]).push(r);});
+  const stc={"집중":"집중형","중간":"중간형","분산·퀀트":"분산·퀀트"};
+  $("#f13Body").innerHTML=F13.funds.map(f=>{
+    const h=(by[f.cik]||[])[0]||{};
+    return `<div class="f13c" data-cik="${f.cik}" style="border-top:1px solid var(--line);padding:9px 0">
+      <div class="f13h" style="cursor:pointer" role="button" tabindex="0"><b>${escH(f.name_ko)}</b> <span class="mb">${stc[f.style]||""}</span>
+        <span class="faint" style="font-size:11.5px"> ${escH(f.manager||"")}</span><br>
+        <span style="font-size:12.5px">${escH(f.intro||"")}</span><br>
+        <span class="rr">${f.last_period} 기준 · ${f.last_filed||""} 공시 · 평가액 ${usd(+h.total_value)} · ${N(h.n_pos)}종목</span></div>
+      <div class="f13d" style="display:none"></div></div>`;}).join("");
+  $$("#f13Body .f13h").forEach(el=>el.onclick=()=>f13Toggle(+el.parentNode.dataset.cik,el.parentNode));
+  $("#f13Note").innerHTML=`출처: SEC EDGAR 13F-HR(최근 4개 분기). 분산·퀀트형은 종목이 수천 개라 상위 종목 위주로 보세요. 평가액 단위는 달러이며, 일부 제출자의 천 달러 단위 값은 자동 보정했습니다.`;
+}
+async function f13Toggle(cik,box){
+  const d=box.querySelector(".f13d");
+  if(d.style.display!=="none"){d.style.display="none";return;}
+  d.style.display="";
+  if(F13.det[cik]){d.innerHTML=F13.det[cik];return;}
+  d.innerHTML='<div class="load sk"></div>';
+  const f=F13.funds.find(x=>x.cik==cik),per=f.last_period;
+  try{
+    const [cur,ex,hist]=await Promise.all([
+      q("v_f13_change",`select=cusip,name,ticker,value,shares,pct,sh_prev,pct_prev,act&cik=eq.${cik}&period=eq.${per}&act=neq.exit&order=value.desc.nullslast&limit=300`),
+      q("v_f13_change",`select=cusip,name,ticker,val_prev,sh_prev,pct_prev&cik=eq.${cik}&period=eq.${per}&act=eq.exit&order=val_prev.desc.nullslast&limit=15`),
+      q("f13_filing",`select=period,total_value,n_pos&cik=eq.${cik}&order=period.desc&limit=8`)]);
+    const cnt=a=>cur.filter(r=>r.act===a).length;
+    const rowsC=cur.filter(r=>r.act==="new"||r.act==="add"||r.act==="cut");
+    const chg=sh=>sh==null?"":'';
+    const tr=r=>{const a=F13_ACT[r.act]||F13_ACT.hold;
+      const dv=r.sh_prev>0?(r.shares/r.sh_prev-1)*100:null;
+      return `<tr><td class="l">${f13Name(0,r.name,r.ticker,F13.known)}${r.ticker?`<br><span class="rr">${escH(r.ticker)}</span>`:""}</td><td>${N(r.pct,2)}%</td><td>${usd(+r.value)}</td><td><span class="${a[1]}">${a[0]}</span>${dv!=null&&r.act!=="hold"?`<br><span class="rr">${pm(dv,0)}%</span>`:""}</td></tr>`;};
+    const top=cur.slice(0,25);
+    const hs=hist.map(h=>`${h.period.slice(2,7)} ${usd(+h.total_value)}·${h.n_pos}종목`).join(" → ");
+    const html=`<div style="margin:8px 0 6px;font-size:12px" class="faint">신규 <b class="up">${cnt("new")}</b> · 비중↑(20%↑) <b class="up">${cnt("add")}</b> · 비중↓(20%↓) <b class="down">${cnt("cut")}</b> · 청산 <b class="down">${ex.length>=15?"15+":ex.length}</b> <span style="margin-left:6px">분기별: ${hs.split(" → ").reverse().join(" → ")}</span></div>
+      <div class="tw tw-scroll"><table><thead><tr><th class="l">보유 상위 25</th><th>비중</th><th>평가액</th><th>직전 대비</th></tr></thead><tbody>${top.map(tr).join("")}</tbody></table></div>
+      ${rowsC.length>top.length||rowsC.some(r=>!top.includes(r))?`<div class="tw tw-scroll" style="margin-top:8px"><table><thead><tr><th class="l">신규 편입·큰 변동(상위 15)</th><th>비중</th><th>평가액</th><th>직전 대비</th></tr></thead><tbody>${rowsC.filter(r=>r.act==="new"||r.act==="add"||r.act==="cut").sort((a,b)=>(b.value||0)-(a.value||0)).slice(0,15).map(tr).join("")}</tbody></table></div>`:""}
+      ${ex.length?`<div class="tw tw-scroll" style="margin-top:8px"><table><thead><tr><th class="l">청산(직전 분기 평가액 상위)</th><th>직전 비중</th><th>직전 평가액</th></tr></thead><tbody>${ex.map(r=>`<tr><td class="l">${f13Name(0,r.name,r.ticker,F13.known)}${r.ticker?`<br><span class="rr">${escH(r.ticker)}</span>`:""}</td><td>${N(r.pct_prev,2)}%</td><td>${usd(+r.val_prev)}</td></tr>`).join("")}</tbody></table></div>`:""}`;
+    F13.det[cik]=html;d.innerHTML=html;wireF13(d);
+  }catch(e){console.error("13F 상세",e);d.innerHTML=`<div class="load">불러오지 못했습니다 — ${escH(String(e&&e.message||e).slice(0,160))}</div>`;}
+}
+function wireF13(root){$$("a[data-f13o]",root).forEach(a=>a.onclick=ev=>{ev.stopPropagation();go("ovs",a.dataset.f13o);});}
+async function f13Net(){
+  const box=$("#f13Body");
+  if(F13.net){box.innerHTML=F13.net;wireF13(box);return;}
+  box.innerHTML='<div class="load sk"></div>';
+  const mx=F13.funds.reduce((a,f)=>f.last_period>a?f.last_period:a,"");
+  const fs=F13.funds.filter(f=>f.last_period===mx&&f.style!=="분산·퀀트"),stale=F13.funds.filter(f=>f.last_period!==mx||f.style==="분산·퀀트");
+  const name={};fs.forEach(f=>name[f.cik]=f.name_ko);
+  let rows=[];
+  try{
+    for(let off=0;off<8000;off+=1000){
+      const r=await q("v_f13_change",`select=cik,cusip,name,ticker,value,val_prev,act&period=eq.${mx}&act=in.(new,add,cut,exit)&cik=in.(${fs.map(f=>f.cik).join(",")})&order=cik.asc,cusip.asc&limit=1000&offset=${off}`);
+      rows=rows.concat(r);if(r.length<1000)break;}
+  }catch(e){console.error("13F 동시",e);box.innerHTML=`<div class="load">불러오지 못했습니다 — ${escH(String(e&&e.message||e).slice(0,160))}</div>`;return;}
+  const agg={};
+  rows.forEach(r=>{const k=r.cusip,a=agg[k]=agg[k]||{name:r.name,ticker:r.ticker,buy:[],sell:[],bv:0,sv:0};
+    if(r.ticker&&!a.ticker)a.ticker=r.ticker;
+    if(r.act==="new"||r.act==="add"){a.buy.push(name[r.cik]+(r.act==="new"?"(신규)":""));a.bv+=Math.max(0,(r.value||0)-(r.val_prev||0));}
+    else{a.sell.push(name[r.cik]+(r.act==="exit"?"(청산)":""));a.sv+=Math.max(0,(r.val_prev||0)-(r.value||0));}});
+  const L=Object.values(agg),buy=L.filter(a=>a.buy.length>=2).sort((x,y)=>y.buy.length-x.buy.length||y.bv-x.bv).slice(0,20),
+        sell=L.filter(a=>a.sell.length>=2).sort((x,y)=>y.sell.length-x.sell.length||y.sv-x.sv).slice(0,20);
+  const tb=(arr,k,vk)=>arr.length?arr.map(a=>`<tr><td class="l">${f13Name(0,a.name,a.ticker,F13.known)}${a.ticker?`<br><span class="rr">${escH(a.ticker)}</span>`:""}</td><td><b>${a[k].length}</b>곳<br><span class="rr">${usd(a[vk])}</span></td><td class="l" style="white-space:normal;font-size:11.5px">${escH(a[k].join(", "))}</td></tr>`).join(""):'<tr><td colspan="3" class="load">2곳 이상 겹친 종목이 없습니다</td></tr>';
+  const html=`<div class="note" style="margin:0 0 8px">${mx} 분기에 여러 펀드가 <b>같은 방향</b>으로 움직인 종목입니다. 집중·중간형 ${fs.length}곳만 집계하고, 종목이 수천 개인 분산·퀀트형(${stale.filter(f=>f.style==="분산·퀀트").map(f=>f.name_ko).join(", ")||"없음"})은 제외했습니다. ‘비중↑·↓’는 주식 수 20% 이상 변화 기준입니다.${stale.filter(f=>f.style!=="분산·퀀트").length?` 아직 ${mx} 공시가 없는 펀드: ${stale.filter(f=>f.style!=="분산·퀀트").map(f=>f.name_ko).join(", ")}.`:""}</div>
+    <div class="tw tw-scroll"><table><thead><tr><th class="l">동시 매수(신규·비중↑)</th><th>펀드 수·증가액</th><th class="l">펀드</th></tr></thead><tbody>${tb(buy,"buy","bv")}</tbody></table></div>
+    <div class="tw tw-scroll" style="margin-top:10px"><table><thead><tr><th class="l">동시 매도(청산·비중↓)</th><th>펀드 수·감소액</th><th class="l">펀드</th></tr></thead><tbody>${tb(sell,"sell","sv")}</tbody></table></div>`;
+  F13.net=html;if(F13.tab==="net"){box.innerHTML=html;wireF13(box);}
+  $("#f13Note").innerHTML="출처: SEC EDGAR 13F-HR. 분기 중 사고판 매매는 잡히지 않으며, 신고가 늦은 펀드는 반영이 늦습니다.";
+}
+document.addEventListener("click",e=>{const b=e.target.closest("#f13Tab button");if(!b)return;F13.tab=b.dataset.v;if(F13.funds)f13Render();});
+// 해외 종목 상세: 이 종목을 보유한 13F 거장
+async function ovsF13(code){
+  const card=$("#ovsF13Card");card.style.display="none";
+  if(!code)return;
+  let rows;
+  try{
+    if(!F13.funds)F13.funds=await q("f13_fund","select=*&order=sort_no.asc&limit=200");
+    rows=await q("v_f13_change",`select=cik,period,pct,act,shares,value,sh_prev,val_prev&ticker=eq.${encodeURIComponent(code)}&order=period.desc&limit=400`);
+  }catch(e){return;}
+  if(S.ovs.code!==code||!rows.length)return;
+  const fm={};F13.funds.forEach(f=>fm[f.cik]=f);
+  const best={};rows.forEach(r=>{const f=fm[r.cik];if(f&&r.period===f.last_period&&!(best[r.cik]&&best[r.cik].act!=="exit"&&r.act==="exit"))best[r.cik]=r;});
+  const L=Object.values(best).sort((a,b)=>(b.value||0)-(a.value||0)||(b.val_prev||0)-(a.val_prev||0));
+  if(!L.length)return;
+  $("#ovsF13Sub").textContent="미국 13F · "+L[0].period+" 기준";
+  $("#ovsF13").innerHTML=`<table style="width:100%;border-collapse:collapse"><thead><tr><th class="l" style="text-align:left">펀드(대표)</th><th style="text-align:right">비중</th><th style="text-align:right">평가액</th><th style="text-align:right">직전 대비</th></tr></thead><tbody>${L.map(r=>{const f=fm[r.cik],a=F13_ACT[r.act]||F13_ACT.hold,ex=r.act==="exit";
+    return `<tr><td class="l" style="text-align:left;white-space:normal;padding:6px 4px">${escH(f.name_ko)}<br><span class="rr">${escH(f.manager||"")}</span></td><td style="text-align:right">${ex?"–":N(r.pct,2)+"%"}</td><td style="text-align:right">${ex?"–":usd(+r.value)}</td><td style="text-align:right"><span class="${a[1]}">${a[0]}</span></td></tr>`;}).join("")}</tbody></table>`;
+  card.style.display="";
+}
+const VIEW_IDS=["semi","seclog","etfhub","etf","ovs","grk","f13","trend","allinfo","wtrec","dart","proc","gm","today","sm","pe","acc","scr","fav","pair","sector","detail","perf","perf2","ai","journal","trade","trplan","trhold","trhist","trauto"];
 function setHash(v,code){
   const h="#"+(DESK_V.test(v)?v.replace("-","/"):v)+(code?"/"+code:"");   // 매매 화면: #paper/order · #real/auto
   if(location.hash!==h)history.pushState(null,"",h);
