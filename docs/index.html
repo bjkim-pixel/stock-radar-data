@@ -15423,15 +15423,28 @@ function f13Funds(){
       <div class="f13h" style="cursor:pointer" role="button" tabindex="0"><b>${escH(f.name_ko)}</b> <span class="mb">${stc[f.style]||""}</span>
         <span class="faint" style="font-size:11.5px"> ${escH(f.manager||"")}</span><br>
         <span style="font-size:12.5px">${escH(f.intro||"")}</span><br>
-        <span class="rr">${f.last_period} 기준 · ${f.last_filed||""} 공시 · 평가액 ${usd(+h.total_value)} · ${N(h.n_pos)}종목</span></div>
+        <span class="rr">${f.last_period} 기준 · ${f.last_filed||""} 공시 · 평가액 ${usd(+h.total_value)} · ${N(h.n_pos)}종목</span> <span class="f13ar faint" style="font-size:11px">▾ 펼치기</span></div>
+      <div class="f13t" style="cursor:pointer;margin-top:5px">${F13.top&&F13.top[f.cik]?f13Top5(F13.top[f.cik]):'<span class="faint" style="font-size:11.5px">상위 5종목 불러오는 중…</span>'}</div>
       <div class="f13d" style="display:none"></div></div>`;}).join("");
-  $$("#f13Body .f13h").forEach(el=>el.onclick=()=>f13Toggle(+el.parentNode.dataset.cik,el.parentNode));
+  $$("#f13Body .f13h, #f13Body .f13t").forEach(el=>el.onclick=()=>f13Toggle(+el.closest(".f13c").dataset.cik,el.closest(".f13c")));
+  f13LoadTop();
   $("#f13Note").innerHTML=`출처: SEC EDGAR 13F-HR(최근 4개 분기). 분산·퀀트형은 종목이 수천 개라 상위 종목 위주로 보세요. 평가액 단위는 달러이며, 일부 제출자의 천 달러 단위 값은 자동 보정했습니다.`;
 }
+function f13Top5(rows){
+  if(!rows||!rows.length)return '<span class="faint" style="font-size:11.5px">–</span>';
+  return `<table style="width:100%;border-collapse:collapse;font-size:12.5px"><tbody>${rows.map((r,i)=>`<tr><td style="width:18px;padding:2px 0" class="faint">${i+1}</td><td class="l" style="text-align:left;padding:2px 4px">${f13Name(0,r.name,r.ticker,F13.known)}${r.ticker?` <span class="rr">${escH(r.ticker)}</span>`:""}</td><td style="text-align:right;padding:2px 0">${N(r.pct,1)}%</td><td style="text-align:right;padding:2px 0 2px 8px" class="faint">${usd(+r.value)}</td></tr>`).join("")}</tbody></table>`;}
+async function f13LoadTop(){
+  F13.top=F13.top||{};
+  const todo=F13.funds.filter(f=>!F13.top[f.cik]);
+  await Promise.all(todo.map(async f=>{
+    try{const r=await q("f13_holding",`select=name,ticker,pct,value&cik=eq.${f.cik}&period=eq.${f.last_period}&put_call=eq.&order=value.desc.nullslast&limit=5`);F13.top[f.cik]=r;}
+    catch(e){return;}
+    const el=document.querySelector(`#f13Body .f13c[data-cik="${f.cik}"] .f13t`);if(el)el.innerHTML=f13Top5(F13.top[f.cik]);}));
+}
 async function f13Toggle(cik,box){
-  const d=box.querySelector(".f13d");
-  if(d.style.display!=="none"){d.style.display="none";return;}
-  d.style.display="";
+  const d=box.querySelector(".f13d"),ar=box.querySelector(".f13ar");
+  if(d.style.display!=="none"){d.style.display="none";if(ar)ar.textContent="▾ 펼치기";return;}
+  d.style.display="";if(ar)ar.textContent="▴ 접기";
   if(F13.det[cik]){d.innerHTML=F13.det[cik];return;}
   d.innerHTML='<div class="load sk"></div>';
   const f=F13.funds.find(x=>x.cik==cik),per=f.last_period;
