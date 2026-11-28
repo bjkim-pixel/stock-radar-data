@@ -1673,5 +1673,25 @@
   "country": "미국",
   "mgmt": "패시브",
   "flags": ""
+ },
+ {
+  "code": "279530",
+  "name": "KODEX 고배당",
+  "field": "국내 업종·테마",
+  "subfield": "배당·가치",
+  "tags": "배당·가치",
+  "country": "",
+  "mgmt": "패시브",
+  "flags": ""
+ },
+ {
+  "code": "210780",
+  "name": "TIGER 코스피고배당",
+  "field": "국내 업종·테마",
+  "subfield": "배당·가치",
+  "tags": "배당·가치",
+  "country": "",
+  "mgmt": "패시브",
+  "flags": ""
  }
 ]

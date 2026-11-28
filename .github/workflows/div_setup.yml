@@ -1,0 +1,31 @@
+name: "[수시] 고배당 페이지 준비 | ETF 등록·구성종목 수집·배당 기준 분석"
+# 한국 고배당 ETF(etf_list.json 에 추가한 것 포함) 일봉·구성종목·분배금 수집 후 배당수익률 분포를 분석합니다.
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: kis-rest-batch
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+      KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install psycopg2-binary requests
+      - run: python 107_etf_collect.py 2>&1 | tail -5
+      - run: python 161_etf_detail_collect.py 2>&1 | tail -5
+      - run: python 239_div_analysis.py
+      - name: Publish report
+        if: always()
+        uses: ./.github/actions/publish-report
+        with:
+          branch: div-report
+          file: div_analysis.md
