@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """SEC EDGAR 13F-HR 수집 가능성 점검(읽기 전용): 제출 목록 → 최근 2개 분기 infotable → 신규/청산/증감 계산."""
 import re, time, requests, xml.etree.ElementTree as ET
-H={"User-Agent":"StockRadarResearch bjkim-pixel@users.noreply.github.com","Accept-Encoding":"gzip, deflate"}
+import os
+H={"User-Agent":os.environ.get("SEC_UA") or "StockRadarResearch","Accept-Encoding":"gzip, deflate"}
 L=[]
 def log(m=""): print(m,flush=True); L.append(str(m))
 def get(url):

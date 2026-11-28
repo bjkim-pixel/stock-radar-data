@@ -17,6 +17,7 @@ jobs:
       KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       DART_API_KEY: ${{ secrets.DART_API_KEY }}
+      SEC_UA: ${{ secrets.SEC_UA }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
