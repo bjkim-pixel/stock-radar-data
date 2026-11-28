@@ -9,6 +9,16 @@ cur.execute("select code,name from stocks where first_seen=current_date and code
 O.append(f"- 삭제 대상 {len(rows)}종목 (예: {', '.join(r[1] for r in rows[:12])})")
 if not 50 <= len(rows) <= 600: O.append("- 대상 수가 예상 범위(50~600)를 벗어나 중단"); open("div_undo.md", "w", encoding="utf-8").write("\n".join(O)); print("\n".join(O)); raise SystemExit
 codes = [r[0] for r in rows]
+# 매매·관심·일지 등 사용자 기록이 걸린 테이블에 있는 종목은 삭제하지 않고 남김(외래키 보호)
+cur.execute("""select c.table_name from information_schema.columns c join information_schema.tables t on t.table_schema=c.table_schema and t.table_name=c.table_name and t.table_type='BASE TABLE'
+  where c.table_schema='public' and c.column_name='code' and c.table_name ~ '(intraday|trade|trading|position|order|journal|fav|watch|portfolio|holding)' and c.table_name<>'stocks'""")
+prot = {}
+for (t,) in cur.fetchall():
+    cur.execute(f'select distinct code from public."{t}" where code = any(%s)', (codes,))
+    for (c,) in cur.fetchall(): prot.setdefault(c, []).append(t)
+if prot:
+    O.append(f"- 매매·관심 기록이 있어 삭제하지 않고 남김: {prot}")
+    codes = [c for c in codes if c not in prot]
 cur.execute("""select c.table_name from information_schema.columns c join information_schema.tables t on t.table_schema=c.table_schema and t.table_name=c.table_name and t.table_type='BASE TABLE'
   where c.table_schema='public' and c.column_name='code' and c.table_name<>'stocks' order by 1""")
 tot = 0
