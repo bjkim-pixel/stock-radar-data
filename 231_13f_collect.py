@@ -43,7 +43,6 @@ FUNDS = [
  (923093, "튜더 인베스트먼트", "폴 튜더 존스", "매크로·퀀트 헤지펀드 1세대. 다양한 전략을 쓰는 대형 헤지펀드", "TUDOR INVESTMENT"),
  (1082621, "하버드 기금(HMC)", "하버드 매니지먼트 컴퍼니", "하버드대 기금 운용사. 대학 기금 중 최대 규모", "HARVARD MANAGEMENT"),
  (1021944, "테마섹", "싱가포르 국부펀드(테마섹 홀딩스)", "싱가포르 정부 소유 투자회사. 미국 상장 보유분 일부만 13F로 공시", "TEMASEK"),
- (1219573, "싱가포르 GIC", "싱가포르 정부 투자공사", "싱가포르 정부 국부펀드. 대규모 분산 포트폴리오", "SINGAPORE"),
  (1273087, "밀레니엄 매니지먼트", "이즈리얼 잉글랜더", "수백 개 팀이 운용하는 멀티 매니저 헤지펀드", "MILLENNIUM"),
  (1061165, "론 파인 캐피털", "스티븐 만델", "타이거 출신 롱숏 펀드. 소비·테크 중심", "LONE PINE"),
  (1138995, "글렌뷰 캐피털", "래리 로빈스", "헬스케어 중심 헤지펀드", "GLENVIEW"),
@@ -139,6 +138,8 @@ def main():
     cur.execute(open(os.path.join(HERE, "231_f13.sql"), encoding="utf-8").read())
     cur.execute("delete from f13_holding h using f13_filing f where h.cik=f.cik and h.period=f.period and f.n_pos<=2 and f.total_value<5e6")   # 빈 공시 정리
     cur.execute("delete from f13_filing where n_pos<=2 and total_value<5e6")
+    ids = [f[0] for f in FUNDS]   # 목록에서 뺀 펀드의 데이터 정리
+    for t in ("f13_holding", "f13_filing", "f13_fund"): cur.execute(f"delete from {t} where cik <> all(%s)", (ids,))
     cur.execute("select cik, period, acc from f13_filing"); have = {(c, p): a for c, p, a in cur.fetchall()}
     win = window_periods(); log(f"# 13F 수집 {datetime.datetime.utcnow():%Y-%m-%d %H:%M} UTC · 대상 분기 {', '.join(map(str, win))} · 펀드 {len(FUNDS)}곳\n")
     new_filings = 0; skipped = []
